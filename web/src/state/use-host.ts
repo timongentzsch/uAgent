@@ -360,6 +360,10 @@ export function useHost(
       setManagementVersion((version) => version + 1);
       return;
     }
+    if (event.kind === "spaces.changed") {
+      setCatalogue((prior) => ({ ...prior, spaces: event.spaces }));
+      return;
+    }
     if (event.kind === "scheduled.changed" && event.scheduled) {
       setCatalogue((prior) => ({ ...prior, scheduled: event.scheduled }));
       return;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -26,6 +27,148 @@
 #include "include/tools/files.h"
 
 namespace uagent::session {
+namespace {
+namespace fs = std::filesystem;
+
+// Where a space keeps the name it goes by; its folder's own name is only
+// what it was first called, made safe for a path.
+fs::path LabelFile(const fs::path& space) { return space / ".uagent" / "name"; }
+
+std::string Label(const fs::path& space) {
+  const std::string label =
+      Trim(ReadFile(LabelFile(space).string(), 256).value_or(""));
+  return label.empty() ? space.filename().string() : label;
+}
+
+bool ValidSpaceName(const std::string& name) {
+  return ValidSessionTitle(name) && name.size() <= 64 &&
+         name.find('/') == std::string::npos;
+}
+
+// `path` as a space's folder, or nothing when it is not one. The folder
+// that holds the spaces is µAgent's own: one that is a link leads to
+// directories that are not spaces, and holds none.
+std::optional<fs::path> SpaceAt(const std::string& path) {
+  std::error_code error;
+  if (fs::is_symlink(UagentDir("spaces"), error)) return std::nullopt;
+  const auto root = CanonicalDirectory(UagentDir("spaces"));
+  const auto space = CanonicalDirectory(path);
+  return root && space && space->parent_path() == *root ? space : std::nullopt;
+}
+}  // namespace
+
+json Spaces() {
+  json spaces = json::array();
+  std::error_code error;
+  for (const auto& entry : fs::directory_iterator(UagentDir("spaces"), error)) {
+    if (const auto space = SpaceAt(entry.path().string())) {
+      spaces.push_back({{"path", space->string()}, {"name", Label(*space)}});
+    }
+  }
+  std::sort(spaces.begin(), spaces.end(), [](const json& a, const json& b) {
+    return AsciiLower(JsonValue(a, "name", "")) <
+           AsciiLower(JsonValue(b, "name", ""));
+  });
+  return spaces;
+}
+
+std::string SpaceFolder(const std::string& name, std::string& error) {
+  if (!ValidSpaceName(name)) {
+    error = "a space's name is 1 to 64 characters without /";
+    return "";
+  }
+  for (const json& space : Spaces()) {
+    if (AsciiLower(JsonValue(space, "name", "")) == AsciiLower(name)) {
+      return JsonValue(space, "path", "");
+    }
+  }
+  // A folder of its own: the name made safe, numbered when that is taken.
+  const std::string safe = SafeFileComponent(name);
+  std::string folder = UagentDir("spaces") + "/" + safe;
+  for (int n = 2; PathExists(folder); ++n) {
+    folder = UagentDir("spaces") + "/" + safe + "-" + std::to_string(n);
+  }
+  std::string ignored;
+  if (!EnsurePrivateDirectory(folder + "/.uagent") ||
+      (safe != name &&
+       !AtomicWriteFile(LabelFile(folder).string(), name + "\n",
+                        kPrivateFileMode, /*preserve_mode=*/false, ignored))) {
+    error = "the space could not be created";
+    return "";
+  }
+  return folder;
+}
+
+std::string SessionHost::RenameSpace(const std::string& path,
+                                     const std::string& name) {
+  const auto space = SpaceAt(path);
+  if (!space) return "no such space";
+  if (!ValidSpaceName(name)) {
+    return "a space's name is 1 to 64 characters without /";
+  }
+  for (const json& other : Spaces()) {
+    if (JsonValue(other, "path", "") != space->string() &&
+        AsciiLower(JsonValue(other, "name", "")) == AsciiLower(name)) {
+      return "another space is called that";
+    }
+  }
+  std::string error;
+  // As µAgent spells its own folder, which a link may lead to.
+  const fs::path kept = fs::path(UagentDir("spaces")) / space->filename();
+  if (!EnsurePrivateDirectory((kept / ".uagent").string()) ||
+      !AtomicWriteFile(LabelFile(kept).string(), name + "\n", kPrivateFileMode,
+                       /*preserve_mode=*/false, error)) {
+    return error.empty() ? "the space could not be renamed" : error;
+  }
+  return "";
+}
+
+std::string SessionHost::DeleteSpace(const std::string& path,
+                                     const std::string& device) {
+  const auto space = SpaceAt(path);
+  if (!space) return "no such space";
+  // Its conversations go the way one goes: closed when it runs, then
+  // removed. Threads that work elsewhere belong to it by their folder.
+  const auto next = [&]() -> json {
+    std::lock_guard lock(mutex_);
+    for (const auto& [id, session] : sessions_) {
+      if (session->cwd == space->string() ||
+          session->folder == space->string()) {
+        return {{"session_id", id},
+                {"generation", session->generation},
+                {"kind",
+                 session->pid > 0 && !session->exited ? "close" : "delete"}};
+      }
+    }
+    return json();
+  };
+  std::set<std::string> closed;
+  for (json command = next(); !command.is_null(); command = next()) {
+    // A runtime that would not stop is not waited for twice.
+    if (JsonValue(command, "kind", "") == "close" &&
+        !closed.insert(JsonValue(command, "session_id", "")).second) {
+      return "a conversation in the space did not stop; try again";
+    }
+    const SessionCommandResult result =
+        ExecuteCommand(command, device, RandomToken(16));
+    if (!result.error.empty()) return result.error;
+  }
+  // Under the lock a conversation is created under: none starts in a
+  // folder that is going.
+  std::lock_guard lock(mutex_);
+  if (std::ranges::any_of(sessions_, [&](const auto& held) {
+        return held.second->cwd == space->string() ||
+               held.second->folder == space->string();
+      })) {
+    return "a conversation started in the space meanwhile; try again";
+  }
+  std::error_code error;
+  fs::remove_all(UagentDir(kHistoryDir) + "/" + WorkspaceId(space->string()),
+                 error);
+  fs::remove_all(*space, error);
+  return error ? "the space's folder could not be removed: " + error.message()
+               : "";
+}
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
   std::unique_lock lock(mutex_);
@@ -37,16 +180,16 @@ SessionCommandResult SessionHost::ExecuteCommand(
     // A space is a folder of µAgent's own, made by naming it: a conversation
     // that belongs to no project still gets a workspace commands can write.
     std::string folder = JsonValue(command, "cwd", "");
-    if (const std::string space = JsonValue(command, "space", "");
+    if (const std::string space = Trim(JsonValue(command, "space", ""));
         !space.empty()) {
-      if (SafeFileComponent(space) != space) {
-        result.error = "a space's name takes letters, digits, - and _";
-        return result;
-      }
-      folder = UagentDir("spaces") + "/" + space;
-      if (!EnsurePrivateDirectory(folder)) {
-        result.error = "the space could not be created";
-        return result;
+      const size_t before = Spaces().size();
+      folder = SpaceFolder(space, result.error);
+      if (folder.empty()) return result;
+      // A new one is listed wherever the spaces are.
+      if (const json spaces = Spaces(); spaces.size() != before) {
+        replay_.Publish(epoch_, "", "",
+                        {{"kind", "spaces.changed"}, {"spaces", spaces}},
+                        false);
       }
     }
     const auto resolved = CanonicalDirectory(folder);

@@ -58,6 +58,7 @@ BROWSER_FRAMES = frozenset(
         "metadata",
         "outcome",
         "scheduled.changed",
+        "spaces.changed",
         "state",
     }
 )

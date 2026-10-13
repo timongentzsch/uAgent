@@ -107,13 +107,17 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool panel, json thread)
+                std::string title, bool panel, json thread,
+                const std::string& cwd)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
-        panel_(panel) {
+        panel_(panel),
+        chat_(panel                        ? cwd
+              : ChatMember(thread).empty() ? ""
+                                           : JsonValue(thread, "folder", "")) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
   }
   ~WorkerChannel() override { Close(); }
@@ -737,7 +741,11 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kRename:
         if (input_ || !ValidSessionTitle(parsed.title)) {
           error = "rename requires a valid title and an empty input queue";
-        } else {
+        } else if (error = chat_.empty()
+                               ? ""
+                               : ChatNameProblem(chat_, parsed.title, path_);
+                   error.empty()) {
+          if (!chat_.empty()) ChatRenamed(chat_, path_, parsed.title);
           input_ = ApplicationInput{.title = std::string(parsed.title)};
           busy_ = true;
           wake_.Wake();
@@ -932,6 +940,9 @@ class WorkerChannel final : public ApplicationChannel {
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
   const bool panel_ = false;
+  // The folder whose chat this session speaks in under its title: a panel's
+  // own, or the one a member was added to. Empty for any other session.
+  const std::string chat_;
   std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ = false;
   bool ready_ = false;
@@ -994,9 +1005,9 @@ int WorkerMain(int argc, char** argv) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }
   }
-  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.Panel(),
-                        JsonValue(options.session, "thread", json::object()));
+  WorkerChannel channel(
+      argv[3], argv[4], RandomToken(16), argv[5], options.Panel(),
+      JsonValue(options.session, "thread", json::object()), argv[2]);
   if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);

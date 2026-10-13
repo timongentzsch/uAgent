@@ -732,8 +732,7 @@ function App() {
   );
   const teamNames =
     session?.kind === "panel"
-      ? threads
-          .map((item) => item.member)
+      ? [session.member, ...threads.map((item) => item.member)]
           .filter(Boolean)
           .join(" ")
       : "";
@@ -746,6 +745,7 @@ function App() {
               latest.current.sessions,
               latest.current.session?.cwd || "",
             ).filter((item) => item.member),
+            moderator: latest.current.session?.member || "Moderator",
             prompt: (member?: string) => latest.current.showContext(member),
           }
         : messageActions,

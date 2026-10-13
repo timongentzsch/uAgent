@@ -17,6 +17,17 @@ namespace uagent {
 // name and a persona, oldest first.
 std::vector<SessionInfo> ChatMembers(const std::string& folder);
 
+// Why `name` cannot be the name in the folder's chat of the session at
+// `path`, a member or the panel itself; empty when it can. A name is what a
+// message opens with to address someone, so it holds no , : or & and is
+// nobody else's, now or before.
+std::string ChatNameProblem(const std::string& folder, const std::string& name,
+                            const std::string& path);
+// The session at `path` is about to be called `now`: a message that opens
+// with the name it has still reaches it, and the members are told.
+void ChatRenamed(const std::string& folder, const std::string& path,
+                 const std::string& now);
+
 // Those of `names` that `text` opens with, as "Sam, …" or "Sam and Lin: …"
 // does, in any case. A name anywhere else addresses nobody.
 std::set<std::string> Addressed(const std::string& text,

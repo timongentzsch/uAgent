@@ -17,6 +17,12 @@
     `PANEL.md` exists.
   - In the chat, `Moderator, …` asks the moderator alone, and no member may
     be called that.
+- **A chat member is called what its conversation is.** A name may be
+  several words. Renaming a member's conversation renames the member: its
+  earlier messages are shown under the new name, the other members are
+  told, and a message that opens with the old name still reaches it.
+  Renaming a panel's conversation names its moderator. A member whose
+  conversation was renamed before goes by that title from now on.
 - **The text files of versions before 1.3.1 are no longer read.**
   `~/.uagent/.config`, a project's `.uagent/.config` and the remembered
   model in `model-preference.json` were taken over into the settings file by

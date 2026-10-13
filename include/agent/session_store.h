@@ -50,6 +50,7 @@ enum class SessionScope { kWorkspace, kAll, kChildren };
 
 struct SessionInfo {
   std::string path, cwd, title;
+  bool custom_title = false;
   int64_t turns = 0;
   uint64_t incoming = 0;
   double cost = 0;  // reported spend, as of the last save

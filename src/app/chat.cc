@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <set>
 #include <string>
 #include <string_view>
@@ -22,14 +23,23 @@
 
 namespace uagent {
 namespace {
-std::string Name(const SessionInfo& member) {
-  return JsonValue(ChatMember(member.thread), "name", "");
-}
+// A member goes by its session's title: renaming the one renames the other.
+const std::string& Name(const SessionInfo& member) { return member.title; }
 
 // The moderator among the participants, under the id a saved round and
-// queued mail know it by; kName is what a message calls it.
+// queued mail know it by; what a message calls it is ModeratorName.
 constexpr const char* kSelf = "coordinator";
-constexpr const char* kName = "moderator";
+// The names participants had before a rename, in lower case, with whose
+// each is: a mailbox, or kSelf. Kept beside the panel's session file.
+constexpr const char* kFormer = ".names";
+
+// The moderator goes by the title its panel was given, if it was given one.
+std::string ModeratorName(const std::string& folder) {
+  const json header = SessionHeader(PanelPath(folder));
+  return JsonValue(header, "custom_title", false)
+             ? JsonValue(header, kSessionHeaderTitle, "")
+             : "Moderator";
+}
 // Messages one participant may post before the user writes again.
 constexpr int kPostsEach = 2;
 
@@ -54,7 +64,8 @@ void Start(std::vector<SessionInfo> members) {
 }
 
 // The participants in `ids` by name, as a sentence lists them.
-std::string Names(const std::vector<SessionInfo>& members,
+std::string Names(const std::string& folder,
+                  const std::vector<SessionInfo>& members,
                   const std::set<std::string>& ids) {
   std::string names;
   for (const SessionInfo& member : members) {
@@ -63,7 +74,7 @@ std::string Names(const std::vector<SessionInfo>& members,
     }
   }
   if (ids.contains(kSelf)) {
-    names += (names.empty() ? "" : ", ") + std::string(kName);
+    names += (names.empty() ? "" : ", ") + ModeratorName(folder);
   }
   return names;
 }
@@ -174,29 +185,103 @@ void Chat::Save() const {
 
 namespace {
 // The participants `text` opens with: a member as its mailbox, the
-// panel as kSelf.
-std::set<std::string> Named(const std::vector<SessionInfo>& members,
+// moderator as kSelf. A name one of them had before still reaches it.
+std::set<std::string> Named(const std::string& folder,
+                            const std::vector<SessionInfo>& members,
                             const std::string& text) {
-  std::vector<std::string> names{kName};
-  for (const SessionInfo& member : members) names.push_back(Name(member));
-  const std::set<std::string> opens = Addressed(text, names);
-  std::set<std::string> ids;
-  if (opens.contains(kName)) ids.insert(kSelf);
+  std::map<std::string, std::string> whose;
+  const json former = ReadPanelFile(folder, kFormer);
+  for (const auto& [name, id] : former.items()) {
+    if (id.is_string()) whose[name] = id.get<std::string>();
+  }
+  whose[ModeratorName(folder)] = kSelf;
   for (const SessionInfo& member : members) {
-    if (opens.contains(Name(member))) ids.insert(MailboxIdFor(member.path));
+    whose[Name(member)] = MailboxIdFor(member.path);
+  }
+  std::vector<std::string> names;
+  for (const auto& [name, id] : whose) names.push_back(name);
+  std::set<std::string> ids;
+  for (const std::string& name : Addressed(text, names)) {
+    // Not one a member has left behind.
+    if (const std::string& id = whose[name];
+        id == kSelf || std::ranges::any_of(members, [&](const auto& member) {
+          return MailboxIdFor(member.path) == id;
+        })) {
+      ids.insert(id);
+    }
   }
   return ids;
 }
 }  // namespace
 
 bool ForMembersOnly(const std::string& folder, const std::string& text) {
-  const std::set<std::string> opens = Named(ChatMembers(folder), text);
+  const std::set<std::string> opens = Named(folder, ChatMembers(folder), text);
   return !opens.empty() && !opens.contains(kSelf);
+}
+
+std::string ChatNameProblem(const std::string& folder, const std::string& name,
+                            const std::string& path) {
+  const std::string lower = AsciiLower(name);
+  const bool moderator = path == PanelPath(folder);
+  const std::string self = moderator ? kSelf : MailboxIdFor(path);
+  bool taken = lower == "user" ||
+               (!moderator && lower == AsciiLower(ModeratorName(folder)));
+  for (const SessionInfo& member : ChatMembers(folder)) {
+    taken |=
+        MailboxIdFor(member.path) != self && AsciiLower(Name(member)) == lower;
+  }
+  const json before = ReadPanelFile(folder, kFormer);
+  for (const auto& [former, id] : before.items()) {
+    taken |= former == lower && id != self;
+  }
+  const bool shaped =
+      !name.empty() && name.size() <= 40 && name == Trim(name) &&
+      name.find("  ") == std::string::npos &&
+      std::ranges::none_of(name, [](unsigned char c) {
+        return c < 32 || c == 127 || c == ',' || c == ':' || c == '&';
+      });
+  return shaped && !taken ? ""
+                          : "a name in the chat is 1 to 40 characters "
+                            "without , : or &, and nobody else's";
+}
+
+void ChatRenamed(const std::string& folder, const std::string& path,
+                 const std::string& now) {
+  const bool moderator = path == PanelPath(folder);
+  const std::string old =
+      moderator ? ModeratorName(folder)
+                : JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
+  if (old.empty() || AsciiLower(old) == AsciiLower(now)) return;
+  json former = ReadPanelFile(folder, kFormer);
+  former.erase(AsciiLower(now));
+  former[AsciiLower(old)] = moderator ? kSelf : MailboxIdFor(path);
+  if (const std::string error = WritePanelFile(folder, kFormer, former);
+      !error.empty()) {
+    DebugLog("chat_names_unsaved", {{"error", error}});
+  }
+  // The others keep the lines they read under the old name, and are told.
+  for (const SessionInfo& member : ChatMembers(folder)) {
+    Mail mail;
+    mail.to = MailboxIdFor(member.path);
+    if (member.path == path) continue;
+    mail.sender_path = PanelPath(folder);
+    mail.from = MailboxIdFor(mail.sender_path);
+    mail.type = kMailChat;
+    mail.body = {{"text", "[chat, not a user message] " + old +
+                              " is now called " + now + "."},
+                 {"quiet", true}};
+    if (const std::string refused = SendMail(std::move(mail));
+        !refused.empty()) {
+      DebugLog("chat_mail_refused", {{"error", refused}});
+    }
+  }
 }
 
 std::vector<SessionInfo> ChatMembers(const std::string& folder) {
   std::vector<SessionInfo> members = OwnThreads(folder);
-  std::erase_if(members, [](const auto& info) { return Name(info).empty(); });
+  std::erase_if(members, [](const auto& info) {
+    return ChatMember(info.thread).empty();
+  });
   std::ranges::reverse(members);
   return members;
 }
@@ -225,9 +310,10 @@ std::string Chat::Context() const {
       others.insert(MailboxIdFor(member.path));
     }
   }
-  const std::string typing = Names(members, others);
-  return "\n## chat\nMembers: " + names +
-         (typing.empty() ? "" : "\nTyping: " + typing) + "\n";
+  const std::string typing = Names(folder_, members, others);
+  return "\n## chat\nYour name: " + ModeratorName(folder_) +
+         "\nMembers: " + names + (typing.empty() ? "" : "\nTyping: " + typing) +
+         "\n";
 }
 
 Chat::Answer Chat::Finished(const std::string& who, const std::string& text) {
@@ -272,7 +358,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   Settle(members);
 
   // Whom it is for: those it opens with, else whoever asked its author.
-  const std::set<std::string> opens = Named(members, text);
+  const std::set<std::string> opens = Named(folder_, members, text);
   const bool answers = opens.empty() && to.is_object() && to.contains("asker");
   std::set<std::string> some = opens;
   if (answers) some.insert(JsonValue(to, "asker", ""));
@@ -294,6 +380,12 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   }
   const bool self = !late && from != kSelf && !from.empty() &&
                     Wakes(kSelf, narrowed, some.contains(kSelf));
+  // The author's session, as clients name it: who wrote this, whatever it
+  // is called later.
+  std::string sender = from == kSelf ? PanelId(folder_) : "";
+  for (const SessionInfo& member : members) {
+    if (MailboxIdFor(member.path) == from) sender = HashHex(member.path);
+  }
   std::vector<SessionInfo> started;
   for (const SessionInfo& member : members) {
     Mail mail;
@@ -302,7 +394,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
     const bool wake = std::ranges::find(woken, &member) != woken.end();
     std::set<std::string> others = typing_;
     others.erase(mail.to);
-    const std::string typing = Names(members, others);
+    const std::string typing = Names(folder_, members, others);
     mail.sender_path = PanelPath(folder_);
     mail.from = MailboxIdFor(mail.sender_path);
     mail.type = kMailChat;
@@ -313,6 +405,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
          author + ": " + text +
              (typing.empty() || !wake ? "" : "\n\n(typing: " + typing + ")")},
         {"author", author},
+        {"sender", sender},
         {"re", asks(mail.to)},
         {"quiet", !wake}};
     const std::string reader = mail.to;
@@ -394,7 +487,7 @@ json Chat::Said(const std::string& text) {
   heard_.clear();
   // The panel answers its user's message like any other, unless it is
   // for members alone.
-  const std::set<std::string> opens = Named(members, text);
+  const std::set<std::string> opens = Named(folder_, members, text);
   json re;
   if (opens.empty() || opens.contains(kSelf)) {
     seats_[kSelf].turns = 1;
@@ -411,7 +504,7 @@ void Chat::Answered(const std::string& text, const json& to) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
   if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
-    Deliver(kSelf, kName, Trim(text), to);
+    Deliver(kSelf, ModeratorName(folder_), Trim(text), to);
   }
   Release(members);
   Save();
@@ -449,6 +542,7 @@ void Chat::Heard(Mail& mail) {
     if (read->second != kNothing) {
       mail.body["quiet"] = read->second == kQuiet;
       mail.body["author"] = name;
+      mail.body["sender"] = HashHex(sender->path);
       mail.body["text"] = name + ": " + text;
     }
   }

@@ -8,6 +8,7 @@
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
+#include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -126,6 +127,15 @@ SessionCommandResult SessionHost::ExecuteCommand(
       result.error = "title must be 1–256 bytes without control characters";
       return result;
     }
+    // In a chat the title is the name a message opens with.
+    const std::string chat = session->kind == kSessionKindPanel ? session->cwd
+                             : session->member.empty() ? ""
+                                                       : session->folder;
+    if (kind == SessionCommandKind::kRename && !chat.empty()) {
+      result.error = ChatNameProblem(chat, title, session->path);
+      if (!result.error.empty()) return result;
+      ChatRenamed(chat, session->path, title);
+    }
     std::string prior_status = session->status;
     session->status =
         kind == SessionCommandKind::kDelete ? "deleting" : "updating";
@@ -156,6 +166,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
                       !session->run_id.empty());
     } else if (result.error.empty()) {
       session->title = title;
+      if (!chat.empty()) session->member = title;
       session->draft_title = title;
       session->updated = NowMillis();
       PublishMetadata(session->id, *session);

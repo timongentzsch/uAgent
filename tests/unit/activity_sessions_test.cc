@@ -1304,9 +1304,11 @@ void TestAChatCountsAMailOnce() {
   SessionRecord record;
   record.metadata.cwd = folder;
   record.metadata.kind = kSessionKindThread;
+  // A member is called what its session is.
+  record.metadata.title = "Ada";
   record.metadata.thread = {{"coordinator_id", PanelId(folder)},
                             {"folder", folder},
-                            {"member", {{"name", "Ada"}}}};
+                            {"member", {{"persona", "Second opinions."}}}};
   record.state.messages =
       json::array({{{"role", "system"}, {"content", "sys"}}});
   record.state.message_kinds = {MessageKind::kSystem};
@@ -1344,11 +1346,29 @@ void TestAChatCountsAMailOnce() {
   // Two messages each: a third is not posted.
   CHECK(heard("m3", "Three.").empty());
   CHECK(heard("m2", "Two.").ends_with("Two."));
+
+  // A name is several words if it likes, and nobody else's: not the
+  // moderator's, not one a member has or had.
+  CHECK(ChatNameProblem(folder, "Grace Hopper", ada).empty());
+  for (const char* refused : {"", "Grace, Hopper", "Grace: Hopper", " Grace",
+                              "Grace  Hopper", "user", "Moderator"}) {
+    CHECK(!ChatNameProblem(folder, refused, ada).empty());
+  }
+  CHECK(!ChatNameProblem(folder, "ada", "").empty());
+  // Renamed, she is reached by the new name and still by the old one, which
+  // stays hers.
+  ChatRenamed(folder, ada, "Grace Hopper");
+  CHECK(SessionStore::Rename(ada, "Grace Hopper").Ok());
+  CHECK(ForMembersOnly(folder, "grace hopper, a word"));
+  CHECK(ForMembersOnly(folder, "Ada: a word"));
+  CHECK(!ForMembersOnly(folder, "Moderator, a word"));
+  CHECK(!ChatNameProblem(folder, "Ada", "").empty());
+  CHECK(ChatNameProblem(folder, "Ada", ada).empty());
 }
 
 void TestAChatMessageIsForThoseItOpensWith() {
-  const std::vector<std::string> names = {"moderator", "Sam", "Samantha",
-                                          "Lin"};
+  const std::vector<std::string> names = {"moderator", "Sam", "Samantha", "Lin",
+                                          "Sam Lee"};
   using Names = std::set<std::string>;
   CHECK(Addressed("Sam, what is the number?", names) == Names{"Sam"});
   CHECK(Addressed("  sam: go on", names) == Names{"Sam"});
@@ -1356,6 +1376,10 @@ void TestAChatMessageIsForThoseItOpensWith() {
   CHECK(Addressed("Sam, Lin & moderator: look", names) ==
         Names({"Sam", "Lin", "moderator"}));
   CHECK(Addressed("Samantha, you", names) == Names{"Samantha"});
+  // A name of several words is one name, and the longest that fits wins.
+  CHECK(Addressed("sam lee, you", names) == Names{"Sam Lee"});
+  CHECK(Addressed("Sam and Sam Lee: both", names) == Names({"Sam", "Sam Lee"}));
+  CHECK(Addressed("Sam Leeward, you", names).empty());
   // A name anywhere else, or one that only begins a sentence, addresses
   // nobody; nor does a word that begins with one.
   CHECK(Addressed("I think Sam, of all people, knows", names).empty());

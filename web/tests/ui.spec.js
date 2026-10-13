@@ -209,7 +209,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     .getByRole("complementary")
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
-  await page.getByLabel("Directory on the host").fill(fixture.project);
+  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
@@ -335,7 +335,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .getByRole("complementary")
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
-  await page.getByLabel("Directory on the host").fill(fixture.project);
+  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();

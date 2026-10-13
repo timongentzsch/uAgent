@@ -17,6 +17,14 @@
     `PANEL.md` exists.
   - In the chat, `Moderator, …` asks the moderator alone, and no member may
     be called that.
+- **Web: spaces and folders are listed apart, and a panel is a row.** The
+  sidebar has a section for each. A place's panel is its first row, with
+  the threads and members it started under it, instead of an icon in the
+  folder's header; a thread or member links back to it. The board beside a
+  panel's chat lists its members and its work, each with a menu to rename
+  or remove it; what waits on you is no longer repeated there. New
+  conversation asks for a space's name or a folder's path in fields of
+  their own.
 - **A space has a name of its own and can be renamed and deleted.** The
   name may be several words; the folder under `~/.uagent/spaces/` keeps
   the name it was made with, so renaming moves nothing. Deleting a space

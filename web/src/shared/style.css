@@ -665,8 +665,8 @@ dialog.sidebar:not([open]) {
   align-items: center;
   gap: var(--gap);
 }
-/* The folder path truncates first; the panel icon keeps its place. */
-.sidebar h2:has(.panel-button) {
+/* The name truncates first; a space's menu keeps its place. */
+.sidebar h2:has(.action-menu) {
   display: flex;
   align-items: center;
   gap: var(--gap);
@@ -677,33 +677,24 @@ dialog.sidebar:not([open]) {
   flex: 1;
   min-width: 0;
 }
-.panel-button {
-  position: relative;
-  flex-shrink: 0;
+/* Spaces and folders, each under its word. */
+.list-kind {
+  margin: 0;
+  padding: var(--space-4) var(--space-4) 0;
   color: var(--muted);
-}
-.panel-button.idle svg {
-  opacity: 0.45;
-}
-.panel-button.ready {
-  color: var(--accent);
-}
-.panel-button.working svg {
-  color: var(--accent);
-  animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
-}
-.panel-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  min-width: 1.35em;
-  height: 1.35em;
-  padding-inline: var(--space-1);
-  background: var(--accent);
-  color: var(--on-accent);
   font-size: var(--font-micro);
-  line-height: 1.35em;
-  text-align: center;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.list-group + .list-group {
+  margin-top: var(--space-6);
+}
+/* Where a place's panel will be, until it has one. */
+.open-panel {
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--muted);
+  font-size: var(--font-small);
 }
 .thread-mark {
   color: var(--muted);
@@ -724,7 +715,7 @@ dialog.sidebar:not([open]) {
   font-weight: 600;
   line-height: 1;
 }
-/* A panel's threads hang under its folder header. */
+/* What a panel started hangs under it. */
 .sidebar .threads {
   margin-left: var(--space-4);
   border-left: 1px solid var(--line);
@@ -808,11 +799,18 @@ dialog.sidebar:not([open]) {
 .board section + section {
   margin-top: var(--space-4);
 }
+/* The heading holds its count and, for members, the way to add one. */
 .board h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
   font-size: var(--font-micro);
   font-weight: 400;
   color: var(--muted);
   padding: var(--space-2) var(--space-3);
+}
+.board h2 button {
+  margin-left: auto;
 }
 .board-note {
   color: var(--muted);

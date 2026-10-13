@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { StatisticsModal } from "../../shared/types.ts";
-import { command } from "../../state/api.ts";
+import { command, manage } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 export default function ConversationActions({
@@ -14,13 +14,27 @@ export default function ConversationActions({
   changed: (kind: string, id: string) => Promise<void>;
   close: () => void;
 }) {
-  const [title, setTitle] = useState(modal.session.title || "");
+  const [title, setTitle] = useState(
+    modal.space?.name || modal.session?.title || "",
+  );
   const { run, busy, error } = useAction();
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
         void run(async () => {
+          if (modal.space) {
+            // The host does the whole of it: a space's conversations close
+            // and go with it.
+            await manage("space", {
+              action: modal.type,
+              cwd: modal.space.path,
+              name: title.trim(),
+            });
+            await changed(modal.type, "");
+            close();
+            return;
+          }
           if (modal.type === "delete" && modal.session.generation) {
             // Live sessions close first: close aborts a running turn
             // gracefully, then delete removes the record. A closing worker
@@ -63,16 +77,30 @@ export default function ConversationActions({
     >
       {modal.type === "rename" ? (
         <label>
-          Conversation name
+          {modal.space
+            ? "Space name"
+            : modal.session.kind === "panel"
+              ? "Moderator’s name"
+              : modal.session.member
+                ? "Member’s name"
+                : "Conversation name"}
           <Input
             autoFocus
             value={title}
             onInput={(event) => setTitle(event.currentTarget.value)}
             required
-            maxLength={256}
+            maxLength={modal.space ? 64 : 256}
             autoComplete="off"
           />
         </label>
+      ) : modal.space ? (
+        <p>
+          Delete the space “{modal.space.name}”
+          {modal.conversations
+            ? `, its ${modal.conversations} conversation${modal.conversations > 1 ? "s" : ""}`
+            : ""}{" "}
+          and every file in it? This cannot be undone.
+        </p>
       ) : (
         <p>
           Delete “{modal.session.title}” and its saved messages and attachments?

@@ -1,6 +1,6 @@
-// A folder's panel opens from its header icon; its board lists the
-// folder's sessions beside the chat, and slides in from the right on a
-// phone. Its threads nest under that header in the sidebar.
+// A place's panel is the first row of the place; its board lists who is on
+// it and what it started beside the chat, and slides in from the right on a
+// phone. What it started nests under it in the sidebar.
 import { test, expect } from "./fixtures.js";
 
 const VIEWPORTS = [
@@ -13,13 +13,10 @@ async function openPanel(page, session) {
   await page.goto(`/#session=${session.id}`);
   // Narrow layouts keep the sessions in a drawer.
   const drawer = page.getByLabel("Open conversations");
-  const button = page.getByLabel(/^Panel for /).first();
+  const button = page.getByRole("button", { name: "Open panel" }).first();
   await expect(drawer.or(button)).toBeVisible();
   if (await drawer.isVisible()) await drawer.click();
-  await page
-    .getByLabel(/^Panel for /)
-    .first()
-    .click();
+  await button.click();
   // Beside the chat, or behind the header's Board button on a phone.
   await expect(
     page
@@ -170,11 +167,16 @@ for (const [name, viewport] of VIEWPORTS) {
       text: "Memory receipt probe: please save this test memory",
     });
     await openPanel(page, session);
-    // The folder's panel button names what waits on you.
-    if (name === "desktop")
+    // The panel is a row of its place now, and what waits is said once in
+    // the list: by the inbox above it.
+    if (name === "desktop") {
       await expect(
-        page.getByLabel(/^Panel for .+, 1 waiting on you$/),
-      ).toBeVisible();
+        page.locator(".sidebar .session", { hasText: "Panel" }),
+      ).toHaveAttribute("aria-current", "page");
+      await expect(
+        page.getByRole("button", { name: "Open panel" }),
+      ).toHaveCount(0);
+    }
     const waiting = page.getByRole("region", {
       name: "Decisions waiting on you",
     });

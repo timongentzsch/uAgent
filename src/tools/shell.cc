@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -239,14 +240,13 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
 // A refused write arrives as the kernel's errno, which names a permission and
 // not the policy that withheld it -- so a command that failed for the one
 // reason this session introduced is the one that explains itself worst. Added
-// only to a wrapped command that actually failed, and it points at the place
-// the writable roots are listed rather than repeating them here.
+// only to a wrapped command that actually failed, and it names the roots: the
+// model cannot run /context, and probing for them costs it a round per guess.
 std::string SandboxHint(const std::string& output) {
   for (std::string_view denial :
        {"Operation not permitted", "Permission denied"}) {
     if (output.find(denial) != std::string::npos) {
-      return "\n[sandbox: writes are confined to the workspace; /context lists "
-             "every writable root]";
+      return "\n[sandbox: " + SandboxNote() + "]";
     }
   }
   return {};
@@ -635,6 +635,30 @@ std::string ScratchArgvLabel(const json& args) {
   return label;
 }
 
+namespace {
+// How many changed entries a scratch result names before it counts the rest.
+constexpr size_t kChangedNames = 20;
+
+// The workspace root's entries and when each was last written. A script runs
+// in the workspace, so this is where the files it names without a folder land;
+// a folder it wrote into shows as changed itself. µAgent's own is left out.
+std::map<std::string, std::filesystem::file_time_type> RootEntries(
+    const std::filesystem::path& workspace) {
+  namespace fs = std::filesystem;
+  std::map<std::string, fs::file_time_type> entries;
+  std::error_code ec;
+  for (fs::directory_iterator entry(workspace, ec), end; !ec && entry != end;
+       entry.increment(ec)) {
+    std::string name = entry->path().filename().string();
+    if (name == ".uagent") continue;
+    std::error_code ignored;
+    if (entry->is_directory(ignored)) name += '/';
+    entries[std::move(name)] = entry->last_write_time(ignored);
+  }
+  return entries;
+}
+}  // namespace
+
 std::optional<std::filesystem::path> ScratchScriptPath(
     const std::filesystem::path& workspace, const std::string& relative_path,
     std::string& error) {
@@ -725,8 +749,28 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                  ShellQuote(script->string()) + argv
            : "MPLBACKEND=Agg python3 " + ShellQuote(script->string()) + argv;
   }
+  const auto before = RootEntries(workspace);
   ShellCommandResult result =
       RunShellCommand(supervisor, context, {.command = std::move(command)});
+  // What the script left behind, said with its output: a model that saved a
+  // chart by a bare name otherwise spends its next call looking for it.
+  if (result.result.Ok()) {
+    std::string changed;
+    size_t count = 0;
+    for (const auto& [name, written] : RootEntries(workspace)) {
+      const auto was = before.find(name);
+      if (was != before.end() && was->second == written) continue;
+      if (++count <= kChangedNames) changed += (count > 1 ? ", " : "") + name;
+    }
+    if (count > kChangedNames) {
+      changed += " +" + std::to_string(count - kChangedNames) + " more";
+    }
+    std::string& output = result.result.output;
+    if (count > 0) {
+      output += (output.empty() || output.back() == '\n' ? "" : "\n");
+      output += "[changed in the workspace: " + changed + "]";
+    }
+  }
   if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {
     std::string hint =
         result.result.output.find("No module named") != std::string::npos

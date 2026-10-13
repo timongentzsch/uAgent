@@ -72,6 +72,37 @@ bool SandboxPathWithin(std::string_view path, std::string_view root) {
   return root.back() == '/' || path[root.size()] == '/';
 }
 
+bool SandboxWritable(const SandboxPolicy& policy, std::string_view path) {
+  return std::any_of(
+      policy.writable_roots.begin(), policy.writable_roots.end(),
+      [&](const std::string& root) { return SandboxPathWithin(path, root); });
+}
+
+std::string SandboxWritesNote(const SandboxPolicy& policy,
+                              std::string_view workspace) {
+  std::string roots;
+  for (const std::string& root : policy.writable_roots) {
+    roots += (roots.empty() ? "" : ", ") + root;
+  }
+  if (SandboxWritable(policy, workspace)) {
+    return "commands may write only under " + roots;
+  }
+  // Reads around a hidden path are granted folder by folder as a command
+  // starts, so a workspace that holds one goes stale for a running command.
+  const bool stale = std::any_of(policy.hidden.begin(), policy.hidden.end(),
+                                 [&](const std::string& path) {
+                                   return SandboxPathWithin(path, workspace);
+                                 });
+  return "commands cannot write the workspace " + std::string(workspace) +
+         ", which holds µAgent's own state; they may write only under " +
+         roots +
+         ". write_file, edit_file and delete_file still work in the "
+         "workspace" +
+         (stale ? ", but a command still running cannot read a file made "
+                  "directly in it after the command started"
+                : "");
+}
+
 SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   SandboxPolicyResult result;
   result.policy.allow_network = inputs.allow_network;

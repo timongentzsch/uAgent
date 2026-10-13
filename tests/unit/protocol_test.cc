@@ -552,6 +552,9 @@ void TestCommandAndDisplayRegistries() {
   CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace", "ask") ==
         "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash; "
         "approval ask]");
+  CHECK(EnvironmentContext("today", "/home/u", "yolo", "only /tmp") ==
+        "[environment: date today; cwd /home/u; shell bash; approval yolo; "
+        "sandbox: only /tmp]");
   namespace fs = std::filesystem;
   fs::path bin =
       fs::temp_directory_path() /

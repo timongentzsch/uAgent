@@ -29,7 +29,7 @@ or `subagent` tool.
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached | always |
-| `scratch` | run a `.py` (under uv) or `.sh` script in `.uagent/scratch`, given as `code` in the call or written before with `write_file`; writes there need no approval, the run does and shows the script | `uv` or `python3` on `PATH` |
+| `scratch` | run a `.py` (under uv) or `.sh` script in `.uagent/scratch`, given as `code` in the call or written before with `write_file`; writes there need no approval, the run does and shows the script; it runs in the workspace, and its result names what it left in the workspace root | `uv` or `python3` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | once a command is still running or detached |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
@@ -162,7 +162,8 @@ conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route and
 `UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
 
 `browser` drives the web appliance's shared Chrome; [BROWSER.md](BROWSER.md)
-explains setup, saved logins and taking over.
+explains setup, saved logins and taking over. `open` with `path` shows a
+self-contained `.html` or `.svg` file the agent wrote, without a server.
 
 ## Presentation
 

@@ -38,7 +38,8 @@ Tool ArtifactTool(const std::string& session_path) {
         ToolResult result =
             ToolSuccess("shared " + JsonValue(stored.value, "name", "") + " (" +
                         FmtCount(static_cast<int64_t>(bytes.size())) +
-                        " bytes); the user can open or download it");
+                        " bytes); it is shown in the conversation, where the "
+                        "user can open or download it");
         stored.value["kind"] = "file";
         result.parts = json::array({std::move(stored.value)});
         return result;

@@ -102,6 +102,19 @@ bool DecodeSandboxPolicy(const std::vector<std::string>& words,
 // absolute; comparison is textual so that it cannot touch the filesystem.
 bool SandboxPathWithin(std::string_view path, std::string_view root);
 
+// True when a confined command may write `path`: it is a writable root or
+// lies beneath one.
+bool SandboxWritable(const SandboxPolicy& policy, std::string_view path);
+
+// What a confined command may write, in words, for a reader who met the limit
+// as a bare "Permission denied": the model after a failed command, the person
+// at startup. A workspace the policy does not grant is named first, with what
+// still works there, because every other sentence about the sandbox assumes
+// the workspace is writable; and with what does not, when it holds one of
+// policy.hidden.
+std::string SandboxWritesNote(const SandboxPolicy& policy,
+                              std::string_view workspace);
+
 // What this host can actually enforce. Filesystem-only is the Landlock ABI 1-3
 // case: writes confine, the network toggle does not, so a policy that denies
 // the network on such a host is refusing rather than pretending.
@@ -152,6 +165,15 @@ std::string SandboxInheritance();
 // mechanism, the writable roots, and anything asked for that was not granted.
 // Shared by session_ready, /status and /context so all three cannot drift.
 json SandboxDiagnosticJson();
+
+// SandboxWritesNote for this session and its workspace. The hidden paths are
+// counted on Linux only: seatbelt denies them by rule, so nothing goes stale.
+std::string SandboxNote();
+
+// SandboxNote when this session's commands cannot write its own workspace;
+// empty otherwise. A home directory is the usual case: it holds ~/.uagent, so
+// it is never granted.
+std::string SandboxWorkspaceRefusal();
 
 // The argv words to put in front of `<shell> -c <command>`, hiding
 // HiddenPaths() too. Empty when the status does not enforce.

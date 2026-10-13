@@ -64,6 +64,35 @@ void TestSandboxPolicy() {
                                   "/home/u/work/.git/hooks"}));
   CHECK(base.rejected.empty());
   CHECK(base.policy.allow_network);
+  // A limit met as "Permission denied" is explained by naming the roots.
+  CHECK(SandboxWritable(base.policy, "/home/u/work/out/a.png"));
+  CHECK(!SandboxWritable(base.policy, "/home/u/workshop"));
+  const std::string note = SandboxWritesNote(base.policy, "/home/u/work");
+  CHECK(note.starts_with("commands may write only under "));
+  CHECK(note.find("/home/u/work") != std::string::npos);
+  CHECK(note.find("cannot") == std::string::npos);
+  // A home directory as the workspace holds ~/.uagent, so it is dropped: the
+  // note then leads with that, and with what still works there.
+  SandboxInputs at_home = BaseInputs();
+  at_home.workspace = "/home/u";
+  const SandboxPolicyResult home = BuildSandboxPolicy(at_home);
+  CHECK(Rejected(home, "/home/u"));
+  CHECK(!SandboxWritable(home.policy, "/home/u"));
+  const std::string refused = SandboxWritesNote(home.policy, "/home/u");
+  CHECK(refused.starts_with("commands cannot write the workspace /home/u,"));
+  CHECK(refused.find("/tmp") != std::string::npos);
+  CHECK(refused.find("write_file") != std::string::npos);
+  // A hidden path inside such a workspace is read around, folder by folder,
+  // as a command starts: what is made there later, a running command cannot
+  // read. Said only then, and never of a workspace that is writable.
+  CHECK(refused.find("cannot read") == std::string::npos);
+  SandboxPolicy hiding = home.policy;
+  hiding.hidden = {"/home/u/.uagent/web"};
+  CHECK(SandboxWritesNote(hiding, "/home/u").find("cannot read a file made") !=
+        std::string::npos);
+  SandboxPolicy project = base.policy;
+  project.hidden = hiding.hidden;
+  CHECK(SandboxWritesNote(project, "/home/u/work") == note);
 
   // The regression this whole design exists for: no root may be ~/.uagent or
   // an ancestor of it, or the config and the trust store come along with it.

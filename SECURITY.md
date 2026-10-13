@@ -171,6 +171,14 @@ of its ancestors, or lies inside `~/.uagent/config`. That keeps the saved
 settings, trust store, collaborator records and detached-job records out of
 reach.
 
+The workspace is held to the same rule. A session started in your home
+directory, which holds `~/.uagent`, has no writable workspace: its commands
+can write only the other roots above, while the file tools still work there.
+Startup says so, the model is told at the start of the conversation, and a
+refused write names the roots. Start in a project folder instead, or in a
+space: the web's **New conversation** takes a name and keeps a folder for it
+at `~/.uagent/spaces/<name>`, which is granted like any other workspace.
+
 **Reads** are not restricted on either platform, with one exception below: a
 confined `cat ~/.uagent/config/settings.json` still pulls the file into model
 context.
@@ -184,6 +192,15 @@ tools refuse both paths in every mode. On Linux, Landlock hides the files on
 any supported kernel but the sockets only from Linux 7.1 (ABI 9). Keep the
 browser data directory outside the sandbox's writable roots, e.g.
 `~/.uagent/browser`. See [the web guide](docs/BROWSER.md#isolation).
+
+On Linux this has one side effect. Landlock can only grant, so reads are
+granted folder by folder around a hidden path, as the folders are when a
+command starts. A command that is still running (a server, a watcher) cannot
+read a file created or replaced afterwards directly in a folder on the way to
+a hidden path: `/`, `/home`, your home directory and `~/.uagent`. Files in
+any other folder, a project among them, are unaffected. A session whose
+workspace is one of those folders is told so with the rest of what its
+commands cannot do there.
 
 **Network.** Outbound access is allowed by default because git, npm and pip
 need it. `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and TCP (bind

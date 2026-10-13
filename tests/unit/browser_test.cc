@@ -543,13 +543,36 @@ void TestBrowserToolSteps() {
   CHECK(read.output.starts_with("open done.\nURL: https://example.com/"));
   CHECK(read.output.ends_with("Lines containing it (1 in all):\nClip one"));
   CHECK(read.output.find("Elements:") == std::string::npos);
+  // A page the agent wrote opens from its file with no server: its markup
+  // is written into a blank page. A file:// URL stays refused, and so does
+  // any file that is not a page, or that lies in the browser's own profile.
+  const fs::path page = workspace.root / "chart.html";
+  std::ofstream(page) << "<p>CHART_MARKUP</p>";
+  CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {}).Ok());
+  CHECK(!tool.run({{"action", "open"}, {"url", "file://" + page.string()}}, {})
+             .Ok());
+  const fs::path notes = workspace.root / "notes.txt";
+  std::ofstream(notes) << "plain";
+  ToolResult plain =
+      tool.run({{"action", "open"}, {"path", notes.string()}}, {});
+  CHECK(!plain.Ok() && plain.output.find(".html or .svg") != std::string::npos);
+  CHECK(tool.validate({{"action", "open"},
+                       {"path", (directory / "profile" / "x.html").string()}})
+            .has_value());
   close(owner[1]);
   service.join();
   close(owner[0]);
   std::vector<std::string> order;
+  bool blank = false, written = false;
   std::ifstream log(directory / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
     const json params = json::parse(line).value("params", json::object());
+    blank = blank || params.value("url", "") == "about:blank";
+    if (params.value("html", "") == "<p>CHART_MARKUP</p>") {
+      CHECK(blank);
+      written = true;
+    }
+    CHECK(!params.value("url", "").starts_with("file:"));
     if (params.value("type", "") == "mousePressed") order.emplace_back("click");
     if (params.contains("commands")) order.emplace_back("select");
     if (params.contains("text") && !params.contains("key")) {
@@ -559,6 +582,7 @@ void TestBrowserToolSteps() {
   }
   CHECK(order ==
         std::vector<std::string>({"click", "select", "type kestrel", "Enter"}));
+  CHECK(written);
   fs::remove_all(directory);
 }
 

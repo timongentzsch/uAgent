@@ -33,7 +33,22 @@ SessionCommandResult SessionHost::ExecuteCommand(
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
   if (kind == SessionCommandKind::kCreate) {
-    const auto resolved = CanonicalDirectory(JsonValue(command, "cwd", ""));
+    // A space is a folder of µAgent's own, made by naming it: a conversation
+    // that belongs to no project still gets a workspace commands can write.
+    std::string folder = JsonValue(command, "cwd", "");
+    if (const std::string space = JsonValue(command, "space", "");
+        !space.empty()) {
+      if (SafeFileComponent(space) != space) {
+        result.error = "a space's name takes letters, digits, - and _";
+        return result;
+      }
+      folder = UagentDir("spaces") + "/" + space;
+      if (!EnsurePrivateDirectory(folder)) {
+        result.error = "the space could not be created";
+        return result;
+      }
+    }
+    const auto resolved = CanonicalDirectory(folder);
     if (!resolved) {
       result.error = "choose an accessible directory on the host";
       return result;

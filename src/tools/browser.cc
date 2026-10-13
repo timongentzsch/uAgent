@@ -7,12 +7,15 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/agent/path_policy.h"
 #include "include/browser/browser.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/tools/image_result.h"
 
@@ -47,6 +50,8 @@ const Action* FindAction(const json& args) {
   return found == std::end(kActions) ? nullptr : found;
 }
 
+// A page opened from a file travels to the browser inside one request.
+constexpr size_t kPageFileBytes = MiB(4);
 constexpr int kProbeIntervalMs = 250;
 constexpr int kSettleMs = 8000;
 // Unchanged probes in a row (about half a second) that count as settled.
@@ -260,7 +265,10 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       "view_id. A tab opened by your action becomes active automatically; "
       "open with new_tab=true keeps the current page; tabs lists tabs, "
       "switches to target_id, and with close=true closes it instead, unless "
-      "it is the current one. A result that says SUSPECTED BLOCK means a bot "
+      "it is the current one. To look at a page you wrote, open takes path "
+      "instead of url: a self-contained .html or .svg file, shown without a "
+      "server (file:// URLs are refused, and its relative links do not "
+      "load). A result that says SUSPECTED BLOCK means a bot "
       "check or rate limit: don't hammer it. Chrome holds the user's saved "
       "logins: on a sign-in page click the field, call fill_saved to take "
       "the one Chrome offers for it, then submit what Chrome filled. Where "
@@ -277,6 +285,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       {"properties",
        {{"action", {{"type", "string"}, {"enum", std::move(names)}}},
         {"url", {{"type", "string"}}},
+        {"path", {{"type", "string"}}},
         {"target_id", {{"type", "string"}}},
         {"view_id", {{"type", "string"}}},
         {"element", {{"type", "integer"}}},
@@ -307,13 +316,17 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
             !JsonValue(args, "target_id", "").empty());
   };
   tool.needs_approval = tool.mutates;
+  // open may name a file: never the profile this browser itself runs on.
+  tool.validate = RefuseHidden;
   tool.capabilities = Capability(ToolCapability::kInspect) |
                       Capability(ToolCapability::kMutate) |
                       Capability(ToolCapability::kExternal);
   tool.summary = [](const json& args) {
     auto action = JsonValue(args, "action", "browser");
-    return action == "open" ? "browser open " + JsonValue(args, "url", "")
-                            : "browser " + action;
+    return action == "open"
+               ? "browser open " +
+                     JsonValue(args, "url", JsonValue(args, "path", ""))
+               : "browser " + action;
   };
   tool.intent = "research";
   tool.header = [](const json& args) {
@@ -323,7 +336,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         {"verb",
          {action ? action->doing : "Checking",
           action ? action->done : "Checked"}},
-        {"target", name == "open"   ? JsonValue(args, "url", "")
+        {"target", name == "open"
+                       ? JsonValue(args, "url", JsonValue(args, "path", ""))
                    : name == "type" ? FirstLine(JsonValue(args, "text", ""))
                                     : "the browser"}};
   };
@@ -331,8 +345,26 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   // of several bytes a character still arrives whole, with its elements.
   tool.result_chars = 4 * kPageTextChars + 12288;
   tool.run = [session_id = std::move(session_id), ask = std::move(ask)](
-                 const json& args, const ToolContext& context) {
+                 const json& given, const ToolContext& context) {
+    json args = given;
     const std::string action = JsonValue(args, "action", "");
+    if (const std::string path = JsonValue(args, "path", "");
+        action == "open" && !path.empty()) {
+      const std::string kind = std::filesystem::path(path).extension().string();
+      std::string markup, error;
+      if (kind != ".html" && kind != ".htm" && kind != ".svg") {
+        error = "path takes a self-contained .html or .svg file";
+      } else if (ReadRegularFile(path, kPageFileBytes, markup, error) &&
+                 markup.empty()) {
+        error = "the file is empty";
+      }
+      if (!error.empty()) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments, error);
+      }
+      args.erase("path");
+      args.erase("url");
+      args["html"] = std::move(markup);
+    }
     if (action == "request_human") {
       return Handover(session_id,
                       JsonValue(args, "reason", "Please finish in the browser"),
@@ -387,6 +419,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     done.pop_back();
     return Observation(session_id, done, context, /*look=*/false);
   };
+  tool.run = RefusingHidden(std::move(tool.run));
   return tool;
 }
 }  // namespace uagent

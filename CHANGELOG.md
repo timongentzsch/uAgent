@@ -38,6 +38,13 @@
 
 ### Added
 
+- `browser`: `open` takes `path` in place of `url` and shows a self-contained
+  `.html` or `.svg` file from the workspace. The agent no longer has to start
+  a local server to look at a page it wrote; `file://` URLs stay refused.
+- Web: a new conversation can be started by name. A name without a `/` in
+  the folder field opens a space, a folder kept at `~/.uagent/spaces/<name>`
+  and made on first use; commands can write it like any workspace. A bare
+  name used to be read as a path relative to the host's own folder.
 - `browser`: `type` fills a field in one call: with `x`, `y` and `view_id`
   it clicks the field first, `replace` overwrites what it holds, and `key`
   is pressed after. `open` with `new_tab` keeps the current page, and `tabs`
@@ -132,6 +139,18 @@
   budgets. Only a child that finished reported it.
 - `browser`: Enter sends a form and types a line break, and Backspace
   deletes. The keys reached only a page's own listeners.
+- Web: a file the agent shared stays visible at the `minimal` level. It was
+  folded into "Worked · N steps" with the rest of the turn's calls, so the
+  preview appeared only after opening that row.
+- `scratch`: a result names what the run left in the workspace root. A
+  script runs in the workspace, so a chart saved by a bare name lands there;
+  the model looked for it beside the script and then searched the disk.
+- Sandbox: a session whose workspace cannot be granted, such as one started
+  in the home directory, says so at startup and to the model, and a refused
+  write names the writable roots. The hint claimed writes were confined to
+  the workspace and pointed at `/context`, which the model cannot run.
+  Where such a workspace also holds a path hidden from commands, the note
+  adds that a running command cannot read files made there later.
 
 ## v1.3.1 - 2026-10-06
 

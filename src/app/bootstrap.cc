@@ -575,11 +575,21 @@ void ReportSandbox() {
         NoticeEvent(PresentationStatus::kWarned,
                     "sandbox: " + status.reason + "; commands run unconfined"));
   }
-  if (status.rejected.empty()) return;
+  // The workspace is said in full: "not granted" alone does not tell a person
+  // that every command in this conversation is about to fail to save its work.
+  const std::string workspace = CanonicalCwd();
+  if (std::string refusal = SandboxWorkspaceRefusal(); !refusal.empty()) {
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     "sandbox: " + refusal +
+                         ". Start in a project folder or a named space to "
+                         "give commands one"));
+  }
   std::string dropped;
   for (const std::string& root : status.rejected) {
+    if (root == workspace) continue;
     dropped += (dropped.empty() ? "" : ", ") + root;
   }
+  if (dropped.empty()) return;
   Emit(NoticeEvent(PresentationStatus::kWarned,
                    "sandbox: not granted as writable: " + dropped));
 }

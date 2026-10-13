@@ -32,6 +32,12 @@ The sidebar lists this OS user's conversations grouped by project folder. A
 folder's coordinator is its header, with the threads it started nested under
 it. Browsing saved history does not start a model or run a command.
 
+**New conversation** takes a directory on the host or a name. A name alone
+(letters, digits, `-` and `_`) starts in a space: a folder the host keeps at
+`~/.uagent/spaces/<name>`, made the first time the name is used. Use one for
+work that belongs to no project, rather than the home directory, which
+[commands cannot write](../SECURITY.md#sandboxing).
+
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
 `--json`, `-c`, `--resume`, `--yolo`, `--attach`, `--model`, …). It reads the
 settings saved for all conversations and the environment, never a project's.

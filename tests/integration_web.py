@@ -2671,6 +2671,32 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             client.until(session, lambda value: bool(value["metadata"].get("generation")))
 
 
+def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
+    """A name instead of a directory: the host keeps a folder for it under
+    ~/.uagent/spaces, and the same name is the same folder."""
+    with Server([event({"content": "ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            first = web.command("create", space="notes-1")["session"]
+            again = web.command("create", space="notes-1")["session"]
+            space = (home / ".uagent" / "spaces" / "notes-1").resolve()
+            assert_true(space.is_dir(), "the space was not created")
+            assert_true(first["cwd"] == again["cwd"] == str(space), (first, again))
+            assert_true(first["id"] != again["id"], "a second conversation was not started")
+            for number, name in enumerate(("../outside", "two words", ".hidden")):
+                status, refused, _ = web.json(
+                    "/api/command",
+                    {
+                        "v": 2,
+                        "kind": "create",
+                        "request_id": f"{0xE0 + number:032x}",
+                        "space": name,
+                    },
+                )
+                assert_true(status == 409 and "name takes" in refused["error"], (name, refused))
+            assert_true(not (home / ".uagent" / "outside").exists(), "a name left its folder")
+
+
 def test_folder_coordinator_is_one_session_with_its_own_tools(root, home, *, binary):
     project = root / "coordinated"
     project.mkdir()

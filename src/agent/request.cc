@@ -22,6 +22,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
@@ -778,7 +779,8 @@ void Agent::RefreshSystemMessage(bool force) {
 std::string Agent::RuntimeContextText() const {
   std::string content =
       EnvironmentContext(LocalDay(), CanonicalCwd(),
-                         ApprovalModeName(CurrentApprovalMode())) +
+                         ApprovalModeName(CurrentApprovalMode()),
+                         SandboxWorkspaceRefusal()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +

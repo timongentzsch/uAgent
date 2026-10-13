@@ -430,6 +430,23 @@ json SandboxDiagnosticJson() {
           {"summary", std::move(summary)}};
 }
 
+std::string SandboxNote() {
+  SandboxPolicy policy = SandboxRuntime().policy;
+#if defined(__linux__)
+  policy.hidden = HiddenPaths();
+#endif
+  return SandboxWritesNote(policy, CanonicalCwd());
+}
+
+std::string SandboxWorkspaceRefusal() {
+  const SandboxStatus& status = SandboxRuntime();
+  if (status.mode != SandboxMode::kEnforced ||
+      SandboxWritable(status.policy, CanonicalCwd())) {
+    return {};
+  }
+  return SandboxNote();
+}
+
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   if (status.mode != SandboxMode::kEnforced) return {};
   SandboxPolicy policy = status.policy;

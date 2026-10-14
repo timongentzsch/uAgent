@@ -339,12 +339,22 @@ export interface ActivityDetail extends Activity {
   usage?: Usage;
   turns?: number;
 }
-export interface Pending {
+interface PendingBase {
   id: string;
-  kind?: string;
-  initial?: string;
   prompt?: string;
+  initial?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
+  // A thread's decision goes to its panel first; "human" once yielded.
+  route?: "panel" | "human";
+  note?: string;
+}
+// The model's questions; `prompt` repeats the first.
+export interface AskPending extends PendingBase {
+  kind: "ask";
+  questions?: AskQuestion[];
+}
+export interface ApprovalPending extends PendingBase {
+  kind: "approval";
   approval?: {
     tool: string;
     mandatory_human?: boolean;
@@ -353,12 +363,12 @@ export interface Pending {
     // What approving risks, most serious first.
     risks?: { id: "runs" | "writes" | "network" | "outside"; label: string }[];
   };
-  // kind "ask": the model's questions; `prompt` repeats the first.
-  questions?: AskQuestion[];
-  // A thread's decision goes to its panel first; "human" once yielded.
-  route?: "panel" | "human";
-  note?: string;
 }
+// A line of text, a file to edit, or a step done in the browser.
+export interface InputPending extends PendingBase {
+  kind: "text" | "editor" | "browser" | "project.trust" | "model.select";
+}
+export type Pending = AskPending | ApprovalPending | InputPending;
 // Each question also takes a free-text "Other" answer.
 export interface AskQuestion {
   question: string;

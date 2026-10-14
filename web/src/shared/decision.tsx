@@ -54,7 +54,7 @@ export default function Decision({
     message: string;
     fields: CommandFields;
   } | null>(null);
-  const approval = pending.approval;
+  const approval = pending.kind === "approval" ? pending.approval : undefined;
   const asking = pending.kind === "ask";
   // One reply in flight at a time: answer and cancel share the guard.
   const answer = async (fields: CommandFields) => {

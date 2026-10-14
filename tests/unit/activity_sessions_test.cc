@@ -1231,7 +1231,10 @@ void TestAGroupOfOnlyZombiesIsFinished() {
   CHECK(!ParseProcStat("12 sleep Z 1 34"));
   CHECK(!ParseProcStat("12 (sleep) Z 1"));
   CHECK(!ParseProcStat("12 (sleep) Z x y"));
-  CHECK(!ParseProcStat("12 (sleep) Z 1 0"));
+  CHECK(!ParseProcStat("12 (sleep) Z 1 -3"));
+  // Kernel threads belong to group 0.
+  std::optional<ProcStat> kernel = ParseProcStat("2 (kthreadd) S 0 0 0 0");
+  CHECK(kernel && kernel->group == 0);
 
   // Only a /proc that lists everything may be believed about a group.
   auto mount = [](const std::string& options) {

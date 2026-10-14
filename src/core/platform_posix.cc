@@ -129,7 +129,7 @@ std::optional<ProcStat> ParseProcStat(std::string_view record) {
   const char* first = group_text.data();
   const char* last = first + group_text.size();
   const auto parsed = std::from_chars(first, last, group);
-  if (parsed.ec != std::errc() || parsed.ptr != last || group <= 0) {
+  if (parsed.ec != std::errc() || parsed.ptr != last || group < 0) {
     return std::nullopt;
   }
   return ProcStat{state[0], group};

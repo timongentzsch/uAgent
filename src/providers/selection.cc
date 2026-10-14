@@ -133,8 +133,10 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   // for optional metadata. Unavailable metadata leaves the route usable.
   bool metadata_only = !api.model.empty();
   auto started = std::chrono::steady_clock::now();
-  auto models = ParseModels(
-      api.Get("/models", /*abortable=*/false, metadata_only ? 8 : 15));
+  auto models = CachedModels(api);
+  if (!models) {
+    models = QueryModels(api, /*abortable=*/false, metadata_only ? 8 : 15);
+  }
   if (models && !models->empty()) {
     if (api.model.empty()) api.model = models->front().id;
     std::string base = api.CatalogModel();

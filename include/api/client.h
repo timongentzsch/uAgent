@@ -80,8 +80,8 @@ class Api : public ApiSettings {
   // the conversation gets, for transport failures and transient statuses.
   JsonResponse Post(const std::string& path, const json& body,
                     int64_t timeout_s = 120, int attempts = 1);
-  json Get(const std::string& path, bool abortable = false,
-           int64_t timeout_s = 15);
+  JsonResponse Get(const std::string& path, bool abortable = false,
+                   int64_t timeout_s = 15);
   // A direct GET of an absolute public URL: no credentials or environment
   // proxy, and every resolved address across redirects must be public. For
   // content this client does not interpret, so the bytes come back as they

@@ -91,6 +91,9 @@ editable in the web's Settings):
 `anthropic_messages`. `models` gives short names; `work/sonnet` then selects
 that model at that provider, and `local/anything` passes the name through.
 `context` states the context window where the endpoint does not report one.
+A start that must read the endpoint's `/models` for a default model or the
+window keeps the answer for a day under `~/.uagent/models/`; delete the file
+to ask again.
 
 ## Settings
 

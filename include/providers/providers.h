@@ -185,8 +185,12 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
                         const std::string& name);
 int64_t CatalogContextLength(const json& model);
 std::optional<std::vector<ModelInfo>> ParseModels(const json& response);
+// The catalogue the last successful query left for this endpoint, while it is
+// a day old at most; a query refreshes it.
+std::optional<std::vector<ModelInfo>> CachedModels(const Api& api);
 std::optional<std::vector<ModelInfo>> QueryModels(Api& api,
-                                                  bool abortable = false);
+                                                  bool abortable = false,
+                                                  int64_t timeout_s = 15);
 std::string NormalizeModelQuery(std::string query);
 // Display-name aware match: exact substring first, then a fallback that
 // unifies spaces, underscores and hyphens ("Muse Spark" finds

@@ -105,6 +105,7 @@ export function ZoomSurface({
   const background = (target: EventTarget | null) =>
     target === surface.current || target === content.current;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: binds once; the helpers it calls read only refs and state setters, so the first render's are current
   useEffect(() => {
     const element = surface.current;
     if (!element) return;
@@ -144,6 +145,7 @@ export function ZoomSurface({
     };
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-applies when the content's real size arrives
   useEffect(() => apply(view.current), [natural]);
   return (
     <div

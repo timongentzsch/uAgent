@@ -43,6 +43,7 @@ export default function Raw({
   const exchange =
     latest?.find((item) => item.id === selectedExchange?.id) ||
     selectedExchange;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads again for a new target, a retry or the exchange's state, not for each new exchange object
   useEffect(() => {
     if (value !== undefined) return;
     const abort = new AbortController();

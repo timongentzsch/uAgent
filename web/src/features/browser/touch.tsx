@@ -161,6 +161,7 @@ export default function BrowserTouch({
     gesture.current = null;
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mounted once; the helpers it calls read only refs, so the first render's are current
   useEffect(() => {
     const element = screen.current;
     if (!element) return;

@@ -234,6 +234,7 @@ export default function Inspector({
 
   // A transcript row carries the command it ran (bounded 8k) and its text, so
   // a job the supervisor no longer retains still opens with its record.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opens the record when the target changes, not when rows stream in
   useEffect(() => {
     setPage(null);
     if ("raw" in target) {
@@ -281,6 +282,7 @@ export default function Inspector({
       ].join(":"),
     )
     .join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshes when the rows' state (rowsVersion) or the open record's identity changes, not on each new detail object
   useEffect(() => {
     if (!detail || loading || detail.olderWindow) return;
     inspect(current || detail, undefined, true).catch(report);

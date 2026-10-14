@@ -15,6 +15,7 @@ export function useResource<T>(
   const [value, setValue] = useState<T | undefined>(initial);
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the caller's deps say when to load
   useEffect(() => {
     let active = true;
     setError(null);

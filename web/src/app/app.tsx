@@ -113,6 +113,7 @@ const BROWSER_KEY = "uagent-browser";
 // its agent browses, whether any turn waits), so a streamed frame re-renders
 // the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
+const NO_LEVELS: string[] = [];
 
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
@@ -226,8 +227,11 @@ function App() {
     () => detailOf(catalogue.verbosity),
     [catalogue.verbosity],
   );
-  const levels = catalogue.verbosity?.order || [];
-  const changeDetail = (level: string) => setVerbosity(level).catch(report);
+  const levels = catalogue.verbosity?.order || NO_LEVELS;
+  const changeDetail = useCallback(
+    (level: string) => setVerbosity(level).catch(report),
+    [setVerbosity, report],
+  );
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
   const session = metadata || sessionById(catalogue.sessions, selected);
   // Until the catalogue answers, the shell renders with placeholders in the
@@ -374,7 +378,7 @@ function App() {
       navigator.serviceWorker?.removeEventListener("message", openSession);
       removeEventListener("hashchange", followDecisionLink);
     };
-  }, []);
+  }, [choose]);
   // A conversation in the folder typed into the dialog, or its panel.
   async function create(
     event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
@@ -713,31 +717,36 @@ function App() {
   // queued. Delivered guidance belongs to the turn; dropping the row is
   // then the only correct move. A send that failed returns the same way,
   // with nothing to withdraw from the host.
-  const recallGuidance = useCallback(async (block: UserBlock) => {
-    const { online, selected, act, report } = latest.current;
-    const target = block.request_id;
-    if (!target || !recallable(block, online)) return;
-    const queued = queuedGuidance(block);
-    const text = block.text || "";
-    const id = selected;
-    if (queued) {
-      try {
-        await act("recall", { target_id: target });
-      } catch (error) {
-        const issue = failure(error);
-        if (!/already delivered/i.test(issue.message)) {
-          report(error);
-          return;
+  const recallGuidance = useCallback(
+    async (block: UserBlock) => {
+      const { online, selected, act, report } = latest.current;
+      const target = block.request_id;
+      if (!target || !recallable(block, online)) return;
+      const queued = queuedGuidance(block);
+      const text = block.text || "";
+      const id = selected;
+      if (queued) {
+        try {
+          await act("recall", { target_id: target });
+        } catch (error) {
+          const issue = failure(error);
+          if (!/already delivered/i.test(issue.message)) {
+            report(error);
+            return;
+          }
         }
       }
-    }
-    setOutgoing((items) => items.filter((item) => item.request_id !== target));
-    if (text)
-      updateDraft(id, (draft) => ({
-        ...draft,
-        text: draft.text ? `${draft.text}\n${text}` : text,
-      }));
-  }, []);
+      setOutgoing((items) =>
+        items.filter((item) => item.request_id !== target),
+      );
+      if (text)
+        updateDraft(id, (draft) => ({
+          ...draft,
+          text: draft.text ? `${draft.text}\n${text}` : text,
+        }));
+    },
+    [updateDraft],
+  );
   const messageActions = useMemo(
     () => ({
       report,
@@ -764,7 +773,7 @@ function App() {
           unit: block.kind === "turn_summary" ? "Turn" : "Message",
         }),
     }),
-    [report, recallGuidance, branchFrom, selected],
+    [report, recallGuidance, retrySend, resume, branchFrom, selected],
   );
   const chatActions = useMemo(
     () =>
@@ -832,8 +841,7 @@ function App() {
         }
       />
     ),
-    // levels and changeDetail follow the catalogue.
-    [online, fork, load, report, open, detail, catalogue.verbosity],
+    [online, fork, load, report, open, detail, levels, changeDetail],
   );
   // A slash command from the palette runs as if sent from the composer;
   // one that needs an argument waits there for it.

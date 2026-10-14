@@ -1,5 +1,5 @@
 import { createElement, type JSX, type RefObject } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { useCallback, useLayoutEffect, useRef } from "preact/hooks";
 import { ChevronDown } from "lucide-preact";
 import { coarsePointer, observeResize, zoomChanged } from "./layout.ts";
 import { focusFontFloor } from "./limits.ts";
@@ -29,7 +29,7 @@ function Control({
 }: ControlProps & Sizing & { tag: "input" | "textarea" | "select" }) {
   const local = useRef<ControlElement>(null);
   const ref = inputRef || local;
-  const fit = () => {
+  const fit = useCallback(() => {
     const element = ref.current;
     if (!element) return;
     const wrapper = element.parentElement!;
@@ -45,8 +45,8 @@ function Control({
       element.style.height = `${element.scrollHeight}px`;
     }
     wrapper.style.height = `${element.getBoundingClientRect().height}px`;
-  };
-  useLayoutEffect(fit, [props.value, resizeKey]);
+  }, [ref, grow]);
+  useLayoutEffect(fit, [fit, props.value, resizeKey]);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -70,7 +70,7 @@ function Control({
       stop();
       removeEventListener(zoomChanged, fit);
     };
-  }, []);
+  }, [ref, fit]);
   return (
     <span
       class={`text-control ${tag === "select" ? "select" : ""} ${className || alias || ""}`}

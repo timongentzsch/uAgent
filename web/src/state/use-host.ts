@@ -160,25 +160,31 @@ export function useHost(
   const patchSession = (id: string, change: (item: Session) => Session) =>
     setCatalogue((prior) => patchCatalogue(prior, id, change));
   // The global verbosity level, as the host last stated it.
-  const setVerbosityLevel = (level: string) =>
-    setCatalogue((prior) =>
-      prior.verbosity && prior.verbosity.level !== level
-        ? { ...prior, verbosity: { ...prior.verbosity, level } }
-        : prior,
-    );
+  const setVerbosityLevel = useCallback(
+    (level: string) =>
+      setCatalogue((prior) =>
+        prior.verbosity && prior.verbosity.level !== level
+          ? { ...prior, verbosity: { ...prior.verbosity, level } }
+          : prior,
+      ),
+    [],
+  );
   // Changing it is a setting of the host's: every browser hears of it, and
   // this one need not wait to.
-  const setVerbosity = useCallback(async (level: string) => {
-    const saved = await manage("config", {
-      scope: "user",
-      operation: "apply",
-      changes: [{ key: "UAGENT_VERBOSITY", value: level }],
-    });
-    // Saved, yet the environment or a project's config still decides it.
-    const shadowed = saved.effects.find((item) => item.effect === "shadowed");
-    if (shadowed) throw new Error(`${shadowed.key}: ${shadowed.text}`);
-    setVerbosityLevel(level);
-  }, []);
+  const setVerbosity = useCallback(
+    async (level: string) => {
+      const saved = await manage("config", {
+        scope: "user",
+        operation: "apply",
+        changes: [{ key: "UAGENT_VERBOSITY", value: level }],
+      });
+      // Saved, yet the environment or a project's config still decides it.
+      const shadowed = saved.effects.find((item) => item.effect === "shadowed");
+      if (shadowed) throw new Error(`${shadowed.key}: ${shadowed.text}`);
+      setVerbosityLevel(level);
+    },
+    [setVerbosityLevel],
+  );
   // A new or reactivated session leads the list.
   const upsertSession = useCallback(
     (session: Session) =>
@@ -208,13 +214,13 @@ export function useHost(
       ),
     [],
   );
-  const dropStream = () => {
+  const dropStream = useCallback(() => {
     stream.current?.close();
     stream.current = undefined;
     setOnline(false);
-  };
+  }, []);
   // What this device drops when the host no longer knows it.
-  const signedOut = () => {
+  const signedOut = useCallback(() => {
     revoked.current = true;
     catalogueRef.current = undefined;
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
@@ -223,118 +229,130 @@ export function useHost(
     setAuthenticated(false);
     live.current = {};
     snapshots.set({});
-  };
-  const load = useCallback((id: string) => {
-    if (loads.current.has(id)) return loads.current.get(id)!;
-    setLoadErrors((prior) => ({ ...prior, [id]: null }));
-    const signal = lifetime.current.signal;
-    const request = api<Snapshot>(routes.session(id), undefined, {
-      signal,
-    })
-      .then((value) => {
-        if (signal.aborted) throw signal.reason;
-        if (loads.current.get(id) !== request) return value;
-        const accepted = new Set(
-          value.state?.view?.blocks?.map((block) =>
-            "request_id" in block ? block.request_id : undefined,
-          ),
-        );
-        setOutgoing((items) =>
-          items.filter(
-            (item) => item.session_id !== id || !accepted.has(item.request_id),
-          ),
-        );
-        const newer = live.current[id];
-        if (newer?.epoch === value.epoch && newer.cursor > value.cursor)
-          return newer;
-        live.current = retainedViews(
-          {
-            ...Object.fromEntries(
-              Object.entries(live.current).filter(([key]) => key !== id),
+  }, [snapshots]);
+  const load = useCallback(
+    (id: string) => {
+      if (loads.current.has(id)) return loads.current.get(id)!;
+      setLoadErrors((prior) => ({ ...prior, [id]: null }));
+      const signal = lifetime.current.signal;
+      const request = api<Snapshot>(routes.session(id), undefined, {
+        signal,
+      })
+        .then((value) => {
+          if (signal.aborted) throw signal.reason;
+          if (loads.current.get(id) !== request) return value;
+          const accepted = new Set(
+            value.state?.view?.blocks?.map((block) =>
+              "request_id" in block ? block.request_id : undefined,
             ),
-            [id]: value,
-          },
-          selection.current,
-        );
-        snapshots.set({ ...live.current });
-        return value;
-      })
-      .catch(async (error) => {
-        if (
-          failure(error).network &&
-          !revoked.current &&
-          !signal.aborted &&
-          live.current[id]
-        )
-          return live.current[id];
-        if (!signal.aborted && loads.current.get(id) === request)
-          setLoadErrors((prior) => ({ ...prior, [id]: error }));
-        throw error;
-      })
-      .finally(() => {
-        if (loads.current.get(id) === request) loads.current.delete(id);
+          );
+          setOutgoing((items) =>
+            items.filter(
+              (item) =>
+                item.session_id !== id || !accepted.has(item.request_id),
+            ),
+          );
+          const newer = live.current[id];
+          if (newer?.epoch === value.epoch && newer.cursor > value.cursor)
+            return newer;
+          live.current = retainedViews(
+            {
+              ...Object.fromEntries(
+                Object.entries(live.current).filter(([key]) => key !== id),
+              ),
+              [id]: value,
+            },
+            selection.current,
+          );
+          snapshots.set({ ...live.current });
+          return value;
+        })
+        .catch(async (error) => {
+          if (
+            failure(error).network &&
+            !revoked.current &&
+            !signal.aborted &&
+            live.current[id]
+          )
+            return live.current[id];
+          if (!signal.aborted && loads.current.get(id) === request)
+            setLoadErrors((prior) => ({ ...prior, [id]: error }));
+          throw error;
+        })
+        .finally(() => {
+          if (loads.current.get(id) === request) loads.current.delete(id);
+        });
+      loads.current.set(id, request);
+      return request;
+    },
+    [snapshots],
+  );
+  const forget = useCallback(
+    (id: string) => {
+      loads.current.delete(id);
+      delete live.current[id];
+      delete readCounts.current[id];
+      setLoadErrors((prior) => {
+        const next = { ...prior };
+        delete next[id];
+        return next;
       });
-    loads.current.set(id, request);
-    return request;
-  }, []);
-  const forget = useCallback((id: string) => {
-    loads.current.delete(id);
-    delete live.current[id];
-    delete readCounts.current[id];
-    setLoadErrors((prior) => {
-      const next = { ...prior };
-      delete next[id];
-      return next;
-    });
-    snapshots.set({ ...live.current });
-    setDrafts((prior) => {
-      const next = { ...prior };
-      delete next[id];
-      return next;
-    });
-    // A queued message for a deleted session can never send (load() has
-    // no session to reconcile it against): drop it with the session
-    // instead of orphaning it in storage.
-    setOutgoing((prior) => prior.filter((item) => item.session_id !== id));
-    setUnread((prior) => {
-      const next = new Set(prior);
-      next.delete(id);
-      return next;
-    });
-    setCatalogue((prior) => ({
-      ...prior,
-      sessions: prior.sessions.filter((item) => item.id !== id),
-    }));
-    if (selection.current === id) {
-      selection.current = "";
-      writeSelection("", true);
-      setSelected("");
-    }
-  }, []);
+      snapshots.set({ ...live.current });
+      setDrafts((prior) => {
+        const next = { ...prior };
+        delete next[id];
+        return next;
+      });
+      // A queued message for a deleted session can never send (load() has
+      // no session to reconcile it against): drop it with the session
+      // instead of orphaning it in storage.
+      setOutgoing((prior) => prior.filter((item) => item.session_id !== id));
+      setUnread((prior) => {
+        const next = new Set(prior);
+        next.delete(id);
+        return next;
+      });
+      setCatalogue((prior) => ({
+        ...prior,
+        sessions: prior.sessions.filter((item) => item.id !== id),
+      }));
+      if (selection.current === id) {
+        selection.current = "";
+        writeSelection("", true);
+        setSelected("");
+      }
+    },
+    [snapshots],
+  );
   // A command's outcome, from its receipt or the stream, settles the
   // outgoing row that sent it. True when a row or a waiting caller shows
   // it, so a refusal needs no banner.
-  const settleOutgoing = (outcome: Outcome) => {
-    const awaited = receiveOutcome(outcome);
-    patchOutgoing(outcome.request_id, (item) => ({
-      status: outcome.unknown
-        ? "Not confirmed"
-        : outcome.pending
-          ? "Awaiting confirmation"
-          : outcome.accepted
-            ? // Accepted guidance waits for its step and stays
-              // recallable until the transcript shows it.
-              queuedGuidance(item)
-              ? item.status
-              : "Sent"
-            : "Not sent",
-      error: outcome.error,
-    }));
-    return (
-      awaited ||
-      outgoingRef.current.some((item) => item.request_id === outcome.request_id)
-    );
-  };
+  const settleOutgoing = useCallback(
+    (outcome: Outcome) => {
+      const awaited = receiveOutcome(outcome);
+      patchOutgoing(outcome.request_id, (item) => ({
+        status: outcome.unknown
+          ? "Not confirmed"
+          : outcome.pending
+            ? "Awaiting confirmation"
+            : outcome.accepted
+              ? // Accepted guidance waits for its step and stays
+                // recallable until the transcript shows it.
+                queuedGuidance(item)
+                ? item.status
+                : "Sent"
+              : "Not sent",
+        error: outcome.error,
+      }));
+      return (
+        awaited ||
+        outgoingRef.current.some(
+          (item) => item.request_id === outcome.request_id,
+        )
+      );
+    },
+    [patchOutgoing],
+  );
   // Jittered exponential backoff; a successful catalogue read resets it.
   const retryLater = () => {
     const delay = Math.min(
@@ -513,6 +531,9 @@ export function useHost(
         });
     }
   };
+  // retryLater and applyEvent call refresh again, so they cannot be listed;
+  // what they capture (report, forget, onResult, ...) is.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   const refresh = useCallback(async () => {
     clearTimeout(retry.current.timer);
     setManagementVersion((value) => value + 1);
@@ -643,7 +664,7 @@ export function useHost(
         refresh();
       }
     }
-  }, [load, report, forget, onResult]);
+  }, [load, report, forget, onResult, dropStream, signedOut, settleOutgoing]);
   useEffect(() => {
     refresh();
     const recover = (event?: Event) => {
@@ -699,13 +720,17 @@ export function useHost(
       removeEventListener("popstate", hash);
       document.removeEventListener("visibilitychange", recover);
     };
-  }, [refresh]);
+  }, [refresh, dropStream, snapshots]);
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load]);
   // Only what the sidebar lists: scheduled runs and their tasks stay out.
   const listed = useMemo(
-    () => listedSessions(catalogue),
+    () =>
+      listedSessions({
+        sessions: catalogue.sessions,
+        scheduled: catalogue.scheduled,
+      }),
     [catalogue.sessions, catalogue.scheduled],
   );
   useEffect(() => {
@@ -764,26 +789,29 @@ export function useHost(
       live.current[id] = update(live.current[id]);
       snapshots.set({ ...live.current });
     },
-    [],
+    [snapshots],
   );
-  const select = useCallback((id: string) => {
-    selection.current = id;
-    writeSelection(id);
-    // Following is owned solely by the transcript history controller:
-    // a switch resumes the saved position
-    // (or pins a fresh surface), which notifies through onFollow.
-    // Clearing it here diverged React state (false) from the stick
-    // ref (still true), so the pin became a no-op notification
-    // and following stayed false forever: the Jump button lingered,
-    // unread badges never cleared, and read marking stopped.
-    if (live.current[id])
-      snapshots.set((prior) =>
-        prior[id] === live.current[id]
-          ? prior
-          : { ...prior, [id]: live.current[id] },
-      );
-    setSelected(id);
-  }, []);
+  const select = useCallback(
+    (id: string) => {
+      selection.current = id;
+      writeSelection(id);
+      // Following is owned solely by the transcript history controller:
+      // a switch resumes the saved position
+      // (or pins a fresh surface), which notifies through onFollow.
+      // Clearing it here diverged React state (false) from the stick
+      // ref (still true), so the pin became a no-op notification
+      // and following stayed false forever: the Jump button lingered,
+      // unread badges never cleared, and read marking stopped.
+      if (live.current[id])
+        snapshots.set((prior) =>
+          prior[id] === live.current[id]
+            ? prior
+            : { ...prior, [id]: live.current[id] },
+        );
+      setSelected(id);
+    },
+    [snapshots],
+  );
   const correlate = useCallback((requestId: string) => {
     localRequests.current.add(requestId);
     if (localRequests.current.size > maxLocalRequests)

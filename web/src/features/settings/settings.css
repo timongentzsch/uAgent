@@ -43,8 +43,8 @@ dialog.settings-view {
   gap: var(--space-6);
 }
 .settings-nav-label > svg {
-  width: 1.1rem;
-  height: 1.1rem;
+  width: var(--icon);
+  height: var(--icon);
   color: var(--muted);
 }
 .settings-nav .row[aria-current="page"] {
@@ -62,7 +62,7 @@ dialog.settings-view {
 }
 .settings-pane-title {
   margin: 0 0 var(--space-4);
-  font-size: 1.2rem;
+  font-size: var(--font-display);
 }
 /* What the section's scope affects and where it is saved. */
 .settings-scope {

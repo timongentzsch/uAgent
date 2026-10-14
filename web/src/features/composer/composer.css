@@ -124,7 +124,7 @@
   .status-action > button::after {
     content: "";
     position: absolute;
-    inset: calc(-12rem / 14) 0 calc(-4rem / 14);
+    inset: calc(-1 * var(--space-6)) 0 calc(-1 * var(--space-2));
   }
 }
 /* Under the input: background work left, never shrinking; context and

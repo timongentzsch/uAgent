@@ -315,7 +315,7 @@ ToolResult Act(const std::string& session_id, const json& args,
 }
 
 constexpr char kBrowserDescription[] =
-    "Use the shared persistent Google Chrome in this web appliance; the "
+    "Use the shared persistent Google Chrome that the web host runs; the "
     "user sees and can drive the same browser. open, click, type (into the "
     "focused field), press, scroll and back wait for the page to settle "
     "and return it as text: its numbered elements, its text and a view_id. "

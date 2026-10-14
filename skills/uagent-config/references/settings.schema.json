@@ -750,7 +750,7 @@
         },
         "web.browserData": {
           "default": "",
-          "description": "private browser profile and service directory; empty disables the browser appliance",
+          "description": "private browser profile and service directory; empty disables the shared browser",
           "type": "string",
           "x-env": "UAGENT_BROWSER_DATA"
         },

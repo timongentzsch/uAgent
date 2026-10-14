@@ -280,14 +280,20 @@ cmake_dependent_option(UAGENT_BROWSER "Build the browser appliance" ON
                        "UAGENT_WEB" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc "${_web_generated}")
+  add_library(uagent_web src/web/master.cc src/web/master_auth.cc
+                         src/web/master_command.cc src/web/master_stream.cc
+                         "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
   # leave the browser unreferenced and the linker drops it.
   if(UAGENT_BROWSER)
     target_sources(uagent_tools PRIVATE src/browser/browser.cc
-                                        src/browser/runtime.cc src/tools/browser.cc)
+                                        src/browser/runtime.cc
+                                        src/browser/runtime_act.cc
+                                        src/browser/runtime_control.cc
+                                        src/browser/runtime_page.cc
+                                        src/tools/browser.cc)
     target_sources(uagent_web PRIVATE src/web/browser_viewer.cc
                                       src/web/rfb_filter.cc)
     foreach(_uagent_target uagent uagent_app uagent_web)

@@ -62,6 +62,12 @@ void Terminate(pid_t& pid) {
   pid = -1;
 }
 constexpr auto kLeaseQuiet = std::chrono::minutes(3);
+// Where the sessions keep their leases. The service runs with its own HOME,
+// so the host that started it names the directory.
+std::string SessionRuntimeDir() {
+  const char* named = getenv("UAGENT_INTERNAL_RUNTIME_DIR");
+  return named && *named ? named : RuntimeDir();
+}
 }  // namespace
 
 std::string CdError(const json& value) {
@@ -104,8 +110,8 @@ void Runtime::Shutdown() { Stop(); }
 void Runtime::StopIfIdle(std::chrono::minutes limit) {
   // A handover whose conversation no longer runs has nobody to hand back to.
   if (!interaction_.empty() &&
-      FileLease::OwnerGone(session::SocketPathForId(agent_session_) +
-                           ".lock")) {
+      FileLease::OwnerGone(SessionRuntimeDir() + "/" + agent_session_ +
+                           ".sock.lock")) {
     ClearHandover();
   }
   if (chrome_pid_ <= 0 || mode_ == "human" || !interaction_.empty() ||

@@ -124,6 +124,16 @@ void TestBrowserHandoverRecovery() {
                           true));
     orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
     CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+    // The service runs with its own HOME, so the host names the session's
+    // runtime directory for it; without that the lease would look missing.
+    {
+      const std::string sessions = RuntimeDir();
+      ScopedEnv named("UAGENT_INTERNAL_RUNTIME_DIR", sessions);
+      ScopedEnv service_home("HOME", directory.string());
+      CHECK(RuntimeDir() != sessions);
+      orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
+    }
+    CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
     // A runtime that exits removes its lease.
     std::filesystem::remove(session::SocketPathForId(kSession) + ".lock");
   }

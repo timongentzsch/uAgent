@@ -211,7 +211,9 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
                         "space": name,
                     },
                 )
-                assert_true(status == 409 and "workspace's name" in refused["error"], (name, refused))
+                assert_true(
+                    status == 409 and "workspace's name" in refused["error"], (name, refused)
+                )
             assert_true(not (home / ".uagent" / "outside").exists(), "a name left its folder")
 
 

@@ -166,8 +166,9 @@ std::string SessionHost::DeleteSpace(const std::string& path,
   fs::remove_all(UagentDir(kHistoryDir) + "/" + WorkspaceId(space->string()),
                  error);
   fs::remove_all(*space, error);
-  return error ? "the workspace's folder could not be removed: " + error.message()
-               : "";
+  return error
+             ? "the workspace's folder could not be removed: " + error.message()
+             : "";
 }
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
@@ -177,8 +178,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
   if (kind == SessionCommandKind::kCreate) {
-    // A workspace is a folder of µAgent's own, made by naming it: a conversation
-    // that belongs to no project still gets a workspace commands can write.
+    // A workspace is a folder of µAgent's own, made by naming it: a
+    // conversation that belongs to no project still gets a workspace commands
+    // can write.
     std::string folder = JsonValue(command, "cwd", "");
     if (const std::string space = Trim(JsonValue(command, "space", ""));
         !space.empty()) {

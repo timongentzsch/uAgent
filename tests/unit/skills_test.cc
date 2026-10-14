@@ -305,11 +305,24 @@ void TestImportFromOtherAgents() {
       "Use `Task(agent)` for the Write-up; Grep is not a tool here.\n");
   CHECK(rewritten ==
         "---\ndescription: Demo\nallowed-tools: run, read_path, grep\n"
-        "requires-tools: edit_file, grep, read_path, run, subagent\n---\n"
+        "requires-tools: edit_file, grep, read_path, run\n---\n"
         "Read the file, then run `run` or the edit_file tool.\n"
-        "Use `subagent(agent)` for the Write-up; Grep is not a tool here.\n");
+        "Use `Task(agent)` for the Write-up; Grep is not a tool here.\n");
   CHECK(RewriteToolReferences("Read the file with Bash.\n") ==
         "Read the file with Bash.\n");
+  // Backticks alone prove nothing for a word that is also a class or a verb.
+  CHECK(RewriteToolReferences("The Python class `Task` and `Read` it.\n") ==
+        "The Python class `Task` and `Read` it.\n");
+  CHECK(RewriteToolReferences("Call `exec_command` or the Task tool.\n") ==
+        "Call `run` or the subagent tool.\n");
+  // Front matter lists: quoted strings, arrays, and an existing requires-tools.
+  CHECK(RewriteToolReferences(
+            "---\ndescription: d\nallowed-tools: \"Bash, Read\"\n"
+            "tools: [Bash, \"Read\", Grep]\n"
+            "requires-tools: Bash, Task\n---\nBody\n") ==
+        "---\ndescription: d\nallowed-tools: \"run, read_path\"\n"
+        "tools: [run, read_path, grep]\n"
+        "requires-tools: run, subagent\n---\nBody\n");
 
   TestWorkspace test("import");
   auto write = [](const fs::path& path, const std::string& text) {
@@ -345,6 +358,7 @@ void TestImportFromOtherAgents() {
   std::string text;
   std::getline(std::ifstream(copy / "SKILL.md"), text, '\0');
   CHECK(text.find("requires-tools: run") != std::string::npos);
+  CHECK(fs::exists(copy) && fs::is_directory(copy));
   std::ifstream data(copy / "data.bin", std::ios::binary);
   std::string bytes((std::istreambuf_iterator<char>(data)), {});
   CHECK(bytes == std::string("\0\1\2", 3));
@@ -352,6 +366,114 @@ void TestImportFromOtherAgents() {
   CHECK(!fs::exists(test.home / ".uagent/skills/linked"));
   CHECK(ImportControl({{"action", "run"}, {"key", "demo"}}, test.workspace)
             .contains("error"));
+}
+
+}  // namespace uagent
+
+namespace uagent {
+
+namespace {
+std::string BlockedReason(const json& listed, const std::string& name) {
+  for (const json& item : listed["items"]) {
+    if (item["name"] == name) return JsonValue(item, "blocked", "");
+  }
+  return "missing";
+}
+}  // namespace
+
+void TestImportBoundaries() {
+  namespace fs = std::filesystem;
+  TestWorkspace test("import-bounds");
+  auto write = [](const fs::path& path, const std::string& text) {
+    fs::create_directories(path.parent_path());
+    std::ofstream(path, std::ios::binary) << text;
+  };
+  const fs::path skills = test.home / ".claude/skills";
+  const std::string manifest = "---\ndescription: Demo\n---\nBody\n";
+  // Hidden files travel with a skill; its repository metadata does not.
+  write(skills / "plain/SKILL.md", manifest);
+  write(skills / "plain/.env.example", "KEY=");
+  write(skills / "plain/.hidden/note.txt", "kept");
+  write(skills / "plain/.git/config", "dropped");
+  // A license that wraps its wording, one that a field names, and COPYING.
+  write(skills / "wrapped/SKILL.md", manifest);
+  write(skills / "wrapped/LICENSE", "You may not\n  COPY these files.");
+  write(skills / "named/SKILL.md",
+        "---\ndescription: d\nlicense: Proprietary. TERMS.txt has the "
+        "terms\n---\n");
+  write(skills / "named/TERMS.txt", "No copying: you may not copy this.");
+  write(skills / "copying/SKILL.md", manifest);
+  write(skills / "copying/COPYING", "Users may not redistribute this.");
+  // Links: to a folder, out of the folder, and a skill folder that is one.
+  write(test.root / "elsewhere/data.txt", "x");
+  write(skills / "folderlink/SKILL.md", manifest);
+  fs::create_directories(skills / "folderlink/real");
+  fs::create_directory_symlink(skills / "folderlink/real",
+                               skills / "folderlink/alias");
+  write(test.root / "outside-skill/SKILL.md", manifest);
+  fs::create_directory_symlink(test.root / "outside-skill", skills / "escaped");
+  write(skills / "pipe/SKILL.md", manifest);
+  CHECK(mkfifo((skills / "pipe/queue").c_str(), 0600) == 0);
+
+  json listed =
+      ImportControl({{"action", "list"}, {"only", "skill"}}, test.workspace);
+  CHECK(BlockedReason(listed, "plain").empty());
+  CHECK(BlockedReason(listed, "wrapped").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "named").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "copying").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "folderlink").find("alias") != std::string::npos);
+  CHECK(BlockedReason(listed, "escaped").find("link out of") !=
+        std::string::npos);
+  CHECK(BlockedReason(listed, "pipe").find("queue") != std::string::npos);
+
+  // An existing folder is never adopted, and what it holds is left alone.
+  const fs::path managed = test.home / ".uagent/skills";
+  write(managed / "plain/mine.txt", "mine");
+  json refused =
+      ImportControl({{"action", "run"}, {"key", "plain"}}, test.workspace);
+  CHECK(refused.contains("error"));
+  CHECK(fs::exists(managed / "plain/mine.txt"));
+  CHECK(!fs::exists(managed / "plain/SKILL.md"));
+  fs::remove_all(managed / "plain");
+  CHECK(!ImportControl({{"action", "run"}, {"key", "plain"}}, test.workspace)
+             .contains("error"));
+  CHECK(fs::exists(managed / "plain/.env.example"));
+  CHECK(fs::exists(managed / "plain/.hidden/note.txt"));
+  CHECK(!fs::exists(managed / "plain/.git"));
+  for (const auto& entry : fs::directory_iterator(managed)) {
+    CHECK(entry.path().filename().string().find(".import-") ==
+          std::string::npos);
+  }
+
+  // A failed copy removes only its own staging folder.
+  CHECK(ImportControl({{"action", "run"}, {"key", "pipe"}}, test.workspace)
+            .contains("error"));
+  for (const auto& entry : fs::directory_iterator(managed)) {
+    CHECK(entry.path().filename().string().find(".import-") ==
+          std::string::npos);
+  }
+
+  // The skills folder itself must not be a link.
+  fs::remove_all(managed);
+  fs::create_directories(test.root / "stolen");
+  fs::create_directories(test.home / ".uagent");
+  fs::create_directory_symlink(test.root / "stolen", managed);
+  CHECK(ImportControl({{"action", "run"}, {"key", "plain"}}, test.workspace)
+            .contains("error"));
+  CHECK(fs::is_empty(test.root / "stolen"));
+  fs::remove(managed);
+
+  // Only the sources asked for are walked, and a listing is bounded.
+  CHECK(ImportControl({{"action", "list"}, {"only", "memory"}},
+                      test.workspace)["items"]
+            .empty());
+  for (int index = 0; index < 600; ++index) {
+    write(skills / ("bulk/s" + std::to_string(index)) / "SKILL.md", manifest);
+  }
+  listed = ImportControl({{"action", "list"}}, test.workspace);
+  CHECK(listed["items"].size() == 512);
+  CHECK(listed["truncated"].get<bool>());
+  CHECK(listed.dump().size() < size_t{1024} * 1024);
 }
 
 }  // namespace uagent

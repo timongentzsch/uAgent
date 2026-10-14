@@ -121,8 +121,9 @@ void Runtime::Shutdown() { Stop(); }
 void Runtime::StopIfIdle(std::chrono::minutes limit) {
   // A handover whose conversation no longer runs has nobody to hand back to.
   if (!interaction_.empty() &&
-      FileLease::OwnerGone(SessionRuntimeDir() + "/" + agent_session_ +
-                           ".sock.lock")) {
+      FileLease::OwnerGone(
+          session::SocketPathForId(agent_session_, SessionRuntimeDir()) +
+          ".lock")) {
     ClearHandover();
   }
   if (chrome_pid_ <= 0 || mode_ == "human" || !interaction_.empty() ||

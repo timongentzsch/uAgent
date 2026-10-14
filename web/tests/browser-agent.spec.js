@@ -1,13 +1,14 @@
 // What the agent's browser tool does to a page, in a real Chromium: the
-// scripts and key events are taken from src/browser/runtime.cc as they are
+// scripts and key events are taken from src/browser/runtime_*.cc as they are
 // and sent the way the runtime sends them.
 import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 
-const source = readFileSync(
-  new URL("../../src/browser/runtime.cc", import.meta.url),
-  "utf8",
-);
+const source = ["runtime_act.cc", "runtime_page.cc"]
+  .map((name) =>
+    readFileSync(new URL(`../../src/browser/${name}`, import.meta.url), "utf8"),
+  )
+  .join("\n");
 const script = (name) =>
   source.match(new RegExp(`${name} = R"js\\(([\\s\\S]*?)\\)js";`))[1];
 const pageScript = script("kPageScript");

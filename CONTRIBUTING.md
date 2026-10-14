@@ -107,6 +107,21 @@ for externally visible behavior; do not cover one contract at several layers.
 Parser changes must preserve chunk-boundary equivalence. See
 [Testing](docs/TESTING.md).
 
+## Code conventions
+
+- The C++ build has no exceptions (`-fno-exceptions`). An operation that can
+  fail returns `bool` and fills a `std::string& error`; "absent" is
+  `std::optional`. At the tool boundary the result is a typed `ToolResult`
+  (`include/tools/tool.h`). Only the `*Control(const json&)` handlers at the
+  wire boundary, such as `SkillControl` and `ScheduleControl`, build an
+  `{"error": ...}` json.
+- Public headers in `include/<module>/` mirror `src/<module>/`. Declarations
+  shared inside one module live in `src/<module>/*_internal.h`.
+  `tests/boundary_test.py` enforces the layer order.
+- Web features (`web/src/features/<name>/`) import from `shared/` and
+  `state/`, not from each other. Every request to the host goes through
+  `web/src/state/api.ts`.
+
 ## Client boundaries
 
 CLI and web clients submit commands and render runtime events. Authority,

@@ -25,7 +25,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |
 | `src/ui/` | Terminal input and presentation |
-| `src/web/` | Authenticated HTTP/SSE adapter (`master.cc`), assets and optional push (`push.cc`; `no_push.cc` stands in when `UAGENT_WEB_PUSH=OFF`) |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), assets and optional push (`push.cc`; `no_push.cc` stands in when `UAGENT_WEB_PUSH=OFF`) |
 | `web/src/` | Browser event projection and presentation: `app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
@@ -73,7 +73,7 @@ second agent nor reconciles competing conversation files.
 | --- | --- |
 | Runtime process (`uagent --session-worker`) | `src/app/session_worker.cc`; its socket server in `session_server.cc` |
 | Terminal client | `src/app/session_terminal.cc` |
-| Web host | `src/web/master.cc` over `SessionHost` (`include/app/session_host.h`) |
+| Web host | `src/web/master.cc` (with `master_*.cc`) over `SessionHost` (`include/app/session_host.h`) |
 | `SessionHost` facets | `src/app/session_router.cc` (commands), `session_supervisor.cc` (runtimes), `session_schedules.cc`, `session_snapshot.cc`, `session_assets.cc`; event log in `replay_log.cc`, attachments in `asset_store.cc`, receipts in `outcome_store.cc` |
 | Frame format and limits | `include/transport/session.h` |
 | Headless `-p` run | `src/app/application_headless.cc` |

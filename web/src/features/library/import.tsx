@@ -1,6 +1,6 @@
 import { manage } from "../../state/api.ts";
 import type { ImportItem } from "../../shared/types.ts";
-import { useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import {
   Button,
   DataText,
@@ -25,17 +25,17 @@ export default function ImportDialog({
   const [items, setItems] = useState<ImportItem[] | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<unknown>(null);
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const result = await manage("import", { cwd, action: "list", only });
       setItems(result.items || []);
     } catch (failure) {
       setError(failure);
     }
-  }
+  }, [cwd, only]);
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
   async function run(item: ImportItem) {
     setBusy(item.key);
     setError(null);

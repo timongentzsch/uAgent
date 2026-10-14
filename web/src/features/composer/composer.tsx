@@ -28,6 +28,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command, routes } from "../../state/api.ts";
 import { useConversation, useHostContext } from "../../state/host-context.ts";
+import { isRunning } from "../../state/attention.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import {
   dedupeName,
@@ -246,7 +247,7 @@ export default function Composer({
       document.getElementById("prompt")?.focus({ preventScroll: true });
     decided.current = !!pending;
   }, [pending]);
-  const running = online && !!session.turn_active;
+  const running = isRunning(session, online);
   const state = snapshot?.state;
   // A session without a live worker names its lifecycle state here instead
   // of a phase, so closing a session still reports that it was saved.
@@ -317,7 +318,7 @@ export default function Composer({
                 (members.length
                   ? typingLabel([
                       ...members
-                        .filter((item) => online && item.turn_active)
+                        .filter((item) => isRunning(item, online))
                         .map((item) => item.member || ""),
                       ...(running ? [session.member || "Moderator"] : []),
                     ]) ||

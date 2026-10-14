@@ -55,7 +55,12 @@ import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
 import Board, { PanelHelp } from "../features/panel/board.tsx";
-import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
+import {
+  isRunning,
+  sessionById,
+  threadsOf,
+  waiting as waitingOn,
+} from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
   lockPageZoom,
@@ -151,6 +156,7 @@ function App() {
     loadErrors,
     catalogue,
     listed,
+    attention,
     upsertSession,
     setVerbosity,
     snapshots,
@@ -215,8 +221,7 @@ function App() {
   const levels = catalogue.verbosity?.order || [];
   const changeDetail = (level: string) => setVerbosity(level).catch(report);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
-  const session =
-    metadata || catalogue.sessions.find((item) => item.id === selected);
+  const session = metadata || sessionById(catalogue.sessions, selected);
   // Until the catalogue answers, the shell renders with placeholders in the
   // places data will fill; a conversation in the URL keeps its surfaces.
   const booting = authenticated === null;
@@ -225,7 +230,7 @@ function App() {
   // Uploads belong to their conversation: one in flight elsewhere never
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
-  const running = online && !!session?.turn_active;
+  const running = !!session && isRunning(session, online);
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(snapshots, (all) => isBrowsing(all[selected]));
   // The update banner holds its reload while a turn waits on a decision.
@@ -481,6 +486,18 @@ function App() {
     setModal,
     setSide,
   });
+  // The other conversations of the open one's folder. A panel's chat
+  // names who of them wrote what and shows each one's prompt.
+  const threads = useMemo(
+    () => threadsOf(catalogue.sessions, session?.cwd || ""),
+    [catalogue.sessions, session?.cwd],
+  );
+  const teamNames =
+    session?.kind === "panel"
+      ? [session.member, ...threads.map((item) => item.member)]
+          .filter(Boolean)
+          .join(" ")
+      : "";
   // Every row reads these through one context value, so they must stay the
   // same function; they read the latest state through a ref.
   const current = {
@@ -494,7 +511,7 @@ function App() {
     deliver,
     busy,
     showContext,
-    sessions: catalogue.sessions,
+    threads,
   };
   const latest = useRef(current);
   latest.current = current;
@@ -592,27 +609,12 @@ function App() {
     }),
     [report, recallGuidance, branchFrom, selected],
   );
-  // The other conversations of the open one's folder. A panel's chat
-  // names who of them wrote what and shows each one's prompt.
-  const threads = useMemo(
-    () => threadsOf(catalogue.sessions, session?.cwd || ""),
-    [catalogue.sessions, session?.cwd],
-  );
-  const teamNames =
-    session?.kind === "panel"
-      ? [session.member, ...threads.map((item) => item.member)]
-          .filter(Boolean)
-          .join(" ")
-      : "";
   const chatActions = useMemo(
     () =>
       teamNames
         ? {
             ...messageActions,
-            team: threadsOf(
-              latest.current.sessions,
-              latest.current.session?.cwd || "",
-            ).filter((item) => item.member),
+            team: latest.current.threads.filter((item) => item.member),
             moderator: latest.current.session?.member || "Moderator",
             prompt: (member?: string) => latest.current.showContext(member),
           }
@@ -776,6 +778,7 @@ function App() {
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
       sessions={listed}
+      needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
       spaceMenu={(space, conversations) => (
         <SpaceMenu space={space} conversations={conversations} open={open} />
@@ -1039,6 +1042,9 @@ function App() {
                         }
                         selected={selected}
                         session={session}
+                        threads={
+                          session?.kind === "panel" ? threads : undefined
+                        }
                         opening={opening}
                         catalogue={catalogue}
                         outgoing={outgoing}

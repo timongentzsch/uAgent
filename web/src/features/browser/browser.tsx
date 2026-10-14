@@ -8,6 +8,7 @@ import {
   type Session,
 } from "../../shared/types.ts";
 import { api, command, routes } from "../../state/api.ts";
+import { sessionById } from "../../state/attention.ts";
 import RFB from "@novnc/novnc";
 import {
   Button,
@@ -280,7 +281,7 @@ export default function BrowserPanel({
       | "setup_profile",
     fields: { name?: string; profile_id?: string } = {},
   ) => {
-    const session = sessions.find((item) => item.id === status.session_id);
+    const session = sessionById(sessions, status.session_id);
     return command("browser", session, {
       action,
       interaction_id: status.interaction_id || "",

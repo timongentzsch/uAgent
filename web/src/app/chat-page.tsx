@@ -18,7 +18,6 @@ import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board, { PanelLayout } from "../features/panel/board.tsx";
 import WaitingList from "../shared/escalations.tsx";
-import { threadsOf } from "../state/attention.ts";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
@@ -71,6 +70,7 @@ export default function ChatPage({
   historyKey,
   selected,
   session,
+  threads,
   opening,
   catalogue,
   outgoing,
@@ -91,6 +91,8 @@ export default function ChatPage({
   historyKey: string;
   selected: string;
   session?: Session;
+  // The open panel's threads.
+  threads?: Session[];
   opening: boolean;
   catalogue: Catalogue;
   outgoing: Outgoing[];
@@ -167,10 +169,6 @@ export default function ChatPage({
       ? stop.reason
       : undefined;
   // A panel's board, escalations and chat read the same threads.
-  const threads =
-    session?.kind === "panel"
-      ? threadsOf(catalogue.sessions, session.cwd || "")
-      : undefined;
   // The conversation's composer; before the session is known, the same
   // composer drawn from a sample (see <Placeholder>).
   const composerFor = (item: Session) => (

@@ -34,7 +34,7 @@ import { levelLabel } from "../../shared/verbosity.ts";
 import { ActivityStatus, active } from "../../shared/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import {
-  needsYou,
+  isRunning,
   statusOf,
   type SessionState,
 } from "../../state/attention.ts";
@@ -332,7 +332,7 @@ function SessionRowView({
                   ? item.activity || item.status
                   : ""
               }
-              running={online && item.turn_active}
+              running={isRunning(item, online)}
               present={online && !!item.presence}
               items={online ? item.activities || [] : []}
               pending={online && item.pending}
@@ -367,6 +367,8 @@ type SidebarProps = {
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
   sessions: Session[];
+  // How many of them wait on a decision.
+  needsYou: number;
   spaces: Space[];
   // What can be done to a space: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
@@ -383,6 +385,7 @@ type SidebarProps = {
 function SidebarView({
   loading,
   sessions,
+  needsYou,
   spaces,
   spaceMenu,
   selected,
@@ -413,7 +416,6 @@ function SidebarView({
       menu={menu}
     />
   );
-  const count = drawing ? 0 : needsYou(all);
   const kept = new Map(spaces.map((space) => [space.path, space]));
   const place = ([cwd, group]: [string, Place]) => {
     const space = kept.get(cwd);
@@ -497,15 +499,15 @@ function SidebarView({
           New conversation
         </Button>
       </div>
-      {count > 0 && (
+      {needsYou > 0 && (
         <SheetButton
-          label={`${count} need${count === 1 ? "s" : ""} you`}
+          label={`${needsYou} need${needsYou === 1 ? "s" : ""} you`}
           heading="Needs you"
           className="needs-you"
           trigger={
             <>
               <Inbox />
-              {count} need{count === 1 ? "s" : ""} you
+              {needsYou} need{needsYou === 1 ? "s" : ""} you
             </>
           }
         >

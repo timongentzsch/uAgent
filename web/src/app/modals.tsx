@@ -22,6 +22,7 @@ import { BrowserLoading } from "../features/browser/frame.tsx";
 import type Settings from "../features/settings/settings.tsx";
 import { useSnapshots, type Snapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
+import { isRunning, sessionById } from "../state/attention.ts";
 import {
   browserDialog,
   conversationActions,
@@ -115,12 +116,11 @@ export default function Modals({
     modal || inspector ? all : NONE,
   );
   const snapshot = snapshots[selected];
-  const running = online && !!session?.turn_active;
+  const running = !!session && isRunning(session, online);
   const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
   const toolsSnapshot = snapshots[toolsSessionId];
   const toolsSession =
-    toolsSnapshot?.metadata ||
-    catalogue.sessions.find((item) => item.id === toolsSessionId);
+    toolsSnapshot?.metadata || sessionById(catalogue.sessions, toolsSessionId);
   const close = () => setModal(null);
   return (
     <>

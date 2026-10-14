@@ -116,7 +116,7 @@ void SessionHost::LoadDrafts() {
     session->draft_title = JsonValue(draft, "title", "");
     session->title = session->draft_title.empty() ? "New conversation"
                                                   : session->draft_title;
-    session->status = "draft";
+    session->status = SessionStatus::kDraft;
     session->updated = JsonValue(draft, "updated", int64_t{0});
     sessions_[session->id] = std::move(session);
   }
@@ -157,8 +157,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
     auto& session = *it->second;
     // A connecting session is read unlocked by its runtime's launch; the
     // next scan brings it up to date.
-    if (session.closing || session.connecting || session.status == "updating" ||
-        session.status == "deleting") {
+    if (session.closing || session.connecting ||
+        session.status == SessionStatus::kUpdating ||
+        session.status == SessionStatus::kDeleting) {
       continue;
     }
     session.cwd = item.cwd;
@@ -175,7 +176,8 @@ bool SessionHost::RefreshCatalogue(bool force) {
     const FileStamp stamp = SnapshotFile(item.path);
     session.updated =
         stamp.modified_seconds * 1000 + stamp.modified_nanoseconds / 1000000;
-    if (session.status == "draft") session.status = "saved";
+    if (session.status == SessionStatus::kDraft)
+      session.status = SessionStatus::kSaved;
     if (session.pid <= 0 || session.exited) session.error = item.error;
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);
@@ -184,10 +186,11 @@ bool SessionHost::RefreshCatalogue(bool force) {
   // Drafts have no file yet, and a session mid-command is the router's.
   for (auto it = sessions_.begin(); it != sessions_.end();) {
     const HostSession& session = *it->second;
-    if (listed.contains(it->first) || session.status == "draft" ||
-        session.status == "updating" || session.status == "deleting" ||
-        session.closing || session.connecting ||
-        (session.pid > 0 && !session.exited) || PathExists(session.path)) {
+    if (listed.contains(it->first) || session.status == SessionStatus::kDraft ||
+        session.status == SessionStatus::kUpdating ||
+        session.status == SessionStatus::kDeleting || session.closing ||
+        session.connecting || (session.pid > 0 && !session.exited) ||
+        PathExists(session.path)) {
       ++it;
       continue;
     }
@@ -214,7 +217,8 @@ void SessionHost::RefreshPresence() {
   std::vector<std::shared_ptr<HostSession>> candidates;
   for (const auto& [id, session] : sessions_) {
     if ((session->pid <= 0 || session->exited) && !session->closing &&
-        session->status != "updating" && session->status != "deleting") {
+        session->status != SessionStatus::kUpdating &&
+        session->status != SessionStatus::kDeleting) {
       candidates.push_back(session);
     }
   }
@@ -281,7 +285,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"member", session.member},
       {"title", session.title},
       {"generation", session.generation},
-      {"status", session.status},
+      {"status", SessionStatusName(session.status)},
       {"presence", session.pid > 0 && !session.exited ? "active" : ""},
       {"turn_active", session.turn_active},
       {"guidance", session.guidance},

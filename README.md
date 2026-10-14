@@ -26,7 +26,7 @@ sandbox limited to your folder.
 
 ![Bars comparing µAgent, Claude Code and Codex CLI on executable size, idle memory, CPU per headless turn and time to first screen](docs/images/footprint.svg)
 
-![The terminal: asking for a change, answering the approval prompts, and the result](docs/images/terminal.gif)
+![The terminal on the left and the web interface on a phone on the right showing the same conversation live: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
 
 ## How it's built
 

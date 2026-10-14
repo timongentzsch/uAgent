@@ -26,10 +26,17 @@ void TestSkillDiscovery() {
                       std::string(UAGENT_TEST_SOURCE_DIR) + "/skills");
     const auto skills = LoadSkills(UAGENT_TEST_SOURCE_DIR);
     CHECK(!skills.empty());
-    bool found_fusion = false;
+    bool found_fusion = false, found_import = false;
     for (const Skill& skill : skills) {
       CHECK(!skill.description.empty());
       CHECK(ReadSkillBody(skill).ok);
+      if (skill.name == "import") {
+        found_import = true;
+        CHECK(skill.description.find("only when the user invokes $import") !=
+              std::string::npos);
+        CHECK(skill.required_tools ==
+              std::vector<std::string>({"read_path", "grep", "memory"}));
+      }
       if (skill.name == "fusion") {
         found_fusion = true;
         CHECK(skill.description.find("only when the user invokes $fusion") !=
@@ -40,6 +47,7 @@ void TestSkillDiscovery() {
       }
     }
     CHECK(found_fusion);
+    CHECK(found_import);
   }
   TestWorkspace test("skill");
   const fs::path& workspace = test.workspace;

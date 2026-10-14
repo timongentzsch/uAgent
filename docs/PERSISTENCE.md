@@ -22,6 +22,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | delegated children | `history/<workspace>/agent-<id>.json`, sessions whose header carries `delegation` |
 | mail between sessions, panels and children | `mail/<id>/{new,cur}/*.json` |
 | MCP server logs | `mcp/*` |
+| provider model catalogues, one per endpoint and key, mode 0600, fresh for 24 hours; named by a hash, holding no key | `models/<hash>.json` |
 | memories | `memory/{global,projects/<repository>}/*.md` |
 | memory audit and extraction claims | `memory/events.jsonl`, `memory/.processed/*` |
 | scheduled tasks | `scheduled/state.json` |
@@ -159,6 +160,7 @@ kept.
 | `mail/` | 14 (undelivered mail expires after a day) |
 | `bg/`, `artifacts/` | 7 / 200 |
 | `mcp/` | 7 / 100 |
+| `models/` | 7 (a catalogue older than a day is fetched again and overwritten) |
 | exited detached terminals | 7, removed with their logs |
 
 To keep conversations longer, raise the days, for example

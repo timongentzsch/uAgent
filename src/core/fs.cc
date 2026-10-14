@@ -327,6 +327,8 @@ void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
+  // A catalogue is fresh for a day; a week keeps one that is still read.
+  PruneArtifactTree(UagentDir(kModelsDir), kBgDays, 0);
   // What a runtime that was killed left behind: its lease and its socket.
   // The lease is held while they go, so a runtime starting at this moment
   // either keeps both or makes them anew.

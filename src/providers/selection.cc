@@ -43,7 +43,7 @@ constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
 // round trip before the first screen is the largest cost of a cold start.
 std::optional<std::vector<ModelInfo>> FetchCatalogue(Api& api,
                                                      int64_t timeout_s) {
-  const std::string path = UagentDir("models") + "/" +
+  const std::string path = UagentDir(kModelsDir) + "/" +
                            HashHex(api.base_url + "\n" + api.api_key) + ".json";
   std::error_code ignored;
   const auto written = std::filesystem::last_write_time(path, ignored);

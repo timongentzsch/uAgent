@@ -298,7 +298,7 @@ export interface Activity {
   id?: number;
   activity_id?: number;
   agent_id?: string;
-  kind?: string;
+  kind?: "agent" | "command";
   label?: string;
   name?: string;
   description?: string;

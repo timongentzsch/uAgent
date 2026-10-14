@@ -33,7 +33,7 @@ export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
     ...items,
     ...agents
       .filter((child) => !items.some((item) => item.agent_id === child.id))
-      .map((child) => ({
+      .map((child): Activity => ({
         ...child,
         id: undefined,
         agent_id: child.id,

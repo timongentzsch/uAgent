@@ -2,6 +2,16 @@
    chosen section beside it. On a phone the list is the first screen and a
    section pushes in over it, with Back in the header. Rows, groups and
    captions come from the shared primitives; this file only lays them out. */
+/* A setting's value in its row: muted while it is the default. */
+.setting-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.setting-summary[data-default] {
+  color: var(--muted);
+}
 dialog.settings-view {
   --dialog-width: calc(880rem / 14);
 }

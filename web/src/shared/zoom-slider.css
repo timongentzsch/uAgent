@@ -1,0 +1,6 @@
+.zoom-value {
+  min-width: 4ch;
+  text-align: end;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

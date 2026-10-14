@@ -10,6 +10,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import "./chat.css";
 
 export { prepareHistoryBlocks } from "./message.tsx";
 

@@ -1,0 +1,58 @@
+.panel-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(240rem / 14);
+}
+.panel-chat {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.board {
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+.board section + section {
+  margin-top: var(--space-4);
+}
+/* The heading holds its count and, for members, the way to add one. */
+.board h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  font-size: var(--font-micro);
+  font-weight: 400;
+  color: var(--muted);
+  padding: var(--space-2) var(--space-3);
+}
+.board h2 button {
+  margin-left: auto;
+}
+.board-note {
+  color: var(--muted);
+  font-size: var(--font-small);
+  padding: var(--space-2) var(--space-3);
+}
+.board-count {
+  font-variant-numeric: tabular-nums;
+}
+.board-row {
+  width: 100%;
+}
+.board-row > span,
+.board-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* In its phone sheet the board is the sheet's content, not a column. */
+.side-sheet .board {
+  border-left: 0;
+  background: none;
+  padding: 0;
+}

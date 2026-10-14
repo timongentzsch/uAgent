@@ -14,6 +14,7 @@ import { note, type SavedScope } from "./config/facts.ts";
 import { RestartNotice } from "./config/restart-notice.tsx";
 import { SettingField } from "./config/setting-field.tsx";
 import { useConfiguration } from "./config/use-configuration.ts";
+import "./configuration.css";
 
 const WHOLE = {
   user: {

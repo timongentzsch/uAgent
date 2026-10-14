@@ -1,0 +1,133 @@
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  min-height: calc(40rem / 14);
+}
+.sidebar-head button {
+  font-size: var(--font-small);
+  padding-inline: var(--space-3);
+}
+.sidebar nav {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.sidebar nav section + section {
+  margin-top: var(--space-4);
+}
+.sidebar h2 {
+  font-size: var(--font-micro);
+  font-weight: 400;
+  color: var(--muted);
+  padding: var(--space-4);
+}
+/* The name truncates first; a space's menu keeps its place. */
+.sidebar h2:has(.action-menu) {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding-block: 0;
+  padding-right: 0;
+}
+.sidebar h2 .folder-label {
+  flex: 1;
+  min-width: 0;
+}
+/* Spaces and folders, each under its word. */
+.list-kind {
+  margin: 0;
+  padding: var(--space-4) var(--space-4) 0;
+  color: var(--muted);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.list-group + .list-group {
+  margin-top: var(--space-6);
+}
+/* Where a place's panel will be, until it has one. */
+.open-panel {
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+/* What a panel started hangs under it. */
+.sidebar .threads {
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--line);
+}
+.session small .session-state {
+  width: 1em;
+  height: 1em;
+  margin-right: var(--space-2);
+  vertical-align: -0.15em;
+}
+/* One indicator to a row: the shape stands in for the LED. */
+.session small .session-state + .activity-status > .status-led {
+  display: none;
+}
+.session-state.waiting {
+  color: var(--accent);
+}
+.session-state.failed {
+  color: var(--removed);
+}
+/* Every folder's waiting decisions, above the list. */
+.needs-you > button {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--gap);
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--accent);
+}
+.session {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+}
+.session > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--font-small);
+}
+.session small {
+  font-size: var(--font-micro);
+  /* Single line, always: activity labels stream in while a turn runs
+     and a wrap would change the row height (sidebar ticking). The
+     time keeps its title tooltip; overflow ellipsizes like the title. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session small .activity-status {
+  margin-right: var(--space-3);
+}
+.sidebar footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-4);
+}
+.menu-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  color: var(--muted);
+  font-size: var(--font-micro);
+}
+.sidebar-sections {
+  display: flex;
+  gap: var(--gap);
+  padding: 0;
+}
+.sidebar-sections button {
+  flex: 1;
+  font-size: 0.9em;
+}
+.sidebar-sections button[aria-current="page"] {
+  background: var(--raised);
+}

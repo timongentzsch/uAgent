@@ -1,5 +1,6 @@
 import { Button, Input } from "./ui.tsx";
 import { minimumZoom, maximumZoom } from "./layout.ts";
+import "./zoom-slider.css";
 
 // The interface zoom as a slider with its value, which is a button that
 // returns to the default: a slider is hard to land exactly.

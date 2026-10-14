@@ -41,6 +41,7 @@ import {
 } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
+import "./sidebar.css";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
   const result = await command("share", item);

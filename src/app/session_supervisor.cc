@@ -23,13 +23,13 @@
 namespace uagent::session {
 namespace {
 // The status a connected worker reports through its latest state/activity.
-std::string LiveStatus(const HostSession& session) {
-  return session.closing                    ? "closing"
-         : !session.pending.is_null()       ? "waiting"
-         : !session.state.contains("route") ? "starting"
-         : session.turn_active              ? "running"
-         : session.command_busy             ? "processing"
-                                            : "idle";
+SessionStatus LiveStatus(const HostSession& session) {
+  return session.closing                    ? SessionStatus::kClosing
+         : !session.pending.is_null()       ? SessionStatus::kWaiting
+         : !session.state.contains("route") ? SessionStatus::kStarting
+         : session.turn_active              ? SessionStatus::kRunning
+         : session.command_busy             ? SessionStatus::kProcessing
+                                            : SessionStatus::kIdle;
 }
 }  // namespace
 
@@ -58,7 +58,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   session->id = HashHex(path);
   session->title = title.empty() ? "New conversation" : title;
   session->draft_title = title;
-  session->status = "draft";
+  session->status = SessionStatus::kDraft;
   session->updated = NowMillis();
   if (!WriteDraft(*session, title, session->updated)) {
     error = "cannot persist draft identity";
@@ -113,7 +113,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
     session.generation.clear();
     session.socket.Reset();
   }
-  session.status = "saved";
+  session.status = SessionStatus::kSaved;
   session.error.clear();
   // A saved conversation is read from disk.
   session.state = {{"activity", "Ready"}};
@@ -265,7 +265,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     session->pid = connected.pid;
     session->binary = std::move(connected.binary);
     session->exited = false;
-    session->status = "starting";
+    session->status = SessionStatus::kStarting;
     session->error.clear();
     session->reader = std::thread([this, session = session.get()] {
       ReadFrames(session->socket.Get(), session->stop.read.Get(), kFrameBytes,
@@ -285,7 +285,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         if (session->closing || !working) {
           DeactivateLocked(*session);
         } else {
-          session->status = "interrupted";
+          session->status = SessionStatus::kInterrupted;
           session->state["activity"] = "Interrupted";
           PublishLifecycle(*session, {{"kind", "closed"}});
         }
@@ -393,7 +393,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   }
   if (kind == "error") {
     session.error = JsonValue(frame, "error", "worker failed");
-    session.status = "failed";
+    session.status = SessionStatus::kFailed;
     return true;
   }
   if (kind != "event") return true;

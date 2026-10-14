@@ -31,7 +31,7 @@ AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,
     std::lock_guard lock(mutex_);
     auto found = sessions_.find(session_id);
     if (found == sessions_.end() || found->second->path != session_path ||
-        found->second->status == "deleting") {
+        found->second->status == SessionStatus::kDeleting) {
       return {{}, "session changed while storing attachment", 409};
     }
   }

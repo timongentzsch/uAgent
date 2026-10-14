@@ -91,7 +91,7 @@ and notifications stay off. To test those without trusted HTTPS, forward the
 port and open the loopback URL:
 
 ```sh
-ssh -N -L 18080:127.0.0.1:18080 dev@100.64.0.9
+ssh -N -L 18080:127.0.0.1:18080 you@100.64.0.10
 # Open http://127.0.0.1:18080 in the local browser.
 ```
 

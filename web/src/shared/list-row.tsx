@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Button } from "./ui.tsx";
+import "./list-row.css";
 
 // A list entry that opens something: its title, a muted line under it and,
 // when it has news, an unread dot named for screen readers. The current

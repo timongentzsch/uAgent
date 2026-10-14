@@ -7,6 +7,7 @@ import {
   type Ref,
 } from "preact";
 import {
+  useCallback,
   useContext,
   useId,
   useLayoutEffect,
@@ -53,11 +54,14 @@ export function Menu({
   // once that has finished. Our own close unmounts without waiting for the
   // toggle event: WebKit drops it when a menu item opens a modal dialog,
   // which left the menu unable to reopen. Light dismiss uses the event.
-  const unmount = () =>
-    void settled(panel.current).then(() => {
-      setOpen(false);
-      show("");
-    });
+  const unmount = useCallback(
+    () =>
+      void settled(panel.current).then(() => {
+        setOpen(false);
+        show("");
+      }),
+    [],
+  );
   const close = () => {
     panel.current?.hidePopover();
     anchor.current?.focus({ preventScroll: true });
@@ -113,7 +117,7 @@ export function Menu({
       element.removeEventListener("toggle", toggled);
       stopViewport();
     };
-  }, [open]);
+  }, [open, unmount]);
   return (
     <div class="action-menu">
       <IconButton

@@ -4,6 +4,7 @@ import { Gauge, ChevronDown } from "lucide-preact";
 import { Deferred, DataText } from "./ui.tsx";
 import { ModelLoading } from "./loading.tsx";
 import { SheetButton } from "./sheet.tsx";
+import "./model-control.css";
 
 const modelPicker = () => import("./model-picker.tsx");
 export default function ModelControl(

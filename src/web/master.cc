@@ -4,11 +4,13 @@
 #include <curl/curl.h>
 #include <signal.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -66,6 +68,59 @@ std::string PairingText(const std::string& origin, const std::string& code) {
   return "uagent web: " + origin +
          "\nPairing code (single use, 5 minutes): " + code +
          "\nOr open: " + origin + "/#pair=" + code + "\n";
+}
+
+// Whether the client takes gzip: an explicit gzip entry decides, else `*`;
+// a q of 0 refuses. Codings match case-insensitively and whole.
+bool AcceptsGzip(const std::string& header) {
+  auto trim = [](std::string& text) {
+    text.erase(0, text.find_first_not_of(" \t"));
+    text.erase(text.find_last_not_of(" \t") + 1);
+  };
+  int gzip = -1, any = -1;
+  size_t at = 0;
+  while (at <= header.size()) {
+    size_t end = std::min(header.find(',', at), header.size());
+    std::string entry = header.substr(at, end - at);
+    at = end + 1;
+    size_t semi = entry.find(';');
+    std::string coding = entry.substr(0, semi);
+    std::string params =
+        semi == std::string::npos ? "" : entry.substr(semi + 1);
+    trim(coding);
+    trim(params);
+    std::transform(coding.begin(), coding.end(), coding.begin(), ::tolower);
+    int accepted = 1;
+    if (params.size() > 2 && (params[0] == 'q' || params[0] == 'Q') &&
+        params[1] == '=') {
+      accepted = strtod(params.c_str() + 2, nullptr) > 0 ? 1 : 0;
+    }
+    if (coding == "gzip" || coding == "x-gzip") {
+      gzip = accepted;
+    } else if (coding == "*") {
+      any = accepted;
+    }
+  }
+  return (gzip >= 0 ? gzip : any) == 1;
+}
+
+// The asset's plain bytes, exactly plain_size of them; false on any fault.
+bool Gunzip(const Asset& asset, std::string& plain) {
+  if (asset.size > UINT_MAX || asset.plain_size > UINT_MAX) {
+    return false;
+  }
+  plain.assign(asset.plain_size, '\0');
+  z_stream stream{};
+  if (inflateInit2(&stream, 15 + 16) != Z_OK) {
+    return false;
+  }
+  stream.next_in = const_cast<Bytef*>(asset.data);
+  stream.avail_in = static_cast<uInt>(asset.size);
+  stream.next_out = reinterpret_cast<Bytef*>(plain.data());
+  stream.avail_out = static_cast<uInt>(plain.size());
+  int status = inflate(&stream, Z_FINISH);
+  inflateEnd(&stream);
+  return status == Z_STREAM_END && stream.total_out == asset.plain_size;
 }
 }  // namespace
 
@@ -369,8 +424,28 @@ bool Master::Initialize(std::string& error) {
               ? "public, max-age=" + std::to_string(kSecondsPerYear) +
                     ", immutable"
               : "no-cache");
-      response.set_content(reinterpret_cast<const char*>(asset.data),
-                           asset.size, std::string(asset.mime));
+      if (!asset.gzip) {
+        response.set_content(reinterpret_cast<const char*>(asset.data),
+                             asset.size, std::string(asset.mime));
+        return;
+      }
+      response.set_header("Vary", "Accept-Encoding");
+      // A range selects bytes of the plain asset: slices of a gzip stream
+      // are not one, so a ranged request is always answered plain.
+      if (!request.has_header("Range") &&
+          AcceptsGzip(request.get_header_value("Accept-Encoding"))) {
+        response.set_header("Content-Encoding", "gzip");
+        response.set_content(reinterpret_cast<const char*>(asset.data),
+                             asset.size, std::string(asset.mime));
+        return;
+      }
+      std::string plain;
+      if (!Gunzip(asset, plain)) {
+        fprintf(stderr, "web asset %s does not inflate\n", path.c_str());
+        Error(response, "asset unavailable", 500);
+        return;
+      }
+      response.set_content(std::move(plain), std::string(asset.mime));
       return;
     }
     Error(response, "not found", 404);

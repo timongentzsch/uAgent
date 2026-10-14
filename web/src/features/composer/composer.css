@@ -1,0 +1,169 @@
+/* Draft, controls and status share a compact footer. */
+.composer {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+  margin: 0 var(--column-inset);
+  padding: var(--space-2) 0;
+  background: var(--bg);
+  max-height: calc(var(--viewport-height) - calc(100rem / 14));
+  overflow: visible;
+}
+.composer > form {
+  gap: 0;
+  border: 1px solid var(--field-border);
+  background: var(--raised);
+}
+.composer > form > .message-input {
+  --input-min-height: max(calc(40rem / 14), calc(1.5em + var(--space-6)));
+  --input-padding-y: var(--space-3);
+}
+.composer > form > .message-input > textarea {
+  border: 0;
+  background: transparent;
+}
+/* Fixed slots in every turn state: Attach, Model (the one flexible item),
+   Permissions, then the primary circle. Nothing is inserted or removed, so
+   nothing beside a thumb moves when a turn starts, stops or waits. */
+.composer-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  min-width: 0;
+}
+/* A pending decision holds the input; Permissions can still settle it. */
+.composer-actions[data-held] > :not(.permission-control) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Send and Stop are one control: the icons sit on top of each other and
+   cross-fade, so the button itself never changes. */
+.composer-primary {
+  position: relative;
+}
+.composer-primary > .lucide {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.composer-primary > .stop-icon {
+  fill: currentColor;
+  width: calc(12rem / 14);
+  height: calc(12rem / 14);
+}
+.composer-primary[data-mode="stop"] > .send-icon,
+.composer-primary[data-mode="send"] > .stop-icon {
+  opacity: 0;
+}
+.permission-control {
+  flex-shrink: 0;
+}
+.permission-control > button {
+  font-size: var(--font-small);
+  padding-inline: var(--space-3);
+}
+/* YOLO runs every tool unasked: the control says so in red, in the same
+   box as any other mode. */
+.permission-control.yolo > button {
+  border-color: var(--removed);
+  color: var(--removed);
+}
+/* One fixed-height line above the input: the phase left, one action slot
+   right (Queue next while a turn runs, Continue after a stop). */
+.status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  min-width: 0;
+  height: calc(28rem / 14);
+  margin-bottom: var(--space-1);
+}
+/* One line at any width: a long state ("Waiting for approval…") truncates. */
+.status-line > :first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.status-line > .activity-toggle {
+  min-height: 0;
+}
+.status-action {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+/* The slot's action appears and leaves by opacity alone. */
+.status-action > button {
+  position: relative;
+  min-height: calc(24rem / 14);
+  padding-block: 0;
+  font-size: var(--font-micro);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    visibility var(--motion-fast) allow-discrete;
+}
+@starting-style {
+  .status-action > button {
+    opacity: 0;
+  }
+}
+.status-action > button[data-shown="false"] {
+  opacity: 0;
+  visibility: hidden;
+}
+.status-action kbd {
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font: inherit;
+}
+@media (pointer: coarse) {
+  /* A 40px touch on a 24px line, mostly above it, clear of the input. */
+  .status-action > button::after {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--space-6)) 0 calc(-1 * var(--space-2));
+  }
+}
+/* Under the input: background work left, never shrinking; context and
+   session totals right, truncating first on a narrow line. */
+.composer-metrics {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+  padding-top: var(--space-1);
+}
+.composer-metrics > .sheet-control {
+  display: flex;
+  flex: none;
+}
+/* Above the composer's status line, which stays put below it. */
+.composer > .decision {
+  margin-bottom: var(--space-2);
+}
+@media (max-width: 600px) {
+  .composer {
+    margin: 0 var(--space-4);
+    padding-top: var(--space-2);
+  }
+  .composer-actions {
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+  }
+  .permission-control > button {
+    min-width: var(--control);
+    padding-inline: var(--space-2);
+    font-size: var(--font-micro);
+    gap: var(--space-2);
+  }
+}
+@container app (max-height: 500px) {
+  .composer > form > .message-input {
+    --input-min-height: max(calc(38rem / 14), calc(1.5em + var(--space-6)));
+    --input-max-height: calc(var(--viewport-height) * 0.2);
+  }
+}

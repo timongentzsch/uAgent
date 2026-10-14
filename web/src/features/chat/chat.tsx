@@ -10,6 +10,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import "./chat.css";
 
 export { prepareHistoryBlocks } from "./message.tsx";
 
@@ -63,6 +64,7 @@ export default function Chat({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [preparedKey, setPreparedKey] = useState("");
   const prepared = !!snapshot && preparedKey === selected;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prepares the history once its snapshot arrives, not on every streamed frame
   useEffect(() => {
     if (!snapshot) return;
     let active = true;

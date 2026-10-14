@@ -335,7 +335,7 @@
 .turn-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.3em;
+  gap: 0 var(--space-2);
   padding: var(--space-2) var(--space-4) 0;
   color: var(--muted);
   font-size: var(--font-micro);
@@ -347,7 +347,7 @@
   flex-wrap: wrap;
 }
 .turn-receipt > .turn-summary + .turn-summary {
-  padding-left: 0.3em;
+  padding-left: var(--space-2);
 }
 .turn-receipt > .turn-summary:first-child {
   padding-right: 0;

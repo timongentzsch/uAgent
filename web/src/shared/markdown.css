@@ -1,5 +1,5 @@
 .markdown {
-  line-height: 1.55;
+  line-height: var(--leading-prose);
   min-width: 0;
 }
 .markdown p:first-child {

@@ -234,6 +234,16 @@ export function useTranscriptHistory(
     return true;
   }, [pin, setFollow]);
 
+  // Applies a waiting compensation once the wheel's scroll has gone quiet,
+  // or never started.
+  const settleWheel = useCallback(() => {
+    if (deferred.current === null) return;
+    clearTimeout(deferred.current);
+    deferred.current = null;
+    wheelAt.current = -Infinity;
+    reconcileRef.current();
+  }, []);
+
   const reconcile = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
@@ -276,17 +286,8 @@ export function useTranscriptHistory(
     current.height = height;
     current.within = within;
     capture();
-  }, [capture, pin, selectAnchor, writeTop]);
+  }, [capture, pin, selectAnchor, settleWheel, writeTop]);
 
-  // Applies a waiting compensation once the wheel's scroll has gone quiet,
-  // or never started.
-  const settleWheel = () => {
-    if (deferred.current === null) return;
-    clearTimeout(deferred.current);
-    deferred.current = null;
-    wheelAt.current = -Infinity;
-    reconcileRef.current();
-  };
   const reconcileRef = useRef(reconcile);
   reconcileRef.current = reconcile;
 
@@ -355,7 +356,7 @@ export function useTranscriptHistory(
     anchor.current = null;
     lastBlock.current = blocks.at(-1)?.id;
     setUnseen(0);
-  }, [sessionKey]);
+  }, [sessionKey, blocks, capture]);
 
   // React commits and late browser layout use the same reconciliation path.
   useLayoutEffect(() => {
@@ -488,6 +489,7 @@ export function useTranscriptHistory(
     restore,
     resumeAtEnd,
     selectAnchor,
+    settleWheel,
     stopFollowing,
   ]);
 

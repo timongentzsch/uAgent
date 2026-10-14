@@ -51,6 +51,7 @@ For web changes, run from `web/`:
 ```sh
 npm ci
 npm run format:check
+npm run lint
 npm test
 npm run build
 npm run notices

@@ -7,6 +7,7 @@ import { Button, Deferred, LoadError, Spinner } from "./ui.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
 import { folderName } from "./folder-label.tsx";
+import "./escalations.css";
 
 const decisionPanel = () => import("./decision.tsx");
 

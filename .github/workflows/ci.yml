@@ -102,7 +102,7 @@ jobs:
           name: release
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
       # Release archives ship Web Push. macOS links Homebrew's libcrypto
       # statically so the archive runs on hosts without Homebrew.
       - name: Configure
@@ -194,7 +194,7 @@ jobs:
         with:
           name: variant-${{ matrix.name }}
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -224,7 +224,7 @@ jobs:
         with:
           name: sanitize
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
       - name: Configure ASan and UBSan
         run: cmake --preset sanitize
       - name: Build
@@ -257,7 +257,7 @@ jobs:
         with:
           name: tsan
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
       - name: Configure TSan
         run: cmake --preset tsan
       # The races worth finding are between the supervisor, its per-job I/O
@@ -282,7 +282,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y clang libcurl4-openssl-dev zlib1g-dev
       - name: Configure fuzzers
         env:
           CC: clang
@@ -323,7 +323,7 @@ jobs:
         with:
           name: coverage
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev zlib1g-dev
       - name: Configure coverage
         run: cmake --preset coverage
       # Most of src/app, src/ui and src/tools is only reached by driving the
@@ -374,7 +374,7 @@ jobs:
       - run: uv run --frozen ruff format --check .github tests benchmarks skills
       - name: Source and Python contracts
         run: |
-          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
           cmake --preset debug
           ctest --preset debug -L source
 
@@ -392,6 +392,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
       - run: npm run format:check --prefix web
+      - run: npm run lint --prefix web
       - run: npm run test --prefix web
       - name: Build bundle and verify notices
         run: |
@@ -409,7 +410,7 @@ jobs:
           save: "false"
       - name: Build native push host
         run: |
-          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON
           cmake --build build --target uagent --parallel 4 && ccache --show-stats
       # The browsers are a download keyed by the locked Playwright version;
@@ -493,7 +494,7 @@ jobs:
           version: "0.11.28"
           enable-cache: true
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
       - name: Configure clang-tidy
         run: cmake --preset tidy
       - name: Check C++ semantics and naming

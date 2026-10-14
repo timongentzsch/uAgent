@@ -1,5 +1,6 @@
 import type { View } from "../../shared/types.ts";
 import { Button } from "../../shared/ui.tsx";
+import "./chat.css";
 
 export default function HistoryStart({
   view,

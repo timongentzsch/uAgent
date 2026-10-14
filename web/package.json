@@ -12,6 +12,7 @@
     "notices": "node scripts/notices.js",
     "size": "node scripts/size.js",
     "icons": "node scripts/icons.js",
+    "lint": "biome lint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
     }
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@playwright/test": "1.63.0",
     "@types/markdown-it": "14.2.0",
     "@types/node": "24.13.3",

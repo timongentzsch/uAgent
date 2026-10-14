@@ -1,0 +1,15 @@
+.retention {
+  font-size: var(--font-small);
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  padding: var(--space-4);
+  overflow-anchor: none;
+}
+.history-button {
+  display: block;
+  margin-inline: auto;
+  /* Stable height across the Loading swap so the anchor math below it
+     never shifts by the label change. Never a scroll anchor itself. */
+  min-height: var(--control);
+  overflow-anchor: none;
+}

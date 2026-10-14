@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import type { StatisticsUnit, Usage } from "./types.ts";
 import { Button, DataText, Placeholder } from "./ui.tsx";
 import { cost, count } from "./quantities.ts";
+import "./statistics-layout.css";
 
 // Labelled values, the one shape every statistics scope lists.
 export type Row = [string, ComponentChildren];

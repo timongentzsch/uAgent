@@ -1,0 +1,16 @@
+.jump {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  right: 0;
+  background: var(--raised);
+  font-size: var(--font-micro);
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    translate var(--motion-base) var(--ease-out);
+}
+@starting-style {
+  .jump {
+    opacity: 0;
+    translate: 0 calc(6rem / 14);
+  }
+}

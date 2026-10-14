@@ -26,7 +26,7 @@ cmake --build --preset debug --parallel
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
-Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier) are in
+Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier, Biome) are in
 [CONTRIBUTING.md](../CONTRIBUTING.md). [CI](#ci) lists what a pull request
 runs beyond this.
 
@@ -291,7 +291,7 @@ spec gets one retry, locally and in CI.
 | `python` | Ruff check and format; `ctest -L source` |
 | `cpp-style` | clang-format and cpplint |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
-| `web` | Prettier check, Node tests, bundle, notices and size checks, a release host with Web Push, Playwright in Chromium and WebKit |
+| `web` | Prettier check, Biome lint, Node tests, bundle, notices and size checks, a release host with Web Push, Playwright in Chromium and WebKit |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a

@@ -48,6 +48,7 @@ export function SettingField({
   // What is saved changed under the field (a save, a reset, another
   // browser): show it, unless something typed here is still unsaved.
   const [edited, setEdited] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follows the saved value only; finishing an edit must not overwrite the draft
   useEffect(() => {
     if (!edited) setDraft(held);
   }, [held]);

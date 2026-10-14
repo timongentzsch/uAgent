@@ -7,6 +7,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { usePhone } from "../../shared/layout.ts";
+import "./panel.css";
 
 const DONE_SHOWN = 8;
 

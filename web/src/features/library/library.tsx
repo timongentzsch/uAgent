@@ -107,8 +107,9 @@ export default function Library({
     setName(saved?.name || "");
     setNewScope(saved?.scope || "project");
     setEditing(!!saved);
-  }, [kind, cwd]);
+  }, [storage]);
   // Persist before navigation can unmount the editor ahead of the next paint.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new folder or kind resets the item above first; writing the old item under the new key would be wrong
   useLayoutEffect(() => {
     if (!item || !dirty) return;
     const key = `${storage}-${item.key || "new"}`;

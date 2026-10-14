@@ -239,9 +239,7 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
             age(marker, IDLE_SECONDS + 60)
         disabled = dict(env)
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
-        code, output = run_pty(
-            workspace, disabled, b"/q\n", startup_marker=b"Ready", binary=binary
-        )
+        code, output = run_pty(workspace, disabled, b"/q\n", startup_marker=b"Ready", binary=binary)
         assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
 
 

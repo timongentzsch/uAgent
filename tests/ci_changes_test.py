@@ -1,11 +1,13 @@
 """Keep the lightweight CI path conservative as the repository grows."""
 
+import json
 import runpy
 import unittest
 from pathlib import Path
 
 changes = runpy.run_path(str(Path(__file__).resolve().parents[1] / ".github/changes.py"))
-classify, tidy = changes["classify"], changes["tidy"]
+classify, heavy, tidy = changes["classify"], changes["heavy"], changes["tidy"]
+build_matrix = changes["build_matrix"]
 
 
 class ChangeSelectionTest(unittest.TestCase):
@@ -39,6 +41,43 @@ class ChangeSelectionTest(unittest.TestCase):
         for path in ("include/app/chat.h", ".clang-tidy", "CMakeLists.txt", ".github/changes.py"):
             with self.subTest(path=path):
                 self.assertEqual(tidy(["src/app/chat.cc", path]), "all")
+
+    def test_slow_legs_run_on_a_pull_request_only_where_they_matter(self):
+        texts = {
+            "src/main.cc": "#if UAGENT_BROWSER\n",
+            "src/app/bootstrap.cc": "#ifdef UAGENT_WEB_PUSH\n",
+        }
+
+        def read(path):
+            return texts.get(path, "int main() {}\n")
+
+        def nothing(_path):
+            return ""
+
+        plain = ["src/agent/loop.cc", "tests/unit/stream_test.cc", "web/a.ts"]
+        self.assertFalse(heavy(plain, read, read))
+        # A guard removed (only the old side has it), or a guarded file
+        # renamed (the old path is gone, the new one is all added).
+        self.assertTrue(heavy([*plain, "src/main.cc"], read, nothing))
+        self.assertTrue(heavy([*plain, "src/app/bootstrap.cc"], nothing, read))
+        for path in (
+            "CMakeLists.txt",
+            ".github/workflows/ci.yml",
+            "src/browser/runtime.cc",
+            "src/web/no_push.cc",
+            "include/web/master.h",
+            "src/main.cc",
+            "src/app/bootstrap.cc",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(heavy([*plain, path], read, read))
+
+    def test_arm64_is_in_the_matrix_only_when_asked_for(self):
+        def targets(with_arm):
+            return [leg["target"] for leg in json.loads(build_matrix(with_arm))["include"]]
+
+        self.assertEqual(targets(False), ["linux-x86_64", "macos-arm64"])
+        self.assertEqual(targets(True), ["linux-x86_64", "linux-arm64", "macos-arm64"])
 
 
 if __name__ == "__main__":

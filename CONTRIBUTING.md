@@ -138,3 +138,19 @@ visible focus and accessible status text.
 Before tagging, besides the build and the tests above, verify the installed
 archive, one real turn per supported wire API, both Playwright browsers and
 one debug trace.
+
+### Releasing
+
+1. On a pull request, set `project(uagent VERSION ...)` in `CMakeLists.txt` and
+   turn the `## Unreleased` heading in `CHANGELOG.md` into `## <version>`.
+2. Merge it and wait for CI on master to pass. It builds and uploads the
+   release archives and the web bundle, which are kept for 7 days.
+3. Tag that commit and push the tag: `git tag v<version> && git push origin v<version>`.
+
+The `Release` workflow (`.github/workflows/release.yml`) does not rebuild. It
+finds the passing master run for the tag's commit, downloads its `release-*`
+and `web-dist` artifacts, checks that their names carry the tag's version,
+signs `SHA256SUMS` with cosign, attests the files and publishes the GitHub
+release. If the commit has no passing master run or the artifacts expired, it
+runs the full `ci.yml` for the tag first. Merge, wait and tag within 7 days to
+keep the fast path.

@@ -279,13 +279,20 @@ A newer push to a pull request cancels the run of the older one; runs on
 `master` are never cancelled, so each merge is tested as it landed. A browser
 spec gets one retry, locally and in CI.
 
+A pull request skips the slowest legs (ARM64, the variants and ThreadSanitizer)
+unless it is heavy: it touches `CMakeLists.txt`, `CMakePresets.json`, `cmake/`,
+`third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/`,
+`include/browser/`, or a C++ file that mentions `UAGENT_WEB` or
+`UAGENT_BROWSER` (`heavy` in `.github/changes.py`). Master, the schedule and manual runs always
+run them.
+
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
-| `build-and-test` | Release builds with Web Push on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
-| `variants` | CLI-only and no-browser Release builds with their tests |
+| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
+| `variants` | On master and for heavy changes: CLI-only and no-browser Release builds with their tests |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |
-| `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
+| `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `fuzzers` | SSE and input-decoder smoke runs |
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
 | `python` | Ruff check and format; `ctest -L source` |

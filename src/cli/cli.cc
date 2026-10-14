@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/cli.h"
+#include "include/cli/cli.h"
 
 #include <termios.h>
 #include <unistd.h>

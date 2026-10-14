@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_AGENT_H_
-#define UAGENT_INCLUDE_AGENT_H_
+#ifndef UAGENT_INCLUDE_AGENT_AGENT_H_
+#define UAGENT_INCLUDE_AGENT_AGENT_H_
 // The agent loop. An Agent owns its message history and drives
 // model -> tool -> model until the model answers in prose. Delegated work
 // runs in a separate uagent process, so only its final result enters this
@@ -25,7 +25,7 @@
 #include "include/agent/process.h"
 #include "include/agent/session_role.h"
 #include "include/agent/trace.h"
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
 #include "include/core/project.h"
@@ -539,4 +539,4 @@ class Agent {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_AGENT_H_
+#endif  // UAGENT_INCLUDE_AGENT_AGENT_H_

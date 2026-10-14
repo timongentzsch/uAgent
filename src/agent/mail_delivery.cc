@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/child_agent.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_links.h"

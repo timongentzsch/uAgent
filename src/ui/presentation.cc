@@ -22,9 +22,9 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
-#include "include/md.h"
 #include "include/ui/conversation.h"
 #include "include/ui/interactive.h"
+#include "include/ui/markdown.h"
 
 namespace uagent {
 namespace {

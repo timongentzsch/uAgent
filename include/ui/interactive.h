@@ -16,7 +16,7 @@
 #include <string_view>
 #include <vector>
 
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/fd.h"
 #include "include/ui/input_decoder.h"
 

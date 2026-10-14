@@ -10,7 +10,7 @@
 #include "include/agent/edit_journal.h"
 #include "include/agent/jobs.h"
 #include "include/agent/path_policy.h"
-#include "include/app/options.h"
+#include "include/cli/options.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"

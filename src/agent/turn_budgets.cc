@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/json.h"

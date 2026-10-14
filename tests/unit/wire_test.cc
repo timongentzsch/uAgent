@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/core/config.h"
 #include "include/core/runtime_config.h"

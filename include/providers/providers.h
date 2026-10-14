@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_PROVIDERS_H_
-#define UAGENT_INCLUDE_PROVIDERS_H_
+#ifndef UAGENT_INCLUDE_PROVIDERS_PROVIDERS_H_
+#define UAGENT_INCLUDE_PROVIDERS_PROVIDERS_H_
 // Provider configuration and model discovery. The REPL consumes this interface;
 // it does not parse provider JSON or mutate route environment variables itself.
 
@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/core/child_env.h"
 #include "include/core/json.h"
 
@@ -198,4 +198,4 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_PROVIDERS_H_
+#endif  // UAGENT_INCLUDE_PROVIDERS_PROVIDERS_H_

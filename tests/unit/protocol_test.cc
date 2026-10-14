@@ -8,25 +8,25 @@
 #include <string>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/prompt.h"
 #include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
-#include "include/app/options.h"
 #include "include/app/runtime.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
+#include "include/cli/options.h"
 #include "include/core/env.h"
 #include "include/core/runtime_config.h"
-#include "include/md.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
 #include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
+#include "include/ui/markdown.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {

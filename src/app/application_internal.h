@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/app/bootstrap.h"
 #include "include/app/commands.h"
 #include "include/app/runtime.h"

@@ -25,23 +25,23 @@ def layer(path):
         return "core"
     if path.startswith(("include/core/", "include/transport/")):
         return "core"
-    if path.startswith(("src/api/", "include/api/")) or path == "include/api.h":
+    if path.startswith(("src/api/", "include/api/")):
         return "api"
-    if path in ("src/tools/tool.cc", "include/tools/tool.h", "include/providers.h"):
+    if path in ("src/tools/tool.cc", "include/tools/tool.h"):
         return "toolcore"
     if path.startswith(("src/media/", "include/media/")):
         return "toolcore"
-    if path.startswith("src/providers/"):
+    if path.startswith(("src/providers/", "include/providers/")):
         return "toolcore"
-    if path.startswith(("src/agent/", "include/agent/")) or path == "include/agent.h":
+    if path.startswith(("src/agent/", "include/agent/")):
         return "agent"
     if path.startswith(("src/tools/", "src/mcp/", "src/browser/")):
         return "tools"
     if path.startswith(("include/tools/", "include/mcp/", "include/browser/")):
         return "tools"
-    if path.startswith(("src/app/", "src/cli/", "src/ui/", "include/app/", "include/ui/")):
-        return "app"
-    if path in ("include/cli.h", "include/md.h"):
+    if path.startswith(
+        ("src/app/", "src/cli/", "src/ui/", "include/app/", "include/cli/", "include/ui/")
+    ):
         return "app"
     if path.startswith(("src/web/", "include/web/")):
         return "web"

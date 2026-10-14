@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_API_H_
-#define UAGENT_INCLUDE_API_H_
+#ifndef UAGENT_INCLUDE_API_CLIENT_H_
+#define UAGENT_INCLUDE_API_CLIENT_H_
 // Provider-neutral API client declaration. Wire encoders and stream decoders
 // live under include/api and src/api.
 
@@ -105,4 +105,4 @@ class Api : public ApiSettings {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_API_H_
+#endif  // UAGENT_INCLUDE_API_CLIENT_H_

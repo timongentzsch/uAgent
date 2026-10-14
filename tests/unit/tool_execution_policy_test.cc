@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/jobs.h"
 #include "include/core/runtime_config.h"
 #include "include/core/tool_activity.h"

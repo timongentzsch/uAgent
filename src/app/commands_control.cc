@@ -21,7 +21,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/mcp/register.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/tools/subagent.h"
 #include "src/app/commands_internal.h"
 

@@ -51,8 +51,8 @@ above it:
 `uagent_core` is an INTERFACE umbrella over `uagent_app`; tests, benchmarks,
 fuzzers and `uagent_web` link it.
 
-Public headers live under `include/` (top-level facades plus
-`include/<module>/`). Only module-private shared declarations stay in
+Public headers live under `include/<module>/`, mirroring
+`src/<module>/`. Only module-private shared declarations stay in
 `src/<module>/*_internal.h`. `tests/boundary_test.py` (CTest
 `layer_boundary`) rejects any new include that points up this order; its
 `KNOWN` set lists the remaining exceptions.

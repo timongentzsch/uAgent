@@ -7,7 +7,7 @@
 
 #include <string>
 
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

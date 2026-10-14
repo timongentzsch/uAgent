@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -18,7 +18,7 @@
 #include "include/ui/editor.h"
 #include "include/ui/interactive.h"
 #include "include/ui/live_region.h"
-#include "src/ui/completion.h"
+#include "src/ui/completion_internal.h"
 
 namespace uagent {
 

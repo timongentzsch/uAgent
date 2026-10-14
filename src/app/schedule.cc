@@ -286,7 +286,7 @@ json ScheduleStop(json& store, const std::string& id) {
   return {{"error", "active run not found"}};
 }
 json ScheduleSave(json& store, const json& request, const std::string& id,
-                  json::iterator found) {
+                  const json::iterator& found) {
   json task = JsonValue(request, "task", json::object());
   const std::string name = Trim(JsonValue(task, "name", ""));
   const std::string prompt = Trim(JsonValue(task, "prompt", ""));
@@ -360,7 +360,7 @@ json ScheduleRun(json& store, const std::string& id, const json& task) {
 // pause, resume and forget: all need the revision the caller saw, and all but
 // resume drop the task's queued runs.
 json ScheduleChange(json& store, const json& request, const std::string& id,
-                    json::iterator found, const std::string& action) {
+                    const json::iterator& found, const std::string& action) {
   if (JsonValue(request, "revision", "") != JsonValue(*found, "revision", "")) {
     return {{"error", "This task changed. Reload it before changing it."},
             {"conflict", true}};

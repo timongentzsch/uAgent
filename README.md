@@ -8,15 +8,10 @@ program with the web interface built in, which works in a terminal, from a
 script or in the browser on the same conversations, and runs its commands in a
 sandbox limited to your folder.
 
-![The web interface: a folder's panel where the moderator and two members, Ada and Linus, discuss rate limiting, with a thread working and the sidebar listing a workspace and a folder](docs/images/web-panel.png)
+![The web interface as an installable app: on a desktop and on a phone, a folder's panel where two members, Ada and Linus, discuss rate limiting while a thread works, with the desktop sidebar listing a workspace and a folder](docs/images/web-desktop-phone.png)
 
 ## Highlights
 
-- **Small and quick, with the web interface built in.**
-  [A 6.5 MB binary](#footprint) (Claude Code: 248 MB, Codex CLI: 247 MB),
-  [25 MB of memory when idle](#footprint) (189 and 182 MB),
-  [65 ms of CPU for a one-word turn](#footprint) (790 and 639 ms) and
-  [a first screen in 102 ms](#footprint) (344 and 3284 ms).
 - **Terminal, script and browser share conversations.** `uagent` is the
   terminal, `uagent -p "..." --json` runs one turn from a script, `uagent --web`
   serves the browser; leave one and pick the conversation up in another.

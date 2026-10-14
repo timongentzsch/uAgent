@@ -1,4 +1,4 @@
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, newFolder } from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 
 test("appearance and configuration remain usable at large scales", async ({
@@ -185,11 +185,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true });
   const originalHash = await page.evaluate(() => location.hash);
-  await page
-    .getByRole("complementary", { name: "Projects and conversations" })
-    .getByRole("button", { name: "New conversation", exact: true })
-    .click();
-  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
+  await newFolder(page, fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();

@@ -125,7 +125,7 @@ test("a message queued during a turn runs after it", async ({
   // Its row in the list shows work with the one breathing LED, no icon.
   const row = page.locator(".session-row:has([aria-current])");
   await expect(row.locator(".status-led.running")).toBeVisible();
-  await expect(row.locator(".session-state")).toHaveCount(0);
+  await expect(row.locator(".session-state svg")).toHaveCount(0);
   await prompt.fill("Queued follow-up");
   await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
   await expect(

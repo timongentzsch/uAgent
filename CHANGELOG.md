@@ -4,6 +4,8 @@
 
 ### Upgrade notes
 
+- **Spaces are now called workspaces; nothing moves.** The folder is still
+  `~/.uagent/spaces/`, and the web protocol keeps its `space` command.
 - **The coordinator is now the panel, and the one you talk to in it its
   moderator.** Existing coordinators, their threads and their chat members
   open as they were.
@@ -17,17 +19,20 @@
     `PANEL.md` exists.
   - In the chat, `Moderator, …` asks the moderator alone, and no member may
     be called that.
-- **Web: spaces and folders are listed apart, and a panel is a row.** The
-  sidebar has a section for each. A place's panel is its first row, with
-  the threads and members it started under it, instead of an icon in the
-  folder's header; a thread or member links back to it. The board beside a
-  panel's chat lists its members and its work, each with a menu to rename
-  or remove it; what waits on you is no longer repeated there. New
-  conversation asks for a space's name or a folder's path in fields of
-  their own.
-- **A space has a name of its own and can be renamed and deleted.** The
+- **Web: workspaces and folders are listed apart, and a panel is a row.**
+  The sidebar has a section for each, and each place is a bold header with
+  a fold, **+** for a new conversation there and, for a workspace, its menu.
+  A place's panel is its first row; its chevron lists the members and
+  threads it started, and a place without one has a faint Panel row that
+  opens it. A thread or member links back to it. Rows are one line: the
+  title and a mark for working, waiting on you or failed; the time and the
+  menu show on hover or focus. The board beside a panel's chat lists its
+  members and its work, each with a menu to rename or remove it; what
+  waits on you is no longer repeated there. **New** at the top asks for a
+  workspace's name or a folder's path.
+- **A workspace has a name of its own and can be renamed and deleted.** The
   name may be several words; the folder under `~/.uagent/spaces/` keeps
-  the name it was made with, so renaming moves nothing. Deleting a space
+  the name it was made with, so renaming moves nothing. Deleting a workspace
   removes its conversations and its folder with every file in it.
 - **A chat member is called what its conversation is.** A name may be
   several words. Renaming a member's conversation renames the member: its

@@ -110,7 +110,7 @@ test("what a panel started nests under it", async ({
   });
   await page.goto("/");
   const threads = page.getByRole("group", {
-    name: /^Started by the panel of /,
+    name: /^Members and threads of /,
   });
   await expect(threads.locator(".session")).toHaveCount(1);
   // A shape and words beside the colour: nothing waits here, so no icon.

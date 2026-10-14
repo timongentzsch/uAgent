@@ -1,3 +1,7 @@
+.sidebar {
+  /* What a place's contents are set in from its header by. */
+  --indent: calc(20rem / 14);
+}
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -14,28 +18,11 @@
   flex: 1;
   min-height: 0;
 }
+/* Places stand apart by the space between them, and by their bold header. */
 .sidebar nav section + section {
-  margin-top: var(--space-4);
+  margin-top: var(--space-6);
 }
-.sidebar h2 {
-  font-size: var(--font-micro);
-  font-weight: 400;
-  color: var(--muted);
-  padding: var(--space-4);
-}
-/* The name truncates first; a space's menu keeps its place. */
-.sidebar h2:has(.action-menu) {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  padding-block: 0;
-  padding-right: 0;
-}
-.sidebar h2 .folder-label {
-  flex: 1;
-  min-width: 0;
-}
-/* Spaces and folders, each under its word. */
+/* Workspaces and folders, each under its word. */
 .list-kind {
   margin: 0;
   padding: var(--space-4) var(--space-4) 0;
@@ -47,33 +34,76 @@
 .list-group + .list-group {
   margin-top: var(--space-6);
 }
-/* Where a place's panel will be, until it has one. */
-.open-panel {
-  width: 100%;
-  justify-content: flex-start;
-  color: var(--muted);
+/* A place's header: fold it, start a conversation in it, its menu. The
+   name truncates first. */
+.place-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sidebar h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: var(--font-small);
+  font-weight: 600;
+}
+.sidebar h2 button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--gap);
+  font-size: inherit;
+  font-weight: inherit;
+  text-align: left;
+}
+.sidebar h2 .folder-label {
+  flex: 1;
+  min-width: 0;
+}
+.place-head .icon-button {
+  color: var(--muted);
+}
+/* A folder has no menu: its + keeps the column a workspace's has. */
+.place-head > .icon-button:last-child {
+  margin-right: calc(var(--control) + var(--space-2));
+}
+/* What a folded place holds: how many, or how many need you. */
+.place-count {
+  font-weight: 400;
+  color: var(--muted);
+}
+.place-count.attention {
+  color: var(--accent);
+}
+.place-body {
+  padding-left: var(--indent);
+}
+/* A panel's chevron hangs in the gutter, opening who is in it. */
+.panel-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.panel-row > .session-row {
+  flex: 1;
+  min-width: 0;
+}
+.panel-row .disclosure {
+  width: var(--indent);
+  min-width: var(--indent);
+  margin-left: calc(-1 * var(--indent));
+  padding: 0;
+  color: var(--muted);
+}
+/* Where a place's panel will be, until it has one. */
+.sidebar .open-panel {
+  color: var(--muted);
 }
 /* What a panel started hangs under it. */
 .sidebar .threads {
   margin-left: var(--space-4);
   border-left: 1px solid var(--line);
-}
-.session small .session-state {
-  width: 1em;
-  height: 1em;
-  margin-right: var(--space-2);
-  vertical-align: -0.15em;
-}
-/* One indicator to a row: the shape stands in for the LED. */
-.session small .session-state + .activity-status > .status-led {
-  display: none;
-}
-.session-state.waiting {
-  color: var(--accent);
-}
-.session-state.failed {
-  color: var(--removed);
 }
 /* Every folder's waiting decisions, above the list. */
 .needs-you > button {
@@ -84,27 +114,65 @@
   font-weight: 600;
   color: var(--accent);
 }
-.session {
+/* One line to a row: the title and its state. The time and the menu show
+   while the row is pointed at or focused, and always on a touch screen. */
+.sidebar .session,
+.sidebar .open-panel {
   flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--gap);
   padding: var(--space-3) var(--space-4);
+  text-align: left;
 }
-.session > span {
+.session > span:first-child,
+.open-panel > span:first-child {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--font-small);
 }
-.session small {
+.session-time {
+  display: none;
+  flex: none;
+  color: var(--muted);
   font-size: var(--font-micro);
-  /* Single line, always: activity labels stream in while a turn runs
-     and a wrap would change the row height (sidebar ticking). The
-     time keeps its title tooltip; overflow ellipsizes like the title. */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.session small .activity-status {
-  margin-right: var(--space-3);
+.session-row:hover .session-time,
+.session-row:focus-within .session-time {
+  display: inline;
+}
+.session-row .action-menu {
+  opacity: 0;
+}
+.session-row:hover .action-menu,
+.session-row:focus-within .action-menu {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .session-row .action-menu {
+    opacity: 1;
+  }
+}
+.session-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  width: 1em;
+  height: 1em;
+}
+.session-state svg {
+  width: 100%;
+  height: 100%;
+}
+.session-state.waiting {
+  color: var(--accent);
+}
+.session-state.failed {
+  color: var(--removed);
 }
 .sidebar footer {
   display: flex;

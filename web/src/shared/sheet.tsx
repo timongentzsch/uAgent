@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Button, Modal, useDialogClose } from "./ui.tsx";
 
 type Content = ComponentChildren | ((close: () => void) => ComponentChildren);
@@ -25,6 +25,7 @@ export function SheetButton({
   size = "default",
   sheetClass = "",
   disabled,
+  openWhen = false,
 }: {
   label: string;
   title?: string;
@@ -38,8 +39,14 @@ export function SheetButton({
   size?: "default" | "icon";
   sheetClass?: string;
   disabled?: boolean;
+  // Opens the sheet when it becomes true: a control that needs an answer
+  // before anything else can happen.
+  openWhen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (openWhen && !disabled) setOpen(true);
+  }, [openWhen, disabled]);
   return (
     <div class={`sheet-control ${className}`}>
       <Button

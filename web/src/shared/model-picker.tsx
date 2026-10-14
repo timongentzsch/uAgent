@@ -29,7 +29,8 @@ export default function ModelPicker({
   const [effort, setEffort] = useState(state?.effort || "default");
   const [variant, setVariant] = useState(state?.variant || "default");
   // The choice is this conversation's; saving it for all is asked for.
-  const [forAll, setForAll] = useState(false);
+  // The first choice is for every conversation to come.
+  const [forAll, setForAll] = useState(!save && state?.route === "");
   const action = useAction();
   const form = useRef<HTMLDivElement>(null);
   const {

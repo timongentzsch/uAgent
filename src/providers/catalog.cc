@@ -21,7 +21,6 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     "openrouter",
     "https://openrouter.ai/api/v1",
     "OPENROUTER_API_KEY",
-    kDefaultModelRoute,
     OpenrouterUrl,
     ProviderProtocol::kOpenRouter,
     WireApi::kChatCompletions,
@@ -80,7 +79,6 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
   api.capabilities =
       CapabilitiesForRoute(provider.protocol, api.base_url, provider.wire_api,
                            provider.hosted_web_search);
-  if (api.model.empty()) api.model = provider.default_model;
   return true;
 }
 

@@ -33,6 +33,7 @@
 #include "include/core/thread_annotations.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
+#include "include/providers/providers.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -96,8 +97,8 @@ class Agent {
   std::string ActiveRoute() const;
 
   // Vision route for the analysis side call: the configured model wins;
-  // otherwise the main route reads images when it can, else the shared
-  // flash default (vision-capable) backs it. Empty means inherit main.
+  // otherwise the main route reads images when it can, else the first model
+  // of its endpoint that does. Empty means inherit main, or that none exists.
   std::string EffectiveImageModel() const;
 
   // Session picker's one-line title.
@@ -294,6 +295,7 @@ class Agent {
     kEndTurn,
   };
 
+  const SideRoute& ImageRoute() const;
   std::string AnalyzeImageContent(const json& content, std::string& error);
   std::string ApplyImageAnalysisFallback(json& messages, bool analyze = true,
                                          json* deliveries = nullptr);
@@ -477,6 +479,7 @@ class Agent {
   bool retain_exchanges_ = false;
   std::string turn_root_, reply_to_, reply_excerpt_;
   json image_analyses_ = json::object();
+  mutable std::pair<std::string, SideRoute> image_route_;
   mutable FileLease writer_;
   std::string session_title_;
   bool custom_title_ = false;

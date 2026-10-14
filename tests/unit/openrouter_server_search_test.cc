@@ -219,6 +219,13 @@ void TestOpenRouterServerSearch() {
   CHECK(bare.base_url == "https://seek.example/v1");
   CHECK(bare.api_key == "seek-key");
   CHECK(bare.model == "plain-model");
+  // Another endpoint has no model of the conversation's to borrow: with none
+  // named for it, search is off there.
+  Api unnamed_api(search_config);
+  unnamed_api.base_url = "https://inference.example/v1";
+  unnamed_api.api_key = "inference-key";
+  unnamed_api.model = "conversation-model";
+  CHECK(!SelectWebSearchRoute(unnamed_api, {seeker}).Valid());
   unsetenv("UAGENT_PROVIDERS");
   // Without any configured search route, an OpenRouter conversation route is
   // the search route; an OpenAI-protocol one leaves search unavailable.

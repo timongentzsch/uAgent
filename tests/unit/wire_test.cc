@@ -191,11 +191,9 @@ void TestWireAdapters() {
   CHECK(official["include"] == json::array({"reasoning.encrypted_content",
                                             "web_search_call.action.sources"}));
 
+  // The earlier spelling of auto reads as auto.
   api.config.web_search_backend = "openrouter";
-  CHECK(!api.NativeHostedTool(HostedTool::kWebSearch));
-  json separate = api.BuildRequestBody(json::array(), schemas);
-  CHECK(ItemsOfType(separate["tools"], "web_search") == 0);
-  CHECK(ItemsOfType(separate["tools"], "function") == 2);
+  CHECK(api.NativeHostedTool(HostedTool::kWebSearch));
 
   api.config.web_search_backend = "off";
   web_available = true;

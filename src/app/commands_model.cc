@@ -70,6 +70,9 @@ std::optional<ModelCandidate> PickModel(
     ModelSearch search, Api& api, const std::vector<NamedProvider>& providers,
     CommandReply& reply) {
   std::string current = RouteSelection(api, {});
+  if (current.empty()) {
+    current = "no model";
+  }
   json options = json::array();
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
@@ -197,9 +200,12 @@ void HandleModels(AppSession& session, const std::string& argument,
       PickModel(std::move(search), session.ApiClient(),
                 session.context.provider.providers, reply);
   if (!selected) return;
+  // The first choice is for every conversation to come, or each start would
+  // ask again.
+  const bool first = session.ApiClient().model.empty();
   ApplyRoute(session.ApiClient(), selected->route);
   reply.Print("%s",
-              SaveSelectedModel(session, selected->selection, false).c_str());
+              SaveSelectedModel(session, selected->selection, first).c_str());
 }
 
 void HandleModel(AppSession& session, const std::string& argument,

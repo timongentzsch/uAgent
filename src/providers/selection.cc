@@ -34,6 +34,15 @@ json MergeFeatures(const json& catalog, const json& configured) {
   return merged;
 }
 
+// A bare id the active endpoint's own catalogue lists: the picker offers these
+// for an endpoint no configured provider names.
+bool EndpointOffers(const Api& api, const std::string& id) {
+  const auto models = CachedModels(api);
+  return models && std::ranges::any_of(*models, [&](const ModelInfo& info) {
+           return info.id == id;
+         });
+}
+
 }  // namespace
 
 // Two selections naming the same endpoint, model and protocol are the same
@@ -123,7 +132,10 @@ bool CanUseRawModel(const Api& api, std::string_view name) {
 }
 
 bool ProbeModel(Api& api, bool discover_efforts) {
-  if (!api.model.empty() && api.ctx_window > 0 &&
+  if (api.model.empty()) {
+    return false;
+  }
+  if (api.ctx_window > 0 &&
       (!discover_efforts || !api.supported_reasoning_efforts.empty()) &&
       !(api.capabilities.Anthropic() &&
         api.capabilities.model_features.is_null())) {
@@ -131,22 +143,16 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   }
   // Discover effort support on demand, without delaying a configured startup
   // for optional metadata. Unavailable metadata leaves the route usable.
-  bool metadata_only = !api.model.empty();
   auto started = std::chrono::steady_clock::now();
   const std::string base = api.CatalogModel();
-  const auto offers_model = [&](const std::vector<ModelInfo>& list) {
-    return api.model.empty() ||
-           std::ranges::any_of(list, [&](const ModelInfo& info) {
-             return info.id == api.model || info.id == base;
-           });
-  };
   // A cached catalogue that lacks the chosen model may predate it.
   auto models = CachedModels(api);
-  if (!models || !offers_model(*models)) {
-    models = QueryModels(api, /*abortable=*/false, metadata_only ? 8 : 15);
+  if (!models || std::ranges::none_of(*models, [&](const ModelInfo& info) {
+        return info.id == api.model || info.id == base;
+      })) {
+    models = QueryModels(api, /*abortable=*/false, 8);
   }
   if (models && !models->empty()) {
-    if (api.model.empty()) api.model = models->front().id;
     for (const ModelInfo& info : *models) {
       if (info.id != api.model && info.id != base) continue;
       if (api.ctx_window == 0) api.ctx_window = info.context;
@@ -163,7 +169,7 @@ bool ProbeModel(Api& api, bool discover_efforts) {
                             {"models_offered", models ? models->size() : 0},
                             {"model", api.model},
                             {"context_window", api.ctx_window}});
-  return !api.model.empty();
+  return true;
 }
 
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
@@ -180,7 +186,8 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
           ResolveModelRoute(routes, providers, selection.base)) {
     ApplyRoute(api, *route);
     selected = route->name;
-  } else if (CanUseRawModel(api, selection.base)) {
+  } else if (CanUseRawModel(api, selection.base) ||
+             EndpointOffers(api, selection.base)) {
     api.model = selection.base;
     api.route_name.clear();
     api.ctx_window = 0;

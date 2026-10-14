@@ -367,9 +367,8 @@ def test_web_session_title_generation_respects_rename(root, home, *, binary):
             assert_true(title == "Mine", title)
 
 
-def test_a_title_model_the_endpoint_cannot_take_falls_to_the_sessions(root, home, *, binary):
-    """The default title model is an OpenRouter name. A session on another
-    endpoint titles with its own model instead of sending a name that fails."""
+def test_the_title_is_written_by_the_conversations_model(root, home, *, binary):
+    """With no title model set, the session's own model names it."""
     models = []
 
     def route(_, body):
@@ -379,7 +378,7 @@ def test_a_title_model_the_endpoint_cannot_take_falls_to_the_sessions(root, home
         return event({"content": "Named by the session model"})
 
     with Server([route]) as provider:
-        env = {"UAGENT_TITLE_MODEL": "~vendor/title-model", "UAGENT_MODEL": "session-model"}
+        env = {"UAGENT_TITLE_MODEL": "", "UAGENT_MODEL": "session-model"}
         with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
             client.pair(code)
             session = client.create(root)
@@ -459,3 +458,37 @@ def test_web_bundle_is_served_gzipped_and_plain_to_a_client_that_cannot_take_it(
                 and body == (dist / "icon-192.png").read_bytes(),
                 headers,
             )
+
+
+def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
+    root, home, *, binary
+):
+    """On an endpoint named by nothing but its address, the catalogue's own
+    model ids are what the picker offers and what it takes."""
+    served = []
+
+    def route(_, body):
+        served.append(body.get("model"))
+        return event({"content": "answered"})
+
+    models = {"data": [{"id": "alpha"}, {"id": "beta"}]}
+    with Server([route], get_response=models) as provider:
+        env = {"UAGENT_MODEL": None, "UAGENT_TITLE_MODEL": "off"}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            assert_true(client.snapshot(session)["state"]["route"] == "", "model chosen for it")
+            client.command("submit", session, text="before choosing")
+            client.until(session, lambda value: "no model set" in value["state"]["error"])
+            assert_true(not served, served)
+            catalog = client.command("model", session, operation="catalog")["result"]
+            assert_true([item["value"] for item in catalog["models"]] == ["alpha", "beta"], catalog)
+            client.command("model", session, operation="select", model="beta")
+            client.command("submit", session, text="after choosing")
+            client.until(
+                session,
+                lambda value: any(
+                    row["kind"] == "assistant" for row in value["state"]["view"]["blocks"]
+                ),
+            )
+            assert_true(served == ["beta"], served)

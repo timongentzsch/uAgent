@@ -185,6 +185,10 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
       selection.empty() ? ProviderCatalog{} : SessionProviderCatalog();
   SideRoute route =
       ResolveSideRoute(api, catalog.models, catalog.providers, selection);
+  if (!route.none.empty()) {
+    ReleaseClaim(source, cwd);
+    return route.none;
+  }
 
   EnvironmentOverrides environment = ChildAgentEnvironment(std::move(route));
   environment.insert(environment.end(),

@@ -500,7 +500,7 @@ bool HasContentPart(const json& messages, std::string_view type) {
 }
 
 bool Api::NativeHostedTool(HostedTool tool) const {
-  return config.web_search_backend == "auto" && capabilities.Supports(tool) &&
+  return config.web_search_backend != "off" && capabilities.Supports(tool) &&
          WireSupportsHostedTool(capabilities.wire_api, tool);
 }
 

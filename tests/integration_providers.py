@@ -3,6 +3,7 @@ import os
 import time
 
 from integration_support import (
+    SMALL_PNG,
     Server,
     assert_true,
     base_env,
@@ -564,7 +565,7 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         # A fresh run knows nothing of it: with no model configured it says so.
         fresh = run(root, fresh_env, "-p", "probe", binary=binary)
         assert_true(
-            fresh.returncode != 0 and "UAGENT_MODEL is not set" in fresh.stdout + fresh.stderr,
+            fresh.returncode != 0 and "no model set" in fresh.stdout + fresh.stderr,
             fresh.stdout + fresh.stderr,
         )
         assert_true(not second.requests, second.requests)
@@ -1222,8 +1223,8 @@ def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home,
         return catalog
 
     with Server([event({"content": "catalog-ok"})] * 3, get_response=slow_catalog) as server:
-        env = base_env(home, server.url)
-        del env["UAGENT_MODEL"], env["UAGENT_CONTEXT"]
+        env = {**base_env(home, server.url), "UAGENT_MODEL": "catalog-model"}
+        del env["UAGENT_CONTEXT"]
         # The first start has no catalogue: it waits for the provider's.
         cold = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
         assert_true(cold.returncode == 0, cold.stderr)
@@ -1291,13 +1292,12 @@ def test_only_a_usable_catalogue_is_kept_and_read(root, home, *, binary):
         write_json_response(handler, body, status=status)
 
     with Server([event({"content": "catalog-ok"})], get_response=answer) as server:
-        env = base_env(home, server.url)
-        del env["UAGENT_MODEL"], env["UAGENT_CONTEXT"]
+        env = {**base_env(home, server.url), "UAGENT_MODEL": "catalog-model"}
+        del env["UAGENT_CONTEXT"]
         models = home / ".uagent" / "models"
 
         for _ in range(2):
-            failed = run_dialog(root, env, "/q\n", binary=binary)
-            assert_true(failed.returncode != 0, failed.stdout)
+            run_dialog(root, env, "/q\n", binary=binary)
             assert_true(not list(models.glob("*")), list(models.glob("*")))
 
         started = run_dialog(root, env, "/status\n/q\n", binary=binary)
@@ -1311,3 +1311,155 @@ def test_only_a_usable_catalogue_is_kept_and_read(root, home, *, binary):
         again = run_dialog(root, env, "/status\n/q\n", binary=binary)
         assert_true("50k" in window_of(again), again.stdout)
         assert_true(len(server.get_requests) == 4, server.get_requests)
+
+
+def test_no_model_set_headless_lists_the_endpoints_models(root, home, *, binary):
+    models = {"data": [{"id": f"model-{number:02d}"} for number in range(12)]}
+    with Server([event({"content": "never asked"})], get_response=models) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_MODEL"]
+        for flags in (("-p", "probe"), ("--json", "-p", "probe")):
+            result = run(root, env, *flags, binary=binary)
+            text = result.stdout + result.stderr
+            assert_true(result.returncode != 0, text)
+            assert_true("no model set: set `model` (UAGENT_MODEL)" in text, text)
+            # Up to ten ids, in the endpoint's order, and a count of the rest.
+            assert_true("model-00" in text and "model-09" in text, text)
+            assert_true("model-10" not in text and "and 2 more" in text, text)
+        assert_true(not server.requests, server.requests)
+
+
+def test_a_conversation_without_a_model_starts_at_the_picker(root, home, *, binary):
+    models = {"data": [{"id": "alpha"}, {"id": "beta"}]}
+    with Server(
+        [event({"content": "beta-answered"}), event({"content": "again"})], get_response=models
+    ) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_MODEL"]
+        # Said in words when a message is sent before choosing.
+        skipped = run_dialog(root, env, "\x1b\nprobe\n/q\n", binary=binary)
+        output = skipped.stdout + skipped.stderr
+        assert_true("no model set: choose one with /models" in output, output)
+        assert_true(not server.requests, server.requests)
+        assert_true(not saved_settings(home), "nothing was chosen")
+
+        result = run_dialog(root, env, "2\nprobe\n/q\n", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("beta-answered" in result.stdout, result.stdout)
+        assert_true(server.requests[0][1]["model"] == "beta", server.requests)
+        # The first choice is kept for the conversations after it.
+        assert_true(saved_settings(home) == {"model": "beta"}, saved_settings(home))
+        later = run_dialog(root, env, "probe\n/q\n", binary=binary)
+        assert_true("again" in later.stdout, later.stdout + later.stderr)
+        assert_true(server.requests[1][1]["model"] == "beta", server.requests)
+
+
+def test_images_go_to_a_vision_model_of_the_same_endpoint(root, home, *, binary):
+    picture = root / "shot.png"
+    picture.write_bytes(SMALL_PNG)
+    models = {
+        "data": [
+            {"id": "text-model", "input_modalities": ["text"]},
+            {"id": "vision-model", "input_modalities": ["text", "image"]},
+        ]
+    }
+
+    def describe(_, body):
+        assert_true(body.get("model") == "vision-model", body.get("model"))
+        return event({"content": "a terminal showing a stack trace"})
+
+    def answer(_, body):
+        assert_true(body.get("model") == "text-model", body.get("model"))
+        assert_true("stack trace" in json.dumps(body["messages"]), body["messages"])
+        return event({"content": "saw-it"})
+
+    with Server([describe, answer], get_response=models) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MODEL"] = "text-model"
+        del env["UAGENT_CONTEXT"]
+        result = run(
+            root, env, "--yolo", "--attach", str(picture), "-p", "what is this", binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "saw-it", result.stdout)
+
+    # No model of the endpoint accepts images: the person is told what to set.
+    text_only = {"data": [{"id": "text-model", "input_modalities": ["text"]}]}
+    with Server([event({"content": "blind"})], get_response=text_only) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MODEL"] = "text-model"
+        del env["UAGENT_CONTEXT"]
+        result = run(
+            root,
+            env,
+            "--yolo",
+            "--attach",
+            str(picture),
+            "--json-stream",
+            "-p",
+            "what",
+            binary=binary,
+        )
+        assert_true(
+            "no model on this endpoint accepts images; set image.model" in result.stdout,
+            result.stdout + result.stderr,
+        )
+        assert_true(len(server.requests) == 1, server.requests)
+
+
+def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, home, *, binary):
+    def searched(_, body):
+        assert_true(body["model"] == "search-model", body)
+        return {"choices": [{"message": {"content": "found it"}, "finish_reason": "stop"}]}
+
+    with Server([searched]) as search_server:
+        providers = {
+            "search": {
+                "base_url": search_server.url,
+                "api_key": "search-key",
+                "protocol": "openrouter",
+            }
+        }
+        with Server(
+            [tool_call("web_search", {"queries": ["current fact"]}), event({"content": "done"})]
+        ) as plain:
+            env = base_env(home, plain.url)
+            env["UAGENT_PROVIDERS"] = json.dumps(providers)
+            env["UAGENT_WEB_SEARCH_MODEL"] = "search-model"
+            result = run(root, env, "--yolo", "-p", "search", binary=binary)
+            assert_true(result.stdout.strip() == "done", result.stdout + result.stderr)
+            assert_true("web_search" in function_names(plain.requests[0][1]), plain.requests)
+            assert_true(len(search_server.requests) == 1, search_server.requests)
+
+        # The endpoint's model names are not the conversation's to lend: with
+        # none named for it, the call says what to set.
+        def says_what_to_set(_, body):
+            result = tool_results(body["messages"])[-1]
+            assert_true("webSearch.model" in result, result)
+            return event({"content": "told"})
+
+        with Server(
+            [tool_call("web_search", {"queries": ["current fact"]}), says_what_to_set]
+        ) as plain:
+            env = base_env(home, plain.url)
+            env["UAGENT_PROVIDERS"] = json.dumps(providers)
+            result = run(root, env, "--yolo", "-p", "search", binary=binary)
+            assert_true(result.stdout.strip() == "told", result.stdout + result.stderr)
+            assert_true(len(search_server.requests) == 1, search_server.requests)
+
+    # No endpoint offers search: the tool is off.
+    with Server([event({"content": "no tool"})]) as plain:
+        result = run(root, base_env(home, plain.url), "--yolo", "-p", "search", binary=binary)
+        assert_true(result.stdout.strip() == "no tool", result.stdout + result.stderr)
+        assert_true("web_search" not in function_names(plain.requests[0][1]), plain.requests)
+
+
+def test_search_is_offered_to_a_conversation_that_chose_its_model_late(root, home, *, binary):
+    models = {"data": [{"id": "alpha"}]}
+    with Server([event({"content": "answered"})], get_response=models) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_MODEL"]
+        env["UAGENT_INTERNAL_PROVIDER_PROTOCOL"] = "openrouter"
+        result = run_dialog(root, env, "1\nprobe\n/q\n", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("web_search" in function_names(server.requests[0][1]), server.requests)

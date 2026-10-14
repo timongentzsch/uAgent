@@ -33,6 +33,19 @@ namespace {
 // With no explicit output cap, reserve one quarter of the advertised window
 // for the response. This is a compaction policy, not a token measurement.
 constexpr int64_t kDefaultResponseReserveDivisor = 4;
+// Whether any message carries an image, as a part or as a staged attachment.
+bool HoldsImage(const json& messages) {
+  return std::ranges::any_of(messages, [](const json& message) {
+    const json* parts = JsonArray(message, "content");
+    return parts && std::ranges::any_of(*parts, [](const json& part) {
+             const std::string type = JsonValue(part, "type", "");
+             return type == "image_url" ||
+                    (type == "attachment" &&
+                     JsonValue(part, "mime", "").starts_with("image/"));
+           });
+  });
+}
+
 }  // namespace
 
 std::string Agent::PrepareRequestMessages(const json& source, json& projected,
@@ -51,6 +64,8 @@ std::string Agent::PrepareRequestMessages(const json& source, json& projected,
                      deliveries);
   if (fallback) {
     error += ApplyImageAnalysisFallback(projected, analyze, deliveries);
+  } else if (!api_.capabilities.image_input && HoldsImage(source)) {
+    error += ImageRoute().none;
   }
   return error;
 }
@@ -387,18 +402,37 @@ void AppendContentNote(json& content, const std::string& note) {
 
 }  // namespace
 
+// The route that reads images when the conversation's model cannot. Resolved
+// once per route: the lookup may read the endpoint's catalogue.
+const SideRoute& Agent::ImageRoute() const {
+  const std::string key = api_.config.image_model + "\n" + api_.base_url +
+                          "\n" + api_.model + "\n" +
+                          (api_.capabilities.image_input ? "y" : "n");
+  if (image_route_.first != key) {
+    ProviderCatalog catalog = SessionProviderCatalog();
+    image_route_ = {key,
+                    ResolveImageRoute(api_, catalog.models, catalog.providers,
+                                      api_.config.image_model)};
+  }
+  return image_route_.second;
+}
+
 std::string Agent::EffectiveImageModel() const {
-  if (!api_.config.image_model.empty()) return api_.config.image_model;
-  return api_.capabilities.image_input ? std::string() : kDefaultModelRoute;
+  if (api_.capabilities.image_input && api_.config.image_model.empty()) {
+    return {};
+  }
+  const SideRoute& route = ImageRoute();
+  return route.none.empty() ? route.selection : std::string();
 }
 
 std::string Agent::AnalyzeImageContent(const json& content,
                                        std::string& error) {
   error.clear();
-  const std::string image_model = EffectiveImageModel();
-  ProviderCatalog catalog = SessionProviderCatalog();
-  SideRoute route =
-      ResolveSideRoute(api_, catalog.models, catalog.providers, image_model);
+  const SideRoute& route = ImageRoute();
+  if (!route.none.empty()) {
+    error = route.none;
+    return "";
+  }
   Api vision(api_.config);
   ApplySideRoute(vision, route);
   // The route decides where the request goes; these facts are true of
@@ -453,8 +487,9 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
       std::string type = JsonValue(part, "type", "");
       if (type == "text" || type == "image_url") input.push_back(part);
     }
+    const SideRoute& route = ImageRoute();
     const std::string key =
-        EffectiveImageModel() + ":" + HashHex(JsonDump(input));
+        route.base_url + "\n" + route.model + ":" + HashHex(JsonDump(input));
     std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;
     if (analysis.empty() && analyze) {
       analysis = AnalyzeImageContent(input, error);

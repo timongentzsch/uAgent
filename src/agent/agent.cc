@@ -143,16 +143,14 @@ json Agent::SideQuestion(const std::string& question) const {
 
 void Agent::StartTitle(const std::string& user_input) {
   const std::string& selection = api_.config.title_model;
-  if (selection.empty() || selection == "off") return;
+  if (selection == "off") {
+    return;
+  }
   ProviderCatalog catalog = SessionProviderCatalog();
   SideRoute route =
       ResolveSideRoute(api_, catalog.models, catalog.providers, selection);
-  // The default names an OpenRouter model. Where it resolves to no configured
-  // route and the session's endpoint takes no such name, sending it there
-  // could only fail: the session's own model writes the title.
-  if (route.unresolved && route.selection.find('/') != std::string::npos &&
-      !CanUseRawModel(api_, route.selection)) {
-    route = ResolveSideRoute(api_, {}, {}, {});
+  if (!route.none.empty()) {
+    return;
   }
   json messages = json::array(
       {{{"role", "system"},
@@ -268,6 +266,7 @@ json Agent::LatestToolTrace() const {
 
 void Agent::RouteChanged() {
   session_id_ = MakeSessionId();
+  image_route_ = {};
   ++revision_;
 }
 

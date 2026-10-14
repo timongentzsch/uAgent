@@ -3,10 +3,69 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a local coding agent in one native binary, `uagent`. Run it in a
-terminal, from a script (`-p`, with JSON output) or in the browser
-(`--web`); all three drive the same conversations. It talks to any Chat
-Completions, OpenAI Responses or Anthropic Messages endpoint.
+µAgent is a local coding agent that fits in one native binary: a C++20
+program with the web interface built in, which works in a terminal, from a
+script or in the browser on the same conversations, and runs its commands in a
+sandbox limited to your folder.
+
+![The web interface: a panel with a member in its chat, and the sidebar's spaces and folders](docs/images/web-panel.png)
+
+## Highlights
+
+- **One binary**, about 12 MB, with the web interface built in. Nothing else
+  runs beside it.
+- **Terminal, script and browser share conversations.** `uagent` is the
+  terminal, `uagent -p "..." --json` runs one turn from a script, `uagent --web`
+  serves the browser; leave one and pick the conversation up in another.
+- **Any endpoint.** It talks to Chat Completions, OpenAI Responses and
+  Anthropic Messages APIs, local or hosted.
+- **Sandboxed, with approvals and `/undo`.** Commands can write only inside the
+  folder; it asks before it changes a file, runs a command or uses the
+  network, and `/undo` puts back what the last turn changed.
+- **A panel for several agents.** A folder's panel hosts a chat with a
+  moderator and members you add, and starts threads that do the work in
+  parallel and report back.
+
+## How it's built
+
+C++20 with libcurl, cpp-httplib and nlohmann/json; the web interface is
+Preact, TypeScript and Vite; the tests are C++, Python and Playwright.
+
+Every conversation runs in its own session runtime process. The terminal, the
+browser's web host and scripts attach to it over a private Unix socket, so no
+client has authority another lacks and none runs a second agent.
+
+```mermaid
+flowchart LR
+  T[Terminal] --> R
+  S["Script (-p --json)"] --> R
+  B[Browser] -->|HTTP and SSE| W[Web host] --> R
+  R["Session runtime<br/>one per conversation"] --> A["Agent turn loop<br/>and tools, sandboxed"]
+  A --> P[Provider adapters] --> M[Model endpoints]
+```
+
+[Architecture](docs/ARCHITECTURE.md) covers the layers, the runtime and its
+wire format.
+
+## Engineering
+
+- **Tests run without a key or network.** 133 C++ unit cases, 284 Python
+  integration tests against a mock provider (real binary, real PTY), 154
+  Playwright browser tests (Chromium, plus WebKit for the layout-sensitive
+  specs) and 62 Node unit tests.
+- **Fuzzing.** Two libFuzzer targets, the SSE stream decoder and the terminal
+  input decoder, run a short smoke on every CI run and weekly for longer.
+- **Static analysis.** clang-format, cpplint, clang-tidy with warnings as
+  errors, and CodeQL.
+- **Sanitizers.** The suite also runs under ASan and UBSan, and under TSan.
+- **CI on three platforms.** Linux x86_64, Linux arm64 and macOS arm64, plus
+  terminal-only and no-browser build variants.
+- **Layers enforced by a test.** `tests/boundary_test.py` fails a translation
+  unit that includes a higher layer.
+- **Releases are verifiable.** Archives ship with `SHA256SUMS`, signed with
+  Sigstore, and build attestations.
+
+See [Contributing](CONTRIBUTING.md) and [Testing](docs/TESTING.md).
 
 ## Install
 

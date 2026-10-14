@@ -51,7 +51,7 @@ class ChangeSelectionTest(unittest.TestCase):
         def read(path):
             return texts.get(path, "int main() {}\n")
 
-        def nothing(path):
+        def nothing(_path):
             return ""
 
         plain = ["src/agent/loop.cc", "tests/unit/stream_test.cc", "web/a.ts"]

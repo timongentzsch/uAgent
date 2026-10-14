@@ -51,8 +51,15 @@ class ChangeSelectionTest(unittest.TestCase):
         def read(path):
             return texts.get(path, "int main() {}\n")
 
+        def nothing(path):
+            return ""
+
         plain = ["src/agent/loop.cc", "tests/unit/stream_test.cc", "web/a.ts"]
-        self.assertFalse(heavy(plain, read))
+        self.assertFalse(heavy(plain, read, read))
+        # A guard removed (only the old side has it), or a guarded file
+        # renamed (the old path is gone, the new one is all added).
+        self.assertTrue(heavy([*plain, "src/main.cc"], read, nothing))
+        self.assertTrue(heavy([*plain, "src/app/bootstrap.cc"], nothing, read))
         for path in (
             "CMakeLists.txt",
             ".github/workflows/ci.yml",
@@ -63,7 +70,7 @@ class ChangeSelectionTest(unittest.TestCase):
             "src/app/bootstrap.cc",
         ):
             with self.subTest(path=path):
-                self.assertTrue(heavy([*plain, path], read))
+                self.assertTrue(heavy([*plain, path], read, read))
 
     def test_arm64_is_in_the_matrix_only_when_asked_for(self):
         def targets(with_arm):

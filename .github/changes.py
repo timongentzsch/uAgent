@@ -24,16 +24,19 @@ HEAVY_DIRS = (
 )
 
 
-def heavy(paths, read):
+def heavy(paths, old, new):
     """Whether a pull request also runs the legs that master always runs:
     ThreadSanitizer, Linux ARM64 and the CLI-only and no-browser variants.
     They matter for the build, the workflows and any source that a feature
-    switch compiles differently; `read(path)` gives a file's text, or its old
-    text when it was deleted."""
+    switch compiles differently, before or after the change: `old(path)` and
+    `new(path)` give a file's text on each side, empty where it does not exist."""
     return any(
         path.startswith(HEAVY_DIRS)
         or path in ("CMakeLists.txt", "CMakePresets.json")
-        or (path.endswith((".cc", ".h")) and any(name in read(path) for name in SWITCHES))
+        or (
+            path.endswith((".cc", ".h"))
+            and any(name in old(path) + new(path) for name in SWITCHES)
+        )
         for path in paths
     )
 
@@ -70,17 +73,23 @@ def tidy(paths):
 if __name__ == "__main__":
     base = os.environ.get("CI_BASE_SHA")
     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
-        changed = subprocess.check_output(["git", "diff", "--name-only", "-z", base, "HEAD"])
+        # No rename detection: both the old and the new path are listed.
+        changed = subprocess.check_output(
+            ["git", "diff", "--name-only", "--no-renames", "-z", base, "HEAD"]
+        )
         paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
 
-        def read(path):
-            for command in (["cat", path], ["git", "show", f"{base}:{path}"]):
-                done = subprocess.run(command, capture_output=True, check=False)
-                if done.returncode == 0:
-                    return done.stdout.decode(errors="replace")
-            return ""
+        def old(path):
+            done = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True)
+            return done.stdout.decode(errors="replace")
 
-        is_heavy = heavy(paths, read)
+        def new(path):
+            try:
+                return Path(path).read_text(errors="replace")
+            except OSError:
+                return ""
+
+        is_heavy = heavy(paths, old, new)
         result = {**classify(paths), "tidy": tidy(paths), "heavy": is_heavy}
     else:
         is_heavy = True

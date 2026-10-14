@@ -119,6 +119,13 @@ json ManagementCommand(const std::string& kind, const std::string& argument) {
     } else if (action == "set") {
       request["content"] = value;
     }
+    if (action == "import" && kind != "schedule") {
+      // Memories and skills share one importer; the command names which.
+      return ControlProcess({{"kind", "import"},
+                             {"action", key.empty() ? "list" : "run"},
+                             {"only", kind == "skills" ? "skill" : "memory"},
+                             {"key", key}});
+    }
     if (action == "rename" || action == "copy") request["target"] = value;
     if (action == "set" || action == "forget" || action == "rename" ||
         action == "copy" || action == "pause" || action == "resume") {

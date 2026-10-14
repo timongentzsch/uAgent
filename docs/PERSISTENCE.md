@@ -24,6 +24,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | MCP server logs | `mcp/*` |
 | provider model catalogues, one per endpoint and wire protocol, mode 0600, fresh for 24 hours, refreshed by every successful query; no credential is written or hashed into it | `models/<hash>.json` |
 | memories | `memory/{global,projects/<repository>}/*.md` |
+| a skill being imported from Claude Code or Codex, until it is moved into `skills/` | `staging/<name>.<random>/` |
 | memory audit and extraction claims | `memory/events.jsonl`, `memory/.processed/*` |
 | scheduled tasks | `scheduled/state.json` |
 | worktrees of scheduled runs and panel threads | `worktrees/<id>` |
@@ -162,6 +163,7 @@ kept.
 | `mcp/` | 7 / 100 |
 | `models/` | 7 (a catalogue older than a day is fetched again and overwritten) |
 | exited detached terminals | 7, removed with their logs |
+| `staging/` | 1, whole folders (only a killed import leaves any) |
 
 To keep conversations longer, raise the days, for example
 `/config user UAGENT_HISTORY_DAYS=180`. The 200-file count is fixed and

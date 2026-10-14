@@ -23,6 +23,7 @@ import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { useLibrary, ScopeField } from "./management.tsx";
 import { ProjectField } from "../../shared/project-field.tsx";
+import ImportDialog from "./import.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
@@ -86,7 +87,9 @@ export default function Library({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [editing, setEditing] = useState(false);
-  const [dialog, setDialog] = useState<"delete" | "rename" | null>(null);
+  const [dialog, setDialog] = useState<"delete" | "rename" | "import" | null>(
+    null,
+  );
   const [rename, setRename] = useState("");
   const generation = useRef(0);
   const storage = `uagent-library-${kind}-${cwd}`;
@@ -202,6 +205,50 @@ export default function Library({
       setBusy(false);
     }
   }
+  // Paths the importer can take; an item is offered only if it is one.
+  const [importPaths, setImportPaths] = useState<string[]>([]);
+  useEffect(() => {
+    setImportPaths([]);
+    if (!cwd || !online) return;
+    let current = true;
+    manage("import", {
+      cwd,
+      action: "list",
+      only: kind === "skills" ? "skill" : "memory",
+    })
+      .then((result) => {
+        if (current)
+          setImportPaths(
+            (result.items || [])
+              .filter((entry) => !entry.blocked && !entry.collides)
+              .map((entry) => entry.path),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [kind, cwd, version, online]);
+  const importable = !!item && importPaths.includes(item.path);
+  async function importItem() {
+    if (!item) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await manage("import", {
+        cwd,
+        action: "run",
+        only: kind === "skills" ? "skill" : "memory",
+        key: kind === "skills" ? item.key : item.name,
+      });
+      setItem(null);
+      refresh();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
   const current = data?.items?.find((entry) => entry.key === item?.key);
   const off = (current?.status || item?.status) === "disabled";
   const changed = !!(
@@ -277,6 +324,12 @@ export default function Library({
           ))}
         </div>
         <ProjectField value={cwd} projects={folders} change={chooseProject} />
+        <Button
+          disabled={!online || !cwd || busy}
+          onClick={() => setDialog("import")}
+        >
+          Import
+        </Button>
         <Button
           variant="primary"
           disabled={!online || !cwd || busy}
@@ -400,6 +453,14 @@ export default function Library({
                           onClick={() => mutate(off ? "enable" : "disable")}
                         >
                           {off ? "Enable globally" : "Disable globally"}
+                        </MenuItem>
+                      )}
+                      {importable && (
+                        <MenuItem
+                          disabled={!online || busy}
+                          onClick={importItem}
+                        >
+                          Import into µAgent
                         </MenuItem>
                       )}
                       {item.writable && kind === "memory" && (
@@ -571,6 +632,9 @@ export default function Library({
           {kind === "memory" ? "memory" : "skill manifest"}?
           {kind === "skills" && " Supporting files are kept."}
         </ConfirmModal>
+      )}
+      {dialog === "import" && (
+        <ImportDialog cwd={cwd} kind={kind} close={() => setDialog(null)} />
       )}
       {dialog === "rename" && item && (
         <Modal title="Rename memory" close={() => setDialog(null)}>

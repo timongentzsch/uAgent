@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -119,15 +120,19 @@ std::optional<ProcStat> ParseProcStat(std::string_view record) {
   // included, so the fields are those after the last ')'.
   const size_t command_end = record.rfind(')');
   if (command_end == std::string_view::npos) return std::nullopt;
-  const std::string rest(record.substr(command_end + 1));
-  char state = 0;
-  int parent = 0;
-  int group = 0;
-  if (std::sscanf(rest.c_str(), " %c %d %d", &state, &parent, &group) != 3 ||
-      group <= 0) {
+  std::istringstream fields{std::string(record.substr(command_end + 1))};
+  std::string state, parent, group_text;
+  pid_t group = 0;
+  if (!(fields >> state >> parent >> group_text) || state.size() != 1) {
     return std::nullopt;
   }
-  return ProcStat{state, group};
+  const char* first = group_text.data();
+  const char* last = first + group_text.size();
+  const auto parsed = std::from_chars(first, last, group);
+  if (parsed.ec != std::errc() || parsed.ptr != last || group <= 0) {
+    return std::nullopt;
+  }
+  return ProcStat{state[0], group};
 }
 
 bool ProcMountShowsEveryProcess(std::string_view mountinfo) {
@@ -194,10 +199,10 @@ bool ProcessGroupHasLiveMember(pid_t group) {
     return input ? text.str() : std::string();
   };
   // A /proc that hides processes hides group members too.
-  static const bool shows_every_process = [&] {
+  static const bool kShowsEveryProcess = [&] {
     return ProcMountShowsEveryProcess(read_all("/proc/self/mountinfo"));
   }();
-  if (!shows_every_process) return true;
+  if (!kShowsEveryProcess) return true;
   // /proc may belong to another PID namespace, whose numbers mean nothing
   // here: trust it only when it agrees about this process's own group.
   const std::optional<ProcStat> self =

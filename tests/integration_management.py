@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import re
 import signal
 import subprocess
 import threading
@@ -114,6 +115,55 @@ def test_library_revisions_scopes_and_external_copy(root, home, *, binary):
         "symlink followed",
     )
     assert_true(not (root / "SKILL.md").exists(), "wrote outside managed skill directory")
+
+
+def test_import_from_claude_code_and_codex(root, home, *, binary):
+    env = base_env(home, "http://127.0.0.1:1")
+
+    def call(**fields):
+        return control(binary, root, env, "import", **fields)
+
+    skill = home / ".claude/skills/synced/id/demo"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\ndescription: Demo\n---\nRun it with `Bash`.\n")
+    (skill / "logo.bin").write_bytes(bytes(range(256)))
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(root.resolve()))
+    memories = home / ".claude/projects" / slug / "memory"
+    memories.mkdir(parents=True)
+    (memories / "MEMORY.md").write_text("- [Tabs](tabs.md)\n")
+    (memories / "tabs.md").write_text("---\nname: tabs\n---\nPrefers tabs.\n\n**Why:** habit.\n")
+    (memories / "huge.md").write_text("x" * 4096)
+    other = home / ".claude/projects/-elsewhere/memory"
+    other.mkdir(parents=True)
+    (other / "foreign.md").write_text("Not this project.")
+    (home / ".codex/memories").mkdir(parents=True)
+    (home / ".codex/memories/memory_summary.md").write_text("Summary of the user.")
+
+    items = {item["name"]: item for item in call(action="list")["items"]}
+    assert_true(set(items) == {"demo", "tabs", "huge", "foreign", "memory_summary"}, items)
+    assert_true(items["demo"]["source"] == "claude" and "blocked" not in items["demo"], items)
+    assert_true("project" in items["foreign"]["blocked"], items["foreign"])
+    assert_true("limit" in items["huge"]["blocked"], items["huge"])
+    assert_true(items["memory_summary"]["needs_model"], items["memory_summary"])
+
+    imported = call(action="run", key=items["demo"]["key"])
+    assert_true(imported["imported"] == [{"kind": "skill", "name": "demo"}], imported)
+    copied = home / ".uagent/skills/demo"
+    assert_true((copied / "logo.bin").read_bytes() == bytes(range(256)), "binary changed")
+    manifest = (copied / "SKILL.md").read_text()
+    assert_true("`run`" in manifest and "requires-tools: run" in manifest, manifest)
+    assert_true("already exists" in call(action="run", key="demo")["error"], "overwrote a skill")
+
+    result = call(action="run", key="all", only="memory")
+    assert_true([entry["name"] for entry in result["imported"]] == ["tabs"], result)
+    assert_true(
+        {entry["name"] for entry in result["skipped"]} == {"huge", "foreign", "memory_summary"},
+        result,
+    )
+    listed = control(binary, root, env, "memory", action="list")["items"]
+    assert_true(any(item["key"] == "project/tabs" for item in listed), listed)
+    body = control(binary, root, env, "memory", action="get", key="project/tabs")["item"]["content"]
+    assert_true(body.startswith("Prefers tabs.") and "name:" not in body, body)
 
 
 def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):

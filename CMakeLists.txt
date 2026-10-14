@@ -232,6 +232,7 @@ add_library(
   src/app/commands_session.cc
   src/app/config_proposal.cc
   src/app/config_control.cc
+  src/app/import.cc
   src/app/library.cc
   src/app/permissions.cc
   src/app/tool_categories.cc

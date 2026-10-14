@@ -552,6 +552,10 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
              : json{{"item", describe({key, path.string()}, true)}};
 }
 
+std::filesystem::path ClaudeMemoryPath(const std::filesystem::path& cwd) {
+  return ClaudeMemoryDirectory(Repository(cwd));
+}
+
 std::vector<MemoryEntry> ListMemories() {
   std::string workspace_error;
   std::optional<std::filesystem::path> cwd = CurrentWorkspace(workspace_error);

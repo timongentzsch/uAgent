@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/app/import.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -281,6 +282,68 @@ void TestSkillDiscovery() {
   Tool crowded = SkillTool(catalogue_skills, {});
   CHECK(crowded.description.size() <= 8000);
   CHECK(crowded.description.find("skill-63") != std::string::npos);
+}
+
+}  // namespace uagent
+
+namespace uagent {
+
+void TestImportFromOtherAgents() {
+  namespace fs = std::filesystem;
+  // Tool references change; prose that happens to use the same words does not.
+  const std::string rewritten = RewriteToolReferences(
+      "---\ndescription: Demo\nallowed-tools: Bash(ls:*), Read, "
+      "Grep, Glob\n---\nRead the file, then run `Bash` or the Edit tool.\n"
+      "Use `Task(agent)` for the Write-up; Grep is not a tool here.\n");
+  CHECK(rewritten ==
+        "---\ndescription: Demo\nallowed-tools: run, read_path, grep\n"
+        "requires-tools: edit_file, grep, read_path, run, subagent\n---\n"
+        "Read the file, then run `run` or the edit_file tool.\n"
+        "Use `subagent(agent)` for the Write-up; Grep is not a tool here.\n");
+  CHECK(RewriteToolReferences("Read the file with Bash.\n") ==
+        "Read the file with Bash.\n");
+
+  TestWorkspace test("import");
+  auto write = [](const fs::path& path, const std::string& text) {
+    fs::create_directories(path.parent_path());
+    std::ofstream(path, std::ios::binary) << text;
+  };
+  const fs::path skills = test.home / ".claude/skills";
+  const std::string manifest = "---\ndescription: Demo\n---\nUse `Bash`.\n";
+  write(skills / "synced/id/demo/SKILL.md", manifest);
+  write(skills / "synced/id/demo/data.bin", std::string("\0\1\2", 3));
+  write(skills / "synced/id/walled/SKILL.md", manifest);
+  write(skills / "synced/id/walled/LICENSE.txt",
+        "Users may not: Reproduce or copy these materials.");
+  write(skills / ".system/hidden/SKILL.md", manifest);
+  write(test.root / "outside.txt", "secret");
+  write(skills / "linked/SKILL.md", manifest);
+  fs::create_symlink(test.root / "outside.txt", skills / "linked/outside.txt");
+  write(skills / "a/b/c/d/e/deep/SKILL.md", manifest);
+
+  json listed = ImportControl({{"action", "list"}}, test.workspace);
+  CHECK(listed["items"].size() == 3);
+  for (const json& item : listed["items"]) {
+    const bool blocked = item["name"] != "demo";
+    CHECK(item["kind"] == "skill" && item["source"] == "claude");
+    CHECK(item.contains("blocked") == blocked);
+    CHECK(!item["collides"].get<bool>());
+  }
+
+  json done =
+      ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
+  CHECK(done["imported"].size() == 1 && done["skipped"].size() == 2);
+  const fs::path copy = test.home / ".uagent/skills/demo";
+  std::string text;
+  std::getline(std::ifstream(copy / "SKILL.md"), text, '\0');
+  CHECK(text.find("requires-tools: run") != std::string::npos);
+  std::ifstream data(copy / "data.bin", std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(data)), {});
+  CHECK(bytes == std::string("\0\1\2", 3));
+  CHECK(!fs::exists(test.home / ".uagent/skills/walled"));
+  CHECK(!fs::exists(test.home / ".uagent/skills/linked"));
+  CHECK(ImportControl({{"action", "run"}, {"key", "demo"}}, test.workspace)
+            .contains("error"));
 }
 
 }  // namespace uagent

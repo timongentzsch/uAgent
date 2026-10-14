@@ -36,37 +36,42 @@ export default function ModelPicker({
     value: catalog,
     error: loadError,
     retry,
-  } = useResource(async () => {
-    const response = save
-      ? await command("models", null, { cwd: session.cwd })
-      : await command("model", session, { operation: "catalog" });
-    if (response.pending)
-      throw new Error("Catalog is still loading. Try again shortly.");
-    const chosen = response.result.models
-      .filter(
-        (item) =>
-          selection === item.value || selection?.startsWith(`${item.value}:`),
-      )
-      .sort((a, b) => b.value.length - a.value.length)[0];
-    // A saved selection the catalogue does not list is kept, not replaced.
-    setModel(
-      chosen?.value ||
-        (save && selection) ||
-        response.result.models.find((item) => item.active)?.value ||
-        response.result.models[0]?.value ||
-        "",
-    );
-    if (chosen && selection) {
-      const suffixes = selection.slice(chosen.value.length + 1).split(":");
-      setEffort(
-        suffixes.find((part) => chosen.efforts?.includes(part)) || "default",
+  } = useResource(
+    async (live) => {
+      const response = save
+        ? await command("models", null, { cwd: session.cwd })
+        : await command("model", session, { operation: "catalog" });
+      if (response.pending)
+        throw new Error("Catalog is still loading. Try again shortly.");
+      // A session opened meanwhile has its own choice.
+      if (!live()) return response.result;
+      const chosen = response.result.models
+        .filter(
+          (item) =>
+            selection === item.value || selection?.startsWith(`${item.value}:`),
+        )
+        .sort((a, b) => b.value.length - a.value.length)[0];
+      // A saved selection the catalogue does not list is kept, not replaced.
+      setModel(
+        chosen?.value ||
+          (save && selection) ||
+          response.result.models.find((item) => item.active)?.value ||
+          response.result.models[0]?.value ||
+          "",
       );
-      setVariant(
-        suffixes.find((part) => chosen.variants?.includes(part)) || "default",
-      );
-    }
-    return response.result;
-  }, [session.id, session.cwd]);
+      if (chosen && selection) {
+        const suffixes = selection.slice(chosen.value.length + 1).split(":");
+        setEffort(
+          suffixes.find((part) => chosen.efforts?.includes(part)) || "default",
+        );
+        setVariant(
+          suffixes.find((part) => chosen.variants?.includes(part)) || "default",
+        );
+      }
+      return response.result;
+    },
+    [session.id, session.cwd],
+  );
   useEffect(() => {
     if (catalog)
       form.current?.querySelector("select")?.focus({ preventScroll: true });

@@ -4,9 +4,11 @@ import { useEffect, useState, type Inputs } from "preact/hooks";
 // clears as a load starts, and a load a newer one replaced lands nowhere.
 // The last value (first `initial()`) stays until the next arrives; `load`
 // returns nothing to skip a round (offline, say). `setValue` and
-// `setError` let the owner apply its own writes' answers.
+// `setError` let the owner apply its own writes' answers. `load` gets a
+// `live()` that turns false once a newer load replaced it, for a load that
+// writes state of its own before it returns.
 export function useResource<T>(
-  load: () => Promise<T> | undefined,
+  load: (live: () => boolean) => Promise<T> | undefined,
   deps: Inputs,
   initial?: () => T | undefined,
 ) {
@@ -16,7 +18,7 @@ export function useResource<T>(
   useEffect(() => {
     let active = true;
     setError(null);
-    load()?.then(
+    load(() => active)?.then(
       (next) => active && setValue(() => next),
       (failure) => active && setError(failure),
     );

@@ -62,6 +62,23 @@ void Terminate(pid_t& pid) {
   pid = -1;
 }
 constexpr auto kLeaseQuiet = std::chrono::minutes(3);
+// The first X display no server holds, as ":N": other browser services on this
+// machine run their own, and a second server on a held number fails to start.
+std::string FreeDisplay() {
+  for (int number = 99;; ++number) {
+    const std::string name = std::to_string(number);
+    if (access(("/tmp/.X" + name + "-lock").c_str(), F_OK) != 0 &&
+        access(("/tmp/.X11-unix/X" + name).c_str(), F_OK) != 0) {
+      return ":" + name;
+    }
+  }
+}
+// Where the sessions keep their leases. The service runs with its own HOME,
+// so the host that started it names the directory.
+std::string SessionRuntimeDir() {
+  const char* named = getenv("UAGENT_INTERNAL_RUNTIME_DIR");
+  return named && *named ? named : RuntimeDir();
+}
 }  // namespace
 
 std::string CdError(const json& value) {
@@ -104,8 +121,9 @@ void Runtime::Shutdown() { Stop(); }
 void Runtime::StopIfIdle(std::chrono::minutes limit) {
   // A handover whose conversation no longer runs has nobody to hand back to.
   if (!interaction_.empty() &&
-      FileLease::OwnerGone(session::SocketPathForId(agent_session_) +
-                           ".lock")) {
+      FileLease::OwnerGone(
+          session::SocketPathForId(agent_session_, SessionRuntimeDir()) +
+          ".lock")) {
     ClearHandover();
   }
   if (chrome_pid_ <= 0 || mode_ == "human" || !interaction_.empty() ||
@@ -271,7 +289,10 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     error = "cannot generate X authorization";
     return false;
   }
-  pid_t xauth = Launch({"xauth", "-f", authority, "add", ":99", ".", cookie});
+  const std::string display = FreeDisplay();
+  // Entries of displays that earlier runs used are of no use.
+  unlink(authority.c_str());
+  pid_t xauth = Launch({"xauth", "-f", authority, "add", display, ".", cookie});
   int xauth_status = 0;
   if (xauth < 0 || waitpid(xauth, &xauth_status, 0) < 0 ||
       !WIFEXITED(xauth_status) || WEXITSTATUS(xauth_status) != 0) {
@@ -279,11 +300,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     return false;
   }
   chmod(authority.c_str(), 0600);
-  setenv("DISPLAY", ":99", 1);
+  setenv("DISPLAY", display.c_str(), 1);
   setenv("XAUTHORITY", authority.c_str(), 1);
   unlink(RfbPath().c_str());
   vnc_pid_ = Launch({"Xtigervnc",
-                     ":99",
+                     display,
                      "-geometry",
                      "1280x800",
                      "-depth",

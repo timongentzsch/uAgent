@@ -124,6 +124,16 @@ void TestBrowserHandoverRecovery() {
                           true));
     orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
     CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+    // The service runs with its own HOME, so the host names the session's
+    // runtime directory for it; without that the lease would look missing.
+    {
+      const std::string sessions = RuntimeDir();
+      ScopedEnv named("UAGENT_INTERNAL_RUNTIME_DIR", sessions);
+      ScopedEnv service_home("HOME", directory.string());
+      CHECK(RuntimeDir() != sessions);
+      orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
+    }
+    CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
     // A runtime that exits removes its lease.
     std::filesystem::remove(session::SocketPathForId(kSession) + ".lock");
   }
@@ -230,8 +240,18 @@ void TestBrowserProfileSignIn() {
   browser::Runtime runtime;
   CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kDevice}})
             .contains("error"));
+  // Another browser service on the machine holds display :99.
+  const bool took_display = !fs::exists("/tmp/.X99-lock");
+  if (took_display) {
+    std::ofstream("/tmp/.X99-lock");
+  }
   CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
             .value("running", false));
+  if (took_display) {
+    fs::remove("/tmp/.X99-lock");
+  }
+  const char* shown = getenv("DISPLAY");
+  CHECK(shown && std::string(shown) != ":99");
   CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kOther}})
             .contains("error"));
   const auto setup =

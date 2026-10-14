@@ -48,9 +48,10 @@ enum WorkerExit : int {
   // It holds the session and cannot open its socket; waiting changes nothing.
   kWorkerCannotListen = 67,
 };
-// A session's socket, by its id (the hash of its file's path).
-inline std::string SocketPathForId(const std::string& id) {
-  return RuntimeDir() + "/" + id + ".sock";
+// A session's socket, by its id (the hash of its file's path), in `dir`.
+inline std::string SocketPathForId(const std::string& id,
+                                   const std::string& dir = RuntimeDir()) {
+  return dir + "/" + id + ".sock";
 }
 // Whether an activity row is work its session still waits on. A detached
 // process (a server left running) outlives its session by design, so it

@@ -278,10 +278,8 @@ std::optional<BgJob> ProcessSupervisor::TakeForegroundLocked(pid_t pid) {
 
 bool ProcessSupervisor::WaitForForeground(
     size_t count, std::chrono::steady_clock::time_point deadline) const {
-  std::unique_lock<std::mutex> lock(mutex_);
-  // The predicate runs with `lock` held, which the analysis cannot see through
-  // condition_variable. Same for the two waits below.
-  return event_.wait_until(lock, deadline, [&]() UAGENT_NO_TSA {
+  UniqueLock lock(mutex_);
+  return event_.wait_until(lock, deadline, [&]() UAGENT_REQUIRES(mutex_) {
     return foreground_.size() >= count;
   });
 }
@@ -585,14 +583,16 @@ void ProcessSupervisor::Wake() {
 }
 
 void ProcessSupervisor::WaitForChange(uint64_t generation) const {
-  std::unique_lock<std::mutex> lock(mutex_);
-  event_.wait(lock, [&]() UAGENT_NO_TSA { return generation_ != generation; });
+  UniqueLock lock(mutex_);
+  event_.wait(lock, [&]() UAGENT_REQUIRES(mutex_) {
+    return generation_ != generation;
+  });
 }
 
 bool ProcessSupervisor::WaitForChange(
     uint64_t generation, std::chrono::steady_clock::time_point deadline) const {
-  std::unique_lock<std::mutex> lock(mutex_);
-  return event_.wait_until(lock, deadline, [&]() UAGENT_NO_TSA {
+  UniqueLock lock(mutex_);
+  return event_.wait_until(lock, deadline, [&]() UAGENT_REQUIRES(mutex_) {
     return generation_ != generation;
   });
 }

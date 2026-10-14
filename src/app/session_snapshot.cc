@@ -17,6 +17,7 @@
 #include "include/core/fs.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -76,6 +77,12 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
 }
 
 std::vector<json> SessionHost::RefreshInvalidations(
+    const std::vector<std::string>& projects) {
+  std::lock_guard lock(mutex_);
+  return RefreshInvalidationsLocked(projects);
+}
+
+std::vector<json> SessionHost::RefreshInvalidationsLocked(
     const std::vector<std::string>& projects) {
   std::vector<json> events;
   std::map<std::string, FileStamp> prompts;

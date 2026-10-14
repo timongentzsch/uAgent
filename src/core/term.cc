@@ -12,6 +12,7 @@
 
 #include "include/core/env.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -76,12 +77,12 @@ namespace {
 
 struct TerminalActivityState {
   std::mutex mutex;
-  uint64_t next = 0;
+  uint64_t next UAGENT_GUARDED_BY(mutex) = 0;
   struct Entry {
     uint64_t id = 0;
     std::string label;
   };
-  std::vector<Entry> active;
+  std::vector<Entry> active UAGENT_GUARDED_BY(mutex);
 };
 
 TerminalActivityState& TerminalActivities() {

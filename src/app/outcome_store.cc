@@ -11,6 +11,7 @@
 
 #include "include/app/session_host.h"
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent::session {
 namespace {
@@ -56,8 +57,8 @@ json OutcomeStore::SendCommand(const std::shared_ptr<HostSession>& session,
                                         {"error", "worker is disconnected"}};
   }
   dispatched = true;
-  std::unique_lock lock(mutex_);
-  changed_.wait_for(lock, kOutcomeWait, [&] {
+  UniqueLock lock(mutex_);
+  changed_.wait_for(lock, kOutcomeWait, [&]() UAGENT_REQUIRES(mutex_) {
     return !JsonValue(outcomes_.at(worker_request), "pending", false) ||
            session->exited;
   });

@@ -14,6 +14,7 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/web/protocol.h"
 #include "src/web/master_internal.h"
@@ -50,7 +51,7 @@ void Master::Command(const Request& request, Response& response) {
     Error(response, "invalid command or protocol; refresh the app", 409);
     return;
   }
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   std::string device = DeviceId(request);
   if (device.empty()) {
     Error(response, "device revoked", 401);
@@ -71,7 +72,7 @@ void Master::Command(const Request& request, Response& response) {
   if (request_order_.size() >= kWebRequestReceipts) {
     auto completed =
         std::find_if(request_order_.begin(), request_order_.end(),
-                     [&](const std::string& id) {
+                     [&](const std::string& id) UAGENT_REQUIRES(mutex_) {
                        const auto& receipt = requests_.at(id);
                        return !receipt.handling &&
                               !JsonValue(receipt.outcome, "pending", false);

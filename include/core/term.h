@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -125,11 +126,12 @@ class TerminalSpinner {
   void Start(bool enabled = true) {
     if (active_ || !enabled || !g_tty) return;
     active_ = true;
+    std::lock_guard<std::mutex> starting(mutex_);
     activity_id_ = BeginTerminalActivity(label_);
     if (PersistentComposer()) return;
     done_ = false;
     thread_ = std::thread([this] {
-      std::unique_lock<std::mutex> lock(mutex_);
+      UniqueLock lock(mutex_);
       while (!done_) {
         double elapsed = std::chrono::duration<double>(
                              std::chrono::steady_clock::now() - started_)
@@ -145,7 +147,7 @@ class TerminalSpinner {
         // Without motion only a new label or the stop redraws.
         if (g_motion) {
           wake_.wait_for(lock, std::chrono::milliseconds(100),
-                         [this] { return done_; });
+                         [this]() UAGENT_REQUIRES(mutex_) { return done_; });
         } else {
           wake_.wait(lock);
         }
@@ -185,13 +187,13 @@ class TerminalSpinner {
  private:
   std::mutex mutex_;
   std::condition_variable wake_;
-  bool done_ = false;
+  bool done_ UAGENT_GUARDED_BY(mutex_) = false;
   bool active_ = false;
-  size_t frame_ = 0;
+  size_t frame_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_ =
       std::chrono::steady_clock::now();
-  std::string label_ = kWaitingActivity;
+  std::string label_ UAGENT_GUARDED_BY(mutex_) = kWaitingActivity;
   std::thread thread_;
 };
 

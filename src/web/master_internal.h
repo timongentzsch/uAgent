@@ -28,6 +28,7 @@
 #include "include/browser/browser.h"
 #include "include/core/file_watch.h"
 #include "include/core/settings_store.h"
+#include "include/core/thread_annotations.h"
 #include "include/web/protocol.h"
 #include "include/web/push.h"
 
@@ -64,11 +65,11 @@ class Master {
   const std::string* ExpectedOrigin(const Request& request) const;
   static std::string ConfiguredVerbosity();
   void PublishSettings();
-  std::string Pair();
-  json PublicDevices() const;
+  std::string Pair() UAGENT_REQUIRES(mutex_);
+  json PublicDevices() const UAGENT_REQUIRES(mutex_);
   void LoadDevices();
-  bool SaveDevices() const;
-  std::string DeviceId(const Request& request) const;
+  bool SaveDevices() const UAGENT_REQUIRES(mutex_);
+  std::string DeviceId(const Request& request) const UAGENT_REQUIRES(mutex_);
   void Authenticate(const Request& request, Response& response);
   void Snapshot(const Request&, Response&);
   void Command(const Request&, Response&);
@@ -78,17 +79,20 @@ class Master {
 
   WebOptions options_;
   std::string executable_, directory_, local_, local_authority_, origin_,
-      authority_, epoch_, secret_, pair_;
+      authority_, epoch_, secret_;
+  std::string pair_ UAGENT_GUARDED_BY(mutex_);
   session::SessionHost host_;
-  Clock::time_point pair_deadline_{}, auth_window_{};
-  int auth_attempts_ = 0;
+  Clock::time_point pair_deadline_ UAGENT_GUARDED_BY(mutex_){};
+  Clock::time_point auth_window_ UAGENT_GUARDED_BY(mutex_){};
+  int auth_attempts_ UAGENT_GUARDED_BY(mutex_) = 0;
   httplib::Server server_;
   std::mutex mutex_;
   std::mutex settings_mutex_;
-  FileStamp settings_ = SnapshotFile(SettingsPath());
+  FileStamp settings_ UAGENT_GUARDED_BY(settings_mutex_) =
+      SnapshotFile(SettingsPath());
   Pipe host_wake_;
-  std::vector<Device> devices_;
-  size_t sse_count_ = 0;
+  std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
+  size_t sse_count_ UAGENT_GUARDED_BY(mutex_) = 0;
   struct Receipt {
     std::string fingerprint;
     json outcome;
@@ -96,11 +100,12 @@ class Master {
     std::string worker_request;
   };
   // A receipt still pending asks the host whether its worker has answered.
-  void RefreshReceipt(Receipt& receipt, const std::string& request_id);
+  void RefreshReceipt(Receipt& receipt, const std::string& request_id)
+      UAGENT_REQUIRES(mutex_);
   json BrowserControl(const json& command, const std::string& device,
                       const std::string& request_id, std::string& error);
-  std::map<std::string, Receipt> requests_;
-  std::deque<std::string> request_order_;
+  std::map<std::string, Receipt> requests_ UAGENT_GUARDED_BY(mutex_);
+  std::deque<std::string> request_order_ UAGENT_GUARDED_BY(mutex_);
   std::atomic<bool> stopping_{false};
   // Set by a restart from the settings: MasterMain re-execs after shutdown.
   std::atomic<bool> reexec_{false};

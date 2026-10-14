@@ -121,7 +121,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
 }
 
 void SessionHost::Received(HostSession* session, json frame) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   if (!IsCurrentLocked(session) ||
       JsonValue(frame, "session_id", "") != session->id ||
       JsonValue(frame, "generation", "") != session->generation) {
@@ -177,8 +177,7 @@ void SessionHost::Received(HostSession* session, json frame) {
 }
 
 bool SessionHost::RecycleStaleWorkerLocked(
-    const std::shared_ptr<HostSession>& session,
-    std::unique_lock<std::mutex>& lock) {
+    const std::shared_ptr<HostSession>& session, UniqueLock& lock) {
   // A worker from another build of the executable is recycled, and so is one
   // asked to restart; one whose executable cannot be stated is left alone.
   const std::string current = FileIdentity(executable_);
@@ -202,16 +201,15 @@ bool SessionHost::RecycleStaleWorkerLocked(
   }
   session->pid = -1;
   if (session->reader.joinable()) {
-    lock.unlock();
+    mutex_.unlock();
     session->reader.join();
-    lock.lock();
+    mutex_.lock();
   }
   return true;
 }
 
 bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
-                                 std::string& error,
-                                 std::unique_lock<std::mutex>& lock,
+                                 std::string& error, UniqueLock& lock,
                                  bool create) {
   if (session->closing) {
     error = "session is closing";
@@ -234,9 +232,9 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     }
     session->connecting = true;
     if (session->reader.joinable()) {
-      lock.unlock();
+      mutex_.unlock();
       session->reader.join();
-      lock.lock();
+      mutex_.lock();
       if (stopping_ || !IsCurrentLocked(session.get())) {
         session->connecting = false;
         changed_.notify_all();
@@ -244,9 +242,9 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         return false;
       }
     }
-    lock.unlock();
+    mutex_.unlock();
     auto connected = OpenRuntime(*session, create_now, error);
-    lock.lock();
+    mutex_.lock();
     session->connecting = false;
     changed_.notify_all();
     if (stopping_ || !IsCurrentLocked(session.get())) {

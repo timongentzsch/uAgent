@@ -22,6 +22,13 @@ namespace uagent::session {
 namespace {
 // What one request to a folder's panel has seen of it so far.
 struct PanelRequest {
+  PanelRequest(const Options& given, const Connection& socket,
+               std::string session_path, std::string folder)
+      : options(given),
+        connection(socket),
+        path(std::move(session_path)),
+        cwd(std::move(folder)) {}
+
   const Options& options;
   const Connection& connection;
   const std::string path;
@@ -211,8 +218,7 @@ int PanelPromptMain(const Options& options) {
     fprintf(stderr, "%s\n", error.c_str());
     return 1;
   }
-  PanelRequest panel{
-      .options = options, .connection = connection, .path = path, .cwd = cwd};
+  PanelRequest panel(options, connection, path, cwd);
   AwaitPanel(panel);
   // A runtime that closed with work still owed has not answered.
   if (panel.rejected || !panel.done) {

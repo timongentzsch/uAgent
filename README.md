@@ -76,30 +76,41 @@ See [Contributing](CONTRIBUTING.md) and [Testing](docs/TESTING.md).
 | Install on disk | 12.7 MB, 33 files | 247.9 MB, 1 file | 338.1 MB, 42 files |
 | Release download (macOS arm64) | 6.1 MB | not measured | not measured |
 | Non-system shared libraries | 0 | 0 | 0 |
-| `--version`, wall (median / p90) | 6 / 7 ms | 10 / 11 ms | 13 / 13 ms |
-| `--version`, CPU (median / p90) | 4 / 5 ms | 8 / 9 ms | 10 / 11 ms |
-| Idle session, resident memory | 18.3 MB (2 processes) | 214.3 MB (1) | 176.5 MB (1) |
-| Idle session, CPU over 10 s | 0 ms | 70 ms | 10 ms |
-| Time to first screen | 516 ms | 605 ms | 3474 ms |
-| One headless turn, CPU | 48 ms | 3186 ms | 5751 ms |
-| One headless turn, peak resident memory | 12.6 MB | 752.5 MB | 1435.3 MB |
-| One headless turn, wall time (model and network bound) | 2283 ms | 4694 ms | 5963 ms |
+| `--version`, wall (median / p90) | 7 / 13 ms | 12 / 22 ms | 13 / 18 ms |
+| `--version`, CPU (median / p90) | 6 / 9 ms | 9 / 15 ms | 11 / 14 ms |
+| Idle session, resident memory | 27.5 MB (2 processes) | 188.9 MB (1) | 204.3 MB (1)\* |
+| Idle session, CPU over 10 s | 0 ms | 40 ms | 10 ms\* |
+| Time to first screen | 449 ms | 343 ms | 2596 ms |
+| One headless turn, CPU | 64 ms | 768 ms | 629 ms |
+| One headless turn, peak resident memory | 12.5 MB | 256.7 MB | 199.0 MB |
+| One headless turn, wall time (model and network bound) | 1138 ms | 2848 ms | 4963 ms |
 
 Medians of 30 `--version` runs (3 warm-ups) and of 5 idle and 5 headless runs.
-Resident memory sums the whole process tree, including helpers; the idle
-session is measured for 10 s in a 120×40 pseudo-terminal after the screen
-settles, at each tool's folder-trust prompt where it asks. The headless turn
-asks for one word from each tool's own default login or provider (µAgent:
-`claude-haiku-5-5` through a local proxy), so its wall time depends on the
-model and is not comparable. Runs alternate between the tools to share any
-background load. Idle memory varied between runs, from 67 to 195 MB for Codex
-CLI and 14.7 to 27.4 MB for µAgent. Install size counts the executable plus
-what ships with it: `bin/` and `share/uagent/` for µAgent (from `cmake
---install`), the single versioned file for Claude Code, the cask directory for
-Codex CLI. Measured on an Apple M1 Pro with 16 GB, macOS 27.0.1, on 2026-10-14
-with µAgent 1.3.1, Claude Code 2.1.299 and Codex CLI 0.162.1. The download size
-is the v1.3.1 release archive. Reproduce with
+No MCP servers, plugins or extensions are loaded: Claude Code runs with
+`--strict-mcp-config`, an empty MCP config and only project settings, Codex
+CLI's headless turn with `exec --ignore-user-config`, and µAgent has none
+configured. Each tool uses its own default login and model (µAgent:
+`claude-haiku-5-5` through a local proxy), so headless wall time depends on the
+model and is not comparable. The idle session is measured for 10 s in a 120×40
+pseudo-terminal after the screen settles, at each tool's folder-trust prompt
+where it asks; resident memory is summed over the tool's own processes,
+including helpers it starts. µAgent's two are the client and its session
+runtime. \*Codex CLI's interactive UI cannot skip the user config, so its idle
+row counts only Codex's own executables and leaves out the MCP servers it
+started from this machine's configuration. Runs alternate between the tools to
+share any background load, and idle memory varied between runs (Codex CLI 91 to
+205 MB, Claude Code 189 to 190 MB, µAgent 27.2 to 27.5 MB). Install size counts
+the executable plus what ships with it: `bin/` and `share/uagent/` for µAgent
+(from `cmake --install`), the single versioned file for Claude Code, the cask
+directory for Codex CLI. Measured on an Apple M1 Pro with 16 GB, macOS 27.0.1,
+on 2026-10-14 with µAgent 1.3.1, Claude Code 2.1.299 and Codex CLI 0.162.1. The
+download size is the v1.3.1 release archive. Reproduce with
 `python3 benchmarks/compare_agents.py --help`.
+
+The browser interface is served by the same binary: the idle web host uses
+9.5 MB of resident memory, and 37.8 MB with two open conversations (the host
+at 11.6 MB plus a session runtime of about 13 MB each). The page itself runs in
+your browser. Measured with `benchmarks/web.py` against a mock provider.
 
 ## Install
 

@@ -6,7 +6,8 @@ interactive session in a pseudo-terminal, and one tiny headless turn. Runs are
 interleaved round-robin across tools so background load affects all of them.
 Processes are attributed by PID only: the started process, its descendants, and new detached
 (parent PID 1) processes started from the tool's executable path. The headless turn calls the
-tool's real model provider with a one-word prompt.
+tool's real model provider with a one-word prompt. Claude Code and Codex CLI run without MCP
+servers, plugins, hooks or helpers from the machine's configuration (see BARE_FLAGS).
 """
 
 import argparse
@@ -34,6 +35,39 @@ SETTLE_LIMIT = 20
 HEADLESS_TIMEOUT = 180
 FIRST_SCREEN_QUIET = 0.5
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/", "/lib/", "/lib64/", "/usr/lib64/")
+# Flags that keep each tool's own processes only: no MCP servers, plugins, hooks or helpers
+# from the machine's configuration. They apply to the idle and the headless measurement.
+# Codex has no such flag for its interactive UI, so these apply there; its headless turn uses
+# `exec --ignore-user-config` (auth is kept) because `-c mcp_servers={}` does not drop them.
+BARE_FLAGS = {
+    "uagent": [],
+    "claude": [
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--setting-sources",
+        "project,local",
+        "--disable-slash-commands",
+    ],
+    "codex": [
+        "-c",
+        "mcp_servers={}",
+        *[
+            flag
+            for feature in (
+                "plugins",
+                "apps",
+                "computer_use",
+                "browser_use",
+                "browser_use_external",
+                "in_app_browser",
+                "hooks",
+                "memories",
+            )
+            for flag in ("--disable", feature)
+        ],
+    ],
+}
 # Keys that ask each tool's interactive UI to quit.
 QUIT_KEYS = {"uagent": b"/quit\r", "claude": b"/exit\r", "codex": b"/exit\r"}
 
@@ -65,7 +99,12 @@ def process_table():
 
 
 class Attribution:
-    """The PIDs one launch is responsible for, found by comparing process tables."""
+    """The PIDs one launch is responsible for, found by comparing process tables.
+
+    Every started process is tracked so it can be stopped, but only those running the tool's
+    own executables (command line starting with a marker) are measured: an MCP server or plugin
+    helper the machine's configuration makes the tool spawn is not the tool.
+    """
 
     def __init__(self, root_pid, markers):
         self.root = root_pid
@@ -89,7 +128,11 @@ class Attribution:
                     continue
                 self.pids.add(pid)
                 changed = True
-        live = {pid: table[pid] for pid in self.pids if pid in table}
+        live = {
+            pid: table[pid]
+            for pid in self.pids
+            if pid in table and table[pid]["command"].startswith(self.markers)
+        }
         self.last.update({pid: row["cpu"] for pid, row in live.items()})
         return live
 
@@ -159,6 +202,11 @@ def shared_libraries(binary):
     return [path for path in paths if path.startswith("/") and not path.startswith(SYSTEM_PREFIXES)]
 
 
+def own_markers(tool):
+    root = install_root(tool["path"])[0]
+    return [str(tool["path"]), str(tool["path"].resolve()), str(root)]
+
+
 def measure_size(tool):
     real = tool["path"].resolve()
     root, what = install_root(tool["path"])
@@ -222,7 +270,7 @@ def measure_idle(tool, project):
     env = dict(os.environ, TERM="xterm-256color", COLUMNS="120", LINES="40")
     started = time.monotonic()
     process = spawn(
-        [str(tool["path"])],
+        [str(tool["path"]), *BARE_FLAGS[tool["name"]]],
         project,
         stdin=slave,
         stdout=slave,
@@ -230,8 +278,7 @@ def measure_idle(tool, project):
         env=env,
     )
     os.close(slave)
-    markers = [str(tool["path"]), str(tool["path"].resolve())]
-    attribution = Attribution(process.pid, markers)
+    attribution = Attribution(process.pid, own_markers(tool))
     state = {}
     result = {}
     try:
@@ -241,7 +288,9 @@ def measure_idle(tool, project):
             attribution.sample()
             quiet = now - state.get("last_output", started)
             if process.poll() is not None:
-                raise RuntimeError("the UI exited before it settled")
+                raise RuntimeError(
+                    f"the UI exited before it settled: {state.get('tail', b'')[-200:]!r}"
+                )
             if (state and quiet >= QUIET_SECONDS) or now - started >= SETTLE_LIMIT:
                 break
         first = state.get("first_screen") or state.get("burst_end")
@@ -287,16 +336,24 @@ def measure_headless(tool, project):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    attribution = Attribution(process.pid, [str(tool["path"]), str(tool["path"].resolve())])
+    attribution = Attribution(process.pid, own_markers(tool))
     started = time.perf_counter()
     peak = 0
+    tree = []
     status = usage = None
     output = b""
     os.set_blocking(process.stdout.fileno(), False)
     try:
         while True:
             live = attribution.sample()
-            peak = max(peak, sum(row["rss_kib"] for row in live.values()))
+            total = sum(row["rss_kib"] for row in live.values())
+            if total > peak:
+                peak = total
+                tree = [
+                    ("child " if pid in attribution.descendants else "detached ")
+                    + row["command"][:100]
+                    for pid, row in live.items()
+                ]
             with contextlib.suppress(BlockingIOError):
                 output += process.stdout.read() or b""
             done, status, usage = os.wait4(process.pid, os.WNOHANG)
@@ -319,6 +376,7 @@ def measure_headless(tool, project):
         "cpu_ms": reaped,
         "detached_cpu_ms_seen": detached * 1000,
         "peak_rss_kib": peak,
+        "tree_at_peak": tree,
         "ok": os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0 and b"ok" in output.lower(),
         "left_running": left,
     }
@@ -362,14 +420,24 @@ def build_tools(args):
         )
     if args.claude:
         tools.append(
-            {"name": "claude", "path": args.claude, "headless": [str(args.claude), "-p", PROMPT]}
+            {
+                "name": "claude",
+                "path": args.claude,
+                "headless": [str(args.claude), *BARE_FLAGS["claude"], "-p", PROMPT],
+            }
         )
     if args.codex:
         tools.append(
             {
                 "name": "codex",
                 "path": args.codex,
-                "headless": [str(args.codex), "exec", "--ephemeral", PROMPT],
+                "headless": [
+                    str(args.codex),
+                    "exec",
+                    "--ignore-user-config",
+                    "--ephemeral",
+                    PROMPT,
+                ],
             }
         )
     if not tools:

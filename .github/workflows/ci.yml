@@ -29,6 +29,7 @@ jobs:
       native: ${{ steps.select.outputs.native }}
       web: ${{ steps.select.outputs.web }}
       tidy: ${{ steps.select.outputs.tidy }}
+      heavy: ${{ steps.select.outputs.heavy }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -70,17 +71,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The ARM64 leg is left to master unless the change is heavy
+        # (.github/changes.py).
+        target: ${{ fromJSON(needs.changes.outputs.heavy == 'true' && '["linux-x86_64", "linux-arm64", "macos-arm64"]' || '["linux-x86_64", "macos-arm64"]') }}
         include:
-          - runner: ubuntu-24.04
-            target: linux-x86_64
+          - target: linux-x86_64
+            runner: ubuntu-24.04
             arch: x86_64
             build_type: Release
-          - runner: ubuntu-24.04-arm
-            target: linux-arm64
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
             arch: aarch64
             build_type: Release
-          - runner: macos-15
-            target: macos-arm64
+          - target: macos-arm64
+            runner: macos-15
             arch: arm64
             build_type: Release
     runs-on: ${{ matrix.runner }}
@@ -172,7 +176,7 @@ jobs:
   variants:
     name: variant (${{ matrix.name }})
     needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -244,7 +248,7 @@ jobs:
 
   thread-sanitizer:
     needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Instrumented, and now driving real subprocesses, so the terminal cases

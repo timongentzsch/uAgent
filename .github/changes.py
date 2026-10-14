@@ -11,6 +11,19 @@ def classify(paths):
     return {"native": native, "web": native or any(path.startswith("web/") for path in paths)}
 
 
+def heavy(paths):
+    """Whether a pull request also runs the legs that master always runs:
+    ThreadSanitizer, Linux ARM64 and the CLI-only and no-browser variants.
+    They matter for the build, the workflows and the sources only those
+    variants compile differently."""
+    return any(
+        path.startswith((".github/", "cmake/", "third_party/", "src/browser/"))
+        or path in ("CMakeLists.txt", "CMakePresets.json")
+        or path in ("src/web/no_browser.cc", "src/web/no_push.cc")
+        for path in paths
+    )
+
+
 def tidy(paths):
     """What clang-tidy reads on a pull request: the changed translation
     units, or "all" when a header, the build or the rules changed, since any
@@ -34,9 +47,9 @@ if __name__ == "__main__":
     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
         changed = subprocess.check_output(["git", "diff", "--name-only", "-z", base, "HEAD"])
         paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
-        result = {**classify(paths), "tidy": tidy(paths)}
+        result = {**classify(paths), "tidy": tidy(paths), "heavy": heavy(paths)}
     else:
-        result = {"native": True, "web": True, "tidy": "all"}
+        result = {"native": True, "web": True, "tidy": "all", "heavy": True}
     output = "".join(
         f"{name}={value if isinstance(value, str) else str(value).lower()}\n"
         for name, value in result.items()

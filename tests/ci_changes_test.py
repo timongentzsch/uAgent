@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 changes = runpy.run_path(str(Path(__file__).resolve().parents[1] / ".github/changes.py"))
-classify, tidy = changes["classify"], changes["tidy"]
+classify, heavy, tidy = changes["classify"], changes["heavy"], changes["tidy"]
 
 
 class ChangeSelectionTest(unittest.TestCase):
@@ -39,6 +39,17 @@ class ChangeSelectionTest(unittest.TestCase):
         for path in ("include/app/chat.h", ".clang-tidy", "CMakeLists.txt", ".github/changes.py"):
             with self.subTest(path=path):
                 self.assertEqual(tidy(["src/app/chat.cc", path]), "all")
+
+    def test_slow_legs_run_on_a_pull_request_only_where_they_matter(self):
+        self.assertFalse(heavy(["src/app/chat.cc", "tests/unit/stream_test.cc", "web/a.ts"]))
+        for path in (
+            "CMakeLists.txt",
+            ".github/workflows/ci.yml",
+            "src/browser/runtime.cc",
+            "src/web/no_push.cc",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(heavy(["src/app/chat.cc", path]))
 
 
 if __name__ == "__main__":

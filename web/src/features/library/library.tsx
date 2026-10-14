@@ -204,9 +204,31 @@ export default function Library({
       setBusy(false);
     }
   }
-  // What Claude Code or Codex keep; the importer decides if it can be taken.
-  const importable =
-    kind === "skills" ? item?.source === "External" : item?.source === "claude";
+  // Paths the importer can take; an item is offered only if it is one.
+  const [importPaths, setImportPaths] = useState<string[]>([]);
+  useEffect(() => {
+    setImportPaths([]);
+    if (!cwd || !online) return;
+    let current = true;
+    manage("import", {
+      cwd,
+      action: "list",
+      only: kind === "skills" ? "skill" : "memory",
+    })
+      .then((result) => {
+        if (current)
+          setImportPaths(
+            (result.items || [])
+              .filter((entry) => !entry.blocked && !entry.collides)
+              .map((entry) => entry.path),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [kind, cwd, version, online]);
+  const importable = !!item && importPaths.includes(item.path);
   async function importItem() {
     if (!item) return;
     setBusy(true);

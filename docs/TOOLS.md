@@ -157,9 +157,12 @@ Only public Internet addresses are accepted, on redirects too; loopback,
 private and link-local addresses are refused and proxy variables are
 ignored.
 
-`web_search` calls OpenRouter's hosted search on its own route, whatever the
-conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route and
-`UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
+`web_search` calls OpenRouter's hosted search on a route of its own: the
+conversation's when it is on OpenRouter, else the first configured OpenRouter
+endpoint, which needs `UAGENT_WEB_SEARCH_MODEL` to name the model (a route
+that has hosted search of its own uses that instead). A call without that
+model says so; with no such endpoint at all the tool is not offered.
+`UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
 `browser` drives the web host's shared Chrome; [BROWSER.md](BROWSER.md)
 explains setup, saved logins and taking over. `open` with `path` shows a

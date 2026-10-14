@@ -46,9 +46,17 @@ A model is named `[provider/]model[:variant][:effort]`, for example
 - `/models QUERY` searches the models your key offers and selects one.
 - `/model NAME` chooses for this conversation; `/model NAME --default` also
   saves it for new ones. `/effort LEVEL` sets the reasoning effort.
-- With only `OPENROUTER_API_KEY` set, a default model is used. Web search
-  needs an OpenRouter route or a provider with hosted search, and the `auto`
-  approval reviewer an OpenRouter key.
+- With no model set, the first start opens the model picker and saves your
+  choice for new conversations, as `/model NAME --default` does. `-p` and `--json` never choose for you: they exit
+  with an error that lists up to ten of the endpoint's models.
+- Background jobs run on your conversation's model unless you name one: the
+  title (`title.model`, or `off`), memory extraction and subagents. Reading
+  images does too when that model can; otherwise it falls to the first model
+  of the same endpoint that accepts images, or says to set `image.model`.
+- Web search uses the conversation's route when it has hosted search, else the
+  first configured endpoint that offers OpenRouter's search, with the model
+  `webSearch.model` names; with no such endpoint it is off. The `auto` approval
+  reviewer needs an OpenRouter key.
 
 To keep a key between shells, save it once instead of exporting it:
 

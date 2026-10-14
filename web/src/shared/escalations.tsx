@@ -1,7 +1,8 @@
 import { useEffect } from "preact/hooks";
 import { useResource } from "./use-resource.ts";
-import type { Act, Pending, Report, Session } from "./types.ts";
+import type { Act, Pending, Session } from "./types.ts";
 import { api, command, routes } from "../state/api.ts";
+import { useHostContext } from "../state/host-context.ts";
 import { Button, Deferred, LoadError, Spinner } from "./ui.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
@@ -18,17 +19,13 @@ export default function WaitingList({
   sessions,
   folder,
   paused,
-  online,
   choose,
-  report,
 }: {
   sessions: Session[];
   // One folder's threads; every conversation when absent.
   folder?: string;
   paused?: string;
-  online: boolean;
   choose: (id: string) => void;
-  report: Report;
 }) {
   const decisions = waiting(sessions, folder).filter(
     (item) => folder === undefined || item.kind !== "panel",
@@ -46,9 +43,7 @@ export default function WaitingList({
           key={item.id}
           item={item}
           where={folder === undefined}
-          online={online}
           choose={choose}
-          report={report}
         />
       ))}
     </section>
@@ -75,17 +70,14 @@ function usePendingDecision(item: Session) {
 function Escalation({
   item,
   where,
-  online,
   choose,
-  report,
 }: {
   item: Session;
   // Name the folder and the question: the list spans folders.
   where: boolean;
-  online: boolean;
   choose: (id: string) => void;
-  report: Report;
 }) {
+  const { online, report } = useHostContext();
   const { value: pending, error, retry } = usePendingDecision(item);
   if (pending === null) return null;
   const act: Act = (kind, fields) => command(kind, item, fields);

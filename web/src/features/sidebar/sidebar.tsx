@@ -1,13 +1,6 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Component, type ComponentChildren } from "preact";
-import type {
-  ConnectionPhase,
-  Session,
-  Space,
-  Report,
-  AppModal,
-  Snapshot,
-} from "../../shared/types.ts";
+import type { Session, Space, AppModal } from "../../shared/types.ts";
 import { useState } from "preact/hooks";
 import {
   Check,
@@ -23,6 +16,7 @@ import {
   Inbox,
 } from "lucide-preact";
 import { command, manage } from "../../state/api.ts";
+import { useHostContext } from "../../state/host-context.ts";
 import {
   Mark,
   Input,
@@ -67,14 +61,13 @@ export async function restartConversation(item: Session) {
 export function SpaceMenu({
   space,
   conversations,
-  online,
   open,
 }: {
   space: Space;
   conversations: number;
-  online: boolean;
   open: (modal: AppModal) => void;
 }) {
+  const { online } = useHostContext();
   return (
     <Menu label={`Menu for the space ${space.name}`}>
       <MenuItem
@@ -95,19 +88,13 @@ export function SpaceMenu({
 
 export function ConversationMenu({
   item,
-  online,
   fork,
-  loadSnapshot,
-  report,
   notify,
   open,
   detail,
 }: {
   item: Session;
-  online: boolean;
   fork: (item: Session) => void;
-  loadSnapshot: (id: string) => Promise<Snapshot>;
-  report: Report;
   // Says what an action did, where the conversation shows its notices.
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
@@ -120,6 +107,7 @@ export function ConversationMenu({
     change: (level: string) => void;
   };
 }) {
+  const { online, load: loadSnapshot, report } = useHostContext();
   return (
     <Menu label="Conversation menu">
       <MenuItem
@@ -384,16 +372,12 @@ type SidebarProps = {
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
   selected: string;
   unread: Set<string>;
-  online: boolean;
-  connection: ConnectionPhase;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
-  refresh: () => void;
   settings: () => void;
   create: () => void;
   openPanel: (cwd: string) => void;
   palette: () => void;
-  report: Report;
 };
 
 function SidebarView({
@@ -403,11 +387,8 @@ function SidebarView({
   spaceMenu,
   selected,
   unread,
-  online,
-  connection,
   choose,
   menu,
-  refresh,
   settings,
   create,
   openPanel,
@@ -415,8 +396,8 @@ function SidebarView({
   navigate,
   scheduledUnread,
   palette,
-  report,
 }: SidebarProps) {
+  const { online, connection, refresh } = useHostContext();
   const [search, setSearch] = useState("");
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
@@ -531,8 +512,6 @@ function SidebarView({
           {(close) => (
             <WaitingList
               sessions={all}
-              online={online}
-              report={report}
               choose={(id) => {
                 close();
                 choose(id);

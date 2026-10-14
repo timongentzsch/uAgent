@@ -2,9 +2,7 @@ import type {
   AppModal,
   Catalogue,
   InspectorTarget,
-  Report,
   Session,
-  Snapshot,
 } from "../shared/types.ts";
 import { folderOf } from "../shared/display.ts";
 import type { ComponentProps, JSX } from "preact";
@@ -22,11 +20,8 @@ import { StatisticsLoading } from "../shared/statistics-layout.tsx";
 import { SettingsLoading } from "../features/settings/loading.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
 import type Settings from "../features/settings/settings.tsx";
-import {
-  useSnapshots,
-  type SnapshotStore,
-  type Snapshots,
-} from "../state/snapshot-store.ts";
+import { useSnapshots, type Snapshots } from "../state/snapshot-store.ts";
+import { useHostContext } from "../state/host-context.ts";
 import {
   browserDialog,
   conversationActions,
@@ -64,9 +59,7 @@ const NONE: Snapshots = {};
 // The app's dialogs over the shell. They read snapshots only while one is
 // open, so a closed set costs a streamed frame nothing.
 export default function Modals({
-  store,
   modal,
-  setModal,
   inspector,
   setInspector,
   viewed,
@@ -75,26 +68,17 @@ export default function Modals({
   selected,
   session,
   catalogue,
-  online,
   compact,
-  load,
-  refresh,
-  forget,
-  report,
   managementVersion,
   projects,
-  showContext,
   folder,
   setFolder,
   space,
   setSpace,
   create,
-  busy,
   preferences,
 }: {
-  store: SnapshotStore;
   modal: AppModal | null;
-  setModal: (modal: AppModal | null) => void;
   inspector: InspectorTarget | null;
   setInspector: (target: InspectorTarget | null) => void;
   viewed: ViewedImage | null;
@@ -103,15 +87,9 @@ export default function Modals({
   selected: string;
   session?: Session;
   catalogue: Catalogue;
-  online: boolean;
   compact: boolean;
-  load: (id: string) => Promise<Snapshot>;
-  refresh: () => Promise<void>;
-  forget: (id: string) => void;
-  report: Report;
   managementVersion: number;
   projects: string[];
-  showContext: () => void;
   folder: string;
   setFolder: (folder: string) => void;
   space: string;
@@ -120,9 +98,19 @@ export default function Modals({
     event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
     panel?: boolean,
   ) => void;
-  busy: boolean;
   preferences: Preferences;
 }) {
+  const {
+    store,
+    online,
+    load,
+    refresh,
+    forget,
+    report,
+    setModal,
+    showContext,
+    busy,
+  } = useHostContext();
   const snapshots = useSnapshots(store, (all) =>
     modal || inspector ? all : NONE,
   );

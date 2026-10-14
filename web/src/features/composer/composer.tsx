@@ -16,20 +16,18 @@ import {
 } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
 import type {
-  ConnectionPhase,
   InspectorTarget,
   SlashCommand,
   Session,
   Snapshot,
   Draft,
-  Act,
-  Report,
   SessionStatus,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command, routes } from "../../state/api.ts";
+import { useHostContext } from "../../state/host-context.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import {
   dedupeName,
@@ -68,24 +66,14 @@ export default function Composer({
   session,
   commands,
   snapshot,
-  online,
-  connection,
   draft,
   setDraft,
-  upload,
-  uploading,
-  busy,
   submit,
-  act,
-  report,
-  following,
   jump,
   unseen = 0,
   openInspector,
-  showContext,
   showStatistics,
   openBrowser,
-  zoom,
   stopped,
   resume,
   members = NO_MEMBERS,
@@ -93,24 +81,14 @@ export default function Composer({
   session: Session;
   commands: SlashCommand[];
   snapshot?: Snapshot;
-  online: boolean;
-  connection: ConnectionPhase;
   draft: Draft;
   setDraft: (draft: Draft) => void;
-  upload: (files: File[]) => void;
-  uploading: boolean;
-  busy: boolean;
   submit: (event: Event, queue?: boolean) => void;
-  act: Act;
-  report: Report;
-  following: boolean;
   jump: () => void;
   unseen?: number;
   openInspector: (target: InspectorTarget) => void;
-  showContext: () => void;
   showStatistics: () => void;
   openBrowser: () => void;
-  zoom: number;
   // The members of a panel's chat: with any, the state above the
   // input says who is typing and nothing else.
   members?: Session[];
@@ -119,6 +97,18 @@ export default function Composer({
   // Continues that stopped turn.
   resume?: () => void;
 }) {
+  const {
+    online,
+    connection,
+    upload,
+    uploading,
+    busy,
+    act,
+    report,
+    following,
+    showContext,
+    zoom,
+  } = useHostContext();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same

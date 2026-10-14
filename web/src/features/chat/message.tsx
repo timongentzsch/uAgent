@@ -162,6 +162,7 @@ function MessageView({ block, online, session }: MessageProps) {
     "unavailable_images" in block ? block.unavailable_images : undefined;
   const took = "duration_ms" in block ? block.duration_ms : undefined;
   const load = useBlockReader(session, read);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loads when asked for (wantFull, retry); the finished load (full) must not abort itself by re-running
   useEffect(() => {
     if (
       !online ||
@@ -202,6 +203,7 @@ function MessageView({ block, online, session }: MessageProps) {
   ]);
   // A long diff arrives as its opening; the row shows the stored whole.
   const [change, setChange] = useState<string>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads the stored diff once per session and retry
   useEffect(() => {
     if (!online || !call?.change_path) return;
     const abort = new AbortController();
@@ -213,6 +215,29 @@ function MessageView({ block, online, session }: MessageProps) {
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
+  );
+  // Attribution, not authorship: the user's bar and agent rows carry no
+  // label; only other kinds name themselves.
+  // Receipts (memory saves, finished background work) read as tool rows.
+  const row = block.kind === "tool_result" || block.kind === "activity";
+  const userOwned =
+    (block.kind === "user" && !member) ||
+    (block.kind === "attachment" && block.origin !== "tool");
+  const agentRow =
+    block.kind === "assistant" ||
+    (block.kind === "attachment" && block.origin === "tool");
+  const nameId = useId();
+  const name = useRowName(
+    member
+      ? member
+      : userOwned
+        ? "You"
+        : agentRow
+          ? "Assistant"
+          : row
+            ? call?.name || "Tool"
+            : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
+    block.time,
   );
   if (block.kind === "compaction" && block.compaction)
     return (
@@ -259,16 +284,6 @@ function MessageView({ block, online, session }: MessageProps) {
         open={() => statistics?.(block)}
       />
     );
-  // Attribution, not authorship: the user's bar and agent rows carry no
-  // label; only other kinds name themselves.
-  // Receipts (memory saves, finished background work) read as tool rows.
-  const row = block.kind === "tool_result" || block.kind === "activity";
-  const userOwned =
-    (block.kind === "user" && !member) ||
-    (block.kind === "attachment" && block.origin !== "tool");
-  const agentRow =
-    block.kind === "assistant" ||
-    (block.kind === "attachment" && block.origin === "tool");
   // In a chat with members the panel is named like everyone else.
   const panel =
     !!team?.length && block.kind === "assistant" ? moderator : undefined;
@@ -276,19 +291,6 @@ function MessageView({ block, online, session }: MessageProps) {
     member || panel || (userOwned || row || agentRow ? null : block.kind);
   const running = took == null && isRunningStatus(block.status);
   const assets = routes.assets(session.id);
-  const nameId = useId();
-  const name = useRowName(
-    member
-      ? member
-      : userOwned
-        ? "You"
-        : agentRow
-          ? "Assistant"
-          : row
-            ? call?.name || "Tool"
-            : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
-    block.time,
-  );
   return (
     <article
       data-message-id={block.key || block.id}

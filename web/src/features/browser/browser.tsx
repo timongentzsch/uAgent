@@ -145,10 +145,10 @@ function Screen({
       viewer.current?.disconnect();
       viewer.current = null;
     };
-  }, [report]);
+  }, [report, viewer, setConnection]);
   useEffect(() => {
     if (viewer.current) viewer.current.viewOnly = readOnly;
-  }, [readOnly]);
+  }, [readOnly, viewer]);
   return (
     <BrowserTouch
       screen={screen}
@@ -318,6 +318,7 @@ export default function BrowserPanel({
   }, [live]);
   // Opening the browser for the agent's request takes control in the same
   // tap, once.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: takes over once (tookOver), whichever render's control runs
   useEffect(() => {
     if (!handoff || tookOver.current || !status.waiting || status.leased)
       return;

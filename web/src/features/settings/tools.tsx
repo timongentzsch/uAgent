@@ -1,5 +1,5 @@
 import "./tools.css";
-import { useMemo, useState } from "preact/hooks";
+import { useCallback, useMemo, useState } from "preact/hooks";
 import type {
   Session,
   ToolCategories,
@@ -128,10 +128,13 @@ export default function Tools({
       setCategories(response.result);
     });
 
-  const categoryLabel = (id: string) =>
-    labels[id] ||
-    categories.categories.find((item) => item.id === id)?.name ||
-    id;
+  const categoryLabel = useCallback(
+    (id: string) =>
+      labels[id] ||
+      categories.categories.find((item) => item.id === id)?.name ||
+      id,
+    [categories.categories],
+  );
   const groups = useMemo(() => {
     const found = new Map<string, ToolCatalogueItem[]>();
     const needle = query.trim().toLowerCase();
@@ -161,7 +164,7 @@ export default function Tools({
       };
       return position(a) - position(b);
     });
-  }, [catalogue, categories, query]);
+  }, [catalogue, categories, categoryLabel, query]);
 
   if (!catalogue && error) return <LoadError error={error} />;
   const shown = catalogue ?? SAMPLE;

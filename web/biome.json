@@ -1,0 +1,53 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "vcs": { "enabled": false },
+  "files": { "includes": ["src/**", "tests/**", "scripts/**"] },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "correctness": {
+        "useExhaustiveDependencies": {
+          "level": "error",
+          "options": {
+            "reportUnnecessaryDependencies": false,
+            "hooks": [
+              {
+                "name": "useOverlays",
+                "stableResult": [
+                  "setDrawer",
+                  "setBoardOpen",
+                  "setModal",
+                  "setOverlay",
+                  "setViewed",
+                  "setSide",
+                  "closeSide",
+                  "setInspector",
+                  "open",
+                  "openPalette"
+                ]
+              },
+              {
+                "name": "useResource",
+                "stableResult": ["setValue", "setError"]
+              },
+              {
+                "name": "useHost",
+                "stableResult": [
+                  "snapshots",
+                  "setDrafts",
+                  "setError",
+                  "setOutgoing",
+                  "setFollowing"
+                ]
+              }
+            ]
+          }
+        },
+        "useHookAtTopLevel": "error"
+      }
+    }
+  }
+}

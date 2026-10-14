@@ -392,6 +392,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
       - run: npm run format:check --prefix web
+      - run: npm run lint --prefix web
       - run: npm run test --prefix web
       - name: Build bundle and verify notices
         run: |

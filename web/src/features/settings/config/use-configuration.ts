@@ -25,6 +25,7 @@ export function useConfiguration(
   };
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one instance serves one folder; it reads again on a save or a retry
   useEffect(() => {
     const request = ++asked.current;
     setError(null);

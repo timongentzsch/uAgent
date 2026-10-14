@@ -1,4 +1,4 @@
-import type { Exchange, PresentedBlock } from "../../shared/types.ts";
+import type { Block, Exchange, PresentedBlock } from "../../shared/types.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 
 // Single menu for every transcript row. Thinking and output tokens share
@@ -17,12 +17,13 @@ export function MessageMenu({
   http?: (exchanges: Exchange[]) => void;
   // Your own messages: continue in a fork from here, editing this message
   // (edit) or keeping it and its reply.
-  branch?: (block: PresentedBlock, edit: boolean) => void;
+  branch?: (block: Pick<Block, "id">, edit: boolean) => void;
   // A chat participant's message: the prompt its author was last sent.
   prompt?: () => void;
 }) {
   if (!statistics && !http && !branch && !prompt) return null;
-  const exchanges = block.http || block.source?.http;
+  const exchanges =
+    ("http" in block ? block.http : undefined) || block.source?.http;
   const showHttp =
     !!http && (block.kind === "assistant" || (exchanges?.length || 0) > 0);
   return (

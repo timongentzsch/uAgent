@@ -11,11 +11,14 @@ import {
   unsent,
 } from "../../shared/message-view.ts";
 import type {
+  ActivityTarget,
+  AssistantBlock,
   PresentedBlock,
   Block,
   Asset,
   SessionRef,
   LinkPart,
+  ToolRowBlock,
 } from "../../shared/types.ts";
 import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
 import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
@@ -46,7 +49,7 @@ import {
 import { DetailContext } from "../../shared/verbosity.ts";
 
 // The inspector opens a block's own work; a link part names it.
-function linkTarget(block: Block, link: LinkPart): Block {
+function linkTarget(block: ToolRowBlock, link: LinkPart): ActivityTarget {
   return {
     ...block,
     agent_id: link.to === "agent" ? String(link.id) : undefined,
@@ -136,19 +139,28 @@ function MessageView({ block, online, session }: MessageProps) {
   const [retry, setRetry] = useState(0);
   // A chat member's message: shown under its name, without the name its
   // text opens with for the model ("Ada: …").
-  const author =
-    block.kind === "user" && block.origin === "mail" ? block.author : undefined;
+  const mail =
+    block.kind === "user" && block.origin === "mail" ? block : undefined;
+  const author = mail?.author;
   // Under the name its session has now: renamed since, what it wrote before
   // follows. One that has left keeps the name it wrote under.
   const member =
     author &&
-    (team?.find((item) => item.id === block.sender)?.member || author);
+    (team?.find((item) => item.id === mail?.sender)?.member || author);
   const whole = full ?? block.text ?? "";
   const text =
     author && whole.startsWith(`${author}: `)
       ? whole.slice(author.length + 2)
       : whole;
-  const tool = block.kind === "tool_result";
+  const call = block.kind === "tool_result" ? block : undefined;
+  const tool = !!call;
+  const reply = block.kind === "assistant" ? block : undefined;
+  const outgoing = block.kind === "user" ? block : undefined;
+  const files = "files" in block ? block.files : undefined;
+  const deliveries = "deliveries" in block ? block.deliveries : undefined;
+  const unavailableImages =
+    "unavailable_images" in block ? block.unavailable_images : undefined;
+  const took = "duration_ms" in block ? block.duration_ms : undefined;
   const load = useBlockReader(session, read);
   useEffect(() => {
     if (
@@ -163,7 +175,7 @@ function MessageView({ block, online, session }: MessageProps) {
     setExpanding(true);
     setLoadError(null);
     load(
-      block.detail_id || (tool ? `t-${block.call_id}` : block.id),
+      call?.detail_id || (call ? `t-${call.call_id}` : block.id),
       tool,
       abort.signal,
     )
@@ -183,21 +195,21 @@ function MessageView({ block, online, session }: MessageProps) {
     tool,
     wantFull,
     block.truncated,
-    block.detail_id,
-    block.call_id,
+    call?.detail_id,
+    call?.call_id,
     session.id,
     retry,
   ]);
   // A long diff arrives as its opening; the row shows the stored whole.
   const [change, setChange] = useState<string>();
   useEffect(() => {
-    if (!online || !block.change_path) return;
+    if (!online || !call?.change_path) return;
     const abort = new AbortController();
-    load(block.detail_id || `t-${block.call_id}`, false, abort.signal)
+    load(call.detail_id || `t-${call.call_id}`, false, abort.signal)
       .then((page) => setChange(page.text))
       .catch((error) => abort.signal.aborted || setLoadError(error));
     return () => abort.abort();
-  }, [online, block.change_path, session.id, retry]);
+  }, [online, call?.change_path, session.id, retry]);
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
@@ -223,7 +235,7 @@ function MessageView({ block, online, session }: MessageProps) {
   // Another session's or the harness's words: an event with its sender's
   // label, never the person's bar. The label is the text's own opening
   // bracket ("[thread event, not a user message] …").
-  if (block.kind === "user" && block.origin === "mail" && !member) {
+  if (mail && !member) {
     const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
     const label = match?.[1] ?? "Message";
     const body = match?.[2] ?? "";
@@ -239,7 +251,7 @@ function MessageView({ block, online, session }: MessageProps) {
       </EventRow>
     );
   }
-  if (block.summary)
+  if (block.kind === "turn_summary" && block.summary)
     return (
       <TurnFooter
         summary={block.summary}
@@ -250,7 +262,7 @@ function MessageView({ block, online, session }: MessageProps) {
   // Attribution, not authorship: the user's bar and agent rows carry no
   // label; only other kinds name themselves.
   // Receipts (memory saves, finished background work) read as tool rows.
-  const row = tool || block.kind === "activity";
+  const row = block.kind === "tool_result" || block.kind === "activity";
   const userOwned =
     (block.kind === "user" && !member) ||
     (block.kind === "attachment" && block.origin !== "tool");
@@ -262,7 +274,7 @@ function MessageView({ block, online, session }: MessageProps) {
     !!team?.length && block.kind === "assistant" ? moderator : undefined;
   const actor =
     member || panel || (userOwned || row || agentRow ? null : block.kind);
-  const running = block.duration_ms == null && isRunningStatus(block.status);
+  const running = took == null && isRunningStatus(block.status);
   const assets = routes.assets(session.id);
   const nameId = useId();
   const name = useRowName(
@@ -273,7 +285,7 @@ function MessageView({ block, online, session }: MessageProps) {
         : agentRow
           ? "Assistant"
           : row
-            ? block.name || "Tool"
+            ? call?.name || "Tool"
             : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
     block.time,
   );
@@ -294,12 +306,12 @@ function MessageView({ block, online, session }: MessageProps) {
             <span class="muted">
               {statusLine({
                 status: block.status,
-                duration_ms: block.duration_ms,
+                duration_ms: took,
               })}
             </span>
           )}
           <Time value={block.time} />
-          {recall && recallable(block, online) && (
+          {recall && outgoing && recallable(block, online) && (
             <IconButton
               label={
                 unsent(block)
@@ -307,7 +319,7 @@ function MessageView({ block, online, session }: MessageProps) {
                   : "Recall guidance to composer"
               }
               title="Return to composer"
-              onClick={() => recall(block)}
+              onClick={() => recall(outgoing)}
             >
               <X />
             </IconButton>
@@ -356,7 +368,7 @@ function MessageView({ block, online, session }: MessageProps) {
             />
           </div>
           <ToolInline
-            block={change ? { ...block, change } : block}
+            block={change && call ? { ...call, change } : block}
             text={text}
             loaded={full !== null}
             loadFull={() => setWantFull(true)}
@@ -366,18 +378,18 @@ function MessageView({ block, online, session }: MessageProps) {
           />
         </>
       )}
-      {block.reasoning && policy.reasoning !== "hidden" && (
+      {reply?.reasoning && policy.reasoning !== "hidden" && (
         <DisclosureRow
           className="thinking"
           label="Thinking"
           open={policy.reasoning === "open"}
-          status={block.streaming ? "streaming" : undefined}
+          status={reply.streaming ? "streaming" : undefined}
         >
           {/* Reasoning stays plain while streaming: a never-opened
               disclosure must not pay renderer work. */}
           <Markdown
-            text={block.reasoning}
-            streaming={block.streaming}
+            text={reply.reasoning}
+            streaming={reply.streaming}
             progressive={false}
           />
         </DisclosureRow>
@@ -392,7 +404,7 @@ function MessageView({ block, online, session }: MessageProps) {
               <Markdown
                 key={`t-${index}`}
                 text={part.text}
-                streaming={block.streaming}
+                streaming={reply?.streaming}
               />
             ) : null
           ) : (
@@ -400,24 +412,24 @@ function MessageView({ block, online, session }: MessageProps) {
               key={`m-${part.mention.id}-${index}`}
               id={part.mention.id}
               alt={part.mention.alt}
-              files={block.files}
+              files={files}
               assets={assets}
             />
           ),
         )}
-      {block.deliveries
+      {deliveries
         ?.filter((item) => !AS_SENT.has(item.delivery))
         .map((item) => (
           <p class="small muted" key={item.name}>
             {item.name} · {item.delivery}
           </p>
         ))}
-      {!online && !!block.files?.length && (
+      {!online && !!files?.length && (
         <p class="small muted">Attachments are available when connected.</p>
       )}
-      {online && !!block.files?.length && !row && (
+      {online && !!files?.length && !row && (
         <AttachmentList
-          files={block.files.filter((file) => typeof file === "object")}
+          files={files.filter((file) => typeof file === "object")}
           href={(id) => `${assets}${id}`}
         />
       )}
@@ -447,23 +459,23 @@ function MessageView({ block, online, session }: MessageProps) {
               : "Show full message"}
         </Button>
       )}
-      {(block.error || (resend && unsent(block))) && (
+      {(outgoing?.error || (resend && unsent(block))) && (
         <p role="alert" class={unsent(block) ? "failure unsent" : undefined}>
-          {block.error || block.status}
-          {resend && unsent(block) && (
+          {outgoing?.error || block.status}
+          {resend && outgoing && unsent(block) && (
             <Button
               size="compact"
               disabled={!online}
-              onClick={() => resend(block)}
+              onClick={() => resend(outgoing)}
             >
               Retry
             </Button>
           )}
         </p>
       )}
-      {(block.unavailable_images || 0) > 0 && (
+      {(unavailableImages || 0) > 0 && (
         <p class="muted">
-          {count(block.unavailable_images)} historical image(s) have no retained
+          {count(unavailableImages)} historical image(s) have no retained
           browser asset reference.
         </p>
       )}
@@ -473,10 +485,9 @@ function MessageView({ block, online, session }: MessageProps) {
 
 // A tool row shows its model message's time, HTTP log and ids, never its
 // text, so the reply streaming beside it does not re-render it.
-function sourceEqual(a?: Block, b?: Block) {
+function sourceEqual(a?: AssistantBlock, b?: AssistantBlock) {
   return (
     a?.id === b?.id &&
-    a?.occurrence_id === b?.occurrence_id &&
     a?.time === b?.time &&
     (a?.http?.length || 0) === (b?.http?.length || 0)
   );
@@ -547,12 +558,16 @@ class Message extends Component<MessageProps> {
 function GroupRow(props: MessageProps) {
   const steps = props.block.children || [];
   const running = steps.some(
-    (step) => step.duration_ms == null && isRunningStatus(step.status),
+    (step) =>
+      !("duration_ms" in step && step.duration_ms != null) &&
+      isRunningStatus(step.status),
   );
   const lines = formatStat(
     steps.reduce<[number, number]>(
       (sum, step) => {
-        const [added, removed] = diffCounts(step.change);
+        const [added, removed] = diffCounts(
+          "change" in step ? step.change : undefined,
+        );
         return [sum[0] + added, sum[1] + removed];
       },
       [0, 0],
@@ -582,7 +597,11 @@ type MessageRowsProps = Omit<MessageProps, "block"> & {
 export async function prepareHistoryBlocks(blocks: Block[]) {
   const texts = new Set<string>();
   for (const block of presentMessages(blocks)) {
-    if (block.streaming || block.kind === "compaction" || block.summary)
+    if (
+      (block.kind === "assistant" && block.streaming) ||
+      block.kind === "compaction" ||
+      block.kind === "turn_summary"
+    )
       continue;
     if (block.kind === "activity") {
       if (block.text) texts.add(cleanText(block.text));

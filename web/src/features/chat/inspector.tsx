@@ -12,6 +12,7 @@ import { duration } from "../../shared/duration.ts";
 import type {
   Activity,
   ActivityDetail,
+  ActivityTarget,
   Block,
   Agent,
   InspectorTarget,
@@ -449,7 +450,7 @@ function DetailBody({
   const [notice, setNotice] = useState("");
   const [model, setModel] = useState("");
   const showTurnStats = useCallback(
-    (block: Block) =>
+    (block: Pick<Block, "id">) =>
       page({ title: "Subagent statistics", stats: { blockId: block.id } }),
     [page],
   );
@@ -513,7 +514,7 @@ function DetailBody({
     [readDetail, report, page],
   );
   const openNested = useCallback(
-    async (block: Block) => {
+    async (block: ActivityTarget) => {
       const { signal } = lifetime.current;
       try {
         const full = await fetchActivityDetail(

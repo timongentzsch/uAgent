@@ -58,20 +58,23 @@ export function StatisticsContent({
         (row) =>
           row.key === blockId ||
           row.id === blockId ||
-          row.response_id === blockId ||
-          row.occurrence_id === blockId,
+          ("response_id" in row && row.response_id === blockId) ||
+          ("occurrence_id" in row && row.occurrence_id === blockId),
       )
     : undefined;
   // A turn's footer carries its summary; any other row is one message.
   const unit = !blockId
     ? undefined
-    : target && !target.summary
+    : target && target.kind !== "turn_summary"
       ? "Message"
       : "Turn";
   const block = scope === "turn" ? target : undefined;
   const missingTurn = blockId && scope === "turn" && !block;
   const stats = state?.statistics;
-  const summary = block?.summary;
+  const summary = block?.kind === "turn_summary" ? block.summary : undefined;
+  const reply = block?.kind === "assistant" ? block : undefined;
+  const call = block?.kind === "tool_result" ? block : undefined;
+  const took = block && "duration_ms" in block ? block.duration_ms : undefined;
   const side = summary?.background_statistics;
   const fork = state?.view?.fork;
   const toolScope =
@@ -99,12 +102,12 @@ export function StatisticsContent({
             "Timestamp",
             block.time ? <Time value={block.time} /> : "Not recorded",
           ],
-          ["Model", block.route || "Not recorded"],
-          ["Tool", block.name || "—"],
+          ["Model", reply?.route || "Not recorded"],
+          ["Tool", call?.name || "—"],
           ["Status", block.status || "—"],
-          ["Duration", duration(block.duration_ms)],
-          ["TTFT", duration(block.ttft_ms)],
-          ["Throughput", rate(block.tokens_per_second)],
+          ["Duration", duration(took)],
+          ["TTFT", duration(reply?.ttft_ms)],
+          ["Throughput", rate(reply?.tokens_per_second)],
         ]
       : [
           [
@@ -178,8 +181,8 @@ export function StatisticsContent({
                   ? undefined
                   : summary.usage
                 : block
-                  ? block.usage_reported
-                    ? block.usage
+                  ? reply?.usage_reported
+                    ? reply.usage
                     : undefined
                   : state?.usage
             }

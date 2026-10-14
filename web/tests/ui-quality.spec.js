@@ -100,7 +100,7 @@ for (const width of [390, 1280]) {
       snapshot.state.view.blocks = [
         {
           id: "stats-turn",
-          kind: "assistant",
+          kind: "turn_summary",
           text: "A completed answer.",
           summary: { outcome: "completed", steps: 1, usage: {} },
         },

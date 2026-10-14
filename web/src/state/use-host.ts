@@ -235,7 +235,9 @@ export function useHost(
         if (signal.aborted) throw signal.reason;
         if (loads.current.get(id) !== request) return value;
         const accepted = new Set(
-          value.state?.view?.blocks?.map((block) => block.request_id),
+          value.state?.view?.blocks?.map((block) =>
+            "request_id" in block ? block.request_id : undefined,
+          ),
         );
         setOutgoing((items) =>
           items.filter(
@@ -401,9 +403,15 @@ export function useHost(
       case "block":
         if (event.block) {
           const block = event.block;
-          setOutgoing((items) => confirmOutgoing(items, block.request_id));
-          if (block.incoming)
-            patchSession(id, (item) => raiseIncoming(item, block.incoming!));
+          setOutgoing((items) =>
+            confirmOutgoing(
+              items,
+              "request_id" in block ? block.request_id : undefined,
+            ),
+          );
+          const incoming = "incoming" in block ? block.incoming : undefined;
+          if (incoming)
+            patchSession(id, (item) => raiseIncoming(item, incoming));
         }
         if (current) live.current[id] = applySessionEvent(current, event);
         break;

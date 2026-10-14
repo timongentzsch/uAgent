@@ -1,10 +1,12 @@
 import { createContext } from "preact";
 import type {
+  ActivityTarget,
   Block,
   Exchange,
   PresentedBlock,
   Report,
   Session,
+  UserBlock,
 } from "../../shared/types.ts";
 
 // What a transcript row can ask of the surface showing it: the
@@ -18,14 +20,14 @@ export interface MessageActions {
     signal?: AbortSignal,
   ) => Promise<{ text: string }>;
   inspect?: (id: string) => void;
-  statistics?: (block: Block) => void;
-  activity?: (block: Block) => void;
-  recall?: (block: PresentedBlock) => void;
+  statistics?: (block: PresentedBlock) => void;
+  activity?: (target: ActivityTarget) => void;
+  recall?: (block: UserBlock) => void;
   // Sends a message that failed again.
-  retry?: (block: PresentedBlock) => void;
+  retry?: (block: UserBlock) => void;
   // Continues a stopped turn.
   resume?: () => void;
-  branch?: (block: PresentedBlock, edit: boolean) => void;
+  branch?: (block: Pick<Block, "id">, edit: boolean) => void;
   http?: (exchanges: Exchange[]) => void;
   // In a panel's chat: its members, and a way to see the prompt a
   // participant was last sent (a member by name, the panel by none).

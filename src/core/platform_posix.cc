@@ -14,10 +14,16 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
+#include <cstdio>
+#include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "include/core/fd.h"
 #include "include/core/platform.h"
@@ -107,6 +113,147 @@ bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout) {
     if (wait_ms <= 0) return false;
     (void)poll(nullptr, 0, wait_ms);
   }
+}
+
+std::optional<ProcStat> ParseProcStat(std::string_view record) {
+  // "pid (comm) state ppid pgrp ...": comm is arbitrary, newlines and ')'
+  // included, so the fields are those after the last ')'.
+  const size_t command_end = record.rfind(')');
+  if (command_end == std::string_view::npos) return std::nullopt;
+  std::istringstream fields{std::string(record.substr(command_end + 1))};
+  std::string state, parent, group_text;
+  pid_t group = 0;
+  if (!(fields >> state >> parent >> group_text) || state.size() != 1) {
+    return std::nullopt;
+  }
+  const char* first = group_text.data();
+  const char* last = first + group_text.size();
+  const auto parsed = std::from_chars(first, last, group);
+  if (parsed.ec != std::errc() || parsed.ptr != last || group < 0) {
+    return std::nullopt;
+  }
+  return ProcStat{state[0], group};
+}
+
+bool ProcMountShowsEveryProcess(std::string_view mountinfo) {
+  // "id parent major:minor root mount-point options ... - fstype source
+  // super-options": the last /proc mount is the one in effect.
+  bool shown = false;
+  while (!mountinfo.empty()) {
+    const size_t end = std::min(mountinfo.find('\n'), mountinfo.size());
+    const std::string line(mountinfo.substr(0, end));
+    mountinfo.remove_prefix(std::min(end + 1, mountinfo.size()));
+    std::istringstream fields(line);
+    std::string field, point, type, options;
+    for (int index = 0; index < 5 && fields >> field; ++index) {
+      if (index == 4) point = field;
+    }
+    while (fields >> field && field != "-") {
+    }
+    fields >> type >> field >> options;
+    if (point != "/proc" || type != "proc") continue;
+    shown = true;
+    for (size_t at = 0; at <= options.size();) {
+      const size_t comma = std::min(options.find(',', at), options.size());
+      const std::string option = options.substr(at, comma - at);
+      at = comma + 1;
+      if (option == "subset=pid" ||
+          (option.starts_with("hidepid=") && option != "hidepid=0" &&
+           option != "hidepid=off")) {
+        shown = false;
+      }
+    }
+  }
+  return shown;
+}
+
+// Strictly conservative: "no live member" is answered only on positive
+// evidence, and anything unexpected (a read error, nothing found, a hidden or
+// foreign /proc) answers "alive", which is what the group probe alone says.
+bool ProcessGroupHasLiveMember(pid_t group) {
+#ifdef __APPLE__
+  int query[] = {CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group};
+  std::vector<kinfo_proc> members;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    size_t size = 0;
+    if (sysctl(query, 4, nullptr, &size, nullptr, 0) != 0) return true;
+    members.resize(size / sizeof(kinfo_proc) + 8);
+    size = members.size() * sizeof(kinfo_proc);
+    if (sysctl(query, 4, members.data(), &size, nullptr, 0) == 0) {
+      members.resize(size / sizeof(kinfo_proc));
+      return members.empty() || std::any_of(members.begin(), members.end(),
+                                            [&](const kinfo_proc& m) {
+                                              return m.kp_proc.p_pid == group ||
+                                                     m.kp_proc.p_stat != SZOMB;
+                                            });
+    }
+    if (errno != ENOMEM) return true;  // the group grew between the calls
+  }
+  return true;
+#elif defined(__linux__)
+  namespace fs = std::filesystem;
+  auto read_all = [](const fs::path& path) {
+    std::ifstream input(path);
+    std::ostringstream text;
+    text << input.rdbuf();
+    return input ? text.str() : std::string();
+  };
+  // A /proc that hides processes hides group members too.
+  static const bool kShowsEveryProcess = [&] {
+    return ProcMountShowsEveryProcess(read_all("/proc/self/mountinfo"));
+  }();
+  if (!kShowsEveryProcess) return true;
+  // /proc may belong to another PID namespace, whose numbers mean nothing
+  // here: trust it only when it agrees about this process's own group.
+  const std::optional<ProcStat> self =
+      ParseProcStat(read_all("/proc/self/stat"));
+  if (!self || self->group != getpgrp()) return true;
+
+  std::error_code error;
+  fs::directory_iterator entries("/proc", error);
+  size_t found = 0;
+  for (; !error && entries != fs::directory_iterator();
+       entries.increment(error)) {
+    const std::string name = entries->path().filename().string();
+    if (name.empty() || !std::all_of(name.begin(), name.end(), [](char c) {
+          return c >= '0' && c <= '9';
+        })) {
+      continue;
+    }
+    // A process that ended between the listing and the read is gone and no
+    // member; any other failure to read it is doubt.
+    const std::optional<ProcStat> stat =
+        ParseProcStat(read_all(entries->path() / "stat"));
+    if (!stat) {
+      std::error_code probe;
+      if (fs::exists(entries->path(), probe) || probe) return true;
+      continue;
+    }
+    if (stat->group != group) continue;
+    ++found;
+    // A zombie leader is still to be reaped, and a zombie thread-group leader
+    // can have threads running (/proc lists processes, not threads).
+    if (stat->state != 'Z' || std::stoi(name) == group) return true;
+    std::error_code tasks_error;
+    size_t tasks = 0;
+    for (fs::directory_iterator task(entries->path() / "task", tasks_error);
+         !tasks_error && task != fs::directory_iterator();
+         task.increment(tasks_error)) {
+      ++tasks;
+    }
+    if (tasks != 1 || tasks_error) {
+      std::error_code probe;
+      if (tasks != 0 || fs::exists(entries->path(), probe) || probe) {
+        return true;
+      }
+      --found;  // reaped while it was being looked at
+    }
+  }
+  return error || found == 0;
+#else
+  (void)group;
+  return true;
+#endif
 }
 
 std::string ProcessIdentity(pid_t pid) {

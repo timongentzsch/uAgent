@@ -120,6 +120,13 @@ export interface TurnSummary {
   usage: Usage;
   // Files the turn's edit, write and delete tools changed (at most 50).
   files?: TurnFile[];
+  turn_root?: string;
+  generation_ms?: number;
+  generated_tokens?: number;
+  session_usage?: Usage;
+  messages?: number;
+  context_tokens?: number;
+  line_open?: boolean;
 }
 export interface TurnFile {
   path: string;
@@ -154,10 +161,23 @@ interface BlockBase {
   silent?: boolean;
   turn_root?: string;
 }
+// How an attachment reached the model.
+interface Delivery {
+  id: string;
+  name: string;
+  delivery: string;
+  path: string;
+}
+// A message a turn answers; its failed model calls keep their HTTP capture
+// on it, as the reply that never came cannot.
+interface Answered {
+  reply_to?: string;
+  reply_excerpt?: string;
+  http?: Exchange[];
+}
 // What a person typed, or mail from a participant of a panel's chat.
-export interface UserBlock extends BlockBase {
+export interface UserBlock extends BlockBase, Answered {
   kind: "user";
-  incoming?: number;
   request_id?: string;
   session_id?: string;
   files?: Asset[];
@@ -166,31 +186,38 @@ export interface UserBlock extends BlockBase {
   // by the name it had then and, as `sender`, by its session.
   author?: string;
   sender?: string;
-  deliveries?: { name: string; delivery: string }[];
+  deliveries?: Delivery[];
   unavailable_images?: number;
   // Why the host refused it, on a message held here until it confirms.
   error?: string;
 }
 // Files added to context: a person's, or those a tool's result brought.
-export interface AttachmentBlock extends BlockBase {
+export interface AttachmentBlock extends BlockBase, Answered {
   kind: "attachment";
-  incoming?: number;
+  request_id?: string;
   files?: Asset[];
   origin?: string;
   // Tool calls whose results added these files to context.
   source_call_ids?: string[];
+  deliveries?: Delivery[];
   unavailable_images?: number;
 }
-export interface AssistantBlock extends BlockBase {
+export interface AssistantBlock extends BlockBase, Answered {
   kind: "assistant";
+  row_id?: string;
   incoming?: number;
   response_id?: string;
   content_revision?: number;
   reasoning?: string;
+  reasoning_available?: boolean;
+  reasoning_revision?: number;
+  reasoning_complete?: boolean;
+  reasoning_bytes?: number;
+  retained_reasoning_bytes?: number;
   streaming?: boolean;
   request_id?: string;
   files?: Asset[];
-  deliveries?: { name: string; delivery: string }[];
+  deliveries?: Delivery[];
   unavailable_images?: number;
   duration_ms?: number;
   ttft_ms?: number;
@@ -198,10 +225,9 @@ export interface AssistantBlock extends BlockBase {
   route?: string;
   usage?: Usage;
   usage_reported?: boolean;
-  http?: Exchange[];
 }
 // One tool call and its result, joined into one row.
-export interface ToolBlock extends BlockBase {
+export interface ToolBlock extends BlockBase, Answered {
   kind: "tool_result";
   response_id?: string;
   occurrence_id?: string;
@@ -218,6 +244,13 @@ export interface ToolBlock extends BlockBase {
   parts?: ToolPart[];
   // The end of a result whose text preview holds only its start.
   tail?: string;
+  // The call's and the result's rows as the live turn showed them.
+  call_replay?: unknown;
+  replay?: unknown;
+  exchange_path?: string;
+  // A retained result whose receipt is gone.
+  receipt_missing?: boolean;
+  artifact?: boolean;
   // Files a tool's attachment block brought; the page joins them to the row.
   files?: Asset[];
 }
@@ -246,6 +279,7 @@ export interface CompactionBlock extends BlockBase {
     messages_before: number;
     messages_after: number;
     duration_ms: number;
+    retained_user_messages?: number;
   };
 }
 export type Block =

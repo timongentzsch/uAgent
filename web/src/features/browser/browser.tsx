@@ -111,7 +111,7 @@ function Screen({
       attempted = true;
       const rfb = new RFB(
         target.current,
-        `${scheme}//${location.host}/api/browser/viewer`,
+        `${scheme}//${location.host}${routes.browserViewer}`,
       );
       let denied = false;
       rfb.viewOnly = viewOnly.current;

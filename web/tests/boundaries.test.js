@@ -7,7 +7,25 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 
-const IMPORT = /(?:from|import)\s*\(?\s*"(\.[^"]*)"/g;
+// Strings are matched first so a "//" inside one is not taken for a comment.
+const SCRIPT_TEXT =
+  /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
+const withoutComments = (text, css) =>
+  css
+    ? text.replace(/\/\*[\s\S]*?\*\//g, "")
+    : text.replace(SCRIPT_TEXT, (_, kept) => kept ?? "");
+
+// Relative module paths a source file reaches: import, export-from and
+// dynamic import in either quote, and CSS @import as a string or url().
+const IMPORT = /(?:from|import)\s*\(?\s*(["'])(\.[^"']*)\1/g;
+const CSS_IMPORT =
+  /@import\s+(?:url\(\s*(["']?)([^"')\s]+)\1\s*\)|(["'])([^"']+)\3)/g;
+function importsOf(text, css = false) {
+  const code = withoutComments(text, css);
+  return css
+    ? [...code.matchAll(CSS_IMPORT)].map((match) => match[2] ?? match[4])
+    : [...code.matchAll(IMPORT)].map((match) => match[2]);
+}
 
 function* sources(dir, base = "") {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -20,10 +38,37 @@ function* sources(dir, base = "") {
 function* imports() {
   for (const path of sources("src")) {
     const text = readFileSync(join("src", path), "utf8");
-    for (const [, spec] of text.matchAll(IMPORT))
+    for (const spec of importsOf(text, path.endsWith(".css")))
       yield { path, target: normalize(join(dirname(path), spec)) };
   }
 }
+
+test("imports are found in every form, and not in comments", () => {
+  const found = (text, css) => importsOf(text, css);
+  assert.deepEqual(found(`import x from '../a/b.tsx';`), ["../a/b.tsx"]);
+  assert.deepEqual(found(`import "../a.css"; export * from "../b.ts";`), [
+    "../a.css",
+    "../b.ts",
+  ]);
+  assert.deepEqual(found("const m = () => import('../c/d.tsx');"), [
+    "../c/d.tsx",
+  ]);
+  assert.deepEqual(found(`// import x from "../a/b.tsx";`), []);
+  assert.deepEqual(found(`/* import "../a.css" */ import "./ok.ts";`), [
+    "./ok.ts",
+  ]);
+  assert.deepEqual(found(`const url = "http://x"; import "./ok.ts";`), [
+    "./ok.ts",
+  ]);
+  assert.deepEqual(
+    found(
+      `@import url("../chat/message.css"); @import url(../x.css); @import '../y.css';`,
+      true,
+    ),
+    ["../chat/message.css", "../x.css", "../y.css"],
+  );
+  assert.deepEqual(found(`/* @import "../chat/message.css"; */`, true), []);
+});
 
 const feature = (path) => path.match(/^features\/([^/]+)\//)?.[1];
 
@@ -62,10 +107,9 @@ test("host paths are written in state/api.ts only", () => {
   const stray = [];
   for (const path of sources("src")) {
     if (path === "state/api.ts" || path.endsWith(".css")) continue;
-    for (const [index, line] of readFileSync(join("src", path), "utf8")
-      .split("\n")
-      .entries())
-      if (/["'`]\/api\//.test(line)) stray.push(`${path}:${index + 1}`);
+    const code = withoutComments(readFileSync(join("src", path), "utf8"));
+    for (const [index, line] of code.split("\n").entries())
+      if (line.includes("/api/")) stray.push(`${path}:${index + 1}`);
   }
   assert.deepEqual(stray, []);
 });

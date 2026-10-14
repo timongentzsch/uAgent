@@ -1,11 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { ClipboardPaste, Copy, Keyboard } from "lucide-preact";
 import { Button, IconButton } from "../../shared/ui.tsx";
+import { coarsePointer } from "../../shared/layout.ts";
 import "./browser.css";
-
-// Touch devices type through the on-screen keyboard; a mouse and keyboard
-// reach Chrome directly.
-export const touchBrowser = matchMedia("(pointer: coarse)").matches;
 
 // The browser's fixed geometry, shared by its loading state and the live
 // panel: the remote screen takes all the space, one bar sits below. State
@@ -42,7 +39,9 @@ export function BrowserTools({
   const keepFocus = (event: Event) => event.preventDefault();
   return (
     <>
-      {touchBrowser && (
+      {/* Touch devices type through the on-screen keyboard; a mouse and
+          keyboard reach Chrome directly. */}
+      {coarsePointer() && (
         <IconButton
           label="Keyboard"
           aria-pressed={typing}

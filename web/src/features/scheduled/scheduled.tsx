@@ -1,4 +1,5 @@
 import { manage } from "../../state/api.ts";
+import { defaultScheduleSeconds } from "../../shared/limits.ts";
 import type {
   ScheduledTask,
   ScheduledState,
@@ -48,7 +49,9 @@ const storage = "uagent-scheduled-draft";
 const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {
-  const value = new Date((at || Date.now() / 1000 + 3600) * 1000);
+  const value = new Date(
+    (at || Date.now() / 1000 + defaultScheduleSeconds) * 1000,
+  );
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 16);
@@ -307,10 +310,12 @@ export default function Scheduled({
                             type === "weekly"
                               ? blank(task.cwd).schedule
                               : type === "interval"
-                                ? { type, seconds: 3600 }
+                                ? { type, seconds: defaultScheduleSeconds }
                                 : {
                                     type,
-                                    at: Math.floor(Date.now() / 1000) + 3600,
+                                    at:
+                                      Math.floor(Date.now() / 1000) +
+                                      defaultScheduleSeconds,
                                   },
                         });
                       }}
@@ -341,7 +346,9 @@ export default function Scheduled({
                         type="number"
                         min={1}
                         max={525600}
-                        value={(task.schedule.seconds || 3600) / 60}
+                        value={
+                          (task.schedule.seconds || defaultScheduleSeconds) / 60
+                        }
                         onInput={(event) =>
                           rule({
                             seconds: Number(event.currentTarget.value) * 60,

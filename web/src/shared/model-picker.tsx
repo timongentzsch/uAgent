@@ -1,5 +1,7 @@
-import type { SessionRef, State, ModelCatalogue, Model } from "./types.ts";
+import type { SessionRef, State, Model } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { useAction } from "./use-action.ts";
+import { useResource } from "./use-resource.ts";
 import { command } from "../state/api.ts";
 import { Field, Select, LoadError, Row, Switch } from "./ui.tsx";
 import { ModelLoading, ModelActions } from "./loading.tsx";
@@ -23,31 +25,26 @@ export default function ModelPicker({
   save?: (value: string) => unknown;
   close: () => void;
 }) {
-  const [catalog, setCatalog] = useState<ModelCatalogue | null>(null);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
   const [variant, setVariant] = useState(state?.variant || "default");
   // The choice is this conversation's; saving it for all is asked for.
   const [forAll, setForAll] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const generation = useRef(0);
+  const action = useAction();
   const form = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (catalog)
-      form.current?.querySelector("select")?.focus({ preventScroll: true });
-  }, [catalog]);
-  async function loadCatalog() {
-    const version = ++generation.current;
-    setError(null);
-    try {
+  const {
+    value: catalog,
+    error: loadError,
+    retry,
+  } = useResource(
+    async (live) => {
       const response = save
         ? await command("models", null, { cwd: session.cwd })
         : await command("model", session, { operation: "catalog" });
-      if (version !== generation.current) return;
       if (response.pending)
         throw new Error("Catalog is still loading. Try again shortly.");
-      setCatalog(response.result);
+      // A session opened meanwhile has its own choice.
+      if (!live()) return response.result;
       const chosen = response.result.models
         .filter(
           (item) =>
@@ -71,17 +68,15 @@ export default function ModelPicker({
           suffixes.find((part) => chosen.variants?.includes(part)) || "default",
         );
       }
-    } catch (failure) {
-      if (version === generation.current) setError(failure);
-    }
-  }
+      return response.result;
+    },
+    [session.id, session.cwd],
+  );
   useEffect(() => {
-    loadCatalog();
-    return () => {
-      ++generation.current;
-    };
-  }, [session.id, session.cwd]);
-  if (!catalog && !error) return <ModelLoading close={close} />;
+    if (catalog)
+      form.current?.querySelector("select")?.focus({ preventScroll: true });
+  }, [catalog]);
+  if (!catalog && !loadError) return <ModelLoading close={close} />;
   const providers = new Map<string, Model[]>();
   for (const item of catalog?.models || []) {
     const provider = item.label.includes("/")
@@ -107,14 +102,14 @@ export default function ModelPicker({
   return (
     <div class="model-form" ref={form}>
       {!catalog ? (
-        <LoadError error={error} retry={loadCatalog} />
+        <LoadError error={loadError} retry={retry} />
       ) : (
         <>
           <Field label="Model">
             <Select
               aria-label="Model"
               value={model}
-              disabled={busy}
+              disabled={action.busy}
               onChange={(event) => {
                 setModel(event.currentTarget.value);
                 setEffort("default");
@@ -146,7 +141,7 @@ export default function ModelPicker({
               <Select
                 aria-label="Effort"
                 value={effort}
-                disabled={busy}
+                disabled={action.busy}
                 onChange={(event) => setEffort(event.currentTarget.value)}
               >
                 {efforts.map((value) => (
@@ -159,7 +154,7 @@ export default function ModelPicker({
                 <Select
                   aria-label="Variant"
                   value={variant}
-                  disabled={busy}
+                  disabled={action.busy}
                   onChange={(event) => setVariant(event.currentTarget.value)}
                 >
                   {variants.map((value) => (
@@ -177,22 +172,21 @@ export default function ModelPicker({
               <Switch
                 label="Also use for new conversations"
                 checked={forAll}
-                disabled={busy}
+                disabled={action.busy}
                 onChange={setForAll}
               />
             </Row>
           )}
-          {error && <LoadError error={error} />}
+          {loadError && <LoadError error={loadError} retry={retry} />}
+          {action.error && <LoadError error={action.error} />}
         </>
       )}
       <ModelActions
         close={close}
-        busy={busy}
+        busy={action.busy}
         disabled={!catalog || !model || !online || running}
-        apply={async () => {
-          setBusy(true);
-          setError(null);
-          try {
+        apply={() =>
+          action.run(async () => {
             if (save) {
               const taken = await save(
                 [
@@ -218,12 +212,8 @@ export default function ModelPicker({
                 "Model change is still pending. Check the current model before retrying.",
               );
             close();
-          } catch (failure) {
-            setError(failure);
-          } finally {
-            setBusy(false);
-          }
-        }}
+          })
+        }
       />
     </div>
   );

@@ -23,7 +23,7 @@ export function MessageMenu({
 }) {
   if (!statistics && !http && !branch && !prompt) return null;
   const exchanges =
-    block.kind === "assistant" ? block.http : block.source?.http;
+    ("http" in block ? block.http : undefined) || block.source?.http;
   const showHttp =
     !!http && (block.kind === "assistant" || (exchanges?.length || 0) > 0);
   return (

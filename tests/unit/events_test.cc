@@ -439,6 +439,18 @@ void TestObservabilityEvents() {
   CHECK(std::filesystem::exists(live + ".lock"));
   CHECK(std::filesystem::exists(unnamed));
 
+  // A killed import's staging folder goes once it is a day old.
+  const std::filesystem::path staging = UagentDir("staging");
+  std::filesystem::create_directories(staging / "old/sub");
+  std::filesystem::create_directories(staging / "new");
+  std::ofstream(staging / "old/sub/file") << "x";
+  std::filesystem::last_write_time(
+      staging / "old",
+      std::filesystem::file_time_type::clock::now() - std::chrono::hours(48));
+  MaintainArtifacts();
+  CHECK(!std::filesystem::exists(staging / "old"));
+  CHECK(std::filesystem::exists(staging / "new"));
+
   // The limit counts conversations: a full history keeps every one of them.
   const std::filesystem::path sessions = UagentDir(kHistoryDir);
   std::filesystem::create_directories(sessions);

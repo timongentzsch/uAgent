@@ -48,20 +48,31 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
 
 test("a place folds to its header with a count, remembered, and + starts a conversation in it", async ({
   page,
+  host,
   session,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
   const folders = page.getByRole("group", { name: "Folders" });
-  const header = folders.getByRole("button", { expanded: true });
+  const header = folders.getByRole("button", {
+    name: /^Conversations of /,
+    expanded: true,
+  });
   await expect(folders.locator(".session")).toHaveCount(1);
+  // A folder goes by its own name, then the directory it is in.
+  const path = host.project.split("/").filter(Boolean);
+  await expect(folders.locator(".folder-own")).toHaveText(path.at(-1));
+  await expect(folders.locator(".folder-parent")).toHaveText(path.at(-2));
 
   await header.click();
   await expect(folders.locator(".session")).toHaveCount(0);
   await expect(folders.locator(".place-count")).toHaveText("(1)");
   // The open conversation is inside: the header is marked as its row was.
   await expect(
-    folders.getByRole("button", { expanded: false }),
+    folders.getByRole("button", {
+      name: /^Conversations of /,
+      expanded: false,
+    }),
   ).toHaveAttribute("aria-current", "true");
   // The fold is remembered.
   await page.reload();

@@ -34,15 +34,17 @@
 .list-group + .list-group {
   margin-top: var(--space-6);
 }
-/* A place's header: fold it, start a conversation in it, its menu. The
-   name truncates first. */
+/* A place's header: fold it, its name (which opens its panel), the avatars of
+   the panel's members, start a conversation in it, its menu. The name
+   truncates first. */
 .place-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   border-left: 2px solid transparent;
 }
-/* A folded place that holds the open conversation is marked as its row is. */
+/* The header is marked as a row is: when its panel is open, and when it is
+   folded over the open conversation. */
 .place-head:has([aria-current]) {
   background: var(--raised);
   border-left-color: var(--accent);
@@ -59,6 +61,7 @@
   align-items: center;
   width: 100%;
   gap: var(--gap);
+  padding-inline: var(--space-2);
   font-size: inherit;
   font-weight: inherit;
   text-align: left;
@@ -70,9 +73,10 @@
 .place-head .icon-button {
   color: var(--muted);
 }
-/* A folder has no menu: its + keeps the column a workspace's has. */
-.place-head > .icon-button:last-child {
-  margin-right: calc(var(--control) + var(--space-2));
+/* The fold is as wide as the rows' indent, which leaves the name room. */
+.place-head > .icon-button:first-child {
+  width: var(--indent);
+  min-width: var(--indent);
 }
 /* What a folded place holds: how many, or how many need you. */
 .place-count {
@@ -85,21 +89,33 @@
 .place-body {
   padding-left: var(--indent);
 }
-/* A panel's chevron sits at the row's end, before its menu. */
-.session-row .disclosure {
-  width: var(--indent);
-  min-width: var(--indent);
-  padding: 0;
-  color: var(--muted);
+/* Who is in the panel's chat, overlapping; the avatars take the row's
+   background so the ones beneath do not show through. */
+.place-seats {
+  display: flex;
+  align-items: center;
+  flex: none;
 }
-/* Where a place's panel will be, until it has one. */
-.sidebar .open-panel {
-  color: var(--muted);
+.place-seats .member-avatar + .member-avatar,
+.place-seats .member-avatar + .place-count {
+  margin-left: calc(-1 * var(--space-4));
 }
-/* What a panel started hangs under it. */
-.sidebar .threads {
-  margin-left: var(--space-4);
-  border-left: 1px solid var(--line);
+/* Narrow targets, on a touch screen too, so the name keeps its room. */
+.place-seats .avatar-button {
+  width: var(--space-12);
+  min-width: var(--space-12);
+}
+.place-seats .avatar {
+  background: var(--bg);
+}
+.place-seats .place-count {
+  padding-left: var(--space-4);
+}
+/* What the panel started, then the place's own conversations. */
+.place-rule {
+  margin: var(--space-2) var(--space-4);
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 /* Every folder's waiting decisions, above the list. */
 .needs-you > button {
@@ -112,8 +128,7 @@
 }
 /* One line to a row: the title and its state. The time and the menu show
    while the row is pointed at or focused, and always on a touch screen. */
-.sidebar .session,
-.sidebar .open-panel {
+.sidebar .session {
   flex: 1;
   flex-direction: row;
   align-items: center;
@@ -121,8 +136,7 @@
   padding: var(--space-3) var(--space-4);
   text-align: left;
 }
-.session > span:first-child,
-.open-panel > span:first-child {
+.session > span:first-child {
   flex: 1;
   min-width: 0;
   white-space: nowrap;

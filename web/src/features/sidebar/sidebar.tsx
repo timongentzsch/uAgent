@@ -33,11 +33,12 @@ import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { levelLabel } from "../../shared/verbosity.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { MemberAvatar } from "../../shared/member-card.tsx";
 import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, panelsOpen, useFolding } from "./folding.ts";
+import { collapsed, useFolding } from "./folding.ts";
 import "./sidebar.css";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
@@ -220,6 +221,9 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
+// How many of a panel's avatars the header shows before it counts the rest.
+const SEATS_SHOWN = 4;
+
 // What a row says of its conversation, at its right edge: it waits on you,
 // it failed, or it works (the LED breathes). An idle one says nothing.
 const STATES: Partial<
@@ -230,15 +234,23 @@ const STATES: Partial<
   working: { label: "Working" },
 };
 
-type Place = { panel?: Session; threads: Session[]; others: Session[] };
+type Place = {
+  panel?: Session;
+  // The members of the panel's chat, whom the header shows as avatars.
+  members: Session[];
+  threads: Session[];
+  others: Session[];
+};
 
 // The list's places in its order, newest first: each one's panel, what
-// the panel started (threads and the members of its chat), then its
-// conversations. A workspace is a place whether or not anything is in it yet.
+// the panel started, then its conversations. A workspace is a place whether
+// or not anything is in it yet.
 function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
   const groups = new Map<string, Place>();
+  const seated = new Map<string, Session[]>();
   const place = (path: string) => {
-    if (!groups.has(path)) groups.set(path, { threads: [], others: [] });
+    if (!groups.has(path))
+      groups.set(path, { members: [], threads: [], others: [] });
     return groups.get(path)!;
   };
   const names = new Map(spaces.map((space) => [space.path, space.name]));
@@ -252,6 +264,8 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
     if (item.kind === "panel") {
       if (!search || matches(`${names.get(path) || ""} ${path}`))
         place(path).panel = item;
+    } else if (item.member) {
+      seated.set(path, [...(seated.get(path) || []), item]);
     } else if (matches(`${item.title} ${names.get(path) || ""} ${item.cwd}`)) {
       (item.kind === "thread" ? place(path).threads : place(path).others).push(
         item,
@@ -259,6 +273,11 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
     }
   }
   for (const space of spaces) if (matches(space.name)) place(space.path);
+  // In a steady order, which the avatars keep as the members speak.
+  for (const [path, group] of groups)
+    group.members = (seated.get(path) || []).sort((a, b) =>
+      (a.member || "").localeCompare(b.member || ""),
+    );
   return groups;
 }
 
@@ -275,14 +294,8 @@ function placesByKind(sessions: Session[], spaces: Space[] = [], search = "") {
   ).filter(([, shown]) => shown.length);
 }
 
-// What a place shows. A search shows what it found, whatever is folded or
-// closed; a panel's members and threads show under it once it is opened, or
-// at once when the place has no panel row to open.
-const viewOf = (path: string, group: Place, query: string) => ({
-  folded: !query && collapsed.has(path),
-  open: !!query || panelsOpen.has(path),
-  threads: !!query || !group.panel || panelsOpen.has(path),
-});
+// A search shows what it found, whatever is folded.
+const foldedOf = (path: string, query: string) => !query && collapsed.has(path);
 
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
 export const sessionOrder = (
@@ -291,40 +304,24 @@ export const sessionOrder = (
   query: string,
 ) =>
   placesByKind(sessions, spaces, query).flatMap(([, places]) =>
-    places.flatMap(([path, group]) => {
-      const view = viewOf(path, group, query);
-      return view.folded
+    places.flatMap(([path, group]) =>
+      foldedOf(path, query)
         ? []
         : [
             ...(group.panel ? [group.panel] : []),
-            ...(view.threads ? group.threads : []),
+            ...group.threads,
             ...group.others,
-          ];
-    }),
+          ],
+    ),
   );
 
 type SessionRowProps = {
   item: Session;
   selected: boolean;
-  // The open conversation is under this row, which is folded.
-  holds?: boolean;
   unread: boolean;
   online: boolean;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
-  // A panel's row says who is in it and what it started, and opens that
-  // list: the place it belongs to, whether it is open and what to call it.
-  note?: string;
-  foldPath?: string;
-  foldOpen?: boolean;
-  foldLabel?: string;
-};
-
-// Opening or closing a panel's list keeps focus on the button that did it:
-// the list it leaves would take focus with it.
-const toggleFold = (event: MouseEvent, path: string) => {
-  (event.currentTarget as HTMLElement).focus();
-  panelsOpen.set(path, !panelsOpen.has(path));
 };
 
 // One conversation in the list, on one line: its title and its state. The
@@ -332,15 +329,10 @@ const toggleFold = (event: MouseEvent, path: string) => {
 function SessionRowView({
   item,
   selected,
-  holds,
   unread,
   online,
   choose,
   menu,
-  note,
-  foldPath,
-  foldOpen,
-  foldLabel,
 }: SessionRowProps) {
   const state = statusOf(item, online);
   const shown = STATES[state];
@@ -349,13 +341,8 @@ function SessionRowView({
       <ListRow
         class="session"
         onClick={() => choose(item.id)}
-        aria-current={selected ? "page" : holds ? "true" : undefined}
-        title={
-          <>
-            <SessionName item={item} />
-            {note && ` · ${note}`}
-          </>
-        }
+        aria-current={selected ? "page" : undefined}
+        title={<SessionName item={item} />}
         unread={unread && "Unread messages"}
       >
         {item.updated ? (
@@ -377,16 +364,6 @@ function SessionRowView({
           </span>
         )}
       </ListRow>
-      {foldPath !== undefined && (
-        <IconButton
-          class="disclosure"
-          label={foldLabel || ""}
-          aria-expanded={foldOpen}
-          onClick={(event) => toggleFold(event, foldPath)}
-        >
-          {foldOpen ? <ChevronDown /> : <ChevronRight />}
-        </IconButton>
-      )}
       {menu(item)}
     </div>
   );
@@ -475,40 +452,60 @@ function SidebarView({
   const place = ([cwd, group]: [string, Place]) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
-    const { folded, open, threads } = viewOf(cwd, group, query);
-    const members = group.threads.filter((item) => item.member).length;
-    const note = [
-      members && plural(members, "member"),
-      group.threads.length > members &&
-        plural(group.threads.length - members, "thread"),
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const folded = foldedOf(cwd, query);
+    const { panel, members } = group;
     const conversations = [...group.threads, ...group.others];
-    const holdsOpen = [group.panel, ...conversations].some(
+    const holdsOpen = [panel, ...members, ...conversations].some(
       (item) => item?.id === selected,
     );
-    const attention = [group.panel, ...conversations].filter(
+    const attention = [panel, ...members, ...conversations].filter(
       (item) => item && ["waiting", "failed"].includes(statusOf(item, online)),
     ).length;
+    // The moderator first, then who sits in its chat: the header's avatars.
+    const seats = panel && members.length ? [panel, ...members] : [];
     return (
       <section key={cwd}>
         <div class="place-head">
+          <IconButton
+            label={`Conversations of ${name}`}
+            aria-expanded={!folded}
+            aria-current={
+              folded && holdsOpen && !(panel && selected === panel.id)
+                ? "true"
+                : undefined
+            }
+            onClick={(event) => {
+              // Focus stays on the header, not in the rows it takes away.
+              event.currentTarget.focus();
+              collapsed.set(cwd, !folded);
+            }}
+          >
+            {folded ? <ChevronRight /> : <ChevronDown />}
+          </IconButton>
           <h2>
             <Button
               variant="quiet"
-              aria-expanded={!folded}
-              aria-current={folded && holdsOpen ? "true" : undefined}
-              onClick={(event) => {
-                // Focus stays on the header, not in the rows it takes away.
-                event.currentTarget.focus();
-                collapsed.set(cwd, !folded);
-              }}
+              title={`Panel of ${name}`}
+              disabled={drawing || (!panel && !online)}
+              aria-current={
+                panel && selected === panel.id
+                  ? "page"
+                  : members.some((item) => item.id === selected)
+                    ? "true"
+                    : undefined
+              }
+              onClick={() => (panel ? choose(panel.id) : openPanel(cwd))}
             >
-              {folded ? <ChevronRight /> : <ChevronDown />}
               <FolderLabel path={cwd} space={!!space}>
                 {space?.name}
               </FolderLabel>
+              {panel && unread.has(panel.id) && (
+                <span
+                  class="unread-dot"
+                  role="img"
+                  aria-label="Unread messages"
+                />
+              )}
               {folded && conversations.length > 0 && (
                 <span
                   class={`place-count${attention ? " attention" : ""}`}
@@ -523,6 +520,16 @@ function SidebarView({
               )}
             </Button>
           </h2>
+          {seats.length > 0 && (
+            <div class="place-seats" role="group" aria-label="Members">
+              {seats.slice(0, SEATS_SHOWN).map((item) => (
+                <MemberAvatar key={item.id} item={item} />
+              ))}
+              {seats.length > SEATS_SHOWN && (
+                <span class="place-count">+{seats.length - SEATS_SHOWN}</span>
+              )}
+            </div>
+          )}
           <IconButton
             label={`New conversation in ${name}`}
             disabled={!online}
@@ -541,52 +548,13 @@ function SidebarView({
         </div>
         {!folded && (
           <div class="place-body">
-            {group.panel ? (
-              <SessionRow
-                key={group.panel.id}
-                item={group.panel}
-                selected={group.panel.id === selected}
-                holds={
-                  !open && group.threads.some((item) => item.id === selected)
-                }
-                unread={unread.has(group.panel.id)}
-                online={online}
-                choose={choose}
-                menu={menu}
-                note={note}
-                foldPath={group.threads.length > 0 ? cwd : undefined}
-                foldOpen={open}
-                foldLabel={`Members and threads of ${name}`}
-              />
-            ) : (
-              !drawing &&
-              !query && (
-                <div class="session-row">
-                  <Button
-                    variant="quiet"
-                    class="open-panel"
-                    aria-label={`Open panel of ${name}`}
-                    disabled={!online}
-                    onClick={() => openPanel(cwd)}
-                  >
-                    <span>
-                      <span class="thread-mark" aria-hidden="true">
-                        ◆
-                      </span>
-                      Panel
-                    </span>
-                  </Button>
-                </div>
-              )
-            )}
-            {group.threads.length > 0 && threads && (
-              <div
-                class="threads"
-                role="group"
-                aria-label={`Members and threads of ${name}`}
-              >
+            {group.threads.length > 0 && (
+              <div role="group" aria-label={`Threads of ${name}`}>
                 {group.threads.map(row)}
               </div>
+            )}
+            {group.threads.length > 0 && group.others.length > 0 && (
+              <hr class="place-rule" />
             )}
             {group.others.map(row)}
           </div>

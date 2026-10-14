@@ -644,7 +644,11 @@ export default function Composer({
           items={state?.activities || []}
         />
         <div class="metrics">
-          <ContextSummary state={state} open={showContext} online={online} />
+          <ContextSummary
+            state={state}
+            open={() => showContext()}
+            online={online}
+          />
           <SessionSummary state={state} open={showStatistics} />
           {!!session.guidance && (
             <span class="muted" role="status">

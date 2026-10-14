@@ -49,7 +49,7 @@ inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 enum class SessionScope { kWorkspace, kAll, kChildren };
 
 struct SessionInfo {
-  std::string path, cwd, title;
+  std::string path, cwd, title, model;
   bool custom_title = false;
   int64_t turns = 0;
   uint64_t incoming = 0;

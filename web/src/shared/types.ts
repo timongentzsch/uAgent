@@ -467,8 +467,13 @@ export interface Session {
   // A folder's panel, or a thread it launched (in `folder`).
   kind?: "panel" | "thread" | "";
   folder?: string;
-  // A thread's name as a member of its panel's chat.
+  // A thread's name as a member of its panel's chat, with the persona and
+  // skills it was given; a panel's is the moderator's. `model` is the one
+  // its file names.
   member?: string;
+  persona?: string;
+  skills?: string;
+  model?: string;
   status?: SessionStatus;
   presence?: "active" | "";
   updated?: number;

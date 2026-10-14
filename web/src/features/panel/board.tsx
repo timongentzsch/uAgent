@@ -5,6 +5,7 @@ import { Button, IconButton, Time } from "../../shared/ui.tsx";
 import { statusOf } from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import SessionName from "../../shared/session-name.tsx";
+import { MemberAvatar } from "../../shared/member-card.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { usePhone } from "../../shared/layout.ts";
 import "./panel.css";
@@ -67,10 +68,11 @@ export default function Board({
           )}
           {items.map((item) => (
             <div class="session-row" key={item.id}>
+              {item.member && <MemberAvatar item={item} />}
               <ListRow
                 class="board-row"
                 onClick={() => choose(item.id)}
-                title={<SessionName item={item} />}
+                title={<SessionName item={item} avatar={false} />}
                 meta={
                   item.pending
                     ? "Needs your input"

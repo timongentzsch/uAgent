@@ -4568,7 +4568,7 @@ maintained libraries used by this software which have their own
 licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
-## lucide-preact@1.52.0
+## lucide-preact@1.55.0
 
 ISC License
 

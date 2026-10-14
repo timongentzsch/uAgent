@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/memory_store.h"
 #include "include/agent/session_store.h"
 #include "include/app/runtime.h"

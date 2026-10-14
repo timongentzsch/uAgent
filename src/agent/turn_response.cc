@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
 #include "include/api/citations.h"
@@ -19,7 +19,7 @@
 #include "include/core/json.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "src/agent/turn_internal.h"
 
 namespace uagent {

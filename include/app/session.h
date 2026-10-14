@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-#include "include/app/options.h"
+#include "include/cli/options.h"
 #include "include/transport/session.h"
 namespace uagent::session {
 // State only checkpoints carry. Between them clients keep the last

@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_CLI_H_
-#define UAGENT_INCLUDE_CLI_H_
+#ifndef UAGENT_INCLUDE_CLI_CLI_H_
+#define UAGENT_INCLUDE_CLI_CLI_H_
 // Terminal input and slash-command metadata.
 
 #include <cstdint>
@@ -138,4 +138,4 @@ std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_CLI_H_
+#endif  // UAGENT_INCLUDE_CLI_CLI_H_

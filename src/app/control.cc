@@ -18,7 +18,7 @@
 #include "include/core/project.h"
 #include "include/core/runtime_config.h"
 #include "include/core/signals.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 
 namespace uagent {
 json ManagementControl(const json& request) {

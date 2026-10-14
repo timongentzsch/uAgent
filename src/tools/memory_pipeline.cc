@@ -20,7 +20,7 @@
 #include "include/agent/memory_store.h"
 #include "include/agent/process.h"
 #include "include/agent/session_store.h"
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/core/child_env.h"
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
@@ -30,7 +30,7 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/tools/memory.h"
 #include "include/tools/shell.h"
 

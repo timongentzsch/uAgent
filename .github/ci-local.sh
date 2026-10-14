@@ -15,7 +15,7 @@ base=${1:-origin/master}
 
 echo "== clang-format, cpplint, ruff"
 uvx --from clang-format==22.1.8 clang-format \
-  --dry-run --Werror include/*.h include/*/*.h src/*.cc src/*/*.cc \
+  --dry-run --Werror include/*/*.h src/*.cc src/*/*.cc \
   tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
 uvx --from cpplint==2.0.2 cpplint --quiet \
   --recursive --exclude=third_party --exclude=tests/fixtures \

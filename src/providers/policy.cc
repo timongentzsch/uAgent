@@ -9,7 +9,7 @@
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 
 namespace uagent {
 void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {

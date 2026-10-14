@@ -5,7 +5,7 @@
 
 #include "include/agent/adaptive_system.h"
 #include "include/agent/process.h"
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/core/env.h"
 #include "include/core/runtime_config.h"
 #include "include/core/usage.h"

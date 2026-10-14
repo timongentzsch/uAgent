@@ -12,9 +12,9 @@
 #include <string>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/protocol.h"
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
 #include "include/core/events.h"

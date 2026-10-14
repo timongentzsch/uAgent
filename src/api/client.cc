@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/api/client.h"
+
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -13,7 +15,6 @@
 #include <string>
 #include <utility>
 
-#include "include/api.h"
 #include "include/api/exchange.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"

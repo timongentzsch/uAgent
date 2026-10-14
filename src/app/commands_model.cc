@@ -16,7 +16,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "src/app/commands_internal.h"
 
 namespace uagent {

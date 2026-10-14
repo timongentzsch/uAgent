@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/conversation.h"
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"

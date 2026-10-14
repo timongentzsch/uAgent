@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 
 #include <algorithm>
 #include <charconv>
@@ -27,7 +27,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 
 namespace uagent {
 Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,

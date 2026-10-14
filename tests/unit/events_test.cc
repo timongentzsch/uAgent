@@ -14,10 +14,10 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
-#include "include/app/reference.h"
+#include "include/agent/agent.h"
 #include "include/app/runtime.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
+#include "include/cli/reference.h"
 #include "include/core/activity.h"
 #include "include/core/config.h"
 #include "include/core/fs.h"

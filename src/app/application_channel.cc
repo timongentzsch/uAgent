@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "include/agent/child_agent.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -17,7 +17,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/mcp/register.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/tools/memory.h"
 #include "include/tools/subagent.h"
 #include "src/app/application_internal.h"

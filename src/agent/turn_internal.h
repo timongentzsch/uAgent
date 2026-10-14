@@ -10,7 +10,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"

@@ -4,6 +4,7 @@
 
 #include <sys/stat.h>
 
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -315,14 +316,21 @@ void TestImportFromOtherAgents() {
         "The Python class `Task` and `Read` it.\n");
   CHECK(RewriteToolReferences("Call `exec_command` or the Task tool.\n") ==
         "Call `run` or the subagent tool.\n");
-  // Front matter lists: quoted strings, arrays, and an existing requires-tools.
-  CHECK(RewriteToolReferences(
-            "---\ndescription: d\nallowed-tools: \"Bash, Read\"\n"
-            "tools: [Bash, \"Read\", Grep]\n"
-            "requires-tools: Bash, Task\n---\nBody\n") ==
-        "---\ndescription: d\nallowed-tools: \"run, read_path\"\n"
-        "tools: [run, read_path, grep]\n"
+  // Front matter lists come out as the plain comma list the loader reads,
+  // whether written quoted, as an array or as a block.
+  const std::string lists = RewriteToolReferences(
+      "---\ndescription: d\nallowed-tools: \"Bash, Read\"\n"
+      "tools: [Bash, \"Read\", Grep]\n"
+      "requires-tools:\n  - Bash\n  - Task\n---\nBody\n");
+  CHECK(lists ==
+        "---\ndescription: d\nallowed-tools: run, read_path\n"
+        "tools: run, read_path, grep\n"
         "requires-tools: run, subagent\n---\nBody\n");
+  std::istringstream loaded(RewriteToolReferences(
+      "---\ndescription: d\nrequires-tools: [Bash, Read]\n---\n"));
+  std::vector<std::string> required;
+  ParseSkillFrontMatter(loaded, nullptr, &required);
+  CHECK(required == std::vector<std::string>({"run", "read_path"}));
 
   TestWorkspace test("import");
   auto write = [](const fs::path& path, const std::string& text) {
@@ -404,6 +412,14 @@ void TestImportBoundaries() {
   write(skills / "named/TERMS.txt", "No copying: you may not copy this.");
   write(skills / "copying/SKILL.md", manifest);
   write(skills / "copying/COPYING", "Users may not redistribute this.");
+  // Terms written in the field, a file path in it, and a path that is missing.
+  write(skills / "inline/SKILL.md",
+        "---\ndescription: d\nlicense: You may not copy this skill\n---\n");
+  write(skills / "pathed/SKILL.md",
+        "---\ndescription: d\nlicense: See legal/TERMS.txt\n---\n");
+  write(skills / "pathed/legal/TERMS.txt", "Redistribution is not permitted.");
+  write(skills / "absent/SKILL.md",
+        "---\ndescription: d\nlicense: See legal/TERMS.txt\n---\n");
   // Links: to a folder, out of the folder, and a skill folder that is one.
   write(test.root / "elsewhere/data.txt", "x");
   write(skills / "folderlink/SKILL.md", manifest);
@@ -421,6 +437,9 @@ void TestImportBoundaries() {
   CHECK(BlockedReason(listed, "wrapped").find("license") != std::string::npos);
   CHECK(BlockedReason(listed, "named").find("license") != std::string::npos);
   CHECK(BlockedReason(listed, "copying").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "inline").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "pathed").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "absent").find("not found") != std::string::npos);
   CHECK(BlockedReason(listed, "folderlink").find("alias") != std::string::npos);
   CHECK(BlockedReason(listed, "escaped").find("link out of") !=
         std::string::npos);
@@ -440,17 +459,17 @@ void TestImportBoundaries() {
   CHECK(fs::exists(managed / "plain/.env.example"));
   CHECK(fs::exists(managed / "plain/.hidden/note.txt"));
   CHECK(!fs::exists(managed / "plain/.git"));
+  CHECK(fs::is_empty(test.home / ".uagent/staging"));
   for (const auto& entry : fs::directory_iterator(managed)) {
-    CHECK(entry.path().filename().string().find(".import-") ==
-          std::string::npos);
+    CHECK(!entry.path().filename().string().starts_with("."));
   }
 
   // A failed copy removes only its own staging folder.
   CHECK(ImportControl({{"action", "run"}, {"key", "pipe"}}, test.workspace)
             .contains("error"));
+  CHECK(fs::is_empty(test.home / ".uagent/staging"));
   for (const auto& entry : fs::directory_iterator(managed)) {
-    CHECK(entry.path().filename().string().find(".import-") ==
-          std::string::npos);
+    CHECK(!entry.path().filename().string().starts_with("."));
   }
 
   // The skills folder itself must not be a link.
@@ -474,6 +493,34 @@ void TestImportBoundaries() {
   CHECK(listed["items"].size() == 512);
   CHECK(listed["truncated"].get<bool>());
   CHECK(listed.dump().size() < size_t{1024} * 1024);
+}
+
+}  // namespace uagent
+
+namespace uagent {
+
+void TestImportTruncation() {
+  namespace fs = std::filesystem;
+  TestWorkspace test("import-truncation");
+  const fs::path skills = test.home / ".claude/skills";
+  for (int index = 0; index < 520; ++index) {
+    const fs::path dir = skills / ("s" + std::to_string(index));
+    fs::create_directories(dir);
+    std::ofstream(dir / "SKILL.md") << "---\ndescription: d\n---\nBody\n";
+  }
+  // A named skill is found even past the listing's cap.
+  json named =
+      ImportControl({{"action", "run"}, {"key", "s99"}}, test.workspace);
+  CHECK(named["imported"].size() == 1);
+  // "all" says it stopped short, and a repeat reaches what it left.
+  json first =
+      ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
+  CHECK(first["imported"].size() == 512);
+  CHECK(first["truncated"].get<bool>());
+  json second =
+      ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
+  CHECK(second["imported"].size() == 7);
+  CHECK(!second["truncated"].get<bool>());
 }
 
 }  // namespace uagent

@@ -145,7 +145,8 @@ namespace uagent {
   X(TestScopedBaseAndMemory)                      \
   X(TestSkillDiscovery)                           \
   X(TestImportFromOtherAgents)                    \
-  X(TestImportBoundaries)
+  X(TestImportBoundaries)                         \
+  X(TestImportTruncation)
 
 #define UAGENT_DECLARE_TEST(name) void name();
 UAGENT_TESTS(UAGENT_DECLARE_TEST)

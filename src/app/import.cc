@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iterator>
 #include <set>
 #include <sstream>
 #include <string>
@@ -40,17 +41,19 @@ constexpr size_t kImportReadBytes = size_t{512} * 1024;
 // output limit; the walk stops at either bound, however many roots it spans.
 constexpr size_t kMaxImportItems = 512;
 constexpr size_t kMaxImportBytes = size_t{512} * 1024;
+constexpr size_t kMaxImportEntries = 16384;
 
-// What one listing may still visit and return, across every root.
+// What one listing may still visit and return, across every root: each
+// directory entry looked at, in a search or inside a skill, is charged here.
 struct Budget {
-  size_t directories = kMaxCatalogueEntries;
+  size_t entries = kMaxImportEntries;
   size_t items = kMaxImportItems;
   size_t bytes = kMaxImportBytes;
   bool truncated = false;
 
-  bool Directory() {
-    if (directories > 0) {
-      --directories;
+  bool Entry() {
+    if (entries > 0) {
+      --entries;
       return true;
     }
     truncated = true;
@@ -135,20 +138,13 @@ std::string RewriteWords(const std::string& line,
 }
 
 // `Bash(ls:*), Read` -> `run, read_path`: argument patterns have no
-// counterpart, and several names can map to one tool. Quoted strings and
-// [a, b] arrays keep their wrapper.
+// counterpart, and several names can map to one tool. The result is the plain
+// comma list the loader reads, however the source wrote it (quoted, [a, b]).
 std::string RewriteToolList(std::string value, std::set<std::string>& tools) {
   value = Trim(value);
-  std::string open, close;
   if (value.size() >= 2 && value.front() == '[' && value.back() == ']') {
-    open = "[";
-    close = "]";
-  } else if (value.size() >= 2 &&
-             (value.front() == '"' || value.front() == '\'') &&
-             value.back() == value.front()) {
-    open = close = std::string(1, value.front());
+    value = value.substr(1, value.size() - 2);
   }
-  if (!open.empty()) value = value.substr(1, value.size() - 2);
   std::vector<std::string> kept;
   std::string token;
   int depth = 0;
@@ -181,7 +177,7 @@ std::string RewriteToolList(std::string value, std::set<std::string>& tools) {
   for (const std::string& entry : kept) {
     joined += (joined.empty() ? "" : ", ") + entry;
   }
-  return joined.empty() && open.empty() ? "" : open + joined + close;
+  return joined;
 }
 
 std::string FrontMatterValue(const std::string& text, std::string_view key) {
@@ -214,7 +210,9 @@ std::string Squash(const std::string& text) {
   return out;
 }
 
-// Why the folder's license forbids copying it, or why it cannot be told.
+// Why the folder's license forbids copying it, or why it cannot be told. The
+// terms may be written in the front matter's `license:` field, or in a file
+// that field names, or in the usual files.
 std::string LicenseBlock(const fs::path& root, const std::string& manifest) {
   // The wording Anthropic's skill licenses use, and the plain forms of it.
   constexpr std::string_view kPhrases[] = {"retain copies of these materials",
@@ -225,34 +223,49 @@ std::string LicenseBlock(const fs::path& root, const std::string& manifest) {
                                            "may not be copied",
                                            "copying is not permitted",
                                            "redistribution is not permitted"};
+  auto forbids = [&](const std::string& text) {
+    const std::string squashed = Squash(text);
+    return std::any_of(std::begin(kPhrases), std::end(kPhrases),
+                       [&](std::string_view phrase) {
+                         return squashed.find(phrase) != std::string::npos;
+                       });
+  };
+  const std::string field = FrontMatterValue(manifest, "license");
+  if (forbids(field)) return "its license does not allow copying";
   std::vector<std::string> names = {"LICENSE", "LICENSE.txt", "LICENSE.md",
                                     "COPYING"};
-  // `license: Proprietary. LICENSE.txt has complete terms` names its file.
-  std::istringstream words(FrontMatterValue(manifest, "license"));
+  std::vector<std::string> named;
+  // `license: Proprietary. legal/TERMS.txt has complete terms` names its file.
+  std::istringstream words(field);
   for (std::string word; words >> word;) {
     while (!word.empty() && std::strchr(".,;:)\"'", word.back()) != nullptr) {
       word.pop_back();
     }
-    if (word.find('.') != std::string::npos &&
-        word.find_first_of("/\\") == std::string::npos &&
-        !word.starts_with(".")) {
-      names.push_back(word);
+    const std::string lower = AsciiLower(word);
+    const std::string leaf = fs::path(word).filename().string();
+    if (lower.ends_with(".txt") || lower.ends_with(".md") ||
+        lower.ends_with(".rst") || leaf.starts_with("LICENSE") ||
+        leaf.starts_with("COPYING")) {
+      named.push_back(word);
     }
   }
   std::error_code ec;
   for (const std::string& name : names) {
     if (!fs::exists(fs::symlink_status(root / name, ec))) continue;
+    named.push_back(name);
+  }
+  for (const std::string& name : named) {
+    const fs::path path = root / name;
+    const bool inside = fs::path(name).is_relative() &&
+                        LibraryPath(root, path.lexically_normal());
+    if (!inside || !fs::exists(fs::symlink_status(path, ec))) {
+      return "license file not found: " + name;
+    }
     std::string text, error;
-    if (!ReadRegularFile((root / name).string(), kImportReadBytes, text,
-                         error)) {
+    if (!ReadRegularFile(path.string(), kImportReadBytes, text, error)) {
       return name + " cannot be read: " + error;
     }
-    const std::string squashed = Squash(text);
-    for (std::string_view phrase : kPhrases) {
-      if (squashed.find(phrase) != std::string::npos) {
-        return "its license does not allow copying";
-      }
-    }
+    if (forbids(text)) return "its license does not allow copying";
   }
   return "";
 }
@@ -267,16 +280,15 @@ struct SkillFolder {
 };
 
 void CollectDirectory(const fs::path& root, const fs::path& dir, int depth,
-                      SkillFolder& folder, size_t& entries) {
+                      Budget& budget, SkillFolder& folder) {
   std::error_code ec, probe;
   fs::directory_iterator it(dir, ec), end;
   for (; !ec && it != end && folder.blocked.empty(); it.increment(ec)) {
     const fs::path& path = it->path();
     if (path.filename() == ".git") continue;
     const std::string relative = path.lexically_relative(root).string();
-    if (++entries > kMaxCatalogueEntries) {
-      folder.blocked =
-          "more than " + std::to_string(kMaxCatalogueEntries) + " entries";
+    if (!budget.Entry()) {
+      folder.blocked = "too many entries to inspect";
       return;
     }
     fs::file_status status = it->symlink_status(probe);
@@ -297,7 +309,7 @@ void CollectDirectory(const fs::path& root, const fs::path& dir, int depth,
       } else if (!LibraryPath(root, path)) {
         folder.blocked = relative + " leaves the folder";
       } else {
-        CollectDirectory(root, path, depth + 1, folder, entries);
+        CollectDirectory(root, path, depth + 1, budget, folder);
       }
     } else if (!fs::is_regular_file(status)) {
       folder.blocked = relative + " is not a regular file";
@@ -319,8 +331,8 @@ void CollectDirectory(const fs::path& root, const fs::path& dir, int depth,
 // Everything a skill folder holds, within the bounds a skill is read with:
 // hidden files too, but never `.git`, and nothing that cannot be copied is
 // passed over in silence.
-SkillFolder CollectSkillFolder(const fs::path& dir,
-                               const std::string& manifest) {
+SkillFolder CollectSkillFolder(const fs::path& dir, const std::string& manifest,
+                               Budget& budget) {
   SkillFolder folder;
   std::error_code ec;
   const fs::path root = fs::canonical(dir, ec);
@@ -329,22 +341,44 @@ SkillFolder CollectSkillFolder(const fs::path& dir,
     return folder;
   }
   folder.blocked = LicenseBlock(root, manifest);
-  size_t entries = 0;
-  if (folder.blocked.empty()) CollectDirectory(root, root, 0, folder, entries);
+  if (folder.blocked.empty()) CollectDirectory(root, root, 0, budget, folder);
   return folder;
 }
 
-void FindSkills(const fs::path& dir, int depth, size_t limit, Budget& budget,
-                std::vector<fs::path>& found) {
+// A skill folder wanted by `selector` (a key or name; empty or "all" wants
+// every one) and still to be imported when `fresh` is set.
+struct Wanted {
+  std::string selector;
+  bool fresh = false;
+
+  bool Name(const std::string& name, const std::string& key) const {
+    return selector.empty() || selector == "all" || selector == name ||
+           selector == key;
+  }
+};
+
+void FindSkills(const fs::path& dir, int depth, Budget& budget,
+                const Wanted& wanted, std::vector<fs::path>& found) {
   std::error_code ec, probe;
+  auto take = [&](const fs::path& skill) {
+    const std::string name = SafeFileComponent(skill.filename().string());
+    std::error_code gone;
+    if (!wanted.Name(name, HashHex((skill / "SKILL.md").string())) ||
+        (wanted.fresh &&
+         fs::exists(fs::symlink_status(fs::path(GlobalBase()) / "skills" / name,
+                                       gone)))) {
+      return;
+    }
+    found.push_back(skill);
+  };
   if (fs::is_regular_file(dir / "SKILL.md", probe)) {
-    found.push_back(dir);
+    take(dir);
     return;
   }
-  if (depth >= kImportSkillDepth || !budget.Directory()) return;
+  if (depth >= kImportSkillDepth) return;
   std::vector<fs::path> children;
-  for (fs::directory_iterator it(dir, ec), end; it != end && !ec;
-       it.increment(ec)) {
+  fs::directory_iterator it(dir, ec), end;
+  for (; it != end && !ec && budget.Entry(); it.increment(ec)) {
     if (it->path().filename().string().starts_with(".")) continue;
     // A folder reached through a link is a candidate itself, never searched.
     const fs::file_status status = it->symlink_status(probe);
@@ -352,21 +386,21 @@ void FindSkills(const fs::path& dir, int depth, size_t limit, Budget& budget,
       children.push_back(it->path());
     } else if (fs::is_symlink(status) &&
                fs::is_regular_file(it->path() / "SKILL.md", probe)) {
-      found.push_back(it->path());
+      take(it->path());
     }
   }
   std::sort(children.begin(), children.end());
   for (const fs::path& child : children) {
-    if (found.size() >= limit) {
+    if (budget.items <= found.size()) {
       budget.truncated = true;
       return;
     }
-    FindSkills(child, depth + 1, limit, budget, found);
+    FindSkills(child, depth + 1, budget, wanted, found);
   }
 }
 
 json SkillItem(const std::string& source, const fs::path& root,
-               const fs::path& dir) {
+               const fs::path& dir, Budget& budget) {
   const fs::path manifest = dir / "SKILL.md";
   const std::string name = SafeFileComponent(dir.filename().string());
   std::string text, error, description;
@@ -395,7 +429,7 @@ json SkillItem(const std::string& source, const fs::path& root,
              !LibraryPath(fs::canonical(root, ec), fs::canonical(dir, ec))) {
     blocked = "the folder is a link out of " + root.string();
   } else {
-    blocked = CollectSkillFolder(dir, text).blocked;
+    blocked = CollectSkillFolder(dir, text, budget).blocked;
   }
   if (!blocked.empty()) item["blocked"] = blocked;
   return item;
@@ -411,13 +445,9 @@ std::string MemoryBody(const std::string& text) {
 }
 
 json MemoryItem(const std::string& source, const fs::path& path,
-                const std::string& blocked,
-                const std::vector<MemoryEntry>& existing) {
+                const std::string& blocked, bool collides, size_t stored) {
   std::error_code ec;
   const std::string name = SafeFileComponent(path.stem().string());
-  const bool collides = std::any_of(
-      existing.begin(), existing.end(),
-      [&](const MemoryEntry& e) { return e.key == "project/" + name; });
   json item = {{"key", HashHex(path.string())},
                {"kind", "memory"},
                {"source", source},
@@ -428,16 +458,13 @@ json MemoryItem(const std::string& source, const fs::path& path,
   std::string reason = blocked;
   if (source == "claude" && reason.empty()) {
     std::string text, error;
-    const auto stored = std::count_if(
-        existing.begin(), existing.end(),
-        [](const MemoryEntry& e) { return e.key.starts_with("project/"); });
     if (!ReadRegularFile(path.string(), kImportReadBytes, text, error)) {
       reason = error;
     } else if (const size_t size = MemoryBody(text).size();
                size > kMemoryBytes) {
       reason = "its " + std::to_string(size) + " bytes are over the " +
                std::to_string(kMemoryBytes) + " byte limit of a memory";
-    } else if (!collides && static_cast<size_t>(stored) >= kMaxMemories) {
+    } else if (!collides && stored >= kMaxMemories) {
       reason = "project memory is full";
     }
   }
@@ -445,8 +472,11 @@ json MemoryItem(const std::string& source, const fs::path& path,
   return item;
 }
 
-// `only` limits which sources are walked at all.
-json ListItems(const fs::path& cwd, const std::string& only, bool& truncated) {
+// What can be imported, within one traversal budget. `only` limits which
+// sources are walked at all, and `wanted` which candidates become items
+// before they count against the cap.
+json ListItems(const fs::path& cwd, const std::string& only,
+               const Wanted& wanted, bool& truncated) {
   json items = json::array();
   Budget budget;
   std::set<std::string> seen;
@@ -461,10 +491,10 @@ json ListItems(const fs::path& cwd, const std::string& only, bool& truncated) {
     roots.push_back({"codex", cwd / ".codex" / "skills"});
     for (const auto& [source, root] : roots) {
       std::vector<fs::path> skills;
-      FindSkills(root, 0, budget.items, budget, skills);
+      FindSkills(root, 0, budget, wanted, skills);
       for (const fs::path& dir : skills) {
         if (seen.insert(dir.string()).second &&
-            !budget.Add(items, SkillItem(source, root, dir))) {
+            !budget.Add(items, SkillItem(source, root, dir, budget))) {
           break;
         }
       }
@@ -474,18 +504,35 @@ json ListItems(const fs::path& cwd, const std::string& only, bool& truncated) {
     const fs::path own = ClaudeMemoryPath(cwd);
     const std::vector<MemoryEntry> existing =
         ListMemories(cwd, kMaxCatalogueEntries);
+    const auto stored = static_cast<size_t>(std::count_if(
+        existing.begin(), existing.end(),
+        [](const MemoryEntry& e) { return e.key.starts_with("project/"); }));
+    auto add = [&](const std::string& source, const fs::path& file,
+                   const std::string& blocked) {
+      const std::string name = SafeFileComponent(file.stem().string());
+      const bool collides = std::any_of(
+          existing.begin(), existing.end(),
+          [&](const MemoryEntry& e) { return e.key == "project/" + name; });
+      if (!wanted.Name(name, HashHex(file.string())) ||
+          (wanted.fresh && collides)) {
+        return true;
+      }
+      json item = MemoryItem(source, file, blocked, collides, stored);
+      if (source == "codex") item["needs_model"] = true;
+      return budget.Add(items, std::move(item));
+    };
     std::error_code ec, probe;
     std::vector<fs::path> projects;
     for (fs::directory_iterator it(fs::path(home) / ".claude" / "projects", ec),
          end;
-         it != end && !ec && budget.Directory(); it.increment(ec)) {
+         it != end && !ec && budget.Entry(); it.increment(ec)) {
       projects.push_back(it->path() / "memory");
     }
     std::sort(projects.begin(), projects.end());
     for (const fs::path& directory : projects) {
       std::vector<fs::path> files;
       for (fs::directory_iterator it(directory, ec), end;
-           it != end && !ec && budget.Directory(); it.increment(ec)) {
+           it != end && !ec && budget.Entry(); it.increment(ec)) {
         if (it->is_regular_file(probe) && it->path().extension() == ".md" &&
             it->path().filename() != "MEMORY.md") {
           files.push_back(it->path());
@@ -493,20 +540,15 @@ json ListItems(const fs::path& cwd, const std::string& only, bool& truncated) {
       }
       std::sort(files.begin(), files.end());
       for (const fs::path& file : files) {
-        const std::string blocked =
-            directory == own ? "" : "belongs to another project";
-        if (!budget.Add(items, MemoryItem("claude", file, blocked, existing))) {
+        if (!add("claude", file,
+                 directory == own ? "" : "belongs to another project")) {
           break;
         }
       }
     }
     const fs::path summary =
         fs::path(home) / ".codex" / "memories" / "memory_summary.md";
-    if (fs::is_regular_file(summary, ec)) {
-      json item = MemoryItem("codex", summary, "", existing);
-      item["needs_model"] = true;
-      budget.Add(items, std::move(item));
-    }
+    if (fs::is_regular_file(summary, ec)) add("codex", summary, "");
   }
   truncated = budget.truncated;
   return items;
@@ -529,12 +571,14 @@ std::string ImportSkill(const json& item) {
                        error)) {
     return "SKILL.md: " + error;
   }
-  const SkillFolder folder = CollectSkillFolder(dir, manifest);
+  Budget budget;
+  const SkillFolder folder = CollectSkillFolder(dir, manifest, budget);
   if (!folder.blocked.empty()) return folder.blocked;
-  // Copied beside the destination and moved into place whole, so the skill
-  // appears complete or not at all. Only the folder made here is ever removed.
+  // Copied beside the skills and moved into place whole, so the skill appears
+  // complete or not at all. The staging folder is outside every searched
+  // root, on the same filesystem, and only the one made here is ever removed.
   CreatePrivateDirectories(skills);
-  std::string pattern = (skills / ("." + name + ".import-XXXXXX")).string();
+  std::string pattern = UagentDir("staging") + "/" + name + ".XXXXXX";
   if (mkdtemp(pattern.data()) == nullptr) {
     return std::string("cannot create a staging folder: ") + strerror(errno);
   }
@@ -606,25 +650,26 @@ std::string RewriteToolReferences(const std::string& skill_md) {
     }
   }
   std::set<std::string> tools;
-  bool has_requires = false, in_list = false;
+  bool has_requires = false;
+  std::vector<bool> dropped(lines.size(), false);
   for (size_t i = 1; i < close; ++i) {
     const std::string line = Trim(lines[i]);
     std::string key;
     for (const char* name : {"allowed-tools", "tools", "requires-tools"}) {
       if (line.starts_with(std::string(name) + ":")) key = name;
     }
-    if (!key.empty()) {
-      has_requires = has_requires || key == "requires-tools";
-      const std::string list =
-          RewriteToolList(line.substr(key.size() + 1), tools);
-      lines[i] = key + ":" + (list.empty() ? "" : " " + list);
-      in_list = true;
-    } else if (in_list && line.starts_with("- ")) {
-      lines[i] = lines[i].substr(0, lines[i].find('-')) + "- " +
-                 RewriteToolList(line.substr(2), tools);
-    } else {
-      in_list = false;
+    if (key.empty()) continue;
+    has_requires = has_requires || key == "requires-tools";
+    // A block list becomes the one-line list the loader reads.
+    std::string value = line.substr(key.size() + 1);
+    const bool block = Trim(value).empty();
+    for (size_t next = i + 1;
+         block && next < close && Trim(lines[next]).starts_with("- "); ++next) {
+      value += Trim(lines[next]).substr(2) + ",";
+      dropped[next] = true;
     }
+    const std::string list = RewriteToolList(value, tools);
+    lines[i] = key + ":" + (list.empty() ? "" : " " + list);
   }
   for (std::string& line : lines) line = RewriteWords(line, tools);
   if (close > 0 && !has_requires && !tools.empty()) {
@@ -636,24 +681,32 @@ std::string RewriteToolReferences(const std::string& skill_md) {
                  "requires-tools: " + value);
   }
   std::string out;
-  for (size_t i = 0; i < lines.size(); ++i) out += (i ? "\n" : "") + lines[i];
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (dropped[i]) continue;
+    if (i > 0) out += '\n';
+    out += lines[i];
+  }
   return out;
 }
 
 json ImportControl(const json& request, const fs::path& cwd) {
   const std::string action = JsonValue(request, "action", "list");
   const std::string only = JsonValue(request, "only", "");
-  bool truncated = false;
-  const json items = ListItems(cwd, only, truncated);
-  if (action == "list") return {{"items", items}, {"truncated", truncated}};
-  if (action != "run") return {{"error", "unknown import action"}};
   const std::string key = JsonValue(request, "key", "");
+  if (action != "list" && action != "run") {
+    return {{"error", "unknown import action"}};
+  }
+  if (action == "run" && key.empty()) {
+    return {{"error", "name what to import, or say all"}};
+  }
+  // A named item is looked for directly, so the listing's cap never hides it;
+  // "all" leaves out what is already imported, so a repeat reaches the rest.
+  bool truncated = false;
+  const json items = ListItems(
+      cwd, only, {action == "list" ? "" : key, key == "all"}, truncated);
+  if (action == "list") return {{"items", items}, {"truncated", truncated}};
   json imported = json::array(), skipped = json::array();
   for (const json& item : items) {
-    if (key != "all" && JsonValue(item, "key", "") != key &&
-        JsonValue(item, "name", "") != key) {
-      continue;
-    }
     const std::string kind = JsonValue(item, "kind", "");
     std::string error = JsonValue(item, "blocked", "");
     if (error.empty() && JsonValue(item, "collides", false)) {
@@ -676,6 +729,7 @@ json ImportControl(const json& request, const fs::path& cwd) {
                           : JsonValue(skipped[0], "name", "") + ": " +
                                 JsonValue(skipped[0], "reason", "")}};
   }
-  return {{"imported", imported}, {"skipped", skipped}};
+  return {
+      {"imported", imported}, {"skipped", skipped}, {"truncated", truncated}};
 }
 }  // namespace uagent

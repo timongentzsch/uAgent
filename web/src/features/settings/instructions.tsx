@@ -147,7 +147,7 @@ function SelfDirectiveCard({
   session: Session;
   online: boolean;
 }) {
-  const [error, setError] = useState<unknown>(null);
+  const { run, error } = useAction();
   return (
     <section class="instruction-card">
       <header>
@@ -159,13 +159,14 @@ function SelfDirectiveCard({
       <Actions>
         <Button
           disabled={!online}
-          onClick={() => {
-            setError(null);
-            command("self_directive", session, {
-              action: "reset",
-              revision: self.revision,
-            }).catch(setError);
-          }}
+          onClick={() =>
+            void run(() =>
+              command("self_directive", session, {
+                action: "reset",
+                revision: self.revision,
+              }),
+            )
+          }
         >
           Clear
         </Button>

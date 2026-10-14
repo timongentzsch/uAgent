@@ -15,8 +15,11 @@ Read it. Where a line is worth confirming, `grep` `MEMORY.md` beside it for
 that line; never read `MEMORY.md` whole, it is large.
 
 Condense it into at most 32 memories that hold true in any project: one
-durable preference or lesson each, with why it matters, under 2 KiB. Skip
-anything about one repository, one task, or that a command could look up.
+durable preference or lesson each, under 2 KiB, ending with a `Why:` line.
+Cover every durable preference and tip, not only the first few. Skip anything
+that only matters in one named repository or product (how one product's
+screens should match another's, say), one task, or that a command could look
+up.
 
 Show the planned names with a line each and wait for a yes, unless the user
 already said to go ahead. Then save each with `memory set global/NAME`. Say

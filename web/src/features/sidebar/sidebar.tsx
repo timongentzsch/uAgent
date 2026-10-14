@@ -297,6 +297,8 @@ export const sessionOrder = (sessions: Session[], spaces?: Space[]) =>
 type SessionRowProps = {
   item: Session;
   selected: boolean;
+  // The open conversation is under this row, which is folded.
+  holds?: boolean;
   unread: boolean;
   online: boolean;
   choose: (id: string) => void;
@@ -310,6 +312,7 @@ type SessionRowProps = {
 function SessionRowView({
   item,
   selected,
+  holds,
   unread,
   online,
   choose,
@@ -323,7 +326,7 @@ function SessionRowView({
       <ListRow
         class="session"
         onClick={() => choose(item.id)}
-        aria-current={selected ? "page" : undefined}
+        aria-current={selected ? "page" : holds ? "true" : undefined}
         title={
           <>
             <SessionName item={item} />
@@ -447,6 +450,9 @@ function SidebarView({
       .filter(Boolean)
       .join(" · ");
     const conversations = [...group.threads, ...group.others];
+    const holdsOpen = [group.panel, ...conversations].some(
+      (item) => item?.id === selected,
+    );
     const attention = [group.panel, ...conversations].filter(
       (item) => item && ["waiting", "failed"].includes(statusOf(item, online)),
     ).length;
@@ -457,6 +463,7 @@ function SidebarView({
             <Button
               variant="quiet"
               aria-expanded={!folded}
+              aria-current={folded && holdsOpen ? "true" : undefined}
               onClick={() => collapsed.set(cwd, !folded)}
             >
               {folded ? <ChevronRight /> : <ChevronDown />}
@@ -496,28 +503,33 @@ function SidebarView({
         {!folded && (
           <div class="place-body">
             {group.panel ? (
-              <div class="panel-row">
-                {group.threads.length > 0 && (
-                  <IconButton
-                    class="disclosure"
-                    label={`Members and threads of ${name}`}
-                    aria-expanded={open}
-                    onClick={() => panelsOpen.set(cwd, !open)}
-                  >
-                    {open ? <ChevronDown /> : <ChevronRight />}
-                  </IconButton>
+              <SessionRow
+                key={group.panel.id}
+                item={group.panel}
+                selected={group.panel.id === selected}
+                holds={
+                  !open && group.threads.some((item) => item.id === selected)
+                }
+                unread={unread.has(group.panel.id)}
+                online={online}
+                choose={choose}
+                menu={(panel) => (
+                  <>
+                    {group.threads.length > 0 && (
+                      <IconButton
+                        class="disclosure"
+                        label={`Members and threads of ${name}`}
+                        aria-expanded={open}
+                        onClick={() => panelsOpen.set(cwd, !open)}
+                      >
+                        {open ? <ChevronDown /> : <ChevronRight />}
+                      </IconButton>
+                    )}
+                    {menu(panel)}
+                  </>
                 )}
-                <SessionRow
-                  key={group.panel.id}
-                  item={group.panel}
-                  selected={group.panel.id === selected}
-                  unread={unread.has(group.panel.id)}
-                  online={online}
-                  choose={choose}
-                  menu={menu}
-                  note={note}
-                />
-              </div>
+                note={note}
+              />
             ) : (
               !drawing &&
               !search && (

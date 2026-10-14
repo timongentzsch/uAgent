@@ -40,6 +40,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  border-left: 2px solid transparent;
+}
+/* A folded place that holds the open conversation is marked as its row is. */
+.place-head:has([aria-current]) {
+  background: var(--raised);
+  border-left-color: var(--accent);
 }
 .sidebar h2 {
   flex: 1;
@@ -79,20 +85,10 @@
 .place-body {
   padding-left: var(--indent);
 }
-/* A panel's chevron hangs in the gutter, opening who is in it. */
-.panel-row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.panel-row > .session-row {
-  flex: 1;
-  min-width: 0;
-}
-.panel-row .disclosure {
+/* A panel's chevron sits at the row's end, before its menu. */
+.session-row .disclosure {
   width: var(--indent);
   min-width: var(--indent);
-  margin-left: calc(-1 * var(--indent));
   padding: 0;
   color: var(--muted);
 }

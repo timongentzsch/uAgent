@@ -59,6 +59,10 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await header.click();
   await expect(folders.locator(".session")).toHaveCount(0);
   await expect(folders.locator(".place-count")).toHaveText("(1)");
+  // The open conversation is inside: the header is marked as its row was.
+  await expect(
+    folders.getByRole("button", { expanded: false }),
+  ).toHaveAttribute("aria-current", "true");
   // The fold is remembered.
   await page.reload();
   await expect(folders.locator(".session")).toHaveCount(0);

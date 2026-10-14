@@ -77,6 +77,7 @@ inline constexpr const char* kTerminalsDir = "terminals";
 inline constexpr const char* kTerminalLogsDir = "terminals/logs";
 inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
+inline constexpr const char* kModelsDir = "models";
 inline constexpr const char* kConfigDir = "config";
 // Remembered approval rules under kConfigDir; they grant future authority.
 inline constexpr const char* kPermissionStoreFile = "permissions.json";

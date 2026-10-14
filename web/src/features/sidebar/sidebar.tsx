@@ -37,7 +37,7 @@ import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, panelsOpen, search, useFolding } from "./folding.ts";
+import { collapsed, panelsOpen, useFolding } from "./folding.ts";
 import "./sidebar.css";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
@@ -285,10 +285,14 @@ const viewOf = (path: string, group: Place, query: string) => ({
 });
 
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
-export const sessionOrder = (sessions: Session[], spaces?: Space[]) =>
-  placesByKind(sessions, spaces, search.text).flatMap(([, places]) =>
+export const sessionOrder = (
+  sessions: Session[],
+  spaces: Space[] | undefined,
+  query: string,
+) =>
+  placesByKind(sessions, spaces, query).flatMap(([, places]) =>
     places.flatMap(([path, group]) => {
-      const view = viewOf(path, group, search.text);
+      const view = viewOf(path, group, query);
       return view.folded
         ? []
         : [
@@ -411,6 +415,9 @@ type SidebarProps = {
   sessions: Session[];
   // How many of them wait on a decision.
   needsYou: number;
+  // What the list is filtered by: it decides which rows show.
+  query: string;
+  setSearch: (query: string) => void;
   spaces: Space[];
   // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
@@ -431,6 +438,8 @@ function SidebarView({
   loading,
   sessions,
   needsYou,
+  query,
+  setSearch,
   spaces,
   spaceMenu,
   selected,
@@ -448,7 +457,6 @@ function SidebarView({
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
   useFolding();
-  const query = search.text;
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
@@ -682,7 +690,7 @@ function SidebarView({
           id="session-search"
           type="search"
           value={query}
-          onInput={(event) => search.set(event.currentTarget.value)}
+          onInput={(event) => setSearch(event.currentTarget.value)}
           placeholder="Find a conversation…"
         />
       </label>

@@ -26,20 +26,7 @@ function remembered(name: string) {
 export const collapsed = remembered("collapsed");
 export const panelsOpen = remembered("panels");
 
-// What the list is filtered by. Not remembered, but read where the order of
-// the rows is, which follows what the list shows.
-let text = "";
-export const search = {
-  get text() {
-    return text;
-  },
-  set(value: string) {
-    text = value;
-    for (const redraw of watchers) redraw();
-  },
-};
-
-// Redraws the caller when either set or the search changes.
+// Redraws the caller when either set changes.
 export function useFolding() {
   const [, redraw] = useState(0);
   useEffect(() => {

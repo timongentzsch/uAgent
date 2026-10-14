@@ -207,6 +207,8 @@ function App() {
     };
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
+  // The sidebar's filter, here because Alt+↑/↓ steps through what it shows.
+  const [query, setQuery] = useState("");
   const [space, setSpace] = useState("");
   const [busy, setBusy] = useState(false);
   const {
@@ -874,7 +876,7 @@ function App() {
   }
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces);
+    const order = sessionOrder(listed, catalogue.spaces, query);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -956,6 +958,8 @@ function App() {
       }
       sessions={listed}
       needsYou={attention}
+      query={query}
+      setSearch={setQuery}
       spaces={catalogue.spaces || NO_SPACES}
       spaceMenu={(space, conversations) => (
         <SpaceMenu space={space} conversations={conversations} open={open} />

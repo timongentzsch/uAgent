@@ -22,7 +22,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | delegated children | `history/<workspace>/agent-<id>.json`, sessions whose header carries `delegation` |
 | mail between sessions, panels and children | `mail/<id>/{new,cur}/*.json` |
 | MCP server logs | `mcp/*` |
-| provider model catalogues, one per endpoint and key, mode 0600, fresh for 24 hours; named by a hash, holding no key | `models/<hash>.json` |
+| provider model catalogues, one per endpoint and wire protocol, mode 0600, fresh for 24 hours, refreshed by every successful query; no credential is written or hashed into it | `models/<hash>.json` |
 | memories | `memory/{global,projects/<repository>}/*.md` |
 | memory audit and extraction claims | `memory/events.jsonl`, `memory/.processed/*` |
 | scheduled tasks | `scheduled/state.json` |

@@ -4,7 +4,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <future>
 #include <iterator>
@@ -33,35 +32,6 @@ json MergeFeatures(const json& catalog, const json& configured) {
   json merged = catalog.is_object() ? catalog : json::object();
   merged.update(configured);
   return merged;
-}
-
-constexpr std::chrono::hours kCatalogueLife{24};
-constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
-
-// The provider's catalogue, kept for a day per endpoint and key: what a start
-// learns from it (context window, modalities) changes rarely, and a network
-// round trip before the first screen is the largest cost of a cold start.
-std::optional<std::vector<ModelInfo>> FetchCatalogue(Api& api,
-                                                     int64_t timeout_s) {
-  const std::string path = UagentDir(kModelsDir) + "/" +
-                           HashHex(api.base_url + "\n" + api.api_key) + ".json";
-  std::error_code ignored;
-  const auto written = std::filesystem::last_write_time(path, ignored);
-  std::string text, error;
-  if (!ignored &&
-      std::filesystem::file_time_type::clock::now() - written <
-          kCatalogueLife &&
-      ReadRegularFile(path, kCatalogueCacheBytes, text, error)) {
-    if (auto cached = ParseModels(json::parse(text, nullptr, false))) {
-      return cached;
-    }
-  }
-  json response = api.Get("/models", /*abortable=*/false, timeout_s);
-  auto models = ParseModels(response);
-  if (models && !models->empty()) {
-    AtomicWriteFile(path, JsonDump(response), 0600, false, error);
-  }
-  return models;
 }
 
 }  // namespace
@@ -163,7 +133,9 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   // for optional metadata. Unavailable metadata leaves the route usable.
   bool metadata_only = !api.model.empty();
   auto started = std::chrono::steady_clock::now();
-  auto models = FetchCatalogue(api, metadata_only ? 8 : 15);
+  auto models = CachedModels(api);
+  if (!models)
+    models = QueryModels(api, /*abortable=*/false, metadata_only ? 8 : 15);
   if (models && !models->empty()) {
     if (api.model.empty()) api.model = models->front().id;
     std::string base = api.CatalogModel();

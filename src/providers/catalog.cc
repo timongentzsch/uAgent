@@ -2,13 +2,16 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/providers/providers.h"
 
@@ -24,6 +27,20 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     WireApi::kChatCompletions,
     false,
 }};
+
+constexpr std::chrono::hours kCatalogueLife{24};
+constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
+
+// What a catalogue answers for: the endpoint and the way it is asked. The
+// credential is no part of it, so nothing derived from one is written down.
+std::string CatalogueIdentity(const Api& api) {
+  return api.base_url + "\n" + ProviderProtocolName(api.capabilities.protocol) +
+         "\n" + WireApiName(api.capabilities.wire_api);
+}
+
+std::string CataloguePath(const std::string& identity) {
+  return UagentDir(kModelsDir) + "/" + HashHex(identity) + ".json";
+}
 
 }  // namespace
 std::string NormalizeModelId(std::string model) {
@@ -244,8 +261,45 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
   return models;
 }
 
-std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable) {
-  return ParseModels(api.Get("/models", abortable));
+std::optional<std::vector<ModelInfo>> CachedModels(const Api& api) {
+  const std::string identity = CatalogueIdentity(api);
+  const std::string path = CataloguePath(identity);
+  std::error_code ignored;
+  const auto written = std::filesystem::last_write_time(path, ignored);
+  std::string text, error;
+  if (ignored ||
+      std::filesystem::file_time_type::clock::now() - written >=
+          kCatalogueLife ||
+      !ReadRegularFile(path, kCatalogueCacheBytes, text, error)) {
+    return std::nullopt;
+  }
+  const json file = json::parse(text, nullptr, false);
+  const json* response = JsonObject(file, "response");
+  if (JsonValue(file, "identity", "") != identity || !response) {
+    return std::nullopt;
+  }
+  auto models = ParseModels(*response);
+  if (!models || models->empty()) return std::nullopt;
+  return models;
+}
+
+// A start reads the catalogue from CachedModels instead of waiting on the
+// provider, and what is learned from it (context window, modalities) changes
+// rarely; every answer that is usable keeps that copy current.
+std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable,
+                                                  int64_t timeout_s) {
+  JsonResponse response = api.Get("/models", abortable, timeout_s);
+  if (!response.error.empty()) return std::nullopt;
+  auto models = ParseModels(response.body);
+  if (models && !models->empty()) {
+    const std::string identity = CatalogueIdentity(api);
+    std::string error;
+    AtomicWriteFile(CataloguePath(identity),
+                    JsonDump({{"identity", identity},
+                              {"response", std::move(response.body)}}),
+                    0600, false, error);
+  }
+  return models;
 }
 
 }  // namespace uagent

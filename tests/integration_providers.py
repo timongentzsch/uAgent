@@ -497,7 +497,8 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         assert_true(len(first.requests) == 1, first.requests)
 
         # Direct /model must discover the same window as the catalog picker.
-        # Changing only the effort keeps it without another catalog request.
+        # Changing only the effort keeps it without another catalog request,
+        # and the picker's queries left a catalogue that serves the first.
         providers["second"].pop("context")
         direct_env = provider_env(home, first.url, providers, "active-live")
         probes = len(second.get_requests)
@@ -508,7 +509,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
             binary=binary,
         )
         assert_true(direct.returncode == 0, direct.stderr)
-        assert_true(len(second.get_requests) == probes + 1, second.get_requests)
+        assert_true(len(second.get_requests) == probes, second.get_requests)
     finally:
         first.close()
         second.close()
@@ -1204,9 +1205,17 @@ def test_provider_summary_capability_fallback(root, home, *, binary):
         assert_true(len(server.requests) == 2, len(server.requests))
 
 
+def catalog_of(context):
+    return {"data": [{"id": "catalog-model", "context_length": context}]}
+
+
+def window_of(result):
+    return next(line for line in result.stdout.splitlines() if line.strip().startswith("context"))
+
+
 def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home, *, binary):
     delay = 4
-    catalog = {"data": [{"id": "catalog-model", "context_length": 32768}]}
+    catalog = catalog_of(40000)
 
     def slow_catalog(_):
         time.sleep(delay)
@@ -1216,23 +1225,80 @@ def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home,
         env = base_env(home, server.url)
         del env["UAGENT_MODEL"], env["UAGENT_CONTEXT"]
         # The first start has no catalogue: it waits for the provider's.
-        cold = run_dialog(root, env, "probe\n/q\n", timeout=3 * delay, binary=binary)
+        cold = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
         assert_true(cold.returncode == 0, cold.stderr)
+        assert_true("40k" in window_of(cold), cold.stdout)
         assert_true(len(server.get_requests) == 1, server.get_requests)
 
-        # The next shows its first screen long before the provider would
-        # answer, and the turn still runs on the model and window it names.
+        # The next shows its prompt long before the provider would answer, and
+        # runs on the model and window it learned.
         started = time.monotonic()
-        code, output = run_pty(root, env, [(b"probe\n", b"catalog-ok"), b"/q\n"], binary=binary)
+        prompt_at = []
+        code, output = run_pty(
+            root,
+            env,
+            [(b"probe\n", b"catalog-ok"), b"/q\n"],
+            before_payload=lambda: prompt_at.append(time.monotonic() - started),
+            binary=binary,
+        )
         assert_true(code == 0, output[-2000:])
-        assert_true(time.monotonic() - started < delay - 1, output[-2000:])
+        assert_true(prompt_at[0] < delay - 1, prompt_at)
         assert_true(len(server.get_requests) == 1, server.get_requests)
         assert_true(server.requests[-1][1]["model"] == "catalog-model", server.requests[-1])
+        warm = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
+        assert_true("40k" in window_of(warm), warm.stdout)
+
+        # A fresh query of the catalogue, the picker's, keeps the copy current.
+        catalog.update(catalog_of(80000))
+        requests = len(server.get_requests)
+        listed = run_dialog(root, env, "/models catalog\n/q\n", timeout=3 * delay, binary=binary)
+        assert_true(listed.returncode == 0, listed.stderr)
+        assert_true(len(server.get_requests) == requests + 1, server.get_requests)
+        refreshed = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
+        assert_true("80k" in window_of(refreshed), refreshed.stdout)
 
         # A catalogue a day old is asked for again.
+        requests = len(server.get_requests)
         for cached in (home / ".uagent" / "models").iterdir():
             old = time.time() - 25 * 3600
             os.utime(cached, (old, old))
-        stale = run_dialog(root, env, "probe\n/q\n", timeout=3 * delay, binary=binary)
-        assert_true(stale.returncode == 0, stale.stderr)
-        assert_true(len(server.get_requests) == 2, server.get_requests)
+        catalog.update(catalog_of(90000))
+        stale = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
+        assert_true(len(server.get_requests) == requests + 1, server.get_requests)
+        assert_true("90k" in window_of(stale), stale.stdout)
+
+
+def test_only_a_usable_catalogue_is_kept_and_read(root, home, *, binary):
+    answers = [
+        # An HTTP failure whose body looks like a catalogue.
+        (500, catalog_of(11000)),
+        (200, {"data": []}),
+        (200, catalog_of(40000)),
+        (200, catalog_of(50000)),
+    ]
+
+    def answer(handler):
+        status, body = answers.pop(0)
+        write_json_response(handler, body, status=status)
+
+    with Server([event({"content": "catalog-ok"})], get_response=answer) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_MODEL"], env["UAGENT_CONTEXT"]
+        models = home / ".uagent" / "models"
+
+        for _ in range(2):
+            failed = run_dialog(root, env, "/q\n", binary=binary)
+            assert_true(failed.returncode != 0, failed.stdout)
+            assert_true(not list(models.glob("*")), list(models.glob("*")))
+
+        started = run_dialog(root, env, "/status\n/q\n", binary=binary)
+        assert_true("40k" in window_of(started), started.stdout)
+        [cached] = models.glob("*")
+
+        # A kept answer that holds no model is not read.
+        kept = json.loads(cached.read_text())
+        kept["response"] = {"data": [{}]}
+        cached.write_text(json.dumps(kept))
+        again = run_dialog(root, env, "/status\n/q\n", binary=binary)
+        assert_true("50k" in window_of(again), again.stdout)
+        assert_true(len(server.get_requests) == 4, server.get_requests)

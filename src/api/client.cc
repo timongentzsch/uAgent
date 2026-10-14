@@ -521,8 +521,9 @@ JsonResponse Api::Post(const std::string& path, const json& body,
   return response;
 }
 
-json Api::Get(const std::string& path, bool abortable, int64_t timeout_s) {
-  return Fetch(path, nullptr, timeout_s, abortable).body;
+JsonResponse Api::Get(const std::string& path, bool abortable,
+                      int64_t timeout_s) {
+  return Fetch(path, nullptr, timeout_s, abortable);
 }
 
 WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {

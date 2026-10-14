@@ -17,10 +17,20 @@ inputs:
       Whether a master run saves what it built. "false" for a job that builds
       part of what another job with the same name builds whole.
     default: "true"
+  size:
+    description: >
+      Upper bound of the cache. A cache that fills evicts its oldest objects,
+      so one that is rebuilt whole by a change to a common header needs room
+      for the whole build. The sum over all names, saved once per master push,
+      has to stay well under the repository's 10 GB cache quota or the newest
+      entries push each other out.
+    default: 400M
 runs:
   using: composite
   steps:
     - shell: bash
+      env:
+        CCACHE_SIZE: ${{ inputs.size }}
       run: |
         if [ "$RUNNER_OS" = macOS ]; then
           brew install --quiet ccache
@@ -31,7 +41,7 @@ runs:
         fi
         {
           echo "CCACHE_DIR=$HOME/.cache/ccache"
-          echo "CCACHE_MAXSIZE=400M"
+          echo "CCACHE_MAXSIZE=$CCACHE_SIZE"
           echo "CCACHE_SLOPPINESS=pch_defines,time_macros"
           echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
           echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"

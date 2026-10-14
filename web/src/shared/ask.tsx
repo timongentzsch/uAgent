@@ -1,13 +1,8 @@
-import "../composer/attachments.css";
+import "./attachments.css";
 import "./ask.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Check, ImagePlus, X } from "lucide-preact";
-import type {
-  Asset,
-  AskAnswer,
-  AskQuestion,
-  Report,
-} from "../../shared/types.ts";
+import type { Asset, AskAnswer, AskQuestion, Report } from "./types.ts";
 import {
   Actions,
   Button,
@@ -16,12 +11,12 @@ import {
   Input,
   Row,
   cleanText,
-} from "../../shared/ui.tsx";
-import { motionMs } from "../../shared/motion.ts";
-import { ImageTile } from "../../shared/attachments.tsx";
-import { uploadAttachment } from "../../state/api.ts";
-import { bytes } from "../../shared/quantities.ts";
-import { maxUploadBytes } from "../../shared/limits.ts";
+} from "./ui.tsx";
+import { motionMs } from "./motion.ts";
+import { ImageTile } from "./attachments.tsx";
+import { routes, uploadAttachment } from "../state/api.ts";
+import { bytes } from "./quantities.ts";
+import { maxUploadBytes } from "./limits.ts";
 
 interface Answer {
   choices: string[];
@@ -367,7 +362,7 @@ function QuestionPage({
                 <span class="ask-shot">
                   <ImageTile
                     name={cleanText(option.description || option.label)}
-                    src={`/api/sessions/${session}/assets/${option.image.id}`}
+                    src={routes.asset(session, option.image.id)}
                   />
                 </span>
               )}
@@ -409,7 +404,7 @@ function QuestionPage({
             {answer.image.image && (
               <ImageTile
                 name={answer.image.name}
-                src={`/api/sessions/${session}/assets/${answer.image.id}`}
+                src={routes.asset(session, answer.image.id)}
               />
             )}
             <span title={answer.image.name}>

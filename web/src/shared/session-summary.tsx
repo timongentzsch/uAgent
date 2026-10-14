@@ -1,7 +1,7 @@
-import type { State } from "../../shared/types.ts";
-import { cost, count } from "../../shared/quantities.ts";
-import { contextSummary } from "../../state/context.ts";
-import { Button, DataText } from "../../shared/ui.tsx";
+import type { State } from "./types.ts";
+import { cost, count } from "./quantities.ts";
+import { contextSummary } from "../state/context-summary.ts";
+import { Button, DataText } from "./ui.tsx";
 
 export function ContextSummary({
   state,

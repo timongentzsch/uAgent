@@ -7,7 +7,7 @@ import {
   LoadError,
   Time,
 } from "../../shared/ui.tsx";
-import DiffView from "./diff-view.tsx";
+import DiffView from "../../shared/diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { cleanText, isFailedStatus } from "../../shared/display.ts";
 import type {
@@ -22,7 +22,7 @@ import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
 import { duration } from "../../shared/duration.ts";
 import { bytes } from "../../shared/quantities.ts";
-import { active } from "./activity-status.tsx";
+import { active } from "../../shared/activity-status.tsx";
 import { getToolRow } from "./tool-preview.ts";
 
 // A fence longer than any backtick run in the body, so code never ends early.

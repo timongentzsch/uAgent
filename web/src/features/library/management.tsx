@@ -1,7 +1,7 @@
 import type { CommandResults } from "../../shared/types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { manage } from "../../state/api.ts";
-import { Field, Select, Input } from "../../shared/ui.tsx";
+import { Field, Select } from "../../shared/ui.tsx";
 import "./management.css";
 
 export function useLibrary(
@@ -48,37 +48,6 @@ export function useLibrary(
     refresh: () => setAttempt((value) => value + 1),
   };
 }
-export function ProjectField({
-  value,
-  projects,
-  change,
-}: {
-  value: string;
-  projects: string[];
-  change: (value: string) => void;
-}) {
-  // Null while not typing: the field then shows the chosen project.
-  const [draft, setDraft] = useState<string | null>(null);
-  return (
-    <Field label="Project">
-      <Input
-        list="management-projects"
-        value={draft ?? value}
-        onInput={(event) => setDraft(event.currentTarget.value)}
-        placeholder="Absolute directory on the host"
-        onChange={(event) => {
-          change(event.currentTarget.value);
-          setDraft(null);
-        }}
-      />
-      <datalist id="management-projects">
-        {projects.map((path) => (
-          <option key={path} value={path} />
-        ))}
-      </datalist>
-    </Field>
-  );
-}
 export function ScopeField({
   value,
   change,
@@ -98,5 +67,3 @@ export function ScopeField({
     </Field>
   );
 }
-export const taskActive = (state: string) =>
-  ["queued", "starting", "running", "waiting", "stopping"].includes(state);

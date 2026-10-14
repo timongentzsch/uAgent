@@ -1,36 +1,33 @@
 import type { ComponentChildren } from "preact";
 import type {
-  Act,
   Activity,
-  AppModal,
   Block,
   Catalogue,
   Draft,
+  InspectorTarget,
   Outgoing,
-  Report,
   Session,
   Snapshot,
   View,
 } from "../shared/types.ts";
-import type { ConnectionPhase } from "../shared/connection-status.tsx";
 import { useMemo } from "preact/hooks";
-import { api } from "../state/api.ts";
+import { api, routes } from "../state/api.ts";
+import { useConversation, useHostContext } from "../state/host-context.ts";
 import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board, { PanelLayout } from "../features/panel/board.tsx";
-import WaitingList from "../features/panel/escalations.tsx";
+import WaitingList from "../shared/escalations.tsx";
 import { threadsOf } from "../state/attention.ts";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
 } from "../features/chat/chat.tsx";
-import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
-import { useSnapshots, type SnapshotStore } from "../state/snapshot-store.ts";
+import { useSnapshots } from "../state/snapshot-store.ts";
 import { sideAnswer } from "./dialogs.ts";
 
 // One empty list, so an idle context value never changes identity.
@@ -64,49 +61,32 @@ export const isBrowsing = (snapshot?: Snapshot) =>
 // It stays mounted on the other pages: the transcript history keeps its
 // place under a page key and resumes when the conversation returns.
 export default function ChatPage({
-  store,
   active,
   historyKey,
   selected,
   session,
   opening,
   catalogue,
-  online,
-  connection,
   outgoing,
   loadError,
   draft,
   setDraft,
   menu,
   addMember,
-  upload,
-  uploading,
-  busy,
   submit,
-  act,
-  report,
-  following,
-  setFollowing,
-  load,
   updateView,
   choose,
-  zoom,
   side,
   closeSide,
   actions,
-  setModal,
   setInspector,
-  showContext,
 }: {
-  store: SnapshotStore;
   active: boolean;
   historyKey: string;
   selected: string;
   session?: Session;
   opening: boolean;
   catalogue: Catalogue;
-  online: boolean;
-  connection: ConnectionPhase;
   outgoing: Outgoing[];
   loadError: unknown;
   draft: Draft;
@@ -114,25 +94,16 @@ export default function ChatPage({
   // A panel's roster: a row's own actions, and asking for another member.
   menu: (item: Session) => ComponentChildren;
   addMember: () => void;
-  upload: (files: File[]) => Promise<boolean>;
-  uploading: boolean;
-  busy: boolean;
   submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
-  act: Act;
-  report: Report;
-  following: boolean;
-  setFollowing: (following: boolean) => void;
-  load: (id: string) => Promise<Snapshot>;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
-  zoom: number;
   side: { question: string; answer?: string } | null;
   closeSide: () => void;
   actions: MessageActions;
-  setModal: (modal: AppModal | null) => void;
   setInspector: (target: InspectorTarget | null) => void;
-  showContext: () => void;
 }) {
+  const { store, online, report, load, setModal } = useHostContext();
+  const { setFollowing } = useConversation();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
   const blocks = useMemo(
@@ -156,7 +127,7 @@ export default function ChatPage({
     if (!view?.more || !transcript.current) return;
     const before = view.before;
     const id = selected;
-    const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
+    const value = await api<Snapshot>(routes.session(id, `before=${before}`));
     await prepareHistoryBlocks(value.state?.view?.blocks || []);
     updateView(id, (current) => {
       if (
@@ -201,17 +172,9 @@ export default function ChatPage({
       session={item}
       commands={catalogue.commands || []}
       snapshot={snapshot}
-      online={online}
-      connection={connection}
       draft={draft}
       setDraft={setDraft}
-      upload={upload}
-      uploading={uploading}
-      busy={busy}
       submit={(event, queue) => submit(event, jumpToLatest, queue)}
-      act={act}
-      report={report}
-      following={following}
       unseen={unseen}
       // Optimistic: pin to the end synchronously (<1 frame),
       // refresh the snapshot in the background. jumpToLatest
@@ -225,8 +188,6 @@ export default function ChatPage({
       showStatistics={() =>
         setModal({ type: "statistics", session_id: selected })
       }
-      showContext={showContext}
-      zoom={zoom}
       openBrowser={() => setModal({ type: "browser", handoff: true })}
       stopped={stopped}
       resume={actions.resume}
@@ -239,7 +200,6 @@ export default function ChatPage({
         threads && (
           <Board
             threads={threads}
-            online={online}
             choose={choose}
             menu={menu}
             add={addMember}
@@ -265,10 +225,7 @@ export default function ChatPage({
             loadError={loadError}
             blocks={blocks}
             session={session}
-            online={online}
-            loadSnapshot={load}
             older={older}
-            report={report}
           />
         </MessageActions.Provider>
       </LiveActivities.Provider>
@@ -286,9 +243,7 @@ export default function ChatPage({
           sessions={catalogue.sessions}
           folder={session.cwd || ""}
           paused={snapshot?.state?.paused}
-          online={online}
           choose={choose}
-          report={report}
         />
       )}
       {composerFor(session)}

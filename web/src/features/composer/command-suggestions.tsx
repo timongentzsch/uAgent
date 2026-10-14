@@ -1,75 +1,14 @@
-import "./command-suggestions.css";
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { ComponentChildren, JSX, RefObject } from "preact";
+import { useState } from "preact/hooks";
+import type { JSX, RefObject } from "preact";
 import type { SlashCommand } from "../../shared/types.ts";
 import { slashCompletion, slashMatches } from "./slash.ts";
-import { Button } from "../../shared/ui.tsx";
+import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 
 // What picking a command puts in the composer: a space follows when it
 // takes an argument.
 const completionOf = (entry: SlashCommand) =>
   entry.command + (entry.argument ? " " : "");
-
-// Options under a field that keeps focus and names the active option
-// (`${prefix}-${position}`) as its active descendant; the active option
-// stays in view. By default they pop up over the composer.
-export function SuggestionList<T>({
-  id,
-  label,
-  prefix,
-  items,
-  index,
-  pick,
-  keyOf,
-  class: className = "command-suggestions",
-  children,
-}: {
-  id: string;
-  label: string;
-  prefix: string;
-  items: T[];
-  index: number;
-  pick: (item: T) => void;
-  keyOf?: (item: T) => string;
-  class?: string;
-  children: (item: T) => ComponentChildren;
-}) {
-  const list = useRef<HTMLDivElement>(null);
-  // Follows the option, not the render: a caller that rebuilds its items on
-  // every render (the palette, while a turn streams) must not pull a list the
-  // person scrolled back to its active option each time.
-  const current = items[index];
-  useLayoutEffect(() => {
-    list.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView({ block: "nearest" });
-  }, [index, current && keyOf ? keyOf(current) : current]);
-  return (
-    <div
-      id={id}
-      class={`suggestions ${className}`}
-      role="listbox"
-      aria-label={label}
-      ref={list}
-    >
-      {items.map((item, position) => (
-        <Button
-          key={keyOf?.(item)}
-          variant="quiet"
-          role="option"
-          id={`${prefix}-${position}`}
-          aria-selected={position === index}
-          tabIndex={-1}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => pick(item)}
-        >
-          {children(item)}
-        </Button>
-      ))}
-    </div>
-  );
-}
 
 export function useCommandSuggestions(
   commands: SlashCommand[],

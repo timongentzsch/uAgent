@@ -3,6 +3,7 @@ import type { Session } from "../../shared/types.ts";
 import { Plus } from "lucide-preact";
 import { Button, IconButton, Time } from "../../shared/ui.tsx";
 import { statusOf } from "../../state/attention.ts";
+import { useHostContext } from "../../state/host-context.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { usePhone } from "../../shared/layout.ts";
@@ -14,19 +15,18 @@ const DONE_SHOWN = 8;
 // and in the sidebar's inbox, not repeated here.
 export default function Board({
   threads,
-  online,
   choose,
   menu,
   add,
 }: {
   threads: Session[];
-  online: boolean;
   choose: (id: string) => void;
   // A row's own actions: rename it, remove it.
   menu?: (item: Session) => ComponentChildren;
   // Starts a message that asks the moderator for another member.
   add?: () => void;
 }) {
+  const { online } = useHostContext();
   const managed = [...threads].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );

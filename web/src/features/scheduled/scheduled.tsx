@@ -20,9 +20,9 @@ import {
 } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
-import ModelPicker from "../composer/model-picker.tsx";
+import ModelPicker from "../../shared/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
-import { ProjectField, taskActive } from "../library/management.tsx";
+import { ProjectField } from "../../shared/project-field.tsx";
 import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { ListRow } from "../../shared/list-row.tsx";
 import { permissionLabels } from "../../shared/display.ts";
@@ -45,6 +45,8 @@ const blank = (cwd: string): ScheduledTask => ({
   },
 });
 const storage = "uagent-scheduled-draft";
+const taskActive = (state: string) =>
+  ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {
   const value = new Date((at || Date.now() / 1000 + 3600) * 1000);
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000)

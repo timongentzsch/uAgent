@@ -1,8 +1,11 @@
-import "./activity.css";
-import MessageInput from "../composer/message-input.tsx";
-import ModelControl from "../composer/model-control.tsx";
+import "../../shared/activity.css";
+import MessageInput from "../../shared/message-input.tsx";
+import ModelControl from "../../shared/model-control.tsx";
 import HistoryStart from "./history-start.tsx";
-import { ContextSummary, SessionSummary } from "./session-summary.tsx";
+import {
+  ContextSummary,
+  SessionSummary,
+} from "../../shared/session-summary.tsx";
 import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
 import { useDismiss } from "../../shared/dismiss.ts";
 import { duration } from "../../shared/duration.ts";
@@ -11,6 +14,7 @@ import type {
   ActivityDetail,
   Block,
   Agent,
+  InspectorTarget,
   JSONValue,
   RawOptions,
   Report,
@@ -46,15 +50,10 @@ import {
   ActivityControls,
   ActivityStatus,
   withAgents,
-} from "./activity-status.tsx";
+} from "../../shared/activity-status.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 import { MessageActions } from "./message-actions.ts";
-
-// What the inspector is opened on: a transcript row, a live activity, or a
-// tool's retained input/output.
-export type InspectorTarget =
-  { block: Block } | { item: Activity } | { raw: RawOptions; title: string };
 
 // A page shown over the current detail inside the same sheet (Back returns),
 // never a second dialog.

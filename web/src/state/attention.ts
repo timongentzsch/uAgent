@@ -1,5 +1,5 @@
 import type { Session } from "../shared/types.ts";
-import { folderOf } from "../shared/folder-label.tsx";
+import { folderOf } from "../shared/display.ts";
 
 // A folder's threads: its sessions other than the panel.
 export const threadsOf = (sessions: Session[], folder: string) =>

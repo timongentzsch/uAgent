@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { api } from "../../state/api.ts";
+import { api, routes } from "../../state/api.ts";
 import { failure } from "../../shared/types.ts";
 import { Button, Mark, Input } from "../../shared/ui.tsx";
 import "./pairing.css";
@@ -32,7 +32,7 @@ export default function Pairing({
     setBusy(true);
     setExpired(false);
     try {
-      await api("/api/auth", {
+      await api(routes.auth, {
         code: value.trim(),
         name: /iPhone|iPad/.test(navigator.userAgent)
           ? "iOS device"

@@ -3,7 +3,7 @@ import { duration } from "../../shared/duration.ts";
 import { cost, count, plural } from "../../shared/quantities.ts";
 import type { SessionRef, TurnSummary } from "../../shared/types.ts";
 import { Button, Deferred, Modal, Spinner } from "../../shared/ui.tsx";
-import { formatStat } from "./tool-preview.ts";
+import { formatStat } from "../../shared/display.ts";
 
 // The review sheet loads on first open, as the statistics dialog does.
 const review = () => import("./turn-review.tsx");

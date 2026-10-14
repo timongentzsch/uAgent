@@ -1,13 +1,8 @@
-import type {
-  SessionRef,
-  State,
-  ModelCatalogue,
-  Model,
-} from "../../shared/types.ts";
+import type { SessionRef, State, ModelCatalogue, Model } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { command } from "../../state/api.ts";
-import { Field, Select, LoadError, Row, Switch } from "../../shared/ui.tsx";
-import { ModelLoading, ModelActions } from "../../shared/loading.tsx";
+import { command } from "../state/api.ts";
+import { Field, Select, LoadError, Row, Switch } from "./ui.tsx";
+import { ModelLoading, ModelActions } from "./loading.tsx";
 
 export default function ModelPicker({
   session,

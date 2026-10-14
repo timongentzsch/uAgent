@@ -2,6 +2,11 @@
 // Pure functions only — no hooks, no JSX. TS-only imports so node --test
 // can load this module directly.
 import { duration } from "./duration.ts";
+import type { Session } from "./types.ts";
+
+// The folder a session belongs to: a thread's panel folder, else its
+// own working directory.
+export const folderOf = (item: Session) => item.folder || item.cwd || "";
 
 // One name per approval mode, wherever a mode is shown or chosen.
 export const permissionLabels = {
@@ -15,6 +20,21 @@ export const permissionLabel = (mode?: string) =>
 
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+
+// Lines added and removed in a change receipt: its first line is the
+// summary, the rest the diff with its own +/- lines.
+export function diffCounts(change = ""): [number, number] {
+  let added = 0;
+  let removed = 0;
+  for (const line of change.split("\n").slice(1)) {
+    if (line.startsWith("+") && !line.startsWith("+++")) added++;
+    else if (line.startsWith("-") && !line.startsWith("---")) removed++;
+  }
+  return [added, removed];
+}
+
+export const formatStat = ([added, removed]: [number, number]) =>
+  added || removed ? `+${added} −${removed}` : "";
 
 // Git-style change line roles shared by tool receipts (' '/'-'/'+'/'@'
 // markers with a file header) and unified diffs ('---'/'+++'/'@@').

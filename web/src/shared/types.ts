@@ -839,6 +839,7 @@ export interface CommandResults {
   self_directive: { item: SelfDirective };
   memory: LibraryResult;
   skills: LibraryResult;
+  import: ImportResult;
   schedule: ScheduleResult;
   models: ModelCatalogue;
   model: ModelCatalogue;
@@ -904,6 +905,8 @@ export interface CommandFields {
   scope?: string;
   changes?: ConfigChange[];
   key?: string;
+  // Import: limits `list` and `run` to skills or memories.
+  only?: string;
   value?: string;
   cwd?: string;
   // Create: a space by its name, in place of `cwd`.
@@ -1002,6 +1005,23 @@ export interface LibraryItem {
   error?: string;
   required_tools?: string[];
   files?: string[];
+}
+export interface ImportItem {
+  key: string;
+  kind: "skill" | "memory";
+  source: "claude" | "codex";
+  name: string;
+  path: string;
+  bytes: number;
+  collides: boolean;
+  // Why it cannot be imported as it is.
+  blocked?: string;
+  needs_model?: boolean;
+}
+interface ImportResult {
+  items?: ImportItem[];
+  imported?: { kind: string; name: string }[];
+  skipped?: { kind: string; name: string; reason: string }[];
 }
 interface LibraryResult {
   enabled?: boolean;

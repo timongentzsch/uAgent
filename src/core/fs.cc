@@ -329,6 +329,18 @@ void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
   // A catalogue is fresh for a day; a week keeps one that is still read.
   PruneArtifactTree(UagentDir(kModelsDir), kBgDays, 0);
+  // A skill import that was killed leaves its staging folder; nothing else
+  // lives there, and no import runs for a day.
+  std::error_code staging_error;
+  const auto staging_cutoff =
+      std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+  for (const auto& entry : std::filesystem::directory_iterator(
+           UagentDir("staging"), staging_error)) {
+    std::error_code time_error;
+    if (entry.last_write_time(time_error) < staging_cutoff && !time_error) {
+      std::filesystem::remove_all(entry.path(), time_error);
+    }
+  }
   // What a runtime that was killed left behind: its lease and its socket.
   // The lease is held while they go, so a runtime starting at this moment
   // either keeps both or makes them anew.

@@ -25,8 +25,8 @@
 | `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |
 | `/init` | create an AGENTS.md file with instructions for µAgent |
-| `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET]` | manage project and global memories |
-| `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]` | inspect and manage installed skills |
+| `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET|import [NAME|all]]` | manage project and global memories |
+| `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID|import [NAME|all]]` | inspect and manage installed skills |
 | `/schedule [list|run ID|pause ID|resume ID|forget ID|stop RUN|JSON]` | manage scheduled tasks and runs |
 | `/model NAME [--default]` | choose the model for this conversation, or for all new ones |
 | `/models [QUERY]` | search and select across providers |

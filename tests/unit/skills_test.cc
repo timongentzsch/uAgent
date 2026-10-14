@@ -4,10 +4,12 @@
 
 #include <sys/stat.h>
 
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/app/import.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -25,10 +27,17 @@ void TestSkillDiscovery() {
                       std::string(UAGENT_TEST_SOURCE_DIR) + "/skills");
     const auto skills = LoadSkills(UAGENT_TEST_SOURCE_DIR);
     CHECK(!skills.empty());
-    bool found_fusion = false;
+    bool found_fusion = false, found_import = false;
     for (const Skill& skill : skills) {
       CHECK(!skill.description.empty());
       CHECK(ReadSkillBody(skill).ok);
+      if (skill.name == "import") {
+        found_import = true;
+        CHECK(skill.description.find("only when the user invokes $import") !=
+              std::string::npos);
+        CHECK(skill.required_tools ==
+              std::vector<std::string>({"read_path", "grep", "memory"}));
+      }
       if (skill.name == "fusion") {
         found_fusion = true;
         CHECK(skill.description.find("only when the user invokes $fusion") !=
@@ -39,6 +48,7 @@ void TestSkillDiscovery() {
       }
     }
     CHECK(found_fusion);
+    CHECK(found_import);
   }
   TestWorkspace test("skill");
   const fs::path& workspace = test.workspace;
@@ -281,6 +291,236 @@ void TestSkillDiscovery() {
   Tool crowded = SkillTool(catalogue_skills, {});
   CHECK(crowded.description.size() <= 8000);
   CHECK(crowded.description.find("skill-63") != std::string::npos);
+}
+
+}  // namespace uagent
+
+namespace uagent {
+
+void TestImportFromOtherAgents() {
+  namespace fs = std::filesystem;
+  // Tool references change; prose that happens to use the same words does not.
+  const std::string rewritten = RewriteToolReferences(
+      "---\ndescription: Demo\nallowed-tools: Bash(ls:*), Read, "
+      "Grep, Glob\n---\nRead the file, then run `Bash` or the Edit tool.\n"
+      "Use `Task(agent)` for the Write-up; Grep is not a tool here.\n");
+  CHECK(rewritten ==
+        "---\ndescription: Demo\nallowed-tools: run, read_path, grep\n"
+        "requires-tools: edit_file, grep, read_path, run\n---\n"
+        "Read the file, then run `run` or the edit_file tool.\n"
+        "Use `Task(agent)` for the Write-up; Grep is not a tool here.\n");
+  CHECK(RewriteToolReferences("Read the file with Bash.\n") ==
+        "Read the file with Bash.\n");
+  // Backticks alone prove nothing for a word that is also a class or a verb.
+  CHECK(RewriteToolReferences("The Python class `Task` and `Read` it.\n") ==
+        "The Python class `Task` and `Read` it.\n");
+  CHECK(RewriteToolReferences("Call `exec_command` or the Task tool.\n") ==
+        "Call `run` or the subagent tool.\n");
+  // Front matter lists come out as the plain comma list the loader reads,
+  // whether written quoted, as an array or as a block.
+  const std::string lists = RewriteToolReferences(
+      "---\ndescription: d\nallowed-tools: \"Bash, Read\"\n"
+      "tools: [Bash, \"Read\", Grep]\n"
+      "requires-tools:\n  - Bash\n  - Task\n---\nBody\n");
+  CHECK(lists ==
+        "---\ndescription: d\nallowed-tools: run, read_path\n"
+        "tools: run, read_path, grep\n"
+        "requires-tools: run, subagent\n---\nBody\n");
+  std::istringstream loaded(RewriteToolReferences(
+      "---\ndescription: d\nrequires-tools: [Bash, Read]\n---\n"));
+  std::vector<std::string> required;
+  ParseSkillFrontMatter(loaded, nullptr, &required);
+  CHECK(required == std::vector<std::string>({"run", "read_path"}));
+
+  TestWorkspace test("import");
+  auto write = [](const fs::path& path, const std::string& text) {
+    fs::create_directories(path.parent_path());
+    std::ofstream(path, std::ios::binary) << text;
+  };
+  const fs::path skills = test.home / ".claude/skills";
+  const std::string manifest = "---\ndescription: Demo\n---\nUse `Bash`.\n";
+  write(skills / "synced/id/demo/SKILL.md", manifest);
+  write(skills / "synced/id/demo/data.bin", std::string("\0\1\2", 3));
+  write(skills / "synced/id/walled/SKILL.md", manifest);
+  write(skills / "synced/id/walled/LICENSE.txt",
+        "Users may not: Reproduce or copy these materials.");
+  write(skills / ".system/hidden/SKILL.md", manifest);
+  write(test.root / "outside.txt", "secret");
+  write(skills / "linked/SKILL.md", manifest);
+  fs::create_symlink(test.root / "outside.txt", skills / "linked/outside.txt");
+  write(skills / "a/b/c/d/e/deep/SKILL.md", manifest);
+
+  json listed = ImportControl({{"action", "list"}}, test.workspace);
+  CHECK(listed["items"].size() == 3);
+  for (const json& item : listed["items"]) {
+    const bool blocked = item["name"] != "demo";
+    CHECK(item["kind"] == "skill" && item["source"] == "claude");
+    CHECK(item.contains("blocked") == blocked);
+    CHECK(!item["collides"].get<bool>());
+  }
+
+  json done =
+      ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
+  CHECK(done["imported"].size() == 1 && done["skipped"].size() == 2);
+  const fs::path copy = test.home / ".uagent/skills/demo";
+  std::string text;
+  std::getline(std::ifstream(copy / "SKILL.md"), text, '\0');
+  CHECK(text.find("requires-tools: run") != std::string::npos);
+  CHECK(fs::exists(copy) && fs::is_directory(copy));
+  std::ifstream data(copy / "data.bin", std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(data)), {});
+  CHECK(bytes == std::string("\0\1\2", 3));
+  CHECK(!fs::exists(test.home / ".uagent/skills/walled"));
+  CHECK(!fs::exists(test.home / ".uagent/skills/linked"));
+  CHECK(ImportControl({{"action", "run"}, {"key", "demo"}}, test.workspace)
+            .contains("error"));
+}
+
+}  // namespace uagent
+
+namespace uagent {
+
+namespace {
+std::string BlockedReason(const json& listed, const std::string& name) {
+  for (const json& item : listed["items"]) {
+    if (item["name"] == name) return JsonValue(item, "blocked", "");
+  }
+  return "missing";
+}
+}  // namespace
+
+void TestImportBoundaries() {
+  namespace fs = std::filesystem;
+  TestWorkspace test("import-bounds");
+  auto write = [](const fs::path& path, const std::string& text) {
+    fs::create_directories(path.parent_path());
+    std::ofstream(path, std::ios::binary) << text;
+  };
+  const fs::path skills = test.home / ".claude/skills";
+  const std::string manifest = "---\ndescription: Demo\n---\nBody\n";
+  // Hidden files travel with a skill; its repository metadata does not.
+  write(skills / "plain/SKILL.md", manifest);
+  write(skills / "plain/.env.example", "KEY=");
+  write(skills / "plain/.hidden/note.txt", "kept");
+  write(skills / "plain/.git/config", "dropped");
+  // A license that wraps its wording, one that a field names, and COPYING.
+  write(skills / "wrapped/SKILL.md", manifest);
+  write(skills / "wrapped/LICENSE", "You may not\n  COPY these files.");
+  write(skills / "named/SKILL.md",
+        "---\ndescription: d\nlicense: Proprietary. TERMS.txt has the "
+        "terms\n---\n");
+  write(skills / "named/TERMS.txt", "No copying: you may not copy this.");
+  write(skills / "copying/SKILL.md", manifest);
+  write(skills / "copying/COPYING", "Users may not redistribute this.");
+  // Terms written in the field, a file path in it, and a path that is missing.
+  write(skills / "inline/SKILL.md",
+        "---\ndescription: d\nlicense: You may not copy this skill\n---\n");
+  write(skills / "pathed/SKILL.md",
+        "---\ndescription: d\nlicense: See legal/TERMS.txt\n---\n");
+  write(skills / "pathed/legal/TERMS.txt", "Redistribution is not permitted.");
+  write(skills / "absent/SKILL.md",
+        "---\ndescription: d\nlicense: See legal/TERMS.txt\n---\n");
+  // Links: to a folder, out of the folder, and a skill folder that is one.
+  write(test.root / "elsewhere/data.txt", "x");
+  write(skills / "folderlink/SKILL.md", manifest);
+  fs::create_directories(skills / "folderlink/real");
+  fs::create_directory_symlink(skills / "folderlink/real",
+                               skills / "folderlink/alias");
+  write(test.root / "outside-skill/SKILL.md", manifest);
+  fs::create_directory_symlink(test.root / "outside-skill", skills / "escaped");
+  write(skills / "pipe/SKILL.md", manifest);
+  CHECK(mkfifo((skills / "pipe/queue").c_str(), 0600) == 0);
+
+  json listed =
+      ImportControl({{"action", "list"}, {"only", "skill"}}, test.workspace);
+  CHECK(BlockedReason(listed, "plain").empty());
+  CHECK(BlockedReason(listed, "wrapped").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "named").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "copying").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "inline").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "pathed").find("license") != std::string::npos);
+  CHECK(BlockedReason(listed, "absent").find("not found") != std::string::npos);
+  CHECK(BlockedReason(listed, "folderlink").find("alias") != std::string::npos);
+  CHECK(BlockedReason(listed, "escaped").find("link out of") !=
+        std::string::npos);
+  CHECK(BlockedReason(listed, "pipe").find("queue") != std::string::npos);
+
+  // An existing folder is never adopted, and what it holds is left alone.
+  const fs::path managed = test.home / ".uagent/skills";
+  write(managed / "plain/mine.txt", "mine");
+  json refused =
+      ImportControl({{"action", "run"}, {"key", "plain"}}, test.workspace);
+  CHECK(refused.contains("error"));
+  CHECK(fs::exists(managed / "plain/mine.txt"));
+  CHECK(!fs::exists(managed / "plain/SKILL.md"));
+  fs::remove_all(managed / "plain");
+  CHECK(!ImportControl({{"action", "run"}, {"key", "plain"}}, test.workspace)
+             .contains("error"));
+  CHECK(fs::exists(managed / "plain/.env.example"));
+  CHECK(fs::exists(managed / "plain/.hidden/note.txt"));
+  CHECK(!fs::exists(managed / "plain/.git"));
+  CHECK(fs::is_empty(test.home / ".uagent/staging"));
+  for (const auto& entry : fs::directory_iterator(managed)) {
+    CHECK(!entry.path().filename().string().starts_with("."));
+  }
+
+  // A failed copy removes only its own staging folder.
+  CHECK(ImportControl({{"action", "run"}, {"key", "pipe"}}, test.workspace)
+            .contains("error"));
+  CHECK(fs::is_empty(test.home / ".uagent/staging"));
+  for (const auto& entry : fs::directory_iterator(managed)) {
+    CHECK(!entry.path().filename().string().starts_with("."));
+  }
+
+  // The skills folder itself must not be a link.
+  fs::remove_all(managed);
+  fs::create_directories(test.root / "stolen");
+  fs::create_directories(test.home / ".uagent");
+  fs::create_directory_symlink(test.root / "stolen", managed);
+  CHECK(ImportControl({{"action", "run"}, {"key", "plain"}}, test.workspace)
+            .contains("error"));
+  CHECK(fs::is_empty(test.root / "stolen"));
+  fs::remove(managed);
+
+  // Only the sources asked for are walked, and a listing is bounded.
+  CHECK(ImportControl({{"action", "list"}, {"only", "memory"}},
+                      test.workspace)["items"]
+            .empty());
+  for (int index = 0; index < 600; ++index) {
+    write(skills / ("bulk/s" + std::to_string(index)) / "SKILL.md", manifest);
+  }
+  listed = ImportControl({{"action", "list"}}, test.workspace);
+  CHECK(listed["items"].size() == 512);
+  CHECK(listed["truncated"].get<bool>());
+  CHECK(listed.dump().size() < size_t{1024} * 1024);
+}
+
+}  // namespace uagent
+
+namespace uagent {
+
+void TestImportTruncation() {
+  namespace fs = std::filesystem;
+  TestWorkspace test("import-truncation");
+  const fs::path skills = test.home / ".claude/skills";
+  for (int index = 0; index < 520; ++index) {
+    const fs::path dir = skills / ("s" + std::to_string(index));
+    fs::create_directories(dir);
+    std::ofstream(dir / "SKILL.md") << "---\ndescription: d\n---\nBody\n";
+  }
+  // A named skill is found even past the listing's cap.
+  json named =
+      ImportControl({{"action", "run"}, {"key", "s99"}}, test.workspace);
+  CHECK(named["imported"].size() == 1);
+  // "all" says it stopped short, and a repeat reaches what it left.
+  json first =
+      ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
+  CHECK(first["imported"].size() == 512);
+  CHECK(first["truncated"].get<bool>());
+  json second =
+      ImportControl({{"action", "run"}, {"key", "all"}}, test.workspace);
+  CHECK(second["imported"].size() == 7);
+  CHECK(!second["truncated"].get<bool>());
 }
 
 }  // namespace uagent

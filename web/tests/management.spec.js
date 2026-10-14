@@ -1,5 +1,5 @@
 import { test, expect, withoutServiceWorker } from "./fixtures.js";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 // Library rows the list loaded, not the rows its placeholder draws.
@@ -324,4 +324,37 @@ test("library drafts, shared controls and scheduled results", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("a skill kept by Claude Code is imported from the Library", async ({
+  page,
+  host: fixture,
+}) => {
+  await withoutServiceWorker(page);
+  const skill = resolve(fixture.home, ".claude/skills/synced/id/demo");
+  await mkdir(skill, { recursive: true });
+  await writeFile(
+    resolve(skill, "SKILL.md"),
+    "---\ndescription: Demo skill\n---\nRun it with `Bash`.\n",
+  );
+  await page.goto("/");
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await page
+    .getByRole("complementary")
+    .getByRole("button", { name: "Library", exact: true })
+    .click();
+  await page.getByLabel("Project", { exact: true }).fill(fixture.project);
+  await page.getByLabel("Project", { exact: true }).press("Tab");
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Import from Claude Code and Codex",
+  });
+  await expect(dialog).toContainText("demo");
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(dialog).toContainText("Already in µAgent");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(
+    page.locator(LOADED_ROWS).filter({ hasText: /demo.*global · uAgent/ }),
+  ).toBeVisible();
 });

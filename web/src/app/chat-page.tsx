@@ -13,7 +13,13 @@ import type {
 import { useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
+import {
+  Welcome,
+  Deferred,
+  Placeholder,
+  Button,
+  Actions,
+} from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board, { PanelLayout } from "../features/panel/board.tsx";
@@ -78,6 +84,7 @@ export default function ChatPage({
   draft,
   setDraft,
   menu,
+  newPlace,
   addMember,
   submit,
   updateView,
@@ -101,6 +108,8 @@ export default function ChatPage({
   setDraft: (value: Draft) => void;
   // A panel's roster: a row's own actions, and asking for another member.
   menu: (item: Session) => ComponentChildren;
+  // Asks for a workspace's name or a folder's path, to start a conversation.
+  newPlace: (place: "workspace" | "folder") => void;
   addMember: () => void;
   submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
@@ -272,7 +281,7 @@ export default function ChatPage({
       tips={[
         [
           "Panel",
-          "Runs several conversations in a folder for you and hosts a chat with other voices. New conversation opens one too.",
+          "Runs several conversations in a workspace or folder for you and hosts a chat with other voices. Each has a Panel row in the list.",
         ],
         [
           <kbd>{keysOf("palette").join(" ")}</kbd>,
@@ -281,14 +290,22 @@ export default function ChatPage({
         [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
       ]}
     >
-      <p>Pick a folder on your host, or open a conversation from the list.</p>
-      <Button
-        variant="primary"
-        onClick={() => setModal({ type: "new" })}
-        disabled={!online}
-      >
-        New conversation
-      </Button>
+      <p>
+        Start in a workspace or a folder on your host, or open a conversation
+        from the list.
+      </p>
+      <Actions>
+        <Button onClick={() => newPlace("workspace")} disabled={!online}>
+          New workspace…
+        </Button>
+        <Button
+          variant="primary"
+          onClick={() => newPlace("folder")}
+          disabled={!online}
+        >
+          New folder…
+        </Button>
+      </Actions>
     </Welcome>
   );
 }

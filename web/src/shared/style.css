@@ -713,7 +713,7 @@ dialog.sidebar:not([open]) {
   min-width: 0;
   border-left: 2px solid transparent;
 }
-.session-row:focus-within,
+.session-row:has(:focus-visible),
 .session-row:has([aria-current]) {
   background: var(--raised);
 }

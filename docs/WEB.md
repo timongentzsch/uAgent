@@ -28,22 +28,24 @@ address. Or open the URL and type the code.
 - **Remove a device.** Settings → Host → Paired devices → **Revoke**, or
   **Log out this device**.
 
-The sidebar lists this OS user's conversations by where they are: **Spaces**
-first, then **Folders**. Each place lists its panel first, with what the
-panel started (threads and the members of its chat) nested under it, then
-its conversations. Browsing saved history does not start a model or run a
+The sidebar lists this OS user's conversations by where they are: **Workspaces**
+first, then **Folders**. A place's header folds it away (remembered per
+browser) and has **+** for a new conversation there. Under it come its
+panel, whose chevron lists what the panel started (threads and the members
+of its chat), then its conversations. Browsing saved history does not start a model or run a
 command.
 
-**New conversation** takes a space's name or a directory on the host. A
-**space** is a folder the host keeps under `~/.uagent/spaces/`, made the
+**New** at the top of the sidebar starts a **Workspace…** (a name) or a
+**Folder…** (a directory on the host) and opens a conversation there. A
+**workspace** is a folder the host keeps under `~/.uagent/spaces/`, made the
 first time its name is used. Use one for work that belongs to no
 project, rather than the home directory, which
 [commands cannot write](../SECURITY.md#sandboxing).
 
-A space goes by its name, which may be several words and can be changed:
-renaming a space (the menu beside its name) moves nothing, so its
-conversations stay as they are. Deleting a space removes its conversations and its folder with every file
-in it. A **folder** is a directory of yours: it is listed while it has
+A workspace goes by its name, which may be several words and can be changed:
+renaming a workspace (the menu beside its name) moves nothing, so its
+conversations stay as they are. Deleting a workspace removes its
+conversations and its folder with every file in it. A **folder** is a directory of yours: it is listed while it has
 conversations, and µAgent never removes it.
 
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
@@ -258,10 +260,10 @@ before Submit.
 
 ### The panel and its chat
 
-- A place's panel is its first row in the sidebar, or **Open panel** where
-  it has none yet; **New conversation → Open its panel** and the command
-  palette open it too. A thread or member links back to its panel under its
-  title.
+- A place's panel is its first row in the sidebar, or a faint **Panel** row
+  that opens it where it has none yet; the command palette opens it too.
+  The panel row's chevron lists its members and threads, one line each. A
+  thread or member links back to its panel under its title.
 - The **board** beside the chat (a button in the header on a phone) lists
   the chat's members and the work the moderator started. A row's menu
   renames or removes it, and **+** starts a message asking for another

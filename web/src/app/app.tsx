@@ -58,6 +58,7 @@ import Sidebar, {
   sessionOrder,
   shareTranscript,
 } from "../features/sidebar/sidebar.tsx";
+import { collapsed } from "../features/sidebar/folding.ts";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
@@ -69,6 +70,7 @@ import {
   waiting as waitingOn,
 } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
+import { folderOf } from "../shared/display.ts";
 import {
   lockPageZoom,
   useMedia,
@@ -205,6 +207,8 @@ function App() {
     };
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
+  // The sidebar's filter, here because Alt+↑/↓ steps through what it shows.
+  const [query, setQuery] = useState("");
   const [space, setSpace] = useState("");
   const [busy, setBusy] = useState(false);
   const {
@@ -379,15 +383,18 @@ function App() {
       removeEventListener("hashchange", followDecisionLink);
     };
   }, [choose]);
-  // A conversation in the folder typed into the dialog, or its panel.
-  async function create(
-    event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
-    panel = false,
-  ) {
-    event?.preventDefault();
+  // A conversation in the workspace or folder typed into the dialog.
+  async function create(event: JSX.TargetedSubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
     setBusy(true);
     try {
-      await startConversation(folder, panel, space.trim());
+      // Only the open dialog's field counts.
+      const workspace = modal?.type === "new" && modal.place === "workspace";
+      await startConversation(
+        workspace ? "" : folder,
+        false,
+        workspace ? space.trim() : "",
+      );
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -403,13 +410,15 @@ function App() {
       if (starting.current) return;
       starting.current = true;
       try {
-        // A space is asked for by its name; the host keeps its folder.
+        // A workspace is asked for by its name; the host keeps its folder.
         const created = await command("create", null, {
           ...(space ? { space } : { cwd: folder }),
           panel,
         });
         if (created.pending) return "";
         upsertSession(created.session);
+        // The new conversation is not behind a fold.
+        collapsed.set(folderOf(created.session), false);
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
         try {
@@ -867,7 +876,7 @@ function App() {
   }
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces);
+    const order = sessionOrder(listed, catalogue.spaces, query);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -885,18 +894,23 @@ function App() {
     setDrawer(false);
   }, []);
   const settings = useCallback(() => open({ type: "settings" }), [open]);
-  const cwd = session?.cwd || "";
-  // Where the open conversation is, is where the next one is offered.
-  const newConversation = useCallback(() => {
-    const here = catalogue.spaces?.find((item) => item.path === cwd);
-    setSpace(here?.name || "");
-    setFolder(here ? "" : cwd);
-    open({ type: "new" });
-  }, [cwd, open, catalogue.spaces]);
-  // A space by the name it goes by, a folder by the end of its path.
+  // Asks for the place's name or path, which starts a conversation there.
+  const newPlace = useCallback(
+    (place: "workspace" | "folder") => {
+      setSpace("");
+      setFolder("");
+      open({ type: "new", place });
+    },
+    [open],
+  );
+  // A workspace by the name it goes by, a folder by the end of its path.
   const placeName = (path = "") =>
     catalogue.spaces?.find((item) => item.path === path)?.name ||
     folderName(path);
+  const startIn = useCallback(
+    (cwd: string) => startConversation(cwd).catch(report),
+    [startConversation, report],
+  );
   const openPanel = useCallback(
     (cwd: string) => startConversation(cwd, true).catch(report),
     [startConversation, report],
@@ -944,6 +958,8 @@ function App() {
       }
       sessions={listed}
       needsYou={attention}
+      query={query}
+      setSearch={setQuery}
       spaces={catalogue.spaces || NO_SPACES}
       spaceMenu={(space, conversations) => (
         <SpaceMenu space={space} conversations={conversations} open={open} />
@@ -953,7 +969,8 @@ function App() {
       choose={choose}
       menu={conversationMenu}
       settings={settings}
-      create={newConversation}
+      create={newPlace}
+      start={startIn}
       openPanel={openPanel}
       palette={openPalette}
     />
@@ -1215,6 +1232,7 @@ function App() {
                         outgoing={outgoing}
                         loadError={loadErrors[selected]}
                         menu={conversationMenu}
+                        newPlace={newPlace}
                         addMember={addMember}
                         draft={draft}
                         setDraft={setDraft}

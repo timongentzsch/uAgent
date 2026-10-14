@@ -95,10 +95,7 @@ export default function Modals({
   setFolder: (folder: string) => void;
   space: string;
   setSpace: (space: string) => void;
-  create: (
-    event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
-    panel?: boolean,
-  ) => void;
+  create: (event: JSX.TargetedSubmitEvent<HTMLFormElement>) => void;
   preferences: Preferences;
 }) {
   const {
@@ -131,11 +128,11 @@ export default function Modals({
           title={
             modal.type === "rename"
               ? modal.space
-                ? "Rename space"
+                ? "Rename workspace"
                 : "Rename conversation"
               : modal.type === "delete"
                 ? modal.space
-                  ? "Delete space?"
+                  ? "Delete workspace?"
                   : "Delete conversation?"
                 : "unit" in modal && modal.unit
                   ? `${modal.unit} statistics`
@@ -162,7 +159,7 @@ export default function Modals({
               close={close}
               online={online}
               changed={async (kind: string, id: string) => {
-                // A space takes its conversations with it.
+                // A workspace takes its conversations with it.
                 if (kind === "delete")
                   for (const gone of modal.space
                     ? catalogue.sessions.filter(
@@ -210,71 +207,66 @@ export default function Modals({
         </Modal>
       )}
       {modal?.type === "new" && (
-        <Modal title="New conversation" close={close}>
+        <Modal
+          title={modal.place === "workspace" ? "New workspace" : "New folder"}
+          close={close}
+        >
           <form onSubmit={create}>
-            {/* One of the two: writing in one empties the other. */}
-            <label>
-              In a space
-              <Input
-                autoFocus
-                list="new-conversation-spaces"
-                value={space}
-                onInput={(event) => {
-                  setSpace(event.currentTarget.value);
-                  setFolder("");
-                }}
-                placeholder="A name, new or existing"
-                required={!folder}
-                maxLength={64}
-                autoComplete="off"
-              />
-            </label>
-            <datalist id="new-conversation-spaces">
-              {(catalogue.spaces || []).map((item) => (
-                <option key={item.path} value={item.name} />
-              ))}
-            </datalist>
-            <label>
-              Or in a folder on the host
-              <Input
-                list="new-conversation-folders"
-                value={folder}
-                onInput={(event) => {
-                  setFolder(event.currentTarget.value);
-                  setSpace("");
-                }}
-                placeholder="/path/to/project"
-                required={!space}
-                autoComplete="off"
-              />
-            </label>
-            <datalist id="new-conversation-folders">
-              {projects
-                .filter(
-                  (path) =>
-                    !catalogue.spaces?.some((item) => item.path === path),
-                )
-                .map((path) => (
-                  <option key={path} value={path} />
-                ))}
-            </datalist>
-            <p class="muted">
-              A space is µAgent&rsquo;s own: a place for work that belongs to no
-              project, which you can rename and delete. A folder is a directory
-              of yours, in Git or not. Either holds several conversations, and a
-              panel that runs them for you and hosts a chat with other voices.
-            </p>
+            {modal.place === "workspace" ? (
+              <>
+                <label>
+                  Name
+                  <Input
+                    autoFocus
+                    list="new-conversation-spaces"
+                    value={space}
+                    onInput={(event) => setSpace(event.currentTarget.value)}
+                    placeholder="A name, new or existing"
+                    required
+                    maxLength={64}
+                    autoComplete="off"
+                  />
+                </label>
+                <datalist id="new-conversation-spaces">
+                  {(catalogue.spaces || []).map((item) => (
+                    <option key={item.path} value={item.name} />
+                  ))}
+                </datalist>
+                <p class="muted">
+                  A workspace is µAgent&rsquo;s own: a place for work that
+                  belongs to no project, which you can rename and delete.
+                </p>
+              </>
+            ) : (
+              <>
+                <label>
+                  Folder on the host
+                  <Input
+                    autoFocus
+                    list="new-conversation-folders"
+                    value={folder}
+                    onInput={(event) => setFolder(event.currentTarget.value)}
+                    placeholder="/path/to/project"
+                    required
+                    autoComplete="off"
+                  />
+                </label>
+                <datalist id="new-conversation-folders">
+                  {projects
+                    .filter(
+                      (path) =>
+                        !catalogue.spaces?.some((item) => item.path === path),
+                    )
+                    .map((path) => (
+                      <option key={path} value={path} />
+                    ))}
+                </datalist>
+                <p class="muted">
+                  A folder is a directory of yours, in Git or not.
+                </p>
+              </>
+            )}
             <Actions>
-              {/* Not a submit: Enter in the field starts a conversation. */}
-              <Button
-                disabled={busy || !online}
-                onClick={(event) =>
-                  event.currentTarget.form?.reportValidity() &&
-                  create(null, true)
-                }
-              >
-                Open its panel
-              </Button>
               <Button
                 type="submit"
                 variant="primary"

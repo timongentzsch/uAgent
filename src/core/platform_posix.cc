@@ -18,8 +18,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/core/fd.h"
@@ -112,47 +114,101 @@ bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout) {
   }
 }
 
+std::optional<ProcStat> ParseProcStat(std::string_view record) {
+  // "pid (comm) state ppid pgrp ...": comm is arbitrary, newlines and ')'
+  // included, so the fields are those after the last ')'.
+  const size_t command_end = record.rfind(')');
+  if (command_end == std::string_view::npos) return std::nullopt;
+  const std::string rest(record.substr(command_end + 1));
+  char state = 0;
+  int parent = 0;
+  int group = 0;
+  if (std::sscanf(rest.c_str(), " %c %d %d", &state, &parent, &group) != 3 ||
+      group <= 0) {
+    return std::nullopt;
+  }
+  return ProcStat{state, group};
+}
+
+// Strictly conservative: "no live member" is answered only on positive
+// evidence, and anything unexpected (a read error, nothing found, a hidden or
+// foreign /proc) answers "alive", which is what the group probe alone says.
 bool ProcessGroupHasLiveMember(pid_t group) {
 #ifdef __APPLE__
   int query[] = {CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group};
-  size_t size = 0;
-  if (sysctl(query, 4, nullptr, &size, nullptr, 0) != 0) return true;
-  std::vector<kinfo_proc> members(size / sizeof(kinfo_proc) + 8);
-  size = members.size() * sizeof(kinfo_proc);
-  if (sysctl(query, 4, members.data(), &size, nullptr, 0) != 0) return true;
-  members.resize(size / sizeof(kinfo_proc));
-  return std::any_of(members.begin(), members.end(), [&](const kinfo_proc& m) {
-    return m.kp_proc.p_pid == group || m.kp_proc.p_stat != SZOMB;
-  });
+  std::vector<kinfo_proc> members;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    size_t size = 0;
+    if (sysctl(query, 4, nullptr, &size, nullptr, 0) != 0) return true;
+    members.resize(size / sizeof(kinfo_proc) + 8);
+    size = members.size() * sizeof(kinfo_proc);
+    if (sysctl(query, 4, members.data(), &size, nullptr, 0) == 0) {
+      members.resize(size / sizeof(kinfo_proc));
+      return members.empty() ||
+             std::any_of(members.begin(), members.end(),
+                         [&](const kinfo_proc& m) {
+                           return m.kp_proc.p_pid == group ||
+                                  m.kp_proc.p_stat != SZOMB;
+                         });
+    }
+    if (errno != ENOMEM) return true;  // the group grew between the calls
+  }
+  return true;
 #elif defined(__linux__)
-  std::error_code unreadable;
-  std::filesystem::directory_iterator processes("/proc", unreadable);
-  if (unreadable) return true;
-  for (const auto& entry : processes) {
-    const std::string name = entry.path().filename().string();
+  namespace fs = std::filesystem;
+  auto read_all = [](const fs::path& path) {
+    std::ifstream input(path);
+    std::ostringstream text;
+    text << input.rdbuf();
+    return input ? text.str() : std::string();
+  };
+  // /proc may belong to another PID namespace, whose numbers mean nothing
+  // here: trust it only when it agrees about this process's own group.
+  const std::optional<ProcStat> self =
+      ParseProcStat(read_all("/proc/self/stat"));
+  if (!self || self->group != getpgrp()) return true;
+
+  std::error_code error;
+  fs::directory_iterator entries("/proc", error);
+  size_t found = 0;
+  for (; !error && entries != fs::directory_iterator();
+       entries.increment(error)) {
+    const std::string name = entries->path().filename().string();
     if (name.empty() || !std::all_of(name.begin(), name.end(), [](char c) {
           return c >= '0' && c <= '9';
         })) {
       continue;
     }
-    std::ifstream input(entry.path() / "stat");
-    std::string stat;
-    if (!std::getline(input, stat)) continue;
-    // "pid (comm) state ppid pgrp ...": comm may hold anything, even ')'.
-    const size_t command_end = stat.rfind(')');
-    char state = 0;
-    int parent = 0;
-    int pgrp = 0;
-    if (command_end == std::string::npos ||
-        std::sscanf(stat.c_str() + command_end + 1, " %c %d %d", &state,
-                    &parent, &pgrp) != 3) {
+    // A process that ended between the listing and the read is gone and no
+    // member; any other failure to read it is doubt.
+    const std::optional<ProcStat> stat =
+        ParseProcStat(read_all(entries->path() / "stat"));
+    if (!stat) {
+      std::error_code probe;
+      if (fs::exists(entries->path(), probe) || probe) return true;
       continue;
     }
-    if (pgrp == group && (std::stoi(name) == group || state != 'Z')) {
-      return true;
+    if (stat->group != group) continue;
+    ++found;
+    // A zombie leader is still to be reaped, and a zombie thread-group leader
+    // can have threads running (/proc lists processes, not threads).
+    if (stat->state != 'Z' || std::stoi(name) == group) return true;
+    std::error_code tasks_error;
+    size_t tasks = 0;
+    for (fs::directory_iterator task(entries->path() / "task", tasks_error);
+         !tasks_error && task != fs::directory_iterator();
+         task.increment(tasks_error)) {
+      ++tasks;
+    }
+    if (tasks != 1 || tasks_error) {
+      std::error_code probe;
+      if (tasks != 0 || fs::exists(entries->path(), probe) || probe) {
+        return true;
+      }
+      --found;  // reaped while it was being looked at
     }
   }
-  return false;
+  return error || found == 0;
 #else
   (void)group;
   return true;

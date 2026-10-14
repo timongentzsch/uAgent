@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -35,11 +36,19 @@ pid_t WaitPid(pid_t pid, int* status, int flags = 0);
 // wait. ECHILD is success because another owner already reaped it.
 bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout);
 
-// Whether process group `group` still holds anything that can run: its leader
-// (a zombie one included, since whoever reaps it is still to come) or any
-// member that is not a zombie. A group left with only the zombies of
-// grandchildren is finished: their adopter reaps them whenever it gets to
-// it, and nothing can be done about that from here.
+// The fields of a Linux /proc/<pid>/stat record that matter here. Nothing
+// when the record is malformed.
+struct ProcStat {
+  char state;
+  pid_t group;
+};
+std::optional<ProcStat> ParseProcStat(std::string_view record);
+
+// Whether process group `group`, known to answer a signal, still holds
+// anything that can run. False only when the scan positively finds members and
+// every one is a zombie with a single task, the leader already reaped: their
+// adopter reaps them whenever it gets to it, and nothing can be done about
+// that from here. Any doubt answers true.
 bool ProcessGroupHasLiveMember(pid_t group);
 
 // Stable identity for one live process, independent of PID reuse. Empty when

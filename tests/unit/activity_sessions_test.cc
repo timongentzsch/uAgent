@@ -1220,6 +1220,19 @@ void TestDetachedActivityOwnership() {
 // an adopter that reaps late (a container's init, a CI agent) must not make
 // the stop of that command fail: nothing in such a group can run any more.
 void TestAGroupOfOnlyZombiesIsFinished() {
+  // A process name may hold parentheses and newlines; the fields follow the
+  // last ')'. A record that does not fit says nothing.
+  std::optional<ProcStat> plain = ParseProcStat("12 (sleep) Z 1 34 34 0\n");
+  CHECK(plain && plain->state == 'Z' && plain->group == 34);
+  std::optional<ProcStat> odd =
+      ParseProcStat("12 (a) S 9 9\n(b) c) R 1 77 77 0\n");
+  CHECK(odd && odd->state == 'R' && odd->group == 77);
+  CHECK(!ParseProcStat(""));
+  CHECK(!ParseProcStat("12 sleep Z 1 34"));
+  CHECK(!ParseProcStat("12 (sleep) Z 1"));
+  CHECK(!ParseProcStat("12 (sleep) Z x y"));
+  CHECK(!ParseProcStat("12 (sleep) Z 1 0"));
+
   pid_t leader = fork();
   if (leader == 0) {
     pause();

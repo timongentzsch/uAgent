@@ -423,7 +423,11 @@ test("minimal folds a turn's work into one row before its answer", () => {
     { ...call("e3", "edit"), view: { target: "b.ts" } },
     call("c1", "run", "cancelled"),
     { id: "m2", kind: "assistant", text: "Done.", reasoning: "sure" },
-    { id: "s1", kind: "assistant", summary: { turn: 1, duration_ms: 72000 } },
+    {
+      id: "s1",
+      kind: "turn_summary",
+      summary: { turn: 1, duration_ms: 72000 },
+    },
     { id: "u2", kind: "user", text: "more" },
     call("r1", "run", "running"),
   ];

@@ -5,7 +5,11 @@ import type {
   Draft,
   InspectorTarget,
   InstallPrompt,
+  ActivityTarget,
   Block,
+  Exchange,
+  PresentedBlock,
+  UserBlock,
   Session,
   Space,
   Act,
@@ -652,7 +656,7 @@ function App() {
   latest.current = current;
   // A failed message sends again as a new request; Continue resumes a
   // stopped turn. Both leave the composer's draft alone.
-  const retrySend = useCallback((block: Block) => {
+  const retrySend = useCallback((block: UserBlock) => {
     const { online, selected, deliver, busy } = latest.current;
     if (!online || busy || !block.request_id || !unsent(block)) return;
     setOutgoing((items) =>
@@ -670,7 +674,7 @@ function App() {
   }, []);
   // From a message's menu: edit it in a fork (fork before it), or keep it
   // and its reply (fork before the next message of yours).
-  const branchFrom = useCallback((block: Block, edit: boolean) => {
+  const branchFrom = useCallback((block: Pick<Block, "id">, edit: boolean) => {
     const { forkAndOpen, outgoing, selected, report } = latest.current;
     const blocks = transcriptBlocks(
       snapshots.get()[selected]?.state?.view,
@@ -691,7 +695,7 @@ function App() {
   // queued. Delivered guidance belongs to the turn; dropping the row is
   // then the only correct move. A send that failed returns the same way,
   // with nothing to withdraw from the host.
-  const recallGuidance = useCallback(async (block: Block) => {
+  const recallGuidance = useCallback(async (block: UserBlock) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
     if (!target || !recallable(block, online)) return;
@@ -728,15 +732,18 @@ function App() {
           title: id.startsWith("t-") ? "Tool input/output" : "Full content",
           raw: { id, session: selected },
         }),
-      http: (exchanges: NonNullable<Block["http"]>) =>
+      http: (exchanges: Exchange[]) =>
         setModal({ type: "raw", session: selected, exchanges }),
-      activity: (block: Block) => setInspector({ block }),
-      statistics: (block: Block) =>
+      activity: (block: ActivityTarget) => setInspector({ block }),
+      statistics: (block: PresentedBlock) =>
         setModal({
           type: "statistics",
           session_id: selected,
-          block_id: block.occurrence_id || block.response_id || block.id,
-          unit: block.summary ? "Turn" : "Message",
+          block_id:
+            ("occurrence_id" in block && block.occurrence_id) ||
+            ("response_id" in block && block.response_id) ||
+            block.id,
+          unit: block.kind === "turn_summary" ? "Turn" : "Message",
         }),
     }),
     [report, recallGuidance, branchFrom, selected],

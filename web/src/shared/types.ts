@@ -120,6 +120,13 @@ export interface TurnSummary {
   usage: Usage;
   // Files the turn's edit, write and delete tools changed (at most 50).
   files?: TurnFile[];
+  turn_root?: string;
+  generation_ms?: number;
+  generated_tokens?: number;
+  session_usage?: Usage;
+  messages?: number;
+  context_tokens?: number;
+  line_open?: boolean;
 }
 export interface TurnFile {
   path: string;
@@ -132,89 +139,188 @@ interface TurnStop {
   reason: string;
   detail?: string;
 }
-export interface Block {
-  memory?: {
-    action: string;
-    key: string;
-    automatic: boolean;
-    minor?: boolean;
-  };
-  activity?: ToolActivity;
-  sequence?: number;
-  summary?: TurnSummary;
-  compaction?: {
-    automatic: boolean;
-    messages_before: number;
-    messages_after: number;
-    duration_ms: number;
-  };
-  deliveries?: { name: string; delivery: string }[];
+// What a note about memory says, as the host recorded it.
+export interface MemoryNote {
+  action: string;
+  key: string;
+  automatic: boolean;
+  minor?: boolean;
+}
+// The fields every block carries; `kind` says which others it has.
+interface BlockBase {
   id: string;
-  response_id?: string;
-  occurrence_id?: string;
-  content_revision?: number;
-  content_complete?: boolean;
+  sequence?: number;
+  time?: string;
+  text?: string;
+  truncated?: boolean;
   text_bytes?: number;
   retained_text_bytes?: number;
-  kind: string;
-  text?: string;
-  time?: string;
-  reasoning?: string;
-  streaming?: boolean;
+  content_complete?: boolean;
+  status?: string;
+  // A chat participant's pass or wait: shown to nobody.
+  silent?: boolean;
+  turn_root?: string;
+}
+// How an attachment reached the model.
+interface Delivery {
+  id: string;
+  name: string;
+  delivery: string;
+  path: string;
+}
+// A message a turn answers; its failed model calls keep their HTTP capture
+// on it, as the reply that never came cannot.
+interface Answered {
+  reply_to?: string;
+  reply_excerpt?: string;
+  http?: Exchange[];
+}
+// What a person typed, or mail from a participant of a panel's chat.
+export interface UserBlock extends BlockBase, Answered {
+  kind: "user";
   request_id?: string;
   session_id?: string;
-  incoming?: number;
   files?: Asset[];
   origin?: string;
   // Who wrote a message that came by mail: a participant of a panel's chat,
   // by the name it had then and, as `sender`, by its session.
   author?: string;
   sender?: string;
-  // A chat participant's pass or wait: shown to nobody.
-  silent?: boolean;
+  deliveries?: Delivery[];
+  unavailable_images?: number;
+  // Why the host refused it, on a message held here until it confirms.
+  error?: string;
+}
+// Files added to context: a person's, or those a tool's result brought.
+export interface AttachmentBlock extends BlockBase, Answered {
+  kind: "attachment";
+  request_id?: string;
+  files?: Asset[];
+  origin?: string;
   // Tool calls whose results added these files to context.
   source_call_ids?: string[];
+  deliveries?: Delivery[];
   unavailable_images?: number;
-  call_id?: string;
-  name?: string;
-  arguments?: JSONValue;
-  view?: ToolView;
-  detail_id?: string;
-  status?: string;
-  error?: string;
+}
+export interface AssistantBlock extends BlockBase, Answered {
+  kind: "assistant";
+  row_id?: string;
+  incoming?: number;
+  response_id?: string;
+  content_revision?: number;
+  reasoning?: string;
+  reasoning_available?: boolean;
+  reasoning_revision?: number;
+  reasoning_complete?: boolean;
+  reasoning_bytes?: number;
+  retained_reasoning_bytes?: number;
+  streaming?: boolean;
+  request_id?: string;
+  files?: Asset[];
+  deliveries?: Delivery[];
+  unavailable_images?: number;
   duration_ms?: number;
-  // Retained tool_result whose receipt facts are gone: its fallbacks
-  // ("tool"/"running") must never shadow the call record it joins.
   ttft_ms?: number;
   tokens_per_second?: number;
   route?: string;
-  change?: string;
-  change_path?: string; // set when `change` is only a stored diff's opening
-  truncated?: boolean;
   usage?: Usage;
   usage_reported?: boolean;
-  http?: Exchange[];
-  turn_root?: string;
-  activity_id?: number;
-  agent_id?: string;
+}
+// One tool call and its result, joined into one row.
+export interface ToolBlock extends BlockBase, Answered {
+  kind: "tool_result";
+  response_id?: string;
+  occurrence_id?: string;
+  call_id?: string;
+  detail_id?: string;
+  name?: string;
+  arguments?: JSONValue;
+  view?: ToolView;
+  activity?: ToolActivity;
+  duration_ms?: number;
+  change?: string;
+  change_path?: string; // set when `change` is only a stored diff's opening
   // Parts that stay visible on the row: files shared, work started.
   parts?: ToolPart[];
   // The end of a result whose text preview holds only its start.
   tail?: string;
-  command?: string;
+  // The call's and the result's rows as the live turn showed them.
+  call_replay?: unknown;
+  replay?: unknown;
+  exchange_path?: string;
+  // A retained result whose receipt is gone.
+  receipt_missing?: boolean;
+  artifact?: boolean;
+  // Files a tool's attachment block brought; the page joins them to the row.
+  files?: Asset[];
 }
-export interface PresentedBlock extends Block {
+// A note the host adds: a finished background command or agent, or a memory
+// saved, changed or forgotten.
+export interface ActivityBlock extends BlockBase {
+  kind: "activity";
+  incoming?: number;
+  activity_id?: number;
+  agent_id?: string;
+  command?: string;
+  activity?: ToolActivity;
+  view?: ToolView;
+  parts?: ToolPart[];
+  memory?: MemoryNote;
+}
+// The footer a turn leaves.
+export interface TurnSummaryBlock extends BlockBase {
+  kind: "turn_summary";
+  summary: TurnSummary;
+}
+export interface CompactionBlock extends BlockBase {
+  kind: "compaction";
+  compaction: {
+    automatic: boolean;
+    messages_before: number;
+    messages_after: number;
+    duration_ms: number;
+    retained_user_messages?: number;
+  };
+}
+export type Block =
+  | UserBlock
+  | AttachmentBlock
+  | AssistantBlock
+  | ToolBlock
+  | ActivityBlock
+  | TurnSummaryBlock
+  | CompactionBlock;
+// What the inspector opens: a block's own work, or the one a link names.
+export type ActivityTarget = Pick<
+  ActivityBlock,
+  | "id"
+  | "status"
+  | "text"
+  | "command"
+  | "activity"
+  | "activity_id"
+  | "agent_id"
+  | "memory"
+>;
+// Rows the page makes of blocks. A fold of several is a group; the rest are
+// the host's blocks.
+interface GroupBlock extends BlockBase {
+  kind: "group";
+}
+interface Presented {
   children?: PresentedBlock[];
   // A folded row's own line: the host's group label, or a turn's work.
   label?: string;
   key?: string;
-  source?: Block;
+  // The reply that made a tool call.
+  source?: AssistantBlock;
   result_loaded?: boolean;
 }
-export interface Outgoing extends Block {
-  request_id: string;
-  session_id: string;
-}
+export type PresentedBlock = (Block | GroupBlock) & Presented;
+// A row that reads as a tool call: a call and its result, or a receipt.
+export type ToolRowBlock = (ToolBlock | ActivityBlock) & Presented;
+// A message of yours, held until the host confirms it.
+export type Outgoing = UserBlock & { request_id: string; session_id: string };
 export interface View {
   blocks: Block[];
   before?: number;
@@ -226,7 +332,7 @@ export interface Activity {
   id?: number;
   activity_id?: number;
   agent_id?: string;
-  kind?: string;
+  kind?: "agent" | "command";
   label?: string;
   name?: string;
   description?: string;
@@ -257,7 +363,7 @@ export interface ActivityDetail extends Activity {
   olderWindow?: boolean;
   body?: BodyPage;
   command?: string;
-  memory?: Block["memory"];
+  memory?: MemoryNote;
   task?: string;
   directive?: string;
   system_prompt?: string;
@@ -267,12 +373,22 @@ export interface ActivityDetail extends Activity {
   usage?: Usage;
   turns?: number;
 }
-export interface Pending {
+interface PendingBase {
   id: string;
-  kind?: string;
-  initial?: string;
   prompt?: string;
+  initial?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
+  // A thread's decision goes to its panel first; "human" once yielded.
+  route?: "panel" | "human";
+  note?: string;
+}
+// The model's questions; `prompt` repeats the first.
+export interface AskPending extends PendingBase {
+  kind: "ask";
+  questions?: AskQuestion[];
+}
+export interface ApprovalPending extends PendingBase {
+  kind: "approval";
   approval?: {
     tool: string;
     mandatory_human?: boolean;
@@ -281,12 +397,12 @@ export interface Pending {
     // What approving risks, most serious first.
     risks?: { id: "runs" | "writes" | "network" | "outside"; label: string }[];
   };
-  // kind "ask": the model's questions; `prompt` repeats the first.
-  questions?: AskQuestion[];
-  // A thread's decision goes to its panel first; "human" once yielded.
-  route?: "panel" | "human";
-  note?: string;
 }
+// A line of text, a file to edit, or a step done in the browser.
+export interface InputPending extends PendingBase {
+  kind: "text" | "editor" | "browser" | "project.trust" | "model.select";
+}
+export type Pending = AskPending | ApprovalPending | InputPending;
 // Each question also takes a free-text "Other" answer.
 export interface AskQuestion {
   question: string;
@@ -524,7 +640,7 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   result?: JSONValue;
   agent_id?: string;
   activity_id?: number;
-  parts?: Block["parts"];
+  parts?: ToolPart[];
   status?: string | number;
   duration_ms?: number;
   activity?: ToolActivity;
@@ -545,7 +661,7 @@ export interface BlockPatch {
   kind: "block";
   block?: Block;
   id?: string;
-  set?: Partial<Block>;
+  set?: Pick<AssistantBlock, "streaming">;
   append?: { text?: string; reasoning?: string };
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
@@ -951,4 +1067,6 @@ export type ConnectionPhase =
 // What the inspector is opened on: a transcript row, a live activity, or a
 // tool's retained input/output.
 export type InspectorTarget =
-  { block: Block } | { item: Activity } | { raw: RawOptions; title: string };
+  | { block: ActivityTarget }
+  | { item: Activity }
+  | { raw: RawOptions; title: string };

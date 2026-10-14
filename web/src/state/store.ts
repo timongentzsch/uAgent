@@ -69,7 +69,7 @@ function applyBlock(view: View | undefined, patch: BlockPatch): View {
   } else if (at >= 0) {
     const next: Block = { ...blocks[at], ...patch.set };
     if (patch.append?.text) next.text = (next.text || "") + patch.append.text;
-    if (patch.append?.reasoning)
+    if (patch.append?.reasoning && next.kind === "assistant")
       next.reasoning = (next.reasoning || "") + patch.append.reasoning;
     blocks[at] = next;
   }
@@ -177,7 +177,11 @@ export function applySessionEvent(
     state = { ...(state || {}), view: applyBlock(state?.view, event) };
   const incoming = Math.max(
     current.metadata?.incoming || 0,
-    (event.kind === "block" && event.block?.incoming) || 0,
+    (event.kind === "block" &&
+      event.block &&
+      "incoming" in event.block &&
+      event.block.incoming) ||
+      0,
   );
   const metadata =
     incoming === (current.metadata?.incoming || 0)

@@ -1,14 +1,20 @@
 import { isFailedStatus, isRunningStatus } from "./display.ts";
 import { duration } from "./duration.ts";
 import { plural } from "./quantities.ts";
-import type { Block, DetailPolicy, PresentedBlock } from "./types.ts";
+import type {
+  AssistantBlock,
+  Block,
+  DetailPolicy,
+  PresentedBlock,
+  UserBlock,
+} from "./types.ts";
 import { defaultDetail } from "./verbosity.ts";
 
 // A block the host did not change keeps its row object, so a streamed
 // frame presents only the rows it touched and the rest compare by identity.
 const presented = new WeakMap<Block, PresentedBlock>();
 
-function present(block: Block, source?: Block): PresentedBlock {
+function present(block: Block, source?: AssistantBlock): PresentedBlock {
   const prior = presented.get(block);
   if (prior && prior.source === source) return prior;
   const row: PresentedBlock =
@@ -36,7 +42,7 @@ export const queuedGuidance = (block: Pick<Block, "status">) =>
 // What returns to the composer: guidance still queued (withdrawn from the
 // host, so only while connected) or a message that never went out.
 export const recallable = (
-  block: Pick<Block, "status" | "request_id">,
+  block: Pick<UserBlock, "status" | "request_id">,
   online: boolean,
 ) => !!block.request_id && ((online && queuedGuidance(block)) || unsent(block));
 
@@ -66,7 +72,7 @@ export function presentMessages(
   chat = false,
 ): PresentedBlock[] {
   const rows: PresentedBlock[] = [];
-  const responses = new Map<string, Block>();
+  const responses = new Map<string, AssistantBlock>();
   for (const block of blocks) {
     if (unsaid(block, chat)) continue;
     if (block.kind === "assistant" && block.response_id)
@@ -79,13 +85,12 @@ export function presentMessages(
       !(block.reasoning && policy.reasoning !== "hidden") &&
       !block.files?.length &&
       !block.deliveries?.length &&
-      !block.error &&
-      !block.summary &&
       !block.truncated
     )
       continue;
     // Routine memory outcomes show only at a level that asks for them.
-    if (block.memory?.minor && !policy.minor) continue;
+    if (block.kind === "activity" && block.memory?.minor && !policy.minor)
+      continue;
     rows.push(
       present(
         block,
@@ -109,9 +114,12 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
   const byCall = new Map<string, number>();
   const kept: PresentedBlock[] = [];
   for (const row of rows) {
-    const owner = row.source_call_ids
-      ?.map((id) => byCall.get(id))
-      .find((index) => index !== undefined);
+    const owner =
+      row.kind === "attachment"
+        ? row.source_call_ids
+            ?.map((id) => byCall.get(id))
+            .find((index) => index !== undefined)
+        : undefined;
     if (
       row.kind === "attachment" &&
       row.origin === "tool" &&
@@ -120,10 +128,9 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
       const files = (row.files || []).filter(
         (file) => typeof file === "object",
       );
-      kept[owner] = {
-        ...kept[owner],
-        files: [...(kept[owner].files || []), ...files],
-      };
+      const call = kept[owner];
+      if (call.kind === "tool_result")
+        kept[owner] = { ...call, files: [...(call.files || []), ...files] };
       continue;
     }
     if (row.kind === "tool_result" && row.call_id)
@@ -149,19 +156,27 @@ function fold(children: PresentedBlock[], label: string): PresentedBlock {
   )
     return prior;
   const key = first.key || first.id;
-  const group = { id: `group-${key}`, key, kind: "group", label, children };
+  const group: PresentedBlock = {
+    id: `group-${key}`,
+    key,
+    kind: "group",
+    label,
+    children,
+  };
   folds.set(first, group);
   return group;
 }
 
 // The host names the calls that read as one ("Explored · 4 calls"): adjacent
 // rows of one group fold under its label, and every other call keeps its row.
+const groupOf = (row: PresentedBlock) =>
+  "activity" in row ? row.activity?.group : undefined;
 function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   for (let begin = 0; begin < rows.length;) {
-    const group = rows[begin].activity?.group;
+    const group = groupOf(rows[begin]);
     let end = begin + 1;
-    while (group && rows[end]?.activity?.group?.id === group.id) end++;
+    while (group && rows[end] && groupOf(rows[end])?.id === group.id) end++;
     folded.push(
       end - begin > 1
         ? fold(rows.slice(begin, end), group!.label)
@@ -178,8 +193,10 @@ function workLabel(steps: PresentedBlock[], took?: number) {
   const calls = steps.filter((step) => step.kind !== "assistant");
   const edited = new Set(
     calls
-      .filter((step) => step.activity?.category === "edit")
-      .map((step) => step.view?.target || step.id),
+      .filter(
+        (step) => "activity" in step && step.activity?.category === "edit",
+      )
+      .map((step) => ("view" in step && step.view?.target) || step.id),
   ).size;
   return [
     `Worked · ${plural(calls.length, "step")}`,
@@ -204,10 +221,9 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
     for (const row of turn) {
       const work =
         row !== answer &&
-        !row.error &&
         !isFailedStatus(row.status) &&
         !/cancel/i.test(row.status || "") &&
-        !row.parts?.some((part) => part.kind === "file") &&
+        !("parts" in row && row.parts?.some((part) => part.kind === "file")) &&
         (row.kind === "tool_result" ||
           row.kind === "activity" ||
           row.kind === "assistant" ||
@@ -224,8 +240,9 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
     const yours =
       row.kind === "user" ||
       (row.kind === "attachment" && row.origin !== "tool");
-    if (yours || row.summary) {
-      flush(row.summary?.duration_ms);
+    const summary = row.kind === "turn_summary" ? row.summary : undefined;
+    if (yours || summary) {
+      flush(summary?.duration_ms);
       folded.push(row);
     } else turn.push(row);
   }

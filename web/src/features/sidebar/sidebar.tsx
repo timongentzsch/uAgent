@@ -1,9 +1,7 @@
-import {
-  ConnectionStatus,
-  type ConnectionPhase,
-} from "../../shared/connection-status.tsx";
+import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Component, type ComponentChildren } from "preact";
 import type {
+  ConnectionPhase,
   Session,
   Space,
   Report,
@@ -34,14 +32,12 @@ import {
   Placeholder,
   EmptyState,
 } from "../../shared/ui.tsx";
-import FolderLabel, {
-  folderName,
-  folderOf,
-} from "../../shared/folder-label.tsx";
+import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
+import { folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { levelLabel } from "../../shared/verbosity.ts";
-import { ActivityStatus, active } from "../chat/activity-status.tsx";
+import { ActivityStatus, active } from "../../shared/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import {
   needsYou,
@@ -49,7 +45,7 @@ import {
   type SessionState,
 } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import WaitingList from "../panel/escalations.tsx";
+import WaitingList from "../../shared/escalations.tsx";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
   const result = await command("share", item);

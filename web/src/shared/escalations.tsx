@@ -1,13 +1,13 @@
 import { useEffect } from "preact/hooks";
-import { useResource } from "../../shared/use-resource.ts";
-import type { Act, Pending, Report, Session } from "../../shared/types.ts";
-import { api, command } from "../../state/api.ts";
-import { Button, Deferred, LoadError, Spinner } from "../../shared/ui.tsx";
-import { waiting } from "../../state/attention.ts";
-import SessionName from "../../shared/session-name.tsx";
-import { folderName } from "../../shared/folder-label.tsx";
+import { useResource } from "./use-resource.ts";
+import type { Act, Pending, Report, Session } from "./types.ts";
+import { api, command } from "../state/api.ts";
+import { Button, Deferred, LoadError, Spinner } from "./ui.tsx";
+import { waiting } from "../state/attention.ts";
+import SessionName from "./session-name.tsx";
+import { folderName } from "./folder-label.tsx";
 
-const decisionPanel = () => import("../chat/decision.tsx");
+const decisionPanel = () => import("./decision.tsx");
 
 // Decisions sessions are waiting on: a folder's threads above its
 // panel's composer, or every folder's in the sidebar's inbox. Each is

@@ -1,4 +1,4 @@
-import "../composer/attachments.css";
+import "../../shared/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
@@ -33,11 +33,15 @@ import {
 import { MessageMenu } from "./message-menu.tsx";
 import { Avatar } from "../../shared/avatar.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
-import { diffCounts, formatStat } from "./tool-preview.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
-import { isRunningStatus, statusLine } from "../../shared/display.ts";
+import {
+  diffCounts,
+  formatStat,
+  isRunningStatus,
+  statusLine,
+} from "../../shared/display.ts";
 import { DetailContext } from "../../shared/verbosity.ts";
 
 // The inspector opens a block's own work; a link part names it.

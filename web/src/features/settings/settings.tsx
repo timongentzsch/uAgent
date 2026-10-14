@@ -16,7 +16,8 @@ import { McpServers } from "./mcp.tsx";
 import { DevicesPane } from "./panes/devices.tsx";
 import { DisplayPane } from "./panes/display.tsx";
 import { PermissionsPane } from "./panes/permissions.tsx";
-import { SCOPES, SettingsNav, type Scope } from "./settings-nav.tsx";
+import { SettingsNav } from "./settings-nav.tsx";
+import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 const configuration = () => import("./configuration.tsx");
 
 // The shell: which scope is open, the list of scopes, and its page.

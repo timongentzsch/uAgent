@@ -1,5 +1,4 @@
-export type ConnectionPhase =
-  "connected" | "connecting" | "reconnecting" | "disconnected";
+import type { ConnectionPhase } from "./types.ts";
 type LedState = "idle" | "active" | "running" | "failed";
 
 export function StatusLed({ state }: { state: LedState }) {

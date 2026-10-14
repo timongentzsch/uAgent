@@ -3,6 +3,7 @@ import type {
   JSONValue,
   Snapshot,
   Catalogue,
+  ConnectionPhase,
   Draft,
   Outgoing,
   HostEvent,
@@ -40,7 +41,6 @@ import {
   reconnectGraceMs,
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
-import type { ConnectionPhase } from "../shared/connection-status.tsx";
 import { needsYou } from "./attention.ts";
 
 const CATALOGUE_KEY = "uagent-catalogue";

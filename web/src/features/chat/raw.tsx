@@ -13,7 +13,7 @@ import {
 } from "../../shared/ui.tsx";
 import { readPages, command } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
-import { formatEventStream } from "../../state/event-stream.ts";
+import { formatEventStream } from "./raw-capture.ts";
 
 export default function Raw({
   session,

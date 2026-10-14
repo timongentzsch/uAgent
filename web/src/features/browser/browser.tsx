@@ -1,10 +1,12 @@
-import {
-  StatusLed,
-  type ConnectionPhase,
-} from "../../shared/connection-status.tsx";
+import { StatusLed } from "../../shared/connection-status.tsx";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { ComponentChildren, RefObject } from "preact";
-import { failure, type Report, type Session } from "../../shared/types.ts";
+import {
+  failure,
+  type ConnectionPhase,
+  type Report,
+  type Session,
+} from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
 import {

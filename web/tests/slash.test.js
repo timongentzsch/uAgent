@@ -4,9 +4,8 @@ import {
   slashMatches,
   slashCompletion,
   parseSlash,
-  fuzzy,
-  fuzzyScore,
 } from "../src/features/composer/slash.ts";
+import { fuzzy, fuzzyScore } from "../src/shared/fuzzy.ts";
 const commands = [
   { command: "/help", aliases: ["/commands"], argument: "" },
   { command: "/model", aliases: [], argument: "NAME" },

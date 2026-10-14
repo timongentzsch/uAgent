@@ -1,11 +1,12 @@
 import type {
   AppModal,
   Catalogue,
+  InspectorTarget,
   Report,
   Session,
   Snapshot,
 } from "../shared/types.ts";
-import { folderOf } from "../shared/folder-label.tsx";
+import { folderOf } from "../shared/display.ts";
 import type { ComponentProps, JSX } from "preact";
 import {
   Modal,
@@ -21,7 +22,6 @@ import { StatisticsLoading } from "../shared/statistics-layout.tsx";
 import { SettingsLoading } from "../features/settings/loading.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
 import type Settings from "../features/settings/settings.tsx";
-import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import {
   useSnapshots,
   type SnapshotStore,

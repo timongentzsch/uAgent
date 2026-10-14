@@ -10,7 +10,7 @@ import {
   Switch,
   ValueSelect,
 } from "../../../shared/ui.tsx";
-import ModelPicker from "../../composer/model-picker.tsx";
+import ModelPicker from "../../../shared/model-picker.tsx";
 import { inherited, raw, secret, shown, type SavedScope } from "./facts.ts";
 import { ProvidersField } from "./providers-field.tsx";
 

@@ -3,6 +3,7 @@ import type {
   AppModal,
   JSONValue,
   Draft,
+  InspectorTarget,
   InstallPrompt,
   Block,
   Session,
@@ -72,7 +73,6 @@ import { useSnapshots } from "../state/snapshot-store.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
-import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
 import Modals from "./modals.tsx";
 import { usePreferences } from "./use-preferences.ts";

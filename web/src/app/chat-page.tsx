@@ -5,27 +5,27 @@ import type {
   AppModal,
   Block,
   Catalogue,
+  ConnectionPhase,
   Draft,
+  InspectorTarget,
   Outgoing,
   Report,
   Session,
   Snapshot,
   View,
 } from "../shared/types.ts";
-import type { ConnectionPhase } from "../shared/connection-status.tsx";
 import { useMemo } from "preact/hooks";
 import { api } from "../state/api.ts";
 import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board, { PanelLayout } from "../features/panel/board.tsx";
-import WaitingList from "../features/panel/escalations.tsx";
+import WaitingList from "../shared/escalations.tsx";
 import { threadsOf } from "../state/attention.ts";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
 } from "../features/chat/chat.tsx";
-import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";

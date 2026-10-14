@@ -1,4 +1,4 @@
-import { contextSummary } from "../src/state/context.ts";
+import { contextSummary } from "../src/state/context-summary.ts";
 import { duration } from "../src/shared/duration.ts";
 import {
   isRunningStatus,
@@ -9,7 +9,7 @@ import { getToolRow } from "../src/features/chat/tool-preview.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/shared/format.ts";
-import { formatEventStream } from "../src/state/event-stream.ts";
+import { formatEventStream } from "../src/features/chat/raw-capture.ts";
 import { count, bytes } from "../src/shared/quantities.ts";
 import {
   presentMessages,

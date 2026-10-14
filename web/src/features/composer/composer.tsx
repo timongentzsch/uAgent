@@ -1,10 +1,7 @@
-import type { ConnectionPhase } from "../../shared/connection-status.tsx";
 import { ImageTile } from "../../shared/attachments.tsx";
-import "./attachments.css";
-import {
-  SuggestionList,
-  useCommandSuggestions,
-} from "./command-suggestions.tsx";
+import "../../shared/attachments.css";
+import { useCommandSuggestions } from "./command-suggestions.tsx";
+import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
 import {
@@ -19,6 +16,8 @@ import {
 } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
 import type {
+  ConnectionPhase,
+  InspectorTarget,
   SlashCommand,
   Session,
   Snapshot,
@@ -39,12 +38,17 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton, ActivityStatus } from "../chat/activity-status.tsx";
-import type { InspectorTarget } from "../chat/inspector.tsx";
-import MessageInput from "./message-input.tsx";
-import ModelControl from "./model-control.tsx";
-import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
-const decisionPanel = () => import("../chat/decision.tsx");
+import {
+  ActivityButton,
+  ActivityStatus,
+} from "../../shared/activity-status.tsx";
+import MessageInput from "../../shared/message-input.tsx";
+import ModelControl from "../../shared/model-control.tsx";
+import {
+  ContextSummary,
+  SessionSummary,
+} from "../../shared/session-summary.tsx";
+const decisionPanel = () => import("../../shared/decision.tsx");
 import { maxRecalledPromptSessions } from "../../shared/limits.ts";
 import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall

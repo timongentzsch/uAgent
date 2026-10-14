@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import type { AppModal, InspectorTarget } from "../shared/types.ts";
 import type { ViewedImage } from "../shared/attachments.tsx";
 
-export type Side = { question: string; answer?: string };
-
 // What opens over the page: the conversations drawer, the board sheet, the
 // app's dialogs, the palette or shortcuts sheet, the image viewer, the
 // inspector and the /btw card.
@@ -17,7 +15,10 @@ export function useOverlays(compact: boolean) {
   const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
-  const [side, setSide] = useState<Side | null>(null);
+  const [side, setSide] = useState<{
+    question: string;
+    answer?: string;
+  } | null>(null);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);

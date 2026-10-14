@@ -126,7 +126,7 @@
 }
 .sidebar-sections button {
   flex: 1;
-  font-size: 0.9em;
+  font-size: var(--font-small);
 }
 .sidebar-sections button[aria-current="page"] {
   background: var(--raised);

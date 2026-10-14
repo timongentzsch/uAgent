@@ -3,7 +3,7 @@
     calc(160rem / 14),
     calc(var(--viewport-height) * 0.25)
   );
-  font-size: calc(16rem / 14);
+  font-size: var(--font-input);
 }
 .message-input > textarea {
   resize: none;

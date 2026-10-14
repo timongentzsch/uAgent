@@ -66,7 +66,7 @@
 }
 
 .tool-toggle input {
-  margin-top: 0.2em;
+  margin-top: var(--space-1);
 }
 
 .tool-choice .select {
@@ -104,7 +104,7 @@
 }
 
 .tool-description {
-  line-height: 1.35;
+  line-height: var(--leading-snug);
 }
 
 .tool-choice.locked {

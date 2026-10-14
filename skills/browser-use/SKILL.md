@@ -6,7 +6,7 @@ requires-tools: run, read_path
 
 # Browser automation
 
-When the `browser` tool is available (the web appliance), use it instead: it
+When the `browser` tool is available (the web host runs Chrome, in Docker or on Linux), use it instead: it
 drives the user's shared, signed-in Chrome, and its description covers tabs,
 bot checks and hand-off. This skill is for everything else.
 

@@ -484,11 +484,11 @@ json ListItems(const fs::path& cwd, const std::string& only,
   if (only != "memory") {
     std::vector<std::pair<std::string, fs::path>> roots;
     if (!home.empty()) {
-      roots.push_back({"claude", fs::path(home) / ".claude" / "skills"});
-      roots.push_back({"codex", fs::path(home) / ".codex" / "skills"});
+      roots.emplace_back("claude", fs::path(home) / ".claude" / "skills");
+      roots.emplace_back("codex", fs::path(home) / ".codex" / "skills");
     }
-    roots.push_back({"claude", cwd / ".claude" / "skills"});
-    roots.push_back({"codex", cwd / ".codex" / "skills"});
+    roots.emplace_back("claude", cwd / ".claude" / "skills");
+    roots.emplace_back("codex", cwd / ".codex" / "skills");
     for (const auto& [source, root] : roots) {
       std::vector<fs::path> skills;
       FindSkills(root, 0, budget, wanted, skills);

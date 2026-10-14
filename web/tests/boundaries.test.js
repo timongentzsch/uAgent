@@ -58,6 +58,18 @@ test("state imports neither components nor screens", () => {
   );
 });
 
+test("host paths are written in state/api.ts only", () => {
+  const stray = [];
+  for (const path of sources("src")) {
+    if (path === "state/api.ts" || path.endsWith(".css")) continue;
+    for (const [index, line] of readFileSync(join("src", path), "utf8")
+      .split("\n")
+      .entries())
+      if (/["'`]\/api\//.test(line)) stray.push(`${path}:${index + 1}`);
+  }
+  assert.deepEqual(stray, []);
+});
+
 test("shared imports neither features nor the shell", () => {
   assert.deepEqual(
     breaches(

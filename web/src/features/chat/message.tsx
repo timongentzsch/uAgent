@@ -33,6 +33,7 @@ import {
 import { MessageMenu } from "./message-menu.tsx";
 import { Avatar } from "../../shared/avatar.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
+import { routes } from "../../state/api.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
@@ -262,7 +263,7 @@ function MessageView({ block, online, session }: MessageProps) {
   const actor =
     member || panel || (userOwned || row || agentRow ? null : block.kind);
   const running = block.duration_ms == null && isRunningStatus(block.status);
-  const assets = `/api/sessions/${session.id}/assets/`;
+  const assets = routes.assets(session.id);
   const nameId = useId();
   const name = useRowName(
     member

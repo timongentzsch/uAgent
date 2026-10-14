@@ -7,7 +7,7 @@ import {
   type Report,
   type Session,
 } from "../../shared/types.ts";
-import { api, command } from "../../state/api.ts";
+import { api, command, routes } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
 import {
   Button,
@@ -221,7 +221,7 @@ export default function BrowserPanel({
       while (inFlight.current) await inFlight.current;
       const { signal } = lifetime.current;
       if (signal.aborted) return;
-      const request = api<BrowserStatus>("/api/browser/status", undefined, {
+      const request = api<BrowserStatus>(routes.browserStatus, undefined, {
         signal,
       })
         .then((value) => {

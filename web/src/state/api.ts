@@ -13,6 +13,24 @@ import { failure } from "../shared/types.ts";
 
 export const protocol = 2;
 
+// Every host path the page calls, so a path is written once.
+export const routes = {
+  auth: "/api/auth",
+  browserStatus: "/api/browser/status",
+  command: "/api/command",
+  pushSubscriptions: "/api/push/subscriptions",
+  refreshedSessions: "/api/sessions?refresh=1",
+  events: (cursor: string) => `/api/events?cursor=${cursor}`,
+  receipt: (requestId: string) => `/api/receipts/${requestId}`,
+  session: (id: string, query = "") =>
+    `/api/sessions/${id}${query && `?${query}`}`,
+  assets: (session: string) => `/api/sessions/${session}/assets/`,
+  asset: (session: string, id: string) =>
+    `/api/sessions/${session}/assets/${id}`,
+  attachments: (session: string, name: string) =>
+    `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
+};
+
 export const requestId = () =>
   [...crypto.getRandomValues(new Uint8Array(16))]
     .map((value) => value.toString(16).padStart(2, "0"))
@@ -57,15 +75,11 @@ export async function api<T = unknown>(
 // Stores a file among the session's attachments. Its id then rides a
 // command's attachment_ids, which the host claims and resolves.
 export function uploadAttachment(session: string, file: File, name: string) {
-  return api<Asset>(
-    `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
-    undefined,
-    {
-      method: "POST",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    },
-  );
+  return api<Asset>(routes.attachments(session, name), undefined, {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
 }
 
 export async function readPages(
@@ -123,7 +137,7 @@ export async function command<K extends CommandKind>(
   });
   try {
     let result = await api<Outcome>(
-      "/api/command",
+      routes.command,
       {
         v: protocol,
         request_id,

@@ -14,7 +14,7 @@ import {
 } from "./ui.tsx";
 import { motionMs } from "./motion.ts";
 import { ImageTile } from "./attachments.tsx";
-import { uploadAttachment } from "../state/api.ts";
+import { routes, uploadAttachment } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
 import { maxUploadBytes } from "./limits.ts";
 
@@ -362,7 +362,7 @@ function QuestionPage({
                 <span class="ask-shot">
                   <ImageTile
                     name={cleanText(option.description || option.label)}
-                    src={`/api/sessions/${session}/assets/${option.image.id}`}
+                    src={routes.asset(session, option.image.id)}
                   />
                 </span>
               )}
@@ -404,7 +404,7 @@ function QuestionPage({
             {answer.image.image && (
               <ImageTile
                 name={answer.image.name}
-                src={`/api/sessions/${session}/assets/${answer.image.id}`}
+                src={routes.asset(session, answer.image.id)}
               />
             )}
             <span title={answer.image.name}>

@@ -15,7 +15,7 @@ import type {
   View,
 } from "../shared/types.ts";
 import { useMemo } from "preact/hooks";
-import { api } from "../state/api.ts";
+import { api, routes } from "../state/api.ts";
 import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
@@ -156,7 +156,7 @@ export default function ChatPage({
     if (!view?.more || !transcript.current) return;
     const before = view.before;
     const id = selected;
-    const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
+    const value = await api<Snapshot>(routes.session(id, `before=${before}`));
     await prepareHistoryBlocks(value.state?.view?.blocks || []);
     updateView(id, (current) => {
       if (

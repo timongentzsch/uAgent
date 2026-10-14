@@ -32,7 +32,7 @@ import {
   raiseIncoming,
   confirmOutgoing,
 } from "./store.ts";
-import { api, manage, protocol, receiveOutcome } from "./api.ts";
+import { api, manage, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
@@ -228,7 +228,7 @@ export function useHost(
     if (loads.current.has(id)) return loads.current.get(id)!;
     setLoadErrors((prior) => ({ ...prior, [id]: null }));
     const signal = lifetime.current.signal;
-    const request = api<Snapshot>(`/api/sessions/${id}`, undefined, {
+    const request = api<Snapshot>(routes.session(id), undefined, {
       signal,
     })
       .then((value) => {
@@ -518,7 +518,7 @@ export function useHost(
     loads.current.clear();
     const signal = lifetime.current.signal;
     try {
-      const list = await api<Catalogue>("/api/sessions?refresh=1", undefined, {
+      const list = await api<Catalogue>(routes.refreshedSessions, undefined, {
         signal,
       });
       if (signal.aborted) return;
@@ -541,7 +541,7 @@ export function useHost(
       await Promise.all(
         outgoingRef.current.map(async (item) => {
           const receipt = await api<Outcome>(
-            `/api/receipts/${item.request_id}`,
+            routes.receipt(item.request_id),
             undefined,
             { signal },
           );
@@ -557,7 +557,7 @@ export function useHost(
         await load(id).catch(() => {});
       if (signal.aborted) return;
       const events = new EventSource(
-        `/api/events?cursor=${list.epoch}:${list.cursor}`,
+        routes.events(`${list.epoch}:${list.cursor}`),
       );
       stream.current = events;
       events.onopen = () => {

@@ -24,7 +24,7 @@ import {
   useState,
 } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
-import { api, command, requestId } from "../state/api.ts";
+import { api, command, requestId, routes } from "../state/api.ts";
 import {
   Modal,
   Deferred,
@@ -183,7 +183,7 @@ function App() {
       setBrowserAvailable(available);
       storage.setItem(BROWSER_KEY, available ? "1" : "0");
     };
-    api("/api/browser/status")
+    api(routes.browserStatus)
       .then(() => known(true))
       .catch(() => known(false));
     return () => {

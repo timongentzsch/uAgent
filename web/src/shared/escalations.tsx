@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { useResource } from "./use-resource.ts";
 import type { Act, Pending, Report, Session } from "./types.ts";
-import { api, command } from "../state/api.ts";
+import { api, command, routes } from "../state/api.ts";
 import { Button, Deferred, LoadError, Spinner } from "./ui.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
@@ -60,7 +60,7 @@ export default function WaitingList({
 function usePendingDecision(item: Session) {
   const resource = useResource(
     () =>
-      api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`).then(
+      api<{ pending?: Pending | null }>(routes.session(item.id)).then(
         (snapshot) => snapshot.pending || null,
       ),
     [item.id, item.generation, item.updated],

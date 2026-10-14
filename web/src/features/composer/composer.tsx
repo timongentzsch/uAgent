@@ -29,7 +29,7 @@ import type {
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
-import { command } from "../../state/api.ts";
+import { command, routes } from "../../state/api.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import {
   dedupeName,
@@ -495,7 +495,7 @@ export default function Composer({
                   <ImageTile
                     draftId={asset.id}
                     name={asset.name}
-                    src={`/api/sessions/${session.id}/assets/${asset.id}`}
+                    src={routes.asset(session.id, asset.id)}
                   />
                 ) : (
                   <Paperclip />

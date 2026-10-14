@@ -1,0 +1,32 @@
+.escalation-where {
+  color: var(--muted);
+}
+/* A panel's threads waiting on the user, above its composer; the
+   transcript keeps at least half the column. */
+.escalations {
+  flex-shrink: 0;
+  margin: 0 var(--column-inset);
+  max-height: 50%;
+  overflow: auto;
+  display: grid;
+  gap: var(--gap);
+  padding-bottom: var(--gap);
+}
+.escalation {
+  display: grid;
+  gap: var(--space-2);
+}
+.escalation-paused {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--mark);
+  background: var(--raised);
+  font-size: var(--font-small);
+}
+.escalation-thread {
+  justify-self: start;
+  max-width: 100%;
+  text-align: left;
+  font-size: var(--font-small);
+  color: var(--muted);
+}

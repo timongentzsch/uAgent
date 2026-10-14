@@ -1,3 +1,24 @@
+.raw-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--gap);
+}
+.raw-controls {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.raw-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.raw-content footer {
+  flex-shrink: 0;
+}
 .raw-controls p {
   margin: 0 0 var(--gap);
 }

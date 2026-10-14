@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
 import Ask from "./ask.tsx";
 import DiffView from "./diff-view.tsx";
+import "./decision.css";
 
 // The approval's own answers (the host's choice table); anything else it
 // offers shows as a plain button after them.

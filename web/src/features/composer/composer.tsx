@@ -50,6 +50,7 @@ import {
 const decisionPanel = () => import("../../shared/decision.tsx");
 import { maxRecalledPromptSessions } from "../../shared/limits.ts";
 import { permissionLabel, permissionLabels } from "../../shared/display.ts";
+import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();

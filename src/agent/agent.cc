@@ -249,7 +249,10 @@ void Agent::Reset() {
   logged_schemas_.clear();
   total_user_turns_ = 0;
   title_thread_ = {};
-  generated_title_.clear();
+  {
+    std::lock_guard lock(title_mutex_);
+    generated_title_.clear();
+  }
   session_title_.clear();
   custom_title_ = false;
   session_id_ = MakeSessionId();
@@ -458,7 +461,10 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   // the persisted numbering or its live blocks collide with earlier turns'.
   turn_id_ = record.metadata.turns;
   title_thread_ = {};
-  generated_title_.clear();
+  {
+    std::lock_guard lock(title_mutex_);
+    generated_title_.clear();
+  }
   session_title_ = std::move(record.metadata.title);
   custom_title_ = record.metadata.custom_title;
   parent_session_id_ = std::move(record.metadata.parent_session_id);

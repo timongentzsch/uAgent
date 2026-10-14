@@ -22,6 +22,7 @@
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -73,14 +74,17 @@ ReplayBatch SessionHost::ReadReplay(uint64_t next, bool valid,
 }
 
 void SessionHost::WaitForReplay(uint64_t cursor, std::chrono::seconds timeout) {
-  std::unique_lock lock(mutex_);
-  changed_.wait_for(lock, timeout,
-                    [&] { return stopping_ || replay_.Cursor() > cursor; });
+  UniqueLock lock(mutex_);
+  changed_.wait_for(lock, timeout, [&]() UAGENT_REQUIRES(mutex_) {
+    return stopping_ || replay_.Cursor() > cursor;
+  });
 }
 
 std::vector<HostNotice> SessionHost::WaitForNotices() {
-  std::unique_lock lock(mutex_);
-  changed_.wait(lock, [&] { return stopping_ || replay_.HasNotices(); });
+  UniqueLock lock(mutex_);
+  changed_.wait(lock, [&]() UAGENT_REQUIRES(mutex_) {
+    return stopping_ || replay_.HasNotices();
+  });
   return replay_.TakeNotices();
 }
 
@@ -96,6 +100,7 @@ void SessionHost::LoadDrafts() {
   std::error_code ec;
   const std::string folder = directory_ + "/drafts";
   if (!EnsurePrivateDirectory(folder)) return;
+  std::lock_guard lock(mutex_);
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
     if (sessions_.size() >= kMaxCatalogueEntries) break;
     if (entry.path().extension() != ".json") continue;
@@ -116,7 +121,7 @@ void SessionHost::LoadDrafts() {
     session->draft_title = JsonValue(draft, "title", "");
     session->title = session->draft_title.empty() ? "New conversation"
                                                   : session->draft_title;
-    session->status = "draft";
+    session->status = SessionStatus::kDraft;
     session->updated = JsonValue(draft, "updated", int64_t{0});
     sessions_[session->id] = std::move(session);
   }
@@ -157,8 +162,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
     auto& session = *it->second;
     // A connecting session is read unlocked by its runtime's launch; the
     // next scan brings it up to date.
-    if (session.closing || session.connecting || session.status == "updating" ||
-        session.status == "deleting") {
+    if (session.closing || session.connecting ||
+        session.status == SessionStatus::kUpdating ||
+        session.status == SessionStatus::kDeleting) {
       continue;
     }
     session.cwd = item.cwd;
@@ -175,7 +181,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
     const FileStamp stamp = SnapshotFile(item.path);
     session.updated =
         stamp.modified_seconds * 1000 + stamp.modified_nanoseconds / 1000000;
-    if (session.status == "draft") session.status = "saved";
+    if (session.status == SessionStatus::kDraft) {
+      session.status = SessionStatus::kSaved;
+    }
     if (session.pid <= 0 || session.exited) session.error = item.error;
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);
@@ -184,10 +192,11 @@ bool SessionHost::RefreshCatalogue(bool force) {
   // Drafts have no file yet, and a session mid-command is the router's.
   for (auto it = sessions_.begin(); it != sessions_.end();) {
     const HostSession& session = *it->second;
-    if (listed.contains(it->first) || session.status == "draft" ||
-        session.status == "updating" || session.status == "deleting" ||
-        session.closing || session.connecting ||
-        (session.pid > 0 && !session.exited) || PathExists(session.path)) {
+    if (listed.contains(it->first) || session.status == SessionStatus::kDraft ||
+        session.status == SessionStatus::kUpdating ||
+        session.status == SessionStatus::kDeleting || session.closing ||
+        session.connecting || (session.pid > 0 && !session.exited) ||
+        PathExists(session.path)) {
       ++it;
       continue;
     }
@@ -210,11 +219,12 @@ std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
 
 void SessionHost::RefreshPresence() {
   RefreshCatalogue();
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> candidates;
   for (const auto& [id, session] : sessions_) {
     if ((session->pid <= 0 || session->exited) && !session->closing &&
-        session->status != "updating" && session->status != "deleting") {
+        session->status != SessionStatus::kUpdating &&
+        session->status != SessionStatus::kDeleting) {
       candidates.push_back(session);
     }
   }
@@ -227,7 +237,7 @@ void SessionHost::RefreshPresence() {
 
 json SessionHost::RestartRunning(const std::string& cwd,
                                  const std::string& only) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> idle;
   int64_t deferred = 0;
   for (const auto& [id, session] : sessions_) {
@@ -281,7 +291,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"member", session.member},
       {"title", session.title},
       {"generation", session.generation},
-      {"status", session.status},
+      {"status", SessionStatusName(session.status)},
       {"presence", session.pid > 0 && !session.exited ? "active" : ""},
       {"turn_active", session.turn_active},
       {"guidance", session.guidance},

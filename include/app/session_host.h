@@ -28,8 +28,55 @@
 #include "include/core/events.h"
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent::session {
+
+// Where a hosted session stands; only its name reaches the wire.
+enum class SessionStatus {
+  kDraft,
+  kSaved,
+  kStarting,
+  kInterrupted,
+  kFailed,
+  kClosing,
+  kUpdating,
+  kDeleting,
+  kWaiting,
+  kRunning,
+  kProcessing,
+  kIdle,
+};
+
+inline const char* SessionStatusName(SessionStatus status) {
+  switch (status) {
+    case SessionStatus::kDraft:
+      return "draft";
+    case SessionStatus::kSaved:
+      return "saved";
+    case SessionStatus::kStarting:
+      return "starting";
+    case SessionStatus::kInterrupted:
+      return "interrupted";
+    case SessionStatus::kFailed:
+      return "failed";
+    case SessionStatus::kClosing:
+      return "closing";
+    case SessionStatus::kUpdating:
+      return "updating";
+    case SessionStatus::kDeleting:
+      return "deleting";
+    case SessionStatus::kWaiting:
+      return "waiting";
+    case SessionStatus::kRunning:
+      return "running";
+    case SessionStatus::kProcessing:
+      return "processing";
+    case SessionStatus::kIdle:
+      return "idle";
+  }
+  return "saved";
+}
 
 // One attached conversation runtime. Socket and reader lifetime stay together;
 // destroying the record wakes and joins its reader before dependent state dies.
@@ -37,8 +84,8 @@ struct HostSession {
   std::string run_id, task_id, launch_prompt, run_result;
   bool run_checkpoint = false, stop_sent = false;
   json launch = json::object();
-  std::string id, path, cwd, title, draft_title, generation, status = "saved",
-                                                             error, binary;
+  std::string id, path, cwd, title, draft_title, generation, error, binary;
+  SessionStatus status = SessionStatus::kSaved;
   // "panel", "thread" or empty; a thread names its project `folder`,
   // and itself as a `member` of its panel's chat when it is one.
   std::string kind, folder, member;
@@ -164,9 +211,10 @@ class SessionHost {
   mutable std::mutex mutex_;
   std::condition_variable changed_;
   std::atomic<bool> stopping_{false};
-  std::map<std::string, std::shared_ptr<HostSession>> sessions_;
+  std::map<std::string, std::shared_ptr<HostSession>> sessions_
+      UAGENT_GUARDED_BY(mutex_);
   mutable std::mutex scan_mutex_;
-  SessionCatalogue catalogue_;
+  SessionCatalogue catalogue_ UAGENT_GUARDED_BY(scan_mutex_);
   std::mutex history_mutex_;
   struct SavedHistory {
     std::string path;
@@ -177,57 +225,72 @@ class SessionHost {
   };
   // One immutable saved transcript; readers can finish after it is replaced.
   // Loading and rendering never hold the cache or host mutex.
-  std::shared_ptr<const SavedHistory> history_;
+  std::shared_ptr<const SavedHistory> history_
+      UAGENT_GUARDED_BY(history_mutex_);
   std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
-  std::chrono::steady_clock::time_point scanned_{};
-  bool rescan_ = false;  // a scan was deferred by the one-second throttle
+  std::chrono::steady_clock::time_point scanned_
+      UAGENT_GUARDED_BY(scan_mutex_){};
+  bool rescan_ UAGENT_GUARDED_BY(scan_mutex_) =
+      false;  // a scan was deferred by the one-second throttle
   OutcomeStore outcomes_;
-  FileStamp library_stamp_, schedule_stamp_;
-  std::map<std::string, FileStamp> prompt_stamps_;
-  json schedule_state_ = json::object();
-  json scheduled_view_ = {{"tasks", json::array()}, {"runs", json::array()}};
+  FileStamp library_stamp_ UAGENT_GUARDED_BY(mutex_);
+  FileStamp schedule_stamp_ UAGENT_GUARDED_BY(mutex_);
+  std::map<std::string, FileStamp> prompt_stamps_ UAGENT_GUARDED_BY(mutex_);
+  json schedule_state_ UAGENT_GUARDED_BY(mutex_) = json::object();
+  json scheduled_view_ UAGENT_GUARDED_BY(mutex_) = {{"tasks", json::array()},
+                                                    {"runs", json::array()}};
   struct RunUpdate {
     std::string id, status, error;
   };
-  std::vector<RunUpdate> run_updates_;
-  void RecordRun(const RunUpdate& update);
+  std::vector<RunUpdate> run_updates_ UAGENT_GUARDED_BY(mutex_);
+  void RecordRun(const RunUpdate& update) UAGENT_REQUIRES(mutex_);
   bool PublishMetadata(const std::string& id, HostSession& session);
   std::shared_ptr<HostSession> CreateSession(const std::string& cwd,
                                              const std::string& path,
                                              const std::string& title,
-                                             std::string& error);
+                                             std::string& error)
+      UAGENT_REQUIRES(mutex_);
   Connection OpenRuntime(const HostSession& session, bool create,
                          std::string& error) const;
   // False when the frame changed nothing a browser shows.
   bool ApplyRuntimeFrame(HostSession& session, json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.
   static std::string RunResultFor(const std::string& outcome);
-  std::chrono::steady_clock::time_point NextScheduleDeadline() const;
-  bool RecoverSchedules(std::vector<std::shared_ptr<HostSession>>& activate);
+  std::chrono::steady_clock::time_point NextScheduleDeadline() const
+      UAGENT_REQUIRES(mutex_);
+  bool RecoverSchedules(std::vector<std::shared_ptr<HostSession>>& activate)
+      UAGENT_REQUIRES(mutex_);
   // Stamp-checked re-read of the schedule store. External writers (CLI,
   // other hosts) change the file under us; the tick must see their runs.
   // Callers hold mutex_.
-  bool RefreshScheduleCacheLocked();
-  ScheduleTick TickSchedules();
+  bool RefreshScheduleCacheLocked() UAGENT_REQUIRES(mutex_);
+  std::vector<json> RefreshInvalidationsLocked(
+      const std::vector<std::string>& projects) UAGENT_REQUIRES(mutex_);
+  ScheduleTick TickSchedules() UAGENT_REQUIRES(mutex_);
   std::vector<std::string> InvalidationPaths(
       const std::vector<std::string>& projects) const;
   json Metadata(const HostSession& session) const;
   json LiveSnapshot(const HostSession& session) const;
-  std::shared_ptr<HostSession> StartScheduledRun(const json& run);
+  std::shared_ptr<HostSession> StartScheduledRun(const json& run)
+      UAGENT_REQUIRES(mutex_);
+  // `lock` is the caller's lock on mutex_, passed only for condition-variable
+  // waits. These helpers release and retake mutex_ itself, so the analysis
+  // sees the unlocked interval; they hand it back held, as `lock` expects.
   bool ActivateLocked(const std::shared_ptr<HostSession>& session,
-                      std::string& error, std::unique_lock<std::mutex>& lock,
-                      bool create);
+                      std::string& error, UniqueLock& lock, bool create)
+      UAGENT_REQUIRES(mutex_);
   // Graceful binary-upgrade recycle: when the executable on disk is newer
   // than the attached worker's spawn record, close it and report true so
   // the caller spawns fresh. False keeps the worker: fresh record, or a
   // worker that ignores close (fail open, retried on the next touch).
   bool RecycleStaleWorkerLocked(const std::shared_ptr<HostSession>& session,
-                                std::unique_lock<std::mutex>& lock);
+                                UniqueLock& lock) UAGENT_REQUIRES(mutex_);
   void Received(HostSession* session, json frame);
-  void DeactivateLocked(HostSession& session);
+  void DeactivateLocked(HostSession& session) UAGENT_REQUIRES(mutex_);
   // Whether `session` is still the catalogue's entry for its id. Callers
   // hold mutex_.
-  bool IsCurrentLocked(const HostSession* session) const;
+  bool IsCurrentLocked(const HostSession* session) const
+      UAGENT_REQUIRES(mutex_);
   // Publishes a lifecycle frame ({"kind", ...}) with the session's metadata.
   void PublishLifecycle(const HostSession& session, json frame);
   // Persists a draft's identity, so it outlives the host until its first

@@ -17,6 +17,7 @@
 #include "include/core/fd.h"
 #include "include/core/platform.h"
 #include "include/core/term.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -74,7 +75,7 @@ std::once_flag g_sigchld_once;
 
 struct ChildWakeRegistry {
   std::mutex mutex;
-  std::array<int, kChildWakeMax> descriptors{};
+  std::array<int, kChildWakeMax> descriptors UAGENT_GUARDED_BY(mutex){};
   std::atomic<bool> stopping{false};
   std::thread dispatcher;
 

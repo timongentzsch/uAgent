@@ -14,6 +14,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/media/attachments.h"
 #include "include/web/protocol.h"
@@ -43,7 +44,7 @@ void Master::Snapshot(const Request& request, Response& response) {
 }
 
 void Master::Events(const Request& request, Response& response) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   if (sse_count_ >= kWebSseConnections) {
     Error(response, "event connection limit reached", 429);
     return;
@@ -66,8 +67,8 @@ void Master::Events(const Request& request, Response& response) {
       "text/event-stream",
       [this, device, next, valid, replay_watermark, ready_sent = false](
           size_t, httplib::DataSink& sink) mutable {
-        std::unique_lock guard(mutex_);
-        auto authorized = [&] {
+        UniqueLock guard(mutex_);
+        auto authorized = [&]() UAGENT_REQUIRES(mutex_) {
           return std::any_of(
               devices_.begin(), devices_.end(), [&](const Device& entry) {
                 return entry.id == device && entry.expires > NowMillis();

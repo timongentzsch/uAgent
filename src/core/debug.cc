@@ -19,6 +19,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 namespace {
@@ -76,8 +77,11 @@ DebugSink::~DebugSink() { Stop(); }
 
 bool DebugSink::Start(std::string path) {
   if (file_) return true;
-  stopping_ = false;
-  writing_ = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stopping_ = false;
+    writing_ = false;
+  }
   if (path.empty() || path == "1") path = DefaultDebugPath();
   if (path.starts_with("~/")) {
     const char* home = getenv("HOME");
@@ -113,8 +117,10 @@ bool DebugSink::Start(std::string path) {
 
 void DebugSink::Flush() {
   if (!file_) return;
-  std::unique_lock<std::mutex> lock(mutex_);
-  wake_.wait(lock, [this] { return queue_.empty() && !writing_; });
+  UniqueLock lock(mutex_);
+  wake_.wait(lock, [this]() UAGENT_REQUIRES(mutex_) {
+    return queue_.empty() && !writing_;
+  });
 }
 
 void DebugSink::Stop() {
@@ -145,8 +151,10 @@ void DebugSink::Run() {
   for (;;) {
     json record;
     {
-      std::unique_lock<std::mutex> lock(mutex_);
-      wake_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+      UniqueLock lock(mutex_);
+      wake_.wait(lock, [this]() UAGENT_REQUIRES(mutex_) {
+        return stopping_ || !queue_.empty();
+      });
       if (queue_.empty()) {
         if (stopping_) break;
         continue;

@@ -23,6 +23,7 @@
 
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/protocol.h"
@@ -151,13 +152,13 @@ struct PushSender::Impl {
   PushTransport transport;
   mutable std::mutex mutex;
   std::condition_variable changed;
-  std::vector<Subscription> subscriptions;
-  std::deque<Attention> queue;
-  std::deque<std::string> seen;
+  std::vector<Subscription> subscriptions UAGENT_GUARDED_BY(mutex);
+  std::deque<Attention> queue UAGENT_GUARDED_BY(mutex);
+  std::deque<std::string> seen UAGENT_GUARDED_BY(mutex);
   std::atomic<bool> stopping{false};
   std::thread sender;
 
-  bool Persist() const {
+  bool Persist() const UAGENT_REQUIRES(mutex) {
     json value = json::array();
     for (const auto& item : subscriptions) {
       value.push_back({{"device", item.device},
@@ -239,8 +240,10 @@ struct PushSender::Impl {
       Attention attention;
       std::vector<Subscription> targets;
       {
-        std::unique_lock lock(mutex);
-        changed.wait(lock, [&] { return stopping || !queue.empty(); });
+        UniqueLock lock(mutex);
+        changed.wait(lock, [&]() UAGENT_REQUIRES(mutex) {
+          return stopping || !queue.empty();
+        });
         if (stopping) {
           return;
         }
@@ -301,7 +304,7 @@ struct PushSender::Impl {
           if (status != 0 && status != 429 && status < 500) {
             break;
           }
-          std::unique_lock lock(mutex);
+          UniqueLock lock(mutex);
           if (changed.wait_for(lock, kPushRetryInterval,
                                [&] { return stopping.load(); })) {
             return;

@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent::session {
 
@@ -59,8 +60,8 @@ class AssetStore {
 
  private:
   std::mutex mutex_;
-  std::chrono::steady_clock::time_point scanned_{};
-  size_t bytes_ = 0;
+  std::chrono::steady_clock::time_point scanned_ UAGENT_GUARDED_BY(mutex_){};
+  size_t bytes_ UAGENT_GUARDED_BY(mutex_) = 0;
 };
 
 // The process's one store, so its quota scan is shared across callers.

@@ -23,13 +23,13 @@
 namespace uagent::session {
 namespace {
 // The status a connected worker reports through its latest state/activity.
-std::string LiveStatus(const HostSession& session) {
-  return session.closing                    ? "closing"
-         : !session.pending.is_null()       ? "waiting"
-         : !session.state.contains("route") ? "starting"
-         : session.turn_active              ? "running"
-         : session.command_busy             ? "processing"
-                                            : "idle";
+SessionStatus LiveStatus(const HostSession& session) {
+  return session.closing                    ? SessionStatus::kClosing
+         : !session.pending.is_null()       ? SessionStatus::kWaiting
+         : !session.state.contains("route") ? SessionStatus::kStarting
+         : session.turn_active              ? SessionStatus::kRunning
+         : session.command_busy             ? SessionStatus::kProcessing
+                                            : SessionStatus::kIdle;
 }
 }  // namespace
 
@@ -58,7 +58,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   session->id = HashHex(path);
   session->title = title.empty() ? "New conversation" : title;
   session->draft_title = title;
-  session->status = "draft";
+  session->status = SessionStatus::kDraft;
   session->updated = NowMillis();
   if (!WriteDraft(*session, title, session->updated)) {
     error = "cannot persist draft identity";
@@ -113,7 +113,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
     session.generation.clear();
     session.socket.Reset();
   }
-  session.status = "saved";
+  session.status = SessionStatus::kSaved;
   session.error.clear();
   // A saved conversation is read from disk.
   session.state = {{"activity", "Ready"}};
@@ -121,7 +121,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
 }
 
 void SessionHost::Received(HostSession* session, json frame) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   if (!IsCurrentLocked(session) ||
       JsonValue(frame, "session_id", "") != session->id ||
       JsonValue(frame, "generation", "") != session->generation) {
@@ -177,8 +177,7 @@ void SessionHost::Received(HostSession* session, json frame) {
 }
 
 bool SessionHost::RecycleStaleWorkerLocked(
-    const std::shared_ptr<HostSession>& session,
-    std::unique_lock<std::mutex>& lock) {
+    const std::shared_ptr<HostSession>& session, UniqueLock& lock) {
   // A worker from another build of the executable is recycled, and so is one
   // asked to restart; one whose executable cannot be stated is left alone.
   const std::string current = FileIdentity(executable_);
@@ -202,16 +201,15 @@ bool SessionHost::RecycleStaleWorkerLocked(
   }
   session->pid = -1;
   if (session->reader.joinable()) {
-    lock.unlock();
+    mutex_.unlock();
     session->reader.join();
-    lock.lock();
+    mutex_.lock();
   }
   return true;
 }
 
 bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
-                                 std::string& error,
-                                 std::unique_lock<std::mutex>& lock,
+                                 std::string& error, UniqueLock& lock,
                                  bool create) {
   if (session->closing) {
     error = "session is closing";
@@ -234,9 +232,9 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     }
     session->connecting = true;
     if (session->reader.joinable()) {
-      lock.unlock();
+      mutex_.unlock();
       session->reader.join();
-      lock.lock();
+      mutex_.lock();
       if (stopping_ || !IsCurrentLocked(session.get())) {
         session->connecting = false;
         changed_.notify_all();
@@ -244,9 +242,9 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         return false;
       }
     }
-    lock.unlock();
+    mutex_.unlock();
     auto connected = OpenRuntime(*session, create_now, error);
-    lock.lock();
+    mutex_.lock();
     session->connecting = false;
     changed_.notify_all();
     if (stopping_ || !IsCurrentLocked(session.get())) {
@@ -265,7 +263,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     session->pid = connected.pid;
     session->binary = std::move(connected.binary);
     session->exited = false;
-    session->status = "starting";
+    session->status = SessionStatus::kStarting;
     session->error.clear();
     session->reader = std::thread([this, session = session.get()] {
       ReadFrames(session->socket.Get(), session->stop.read.Get(), kFrameBytes,
@@ -285,7 +283,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         if (session->closing || !working) {
           DeactivateLocked(*session);
         } else {
-          session->status = "interrupted";
+          session->status = SessionStatus::kInterrupted;
           session->state["activity"] = "Interrupted";
           PublishLifecycle(*session, {{"kind", "closed"}});
         }
@@ -393,7 +391,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   }
   if (kind == "error") {
     session.error = JsonValue(frame, "error", "worker failed");
-    session.status = "failed";
+    session.status = SessionStatus::kFailed;
     return true;
   }
   if (kind != "event") return true;

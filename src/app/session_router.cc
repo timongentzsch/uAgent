@@ -171,7 +171,7 @@ std::string SessionHost::DeleteSpace(const std::string& path,
 }
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   SessionCommandResult result;
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
   const SessionCommandKind kind =
@@ -227,8 +227,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     result.error = "unknown session";
     return result;
   }
-  if (session->closing || session->status == "updating" ||
-      session->status == "deleting") {
+  if (session->closing || session->status == SessionStatus::kUpdating ||
+      session->status == SessionStatus::kDeleting) {
     result.error = "conversation update in progress";
     return result;
   }
@@ -280,11 +280,12 @@ SessionCommandResult SessionHost::ExecuteCommand(
       if (!result.error.empty()) return result;
       was = ChatName(chat, session->path);
     }
-    std::string prior_status = session->status;
-    session->status =
-        kind == SessionCommandKind::kDelete ? "deleting" : "updating";
+    SessionStatus prior_status = session->status;
+    session->status = kind == SessionCommandKind::kDelete
+                          ? SessionStatus::kDeleting
+                          : SessionStatus::kUpdating;
     lock.unlock();
-    std::unique_lock scan(scan_mutex_);
+    UniqueLock scan(scan_mutex_);
     std::unique_lock asset_lock = assets_.GuardMutation();
     std::string draft_path = directory_ + "/drafts/" + session->id + ".json";
     SessionStoreStatus stored;
@@ -347,7 +348,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       DeactivateLocked(*session);
     } else {
       session->closing = true;
-      session->status = "closing";
+      session->status = SessionStatus::kClosing;
       if (PublishMetadata(session->id, *session)) changed_.notify_all();
       result.wake = true;
       lock.unlock();
@@ -372,7 +373,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
           [&] {
             std::lock_guard guard(mutex_);
             if (!IsCurrentLocked(session.get()) || session->exited ||
-                session->status == "deleting") {
+                session->status == SessionStatus::kDeleting) {
               return std::string(
                   "session changed while claiming attachments; refresh");
             }

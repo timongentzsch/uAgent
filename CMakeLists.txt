@@ -41,6 +41,24 @@ option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 if(UAGENT_WARNINGS_AS_ERRORS AND _IS_GCC_CLANG)
   target_compile_options(uagent_options INTERFACE -Werror)
 endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # Only libc++'s std::mutex and lock types carry capability annotations (when
+  # asked to), so the analysis runs with Clang + libc++ and is skipped elsewhere.
+  include(CheckCXXSourceCompiles)
+  check_cxx_source_compiles(
+    "#include <version>
+#ifndef _LIBCPP_VERSION
+#error not libc++
+#endif
+int main() {}"
+    UAGENT_USING_LIBCPP)
+  if(UAGENT_USING_LIBCPP)
+    target_compile_definitions(
+      uagent_options INTERFACE UAGENT_ENABLE_THREAD_SAFETY_ANALYSIS
+                               _LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS)
+    target_compile_options(uagent_options INTERFACE -Wthread-safety)
+  endif()
+endif()
 option(UAGENT_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(UAGENT_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(UAGENT_ENABLE_TSAN "Enable ThreadSanitizer" OFF)

@@ -75,6 +75,7 @@ import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
 import Decision from "./shared/decision.tsx";
 import type { Act, Pending } from "./shared/types.ts";
+import "./shared/activity.css";
 import "./shared/attachments.css";
 import "./features/chat/message.css";
 import "./features/settings/settings.css";

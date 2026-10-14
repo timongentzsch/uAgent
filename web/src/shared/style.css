@@ -632,69 +632,13 @@ pre code {
 dialog.sidebar:not([open]) {
   display: none;
 }
-.sidebar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--gap);
-  min-height: calc(40rem / 14);
-}
-.sidebar-head button {
-  font-size: var(--font-small);
-  padding-inline: var(--space-3);
-}
 .search .text-control {
   font-size: var(--font-small);
-}
-.sidebar nav {
-  overflow: auto;
-  flex: 1;
-  min-height: 0;
-}
-.sidebar nav section + section {
-  margin-top: var(--space-4);
-}
-.sidebar h2 {
-  font-size: var(--font-micro);
-  font-weight: 400;
-  color: var(--muted);
-  padding: var(--space-4);
 }
 .folder-label {
   display: flex;
   align-items: center;
   gap: var(--gap);
-}
-/* The name truncates first; a space's menu keeps its place. */
-.sidebar h2:has(.action-menu) {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  padding-block: 0;
-  padding-right: 0;
-}
-.sidebar h2 .folder-label {
-  flex: 1;
-  min-width: 0;
-}
-/* Spaces and folders, each under its word. */
-.list-kind {
-  margin: 0;
-  padding: var(--space-4) var(--space-4) 0;
-  color: var(--muted);
-  font-size: var(--font-micro);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.list-group + .list-group {
-  margin-top: var(--space-6);
-}
-/* Where a place's panel will be, until it has one. */
-.open-panel {
-  width: 100%;
-  justify-content: flex-start;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .thread-mark {
   color: var(--muted);
@@ -714,36 +658,6 @@ dialog.sidebar:not([open]) {
   font-size: var(--font-micro);
   font-weight: 600;
   line-height: 1;
-}
-/* What a panel started hangs under it. */
-.sidebar .threads {
-  margin-left: var(--space-4);
-  border-left: 1px solid var(--line);
-}
-.session small .session-state {
-  width: 1em;
-  height: 1em;
-  margin-right: var(--space-2);
-  vertical-align: -0.15em;
-}
-/* One indicator to a row: the shape stands in for the LED. */
-.session small .session-state + .activity-status > .status-led {
-  display: none;
-}
-.session-state.waiting {
-  color: var(--accent);
-}
-.session-state.failed {
-  color: var(--removed);
-}
-/* Every folder's waiting decisions, above the list. */
-.needs-you > button {
-  width: 100%;
-  justify-content: flex-start;
-  gap: var(--gap);
-  font-size: var(--font-small);
-  font-weight: 600;
-  color: var(--accent);
 }
 /* One line: the words truncate, the link to its instructions stays. */
 .panel-subtitle {
@@ -774,64 +688,6 @@ dialog.sidebar:not([open]) {
   padding: 0;
   text-decoration: underline;
 }
-.panel-layout {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) calc(240rem / 14);
-}
-.panel-chat {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.board {
-  min-height: 0;
-  overflow: auto;
-  border-left: 1px solid var(--line);
-  background: var(--surface);
-  padding: var(--space-4);
-}
-.board section + section {
-  margin-top: var(--space-4);
-}
-/* The heading holds its count and, for members, the way to add one. */
-.board h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  font-size: var(--font-micro);
-  font-weight: 400;
-  color: var(--muted);
-  padding: var(--space-2) var(--space-3);
-}
-.board h2 button {
-  margin-left: auto;
-}
-.board-note {
-  color: var(--muted);
-  font-size: var(--font-small);
-  padding: var(--space-2) var(--space-3);
-}
-.board-count {
-  font-variant-numeric: tabular-nums;
-}
-.board-row {
-  width: 100%;
-}
-.board-row > span,
-.board-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* In its phone sheet the board is the sheet's content, not a column. */
-.side-sheet .board {
-  border-left: 0;
-  background: none;
-  padding: 0;
-}
 .folder-label > span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -849,28 +705,6 @@ dialog.sidebar:not([open]) {
 }
 .session-row:has([aria-current]) {
   border-left-color: var(--accent);
-}
-.session {
-  flex: 1;
-  padding: var(--space-3) var(--space-4);
-}
-.session > span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--font-small);
-}
-.session small {
-  font-size: var(--font-micro);
-  /* Single line, always: activity labels stream in while a turn runs
-     and a wrap would change the row height (sidebar ticking). The
-     time keeps its title tooltip; overflow ellipsizes like the title. */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.session small .activity-status {
-  margin-right: var(--space-3);
 }
 .status-led {
   display: inline-block;
@@ -910,13 +744,6 @@ dialog.sidebar:not([open]) {
   50% {
     opacity: 0.35;
   }
-}
-.sidebar footer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-top: 1px solid var(--line);
-  padding-top: var(--space-4);
 }
 .connection {
   flex: 1;
@@ -985,13 +812,6 @@ dialog.sidebar:not([open]) {
 .transcript-content > details {
   margin-block: 0;
 }
-.retention {
-  font-size: var(--font-small);
-  color: var(--muted);
-  border: 1px dashed var(--line);
-  padding: var(--space-4);
-  overflow-anchor: none;
-}
 .empty {
   margin: auto;
   text-align: center;
@@ -1043,14 +863,6 @@ dialog.sidebar:not([open]) {
 .mark.cursor-mark {
   width: calc(56rem / 14);
   height: calc(56rem / 14);
-}
-.history-button {
-  display: block;
-  margin-inline: auto;
-  /* Stable height across the Loading swap so the anchor math below it
-     never shifts by the label change. Never a scroll anchor itself. */
-  min-height: var(--control);
-  overflow-anchor: none;
 }
 
 .text-control {
@@ -1292,12 +1104,6 @@ details[open]:not(.disclosure-row) > summary::before {
 .menu-value {
   margin-left: auto;
   color: var(--muted);
-}
-.menu-note {
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  color: var(--muted);
-  font-size: var(--font-micro);
 }
 .model-form {
   display: grid;
@@ -1805,19 +1611,6 @@ dialog.sidebar.drawer[open][data-leaving] {
     border-color: CanvasText;
     border-radius: 0;
   }
-}
-
-.sidebar-sections {
-  display: flex;
-  gap: var(--gap);
-  padding: 0;
-}
-.sidebar-sections button {
-  flex: 1;
-  font-size: 0.9em;
-}
-.sidebar-sections button[aria-current="page"] {
-  background: var(--raised);
 }
 
 /* Every dialog shares the same optical and interactive close-button geometry. */

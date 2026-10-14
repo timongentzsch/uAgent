@@ -9,6 +9,7 @@ import { LoadError, Placeholder, Welcome } from "../../shared/ui.tsx";
 import { useHostContext } from "../../state/host-context.ts";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import "./chat.css";
 
 export { prepareHistoryBlocks } from "./message.tsx";
 

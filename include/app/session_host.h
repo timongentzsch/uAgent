@@ -32,14 +32,60 @@
 
 namespace uagent::session {
 
+// Where a hosted session stands; only its name reaches the wire.
+enum class SessionStatus {
+  kDraft,
+  kSaved,
+  kStarting,
+  kInterrupted,
+  kFailed,
+  kClosing,
+  kUpdating,
+  kDeleting,
+  kWaiting,
+  kRunning,
+  kProcessing,
+  kIdle,
+};
+
+inline const char* SessionStatusName(SessionStatus status) {
+  switch (status) {
+    case SessionStatus::kDraft:
+      return "draft";
+    case SessionStatus::kSaved:
+      return "saved";
+    case SessionStatus::kStarting:
+      return "starting";
+    case SessionStatus::kInterrupted:
+      return "interrupted";
+    case SessionStatus::kFailed:
+      return "failed";
+    case SessionStatus::kClosing:
+      return "closing";
+    case SessionStatus::kUpdating:
+      return "updating";
+    case SessionStatus::kDeleting:
+      return "deleting";
+    case SessionStatus::kWaiting:
+      return "waiting";
+    case SessionStatus::kRunning:
+      return "running";
+    case SessionStatus::kProcessing:
+      return "processing";
+    case SessionStatus::kIdle:
+      return "idle";
+  }
+  return "saved";
+}
+
 // One attached conversation runtime. Socket and reader lifetime stay together;
 // destroying the record wakes and joins its reader before dependent state dies.
 struct HostSession {
   std::string run_id, task_id, launch_prompt, run_result;
   bool run_checkpoint = false, stop_sent = false;
   json launch = json::object();
-  std::string id, path, cwd, title, draft_title, generation, status = "saved",
-                                                             error, binary;
+  std::string id, path, cwd, title, draft_title, generation, error, binary;
+  SessionStatus status = SessionStatus::kSaved;
   // "panel", "thread" or empty; a thread names its project `folder`,
   // and itself as a `member` of its panel's chat when it is one.
   std::string kind, folder, member;

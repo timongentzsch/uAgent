@@ -158,7 +158,7 @@ ScheduleTick SessionHost::TickSchedules() {
         continue;
       }
       session->closing = true;
-      session->status = "closing";
+      session->status = SessionStatus::kClosing;
       tick.commands.push_back(
           {session, {{"kind", "close"}, {"request_id", RandomToken(16)}}});
     }

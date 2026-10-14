@@ -1233,6 +1233,28 @@ void TestAGroupOfOnlyZombiesIsFinished() {
   CHECK(!ParseProcStat("12 (sleep) Z x y"));
   CHECK(!ParseProcStat("12 (sleep) Z 1 0"));
 
+  // Only a /proc that lists everything may be believed about a group.
+  auto mount = [](const std::string& options) {
+    return "20 1 0:5 / /sys rw - sysfs sysfs rw\n"
+           "21 1 0:20 / /proc rw,nosuid shared:5 - proc proc " +
+           options + "\n22 1 0:21 / /dev rw - tmpfs tmpfs rw\n";
+  };
+  CHECK(ProcMountShowsEveryProcess(mount("rw")));
+  CHECK(ProcMountShowsEveryProcess(mount("rw,hidepid=0,gid=5")));
+  CHECK(ProcMountShowsEveryProcess(mount("rw,hidepid=off")));
+  for (const char* hiding :
+       {"rw,hidepid=1", "rw,hidepid=2", "rw,hidepid=4", "rw,hidepid=invisible",
+        "rw,hidepid=noaccess", "rw,hidepid=ptraceable", "rw,subset=pid"}) {
+    CHECK(!ProcMountShowsEveryProcess(mount(hiding)));
+  }
+  CHECK(!ProcMountShowsEveryProcess(""));
+  CHECK(!ProcMountShowsEveryProcess("20 1 0:5 / /sys rw - sysfs sysfs rw\n"));
+  // The mount in effect is the last one.
+  CHECK(!ProcMountShowsEveryProcess(
+      mount("rw") + "30 1 0:30 / /proc rw - proc proc rw,hidepid=2\n"));
+  CHECK(ProcMountShowsEveryProcess(mount("rw,hidepid=2") +
+                                   "30 1 0:30 / /proc rw - proc proc rw\n"));
+
   pid_t leader = fork();
   if (leader == 0) {
     pause();

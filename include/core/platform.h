@@ -44,6 +44,11 @@ struct ProcStat {
 };
 std::optional<ProcStat> ParseProcStat(std::string_view record);
 
+// Whether the /proc mount described by `mountinfo` (the text of
+// /proc/self/mountinfo) lists every process as it is: false for a hidepid
+// other than 0/off, for subset=pid, and when no /proc mount is found.
+bool ProcMountShowsEveryProcess(std::string_view mountinfo);
+
 // Whether process group `group`, known to answer a signal, still holds
 // anything that can run. False only when the scan positively finds members and
 // every one is a zombie with a single task, the leader already reaped: their

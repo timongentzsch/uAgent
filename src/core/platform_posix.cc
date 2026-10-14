@@ -130,6 +130,38 @@ std::optional<ProcStat> ParseProcStat(std::string_view record) {
   return ProcStat{state, group};
 }
 
+bool ProcMountShowsEveryProcess(std::string_view mountinfo) {
+  // "id parent major:minor root mount-point options ... - fstype source
+  // super-options": the last /proc mount is the one in effect.
+  bool shown = false;
+  while (!mountinfo.empty()) {
+    const size_t end = std::min(mountinfo.find('\n'), mountinfo.size());
+    const std::string line(mountinfo.substr(0, end));
+    mountinfo.remove_prefix(std::min(end + 1, mountinfo.size()));
+    std::istringstream fields(line);
+    std::string field, point, type, options;
+    for (int index = 0; index < 5 && fields >> field; ++index) {
+      if (index == 4) point = field;
+    }
+    while (fields >> field && field != "-") {
+    }
+    fields >> type >> field >> options;
+    if (point != "/proc" || type != "proc") continue;
+    shown = true;
+    for (size_t at = 0; at <= options.size();) {
+      const size_t comma = std::min(options.find(',', at), options.size());
+      const std::string option = options.substr(at, comma - at);
+      at = comma + 1;
+      if (option == "subset=pid" ||
+          (option.starts_with("hidepid=") && option != "hidepid=0" &&
+           option != "hidepid=off")) {
+        shown = false;
+      }
+    }
+  }
+  return shown;
+}
+
 // Strictly conservative: "no live member" is answered only on positive
 // evidence, and anything unexpected (a read error, nothing found, a hidden or
 // foreign /proc) answers "alive", which is what the group probe alone says.
@@ -144,12 +176,11 @@ bool ProcessGroupHasLiveMember(pid_t group) {
     size = members.size() * sizeof(kinfo_proc);
     if (sysctl(query, 4, members.data(), &size, nullptr, 0) == 0) {
       members.resize(size / sizeof(kinfo_proc));
-      return members.empty() ||
-             std::any_of(members.begin(), members.end(),
-                         [&](const kinfo_proc& m) {
-                           return m.kp_proc.p_pid == group ||
-                                  m.kp_proc.p_stat != SZOMB;
-                         });
+      return members.empty() || std::any_of(members.begin(), members.end(),
+                                            [&](const kinfo_proc& m) {
+                                              return m.kp_proc.p_pid == group ||
+                                                     m.kp_proc.p_stat != SZOMB;
+                                            });
     }
     if (errno != ENOMEM) return true;  // the group grew between the calls
   }
@@ -162,6 +193,11 @@ bool ProcessGroupHasLiveMember(pid_t group) {
     text << input.rdbuf();
     return input ? text.str() : std::string();
   };
+  // A /proc that hides processes hides group members too.
+  static const bool shows_every_process = [&] {
+    return ProcMountShowsEveryProcess(read_all("/proc/self/mountinfo"));
+  }();
+  if (!shows_every_process) return true;
   // /proc may belong to another PID namespace, whose numbers mean nothing
   // here: trust it only when it agrees about this process's own group.
   const std::optional<ProcStat> self =

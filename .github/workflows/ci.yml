@@ -3,16 +3,19 @@ name: CI
 on:
   push:
     branches: [master]
-    tags: ["v*"]
   pull_request:
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
+  # Called by release.yml for a tag whose commit has no passing run on master.
+  workflow_call:
 
 # A newer push to a pull request replaces the run of the older one. Runs on
-# master are never cancelled: each merge is tested as it landed.
+# master are never cancelled: each merge is tested as it landed. The workflow
+# name is the caller's when called, so a release build never queues behind
+# the master run of the same commit.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -100,6 +103,7 @@ jobs:
       - uses: ./.github/actions/ccache
         with:
           name: release
+          size: 800M
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
@@ -223,6 +227,7 @@ jobs:
       - uses: ./.github/actions/ccache
         with:
           name: sanitize
+          size: 1G
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure ASan and UBSan
@@ -256,6 +261,7 @@ jobs:
       - uses: ./.github/actions/ccache
         with:
           name: tsan
+          size: 1G
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure TSan
@@ -407,6 +413,7 @@ jobs:
         with:
           name: release
           save: "false"
+          size: 800M
       - name: Build native push host
         run: |
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
@@ -534,63 +541,3 @@ jobs:
           print(json.dumps(results, indent=2))
           sys.exit(results["changes"] != "success" or any(value not in ("success", "skipped") for value in results.values()))
           PYTHON
-
-  release:
-    if: >-
-      github.event_name == 'push' && github.ref_type == 'tag' &&
-      startsWith(github.ref_name, 'v')
-    needs: checks
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: write
-      attestations: write
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: release-*
-          path: dist
-          merge-multiple: true
-      # The built web UI, for source builds without Node.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: web-dist
-          path: web-dist
-      - name: Package web UI
-        run: tar -C web-dist -czf "dist/uagent-web-dist-${GITHUB_REF_NAME#v}.tar.gz" .
-      - name: Create deterministic SHA-256 manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          archives=(dist/*.tar.gz)
-          ((${#archives[@]})) || {
-            echo "no release archives found" >&2
-            exit 1
-          }
-          (
-            cd dist
-            while IFS= read -r archive; do
-              sha256sum "$archive"
-            done < <(printf '%s\n' "${archives[@]#dist/}" | LC_ALL=C sort)
-          ) > dist/SHA256SUMS
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - name: Keylessly sign SHA-256 manifest
-        shell: bash
-        run: >-
-          cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json
-          dist/SHA256SUMS
-      - name: Attest release assets
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: dist/*
-      - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
-          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

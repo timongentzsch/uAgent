@@ -204,8 +204,12 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
 
 bool ProcessGroupAlive(pid_t leader) {
   if (leader <= 0) return false;
-  if (kill(-leader, 0) == 0) return true;
-  return errno == EPERM;
+  // Signalling a group of zombies succeeds on Linux and is refused with EPERM
+  // on macOS: either way the answer is in who is left in it.
+  if (kill(-leader, 0) == 0 || errno == EPERM) {
+    return ProcessGroupHasLiveMember(leader);
+  }
+  return false;
 }
 
 std::string DetachedRecordPath(pid_t pid) {

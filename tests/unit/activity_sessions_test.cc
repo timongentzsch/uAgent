@@ -2,6 +2,8 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -1214,6 +1216,72 @@ void TestDetachedActivityOwnership() {
 
 // A delegated child is an ordinary session file whose header names its role.
 // It must never surface as a session of its own, and its parent must find it.
+// A killed command's grandchildren become zombies of whoever adopts them, and
+// an adopter that reaps late (a container's init, a CI agent) must not make
+// the stop of that command fail: nothing in such a group can run any more.
+void TestAGroupOfOnlyZombiesIsFinished() {
+  // A process name may hold parentheses and newlines; the fields follow the
+  // last ')'. A record that does not fit says nothing.
+  std::optional<ProcStat> plain = ParseProcStat("12 (sleep) Z 1 34 34 0\n");
+  CHECK(plain && plain->state == 'Z' && plain->group == 34);
+  std::optional<ProcStat> odd =
+      ParseProcStat("12 (a) S 9 9\n(b) c) R 1 77 77 0\n");
+  CHECK(odd && odd->state == 'R' && odd->group == 77);
+  CHECK(!ParseProcStat(""));
+  CHECK(!ParseProcStat("12 sleep Z 1 34"));
+  CHECK(!ParseProcStat("12 (sleep) Z 1"));
+  CHECK(!ParseProcStat("12 (sleep) Z x y"));
+  CHECK(!ParseProcStat("12 (sleep) Z 1 -3"));
+  // Kernel threads belong to group 0.
+  std::optional<ProcStat> kernel = ParseProcStat("2 (kthreadd) S 0 0 0 0");
+  CHECK(kernel && kernel->group == 0);
+
+  // Only a /proc that lists everything may be believed about a group.
+  auto mount = [](const std::string& options) {
+    return "20 1 0:5 / /sys rw - sysfs sysfs rw\n"
+           "21 1 0:20 / /proc rw,nosuid shared:5 - proc proc " +
+           options + "\n22 1 0:21 / /dev rw - tmpfs tmpfs rw\n";
+  };
+  CHECK(ProcMountShowsEveryProcess(mount("rw")));
+  CHECK(ProcMountShowsEveryProcess(mount("rw,hidepid=0,gid=5")));
+  CHECK(ProcMountShowsEveryProcess(mount("rw,hidepid=off")));
+  for (const char* hiding :
+       {"rw,hidepid=1", "rw,hidepid=2", "rw,hidepid=4", "rw,hidepid=invisible",
+        "rw,hidepid=noaccess", "rw,hidepid=ptraceable", "rw,subset=pid"}) {
+    CHECK(!ProcMountShowsEveryProcess(mount(hiding)));
+  }
+  CHECK(!ProcMountShowsEveryProcess(""));
+  CHECK(!ProcMountShowsEveryProcess("20 1 0:5 / /sys rw - sysfs sysfs rw\n"));
+  // The mount in effect is the last one.
+  CHECK(!ProcMountShowsEveryProcess(
+      mount("rw") + "30 1 0:30 / /proc rw - proc proc rw,hidepid=2\n"));
+  CHECK(ProcMountShowsEveryProcess(mount("rw,hidepid=2") +
+                                   "30 1 0:30 / /proc rw - proc proc rw\n"));
+
+  pid_t leader = fork();
+  if (leader == 0) {
+    pause();
+    _exit(0);
+  }
+  CHECK(leader > 0);
+  CHECK(setpgid(leader, leader) == 0);
+  // This process is the zombie's parent and never waits for it, as a slow
+  // adopter would not.
+  pid_t zombie = fork();
+  if (zombie == 0) _exit(setpgid(0, leader) == 0 ? 0 : 1);
+  CHECK(zombie > 0);
+  siginfo_t info{};
+  CHECK(waitid(P_PID, static_cast<id_t>(zombie), &info, WEXITED | WNOWAIT) ==
+        0);
+  CHECK(info.si_status == 0);
+  CHECK(ProcessGroupAlive(leader));
+  CHECK(kill(leader, SIGKILL) == 0);
+  int status = 0;
+  CHECK(WaitPid(leader, &status) == leader);
+  CHECK(!ProcessGroupAlive(leader));
+  CHECK(WaitPid(zombie, &status) == zombie);
+}
+
 void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
   TestWorkspace workspace("thread-worktree");
   const std::string project = CanonicalCwd();

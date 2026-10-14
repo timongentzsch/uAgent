@@ -222,19 +222,25 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
 
         # A completed source is not processed again. Disabling generation also
         # prevents a changed source from becoming eligible.
-        code, output = run_pty(
-            workspace, env, b"/q\n", before_payload=lambda: time.sleep(0.2), binary=binary
-        )
-        assert_true(code == 0 and len(server.requests) == 5, output)
+        # The runtime outlives its client and decides about extraction before
+        # it first reports a state, which is what "Ready" waits for: a client
+        # that left sooner would let a late claim slip past these checks, or
+        # past the ageing below.
+        def states():
+            return [
+                marker.read_text(encoding="utf-8").strip()
+                for marker in (home / ".uagent/memory/.processed").rglob("*.state")
+            ]
+
+        code, output = run_pty(workspace, env, b"/q\n", startup_marker=b"Ready", binary=binary)
+        assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
         # Idle, and newer than its marker: the source is eligible again.
         for marker in (home / ".uagent/memory/.processed").rglob("*.state"):
             age(marker, IDLE_SECONDS + 60)
         disabled = dict(env)
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
-        code, output = run_pty(
-            workspace, disabled, b"/q\n", before_payload=lambda: time.sleep(0.2), binary=binary
-        )
-        assert_true(code == 0 and len(server.requests) == 5, output)
+        code, output = run_pty(workspace, disabled, b"/q\n", startup_marker=b"Ready", binary=binary)
+        assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
 
 
 def test_memory_background_extractor_releases_failed_claims(root, _home, *, binary):

@@ -51,7 +51,13 @@ for (const path of await readdir(root, {
   if (!path.isFile()) continue;
   const url = pathToFileURL(join(path.parentPath, path.name));
   const name = url.href.slice(root.href.length);
-  if (name.startsWith(".vite/")) continue;
+  // The .gz beside each text asset, and the manifest of them, are the embed's.
+  if (
+    name.startsWith(".vite/") ||
+    name.endsWith(".gz") ||
+    name === ".gzip-manifest.json"
+  )
+    continue;
   const diagram =
     name.startsWith("assets/") && name.endsWith(".js") && !app.has(name);
   const bytes = await readFile(url);

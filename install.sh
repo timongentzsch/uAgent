@@ -13,7 +13,7 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
   cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 fi
 cmake --build "$build" --target uagent --parallel "$build_jobs"
-cmake --install "$build" --prefix "$prefix"
+cmake --install "$build" --prefix "$prefix" --strip
 # Chrome reads managed policy only from a root-owned directory, so this is
 # printed rather than run.
 if [ "$(uname)" = Linux ] && ! cmp -s "$root/deploy/chrome-policy.json" \

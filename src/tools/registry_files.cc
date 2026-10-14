@@ -206,12 +206,15 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "context":{"type":"integer","minimum":0,"maximum":10,
                       "description":"surrounding content lines"}},"required":["pattern"]})json"),
       [&supervisor](const json& a, const ToolContext& context) {
-        return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
-                        JsonValue(a, "path", "."), JsonValue(a, "glob", ""),
-                        JsonValue(a, "context", int64_t{0}), context,
-                        JsonValue(a, "mode", "content") == "files",
-                        JsonValue(a, "literal", false),
-                        JsonValue(a, "mode", "content") == "matching_files");
+        return ToolGrep(
+            supervisor, JsonValue(a, "pattern", ""), JsonValue(a, "path", "."),
+            {.glob = JsonValue(a, "glob", ""),
+             .context_lines = JsonValue(a, "context", int64_t{0}),
+             .files_only = JsonValue(a, "mode", "content") == "files",
+             .literal = JsonValue(a, "literal", false),
+             .matching_files =
+                 JsonValue(a, "mode", "content") == "matching_files"},
+            context);
       }));
   reads_only(grep);
   grep.clamped_arguments = {"context"};

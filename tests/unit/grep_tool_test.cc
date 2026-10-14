@@ -42,7 +42,8 @@ void TestGrepTool() {
   CHECK(ToolWriteFile(ignored.string(), "needle ignored\n")
             .output.starts_with("wrote "));
   ProcessSupervisor supervisor;
-  ToolResult result = ToolGrep(supervisor, "needle", root.string(), "*.cpp");
+  ToolResult result =
+      ToolGrep(supervisor, "needle", root.string(), {.glob = "*.cpp"});
   CHECK(result.output.find("one.cpp") != std::string::npos);
   CHECK(result.output.find("two.txt") == std::string::npos);
   CHECK(result.output.find("more available") == std::string::npos);
@@ -53,35 +54,34 @@ void TestGrepTool() {
     for (int64_t i = 0; i <= kGrepResults; ++i) many += "needle row\n";
     fs::path crowded = root / "crowded.txt";
     CHECK(ToolWriteFile(crowded.string(), many).output.starts_with("wrote "));
-    CHECK(ToolGrep(supervisor, "needle", crowded.string(), "")
+    CHECK(ToolGrep(supervisor, "needle", crowded.string())
               .output.find("more available") != std::string::npos);
     fs::remove(crowded);
   }
   ToolResult filenames =
-      ToolGrep(supervisor, "one\\.cpp$", root.string(), "", 0, {}, true);
+      ToolGrep(supervisor, "one\\.cpp$", root.string(), {.files_only = true});
   CHECK(filenames.Ok());
   CHECK(filenames.output.find("one.cpp") != std::string::npos);
   CHECK(filenames.output.find("needle one") == std::string::npos);
   ToolResult contextual =
-      ToolGrep(supervisor, "needle two", source.string(), "", 1);
+      ToolGrep(supervisor, "needle two", source.string(), {.context_lines = 1});
   CHECK(contextual.output.find("needle one") != std::string::npos);
   CHECK(contextual.output.find("needle three") != std::string::npos);
-  CHECK(ToolGrep(supervisor, "absent", root.string(), "").output ==
-        "(no matches)");
-  CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
+  CHECK(ToolGrep(supervisor, "absent", root.string()).output == "(no matches)");
+  CHECK(ToolGrep(supervisor, "(", root.string()).error ==
         ToolErrorCode::kProcessFailed);
-  CHECK(
-      ToolGrep(supervisor, "(", root.string(), "", 0, {}, false, true).output ==
-      "(no matches)");
-  ToolResult paths = ToolGrep(supervisor, "needle", root.string(), "*.cpp", 0,
-                              {}, false, true, true);
+  CHECK(ToolGrep(supervisor, "(", root.string(), {.literal = true}).output ==
+        "(no matches)");
+  ToolResult paths =
+      ToolGrep(supervisor, "needle", root.string(),
+               {.glob = "*.cpp", .literal = true, .matching_files = true});
   CHECK(paths.Ok());
   CHECK(paths.output.find("one.cpp") != std::string::npos);
   CHECK(paths.output.find("needle one") == std::string::npos);
   for (pid_t pid = 999981; pid < 999981 + kMaxBackgroundJobs; ++pid) {
     CHECK(supervisor.TryAdd({.pid = pid, .cmd = "busy"}, kMaxBackgroundJobs));
   }
-  ToolResult limited = ToolGrep(supervisor, "needle", root.string(), "");
+  ToolResult limited = ToolGrep(supervisor, "needle", root.string());
   CHECK(limited.error == ToolErrorCode::kLimitExceeded);
   CHECK(limited.output.find("background job limit") != std::string::npos);
   CHECK(supervisor.TakeAllForShutdown().size() ==
@@ -122,7 +122,7 @@ void TestGrepTool() {
 
   fs::path marker = root / "injected";
   result = ToolGrep(supervisor, "needle'; touch " + marker.string() + "; '",
-                    root.string(), "");
+                    root.string());
   CHECK(!fs::exists(marker));
 
   const char* prior_path_value = getenv("PATH");
@@ -136,13 +136,13 @@ void TestGrepTool() {
   fs::create_symlink("/usr/bin/head", fallback_bin / "head", ec);
   CHECK(!ec);
   setenv("PATH", fallback_bin.c_str(), 1);
-  result = ToolGrep(supervisor, "needle", source.string(), "");
+  result = ToolGrep(supervisor, "needle", source.string());
   CHECK(result.output.find("[grep") == 0);
   CHECK(result.output.find("needle one") != std::string::npos);
-  CHECK(ToolGrep(supervisor, "(", source.string(), "", 0, {}, false, true)
-            .output == "(no matches)");
-  CHECK(ToolGrep(supervisor, "needle", source.string(), "", 0, {}, false, true,
-                 true)
+  CHECK(ToolGrep(supervisor, "(", source.string(), {.literal = true}).output ==
+        "(no matches)");
+  CHECK(ToolGrep(supervisor, "needle", source.string(),
+                 {.literal = true, .matching_files = true})
             .output.find("needle one") == std::string::npos);
   if (prior_path_value) {
     setenv("PATH", prior_path.c_str(), 1);

@@ -2,6 +2,8 @@ import { useState } from "preact/hooks";
 import type { StatisticsModal } from "../../shared/types.ts";
 import { command, manage } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
+import { deleteRetryDelayMs } from "../../shared/limits.ts";
+import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 export default function ConversationActions({
   modal,
@@ -59,7 +61,9 @@ export default function ConversationActions({
               } catch (failure) {
                 lastError = failure;
                 if (!/stop and close/i.test(String(failure))) break;
-                await new Promise((resolve) => setTimeout(resolve, 1000));
+                await new Promise((resolve) =>
+                  setTimeout(resolve, deleteRetryDelayMs),
+                );
               }
             }
             if (lastError) throw lastError;
@@ -97,7 +101,7 @@ export default function ConversationActions({
         <p>
           Delete the space “{modal.space.name}”
           {modal.conversations
-            ? `, its ${modal.conversations} conversation${modal.conversations > 1 ? "s" : ""}`
+            ? `, its ${plural(modal.conversations, "conversation")}`
             : ""}{" "}
           and every file in it? This cannot be undone.
         </p>

@@ -33,6 +33,7 @@ import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { levelLabel } from "../../shared/verbosity.ts";
 import { ActivityStatus, active } from "../../shared/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { plural } from "../../shared/quantities.ts";
 import {
   isRunning,
   statusOf,
@@ -316,7 +317,7 @@ function SessionRowView({
         title={
           <>
             <SessionName item={item} />
-            {members > 0 && ` · ${members} member${members > 1 ? "s" : ""}`}
+            {members > 0 && ` · ${plural(members, "member")}`}
           </>
         }
         unread={unread && "Unread messages"}

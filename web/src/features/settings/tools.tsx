@@ -16,6 +16,7 @@ import {
 } from "../../shared/ui.tsx";
 import { command } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
+import { bytes } from "../../shared/quantities.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
 const labels: Record<string, string> = {
@@ -177,8 +178,8 @@ export default function Tools({
           </strong>
           <small class="muted">
             <DataText>
-              {shown.schema_bytes.toLocaleString()} serialized schema bytes
-              {saved > 0 && ` · ${saved.toLocaleString()} bytes saved`}
+              {bytes(shown.schema_bytes)} serialized schema
+              {saved > 0 && ` · ${bytes(saved)} saved`}
             </DataText>
           </small>
         </div>
@@ -318,9 +319,7 @@ export default function Tools({
                         <DataText>{tool.name}</DataText>
                       </code>
                       <small>
-                        <DataText>
-                          {tool.schema_bytes.toLocaleString()} bytes
-                        </DataText>
+                        <DataText>{bytes(tool.schema_bytes)}</DataText>
                       </small>
                     </span>
                     <span class="tool-description">

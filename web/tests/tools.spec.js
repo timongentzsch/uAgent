@@ -11,7 +11,7 @@ test("tool catalogue shows its schema size and persists selection", async ({
   await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Tools", exact: true });
-  await expect(dialog.getByText(/serialized schema bytes/)).toBeVisible();
+  await expect(dialog.getByText(/serialized schema/)).toBeVisible();
   await expect(dialog.getByText(/estimated.*tokens/i)).toHaveCount(0);
 
   const profile = dialog.getByRole("combobox", { name: "Tool profile" });

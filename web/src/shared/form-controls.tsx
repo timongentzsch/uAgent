@@ -1,7 +1,7 @@
 import { createElement, type JSX, type RefObject } from "preact";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import { ChevronDown } from "lucide-preact";
-import { observeResize, zoomChanged } from "./layout.ts";
+import { coarsePointer, observeResize, zoomChanged } from "./layout.ts";
 import { focusFontFloor } from "./limits.ts";
 
 type ControlElement =
@@ -34,9 +34,7 @@ function Control({
     if (!element) return;
     const wrapper = element.parentElement!;
     const font = parseFloat(getComputedStyle(wrapper).fontSize);
-    const layoutFont = matchMedia("(pointer: coarse)").matches
-      ? Math.max(focusFontFloor, font)
-      : font;
+    const layoutFont = coarsePointer() ? Math.max(focusFontFloor, font) : font;
     wrapper.style.setProperty("--input-scale", String(font / layoutFont));
     // Explicit pixels avoid division rounding 16px below Safari's threshold.
     element.style.fontSize = `${layoutFont}px`;

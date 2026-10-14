@@ -1,6 +1,7 @@
 // Base styles load with the primitives every surface is built from, so they
 // always precede feature styles, however the bundle is split.
 import "./style.css";
+import { copiedFeedbackMs } from "./limits.ts";
 import {
   Component,
   createContext,
@@ -78,7 +79,7 @@ export function CodeCopy({ text }: { text: string }) {
   const [status, setStatus] = useState("");
   useEffect(() => {
     if (!status) return;
-    const timer = setTimeout(() => setStatus(""), 2000);
+    const timer = setTimeout(() => setStatus(""), copiedFeedbackMs);
     return () => clearTimeout(timer);
   }, [status]);
   return (

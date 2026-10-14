@@ -3,7 +3,7 @@
 #include "include/agent/prompt.h"
 
 #include <cstddef>
-#include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -171,12 +171,10 @@ std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
 json PromptOverlay(std::string* digest) {
   std::string path = PromptOverlayPath();
   if (path.empty()) return json::object();
-  std::ifstream input(path, std::ios::binary);
-  if (!input) return json::object();
-  std::string body;
-  ReadBounded(input, kPromptOverlayBytes, body);
-  if (digest) *digest = TruncatedHash(body, kDigestChars);
-  json parsed = json::parse(body, nullptr, false);
+  const std::optional<std::string> body = ReadFile(path, kPromptOverlayBytes);
+  if (!body) return json::object();
+  if (digest) *digest = TruncatedHash(*body, kDigestChars);
+  json parsed = json::parse(*body, nullptr, false);
   return parsed.is_object() ? parsed : json::object();
 }
 

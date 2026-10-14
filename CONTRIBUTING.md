@@ -113,9 +113,10 @@ Parser changes must preserve chunk-boundary equivalence. See
 - The C++ build has no exceptions (`-fno-exceptions`). An operation that can
   fail returns `bool` and fills a `std::string& error`; "absent" is
   `std::optional`. At the tool boundary the result is a typed `ToolResult`
-  (`include/tools/tool.h`). Only the `*Control(const json&)` handlers at the
-  wire boundary, such as `SkillControl` and `ScheduleControl`, build an
-  `{"error": ...}` json.
+  (`include/tools/tool.h`). Only the wire boundary builds an
+  `{"error": ...}` json: the `*Control(const json&)` handlers, such as
+  `SkillControl` and `ScheduleControl`, and the one function per action they
+  dispatch to.
 - Public headers in `include/<module>/` mirror `src/<module>/`. Declarations
   shared inside one module live in `src/<module>/*_internal.h`.
   `tests/boundary_test.py` enforces the layer order.

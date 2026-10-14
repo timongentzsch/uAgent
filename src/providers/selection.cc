@@ -133,13 +133,20 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   // for optional metadata. Unavailable metadata leaves the route usable.
   bool metadata_only = !api.model.empty();
   auto started = std::chrono::steady_clock::now();
+  const std::string base = api.CatalogModel();
+  const auto offers_model = [&](const std::vector<ModelInfo>& list) {
+    return api.model.empty() ||
+           std::ranges::any_of(list, [&](const ModelInfo& info) {
+             return info.id == api.model || info.id == base;
+           });
+  };
+  // A cached catalogue that lacks the chosen model may predate it.
   auto models = CachedModels(api);
-  if (!models) {
+  if (!models || !offers_model(*models)) {
     models = QueryModels(api, /*abortable=*/false, metadata_only ? 8 : 15);
   }
   if (models && !models->empty()) {
     if (api.model.empty()) api.model = models->front().id;
-    std::string base = api.CatalogModel();
     for (const ModelInfo& info : *models) {
       if (info.id != api.model && info.id != base) continue;
       if (api.ctx_window == 0) api.ctx_window = info.context;

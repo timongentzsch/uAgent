@@ -33,14 +33,15 @@ sandbox limited to your folder.
 C++20 with libcurl, cpp-httplib and nlohmann/json; the web interface is
 Preact, TypeScript and Vite; the tests are C++, Python and Playwright.
 
-Every conversation runs in its own session runtime process. The terminal, the
-browser's web host and scripts attach to it over a private Unix socket, so no
-client has authority another lacks and none runs a second agent.
+Every conversation runs in its own session runtime process. The terminal and
+the browser's web host attach to it over a private Unix socket, so neither has
+authority the other lacks and neither runs a second agent. A script
+(`-p --json`) runs its turn in its own process.
 
 ```mermaid
 flowchart LR
   T[Terminal] --> R
-  S["Script (-p --json)"] --> R
+  S["Script (-p --json)"] --> A
   B[Browser] -->|HTTP and SSE| W[Web host] --> R
   R["Session runtime<br/>one per conversation"] --> A["Agent turn loop<br/>and tools, sandboxed"]
   A --> P[Provider adapters] --> M[Model endpoints]

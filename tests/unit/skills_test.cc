@@ -326,6 +326,16 @@ void TestImportFromOtherAgents() {
         "---\ndescription: d\nallowed-tools: run, read_path\n"
         "tools: run, read_path, grep\n"
         "requires-tools: run, subagent\n---\nBody\n");
+  // The added requires-tools line shifts the body by one; every body line
+  // stays, the last included (64 lines in all crosses a word of the mask).
+  std::string body;
+  for (int line = 0; line < 59; ++line) {
+    body += "line\n";
+  }
+  const std::string block = RewriteToolReferences(
+      "---\nallowed-tools:\n  - Bash\n---\n" + body + "last");
+  CHECK(block ==
+        "---\nallowed-tools: run\nrequires-tools: run\n---\n" + body + "last");
   std::istringstream loaded(RewriteToolReferences(
       "---\ndescription: d\nrequires-tools: [Bash, Read]\n---\n"));
   std::vector<std::string> required;

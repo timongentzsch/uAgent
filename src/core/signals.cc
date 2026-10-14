@@ -29,12 +29,6 @@ thread_local std::atomic<bool>* g_local_abort = nullptr;
 SignalFlag g_mcp_pids[kMcpMax] = {};
 SignalFlag g_bg_pids[kBgMax] = {};
 SignalFlag g_agent_pids[kBgMax] = {};
-bool g_tty = false;
-bool g_color = false;
-bool g_attributes = false;
-bool g_unicode = true;
-bool g_plain = false;
-bool g_motion = true;
 SignalFlag g_signal_tty = 0;
 
 namespace {

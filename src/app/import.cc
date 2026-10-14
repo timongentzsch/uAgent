@@ -679,6 +679,7 @@ std::string RewriteToolReferences(const std::string& skill_md) {
     }
     lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(close),
                  "requires-tools: " + value);
+    dropped.insert(dropped.begin() + static_cast<std::ptrdiff_t>(close), false);
   }
   std::string out;
   for (size_t i = 0; i < lines.size(); ++i) {

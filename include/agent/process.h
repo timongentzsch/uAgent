@@ -37,11 +37,6 @@ enum class ActivityState : uint8_t {
 
 std::string ActivityKindName(ActivityKind kind);
 bool ActivityTerminal(ActivityState state);
-// Call while holding ActivitySession::mutex. Rejects illegal regressions and
-// makes the process lifecycle's state graph explicit in one place.
-bool TransitionActivityLocked(struct ActivitySession& session,
-                              ActivityState next);
-
 struct ActivitySession {
   // Process identity, written once during registration and read afterwards.
   pid_t pid = -1;
@@ -73,6 +68,11 @@ struct ActivitySession {
       std::chrono::steady_clock::now();
   std::chrono::steady_clock::time_point exited_at UAGENT_GUARDED_BY(mutex){};
 };
+
+// Call while holding ActivitySession::mutex. Rejects illegal regressions and
+// makes the process lifecycle's state graph explicit in one place.
+bool TransitionActivityLocked(ActivitySession& session, ActivityState next)
+    UAGENT_REQUIRES(session.mutex);
 
 struct BgJob {
   pid_t pid = -1;

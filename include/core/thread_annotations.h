@@ -2,8 +2,9 @@
 
 #ifndef UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
 #define UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
-// Thread-safety annotations are opt-in until the mutex type itself carries a
-// Clang capability annotation; std::mutex does not portably provide one. See
+// Thread-safety annotations are on for Clang + libc++, whose std::mutex and
+// lock types carry the capability annotations (CMake defines the switches). Other
+// toolchains expand every macro here to nothing. See
 // https://clang.llvm.org/docs/ThreadSafetyAnalysis.html.
 
 #if defined(__clang__) && defined(UAGENT_ENABLE_THREAD_SAFETY_ANALYSIS)

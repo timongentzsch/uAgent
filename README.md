@@ -23,10 +23,16 @@ sandbox limited to your folder.
 - **A panel for several agents.** A folder's panel hosts a chat with a
   moderator and members you add, and starts threads that do the work in
   parallel and report back.
+- **Your browser, your logins, never the password.** The agent drives a
+  persistent Chrome that you watch and take over from any device. It signs in
+  with Chrome's saved passwords without reading them, and hands you codes,
+  captchas and payments. [The agent's browser](docs/BROWSER.md) has the setup.
 
 ![Bars comparing µAgent, Claude Code and Codex CLI on executable size, idle memory, CPU per headless turn and time to first screen](docs/images/footprint.svg)
 
 ![The terminal on the left and the web interface on a phone on the right showing the same conversation live: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
+
+![The web interface on a desktop and on a phone while the agent signs in to a demo status dashboard in Ask mode: the phone approves each browser action, the live browser on the desktop shows Chrome's saved login filling in with the password as dots, then the agent asks for the 6-digit code, the phone opens the browser, types it and taps Done, and the agent reports the last deploy's error rate](docs/images/browser-login.gif)
 
 ## How it's built
 

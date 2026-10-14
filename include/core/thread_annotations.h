@@ -3,8 +3,8 @@
 #ifndef UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
 #define UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
 // Thread-safety annotations are on for Clang + libc++, whose std::mutex and
-// lock types carry the capability annotations (CMake defines the switches).
-// Other toolchains expand every macro here to nothing. See
+// std::lock_guard carry the capability annotations (CMake defines the
+// switches). Other toolchains expand every macro here to nothing. See
 // https://clang.llvm.org/docs/ThreadSafetyAnalysis.html.
 
 #include <mutex>
@@ -19,9 +19,8 @@
 #define UAGENT_GUARDED_BY(mutex) UAGENT_TSA(guarded_by(mutex))
 // The caller must already hold the listed mutexes.
 #define UAGENT_REQUIRES(...) UAGENT_TSA(requires_capability(__VA_ARGS__))
-// For a body the analysis cannot follow. Every use needs a comment saying
-// what makes it safe.
-#define UAGENT_NO_TSA UAGENT_TSA(no_thread_safety_analysis)
+
+namespace uagent {
 
 // libc++ annotates std::lock_guard but not std::unique_lock, whose lock() and
 // unlock() the analysis cannot follow. This is std::unique_lock with the
@@ -43,5 +42,7 @@ class UAGENT_TSA(scoped_lockable) UniqueLock
     std::unique_lock<std::mutex>::unlock();
   }
 };
+
+}  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_

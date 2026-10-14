@@ -29,6 +29,7 @@
 #include "include/core/lease.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent::session {
 namespace {
@@ -224,8 +225,8 @@ struct Server::State {
   std::thread thread;
   std::atomic<bool> stopped{false};
   std::mutex mutex;
-  std::deque<json> pending;
-  size_t pending_bytes = 0;
+  std::deque<json> pending UAGENT_GUARDED_BY(mutex);
+  size_t pending_bytes UAGENT_GUARDED_BY(mutex) = 0;
   // FileIdentity of the executable this worker started from.
   std::string path, id, generation, binary;
   std::function<bool(const json&)> command;

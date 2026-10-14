@@ -22,6 +22,7 @@
 #include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 
 namespace uagent {
@@ -339,7 +340,7 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
   // One cache per process: a repeated listing (a panel's board every
   // step) re-reads only the headers that changed.
   static std::mutex mutex;
-  static SessionCatalogue catalogue;
+  static SessionCatalogue catalogue UAGENT_GUARDED_BY(mutex);
   std::lock_guard lock(mutex);
   return catalogue.List(scope);
 }

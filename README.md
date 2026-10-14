@@ -8,7 +8,7 @@ program with the web interface built in, which works in a terminal, from a
 script or in the browser on the same conversations, and runs its commands in a
 sandbox limited to your folder.
 
-![The web interface: a panel with a member in its chat, and the sidebar's spaces and folders](docs/images/web-panel.png)
+![The web interface: a folder's panel where the moderator and two members, Ada and Linus, discuss rate limiting, with a thread working and the sidebar listing a space and a folder](docs/images/web-panel.png)
 
 ## Highlights
 
@@ -25,6 +25,8 @@ sandbox limited to your folder.
 - **A panel for several agents.** A folder's panel hosts a chat with a
   moderator and members you add, and starts threads that do the work in
   parallel and report back.
+
+![The terminal: asking for a change, answering the approval prompts, and the result](docs/images/terminal.gif)
 
 ## How it's built
 
@@ -51,10 +53,9 @@ wire format.
 
 - **Tests run without a key or network.** 133 C++ unit cases, 284 Python
   integration tests against a mock provider (real binary, real PTY), 154
-  Playwright browser tests (Chromium, plus WebKit for the layout-sensitive
-  specs) and 62 Node unit tests.
+  Playwright browser tests (Chromium; a subset also runs in WebKit) and 62 Node unit tests.
 - **Fuzzing.** Two libFuzzer targets, the SSE stream decoder and the terminal
-  input decoder, run a short smoke on every CI run and weekly for longer.
+  input decoder, replay their corpus on every CI run and search for five minutes each, weekly.
 - **Static analysis.** clang-format, cpplint, clang-tidy with warnings as
   errors, and CodeQL.
 - **Sanitizers.** The suite also runs under ASan and UBSan, and under TSan.

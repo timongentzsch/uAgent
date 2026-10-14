@@ -257,7 +257,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "web",
                       "private browser profile and service directory; empty "
-                      "disables the browser appliance",
+                      "disables the shared browser",
                       kScopeUser),
         "Browser data folder")),
     registry::Terminal(registry::Named(

@@ -2,7 +2,7 @@
 
 `uagent --web` serves µAgent to a browser: the same conversations as the
 terminal, on this machine or a paired phone. This guide covers starting it,
-pairing devices, remote access, notifications, the Docker browser appliance,
+pairing devices, remote access, notifications, the agent's browser,
 and reference material for operators and frontend development.
 
 ## Quick start
@@ -126,10 +126,10 @@ opt in with `-DUAGENT_WEB_PUSH=ON` and need OpenSSL 3.
 
 ## The agent's browser
 
-The optional Docker image adds Google Chrome that the agent can drive and
-that you can watch, take over and sign in to from any paired device.
-[Browser appliance](BROWSER.md) covers setting it up, profiles and saved
-logins, the viewer and how it is isolated.
+The web host can run a Google Chrome that the agent can drive and that you
+can watch, take over and sign in to from any paired device, in the Docker
+image or on a Linux host. [The agent's browser](BROWSER.md) covers setting it
+up, profiles and saved logins, the viewer and how it is isolated.
 
 ## Execution and persistence
 

@@ -164,7 +164,7 @@ prints a link that pairs the browser; the code in it works once, for five
 minutes. One web host serves every folder's conversations, and a
 conversation open in a terminal is the same one in the browser.
 [Web interface](WEB.md) covers a phone or another machine and notifications;
-[Browser appliance](BROWSER.md) the browser the agent can drive.
+[The agent's browser](BROWSER.md): the browser the agent can drive.
 
 ## The panel
 

@@ -1,11 +1,13 @@
-# Browser appliance
+# The agent's browser
 
 The browser the agent can drive and you can watch. For the web interface
 itself see [Web interface](WEB.md).
 
-The optional [Compose stack](../deploy/compose.yaml) builds one image with
-the web host, Google Chrome Stable and TigerVNC. It gives the agent a real
-browser that you can watch, drive and sign in to from any paired device.
+The web host can run a real Google Chrome for the agent that you can watch,
+drive and sign in to from any paired device. The optional
+[Compose stack](../deploy/compose.yaml) builds one image with the web host,
+Chrome Stable and TigerVNC; a Linux host with the same programs installed
+does it [without Docker](#without-docker).
 
 ```sh
 mkdir -p workspaces
@@ -159,16 +161,61 @@ several paired devices.
 
 ## Without Docker
 
-The browser also runs under a native Linux web host that has
-`google-chrome-stable`, `Xtigervnc` and `xauth` on its `PATH`. Set
-`UAGENT_BROWSER_DATA` to a private directory outside the sandbox's writable
-roots, such as `~/.uagent/browser`, and install the policy once:
+A native web host runs the same browser; Docker is not needed. It works on
+Linux only: the host starts `google-chrome-stable`, `Xtigervnc` and `xauth`,
+and Chrome runs on a virtual X display.
+
+1. Install Google Chrome Stable, TigerVNC (the `Xtigervnc` binary) and
+   `xauth`. The browser service starts them with the fixed `PATH`
+   `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, so they
+   must be in one of those directories.
+2. Set `UAGENT_BROWSER_DATA` for the web host to an absolute directory only
+   you can use, such as `~/.uagent/browser`. Set it in the host's
+   environment, or save it as `web.browserData` (`/config user
+   web.browserData=...` in a terminal session). The host creates the
+   directory with mode `0700` and refuses one that others can reach; the
+   path must be short enough for a Unix socket. Keep it outside the
+   sandbox's writable roots.
+3. Optional, once: install the managed policy, which the image does for you.
 
 ```sh
 sudo install -D -m 0644 deploy/chrome-policy.json \
   /etc/opt/chrome/policies/managed/uagent.json
 ```
 
-Any top-level session may use the browser while the web host runs it. A
-terminal or headless session needs `UAGENT_BROWSER_DATA` in its settings, as
-the web host has.
+A systemd user unit, `~/.config/systemd/user/uagent-web.service`, with
+placeholders for your user and tailnet address (see [Web interface](WEB.md)
+for the origin):
+
+```ini
+[Unit]
+Description=uAgent web host
+
+[Service]
+Environment=UAGENT_BROWSER_DATA=/home/USER/.uagent/browser
+ExecStart=/usr/local/bin/uagent --web --web-port 18080 --web-origin http://TAILNET_IP:18080
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+Start it with `systemctl --user enable --now uagent-web`. To check it, look
+for `service.sock` in the data directory (the host started the browser
+service) and for the globe button in a web conversation's header. A
+top-level session gets the `browser` tool once the service answers; a
+terminal or headless session needs `UAGENT_BROWSER_DATA` in its own settings
+or environment too. Chrome stays stopped until the agent or you first use
+it. The data directory then holds `service.sock`, `Xauthority` and the
+Chrome `profile/`.
+
+What the container adds that a native setup lacks:
+
+- Chrome runs as your own user, with your file access, next to the web host
+  and the agent's commands. The image uses a separate nonroot UID, a seccomp
+  profile for Chrome's sandbox and a container boundary.
+- The managed policy applies only if you install it as above, and then to
+  every Chrome on that machine, including your own.
+- The profiles hold your saved logins. The command sandbox keeps agent
+  commands away from them in both setups; protect and back them up
+  accordingly.

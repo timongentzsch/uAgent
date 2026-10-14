@@ -41,7 +41,7 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 | CMake option | Effect |
 | --- | --- |
 | `-DUAGENT_WEB=OFF` | Terminal-only binary, no browser interface |
-| `-DUAGENT_BROWSER=OFF` | Leave out the browser appliance |
+| `-DUAGENT_BROWSER=OFF` | Leave out the agent's browser |
 | `-DUAGENT_WEB_PUSH=ON` | Web Push notifications; needs OpenSSL 3 libcrypto. Release archives and the Docker image include it |
 
 ## Quick start

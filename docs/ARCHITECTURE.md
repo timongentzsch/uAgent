@@ -20,7 +20,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
 | `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
-| `src/browser/` | Browser service for the Docker appliance: owns Chrome and Xvnc behind a private socket |
+| `src/browser/` | Browser service of the web host: owns Chrome and Xvnc behind a private socket |
 | `src/core/` | Shared policy, events, limits, settings, mailboxes, sandbox, filesystem, signals and platform primitives |
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |

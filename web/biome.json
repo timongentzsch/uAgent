@@ -15,21 +15,6 @@
             "reportUnnecessaryDependencies": false,
             "hooks": [
               {
-                "name": "useOverlays",
-                "stableResult": [
-                  "setDrawer",
-                  "setBoardOpen",
-                  "setModal",
-                  "setOverlay",
-                  "setViewed",
-                  "setSide",
-                  "closeSide",
-                  "setInspector",
-                  "open",
-                  "openPalette"
-                ]
-              },
-              {
                 "name": "useResource",
                 "stableResult": ["setValue", "setError"]
               },

@@ -16,6 +16,13 @@
 
 namespace uagent {
 
+bool g_tty = false;
+bool g_color = false;
+bool g_attributes = false;
+bool g_unicode = true;
+bool g_plain = false;
+bool g_motion = true;
+
 // no-color.org and bixense.com/clicolors: an explicit opt-out wins over an
 // explicit opt-in, and both win over the isatty answer.
 bool ResolveColorEnabled(bool tty) {

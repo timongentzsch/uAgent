@@ -1267,6 +1267,15 @@ def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home,
         assert_true(len(server.get_requests) == requests + 1, server.get_requests)
         assert_true("90k" in window_of(stale), stale.stdout)
 
+        # A model the kept catalogue does not list yet is looked up.
+        requests = len(server.get_requests)
+        catalog["data"].append({"id": "newer-model", "context_length": 16000})
+        newer = run_dialog(
+            root, {**env, "UAGENT_MODEL": "newer-model"}, "/status\n/q\n", binary=binary
+        )
+        assert_true(len(server.get_requests) == requests + 1, server.get_requests)
+        assert_true("16k" in window_of(newer), newer.stdout)
+
 
 def test_only_a_usable_catalogue_is_kept_and_read(root, home, *, binary):
     answers = [

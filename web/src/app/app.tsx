@@ -14,6 +14,8 @@ import type {
   CommandKind,
   CommandFields,
   SlashCommand,
+  AppModal,
+  InspectorTarget,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import type { JSX } from "preact";
@@ -39,7 +41,7 @@ import {
 } from "../shared/ui.tsx";
 import { Ellipsis, Globe2, ListTree, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
-import { ImageViewer } from "../shared/attachments.tsx";
+import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -85,7 +87,6 @@ import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
 import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
 import Modals from "./modals.tsx";
-import { useOverlays } from "./use-overlays.ts";
 import { usePreferences } from "./use-preferences.ts";
 import { useDraftUploads } from "./use-draft-uploads.ts";
 import {
@@ -125,25 +126,34 @@ function App() {
   useDismiss(page !== "chat", () => setPage("chat"));
   const compact = useMedia("(max-width: 900px)");
   const phone = usePhone();
-  const {
-    drawer,
-    setDrawer,
-    boardOpen,
-    setBoardOpen,
-    modal,
-    setModal,
-    overlay,
-    setOverlay,
-    viewed,
-    setViewed,
-    side,
-    setSide,
-    closeSide,
-    inspector,
-    setInspector,
-    open,
-    openPalette,
-  } = useOverlays(compact);
+  // What opens over the page: the conversations drawer, the board sheet, the
+  // app's dialogs, the palette or shortcuts sheet, the image viewer, the
+  // inspector and the /btw card.
+  const [drawer, setDrawer] = useState(false);
+  // On a phone a panel's board slides in from the right on demand
+  // instead of taking the top of its chat.
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [modal, setModal] = useState<AppModal | null>(null);
+  // The command palette (Mod+K) or the shortcuts sheet (?).
+  const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
+  // The one image viewer every tile opens.
+  const [viewed, setViewed] = useState<ViewedImage | null>(null);
+  const [side, setSide] = useState<{
+    question: string;
+    answer?: string;
+  } | null>(null);
+  const [inspector, setInspector] = useState<InspectorTarget | null>(null);
+  // The drawer belongs to the compact layout; a wider window drops it.
+  useEffect(() => setDrawer(false), [compact]);
+  const closeSide = useCallback(() => setSide(null), []);
+  const open = useCallback((value: AppModal) => {
+    setDrawer(false);
+    setModal(value);
+  }, []);
+  const openPalette = useCallback(() => {
+    setDrawer(false);
+    setOverlay("palette");
+  }, []);
   // Remembered per device, so the header's browser slot is right from the
   // first frame instead of appearing once the host answers.
   const [browserAvailable, setBrowserAvailable] = useState(

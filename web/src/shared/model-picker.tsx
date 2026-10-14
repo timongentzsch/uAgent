@@ -177,6 +177,7 @@ export default function ModelPicker({
               />
             </Row>
           )}
+          {loadError && <LoadError error={loadError} retry={retry} />}
           {action.error && <LoadError error={action.error} />}
         </>
       )}

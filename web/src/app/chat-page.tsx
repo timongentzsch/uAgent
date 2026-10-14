@@ -281,7 +281,7 @@ export default function ChatPage({
       tips={[
         [
           "Panel",
-          "Runs several conversations in a workspace or folder for you and hosts a chat with other voices. Each has a Panel row in the list.",
+          "Runs several conversations in a workspace or folder for you and hosts a chat with other voices. A place’s name in the list opens its panel.",
         ],
         [
           <kbd>{keysOf("palette").join(" ")}</kbd>,

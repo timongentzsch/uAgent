@@ -19,17 +19,20 @@
     `PANEL.md` exists.
   - In the chat, `Moderator, …` asks the moderator alone, and no member may
     be called that.
-- **Web: workspaces and folders are listed apart, and a panel is a row.**
-  The sidebar has a section for each, and each place is a bold header with
-  a fold, **+** for a new conversation there and, for a workspace, its menu.
-  A place's panel is its first row; its chevron lists the members and
-  threads it started, and a place without one has a faint Panel row that
-  opens it. A thread or member links back to it. Rows are one line: the
+- **Web: workspaces and folders are listed apart, and a place's name is its
+  panel.** The sidebar has a section for each. A place is a bold header: a
+  fold, its name (which opens its panel, or starts one), the avatars of the
+  panel's members, **+** for a new conversation there and, for a workspace,
+  its menu. Under it come the threads the panel started, then the place's
+  own conversations; members are no longer rows. Rows are one line: the
   title and a mark for working, waiting on you or failed; the time and the
-  menu show on hover or focus. The board beside a panel's chat lists its
-  members and its work, each with a menu to rename or remove it; what
-  waits on you is no longer repeated there. **New** at the top asks for a
-  workspace's name or a folder's path.
+  menu show on hover or focus. Pointing at a member's avatar, in the
+  sidebar, on the board or on a message, shows its card (a sheet on a touch
+  screen) with its model, persona and skills, **Ask**, **Full prompt** and
+  a menu to rename or remove it. The board beside a panel's chat lists its
+  members and its work; what waits on you is no longer repeated there.
+  **New** at the top asks for a workspace's name or a folder's path.
+  Workspaces are drawn with a new icon.
 - **A workspace has a name of its own and can be renamed and deleted.** The
   name may be several words; the folder under `~/.uagent/spaces/` keeps
   the name it was made with, so renaming moves nothing. Deleting a workspace

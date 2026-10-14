@@ -1,30 +1,14 @@
-// A place's panel is the first row of the place; its board lists who is on
-// it and what it started beside the chat, and slides in from the right on a
-// phone. What it started nests under it in the sidebar.
-import { test, expect } from "./fixtures.js";
+// A place's panel opens from the place's name; its board lists who is on it
+// and what it started beside the chat, and slides in from the right on a
+// phone. What it started lists under the place's name in the sidebar, and
+// its members show as avatars on it, each with a card.
+import { test, expect, openPanel } from "./fixtures.js";
 
 const VIEWPORTS = [
   ["desktop", { width: 1440, height: 900 }],
   ["laptop", { width: 900, height: 860 }],
   ["phone", { width: 390, height: 844 }],
 ];
-
-async function openPanel(page, session) {
-  await page.goto(`/#session=${session.id}`);
-  // Narrow layouts keep the sessions in a drawer.
-  const drawer = page.getByLabel("Open conversations");
-  const button = page.getByRole("button", { name: "Open panel" }).first();
-  await expect(drawer.or(button)).toBeVisible();
-  if (await drawer.isVisible()) await drawer.click();
-  await button.click();
-  // Beside the chat, or behind the header's Board button on a phone.
-  await expect(
-    page
-      .getByRole("complementary", { name: "Board" })
-      .or(page.getByRole("button", { name: /^Board/ })),
-  ).toBeVisible();
-  return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
-}
 
 test("on a phone the board slides in from the right", async ({
   page,
@@ -167,15 +151,13 @@ for (const [name, viewport] of VIEWPORTS) {
       text: "Memory receipt probe: please save this test memory",
     });
     await openPanel(page, session);
-    // The panel is a row of its place now, and what waits is said once in
+    // The panel is the place's name now, and what waits is said once in
     // the list: by the inbox above it.
     if (name === "desktop") {
-      await expect(
-        page.locator(".sidebar .session", { hasText: "Panel" }),
-      ).toHaveAttribute("aria-current", "page");
-      await expect(
-        page.getByRole("button", { name: "Open panel" }),
-      ).toHaveCount(0);
+      await expect(page.getByTitle(/^Panel of /)).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
     }
     const waiting = page.getByRole("region", {
       name: "Decisions waiting on you",
@@ -216,23 +198,18 @@ test("a member joins the chat, is addressed by name and answers under its name",
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Chat probe");
   await prompt.press("Enter");
-  // The member is listed on the board and in the sidebar with its avatar,
-  // and its introduction is a message under its name, without the name the
+  // The member is listed on the board with its avatar, and in the sidebar
+  // by its avatar on the place's name, after the moderator's; not as a row.
+  // Its introduction is a message under its name, without the name the
   // model reads it by. The panel is named above its own.
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board.getByRole("heading", { name: /^Members/ })).toBeVisible();
   await expect(board.locator(".avatar")).toHaveText("A");
-  // The panel's row counts them; opened, its chevron lists them, and the
-  // list stays as it was left when the page reloads.
-  const members = page.locator(".sidebar .threads .avatar");
-  await expect(
-    page.locator(".sidebar .session", { hasText: "Panel" }),
-  ).toContainText("Panel · 1 member");
-  await expect(members).toHaveCount(0);
-  await page.getByRole("button", { name: /^Members and threads of / }).click();
-  await expect(members).toHaveText("A");
+  const seats = page.locator(".sidebar .place-seats .avatar");
+  await expect(seats).toHaveText(["M", "A"]);
+  await expect(page.locator(".sidebar .session .avatar")).toHaveCount(0);
   await page.reload();
-  await expect(members).toHaveText("A");
+  await expect(seats).toHaveText(["M", "A"]);
   const said = page.locator(".transcript .message", {
     has: page.locator(".actor", { hasText: "Ada" }),
   });

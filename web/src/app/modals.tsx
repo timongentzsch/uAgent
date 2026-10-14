@@ -321,7 +321,7 @@ export default function Modals({
             projects={projects}
             online={online}
             version={managementVersion}
-            showRequest={session?.generation ? showContext : undefined}
+            showRequest={session?.generation ? () => showContext() : undefined}
           />
         </Modal>
       )}

@@ -289,6 +289,28 @@ function App() {
     if (!draft.text) setDraft({ ...draft, text: "Add a member named " });
     document.querySelector<HTMLTextAreaElement>("#prompt")?.focus();
   }
+  // Writes to a member, or to the moderator, from where its avatar was
+  // pointed at: in its panel's composer, which opens.
+  function askMember(item: Session) {
+    const panel = catalogue.sessions.find(
+      (entry) => entry.kind === "panel" && folderOf(entry) === folderOf(item),
+    );
+    if (!panel || !item.member) return;
+    const greeting = `${item.member}, `;
+    updateDraft(panel.id, (current) =>
+      current.text.startsWith(greeting)
+        ? current
+        : { ...current, text: greeting + current.text },
+    );
+    choose(panel.id);
+    const focus = (tries: number) =>
+      requestAnimationFrame(() => {
+        const prompt = document.getElementById("prompt");
+        if (prompt) prompt.focus({ preventScroll: true });
+        else if (tries) focus(tries - 1);
+      });
+    focus(10);
+  }
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
     // fetch it immediately at boot (not idle: on mobile the idle callback
@@ -691,6 +713,7 @@ function App() {
     deliver,
     busy,
     showContext,
+    askMember,
     threads,
   };
   const latest = useRef(current);
@@ -801,7 +824,14 @@ function App() {
             ...messageActions,
             team: latest.current.threads.filter((item) => item.member),
             moderator: latest.current.session?.member || "Moderator",
-            prompt: (member?: string) => latest.current.showContext(member),
+            prompt: (member?: string) =>
+              latest.current.showContext(
+                member
+                  ? latest.current.threads.find(
+                      (item) => item.member === member,
+                    )
+                  : undefined,
+              ),
           }
         : messageActions,
     [messageActions, teamNames],
@@ -818,12 +848,10 @@ function App() {
     }
   }
   // The context a session was last sent, its system prompt first: the open
-  // conversation's, or that of a member of its chat.
-  function showContext(member?: string) {
-    const shown = member
-      ? threads.find((item) => item.member === member)
-      : session;
-    const busy = member ? shown?.turn_active : running;
+  // conversation's, or that of the one given.
+  function showContext(item?: Session) {
+    const shown = item ?? session;
+    const busy = item ? item.turn_active : running;
     const prepare = shown?.generation && !busy && online ? shown : undefined;
     const id = shown?.id || selected;
     setModal({
@@ -942,7 +970,8 @@ function App() {
       refresh,
       forget,
       setModal,
-      showContext: () => latest.current.showContext(),
+      showContext: (item?: Session) => latest.current.showContext(item),
+      askMember: (item: Session) => latest.current.askMember(item),
     }),
     [online, connection, report, snapshots, load, refresh, forget],
   );

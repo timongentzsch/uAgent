@@ -703,9 +703,24 @@ dialog.sidebar:not([open]) {
   text-decoration: underline;
 }
 .folder-label > span {
+  display: flex;
+  gap: var(--gap);
+  min-width: 0;
+  white-space: nowrap;
+}
+.folder-label > span > * {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.folder-own {
+  flex: none;
+  max-width: 100%;
+}
+/* The directory a folder is in gives way before the folder's own name. */
+.folder-parent {
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 400;
 }
 .session-row {
   display: flex;

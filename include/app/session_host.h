@@ -87,8 +87,9 @@ struct HostSession {
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
   // "panel", "thread" or empty; a thread names its project `folder`,
-  // and itself as a `member` of its panel's chat when it is one.
-  std::string kind, folder, member;
+  // and itself as a `member` of its panel's chat when it is one, with the
+  // persona and skills it was given. `model` is the one the file names.
+  std::string kind, folder, member, persona, skills, model;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;

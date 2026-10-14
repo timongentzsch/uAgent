@@ -1,0 +1,79 @@
+/* A member's avatar as a button: the initials alone, at a target that can
+   be pointed at. */
+.avatar-button {
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(24rem / 14);
+  min-height: calc(24rem / 14);
+  padding: 0;
+  background: none;
+}
+.avatar-button .avatar {
+  margin: 0;
+  color: var(--text);
+}
+/* Its card, placed against the avatar by script like a menu's panel. */
+.member-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: calc(340rem / 14);
+  max-width: calc(100% - 2 * var(--gap));
+  padding: 0;
+  border: 1px solid var(--field-border);
+  background: var(--surface);
+  color: var(--text);
+  overflow: auto;
+}
+.member-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  padding: var(--pad);
+  font-size: var(--font-small);
+}
+.member-card header {
+  display: flex;
+  align-items: center;
+  gap: var(--pad);
+}
+.member-card header .avatar {
+  margin: 0;
+  font-size: var(--font-body);
+}
+.member-card header div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.member-card header span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.member-card section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.member-card h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-micro);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+.member-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.member-card footer {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  border-top: 1px solid var(--line);
+  padding-top: var(--pad);
+}
+/* The menu keeps to the end of the row. */
+.member-card footer .action-menu {
+  margin-left: auto;
+}

@@ -35,6 +35,7 @@ import {
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { Avatar } from "../../shared/avatar.tsx";
+import { MemberAvatar } from "../../shared/member-card.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { routes } from "../../state/api.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
@@ -144,9 +145,8 @@ function MessageView({ block, online, session }: MessageProps) {
   const author = mail?.author;
   // Under the name its session has now: renamed since, what it wrote before
   // follows. One that has left keeps the name it wrote under.
-  const member =
-    author &&
-    (team?.find((item) => item.id === mail?.sender)?.member || author);
+  const seat = team?.find((item) => item.id === mail?.sender);
+  const member = author && (seat?.member || author);
   const whole = full ?? block.text ?? "";
   const text =
     author && whole.startsWith(`${author}: `)
@@ -302,7 +302,8 @@ function MessageView({ block, online, session }: MessageProps) {
       </h3>
       {!row && (
         <header>
-          {member && <Avatar name={member} />}
+          {member &&
+            (seat ? <MemberAvatar item={seat} /> : <Avatar name={member} />)}
           {actor && <span class="actor">{actor}</span>}
           {block.status && (
             <span class="muted">

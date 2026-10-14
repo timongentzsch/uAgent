@@ -5,6 +5,7 @@ import type {
   AppModal,
   ConnectionPhase,
   Report,
+  Session,
   Snapshot,
 } from "../shared/types.ts";
 import type { SnapshotStore } from "./snapshot-store.ts";
@@ -20,8 +21,11 @@ export interface Host {
   refresh: () => Promise<void>;
   forget: (id: string) => void;
   setModal: (modal: AppModal | null) => void;
-  // Opens the context the open conversation was last sent.
-  showContext: () => void;
+  // Opens the context a conversation was last sent: the open one's, or the
+  // given one's.
+  showContext: (item?: Session) => void;
+  // Starts a message to a member (or the moderator) in its panel's composer.
+  askMember: (item: Session) => void;
 }
 
 // What the open conversation's surfaces share. It changes with every send

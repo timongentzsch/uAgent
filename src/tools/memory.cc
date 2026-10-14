@@ -346,15 +346,17 @@ static ToolResult MemoryAction(const std::string& action,
                        "action must be get, set, forget, list, or "
                        "search");
   }
+  // Models fill unused fields with "": that is the same as leaving them out.
+  const bool has_text = content.has_value() && !content->empty();
   if (action == "list") {
-    if (content || !Trim(key).empty()) {
+    if (has_text || !Trim(key).empty()) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "list does not accept key or content");
     }
     return ListMemoryKeys(cwd);
   }
   if (action == "search") {
-    if (content) {
+    if (has_text) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "search does not accept content");
     }

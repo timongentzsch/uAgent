@@ -13,6 +13,7 @@
 #include "include/core/platform.h"
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/protocol.h"
@@ -59,6 +60,7 @@ void Master::LoadDevices() {
   if (!value.is_array() || value.size() > kWebDeviceLimit) {
     return;
   }
+  std::lock_guard lock(mutex_);
   for (const json& item : value) {
     Device device{JsonValue(item, "id", ""), JsonValue(item, "token", ""),
                   JsonValue(item, "name", "Device"),

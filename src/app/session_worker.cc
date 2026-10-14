@@ -34,6 +34,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 
 namespace uagent::session {
@@ -279,7 +280,7 @@ class WorkerChannel final : public ApplicationChannel {
 
   std::string ReadInteraction(const InteractionRequest& request,
                               bool* eof) override {
-    std::unique_lock lock(mutex_);
+    UniqueLock lock(mutex_);
     pending_ = request.id;
     decision_ = {{"id", request.id},
                  {"kind", request.kind},
@@ -452,7 +453,7 @@ class WorkerChannel final : public ApplicationChannel {
 
   // The routed decision becomes the user's: shown as theirs, and announced so
   // the host notifies their devices.
-  void EscalateLocked(const std::string& note) {
+  void EscalateLocked(const std::string& note) UAGENT_REQUIRES(mutex_) {
     decision_["route"] = "human";
     decision_["note"] = note;
     if (decision_.contains("approval")) {
@@ -492,7 +493,7 @@ class WorkerChannel final : public ApplicationChannel {
     return event.type + "\n" + JsonValue(event.data, "response_id", "");
   }
 
-  void QueueDelta(const AppEvent& event) {
+  void QueueDelta(const AppEvent& event) UAGENT_REQUIRES(transient_mutex_) {
     const auto now = std::chrono::steady_clock::now();
     const std::string key = DeltaKey(event);
     if (JsonValue(event.data, "reset", false) ||
@@ -524,7 +525,7 @@ class WorkerChannel final : public ApplicationChannel {
     }
   }
 
-  void QueueUsage(const AppEvent& event) {
+  void QueueUsage(const AppEvent& event) UAGENT_REQUIRES(transient_mutex_) {
     const auto now = std::chrono::steady_clock::now();
     if (!sent_usage_) {
       sent_usage_ = true;
@@ -540,14 +541,14 @@ class WorkerChannel final : public ApplicationChannel {
     }
   }
 
-  void FlushDelta() {
+  void FlushDelta() UAGENT_REQUIRES(transient_mutex_) {
     if (!pending_delta_) return;
     AppEvent event = std::move(*pending_delta_);
     pending_delta_.reset();
     DeliverEvent(event);
   }
 
-  void FlushUsage() {
+  void FlushUsage() UAGENT_REQUIRES(transient_mutex_) {
     if (!pending_usage_) return;
     AppEvent event = std::move(*pending_usage_);
     pending_usage_.reset();
@@ -555,15 +556,15 @@ class WorkerChannel final : public ApplicationChannel {
     DeliverEvent(event);
   }
 
-  void FlushTransientEvents() {
+  void FlushTransientEvents() UAGENT_REQUIRES(transient_mutex_) {
     FlushDelta();
     FlushUsage();
   }
 
   void FlushTransientLoop() {
-    std::unique_lock lock(transient_mutex_);
+    UniqueLock lock(transient_mutex_);
     for (;;) {
-      transient_changed_.wait(lock, [this] {
+      transient_changed_.wait(lock, [this]() UAGENT_REQUIRES(transient_mutex_) {
         return transient_stop_ || pending_delta_ || pending_usage_;
       });
       if (transient_stop_) return;
@@ -588,14 +589,14 @@ class WorkerChannel final : public ApplicationChannel {
 
   // A new user or background turn supersedes the preceding turn's stop/error.
   // Publish this transition immediately, before waiting for a model response.
-  void BeginTurn() {
+  void BeginTurn() UAGENT_REQUIRES(mutex_) {
     state_["error"] = "";
     state_.erase("stop");
     state_["activity"] = "Working";
     state_["phase"] = "working";
     state_["turn_started_ms"] = NowMillis();
   }
-  void SendState(bool checkpoint = false) {
+  void SendState(bool checkpoint = false) UAGENT_REQUIRES(mutex_) {
     Send({{"kind", "state"},
           {"state", checkpoint ? state_ : LightState(state_)},
           {"busy", turn_active_},
@@ -612,7 +613,7 @@ class WorkerChannel final : public ApplicationChannel {
   // runtime starts); only a running turn refuses it. True when the control
   // was taken; otherwise reports into error. The caller holds mutex_.
   bool QueueIdleControl(const std::string& request, const json& control,
-                        std::string& error) {
+                        std::string& error) UAGENT_REQUIRES(mutex_) {
     if (turn_active_) {
       error = "this control requires an idle session";
       return false;
@@ -630,7 +631,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
   // Moves the next waiting control into the input slot. The caller holds
   // mutex_ and has seen the slot empty.
-  void NextControlLocked() {
+  void NextControlLocked() UAGENT_REQUIRES(mutex_) {
     if (controls_.empty()) return;
     input_ = ApplicationInput{.request_id = controls_.front().first,
                               .control = std::move(controls_.front().second)};
@@ -638,8 +639,8 @@ class WorkerChannel final : public ApplicationChannel {
     controls_.pop_front();
   }
 
-  std::optional<AppEvent> pending_delta_;
-  std::optional<AppEvent> pending_usage_;
+  std::optional<AppEvent> pending_delta_ UAGENT_GUARDED_BY(transient_mutex_);
+  std::optional<AppEvent> pending_usage_ UAGENT_GUARDED_BY(transient_mutex_);
   std::mutex transient_mutex_;
   std::condition_variable transient_changed_;
   std::thread transient_thread_;
@@ -652,11 +653,14 @@ class WorkerChannel final : public ApplicationChannel {
     side_cancel_ = true;
     if (side_thread_.joinable()) side_thread_.join();
   }
-  std::unordered_set<std::string> sent_delta_keys_;
-  std::chrono::steady_clock::time_point delta_started_{};
-  std::chrono::steady_clock::time_point usage_sent_{};
-  bool sent_usage_ = false;
-  bool transient_stop_ = false;
+  std::unordered_set<std::string> sent_delta_keys_
+      UAGENT_GUARDED_BY(transient_mutex_);
+  std::chrono::steady_clock::time_point delta_started_
+      UAGENT_GUARDED_BY(transient_mutex_){};
+  std::chrono::steady_clock::time_point usage_sent_
+      UAGENT_GUARDED_BY(transient_mutex_){};
+  bool sent_usage_ UAGENT_GUARDED_BY(transient_mutex_) = false;
+  bool transient_stop_ UAGENT_GUARDED_BY(transient_mutex_) = false;
   // Answers a command. A result, when there is one, carries its own error.
   void SendOutcome(const std::string& request, const std::string& error,
                    const json* result = nullptr) {
@@ -690,7 +694,7 @@ class WorkerChannel final : public ApplicationChannel {
     const bool members_only = panel_ && kind == SessionCommandKind::kSubmit &&
                               (!files || files->empty()) &&
                               ForMembersOnly(CanonicalCwd(), parsed.text);
-    std::unique_lock lock(mutex_);
+    UniqueLock lock(mutex_);
     if (kind == SessionCommandKind::kSteer && !turn_active_) {
       kind = SessionCommandKind::kSubmit;
     }
@@ -802,7 +806,8 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   // Answers the pending decision. The caller holds mutex_.
-  void ReplyLocked(const SessionCommand& parsed, std::string& error) {
+  void ReplyLocked(const SessionCommand& parsed, std::string& error)
+      UAGENT_REQUIRES(mutex_) {
     const bool from_panel = JsonValue(parsed.raw, "origin", "") == kRoutePanel;
     if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
       error = "decision is stale or already answered";
@@ -835,7 +840,8 @@ class WorkerChannel final : public ApplicationChannel {
   // the turn composes them into the steered user message, so steering sees
   // what the composer showed; `queue` holds it for when the turn ends
   // instead ("Queue next"). The caller holds mutex_.
-  void SteerLocked(const SessionCommand& parsed, std::string& error) {
+  void SteerLocked(const SessionCommand& parsed, std::string& error)
+      UAGENT_REQUIRES(mutex_) {
     if (!turn_active_ || parsed.text.empty() ||
         SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
       error = "guidance requires an active turn and space in its queue";
@@ -880,7 +886,7 @@ class WorkerChannel final : public ApplicationChannel {
   // With `members_only` the message is written into a panel's chat for
   // the members it names: it starts no turn of the panel's own.
   void SubmitLocked(const SessionCommand& parsed, bool members_only,
-                    std::string& error) {
+                    std::string& error) UAGENT_REQUIRES(mutex_) {
     if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/") &&
         !parsed.has_attachments) {
       if (SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
@@ -939,26 +945,35 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
   static constexpr auto kPanelDecision = std::chrono::minutes(5);
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
-  bool closed_ = false, busy_ = true;
-  bool turn_active_ = false;
+  bool closed_ UAGENT_GUARDED_BY(mutex_) = false;
+  bool busy_ UAGENT_GUARDED_BY(mutex_) = true;
+  bool turn_active_ UAGENT_GUARDED_BY(mutex_) = false;
   const bool panel_ = false;
   // The folder whose chat this session speaks in under its title: a panel's
   // own, or the one a member was added to. Empty for any other session.
   const std::string chat_;
   std::optional<ThreadLink> link_;  // set when this session is a thread
-  bool reply_cancelled_ = false;
-  bool ready_ = false;
-  json notices_ = json::array();
-  std::string paused_;  // why a panel holds its mail, if it does
-  std::function<json(const json&)> activity_control_;
+  bool reply_cancelled_ UAGENT_GUARDED_BY(mutex_) = false;
+  bool ready_ UAGENT_GUARDED_BY(mutex_) = false;
+  json notices_ UAGENT_GUARDED_BY(mutex_) = json::array();
+  std::string paused_
+      UAGENT_GUARDED_BY(mutex_);  // why a panel holds its mail, if it does
+  std::function<json(const json&)> activity_control_
+      UAGENT_GUARDED_BY(control_mutex_);
   // Permission and activity controls that arrived before the application.
-  std::vector<std::pair<std::string, json>> early_controls_;
-  std::optional<ApplicationInput> input_;
+  std::vector<std::pair<std::string, json>> early_controls_
+      UAGENT_GUARDED_BY(control_mutex_);
+  std::optional<ApplicationInput> input_ UAGENT_GUARDED_BY(mutex_);
   // Controls waiting behind the input slot, each with its request.
-  std::deque<std::pair<std::string, json>> controls_;
-  std::optional<std::string> reply_;
-  std::string pending_, input_command_, active_command_, decided_;
-  json decision_ = nullptr, state_ = json::object(), approval_ = nullptr;
+  std::deque<std::pair<std::string, json>> controls_ UAGENT_GUARDED_BY(mutex_);
+  std::optional<std::string> reply_ UAGENT_GUARDED_BY(mutex_);
+  std::string pending_ UAGENT_GUARDED_BY(mutex_);
+  std::string input_command_ UAGENT_GUARDED_BY(mutex_);
+  std::string active_command_ UAGENT_GUARDED_BY(mutex_);
+  std::string decided_ UAGENT_GUARDED_BY(mutex_);
+  json decision_ UAGENT_GUARDED_BY(mutex_) = nullptr;
+  json state_ UAGENT_GUARDED_BY(mutex_) = json::object();
+  json approval_ UAGENT_GUARDED_BY(mutex_) = nullptr;
   // Destroy the transport first, while all callback state is still alive.
   ReceiptLog receipts_;
   Server server_;

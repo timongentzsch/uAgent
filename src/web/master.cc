@@ -32,6 +32,7 @@
 #include "include/core/private_store.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/verbosity.h"
 #include "include/tools/files.h"
@@ -214,7 +215,7 @@ bool Master::Initialize(std::string& error) {
           host_.RefreshCatalogue(true);
         }
         host_.RefreshPresence();
-        std::unique_lock lock(mutex_);
+        UniqueLock lock(mutex_);
         json catalogue = host_.Catalogue();
         const std::string device = DeviceId(request);
         const json body = {{"v", kProtocol},
@@ -402,7 +403,11 @@ int Master::Run() {
   signal(SIGINT, StopSignal);
   signal(SIGTERM, StopSignal);
   signal(SIGHUP, StopSignal);
-  std::string pairing = Pair();
+  std::string pairing;
+  {
+    std::lock_guard lock(mutex_);
+    pairing = Pair();
+  }
   printf("%s", PairingText(origin_, pairing).c_str());
   fflush(stdout);
   std::thread stopping([&] {

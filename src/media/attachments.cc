@@ -23,6 +23,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -571,7 +572,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
                           std::string& error) {
   constexpr size_t kImageBytes = size_t{4} * 1024 * 1024;
   static std::mutex mutex;
-  static std::map<std::string, std::pair<std::string, std::string>> cache;
+  static std::map<std::string, std::pair<std::string, std::string>> cache
+      UAGENT_GUARDED_BY(mutex);
   const std::string key = AttachmentFingerprint(attachment);
   if (key.empty()) {
     error = "image is no longer available";

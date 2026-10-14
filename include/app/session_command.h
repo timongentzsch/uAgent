@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent::session {
 
@@ -92,7 +93,8 @@ class ReceiptLog {
 
  private:
   std::mutex mutex_;
-  std::map<std::string, std::pair<json, json>> receipts_;
+  std::map<std::string, std::pair<json, json>> receipts_
+      UAGENT_GUARDED_BY(mutex_);
 };
 
 }  // namespace uagent::session

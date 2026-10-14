@@ -30,6 +30,7 @@
 #include "include/core/lease.h"
 #include "include/core/project.h"
 #include "include/core/skills.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/tools/tool.h"
@@ -528,10 +529,11 @@ class Agent {
     std::string session_id;
   };
   mutable std::mutex side_mutex_;
-  std::shared_ptr<const SideContext> side_context_;
+  std::shared_ptr<const SideContext> side_context_
+      UAGENT_GUARDED_BY(side_mutex_);
   bool generate_titles_ = false;
   std::mutex title_mutex_;
-  std::string generated_title_;
+  std::string generated_title_ UAGENT_GUARDED_BY(title_mutex_);
   // Last member: destroying or replacing it stops and joins the call before
   // the fields it writes go away.
   std::jthread title_thread_;

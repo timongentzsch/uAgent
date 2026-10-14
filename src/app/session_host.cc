@@ -22,6 +22,7 @@
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -73,14 +74,17 @@ ReplayBatch SessionHost::ReadReplay(uint64_t next, bool valid,
 }
 
 void SessionHost::WaitForReplay(uint64_t cursor, std::chrono::seconds timeout) {
-  std::unique_lock lock(mutex_);
-  changed_.wait_for(lock, timeout,
-                    [&] { return stopping_ || replay_.Cursor() > cursor; });
+  UniqueLock lock(mutex_);
+  changed_.wait_for(lock, timeout, [&]() UAGENT_REQUIRES(mutex_) {
+    return stopping_ || replay_.Cursor() > cursor;
+  });
 }
 
 std::vector<HostNotice> SessionHost::WaitForNotices() {
-  std::unique_lock lock(mutex_);
-  changed_.wait(lock, [&] { return stopping_ || replay_.HasNotices(); });
+  UniqueLock lock(mutex_);
+  changed_.wait(lock, [&]() UAGENT_REQUIRES(mutex_) {
+    return stopping_ || replay_.HasNotices();
+  });
   return replay_.TakeNotices();
 }
 
@@ -96,6 +100,7 @@ void SessionHost::LoadDrafts() {
   std::error_code ec;
   const std::string folder = directory_ + "/drafts";
   if (!EnsurePrivateDirectory(folder)) return;
+  std::lock_guard lock(mutex_);
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
     if (sessions_.size() >= kMaxCatalogueEntries) break;
     if (entry.path().extension() != ".json") continue;
@@ -214,7 +219,7 @@ std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
 
 void SessionHost::RefreshPresence() {
   RefreshCatalogue();
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> candidates;
   for (const auto& [id, session] : sessions_) {
     if ((session->pid <= 0 || session->exited) && !session->closing &&
@@ -232,7 +237,7 @@ void SessionHost::RefreshPresence() {
 
 json SessionHost::RestartRunning(const std::string& cwd,
                                  const std::string& only) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> idle;
   int64_t deferred = 0;
   for (const auto& [id, session] : sessions_) {

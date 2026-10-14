@@ -22,6 +22,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 
 namespace uagent {
@@ -76,7 +77,7 @@ int64_t AutomaticResultCap() {
 // pids it is kept by.
 struct LeaderExits {
   std::mutex mutex;
-  std::map<pid_t, int> statuses;
+  std::map<pid_t, int> statuses UAGENT_GUARDED_BY(mutex);
 };
 LeaderExits& Leaders() {
   static LeaderExits exits;

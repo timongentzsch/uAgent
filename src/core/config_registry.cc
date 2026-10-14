@@ -9,6 +9,7 @@
 
 #include "include/core/env.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -48,9 +49,9 @@ namespace {
 
 struct SettingStore {
   std::mutex mutex;
-  SettingValues published;
-  SettingValues overrides;
-  SettingValues route;
+  SettingValues published UAGENT_GUARDED_BY(mutex);
+  SettingValues overrides UAGENT_GUARDED_BY(mutex);
+  SettingValues route UAGENT_GUARDED_BY(mutex);
 };
 
 SettingStore& Settings() {

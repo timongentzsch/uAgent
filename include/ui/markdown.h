@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_MD_H_
-#define UAGENT_INCLUDE_MD_H_
+#ifndef UAGENT_INCLUDE_UI_MARKDOWN_H_
+#define UAGENT_INCLUDE_UI_MARKDOWN_H_
 // Streaming Markdown-to-ANSI state. The parser implementation is compiled once
 // in src/ui/markdown.cc; the terminal presenter owns this value type.
 
@@ -92,4 +92,4 @@ void MdPrint(const std::string& text);
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_MD_H_
+#endif  // UAGENT_INCLUDE_UI_MARKDOWN_H_

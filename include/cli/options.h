@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_APP_OPTIONS_H_
-#define UAGENT_INCLUDE_APP_OPTIONS_H_
+#ifndef UAGENT_INCLUDE_CLI_OPTIONS_H_
+#define UAGENT_INCLUDE_CLI_OPTIONS_H_
 
 #include <map>
 #include <span>
@@ -94,4 +94,4 @@ std::span<const FlagSpec> FlagRegistry();
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_APP_OPTIONS_H_
+#endif  // UAGENT_INCLUDE_CLI_OPTIONS_H_

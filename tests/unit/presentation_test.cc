@@ -13,7 +13,7 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
-#include "include/app/options.h"
+#include "include/cli/options.h"
 #include "include/core/activity.h"
 #include "include/core/style.h"
 #include "include/core/term.h"

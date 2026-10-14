@@ -6,11 +6,11 @@
 #include <limits>
 #include <string>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/app/runtime.h"
 #include "include/core/child_env.h"
 #include "include/core/effective_config.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/tools/files.h"
 #include "include/tools/memory.h"
 #include "tests/unit/test_support.h"

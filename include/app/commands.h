@@ -9,10 +9,10 @@
 #include <string_view>
 #include <vector>
 
-#include "include/agent.h"
-#include "include/api.h"
+#include "include/agent/agent.h"
+#include "include/api/client.h"
 #include "include/app/bootstrap.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/style.h"
 #include "include/media/attachments.h"
 

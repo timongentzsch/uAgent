@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"

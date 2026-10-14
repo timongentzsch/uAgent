@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/ui/markdown.h"
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -15,7 +17,6 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
-#include "include/md.h"
 #include "include/ui/interactive.h"
 
 namespace uagent {

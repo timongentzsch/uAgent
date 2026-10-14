@@ -11,7 +11,7 @@
 #include "include/agent/child_agent.h"
 #include "include/app/launch.h"
 #include "include/browser/browser.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -24,7 +24,7 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/ui/sessions.h"
 #include "src/app/application_internal.h"
 

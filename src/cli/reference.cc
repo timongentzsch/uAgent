@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/reference.h"
+#include "include/cli/reference.h"
 
 #include <algorithm>
 #include <string>

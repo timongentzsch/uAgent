@@ -17,7 +17,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 
 namespace uagent {
 namespace {

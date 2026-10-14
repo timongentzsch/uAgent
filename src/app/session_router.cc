@@ -16,7 +16,7 @@
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/session_host.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"

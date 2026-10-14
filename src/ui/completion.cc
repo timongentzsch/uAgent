@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "src/ui/completion.h"
-
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -10,7 +8,8 @@
 #include <system_error>
 #include <vector>
 
-#include "include/cli.h"
+#include "include/cli/cli.h"
+#include "src/ui/completion_internal.h"
 
 namespace uagent {
 

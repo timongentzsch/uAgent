@@ -10,7 +10,7 @@
 
 #include "include/app/commands.h"
 #include "include/app/self_description.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 
 namespace uagent {
 

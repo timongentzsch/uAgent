@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/options.h"
+#include "include/cli/options.h"
 
 #include <algorithm>
 #include <iterator>

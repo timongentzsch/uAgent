@@ -15,10 +15,10 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"

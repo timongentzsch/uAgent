@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_SRC_UI_COMPLETION_H_
-#define UAGENT_SRC_UI_COMPLETION_H_
+#ifndef UAGENT_SRC_UI_COMPLETION_INTERNAL_H_
+#define UAGENT_SRC_UI_COMPLETION_INTERNAL_H_
 // What Tab completes in the composer and the rows it lists below the draft.
 
 #include <cstddef>
@@ -32,4 +32,4 @@ Suggestions CompletionMatches(const std::string& buffer, size_t cursor);
 
 }  // namespace uagent
 
-#endif  // UAGENT_SRC_UI_COMPLETION_H_
+#endif  // UAGENT_SRC_UI_COMPLETION_INTERNAL_H_

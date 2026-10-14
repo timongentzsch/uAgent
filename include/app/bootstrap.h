@@ -12,11 +12,11 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
+#include "include/agent/agent.h"
 #include "include/app/chat.h"
-#include "include/app/options.h"
 #include "include/app/permissions.h"
 #include "include/app/runtime.h"
+#include "include/cli/options.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
 #include "include/core/fd.h"
@@ -24,7 +24,7 @@
 #include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

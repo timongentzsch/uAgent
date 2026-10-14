@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string>
 
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"

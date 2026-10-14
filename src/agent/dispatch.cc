@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
-#include "include/api.h"
+#include "include/api/client.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"

@@ -27,7 +27,7 @@
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/thread_link.h"
-#include "include/cli.h"
+#include "include/cli/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"

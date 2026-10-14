@@ -16,7 +16,7 @@
 #include "include/core/project.h"
 #include "include/core/runtime_config.h"
 #include "include/core/settings_store.h"
-#include "include/providers.h"
+#include "include/providers/providers.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

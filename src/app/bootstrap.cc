@@ -613,8 +613,8 @@ void ReportSandbox() {
   if (std::string refusal = SandboxWorkspaceRefusal(); !refusal.empty()) {
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "sandbox: " + refusal +
-                         ". Start in a project folder or a named space to "
-                         "give commands one"));
+                         ". Start in a project folder or a named workspace "
+                         "to give commands one"));
   }
   std::string dropped;
   for (const std::string& root : status.rejected) {

@@ -2,11 +2,12 @@ import "./palette.css";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Session, SlashCommand } from "../../shared/types.ts";
 import { Input, useDialogClose } from "../../shared/ui.tsx";
-import { folderName, folderOf } from "../../shared/folder-label.tsx";
+import { folderName } from "../../shared/folder-label.tsx";
+import { folderOf } from "../../shared/display.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
-import { SuggestionList } from "../composer/command-suggestions.tsx";
-import { fuzzy } from "../composer/slash.ts";
-import { SCOPES, type Scope } from "../settings/settings-nav.tsx";
+import { SuggestionList } from "../../shared/suggestion-list.tsx";
+import { fuzzy } from "../../shared/fuzzy.ts";
+import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 
 type Item = {

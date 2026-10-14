@@ -1,9 +1,9 @@
 import type { ComponentProps } from "preact";
 import type ModelPicker from "./model-picker.tsx";
 import { Gauge, ChevronDown } from "lucide-preact";
-import { Deferred, DataText } from "../../shared/ui.tsx";
-import { ModelLoading } from "../../shared/loading.tsx";
-import { SheetButton } from "../../shared/sheet.tsx";
+import { Deferred, DataText } from "./ui.tsx";
+import { ModelLoading } from "./loading.tsx";
+import { SheetButton } from "./sheet.tsx";
 
 const modelPicker = () => import("./model-picker.tsx");
 export default function ModelControl(

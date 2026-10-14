@@ -1,4 +1,4 @@
-import { formatBody } from "../shared/format.ts";
+import { formatBody } from "../../shared/format.ts";
 
 // A capture viewer, not EventSource: retain comments, unknown fields and an
 // unfinished final frame that a live EventSource would discard at EOF.

@@ -1,18 +1,7 @@
-import type {
-  Pending,
-  Act,
-  CommandFields,
-  Report,
-} from "../../shared/types.ts";
-import { failure } from "../../shared/types.ts";
+import type { Pending, Act, CommandFields, Report } from "./types.ts";
+import { failure } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import {
-  Actions,
-  Button,
-  cleanText,
-  Input,
-  Textarea,
-} from "../../shared/ui.tsx";
+import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
 import Ask from "./ask.tsx";
 import DiffView from "./diff-view.tsx";
 

@@ -21,10 +21,10 @@ import {
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
-import { useLibrary, ProjectField, ScopeField } from "./management.tsx";
+import { useLibrary, ScopeField } from "./management.tsx";
+import { ProjectField } from "../../shared/project-field.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
-import "../chat/message.css";
 import { ListRow } from "../../shared/list-row.tsx";
 
 type Draft = {

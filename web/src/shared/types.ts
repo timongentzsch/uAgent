@@ -944,3 +944,11 @@ interface ScheduleResult extends Partial<ScheduledState> {
   times?: number[];
   error?: string;
 }
+
+export type ConnectionPhase =
+  "connected" | "connecting" | "reconnecting" | "disconnected";
+
+// What the inspector is opened on: a transcript row, a live activity, or a
+// tool's retained input/output.
+export type InspectorTarget =
+  { block: Block } | { item: Activity } | { raw: RawOptions; title: string };

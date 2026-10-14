@@ -1,17 +1,15 @@
 import "./activity.css";
-import {
-  ConnectionStatus,
-  StatusLed,
-  type ConnectionPhase,
-} from "../../shared/connection-status.tsx";
-import { plural } from "../../shared/quantities.ts";
+import { ConnectionStatus, StatusLed } from "./connection-status.tsx";
+import { plural } from "./quantities.ts";
 import type {
   Activity,
   Agent,
+  ConnectionPhase,
+  InspectorTarget,
   Pending,
   Report,
   SessionRef,
-} from "../../shared/types.ts";
+} from "./types.ts";
 import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
@@ -21,13 +19,12 @@ import {
   Square,
   Terminal,
 } from "lucide-preact";
-import { cleanText, Button, IconButton, DataText } from "../../shared/ui.tsx";
-import { SheetButton } from "../../shared/sheet.tsx";
-import { command } from "../../state/api.ts";
-import { useAction } from "../../shared/use-action.ts";
-import { duration } from "../../shared/duration.ts";
-import { useElapsedSeconds } from "../../shared/time.ts";
-import type { InspectorTarget } from "./inspector.tsx";
+import { cleanText, Button, IconButton, DataText } from "./ui.tsx";
+import { SheetButton } from "./sheet.tsx";
+import { command } from "../state/api.ts";
+import { useAction } from "./use-action.ts";
+import { duration } from "./duration.ts";
+import { useElapsedSeconds } from "./time.ts";
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 // Supervised activities plus child agents not already listed as one.

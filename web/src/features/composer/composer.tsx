@@ -1,10 +1,7 @@
-import type { ConnectionPhase } from "../../shared/connection-status.tsx";
 import { ImageTile } from "../../shared/attachments.tsx";
-import "./attachments.css";
-import {
-  SuggestionList,
-  useCommandSuggestions,
-} from "./command-suggestions.tsx";
+import "../../shared/attachments.css";
+import { useCommandSuggestions } from "./command-suggestions.tsx";
+import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
 import {
@@ -19,18 +16,18 @@ import {
 } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
 import type {
+  InspectorTarget,
   SlashCommand,
   Session,
   Snapshot,
   Draft,
-  Act,
-  Report,
   SessionStatus,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
-import { command } from "../../state/api.ts";
+import { command, routes } from "../../state/api.ts";
+import { useConversation, useHostContext } from "../../state/host-context.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import {
   dedupeName,
@@ -39,12 +36,17 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton, ActivityStatus } from "../chat/activity-status.tsx";
-import type { InspectorTarget } from "../chat/inspector.tsx";
-import MessageInput from "./message-input.tsx";
-import ModelControl from "./model-control.tsx";
-import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
-const decisionPanel = () => import("../chat/decision.tsx");
+import {
+  ActivityButton,
+  ActivityStatus,
+} from "../../shared/activity-status.tsx";
+import MessageInput from "../../shared/message-input.tsx";
+import ModelControl from "../../shared/model-control.tsx";
+import {
+  ContextSummary,
+  SessionSummary,
+} from "../../shared/session-summary.tsx";
+const decisionPanel = () => import("../../shared/decision.tsx");
 import { maxRecalledPromptSessions } from "../../shared/limits.ts";
 import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall
@@ -64,24 +66,14 @@ export default function Composer({
   session,
   commands,
   snapshot,
-  online,
-  connection,
   draft,
   setDraft,
-  upload,
-  uploading,
-  busy,
   submit,
-  act,
-  report,
-  following,
   jump,
   unseen = 0,
   openInspector,
-  showContext,
   showStatistics,
   openBrowser,
-  zoom,
   stopped,
   resume,
   members = NO_MEMBERS,
@@ -89,24 +81,14 @@ export default function Composer({
   session: Session;
   commands: SlashCommand[];
   snapshot?: Snapshot;
-  online: boolean;
-  connection: ConnectionPhase;
   draft: Draft;
   setDraft: (draft: Draft) => void;
-  upload: (files: File[]) => void;
-  uploading: boolean;
-  busy: boolean;
   submit: (event: Event, queue?: boolean) => void;
-  act: Act;
-  report: Report;
-  following: boolean;
   jump: () => void;
   unseen?: number;
   openInspector: (target: InspectorTarget) => void;
-  showContext: () => void;
   showStatistics: () => void;
   openBrowser: () => void;
-  zoom: number;
   // The members of a panel's chat: with any, the state above the
   // input says who is typing and nothing else.
   members?: Session[];
@@ -115,6 +97,8 @@ export default function Composer({
   // Continues that stopped turn.
   resume?: () => void;
 }) {
+  const { online, connection, report, showContext } = useHostContext();
+  const { upload, uploading, busy, act, following, zoom } = useConversation();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same
@@ -491,7 +475,7 @@ export default function Composer({
                   <ImageTile
                     draftId={asset.id}
                     name={asset.name}
-                    src={`/api/sessions/${session.id}/assets/${asset.id}`}
+                    src={routes.asset(session.id, asset.id)}
                   />
                 ) : (
                   <Paperclip />

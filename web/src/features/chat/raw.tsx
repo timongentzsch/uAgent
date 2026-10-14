@@ -11,9 +11,9 @@ import {
   Spinner,
   Time,
 } from "../../shared/ui.tsx";
-import { readPages, command } from "../../state/api.ts";
+import { readPages, command, routes } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
-import { formatEventStream } from "../../state/event-stream.ts";
+import { formatEventStream } from "./raw-capture.ts";
 
 export default function Raw({
   session,
@@ -64,7 +64,7 @@ export default function Raw({
         ? `http=${encodeURIComponent(exchange!.id)}&part=${tab}`
         : `detail=${encodeURIComponent(id || "")}&raw=1`;
       const page = await readPages(
-        `/api/sessions/${session}?${query}`,
+        routes.session(session!, query),
         abort.signal,
       );
       if (abort.signal.aborted) return;

@@ -1,6 +1,5 @@
 import { useId } from "preact/hooks";
-import { diffLineClass } from "../../shared/display.ts";
-import { diffCounts, formatStat } from "./tool-preview.ts";
+import { diffCounts, diffLineClass, formatStat } from "./display.ts";
 
 // A scrollable region, so a keyboard can scroll it; a listener hears the
 // size of the change before its lines.

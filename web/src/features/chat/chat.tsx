@@ -1,12 +1,12 @@
 import type {
   Block,
-  Report,
   Session,
   SessionRef,
   Snapshot,
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError, Placeholder, Welcome } from "../../shared/ui.tsx";
+import { useHostContext } from "../../state/host-context.ts";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
@@ -45,10 +45,7 @@ export default function Chat({
   loadError,
   blocks,
   session,
-  online,
-  loadSnapshot,
   older,
-  report,
   preserveWhile,
 }: {
   attachScroller: (node: HTMLDivElement | null) => void;
@@ -58,12 +55,10 @@ export default function Chat({
   loadError?: unknown;
   blocks: Block[];
   session: Session;
-  online: boolean;
-  loadSnapshot: (id: string) => Promise<Snapshot>;
   older: () => Promise<void>;
   preserveWhile: (load: () => Promise<void>) => Promise<void>;
-  report: Report;
 }) {
+  const { online, load: loadSnapshot, report } = useHostContext();
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [preparedKey, setPreparedKey] = useState("");
   const prepared = !!snapshot && preparedKey === selected;

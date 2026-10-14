@@ -125,11 +125,14 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   // and the loading state below is only there to see while it is held.
   let releaseSettings;
   const settingsGate = new Promise((resolve) => (releaseSettings = resolve));
-  // The dialog's chunk; settings-nav-* belongs to the shell and must load.
-  await page.route(/\/assets\/settings-(?!nav-)[^/]+\.js$/, async (route) => {
-    await settingsGate;
-    await route.continue();
-  });
+  // The dialog's chunk; settings-nav-* and settings-scopes-* belong to the shell and must load.
+  await page.route(
+    /\/assets\/settings-(?!nav-|scopes-)[^/]+\.js$/,
+    async (route) => {
+      await settingsGate;
+      await route.continue();
+    },
+  );
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 

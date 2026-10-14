@@ -1,5 +1,5 @@
 import type { JSX, RefObject } from "preact";
-import { Textarea } from "../../shared/form-controls.tsx";
+import { Textarea } from "./form-controls.tsx";
 
 // Without a hardware pointer the on-screen keyboard's return key writes a
 // new line, as in native messaging apps; the Send button sends, and so does

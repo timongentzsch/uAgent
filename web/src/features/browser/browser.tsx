@@ -1,11 +1,13 @@
-import {
-  StatusLed,
-  type ConnectionPhase,
-} from "../../shared/connection-status.tsx";
+import { StatusLed } from "../../shared/connection-status.tsx";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { ComponentChildren, RefObject } from "preact";
-import { failure, type Report, type Session } from "../../shared/types.ts";
-import { api, command } from "../../state/api.ts";
+import {
+  failure,
+  type ConnectionPhase,
+  type Report,
+  type Session,
+} from "../../shared/types.ts";
+import { api, command, routes } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
 import {
   Button,
@@ -109,7 +111,7 @@ function Screen({
       attempted = true;
       const rfb = new RFB(
         target.current,
-        `${scheme}//${location.host}/api/browser/viewer`,
+        `${scheme}//${location.host}${routes.browserViewer}`,
       );
       let denied = false;
       rfb.viewOnly = viewOnly.current;
@@ -219,7 +221,7 @@ export default function BrowserPanel({
       while (inFlight.current) await inFlight.current;
       const { signal } = lifetime.current;
       if (signal.aborted) return;
-      const request = api<BrowserStatus>("/api/browser/status", undefined, {
+      const request = api<BrowserStatus>(routes.browserStatus, undefined, {
         signal,
       })
         .then((value) => {

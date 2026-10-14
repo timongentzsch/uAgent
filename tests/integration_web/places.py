@@ -198,7 +198,7 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
             first = web.command("create", space="notes-1")["session"]
             again = web.command("create", space="Notes-1")["session"]
             space = (home / ".uagent" / "spaces" / "notes-1").resolve()
-            assert_true(space.is_dir(), "the space was not created")
+            assert_true(space.is_dir(), "the workspace was not created")
             assert_true(first["cwd"] == again["cwd"] == str(space), (first, again))
             assert_true(first["id"] != again["id"], "a second conversation was not started")
             for number, name in enumerate(("../outside", "a/b", "x" * 65)):
@@ -211,14 +211,14 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
                         "space": name,
                     },
                 )
-                assert_true(status == 409 and "space's name" in refused["error"], (name, refused))
+                assert_true(status == 409 and "workspace's name" in refused["error"], (name, refused))
             assert_true(not (home / ".uagent" / "outside").exists(), "a name left its folder")
 
 
 def test_web_space_is_renamed_and_deleted(root, home, *, binary):
     """A space goes by the name it was given, in several words if it likes.
     Renaming it changes that name and nothing else; deleting it removes its
-    conversations and its folder, and never a folder that is not a space."""
+    conversations and its folder, and never a folder that is not a workspace."""
     with Server([event({"content": "ok"})]) as provider:
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)
@@ -262,7 +262,7 @@ def test_web_space_is_renamed_and_deleted(root, home, *, binary):
             assert_true(running.get("presence") == "active", running)
             deleted = web.command("space", action="delete", cwd=str(space))
             assert_true([s["name"] for s in deleted["result"]["spaces"]] == ["other"], deleted)
-            assert_true(not space.exists(), "the space's folder is still there")
+            assert_true(not space.exists(), "the workspace's folder is still there")
             left = [s["cwd"] for s in web.json("/api/sessions")[1]["sessions"]]
             assert_true(left == [other["cwd"]], left)
 

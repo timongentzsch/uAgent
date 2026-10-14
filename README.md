@@ -8,7 +8,7 @@ program with the web interface built in, which works in a terminal, from a
 script or in the browser on the same conversations, and runs its commands in a
 sandbox limited to your folder.
 
-![The web interface: a folder's panel where the moderator and two members, Ada and Linus, discuss rate limiting, with a thread working and the sidebar listing a space and a folder](docs/images/web-panel.png)
+![The web interface: a folder's panel where the moderator and two members, Ada and Linus, discuss rate limiting, with a thread working and the sidebar listing a workspace and a folder](docs/images/web-panel.png)
 
 ## Highlights
 

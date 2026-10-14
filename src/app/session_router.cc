@@ -30,7 +30,7 @@ namespace uagent::session {
 namespace {
 namespace fs = std::filesystem;
 
-// Where a space keeps the name it goes by; its folder's own name is only
+// Where a workspace keeps the name it goes by; its folder's own name is only
 // what it was first called, made safe for a path.
 fs::path LabelFile(const fs::path& space) { return space / ".uagent" / "name"; }
 
@@ -45,9 +45,9 @@ bool ValidSpaceName(const std::string& name) {
          name.find('/') == std::string::npos;
 }
 
-// `path` as a space's folder, or nothing when it is not one. The folder
-// that holds the spaces is µAgent's own: one that is a link leads to
-// directories that are not spaces, and holds none.
+// `path` as a workspace's folder, or nothing when it is not one. The folder
+// that holds the workspaces is µAgent's own: one that is a link leads to
+// directories that are not workspaces, and holds none.
 std::optional<fs::path> SpaceAt(const std::string& path) {
   std::error_code error;
   if (fs::is_symlink(UagentDir("spaces"), error)) return std::nullopt;
@@ -74,7 +74,7 @@ json Spaces() {
 
 std::string SpaceFolder(const std::string& name, std::string& error) {
   if (!ValidSpaceName(name)) {
-    error = "a space's name is 1 to 64 characters without /";
+    error = "a workspace's name is 1 to 64 characters without /";
     return "";
   }
   for (const json& space : Spaces()) {
@@ -93,7 +93,7 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
       (safe != name &&
        !AtomicWriteFile(LabelFile(folder).string(), name + "\n",
                         kPrivateFileMode, /*preserve_mode=*/false, ignored))) {
-    error = "the space could not be created";
+    error = "the workspace could not be created";
     return "";
   }
   return folder;
@@ -102,14 +102,14 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
 std::string SessionHost::RenameSpace(const std::string& path,
                                      const std::string& name) {
   const auto space = SpaceAt(path);
-  if (!space) return "no such space";
+  if (!space) return "no such workspace";
   if (!ValidSpaceName(name)) {
-    return "a space's name is 1 to 64 characters without /";
+    return "a workspace's name is 1 to 64 characters without /";
   }
   for (const json& other : Spaces()) {
     if (JsonValue(other, "path", "") != space->string() &&
         AsciiLower(JsonValue(other, "name", "")) == AsciiLower(name)) {
-      return "another space is called that";
+      return "another workspace is called that";
     }
   }
   std::string error;
@@ -118,7 +118,7 @@ std::string SessionHost::RenameSpace(const std::string& path,
   if (!EnsurePrivateDirectory((kept / ".uagent").string()) ||
       !AtomicWriteFile(LabelFile(kept).string(), name + "\n", kPrivateFileMode,
                        /*preserve_mode=*/false, error)) {
-    return error.empty() ? "the space could not be renamed" : error;
+    return error.empty() ? "the workspace could not be renamed" : error;
   }
   return "";
 }
@@ -126,7 +126,7 @@ std::string SessionHost::RenameSpace(const std::string& path,
 std::string SessionHost::DeleteSpace(const std::string& path,
                                      const std::string& device) {
   const auto space = SpaceAt(path);
-  if (!space) return "no such space";
+  if (!space) return "no such workspace";
   // Its conversations go the way one goes: closed when it runs, then
   // removed. Threads that work elsewhere belong to it by their folder.
   const auto next = [&]() -> json {
@@ -147,7 +147,7 @@ std::string SessionHost::DeleteSpace(const std::string& path,
     // A runtime that would not stop is not waited for twice.
     if (JsonValue(command, "kind", "") == "close" &&
         !closed.insert(JsonValue(command, "session_id", "")).second) {
-      return "a conversation in the space did not stop; try again";
+      return "a conversation in the workspace did not stop; try again";
     }
     const SessionCommandResult result =
         ExecuteCommand(command, device, RandomToken(16));
@@ -160,14 +160,15 @@ std::string SessionHost::DeleteSpace(const std::string& path,
         return held.second->cwd == space->string() ||
                held.second->folder == space->string();
       })) {
-    return "a conversation started in the space meanwhile; try again";
+    return "a conversation started in the workspace meanwhile; try again";
   }
   std::error_code error;
   fs::remove_all(UagentDir(kHistoryDir) + "/" + WorkspaceId(space->string()),
                  error);
   fs::remove_all(*space, error);
-  return error ? "the space's folder could not be removed: " + error.message()
-               : "";
+  return error
+             ? "the workspace's folder could not be removed: " + error.message()
+             : "";
 }
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
@@ -177,15 +178,16 @@ SessionCommandResult SessionHost::ExecuteCommand(
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
   if (kind == SessionCommandKind::kCreate) {
-    // A space is a folder of µAgent's own, made by naming it: a conversation
-    // that belongs to no project still gets a workspace commands can write.
+    // A workspace is a folder of µAgent's own, made by naming it: a
+    // conversation that belongs to no project still gets a workspace commands
+    // can write.
     std::string folder = JsonValue(command, "cwd", "");
     if (const std::string space = Trim(JsonValue(command, "space", ""));
         !space.empty()) {
       const size_t before = Spaces().size();
       folder = SpaceFolder(space, result.error);
       if (folder.empty()) return result;
-      // A new one is listed wherever the spaces are.
+      // A new one is listed wherever the workspaces are.
       if (const json spaces = Spaces(); spaces.size() != before) {
         replay_.Publish(epoch_, "", "",
                         {{"kind", "spaces.changed"}, {"spaces", spaces}},

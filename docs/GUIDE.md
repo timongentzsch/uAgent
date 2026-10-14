@@ -173,7 +173,7 @@ uagent panel
 ```
 
 opens the folder's panel (`/panel` from inside a conversation; in the
-web, *New conversation → Open its panel*). You talk to its **moderator**,
+web, the **Panel** row under a place in the sidebar). You talk to its **moderator**,
 which never edits files itself. Ask it for work and it starts **threads**:
 conversations of their own, each on a brief, that report back when their
 turn ends. The moderator answers the approvals a thread cannot settle or

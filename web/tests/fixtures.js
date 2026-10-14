@@ -19,6 +19,13 @@ export const withoutServiceWorker = (page) =>
 export const online = (page) =>
   expect(page.locator('.composer input[type="file"]')).toBeEnabled();
 
+// New ▾ Folder…: asks for a path on the host, ready to start a conversation.
+export async function newFolder(page, path) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Folder…" }).click();
+  await page.getByLabel("Folder on the host").fill(path);
+}
+
 // The UI showcase is a development page: the Vite dev server serves it
 // (see playwright.config.js), not the native host.
 export { showcaseUrl as SHOWCASE_URL } from "./showcase-url.js";

@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, newFolder } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 test.use({ paired: false });
@@ -19,11 +19,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
-  await page
-    .getByRole("complementary", { name: "Projects and conversations" })
-    .getByRole("button", { name: "New conversation", exact: true })
-    .click();
-  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
+  await newFolder(page, fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();

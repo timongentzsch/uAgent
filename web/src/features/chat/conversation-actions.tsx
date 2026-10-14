@@ -26,7 +26,7 @@ export default function ConversationActions({
         event.preventDefault();
         void run(async () => {
           if (modal.space) {
-            // The host does the whole of it: a space's conversations close
+            // The host does the whole of it: a workspace's conversations close
             // and go with it.
             await manage("space", {
               action: modal.type,
@@ -82,7 +82,7 @@ export default function ConversationActions({
       {modal.type === "rename" ? (
         <label>
           {modal.space
-            ? "Space name"
+            ? "Workspace name"
             : modal.session.kind === "panel"
               ? "Moderator’s name"
               : modal.session.member
@@ -99,7 +99,7 @@ export default function ConversationActions({
         </label>
       ) : modal.space ? (
         <p>
-          Delete the space “{modal.space.name}”
+          Delete the workspace “{modal.space.name}”
           {modal.conversations
             ? `, its ${plural(modal.conversations, "conversation")}`
             : ""}{" "}

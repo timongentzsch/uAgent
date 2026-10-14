@@ -583,8 +583,8 @@ export interface Verbosity {
   // The level names from least detail to most.
   order: string[];
 }
-// A folder the host keeps for conversations that belong to no project,
-// under the name its user gave it.
+// A workspace: a folder the host keeps for conversations that belong to no
+// project, under the name its user gave it.
 export interface Space {
   path: string;
   name: string;
@@ -909,7 +909,7 @@ export interface CommandFields {
   only?: string;
   value?: string;
   cwd?: string;
-  // Create: a space by its name, in place of `cwd`.
+  // Create: a workspace by its name, in place of `cwd`.
   space?: string;
   panel?: boolean;
   audience?: string;
@@ -947,7 +947,7 @@ export type StatisticsModal =
       block?: never;
       snapshot?: never;
     }
-  // A space, by its name; deleting says how many conversations go with it.
+  // A workspace, by its name; deleting says how many conversations go with it.
   | {
       type: "rename" | "delete";
       space: Space;
@@ -979,7 +979,7 @@ export type AppModal =
   | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new" }
+  | { type: "new"; place: "workspace" | "folder" }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };

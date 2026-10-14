@@ -1,4 +1,10 @@
-import { test, expect, online, withoutServiceWorker } from "./fixtures.js";
+import {
+  test,
+  expect,
+  online,
+  withoutServiceWorker,
+  newFolder,
+} from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("instructions are one stack, edited in place, in a stable dialog", async ({
@@ -7,11 +13,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await page
-    .getByRole("complementary")
-    .getByRole("button", { name: "New conversation", exact: true })
-    .click();
-  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
+  await newFolder(page, fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
@@ -136,11 +138,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
-  await page
-    .getByRole("complementary")
-    .getByRole("button", { name: "New conversation", exact: true })
-    .click();
-  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
+  await newFolder(page, fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
@@ -776,8 +774,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   const row = page
     .locator(".session-row")
     .filter({ has: page.locator(".session[aria-current]") });
+  // One line: the time and the menu show while the row is pointed at.
+  await expect(row.locator("time")).toBeHidden();
+  await row.hover();
   await expect(row.locator("time")).toBeVisible();
-  await expect(row.locator(".status-led.active")).toBeVisible();
   const menu = row.getByRole("button", {
     name: "Conversation menu",
     exact: true,

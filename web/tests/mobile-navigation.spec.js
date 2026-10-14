@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, newFolder } from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
   test.use({
@@ -215,11 +215,9 @@ test.describe("mobile navigation and commands", () => {
       .getByRole("button", { name: "Close conversations", exact: true })
       .tap();
     await page.getByRole("button", { name: "Open conversations" }).click();
-    await page.getByRole("button", { name: "New conversation" }).click();
-    const newConversation = page.getByRole("dialog", {
-      name: "New conversation",
-    });
-    await newConversation
+    await newFolder(page, fixture.project);
+    await page
+      .getByRole("dialog", { name: "New folder" })
       .getByRole("button", { name: "Start conversation" })
       .click();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();

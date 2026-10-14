@@ -155,7 +155,7 @@ void Master::Command(const Request& request, Response& response) {
       host_.Publish("", "", {{"kind", "management.changed"}});
     }
   } else if (kind == "space") {
-    // A space's own: its name, and its end with everything in it.
+    // A workspace's own: its name, and its end with everything in it.
     lock.unlock();
     const std::string path = JsonValue(command, "cwd", "");
     error = JsonValue(command, "action", "") == "delete"

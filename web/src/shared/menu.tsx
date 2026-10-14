@@ -37,9 +37,12 @@ const enabledItems = (panel: Element) => [
 // beside what it acts on.
 export function Menu({
   label,
+  trigger,
   children,
 }: {
   label: string;
+  // A button that says what it is, in place of the ⋯.
+  trigger?: ComponentChildren;
   children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
@@ -118,23 +121,29 @@ export function Menu({
       stopViewport();
     };
   }, [open, unmount]);
+  const button = {
+    buttonRef: anchor,
+    "aria-haspopup": "menu" as const,
+    "aria-controls": open ? id : undefined,
+    "aria-expanded": open,
+    onClick: () => (open ? close() : openAt("first")),
+    onKeyDown: (event: JSX.TargetedKeyboardEvent<HTMLButtonElement>) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      if (!open) openAt(event.key === "ArrowUp" ? "last" : "first");
+    },
+  };
   return (
     <div class="action-menu">
-      <IconButton
-        buttonRef={anchor}
-        label={label}
-        aria-haspopup="menu"
-        aria-controls={open ? id : undefined}
-        aria-expanded={open}
-        onClick={() => (open ? close() : openAt("first"))}
-        onKeyDown={(event) => {
-          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-          event.preventDefault();
-          if (!open) openAt(event.key === "ArrowUp" ? "last" : "first");
-        }}
-      >
-        <Ellipsis />
-      </IconButton>
+      {trigger ? (
+        <Button variant="quiet" {...button}>
+          {trigger}
+        </Button>
+      ) : (
+        <IconButton label={label} {...button}>
+          <Ellipsis />
+        </IconButton>
+      )}
       {open && (
         <div
           ref={panel}

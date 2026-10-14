@@ -222,6 +222,17 @@ test("a member joins the chat, is addressed by name and answers under its name",
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board.getByRole("heading", { name: /^Members/ })).toBeVisible();
   await expect(board.locator(".avatar")).toHaveText("A");
+  // The panel's row counts them; opened, its chevron lists them, and the
+  // list stays as it was left when the page reloads.
+  const members = page.locator(".sidebar .threads .avatar");
+  await expect(
+    page.locator(".sidebar .session", { hasText: "Panel" }),
+  ).toContainText("Panel · 1 member");
+  await expect(members).toHaveCount(0);
+  await page.getByRole("button", { name: /^Members and threads of / }).click();
+  await expect(members).toHaveText("A");
+  await page.reload();
+  await expect(members).toHaveText("A");
   const said = page.locator(".transcript .message", {
     has: page.locator(".actor", { hasText: "Ada" }),
   });

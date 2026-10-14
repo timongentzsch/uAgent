@@ -92,6 +92,7 @@ namespace uagent {
   X(TestActivityBufferAndAdmission)               \
   X(TestActivityStateGraph)                       \
   X(TestDetachedActivityOwnership)                \
+  X(TestAGroupOfOnlyZombiesIsFinished)            \
   X(TestActivitySessions)                         \
   X(TestActivityDescriptorAndInputPolicy)         \
   X(TestActivityWaitAndDelivery)                  \

@@ -35,6 +35,13 @@ pid_t WaitPid(pid_t pid, int* status, int flags = 0);
 // wait. ECHILD is success because another owner already reaped it.
 bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout);
 
+// Whether process group `group` still holds anything that can run: its leader
+// (a zombie one included, since whoever reaps it is still to come) or any
+// member that is not a zombie. A group left with only the zombies of
+// grandchildren is finished: their adopter reaps them whenever it gets to
+// it, and nothing can be done about that from here.
+bool ProcessGroupHasLiveMember(pid_t group);
+
 // Stable identity for one live process, independent of PID reuse. Empty when
 // the process does not exist or its platform metadata cannot be read.
 std::string ProcessIdentity(pid_t pid);

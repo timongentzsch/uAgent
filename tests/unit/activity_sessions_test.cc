@@ -2,6 +2,8 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -1214,6 +1216,34 @@ void TestDetachedActivityOwnership() {
 
 // A delegated child is an ordinary session file whose header names its role.
 // It must never surface as a session of its own, and its parent must find it.
+// A killed command's grandchildren become zombies of whoever adopts them, and
+// an adopter that reaps late (a container's init, a CI agent) must not make
+// the stop of that command fail: nothing in such a group can run any more.
+void TestAGroupOfOnlyZombiesIsFinished() {
+  pid_t leader = fork();
+  if (leader == 0) {
+    pause();
+    _exit(0);
+  }
+  CHECK(leader > 0);
+  CHECK(setpgid(leader, leader) == 0);
+  // This process is the zombie's parent and never waits for it, as a slow
+  // adopter would not.
+  pid_t zombie = fork();
+  if (zombie == 0) _exit(setpgid(0, leader) == 0 ? 0 : 1);
+  CHECK(zombie > 0);
+  siginfo_t info{};
+  CHECK(waitid(P_PID, static_cast<id_t>(zombie), &info, WEXITED | WNOWAIT) ==
+        0);
+  CHECK(info.si_status == 0);
+  CHECK(ProcessGroupAlive(leader));
+  CHECK(kill(leader, SIGKILL) == 0);
+  int status = 0;
+  CHECK(WaitPid(leader, &status) == leader);
+  CHECK(!ProcessGroupAlive(leader));
+  CHECK(WaitPid(zombie, &status) == zombie);
+}
+
 void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
   TestWorkspace workspace("thread-worktree");
   const std::string project = CanonicalCwd();

@@ -15,9 +15,12 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "include/core/fd.h"
 #include "include/core/platform.h"
@@ -107,6 +110,53 @@ bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout) {
     if (wait_ms <= 0) return false;
     (void)poll(nullptr, 0, wait_ms);
   }
+}
+
+bool ProcessGroupHasLiveMember(pid_t group) {
+#ifdef __APPLE__
+  int query[] = {CTL_KERN, KERN_PROC, KERN_PROC_PGRP, group};
+  size_t size = 0;
+  if (sysctl(query, 4, nullptr, &size, nullptr, 0) != 0) return true;
+  std::vector<kinfo_proc> members(size / sizeof(kinfo_proc) + 8);
+  size = members.size() * sizeof(kinfo_proc);
+  if (sysctl(query, 4, members.data(), &size, nullptr, 0) != 0) return true;
+  members.resize(size / sizeof(kinfo_proc));
+  return std::any_of(members.begin(), members.end(), [&](const kinfo_proc& m) {
+    return m.kp_proc.p_pid == group || m.kp_proc.p_stat != SZOMB;
+  });
+#elif defined(__linux__)
+  std::error_code unreadable;
+  std::filesystem::directory_iterator processes("/proc", unreadable);
+  if (unreadable) return true;
+  for (const auto& entry : processes) {
+    const std::string name = entry.path().filename().string();
+    if (name.empty() || !std::all_of(name.begin(), name.end(), [](char c) {
+          return c >= '0' && c <= '9';
+        })) {
+      continue;
+    }
+    std::ifstream input(entry.path() / "stat");
+    std::string stat;
+    if (!std::getline(input, stat)) continue;
+    // "pid (comm) state ppid pgrp ...": comm may hold anything, even ')'.
+    const size_t command_end = stat.rfind(')');
+    char state = 0;
+    int parent = 0;
+    int pgrp = 0;
+    if (command_end == std::string::npos ||
+        std::sscanf(stat.c_str() + command_end + 1, " %c %d %d", &state,
+                    &parent, &pgrp) != 3) {
+      continue;
+    }
+    if (pgrp == group && (std::stoi(name) == group || state != 'Z')) {
+      return true;
+    }
+  }
+  return false;
+#else
+  (void)group;
+  return true;
+#endif
 }
 
 std::string ProcessIdentity(pid_t pid) {

@@ -240,8 +240,18 @@ void TestBrowserProfileSignIn() {
   browser::Runtime runtime;
   CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kDevice}})
             .contains("error"));
+  // Another browser service on the machine holds display :99.
+  const bool took_display = !fs::exists("/tmp/.X99-lock");
+  if (took_display) {
+    std::ofstream("/tmp/.X99-lock");
+  }
   CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
             .value("running", false));
+  if (took_display) {
+    fs::remove("/tmp/.X99-lock");
+  }
+  const char* shown = getenv("DISPLAY");
+  CHECK(shown && std::string(shown) != ":99");
   CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kOther}})
             .contains("error"));
   const auto setup =

@@ -745,9 +745,6 @@ dialog.sidebar:not([open]) {
   font-weight: 600;
   color: var(--accent);
 }
-.escalation-where {
-  color: var(--muted);
-}
 /* One line: the words truncate, the link to its instructions stays. */
 .panel-subtitle {
   display: flex;
@@ -819,19 +816,6 @@ dialog.sidebar:not([open]) {
 }
 .board-count {
   font-variant-numeric: tabular-nums;
-}
-/* A list entry (see ListRow): its title over a muted line. */
-.list-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-}
-.list-row small {
-  color: var(--muted);
 }
 .board-row {
   width: 100%;
@@ -1223,15 +1207,6 @@ details:not(.disclosure-row) > summary::before {
 details[open]:not(.disclosure-row) > summary::before {
   transform: rotate(90deg);
 }
-.unread-dot {
-  display: inline-block;
-  width: 0.5em;
-  height: 0.5em;
-  border-radius: 50%;
-  background: currentColor;
-  margin-left: 0.65em;
-  vertical-align: middle;
-}
 .decision {
   display: flex;
   flex-direction: column;
@@ -1252,171 +1227,6 @@ details[open]:not(.disclosure-row) > summary::before {
     opacity: 0;
     translate: 0 calc(4rem / 14);
   }
-}
-.decision-preview {
-  min-height: 0;
-  overflow: auto;
-  font-size: var(--font-small);
-}
-/* The command or diff takes the height the card has left and scrolls there. */
-.decision-preview :is(pre, .diff) {
-  margin-top: 0;
-}
-/* The title, then the tool it is about, on one line. */
-.decision-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  min-width: 0;
-  flex-shrink: 0;
-}
-.decision-head > [role="alert"] {
-  flex: none;
-}
-.decision-tool {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-small);
-}
-.decision-where {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-  margin-top: var(--space-2);
-}
-.decision form {
-  display: flex;
-  align-items: end;
-  flex-wrap: wrap;
-  gap: var(--gap);
-  border: 0;
-  flex-shrink: 0;
-  background: none;
-}
-.decision form > label {
-  flex: 1;
-  min-width: calc(100rem / 14);
-  font-size: var(--font-small);
-}
-/* An approval's headline: the command or change, where, and what it risks. */
-.decision-command {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.decision-folder {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin: 0;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.risk-chips {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.risk-chip {
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line-more);
-  font-size: var(--font-micro);
-}
-.risk-chip:is([data-risk="runs"], [data-risk="outside"]) {
-  border-color: var(--removed);
-  color: var(--removed);
-}
-.decision .decision-card {
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-}
-/* Deny · Allow for session · Allow once: one row of equal buttons. */
-.decision-answers {
-  display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
-  gap: var(--space-2);
-}
-.decision-answers > button {
-  min-width: 0;
-  padding-inline: var(--space-2);
-  font-size: var(--font-small);
-}
-.decision-more > summary {
-  width: fit-content;
-  color: var(--muted);
-  font-size: var(--font-micro);
-  cursor: pointer;
-}
-.decision-more-body {
-  display: grid;
-  gap: var(--space-3);
-  padding-top: var(--space-3);
-  font-size: var(--font-small);
-}
-.decision-more-body > .dialog-actions {
-  justify-content: flex-start;
-}
-.decision-guidance {
-  display: flex;
-  align-items: end;
-  gap: var(--gap);
-}
-.decision-guidance > label {
-  flex: 1;
-  min-width: 0;
-}
-.decision-always {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.decision-options {
-  flex: 1;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-/* A panel's threads waiting on the user, above its composer; the
-   transcript keeps at least half the column. */
-.escalations {
-  flex-shrink: 0;
-  margin: 0 var(--column-inset);
-  max-height: 50%;
-  overflow: auto;
-  display: grid;
-  gap: var(--gap);
-  padding-bottom: var(--gap);
-}
-.escalation {
-  display: grid;
-  gap: var(--space-2);
-}
-.escalation-paused {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-left: 3px solid var(--mark);
-  background: var(--raised);
-  font-size: var(--font-small);
-}
-.escalation-thread {
-  justify-self: start;
-  max-width: 100%;
-  text-align: left;
-  font-size: var(--font-small);
-  color: var(--muted);
-}
-.decision-note {
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 
 /* A sheet's button, like any control beside the composer's file input,

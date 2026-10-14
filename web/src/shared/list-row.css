@@ -1,0 +1,22 @@
+/* A list entry (see ListRow): its title over a muted line. */
+.list-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.list-row small {
+  color: var(--muted);
+}
+.unread-dot {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: currentColor;
+  margin-left: 0.65em;
+  vertical-align: middle;
+}

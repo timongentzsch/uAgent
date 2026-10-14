@@ -8,7 +8,7 @@ program with the web interface built in, which works in a terminal, from a
 script or in the browser on the same conversations, and runs its commands in a
 sandbox limited to your folder.
 
-![The web interface as an installable app: on a desktop and on a phone, a folder's panel where two members, Ada and Linus, discuss rate limiting while a thread works, with the desktop sidebar listing a workspace and a folder](docs/images/web-desktop-phone.png)
+![The web interface as an installable app: on a desktop and on a phone, a folder's panel where two members, Ada and Linus, discuss rate limiting while a thread works, with the desktop sidebar listing a workspace and a folder, whose name carries its members as avatars](docs/images/web-desktop-phone.png)
 
 ## Highlights
 

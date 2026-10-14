@@ -29,11 +29,13 @@ address. Or open the URL and type the code.
   **Log out this device**.
 
 The sidebar lists this OS user's conversations by where they are: **Workspaces**
-first, then **Folders**. A place's header folds it away (remembered per
-browser) and has **+** for a new conversation there. Under it come its
-panel, whose chevron lists what the panel started (threads and the members
-of its chat), then its conversations. Browsing saved history does not start a model or run a
-command.
+first, then **Folders**. A place's header is its panel: its name opens the
+panel (the first time, it starts one), and the chevron before it folds the
+place away (remembered per browser). **+** starts a conversation there. Once
+the panel has members, their avatars sit at the end of the header,
+the moderator's first. Under the header come the threads the panel started,
+then a line, then the place's own conversations. Browsing saved history does
+not start a model or run a command.
 
 **New** at the top of the sidebar starts a **Workspace…** (a name) or a
 **Folder…** (a directory on the host) and opens a conversation there. A
@@ -260,15 +262,19 @@ before Submit.
 
 ### The panel and its chat
 
-- A place's panel is its first row in the sidebar, or a faint **Panel** row
-  that opens it where it has none yet; the command palette opens it too.
-  The panel row's chevron lists its members and threads, one line each. A
-  thread or member links back to its panel under its title.
+- A place's panel opens from the place's name in the sidebar; the command
+  palette opens it too. The threads it started are listed under the name,
+  and a thread or member links back to its panel under its title.
 - The **board** beside the chat (a button in the header on a phone) lists
   the chat's members and the work the moderator started. A row's menu
   renames or removes it, and **+** starts a message asking for another
   member. What needs you is above the input and in the sidebar's inbox.
-- Members appear with an avatar; each message carries its author's name, and
+- Members appear with an avatar, on the place's name, on the board and on
+  their messages. Pointing at or focusing one (tapping it on a touch screen,
+  which opens a sheet) shows its card: its model, its persona and skills,
+  and **Ask**, which starts a message to it in the panel's input,
+  **Full prompt** and a menu to rename or remove it. The moderator's card
+  says what the moderator is. Each message carries its author's name, and
   its menu's **Show prompt** shows what that author was given. The line above
   the input says who is typing.
 - Start a message with a member's name to ask that one alone.

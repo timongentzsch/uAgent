@@ -3,7 +3,7 @@
 .activity-status {
   display: inline-flex;
   align-items: center;
-  gap: 0.4em;
+  gap: var(--space-3);
   min-width: 0;
   max-width: 100%;
 }

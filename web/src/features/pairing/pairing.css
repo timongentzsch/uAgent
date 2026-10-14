@@ -11,7 +11,7 @@
   margin-bottom: var(--gap);
 }
 .pairing h1 {
-  font-size: 1.3rem;
+  font-size: var(--font-display);
 }
 .pairing p {
   color: var(--muted);

@@ -36,3 +36,35 @@ test("colour literals stay in the palettes", () => {
   }
   assert.deepEqual(stray, []);
 });
+
+// Spacing, type and line height come from the scales at the top of
+// style.css, so a screen cannot drift a pixel from its neighbours. The
+// scales' own definitions (custom properties) are the only place a length
+// is written. Markdown headings scale with the prose around them, and the
+// remote browser's pointer marker is a fixed-size overlay on a screen
+// image: those two sheets are exempt.
+const SCALED =
+  /^\s*(?:padding|margin|gap|row-gap|column-gap|font-size|line-height)[a-z-]*:\s*([^;]*)/;
+const SCALE_EXEMPT = new Set([
+  "shared/markdown.css",
+  "features/browser/browser.css",
+  "showcase.css",
+]);
+// What may remain once var(...) references are removed: no length with a
+// unit, no bare line-height number (1 collapses an icon's box).
+const LITERAL = /[\d.]+(?:px|rem|em)\b|(?:^|[\s:])(?:[2-9]|1\.)[\d.]*\s*$/;
+
+test("spacing, font sizes and line heights use the scale tokens", () => {
+  const stray = [];
+  for (const path of sheets("src")) {
+    if (SCALE_EXEMPT.has(path)) continue;
+    for (const [index, line] of readFileSync(join("src", path), "utf8")
+      .split("\n")
+      .entries()) {
+      const value = SCALED.exec(line)?.[1].replace(/var\([^)]*\)/g, "");
+      if (value && LITERAL.test(value))
+        stray.push(`${path}:${index + 1}: ${line.trim()}`);
+    }
+  }
+  assert.deepEqual(stray, []);
+});

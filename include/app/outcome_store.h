@@ -18,6 +18,7 @@
 #include <string>
 
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent::session {
 
@@ -37,7 +38,7 @@ class OutcomeStore {
  private:
   mutable std::mutex mutex_;
   std::condition_variable changed_;
-  std::map<std::string, json> outcomes_;
+  std::map<std::string, json> outcomes_ UAGENT_GUARDED_BY(mutex_);
 };
 
 }  // namespace uagent::session

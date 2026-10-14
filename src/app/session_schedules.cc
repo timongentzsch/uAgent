@@ -15,6 +15,7 @@
 #include "include/app/session_host.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -196,7 +197,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
   ScheduleTick tick;
   std::vector<std::string> projects;
   {
-    std::unique_lock lock(mutex_);
+    UniqueLock lock(mutex_);
     std::vector<std::shared_ptr<HostSession>> recovery;
     if (!recovered) recovered = RecoverSchedules(recovery);
     // External writers (CLI schedule save/run) change the store under us:
@@ -210,7 +211,8 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     }
     if (recovered) tick = TickSchedules();
     auto activate = [&](const std::shared_ptr<HostSession>& session,
-                        bool create, const std::string& failed) {
+                        bool create,
+                        const std::string& failed) UAGENT_REQUIRES(mutex_) {
       std::string error;
       if (!ActivateLocked(session, error, lock, create)) {
         UpdateScheduledRun(session->run_id, failed,
@@ -258,7 +260,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
   }
   {
     std::lock_guard lock(mutex_);
-    for (json event : RefreshInvalidations(projects)) {
+    for (json event : RefreshInvalidationsLocked(projects)) {
       if (JsonValue(event, "kind", "") == "scheduled.changed") {
         // A write landed during the tick above: re-loop immediately so the
         // fresh cache is claimed instead of sleeping through it.

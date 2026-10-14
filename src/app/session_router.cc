@@ -171,7 +171,7 @@ std::string SessionHost::DeleteSpace(const std::string& path,
 }
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
-  std::unique_lock lock(mutex_);
+  UniqueLock lock(mutex_);
   SessionCommandResult result;
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
   const SessionCommandKind kind =
@@ -284,7 +284,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     session->status =
         kind == SessionCommandKind::kDelete ? "deleting" : "updating";
     lock.unlock();
-    std::unique_lock scan(scan_mutex_);
+    UniqueLock scan(scan_mutex_);
     std::unique_lock asset_lock = assets_.GuardMutation();
     std::string draft_path = directory_ + "/drafts/" + session->id + ".json";
     SessionStoreStatus stored;

@@ -63,6 +63,7 @@ export default function Chat({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [preparedKey, setPreparedKey] = useState("");
   const prepared = !!snapshot && preparedKey === selected;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prepares the history once its snapshot arrives, not on every streamed frame
   useEffect(() => {
     if (!snapshot) return;
     let active = true;

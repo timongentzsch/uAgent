@@ -2,6 +2,7 @@
 // with a note each, baked into a copy that is attached like any upload.
 // One Pointer Events path serves mouse, trackpad, finger and pencil.
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -232,10 +233,10 @@ export default function Annotator({
         ?.focus({ preventScroll: true });
   }, [editing]);
 
-  const undo = () => {
+  const undo = useCallback(() => {
     if (editing === items.length - 1) setEditing(null);
     setItems(items.slice(0, -1));
-  };
+  }, [editing, items]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement) return;
@@ -246,7 +247,7 @@ export default function Annotator({
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [items, editing]);
+  }, [undo]);
 
   // Screen pixels per image pixel, with the zoom.
   const pixel = () => scale * view.scale;

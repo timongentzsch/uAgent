@@ -1,3 +1,4 @@
+import { useCallback } from "preact/hooks";
 import type { Dispatch, StateUpdater } from "preact/hooks";
 import type { Draft, Session } from "../shared/types.ts";
 import { emptyDraft } from "../state/store.ts";
@@ -26,12 +27,14 @@ export function useDraftUploads({
   report: (error: unknown) => void;
 }) {
   // One conversation's draft changes; the others keep theirs.
-  function updateDraft(id: string, change: (draft: Draft) => Draft) {
-    setDrafts((current) => ({
-      ...current,
-      [id]: change(current[id] || emptyDraft()),
-    }));
-  }
+  const updateDraft = useCallback(
+    (id: string, change: (draft: Draft) => Draft) =>
+      setDrafts((current) => ({
+        ...current,
+        [id]: change(current[id] || emptyDraft()),
+      })),
+    [setDrafts],
+  );
   // An annotated copy joins the draft and replaces the draft file it was
   // drawn on; a copy of a sent image is simply attached.
   async function attachAnnotated(file: File, replaces?: string) {

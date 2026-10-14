@@ -41,7 +41,7 @@ export function useLibrary(
       ++generation.current;
       controller.abort();
     };
-  }, [kind, cwd, version, attempt, online]);
+  }, [key, kind, cwd, version, attempt, online]);
   return {
     data: result?.key === key ? result.data || null : null,
     error: result?.key === key ? result.error : null,

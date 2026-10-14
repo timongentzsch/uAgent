@@ -49,6 +49,7 @@ export default function Pairing({
     }
   }
   // A pairing link connects without typing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tries the link's code once, on mount
   useEffect(() => {
     const linked = linkedCode();
     if (!linked) return;

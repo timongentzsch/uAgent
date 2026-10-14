@@ -105,6 +105,7 @@ export default function Scheduled({
       : "";
   const dirty = task && definition(task) !== definition(current);
   const scheduleKey = JSON.stringify(task?.schedule);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: saves when the draft changes, not when the host's copy does
   useEffect(() => {
     if (task) {
       writeStored(sessionStorage, storage, task);
@@ -112,6 +113,7 @@ export default function Scheduled({
         writeStored(sessionStorage, `${storage}-${task.id || "new"}`, task);
     } else sessionStorage.removeItem(storage);
   }, [task]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previews when the schedule's value changes, not on edits to other fields
   useEffect(() => {
     let active = true;
     setTimes(null);

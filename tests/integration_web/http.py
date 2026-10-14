@@ -413,6 +413,42 @@ def test_web_bundle_is_served_gzipped_and_plain_to_a_client_that_cannot_take_it(
                 assert_true(status == 200 and "Content-Encoding" not in headers, headers)
                 assert_true(headers["Vary"] == "Accept-Encoding", headers)
                 assert_true(body == expected, f"{path} plain body differs from web/dist")
+            expected = (dist / "sw.js").read_bytes()
+            # Only an acceptable gzip entry gets gzip: a refusal, a longer
+            # token or a wildcard that excludes it does not.
+            for accept, gzipped in (
+                ("GZIP", True),
+                ("deflate, Gzip;q=0.5", True),
+                ("*;q=1, identity;q=0", True),
+                ("*", True),
+                ("gzip;q=0", False),
+                ("gzip;q=0, *", False),
+                ("xgzip", False),
+                ("*;q=0", False),
+                ("identity", False),
+            ):
+                status, body, headers = client.request(
+                    "/sw.js", headers={"Accept-Encoding": accept}
+                )
+                assert_true(status == 200, accept)
+                assert_true(("Content-Encoding" in headers) == gzipped, (accept, headers))
+                assert_true((gzip.decompress(body) if gzipped else body) == expected, accept)
+            # A range selects bytes of the plain asset, never of a gzip stream.
+            status, body, headers = client.request(
+                "/sw.js", headers={"Accept-Encoding": "gzip", "Range": "bytes=0-9"}
+            )
+            assert_true(status == 206 and "Content-Encoding" not in headers, headers)
+            assert_true(body == expected[:10], body)
+            status, body, headers = client.request(
+                "/sw.js", headers={"Accept-Encoding": "gzip", "Range": "bytes=0-9,20-29"}
+            )
+            assert_true(status == 206 and "Content-Encoding" not in headers, headers)
+            assert_true(
+                headers["Content-Type"].startswith("multipart/byteranges")
+                and expected[:10] in body
+                and expected[20:30] in body,
+                headers,
+            )
             # Already-compressed types are embedded raw and never relabelled.
             status, body, headers = client.request(
                 "/icon-192.png", headers={"Accept-Encoding": "gzip"}

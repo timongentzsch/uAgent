@@ -7,7 +7,7 @@ RUN npm run build
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS native
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-    ca-certificates cmake g++ make libcurl4-openssl-dev libssl-dev pkg-config \
+    ca-certificates cmake g++ make libcurl4-openssl-dev zlib1g-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .

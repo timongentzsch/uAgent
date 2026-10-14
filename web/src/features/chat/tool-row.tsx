@@ -14,7 +14,7 @@ import type {
   Activity,
   FilePart,
   LinkPart,
-  PresentedBlock,
+  ToolRowBlock,
   ToolPart,
 } from "../../shared/types.ts";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
@@ -115,7 +115,7 @@ const NoActivities = createContext<Activity[]>([]);
 // The work a row started, while it still runs: its LED and elapsed time.
 // Only a row that links to work follows the live activities; the rest sit
 // out their ticks.
-function useLive(block: PresentedBlock) {
+function useLive(block: ToolRowBlock) {
   const link = block.parts?.find(
     (part): part is LinkPart => part.kind === "link",
   );
@@ -144,7 +144,7 @@ export function ToolRow({
   loadFull,
   onToggle,
 }: {
-  block: PresentedBlock;
+  block: ToolRowBlock;
   running: boolean;
   // Whether the row starts open, on the preview it holds.
   open: boolean;
@@ -160,6 +160,7 @@ export function ToolRow({
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
   const live = useLive(block);
+  const call = block.kind === "tool_result" ? block : undefined;
   // Work the call started keeps the row in the present tense until it ends.
   let { title, subtitle } = getToolRow(block, running || !!live);
   if (live) {
@@ -206,7 +207,7 @@ export function ToolRow({
     >
       <div class="tool-body">
         <p class="small muted tool-facts">
-          {block.name}
+          {call?.name}
           {facts.map(([label, value]) => (
             <Fragment key={label}>
               {" · "}
@@ -225,14 +226,14 @@ export function ToolRow({
               <Time value={block.time} />
             </>
           )}
-          {inspect && block.kind === "tool_result" && (
+          {inspect && call && (
             <>
               {" · "}
               <Button
                 variant="quiet"
                 class="tool-link"
                 aria-label="Tool input/output"
-                onClick={() => inspect(block.detail_id || `t-${block.call_id}`)}
+                onClick={() => inspect(call.detail_id || `t-${call.call_id}`)}
               >
                 raw
               </Button>
@@ -283,7 +284,7 @@ export function ToolInline({
   assets,
   open,
 }: {
-  block: PresentedBlock;
+  block: ToolRowBlock;
   text?: string;
   loaded: boolean;
   loadFull: () => void;
@@ -291,15 +292,16 @@ export function ToolInline({
   assets: string;
   open?: OpenLink;
 }) {
-  const diff = block.change?.includes("\n") ? block.change : "";
+  const call = block.kind === "tool_result" ? block : undefined;
+  const diff = call?.change?.includes("\n") ? call.change : "";
   // Until the full text loads, a truncated result shows its end.
   const more = !!block.truncated && !loaded;
   const output =
     block.view?.output === "tail"
-      ? cleanText((more && block.tail) || text || "").trim()
+      ? cleanText((more && call?.tail) || text || "").trim()
       : "";
   const parts = block.parts || [];
-  const files = (block.files || []).filter((file) => typeof file === "object");
+  const files = (call?.files || []).filter((file) => typeof file === "object");
   if (!diff && !output && !parts.length && !files.length) return null;
   return (
     <div class="tool-inline">

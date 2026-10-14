@@ -45,7 +45,10 @@ export function transcriptBlocks(
     ...outgoing.filter(
       (item) =>
         item.session_id === selected &&
-        !view?.blocks?.some((block) => block.request_id === item.request_id),
+        !view?.blocks?.some(
+          (block) =>
+            "request_id" in block && block.request_id === item.request_id,
+        ),
     ),
   ];
 }
@@ -53,7 +56,10 @@ export function transcriptBlocks(
 // The conversation's agent is using the browser.
 export const isBrowsing = (snapshot?: Snapshot) =>
   !!snapshot?.state?.view?.blocks.some(
-    (block) => block.name === "browser" && block.status === "running",
+    (block) =>
+      block.kind === "tool_result" &&
+      block.name === "browser" &&
+      block.status === "running",
   );
 
 // The one surface that reads the selected conversation's snapshot, so a

@@ -131,6 +131,129 @@ int Fail(bool json_stream, bool json_envelope, const std::string& error,
   return exit_code;
 }
 
+// --show-system-prompt: build the session far enough to print the prompt it
+// would send.
+int ShowSystemPrompt(Options options, char* executable,
+                     Observability& observability) {
+  if (options.web || !options.prompt.empty() || options.json_stream ||
+      options.resume_latest || options.resume_pick ||
+      !options.attach_paths.empty()) {
+    fprintf(stderr,
+            "--show-system-prompt is a standalone inspection command\n");
+    return 2;
+  }
+  const bool structured = options.json;
+  HeadlessOutput silence;
+  if (!silence.Silence()) return 1;
+  auto boot = Bootstrap(std::move(options), executable, observability);
+  json result = boot.Ok() ? boot.context->agent->PromptPreview()
+                          : json{{"error", boot.error}};
+  boot.context.reset();
+  silence.Restore();
+  printf("%s\n",
+         structured
+             ? JsonDump(result, 2).c_str()
+             : JsonValue(result,
+                         result.contains("error") ? "error" : "effective", "")
+                   .c_str());
+  return result.contains("error") ? 1 : 0;
+}
+
+// `uagent panel`: the folder's panel, one prompt or the terminal.
+int PanelMain(Options options) {
+  if (options.web || options.json_stream || options.resume_latest ||
+      options.resume_pick || (options.json && options.prompt.empty())) {
+    fprintf(stderr, "uagent panel takes session options, -p and --json\n");
+    return 2;
+  }
+  options.session = {{"kind", kSessionKindPanel}};
+  if (!options.prompt.empty()) {
+    return session::PanelPromptMain(options);
+  }
+  ResolveTerminalProfile(options);
+  return session::TerminalMain(std::move(options));
+}
+
+// --web: the master process; only user configuration reaches it.
+int WebMain([[maybe_unused]] const Options& options,
+            [[maybe_unused]] char** argv) {
+#ifdef UAGENT_WEB
+  if (!options.prompt.empty() || options.json || options.json_stream ||
+      options.resume_latest || options.resume_pick || options.yolo ||
+      options.trust_project || !options.attach_paths.empty()) {
+    fprintf(stderr, "--web cannot inherit session execution options\n");
+    return 2;
+  }
+  // User configuration only. No project configuration, MCP, trust prompt,
+  // agent or process supervisor in the master.
+  for (const auto& [key, value] : options.overrides) {
+    if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {
+      fprintf(stderr,
+              "configure each web session through its own workspace or "
+              "controls\n");
+      return 2;
+    }
+  }
+  auto settings = ConfigManager::Capture(options.overrides, "").Read();
+  auto setting = [&](const char* key, std::string_view fallback = {}) {
+    auto found = settings.values.find(key);
+    return found == settings.values.end() ? std::string(fallback)
+                                          : found->second;
+  };
+  // The registry declares the default and the range. A port outside it is
+  // refused here: a clamped one would listen where nobody asked.
+  const ConfigDescriptor& range = Cfg("UAGENT_WEB_PORT");
+  int64_t port = std::get<int64_t>(range.default_value);
+  const auto saved = settings.values.find("UAGENT_WEB_PORT");
+  if ((saved != settings.values.end() &&
+       !ParseInt64(saved->second.c_str(), port)) ||
+      port < range.minimum || port > range.maximum) {
+    fprintf(stderr, "web port must be between %s and %s\n",
+            std::to_string(range.minimum).c_str(),
+            std::to_string(range.maximum).c_str());
+    return 2;
+  }
+  std::string bind =
+      setting("UAGENT_WEB_BIND",
+              std::get<std::string_view>(Cfg("UAGENT_WEB_BIND").default_value));
+  if (bind != "127.0.0.1" && bind != "0.0.0.0") {
+    fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
+    return 2;
+  }
+  return web::MasterMain({static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
+                          setting("UAGENT_WEB_PUSH_CONTACT"), bind,
+                          setting("UAGENT_BROWSER_DATA")},
+                         argv);
+#else
+  fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
+  return 2;
+#endif
+}
+
+// A headless run: one prompt, its answer as text, a JSON envelope or an event
+// stream.
+int HeadlessMain(Options options, char* executable,
+                 Observability& observability) {
+  const bool json_stream = options.json_stream;
+  const bool json_envelope = options.json;
+  observability.EnableJournal(false);  // headless runs keep no journal
+  if (json_stream && !observability.StartJsonStream()) {
+    fprintf(stderr, "cannot initialize JSON event stream\n");
+    return 1;
+  }
+  BootstrapResult boot =
+      Bootstrap(std::move(options), executable, observability);
+  int code = boot.Ok()
+                 ? RunApplication(*boot.context)
+                 : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
+  SettleMemoryClaim(code == 0);
+  // Direct owners stop in deterministic reverse order: application/runtime,
+  // then observational sinks, then process-level signal state at exit.
+  boot.context.reset();
+  observability.Shutdown();
+  return code;
+}
+
 }  // namespace
 
 int Main(int argc, char** argv) {
@@ -186,126 +309,20 @@ int Main(int argc, char** argv) {
     }
     return 0;
   }
-
   if (!parsed.options.control.empty()) {
     return ControlMain(parsed.options.control);
   }
-
   if (parsed.options.show_system_prompt) {
-    if (parsed.options.web || !parsed.options.prompt.empty() ||
-        parsed.options.json_stream || parsed.options.resume_latest ||
-        parsed.options.resume_pick || !parsed.options.attach_paths.empty()) {
-      fprintf(stderr,
-              "--show-system-prompt is a standalone inspection command\n");
-      return 2;
-    }
-    const bool structured = parsed.options.json;
-    HeadlessOutput silence;
-    if (!silence.Silence()) return 1;
-    auto boot = Bootstrap(std::move(parsed.options), argv[0], observability);
-    json result = boot.Ok() ? boot.context->agent->PromptPreview()
-                            : json{{"error", boot.error}};
-    boot.context.reset();
-    silence.Restore();
-    printf("%s\n",
-           structured
-               ? JsonDump(result, 2).c_str()
-               : JsonValue(result,
-                           result.contains("error") ? "error" : "effective", "")
-                     .c_str());
-    return result.contains("error") ? 1 : 0;
+    return ShowSystemPrompt(std::move(parsed.options), argv[0], observability);
   }
-  const bool json_stream = parsed.options.json_stream;
-  if (panel) {
-    if (parsed.options.web || json_stream || parsed.options.resume_latest ||
-        parsed.options.resume_pick ||
-        (parsed.options.json && parsed.options.prompt.empty())) {
-      fprintf(stderr, "uagent panel takes session options, -p and --json\n");
-      return 2;
-    }
-    parsed.options.session = {{"kind", kSessionKindPanel}};
-    if (!parsed.options.prompt.empty()) {
-      return session::PanelPromptMain(parsed.options);
-    }
+  if (panel) return PanelMain(std::move(parsed.options));
+  if (parsed.options.web) return WebMain(parsed.options, argv);
+  if (parsed.options.prompt.empty() && !parsed.options.json &&
+      !parsed.options.json_stream) {
     ResolveTerminalProfile(parsed.options);
     return session::TerminalMain(std::move(parsed.options));
   }
-  if (parsed.options.web) {
-#ifdef UAGENT_WEB
-    if (!parsed.options.prompt.empty() || parsed.options.json || json_stream ||
-        parsed.options.resume_latest || parsed.options.resume_pick ||
-        parsed.options.yolo || parsed.options.trust_project ||
-        !parsed.options.attach_paths.empty()) {
-      fprintf(stderr, "--web cannot inherit session execution options\n");
-      return 2;
-    }
-    // User configuration only. No project configuration, MCP, trust prompt,
-    // agent or process supervisor in the master.
-    for (const auto& [key, value] : parsed.options.overrides) {
-      if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {
-        fprintf(stderr,
-                "configure each web session through its own workspace or "
-                "controls\n");
-        return 2;
-      }
-    }
-    auto settings = ConfigManager::Capture(parsed.options.overrides, "").Read();
-    auto setting = [&](const char* key, std::string_view fallback = {}) {
-      auto found = settings.values.find(key);
-      return found == settings.values.end() ? std::string(fallback)
-                                            : found->second;
-    };
-    // The registry declares the default and the range. A port outside it is
-    // refused here: a clamped one would listen where nobody asked.
-    const ConfigDescriptor& range = Cfg("UAGENT_WEB_PORT");
-    int64_t port = std::get<int64_t>(range.default_value);
-    const auto saved = settings.values.find("UAGENT_WEB_PORT");
-    if ((saved != settings.values.end() &&
-         !ParseInt64(saved->second.c_str(), port)) ||
-        port < range.minimum || port > range.maximum) {
-      fprintf(stderr, "web port must be between %s and %s\n",
-              std::to_string(range.minimum).c_str(),
-              std::to_string(range.maximum).c_str());
-      return 2;
-    }
-    std::string bind = setting(
-        "UAGENT_WEB_BIND",
-        std::get<std::string_view>(Cfg("UAGENT_WEB_BIND").default_value));
-    if (bind != "127.0.0.1" && bind != "0.0.0.0") {
-      fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
-      return 2;
-    }
-    return web::MasterMain(
-        {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
-         setting("UAGENT_WEB_PUSH_CONTACT"), bind,
-         setting("UAGENT_BROWSER_DATA")},
-        argv);
-#else
-    fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
-    return 2;
-#endif
-  }
-  if (parsed.options.prompt.empty() && !parsed.options.json && !json_stream) {
-    ResolveTerminalProfile(parsed.options);
-    return session::TerminalMain(std::move(parsed.options));
-  }
-  const bool json_envelope = parsed.options.json;
-  observability.EnableJournal(false);  // headless runs keep no journal
-  if (json_stream && !observability.StartJsonStream()) {
-    fprintf(stderr, "cannot initialize JSON event stream\n");
-    return 1;
-  }
-  BootstrapResult boot =
-      Bootstrap(std::move(parsed.options), argv[0], observability);
-  int code = boot.Ok()
-                 ? RunApplication(*boot.context)
-                 : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
-  SettleMemoryClaim(code == 0);
-  // Direct owners stop in deterministic reverse order: application/runtime,
-  // then observational sinks, then process-level signal state at exit.
-  boot.context.reset();
-  observability.Shutdown();
-  return code;
+  return HeadlessMain(std::move(parsed.options), argv[0], observability);
 }
 
 }  // namespace uagent

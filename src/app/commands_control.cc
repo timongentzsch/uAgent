@@ -110,6 +110,119 @@ static std::string ChooseForConversation(AppSession& session,
   return "";
 }
 
+namespace {
+// Forks the conversation, or shares it; in a panel, "edit from here" rewinds
+// it in place instead.
+json ForkOrShare(AppSession& session, const json& request) {
+  const std::string kind = JsonValue(request, "kind", "");
+  if (session.session_file.empty()) {
+    if (kind != "fork") return {{"error", "session has no file yet"}};
+    session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
+  }
+  std::string error;
+  // A folder has one panel, so "edit from here" rewinds it in place
+  // rather than starting an ordinary conversation beside it.
+  if (kind == "fork" && session.context.options.Panel() &&
+      (JsonValue(request, "turn", int64_t{0}) > 0 ||
+       !JsonValue(request, "message_id", "").empty())) {
+    json rewound = session.ActiveAgent().RewindBefore(
+        JsonValue(request, "turn", int64_t{0}),
+        JsonValue(request, "message_id", ""));
+    if (rewound.contains("error")) return rewound;
+    if (!session.Save(error)) return {{"error", error}};
+    rewound["rewound"] = true;
+    rewound["id"] = HashHex(session.session_file);
+    rewound["path"] = session.session_file;
+    rewound["cwd"] = CanonicalCwd();
+    return rewound;
+  }
+  if (!session.Save(error)) return {{"error", error}};
+  if (kind == "share") return SessionStore::Share(session.session_file);
+  return SessionStore::Fork(session.session_file,
+                            JsonValue(request, "title", ""), true,
+                            JsonValue(request, "turn", int64_t{0}),
+                            JsonValue(request, "message_id", ""));
+}
+
+// Configuration changes; the conversation's own scope is applied here.
+json ConfigureSession(AppSession& session, const json& request) {
+  ConfigManager& manager = session.context.config_manager;
+  json effects = json::array();
+  // The conversation's scope is kept with it, not in a file: the choice
+  // is made here and takes effect at once.
+  if (JsonValue(request, "scope", "") == "conversation" &&
+      JsonValue(request, "operation", "") == "apply") {
+    std::vector<ConfigChange> changes;
+    std::string error;
+    if (!ParseConfigChanges(request, changes, error)) {
+      return {{"error", error}};
+    }
+    for (const ConfigChange& change : changes) {
+      error = ChooseForConversation(session, change.key,
+                                    change.unset ? "" : change.value);
+      if (!error.empty()) return {{"error", error}};
+      effects.push_back({{"key", change.key},
+                         {"effect", "next_turn"},
+                         {"text", "applies from your next message"}});
+    }
+  }
+  json reply = ConfigurationControl(
+      effects.empty() ? request : json{{"operation", "get"}}, manager);
+  if (!effects.empty()) reply["effects"] = std::move(effects);
+  return reply;
+}
+
+// A follow-up to a delegated agent, or the activity operations.
+json SessionActivity(AppSession& session, const json& request) {
+  if (JsonValue(request, "operation", "") != "followup") {
+    return ActivityControl(session.Runtime().processes, request);
+  }
+  Tool tool =
+      SubagentTool(session.ApiClient(), session.Runtime().processes,
+                   session.context.provider.routes,
+                   session.context.provider.providers, Debug().Enabled());
+  // From the interface it runs beside the conversation, never in its way.
+  json arguments = {{"operation", "followup"},
+                    {"agent_id", JsonValue(request, "agent_id", "")},
+                    {"prompt", JsonValue(request, "text", "")},
+                    {"background", true}};
+  const std::string model = JsonValue(request, "model", "");
+  if (!model.empty()) arguments["model"] = model;
+  // A follow-up is not a decision about tools: the child keeps the ceiling
+  // of the conversation it belongs to.
+  ToolContext context;
+  context.enabled_tools = session.ActiveAgent().EnabledTools();
+  ToolResult result = tool.run(arguments, context);
+  return result.Ok() ? json{{"output", result.output}}
+                     : json{{"error", result.output}};
+}
+
+// The model chosen in the interface becomes the session's, and maybe the
+// default.
+json SelectModelControl(AppSession& session, const json& request) {
+  std::string value = JsonValue(request, "model", "");
+  ModelSelection selection = ParseModelSelection(value);
+  std::string variant = JsonValue(request, "variant", "default");
+  std::string effort = JsonValue(request, "effort", "default");
+  if (variant == "default") variant.clear();
+  if (effort == "default") effort.clear();
+  if (selection.base.empty() || !ValidOpenRouterVariant(variant) ||
+      (!effort.empty() && !ValidEffort(effort))) {
+    return {{"error", "invalid model selection"}};
+  }
+  value = selection.base;
+  if (!variant.empty()) value += ":" + variant;
+  if (!effort.empty()) value += ":" + effort;
+  std::string selected =
+      SelectModel(session.ApiClient(), session.context.provider.routes,
+                  session.context.provider.providers, value);
+  if (selected.empty()) return {{"error", "unknown model"}};
+  SaveSelectedModel(session, selected, JsonValue(request, "default", false));
+  return {{"route", RouteSelection(session.ApiClient(),
+                                   session.context.provider.providers)}};
+}
+}  // namespace
+
 json SessionControl(AppSession& session, const json& request) {
   std::string kind = JsonValue(request, "kind", "");
   if (kind == "self_directive") {
@@ -135,61 +248,8 @@ json SessionControl(AppSession& session, const json& request) {
     }
     return result;
   }
-  if (kind == "fork" || kind == "share") {
-    if (session.session_file.empty()) {
-      if (kind != "fork") return {{"error", "session has no file yet"}};
-      session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
-    }
-    std::string error;
-    // A folder has one panel, so "edit from here" rewinds it in place
-    // rather than starting an ordinary conversation beside it.
-    if (kind == "fork" && session.context.options.Panel() &&
-        (JsonValue(request, "turn", int64_t{0}) > 0 ||
-         !JsonValue(request, "message_id", "").empty())) {
-      json rewound = session.ActiveAgent().RewindBefore(
-          JsonValue(request, "turn", int64_t{0}),
-          JsonValue(request, "message_id", ""));
-      if (rewound.contains("error")) return rewound;
-      if (!session.Save(error)) return {{"error", error}};
-      rewound["rewound"] = true;
-      rewound["id"] = HashHex(session.session_file);
-      rewound["path"] = session.session_file;
-      rewound["cwd"] = CanonicalCwd();
-      return rewound;
-    }
-    if (!session.Save(error)) return {{"error", error}};
-    if (kind == "share") return SessionStore::Share(session.session_file);
-    return SessionStore::Fork(session.session_file,
-                              JsonValue(request, "title", ""), true,
-                              JsonValue(request, "turn", int64_t{0}),
-                              JsonValue(request, "message_id", ""));
-  }
-  if (kind == "config") {
-    ConfigManager& manager = session.context.config_manager;
-    json effects = json::array();
-    // The conversation's scope is kept with it, not in a file: the choice
-    // is made here and takes effect at once.
-    if (JsonValue(request, "scope", "") == "conversation" &&
-        JsonValue(request, "operation", "") == "apply") {
-      std::vector<ConfigChange> changes;
-      std::string error;
-      if (!ParseConfigChanges(request, changes, error)) {
-        return {{"error", error}};
-      }
-      for (const ConfigChange& change : changes) {
-        error = ChooseForConversation(session, change.key,
-                                      change.unset ? "" : change.value);
-        if (!error.empty()) return {{"error", error}};
-        effects.push_back({{"key", change.key},
-                           {"effect", "next_turn"},
-                           {"text", "applies from your next message"}});
-      }
-    }
-    json reply = ConfigurationControl(
-        effects.empty() ? request : json{{"operation", "get"}}, manager);
-    if (!effects.empty()) reply["effects"] = std::move(effects);
-    return reply;
-  }
+  if (kind == "fork" || kind == "share") return ForkOrShare(session, request);
+  if (kind == "config") return ConfigureSession(session, request);
   if (kind == "revert") {
     return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),
                                         JsonValue(request, "path", ""));
@@ -200,29 +260,7 @@ json SessionControl(AppSession& session, const json& request) {
     return {{"exchanges", json::array({std::move(preview)})}};
   }
 
-  if (JsonValue(request, "kind", "") == "activity") {
-    if (JsonValue(request, "operation", "") != "followup") {
-      return ActivityControl(session.Runtime().processes, request);
-    }
-    Tool tool =
-        SubagentTool(session.ApiClient(), session.Runtime().processes,
-                     session.context.provider.routes,
-                     session.context.provider.providers, Debug().Enabled());
-    // From the interface it runs beside the conversation, never in its way.
-    json arguments = {{"operation", "followup"},
-                      {"agent_id", JsonValue(request, "agent_id", "")},
-                      {"prompt", JsonValue(request, "text", "")},
-                      {"background", true}};
-    const std::string model = JsonValue(request, "model", "");
-    if (!model.empty()) arguments["model"] = model;
-    // A follow-up is not a decision about tools: the child keeps the ceiling
-    // of the conversation it belongs to.
-    ToolContext context;
-    context.enabled_tools = session.ActiveAgent().EnabledTools();
-    ToolResult result = tool.run(arguments, context);
-    return result.Ok() ? json{{"output", result.output}}
-                       : json{{"error", result.output}};
-  }
+  if (kind == "activity") return SessionActivity(session, request);
   if (JsonValue(request, "operation", "") == "catalog") {
     return ModelCatalogue(session.ApiClient(), session.context.provider.routes,
                           session.context.provider.providers,
@@ -231,26 +269,7 @@ json SessionControl(AppSession& session, const json& request) {
   if (JsonValue(request, "operation", "") != "select") {
     return {{"error", "unknown model operation"}};
   }
-  std::string value = JsonValue(request, "model", "");
-  ModelSelection selection = ParseModelSelection(value);
-  std::string variant = JsonValue(request, "variant", "default");
-  std::string effort = JsonValue(request, "effort", "default");
-  if (variant == "default") variant.clear();
-  if (effort == "default") effort.clear();
-  if (selection.base.empty() || !ValidOpenRouterVariant(variant) ||
-      (!effort.empty() && !ValidEffort(effort))) {
-    return {{"error", "invalid model selection"}};
-  }
-  value = selection.base;
-  if (!variant.empty()) value += ":" + variant;
-  if (!effort.empty()) value += ":" + effort;
-  std::string selected =
-      SelectModel(session.ApiClient(), session.context.provider.routes,
-                  session.context.provider.providers, value);
-  if (selected.empty()) return {{"error", "unknown model"}};
-  SaveSelectedModel(session, selected, JsonValue(request, "default", false));
-  return {{"route", RouteSelection(session.ApiClient(),
-                                   session.context.provider.providers)}};
+  return SelectModelControl(session, request);
 }
 
 json ActivityControl(ProcessSupervisor& processes, const json& request) {

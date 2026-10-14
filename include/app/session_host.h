@@ -254,6 +254,10 @@ class SessionHost {
                          std::string& error) const;
   // False when the frame changed nothing a browser shows.
   bool ApplyRuntimeFrame(HostSession& session, json& frame);
+  // The parts of a runtime frame that change a session.
+  static void ApplyStateFrame(HostSession& session, json& frame);
+  static void RecordRunEvent(HostSession& session, const std::string& type,
+                             json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.
   static std::string RunResultFor(const std::string& outcome);
   std::chrono::steady_clock::time_point NextScheduleDeadline() const

@@ -53,7 +53,10 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
   const folders = page.getByRole("group", { name: "Folders" });
-  const header = folders.getByRole("button", { expanded: true });
+  const header = folders.getByRole("button", {
+    name: /^Conversations of /,
+    expanded: true,
+  });
   await expect(folders.locator(".session")).toHaveCount(1);
 
   await header.click();
@@ -61,7 +64,10 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await expect(folders.locator(".place-count")).toHaveText("(1)");
   // The open conversation is inside: the header is marked as its row was.
   await expect(
-    folders.getByRole("button", { expanded: false }),
+    folders.getByRole("button", {
+      name: /^Conversations of /,
+      expanded: false,
+    }),
   ).toHaveAttribute("aria-current", "true");
   // The fold is remembered.
   await page.reload();

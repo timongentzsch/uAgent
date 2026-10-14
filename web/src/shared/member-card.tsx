@@ -142,6 +142,7 @@ export function MemberAvatar({ item }: { item: Session }) {
         label={label}
         heading={name}
         trigger={<Avatar name={name} />}
+        className="member-avatar"
         buttonClass="avatar-button"
         size="icon"
       >

@@ -26,6 +26,25 @@ export async function newFolder(page, path) {
   await page.getByLabel("Folder on the host").fill(path);
 }
 
+// Opens a session's folder's panel from the place's name in the list, and
+// returns the panel's id.
+export async function openPanel(page, session) {
+  await page.goto(`/#session=${session.id}`);
+  // Narrow layouts keep the sessions in a drawer.
+  const drawer = page.getByLabel("Open conversations");
+  const button = page.getByTitle(/^Panel of /).first();
+  await expect(drawer.or(button)).toBeVisible();
+  if (await drawer.isVisible()) await drawer.click();
+  await button.click();
+  // Beside the chat, or behind the header's Board button on a phone.
+  await expect(
+    page
+      .getByRole("complementary", { name: "Board" })
+      .or(page.getByRole("button", { name: /^Board/ })),
+  ).toBeVisible();
+  return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
+}
+
 // The UI showcase is a development page: the Vite dev server serves it
 // (see playwright.config.js), not the native host.
 export { showcaseUrl as SHOWCASE_URL } from "./showcase-url.js";

@@ -22,11 +22,10 @@ function remembered(name: string) {
   };
 }
 
-// Places folded to their header, and panels showing who is in them.
+// Places folded to their header.
 export const collapsed = remembered("collapsed");
-export const panelsOpen = remembered("panels");
 
-// Redraws the caller when either set changes.
+// Redraws the caller when the set changes.
 export function useFolding() {
   const [, redraw] = useState(0);
   useEffect(() => {

@@ -120,8 +120,8 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
     0,
   );
 
-  // The panel of that folder is the faint row under its header.
-  await page.getByRole("button", { name: "Open panel of" }).click();
+  // The panel of that folder opens from the folder's name in the list.
+  await page.getByTitle(/^Panel of /).click();
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board).toBeVisible();
   // Its empty chat explains itself, and the input says whom it reaches.

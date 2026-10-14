@@ -1,6 +1,14 @@
 import type { ComponentChildren } from "preact";
-import { Box, Folder } from "lucide-preact";
+import { createLucideIcon, Folder } from "lucide-preact";
 import { DataText } from "./placeholder.tsx";
+
+// A workspace: four boxes of different sizes, drawn as the other icons are.
+const Workspace = createLucideIcon("workspace", [
+  ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1.5" }],
+  ["rect", { x: "11", y: "4", width: "10", height: "6", rx: "1.5" }],
+  ["rect", { x: "3", y: "12", width: "10", height: "8", rx: "1.5" }],
+  ["rect", { x: "15", y: "12", width: "6", height: "6", rx: "1.5" }],
+]);
 
 export const folderName = (path = "") =>
   path.split("/").filter(Boolean).slice(-2).join("/") ||
@@ -18,7 +26,7 @@ export default function FolderLabel({
 }) {
   return (
     <span class="folder-label" title={space ? undefined : path}>
-      {space ? <Box /> : <Folder />}
+      {space ? <Workspace /> : <Folder />}
       <span>
         <DataText>{children || folderName(path)}</DataText>
       </span>

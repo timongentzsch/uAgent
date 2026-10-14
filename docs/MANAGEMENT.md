@@ -11,6 +11,7 @@ places: the web UI (Library and Scheduled), the terminal (`/memory`,
 | remove or move one | `/memory forget KEY`, `/memory rename KEY TARGET`, `/memory copy KEY TARGET` |
 | see installed skills | `/skills` |
 | add a skill | `/skills set global/NAME @SKILL.md` |
+| take over what Claude Code and Codex keep | `/skills import [NAME\|all]`, `/memory import [NAME\|all]` |
 | switch a skill off or on | `/skills disable ID`, `/skills enable ID` |
 | list scheduled tasks and runs | `/schedule` |
 | run, pause or resume a task | `/schedule run ID`, `/schedule pause ID`, `/schedule resume ID` |
@@ -43,6 +44,16 @@ found.
 - Saved changes apply to new sessions. They do not rewrite a running agent's
   startup context.
 
+**Import** (in the web UI, the Library's Import button; in the terminal,
+`/skills import` and `/memory import`) lists the skills under
+`~/.claude/skills`, `~/.codex/skills` and the workspace's `.claude` and
+`.codex` folders, and this project's Claude Code memories, whether or not
+`UAGENT_OTHER_AGENTS` names the agent. Each entry says that it already
+exists, or why it cannot be imported: its license forbids copying, it is
+over the size limits, or it belongs to another project. Nothing is
+overwritten, and nothing is cut to fit. Codex's memory summary is listed
+too; condensing it takes a model, so invoke `$import`.
+
 In the web UI, **Edit** opens an item's source; drafts survive navigation in
 the current tab, and a stale revision cannot overwrite a newer file.
 **Refresh** picks up changes made by an external editor.
@@ -61,6 +72,7 @@ uagent --control '{"kind":"skills","action":"list","cwd":"/absolute/project"}'
 | `forget` | memory, skills | `key`, `revision` |
 | `rename`, `copy` | memory | `key`, `revision`, `target` |
 | `enable`, `disable` | skills | `key` |
+| `list`, `run` | import | `only` (`skill` or `memory`); `run` takes the `key` or `name` of a listed item, or `all` |
 
 Writes require the `revision` returned by `get`. New items use a
 `global/NAME` or `project/NAME` key with an empty revision; an existing skill

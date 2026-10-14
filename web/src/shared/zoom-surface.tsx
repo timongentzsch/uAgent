@@ -15,6 +15,7 @@ import {
   type ZoomView,
   TAP_SLOP_PX,
 } from "./zoom.ts";
+import "./zoom-surface.css";
 
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM = 2.5;

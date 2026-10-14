@@ -155,8 +155,8 @@ What a spec may assume about time:
   `browser.spec.js` and `showcase.spec.js`, and the pauses between the wheel
   and scroll steps in `scroll-stick.spec.js`.
 
-Playwright has two projects. `chromium` runs every spec. `webkit` runs `ui`,
-`ui-quality`, `browser`, `showcase`, `dismiss`, `history-anchor`,
+Playwright has two projects. `chromium` runs every spec. `webkit` runs `phone-layout`,
+`mobile-navigation`, `loading-surfaces`, `session-state`, `ui-quality`, `browser`, `showcase`, `dismiss`, `history-anchor`,
 `scroll-restore`, `scroll-stick` and `panel`. A failed test is retried
 once, locally and in CI; four workers run locally and two in CI; traces
 and screenshots of failures are kept in `web/test-results`.

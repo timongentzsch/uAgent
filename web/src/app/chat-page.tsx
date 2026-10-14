@@ -12,7 +12,7 @@ import type {
 } from "../shared/types.ts";
 import { useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
-import { useHostContext } from "../state/host-context.ts";
+import { useConversation, useHostContext } from "../state/host-context.ts";
 import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
@@ -102,8 +102,8 @@ export default function ChatPage({
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
 }) {
-  const { store, online, report, load, setFollowing, setModal } =
-    useHostContext();
+  const { store, online, report, load, setModal } = useHostContext();
+  const { setFollowing } = useConversation();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
   const blocks = useMemo(

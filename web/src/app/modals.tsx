@@ -21,7 +21,7 @@ import { SettingsLoading } from "../features/settings/loading.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
 import type Settings from "../features/settings/settings.tsx";
 import { useSnapshots, type Snapshots } from "../state/snapshot-store.ts";
-import { useHostContext } from "../state/host-context.ts";
+import { useConversation, useHostContext } from "../state/host-context.ts";
 import {
   browserDialog,
   conversationActions,
@@ -109,8 +109,8 @@ export default function Modals({
     report,
     setModal,
     showContext,
-    busy,
   } = useHostContext();
+  const { busy } = useConversation();
   const snapshots = useSnapshots(store, (all) =>
     modal || inspector ? all : NONE,
   );

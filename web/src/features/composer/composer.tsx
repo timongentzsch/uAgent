@@ -27,7 +27,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command, routes } from "../../state/api.ts";
-import { useHostContext } from "../../state/host-context.ts";
+import { useConversation, useHostContext } from "../../state/host-context.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import {
   dedupeName,
@@ -97,18 +97,8 @@ export default function Composer({
   // Continues that stopped turn.
   resume?: () => void;
 }) {
-  const {
-    online,
-    connection,
-    upload,
-    uploading,
-    busy,
-    act,
-    report,
-    following,
-    showContext,
-    zoom,
-  } = useHostContext();
+  const { online, connection, report, showContext } = useHostContext();
+  const { upload, uploading, busy, act, following, zoom } = useConversation();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same

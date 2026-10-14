@@ -25,7 +25,7 @@ import {
 } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
 import { api, command, requestId, routes } from "../state/api.ts";
-import { HostContext } from "../state/host-context.ts";
+import { ConversationContext, HostContext } from "../state/host-context.ts";
 import {
   Modal,
   Deferred,
@@ -902,37 +902,27 @@ function App() {
     () => ({
       online,
       connection,
-      act,
       report,
       store: snapshots,
       load,
       refresh,
       forget,
+      setModal,
+      showContext: () => latest.current.showContext(),
+    }),
+    [online, connection, report, snapshots, load, refresh, forget],
+  );
+  const conversation = useMemo(
+    () => ({
+      act,
       upload: attach,
       uploading,
       busy,
       following,
       setFollowing,
-      setModal,
-      showContext: () => latest.current.showContext(),
       zoom,
     }),
-    [
-      online,
-      connection,
-      act,
-      report,
-      snapshots,
-      load,
-      refresh,
-      forget,
-      attach,
-      uploading,
-      busy,
-      following,
-      setFollowing,
-      zoom,
-    ],
+    [act, attach, uploading, busy, following, setFollowing, zoom],
   );
   const sidebar = (
     <Sidebar
@@ -961,343 +951,349 @@ function App() {
   return (
     <TimePrefsContext.Provider value={timePrefs}>
       <HostContext.Provider value={host}>
-        <DetailContext.Provider value={detail}>
-          <ImageViewer.Provider value={setViewed}>
-            {/* Notices float over the app, never push it down. */}
-            <div class="toasts">
-              {(error || notice) && (
-                <div role={error ? "alert" : "status"} class="error-banner">
-                  <span>{error || notice}</span>
-                  <Button
-                    onClick={() => {
-                      setError("");
-                      setNotice("");
-                    }}
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              )}
-              {/* A waiting service worker means this view is stale (notably in an
+        <ConversationContext.Provider value={conversation}>
+          <DetailContext.Provider value={detail}>
+            <ImageViewer.Provider value={setViewed}>
+              {/* Notices float over the app, never push it down. */}
+              <div class="toasts">
+                {(error || notice) && (
+                  <div role={error ? "alert" : "status"} class="error-banner">
+                    <span>{error || notice}</span>
+                    <Button
+                      onClick={() => {
+                        setError("");
+                        setNotice("");
+                      }}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                )}
+                {/* A waiting service worker means this view is stale (notably in an
           installed PWA with no chrome to pull-to-refresh). Surface it
           here, not only in Settings, so reloads actually pick up fixes. */}
-              {update && (
-                <div role="status" class="update-banner">
-                  <span>Update available with the latest fixes.</span>
-                  <Button
-                    variant="primary"
-                    disabled={!!updateBlocked}
-                    title={
-                      updateBlocked ||
-                      "Reloads this view with the latest fixes."
-                    }
-                    onClick={() =>
-                      import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                        applyUpdate(update),
-                      )
-                    }
-                  >
-                    Refresh now
-                  </Button>
-                </div>
-              )}
-            </div>
-            {authenticated === false ? (
-              <Deferred
-                load={pairing}
-                paired={refresh}
-                report={report}
-                fallback={<Spinner label="Loading connection form…" surface />}
-              />
-            ) : (
-              <>
-                {/* First stop for a keyboard: past the sessions list. The hash
-                routes sessions, so the link moves focus itself. */}
-                <a
-                  class="skip-link"
-                  href="#conversation"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    document
-                      .getElementById("conversation")
-                      ?.focus({ preventScroll: true });
-                  }}
-                >
-                  Skip to conversation
-                </a>
-                <div class="shell">
-                  {!compact ? (
-                    <aside
-                      class="sidebar"
-                      aria-label="Projects and conversations"
+                {update && (
+                  <div role="status" class="update-banner">
+                    <span>Update available with the latest fixes.</span>
+                    <Button
+                      variant="primary"
+                      disabled={!!updateBlocked}
+                      title={
+                        updateBlocked ||
+                        "Reloads this view with the latest fixes."
+                      }
+                      onClick={() =>
+                        import("../shared/pwa.ts").then(({ applyUpdate }) =>
+                          applyUpdate(update),
+                        )
+                      }
                     >
-                      {sidebar}
-                    </aside>
-                  ) : (
-                    drawer && (
-                      <Modal
-                        title="Conversations"
-                        className="sidebar drawer"
-                        close={() => setDrawer(false)}
+                      Refresh now
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {authenticated === false ? (
+                <Deferred
+                  load={pairing}
+                  paired={refresh}
+                  report={report}
+                  fallback={
+                    <Spinner label="Loading connection form…" surface />
+                  }
+                />
+              ) : (
+                <>
+                  {/* First stop for a keyboard: past the sessions list. The hash
+                routes sessions, so the link moves focus itself. */}
+                  <a
+                    class="skip-link"
+                    href="#conversation"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      document
+                        .getElementById("conversation")
+                        ?.focus({ preventScroll: true });
+                    }}
+                  >
+                    Skip to conversation
+                  </a>
+                  <div class="shell">
+                    {!compact ? (
+                      <aside
+                        class="sidebar"
+                        aria-label="Projects and conversations"
                       >
                         {sidebar}
-                      </Modal>
-                    )
-                  )}
-                  <main class="conversation" id="conversation" tabIndex={-1}>
-                    <header class="conversation-head">
-                      {compact && (
-                        <IconButton
-                          label="Open conversations"
-                          onClick={() => setDrawer(true)}
+                      </aside>
+                    ) : (
+                      drawer && (
+                        <Modal
+                          title="Conversations"
+                          className="sidebar drawer"
+                          close={() => setDrawer(false)}
                         >
-                          <Menu />
-                        </IconButton>
-                      )}
-                      <div>
-                        <h1 title={session?.cwd}>
-                          {page === "library" ? (
-                            "Library"
-                          ) : page === "scheduled" ? (
-                            "Scheduled"
-                          ) : session?.kind === "panel" ? (
-                            `Panel · ${placeName(session.cwd)}`
-                          ) : session ? (
-                            session.title || "Your workspace"
-                          ) : opening ? (
-                            <span class="text-skeleton" aria-hidden="true">
-                              Loading conversation
-                            </span>
-                          ) : (
-                            "Your workspace"
-                          )}
-                        </h1>
-                        {/* What a panel started leads back to it. */}
-                        {page === "chat" && session?.kind === "thread" && (
-                          <p class="panel-subtitle">
-                            <Button
-                              variant="quiet"
-                              onClick={() => openPanel(session.folder || "")}
-                            >
-                              ‹ Panel · {placeName(session.folder)}
-                            </Button>
-                          </p>
+                          {sidebar}
+                        </Modal>
+                      )
+                    )}
+                    <main class="conversation" id="conversation" tabIndex={-1}>
+                      <header class="conversation-head">
+                        {compact && (
+                          <IconButton
+                            label="Open conversations"
+                            onClick={() => setDrawer(true)}
+                          >
+                            <Menu />
+                          </IconButton>
                         )}
-                        {page === "chat" && session?.kind === "panel" && (
-                          <PanelHelp
-                            editInstructions={() =>
-                              open({ type: "instructions" })
-                            }
-                          />
-                        )}
-                      </div>
-                      {browserAvailable && (
-                        <IconButton
-                          label={
-                            browsing
-                              ? "Open browser, agent working"
-                              : "Open browser"
-                          }
-                          class="browser-toggle"
-                          disabled={booting}
-                          onClick={() => setModal({ type: "browser" })}
-                        >
-                          <Globe2 />
-                          {browsing && <StatusLed state="running" />}
-                        </IconButton>
-                      )}
-                      {phone &&
-                        page === "chat" &&
-                        session?.kind === "panel" &&
-                        (() => {
-                          const waits = waitingOn(threads).length;
-                          return (
-                            <IconButton
-                              label={
-                                waits ? `Board, ${waits} need you` : "Board"
-                              }
-                              aria-haspopup="dialog"
-                              aria-expanded={boardOpen}
-                              onClick={() => setBoardOpen(true)}
-                            >
-                              <ListTree />
-                              {waits > 0 && <StatusLed state="active" />}
-                            </IconButton>
-                          );
-                        })()}
-                      {compact && (
                         <div>
-                          <IconButton label="Settings" onClick={settings}>
-                            <Settings />
-                          </IconButton>
-                        </div>
-                      )}
-                      {page === "chat" &&
-                        (session ? (
-                          conversationMenu(session, true)
-                        ) : opening ? (
-                          // Inert until the session is known.
-                          <IconButton label="Conversation menu" disabled>
-                            <Ellipsis />
-                          </IconButton>
-                        ) : null)}
-                    </header>
-                    {boardOpen && phone && session?.kind === "panel" && (
-                      <Modal
-                        title="Board"
-                        layout="sheet"
-                        className="side-sheet"
-                        close={() => setBoardOpen(false)}
-                      >
-                        <Board
-                          threads={threads}
-                          choose={(id) => {
-                            setBoardOpen(false);
-                            void choose(id);
-                          }}
-                          menu={conversationMenu}
-                          add={() => {
-                            setBoardOpen(false);
-                            addMember();
-                          }}
-                        />
-                      </Modal>
-                    )}
-                    {page !== "chat" && (
-                      <Deferred
-                        key={
-                          page === "library" ? `library:${libraryKind}` : page
-                        }
-                        load={
-                          page === "library" ? libraryModule : scheduledModule
-                        }
-                        initialKind={libraryKind}
-                        projects={projects}
-                        cwd={session?.cwd || projects[0] || ""}
-                        online={online}
-                        version={managementVersion}
-                        scheduled={catalogue.scheduled}
-                        unread={unread}
-                        choose={choose}
-                        refresh={refresh}
-                        fallback={
-                          <div class="management">
-                            <Spinner
-                              label={
-                                page === "library"
-                                  ? "Loading library…"
-                                  : "Loading scheduled tasks…"
+                          <h1 title={session?.cwd}>
+                            {page === "library" ? (
+                              "Library"
+                            ) : page === "scheduled" ? (
+                              "Scheduled"
+                            ) : session?.kind === "panel" ? (
+                              `Panel · ${placeName(session.cwd)}`
+                            ) : session ? (
+                              session.title || "Your workspace"
+                            ) : opening ? (
+                              <span class="text-skeleton" aria-hidden="true">
+                                Loading conversation
+                              </span>
+                            ) : (
+                              "Your workspace"
+                            )}
+                          </h1>
+                          {/* What a panel started leads back to it. */}
+                          {page === "chat" && session?.kind === "thread" && (
+                            <p class="panel-subtitle">
+                              <Button
+                                variant="quiet"
+                                onClick={() => openPanel(session.folder || "")}
+                              >
+                                ‹ Panel · {placeName(session.folder)}
+                              </Button>
+                            </p>
+                          )}
+                          {page === "chat" && session?.kind === "panel" && (
+                            <PanelHelp
+                              editInstructions={() =>
+                                open({ type: "instructions" })
                               }
-                              surface
                             />
+                          )}
+                        </div>
+                        {browserAvailable && (
+                          <IconButton
+                            label={
+                              browsing
+                                ? "Open browser, agent working"
+                                : "Open browser"
+                            }
+                            class="browser-toggle"
+                            disabled={booting}
+                            onClick={() => setModal({ type: "browser" })}
+                          >
+                            <Globe2 />
+                            {browsing && <StatusLed state="running" />}
+                          </IconButton>
+                        )}
+                        {phone &&
+                          page === "chat" &&
+                          session?.kind === "panel" &&
+                          (() => {
+                            const waits = waitingOn(threads).length;
+                            return (
+                              <IconButton
+                                label={
+                                  waits ? `Board, ${waits} need you` : "Board"
+                                }
+                                aria-haspopup="dialog"
+                                aria-expanded={boardOpen}
+                                onClick={() => setBoardOpen(true)}
+                              >
+                                <ListTree />
+                                {waits > 0 && <StatusLed state="active" />}
+                              </IconButton>
+                            );
+                          })()}
+                        {compact && (
+                          <div>
+                            <IconButton label="Settings" onClick={settings}>
+                              <Settings />
+                            </IconButton>
                           </div>
+                        )}
+                        {page === "chat" &&
+                          (session ? (
+                            conversationMenu(session, true)
+                          ) : opening ? (
+                            // Inert until the session is known.
+                            <IconButton label="Conversation menu" disabled>
+                              <Ellipsis />
+                            </IconButton>
+                          ) : null)}
+                      </header>
+                      {boardOpen && phone && session?.kind === "panel" && (
+                        <Modal
+                          title="Board"
+                          layout="sheet"
+                          className="side-sheet"
+                          close={() => setBoardOpen(false)}
+                        >
+                          <Board
+                            threads={threads}
+                            choose={(id) => {
+                              setBoardOpen(false);
+                              void choose(id);
+                            }}
+                            menu={conversationMenu}
+                            add={() => {
+                              setBoardOpen(false);
+                              addMember();
+                            }}
+                          />
+                        </Modal>
+                      )}
+                      {page !== "chat" && (
+                        <Deferred
+                          key={
+                            page === "library" ? `library:${libraryKind}` : page
+                          }
+                          load={
+                            page === "library" ? libraryModule : scheduledModule
+                          }
+                          initialKind={libraryKind}
+                          projects={projects}
+                          cwd={session?.cwd || projects[0] || ""}
+                          online={online}
+                          version={managementVersion}
+                          scheduled={catalogue.scheduled}
+                          unread={unread}
+                          choose={choose}
+                          refresh={refresh}
+                          fallback={
+                            <div class="management">
+                              <Spinner
+                                label={
+                                  page === "library"
+                                    ? "Loading library…"
+                                    : "Loading scheduled tasks…"
+                                }
+                                surface
+                              />
+                            </div>
+                          }
+                        />
+                      )}
+                      <ChatPage
+                        active={page === "chat"}
+                        historyKey={
+                          page === "chat"
+                            ? `${page}:${selected}`
+                            : `page:${page}`
                         }
+                        selected={selected}
+                        session={session}
+                        opening={opening}
+                        catalogue={catalogue}
+                        outgoing={outgoing}
+                        loadError={loadErrors[selected]}
+                        menu={conversationMenu}
+                        addMember={addMember}
+                        draft={draft}
+                        setDraft={setDraft}
+                        submit={submit}
+                        updateView={updateView}
+                        choose={choose}
+                        side={side}
+                        closeSide={closeSide}
+                        actions={chatActions}
+                        setInspector={setInspector}
                       />
-                    )}
-                    <ChatPage
-                      active={page === "chat"}
-                      historyKey={
-                        page === "chat" ? `${page}:${selected}` : `page:${page}`
-                      }
-                      selected={selected}
-                      session={session}
-                      opening={opening}
-                      catalogue={catalogue}
-                      outgoing={outgoing}
-                      loadError={loadErrors[selected]}
-                      menu={conversationMenu}
-                      addMember={addMember}
-                      draft={draft}
-                      setDraft={setDraft}
-                      submit={submit}
-                      updateView={updateView}
+                    </main>
+                  </div>
+                </>
+              )}
+              {overlay && (
+                // Keyed: an action that opens the other one replaces this dialog
+                // instead of closing it under the new one.
+                <Modal
+                  key={overlay}
+                  title={
+                    overlay === "palette"
+                      ? "Command palette"
+                      : "Keyboard shortcuts"
+                  }
+                  layout="sheet"
+                  size="narrow"
+                  close={() => setOverlay(null)}
+                >
+                  {overlay === "palette" ? (
+                    <Deferred
+                      load={paletteDialog}
+                      fallback={<Spinner label="Loading…" surface />}
+                      sessions={listed}
+                      commands={catalogue.commands || []}
                       choose={choose}
-                      side={side}
-                      closeSide={closeSide}
-                      actions={chatActions}
-                      setInspector={setInspector}
+                      start={(cwd: string, panel?: boolean) =>
+                        void startConversation(cwd, panel).catch(report)
+                      }
+                      run={runCommand}
+                      settings={(section: string) =>
+                        open({ type: "settings", section })
+                      }
+                      actions={{ ...shortcutActions, palette: undefined }}
                     />
-                  </main>
-                </div>
-              </>
-            )}
-            {overlay && (
-              // Keyed: an action that opens the other one replaces this dialog
-              // instead of closing it under the new one.
-              <Modal
-                key={overlay}
-                title={
-                  overlay === "palette"
-                    ? "Command palette"
-                    : "Keyboard shortcuts"
-                }
-                layout="sheet"
-                size="narrow"
-                close={() => setOverlay(null)}
-              >
-                {overlay === "palette" ? (
-                  <Deferred
-                    load={paletteDialog}
-                    fallback={<Spinner label="Loading…" surface />}
-                    sessions={listed}
-                    commands={catalogue.commands || []}
-                    choose={choose}
-                    start={(cwd: string, panel?: boolean) =>
-                      void startConversation(cwd, panel).catch(report)
-                    }
-                    run={runCommand}
-                    settings={(section: string) =>
-                      open({ type: "settings", section })
-                    }
-                    actions={{ ...shortcutActions, palette: undefined }}
-                  />
-                ) : (
-                  <Deferred
-                    load={shortcutsDialog}
-                    fallback={<Spinner label="Loading…" surface />}
-                  />
-                )}
-              </Modal>
-            )}
-            <Modals
-              modal={modal}
-              inspector={inspector}
-              setInspector={setInspector}
-              viewed={viewed}
-              setViewed={setViewed}
-              annotate={session && online ? attachAnnotated : undefined}
-              selected={selected}
-              session={session}
-              catalogue={catalogue}
-              compact={compact}
-              managementVersion={managementVersion}
-              projects={projects}
-              folder={folder}
-              setFolder={setFolder}
-              space={space}
-              setSpace={setSpace}
-              create={create}
-              preferences={{
-                theme,
-                setTheme,
-                motion,
-                setMotion,
-                timePrefs,
-                setTimePrefs,
-                zoom,
-                setZoom,
-                install,
-                setInstall,
-                update,
-                updateBlocked: !!updateBlocked,
-                notificationMode,
-                setNotificationMode,
-                notifications,
-                logout,
-              }}
-            />
-          </ImageViewer.Provider>
-        </DetailContext.Provider>
+                  ) : (
+                    <Deferred
+                      load={shortcutsDialog}
+                      fallback={<Spinner label="Loading…" surface />}
+                    />
+                  )}
+                </Modal>
+              )}
+              <Modals
+                modal={modal}
+                inspector={inspector}
+                setInspector={setInspector}
+                viewed={viewed}
+                setViewed={setViewed}
+                annotate={session && online ? attachAnnotated : undefined}
+                selected={selected}
+                session={session}
+                catalogue={catalogue}
+                compact={compact}
+                managementVersion={managementVersion}
+                projects={projects}
+                folder={folder}
+                setFolder={setFolder}
+                space={space}
+                setSpace={setSpace}
+                create={create}
+                preferences={{
+                  theme,
+                  setTheme,
+                  motion,
+                  setMotion,
+                  timePrefs,
+                  setTimePrefs,
+                  zoom,
+                  setZoom,
+                  install,
+                  setInstall,
+                  update,
+                  updateBlocked: !!updateBlocked,
+                  notificationMode,
+                  setNotificationMode,
+                  notifications,
+                  logout,
+                }}
+              />
+            </ImageViewer.Provider>
+          </DetailContext.Provider>
+        </ConversationContext.Provider>
       </HostContext.Provider>
     </TimePrefsContext.Provider>
   );

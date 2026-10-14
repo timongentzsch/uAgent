@@ -17,6 +17,7 @@ export const protocol = 2;
 export const routes = {
   auth: "/api/auth",
   browserStatus: "/api/browser/status",
+  browserViewer: "/api/browser/viewer",
   command: "/api/command",
   pushSubscriptions: "/api/push/subscriptions",
   refreshedSessions: "/api/sessions?refresh=1",

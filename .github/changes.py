@@ -34,8 +34,7 @@ def heavy(paths, old, new):
         path.startswith(HEAVY_DIRS)
         or path in ("CMakeLists.txt", "CMakePresets.json")
         or (
-            path.endswith((".cc", ".h"))
-            and any(name in old(path) + new(path) for name in SWITCHES)
+            path.endswith((".cc", ".h")) and any(name in old(path) + new(path) for name in SWITCHES)
         )
         for path in paths
     )

@@ -108,10 +108,11 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "create an AGENTS.md file with instructions for \u00b5Agent"},
     {SlashCommandId::kMemory, "/memory",
      "[list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY "
-     "TARGET]",
+     "TARGET|import [NAME|all]]",
      "manage project and global memories"},
     {SlashCommandId::kSkills, "/skills",
-     "[list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]",
+     "[list|get ID|set KEY @FILE|forget ID|enable ID|disable ID|import "
+     "[NAME|all]]",
      "inspect and manage installed skills"},
     {SlashCommandId::kSchedule, "/schedule",
      "[list|run ID|pause ID|resume ID|forget ID|stop RUN|JSON]",

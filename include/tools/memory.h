@@ -25,6 +25,8 @@ json MemoryControl(const json& request, const std::filesystem::path& workspace);
 std::vector<MemoryEntry> ListMemories();
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit = 0);
+// Where Claude Code keeps the memories of the project `cwd` belongs to.
+std::filesystem::path ClaudeMemoryPath(const std::filesystem::path& cwd);
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes);
 // Behavioral always-on slice: full content of global-scope memories, capped.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,

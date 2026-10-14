@@ -263,6 +263,133 @@ json ScheduleTimes(const json& schedule, int64_t after) {
              ? ControlProcess(request)
              : ScheduleCalendar(request);
 }
+json ScheduleGet(const json& request) {
+  auto store = Public(ReadSchedules());
+  if (store.contains("error")) return store;
+  for (const auto& task : store["tasks"]) {
+    if (JsonValue(task, "id", "") == JsonValue(request, "key", "")) {
+      return {{"item", task}};
+    }
+  }
+  return {{"error", "scheduled task not found"}};
+}
+json ScheduleStop(json& store, const std::string& id) {
+  for (auto& run : store["runs"]) {
+    if (JsonValue(run, "id", "") == id &&
+        ScheduledRunActive(JsonValue(run, "status", ""))) {
+      run["status"] =
+          JsonValue(run, "status", "") == "queued" ? "interrupted" : "stopping";
+      run["updated"] = NowSeconds();
+      return {{"stopped", id}};
+    }
+  }
+  return {{"error", "active run not found"}};
+}
+json ScheduleSave(json& store, const json& request, const std::string& id,
+                  const json::iterator& found) {
+  json task = JsonValue(request, "task", json::object());
+  const std::string name = Trim(JsonValue(task, "name", ""));
+  const std::string prompt = Trim(JsonValue(task, "prompt", ""));
+  const auto environment = JsonValue(task, "environment", "worktree");
+  // The approval modes, by their own names; a task saved as "prompt"
+  // asks.
+  std::string permissions = JsonValue(task, "permissions", "ask");
+  if (permissions == "prompt") permissions = "ask";
+  task["permissions"] = permissions;
+  if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
+      prompt.size() > kSchedulePromptChars ||
+      (environment != "local" && environment != "worktree") ||
+      !Cfg("UAGENT_APPROVAL").Accepts(permissions)) {
+    return {{"error",
+             "provide a name, instructions, execution environment and "
+             "permissions"}};
+  }
+  const auto cwd = CanonicalDirectory(JsonValue(task, "cwd", ""));
+  if (!cwd) return {{"error", "project is unavailable"}};
+  if (found == store["tasks"].end() &&
+      (!id.empty() || store["tasks"].size() >= kTasks)) {
+    return {{"error", "task not found or task limit reached"}};
+  }
+  if (!request.contains("revision") ||
+      JsonValue(request, "revision", "") !=
+          (found == store["tasks"].end() ? ""
+                                         : JsonValue(*found, "revision", ""))) {
+    return {{"error", "This task changed. Reload it before saving."},
+            {"conflict", true}};
+  }
+  auto schedule = JsonValue(task, "schedule", json::object());
+  if (JsonValue(schedule, "type", "") == "interval" &&
+      !schedule.contains("start")) {
+    schedule["start"] = NowSeconds();
+  }
+  auto preview = ScheduleTimes(schedule, NowSeconds());
+  if (preview.contains("error")) return preview;
+  if (preview["times"].empty()) {
+    return {{"error", "choose a future run time"}};
+  }
+  json saved = {{"id", id.empty() ? HashHex(MakeSessionId()) : id},
+                {"revision", HashHex(MakeSessionId())},
+                {"name", name},
+                {"prompt", prompt},
+                {"cwd", cwd->string()},
+                {"environment", environment},
+                {"permissions", permissions},
+                {"model", JsonValue(task, "model", "")},
+                {"schedule", schedule},
+                {"enabled", JsonValue(task, "enabled", true)},
+                {"next", preview["times"][0]},
+                {"upcoming", preview["times"]}};
+  if (found == store["tasks"].end()) {
+    store["tasks"].push_back(saved);
+  } else {
+    *found = saved;
+  }
+  return {{"item", saved}};
+}
+json ScheduleRun(json& store, const std::string& id, const json& task) {
+  if (!FileLease::HasLiveOwner(UagentDir("web") + "/master.lock")) {
+    return {{"error", "Start uagent --web to run scheduled tasks."}};
+  }
+  if (Busy(store, id)) {
+    return {{"error", "this task already has an active run"}};
+  }
+  auto run = Run(task, NowSeconds(), "queued");
+  store["runs"].push_back(run);
+  return {{"run", Public({{"runs", json::array({run})}})["runs"][0]}};
+}
+// pause, resume and forget: all need the revision the caller saw, and all but
+// resume drop the task's queued runs.
+json ScheduleChange(json& store, const json& request, const std::string& id,
+                    const json::iterator& found, const std::string& action) {
+  if (JsonValue(request, "revision", "") != JsonValue(*found, "revision", "")) {
+    return {{"error", "This task changed. Reload it before changing it."},
+            {"conflict", true}};
+  }
+  if (action != "resume") {
+    for (auto& run : store["runs"]) {
+      if (JsonValue(run, "task_id", "") == id &&
+          JsonValue(run, "status", "") == "queued") {
+        run["status"] = "interrupted";
+        run["updated"] = NowSeconds();
+      }
+    }
+  }
+  if (action == "forget") {
+    store["tasks"].erase(found);
+    return {{"deleted", id}};
+  }
+  (*found)["enabled"] = action == "resume";
+  if (action == "resume") {
+    auto preview = ScheduleTimes((*found)["schedule"], NowSeconds());
+    if (preview.contains("error") || preview["times"].empty()) {
+      return {{"error", "edit the task to choose a future run time"}};
+    }
+    (*found)["next"] = preview["times"][0];
+    (*found)["upcoming"] = preview["times"];
+  }
+  (*found)["revision"] = HashHex(MakeSessionId());
+  return {{"item", *found}};
+}
 json ScheduleControl(const json& request) {
   const auto action = JsonValue(request, "action", "list");
   if (action == "list") {
@@ -275,141 +402,20 @@ json ScheduleControl(const json& request) {
     return ScheduleTimes(JsonValue(request, "schedule", json::object()),
                          JsonValue(request, "after", NowSeconds()));
   }
-  if (action == "get") {
-    auto store = Public(ReadSchedules());
-    if (store.contains("error")) return store;
-    for (const auto& task : store["tasks"]) {
-      if (JsonValue(task, "id", "") == JsonValue(request, "key", "")) {
-        return {{"item", task}};
-      }
-    }
-    return {{"error", "scheduled task not found"}};
-  }
+  if (action == "get") return ScheduleGet(request);
   return Mutate([&](json& store) -> json {
     const auto id = JsonValue(request, "key", "");
     auto found = std::find_if(
         store["tasks"].begin(), store["tasks"].end(),
         [&](const json& task) { return JsonValue(task, "id", "") == id; });
-    if (action == "stop") {
-      for (auto& run : store["runs"]) {
-        if (JsonValue(run, "id", "") == id &&
-            ScheduledRunActive(JsonValue(run, "status", ""))) {
-          run["status"] = JsonValue(run, "status", "") == "queued"
-                              ? "interrupted"
-                              : "stopping";
-          run["updated"] = NowSeconds();
-          return {{"stopped", id}};
-        }
-      }
-      return {{"error", "active run not found"}};
-    }
-    if (action == "save") {
-      json task = JsonValue(request, "task", json::object());
-      const std::string name = Trim(JsonValue(task, "name", ""));
-      const std::string prompt = Trim(JsonValue(task, "prompt", ""));
-      const auto environment = JsonValue(task, "environment", "worktree");
-      // The approval modes, by their own names; a task saved as "prompt"
-      // asks.
-      std::string permissions = JsonValue(task, "permissions", "ask");
-      if (permissions == "prompt") permissions = "ask";
-      task["permissions"] = permissions;
-      if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
-          prompt.size() > kSchedulePromptChars ||
-          (environment != "local" && environment != "worktree") ||
-          !Cfg("UAGENT_APPROVAL").Accepts(permissions)) {
-        return {{"error",
-                 "provide a name, instructions, execution environment and "
-                 "permissions"}};
-      }
-      const auto cwd = CanonicalDirectory(JsonValue(task, "cwd", ""));
-      if (!cwd) return {{"error", "project is unavailable"}};
-      if (found == store["tasks"].end() &&
-          (!id.empty() || store["tasks"].size() >= kTasks)) {
-        return {{"error", "task not found or task limit reached"}};
-      }
-      if (!request.contains("revision") ||
-          JsonValue(request, "revision", "") !=
-              (found == store["tasks"].end()
-                   ? ""
-                   : JsonValue(*found, "revision", ""))) {
-        return {{"error", "This task changed. Reload it before saving."},
-                {"conflict", true}};
-      }
-      auto schedule = JsonValue(task, "schedule", json::object());
-      if (JsonValue(schedule, "type", "") == "interval" &&
-          !schedule.contains("start")) {
-        schedule["start"] = NowSeconds();
-      }
-      auto preview = ScheduleTimes(schedule, NowSeconds());
-      if (preview.contains("error")) return preview;
-      if (preview["times"].empty()) {
-        return {{"error", "choose a future run time"}};
-      }
-      json saved = {{"id", id.empty() ? HashHex(MakeSessionId()) : id},
-                    {"revision", HashHex(MakeSessionId())},
-                    {"name", name},
-                    {"prompt", prompt},
-                    {"cwd", cwd->string()},
-                    {"environment", environment},
-                    {"permissions", permissions},
-                    {"model", JsonValue(task, "model", "")},
-                    {"schedule", schedule},
-                    {"enabled", JsonValue(task, "enabled", true)},
-                    {"next", preview["times"][0]},
-                    {"upcoming", preview["times"]}};
-      if (found == store["tasks"].end()) {
-        store["tasks"].push_back(saved);
-      } else {
-        *found = saved;
-      }
-      return {{"item", saved}};
-    }
+    if (action == "stop") return ScheduleStop(store, id);
+    if (action == "save") return ScheduleSave(store, request, id, found);
     if (found == store["tasks"].end()) {
       return {{"error", "scheduled task not found"}};
     }
-    if (action == "run") {
-      if (!FileLease::HasLiveOwner(UagentDir("web") + "/master.lock")) {
-        return {{"error", "Start uagent --web to run scheduled tasks."}};
-      }
-      if (Busy(store, id)) {
-        return {{"error", "this task already has an active run"}};
-      }
-      auto run = Run(*found, NowSeconds(), "queued");
-      store["runs"].push_back(run);
-      return {{"run", Public({{"runs", json::array({run})}})["runs"][0]}};
-    }
+    if (action == "run") return ScheduleRun(store, id, *found);
     if (action == "pause" || action == "resume" || action == "forget") {
-      if (JsonValue(request, "revision", "") !=
-          JsonValue(*found, "revision", "")) {
-        return {{"error", "This task changed. Reload it before changing it."},
-                {"conflict", true}};
-      }
-      if (action != "resume") {
-        for (auto& run : store["runs"]) {
-          if (JsonValue(run, "task_id", "") == id &&
-              JsonValue(run, "status", "") == "queued") {
-            run["status"] = "interrupted";
-            run["updated"] = NowSeconds();
-          }
-        }
-      }
-    }
-    if (action == "pause" || action == "resume") {
-      (*found)["enabled"] = action == "resume";
-      if (action == "resume") {
-        auto preview = ScheduleTimes((*found)["schedule"], NowSeconds());
-        if (preview.contains("error") || preview["times"].empty()) {
-          return {{"error", "edit the task to choose a future run time"}};
-        }
-        (*found)["next"] = preview["times"][0];
-        (*found)["upcoming"] = preview["times"];
-      }
-      (*found)["revision"] = HashHex(MakeSessionId());
-      return {{"item", *found}};
-    }
-    if (action == "forget") {
-      store["tasks"].erase(found);
-      return {{"deleted", id}};
+      return ScheduleChange(store, request, id, found, action);
     }
     return {{"error", "unknown schedule action"}};
   });

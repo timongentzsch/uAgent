@@ -31,6 +31,46 @@ SessionStatus LiveStatus(const HostSession& session) {
          : session.command_busy             ? SessionStatus::kProcessing
                                             : SessionStatus::kIdle;
 }
+
+// Sets next["view"]: the held view merged with what the worker
+// sent.
+void MergeView(HostSession& session, json& next) {
+  // A rewound conversation starts a new view epoch: its old blocks are
+  // gone, so the checkpoint replaces the view instead of merging into it.
+  json view = json::object();
+  if (auto held = session.state.find("view");
+      held != session.state.end() &&
+      JsonValue(next, "view_epoch", uint64_t{0}) ==
+          JsonValue(session.state, "view_epoch", uint64_t{0})) {
+    view = std::move(*held);
+  }
+  if (const json* checkpoint_view = JsonObject(next, "view")) {
+    for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
+         ++it) {
+      if (it.key() != "blocks") view[it.key()] = it.value();
+    }
+    if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
+      for (const json& block : *blocks) MergeDisplayBlock(view, block);
+    }
+  }
+  if (!view.contains("blocks")) view["blocks"] = json::array();
+  next["view"] = std::move(view);
+}
+
+// The tool result a browser may ask to see in full, kept while it is recent.
+void RetainExchange(HostSession& session, const json& data) {
+  const std::string detail = JsonValue(data, "detail_id", "");
+  if (detail.empty()) return;
+  if (session.active_exchanges.size() >= kMaxActiveExchanges) {
+    session.active_exchanges.erase(session.active_exchanges.begin());
+  }
+  session.active_exchanges[detail] = {
+      {"request",
+       {{"name", JsonValue(data, "name", "")},
+        {"arguments", "retained with tool call"}}},
+      {"response", JsonValue(data, "result", "")},
+      {"complete", true}};
+}
 }  // namespace
 
 std::string SessionHost::RunResultFor(const std::string& outcome) {
@@ -308,72 +348,75 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
   }  // for (attempt): single pass unless a stale worker recycled above
 }
 
+void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
+  auto sent = frame.find("state");
+  json next = sent != frame.end() ? std::move(*sent) : json::object();
+  MergeView(session, next);
+  // Between checkpoints the worker sends only light state: keep the rest.
+  for (const char* field : session::kCheckpointFields) {
+    if (!next.contains(field) && session.state.contains(field)) {
+      next[field] = std::move(session.state[field]);
+    }
+  }
+  session.state = std::move(next);
+  // Browsers hold the host's view, never the worker's partial one, and
+  // apply block patches to it between checkpoints.
+  const bool checkpoint = JsonValue(frame, "checkpoint", false);
+  frame["state"] =
+      checkpoint ? session.state : session::LightState(session.state);
+  session.pending = JsonValue(frame, "pending", json(nullptr));
+  session.turn_active = JsonValue(frame, "busy", false);
+  session.command_busy = JsonValue(frame, "command_busy", false);
+  session.guidance = JsonValue(frame, "guidance", uint64_t{0});
+  session.status = LiveStatus(session);
+  if (checkpoint) {
+    if (!session.run_id.empty() && !session.turn_active) {
+      if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
+        for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
+          if (JsonValue(*it, "kind", "") != "turn_summary") continue;
+          session.run_result =
+              RunResultFor(JsonValue((*it)["summary"], "outcome", "error"));
+          break;
+        }
+      }
+    }
+    if (!session.run_result.empty()) session.run_checkpoint = true;
+    session.live_truncated = false;
+    session.active_exchanges.clear();
+    session.updated = NowMillis();
+    const std::string title = JsonValue(session.state, "title", "");
+    if (!title.empty()) session.title = title;
+    // A member is called what its session is.
+    if (!title.empty() && session.kind == kSessionKindThread &&
+        !session.member.empty()) {
+      session.member = title;
+    }
+  }
+  frame["updated"] = session.updated;
+}
+
+// What a run learns from the events of its turns.
+void SessionHost::RecordRunEvent(HostSession& session, const std::string& type,
+                                 json& frame) {
+  if (!session.run_id.empty()) {
+    if (type == "turn.completed") {
+      const std::string outcome = JsonValue(frame["data"], "outcome", "error");
+      session.run_result = RunResultFor(outcome);
+      if (session.run_result == "failed") {
+        session.error = "Turn ended: " + outcome;
+      }
+    } else if (type == "turn.stopped") {
+      session.run_result = "interrupted";
+    } else if (type == "error") {
+      session.error = JsonValue(frame["data"], "error", "scheduled run failed");
+    }
+  }
+}
+
 bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
-    auto sent = frame.find("state");
-    json next = sent != frame.end() ? std::move(*sent) : json::object();
-    // A rewound conversation starts a new view epoch: its old blocks are
-    // gone, so the checkpoint replaces the view instead of merging into it.
-    json view = json::object();
-    if (auto held = session.state.find("view");
-        held != session.state.end() &&
-        JsonValue(next, "view_epoch", uint64_t{0}) ==
-            JsonValue(session.state, "view_epoch", uint64_t{0})) {
-      view = std::move(*held);
-    }
-    if (const json* checkpoint_view = JsonObject(next, "view")) {
-      for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
-           ++it) {
-        if (it.key() != "blocks") view[it.key()] = it.value();
-      }
-      if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
-        for (const json& block : *blocks) MergeDisplayBlock(view, block);
-      }
-    }
-    if (!view.contains("blocks")) view["blocks"] = json::array();
-    next["view"] = std::move(view);
-    // Between checkpoints the worker sends only light state: keep the rest.
-    for (const char* field : session::kCheckpointFields) {
-      if (!next.contains(field) && session.state.contains(field)) {
-        next[field] = std::move(session.state[field]);
-      }
-    }
-    session.state = std::move(next);
-    // Browsers hold the host's view, never the worker's partial one, and
-    // apply block patches to it between checkpoints.
-    const bool checkpoint = JsonValue(frame, "checkpoint", false);
-    frame["state"] =
-        checkpoint ? session.state : session::LightState(session.state);
-    session.pending = JsonValue(frame, "pending", json(nullptr));
-    session.turn_active = JsonValue(frame, "busy", false);
-    session.command_busy = JsonValue(frame, "command_busy", false);
-    session.guidance = JsonValue(frame, "guidance", uint64_t{0});
-    session.status = LiveStatus(session);
-    if (checkpoint) {
-      if (!session.run_id.empty() && !session.turn_active) {
-        if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
-          for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
-            if (JsonValue(*it, "kind", "") != "turn_summary") continue;
-            session.run_result =
-                RunResultFor(JsonValue((*it)["summary"], "outcome", "error"));
-            break;
-          }
-        }
-      }
-      if (!session.run_result.empty()) session.run_checkpoint = true;
-      session.live_truncated = false;
-      session.active_exchanges.clear();
-      session.updated = NowMillis();
-      const std::string title = JsonValue(session.state, "title", "");
-      if (!title.empty()) session.title = title;
-      // A member is called what its session is.
-      if (!title.empty() && session.kind == kSessionKindThread &&
-          !session.member.empty()) {
-        session.member = title;
-      }
-    }
-    frame["updated"] = session.updated;
+    ApplyStateFrame(session, frame);
     return true;
   }
   if (kind == "activity") {
@@ -399,36 +442,10 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   // Terminal renderings of what the transcript rows already show; terminals
   // read them from the worker, browsers never do.
   if (type == "ui.presentation") return false;
-  if (!session.run_id.empty()) {
-    if (type == "turn.completed") {
-      const std::string outcome = JsonValue(frame["data"], "outcome", "error");
-      session.run_result = RunResultFor(outcome);
-      if (session.run_result == "failed") {
-        session.error = "Turn ended: " + outcome;
-      }
-    } else if (type == "turn.stopped") {
-      session.run_result = "interrupted";
-    } else if (type == "error") {
-      session.error = JsonValue(frame["data"], "error", "scheduled run failed");
-    }
-  }
+  RecordRunEvent(session, type, frame);
   json patch;
   ApplySessionEvent(session.state, type, frame["data"], &patch);
-  if (type == "tool.result") {
-    const json& data = frame["data"];
-    const std::string detail = JsonValue(data, "detail_id", "");
-    if (!detail.empty()) {
-      if (session.active_exchanges.size() >= kMaxActiveExchanges) {
-        session.active_exchanges.erase(session.active_exchanges.begin());
-      }
-      session.active_exchanges[detail] = {
-          {"request",
-           {{"name", JsonValue(data, "name", "")},
-            {"arguments", "retained with tool call"}}},
-          {"response", JsonValue(data, "result", "")},
-          {"complete", true}};
-    }
-  }
+  if (type == "tool.result") RetainExchange(session, frame["data"]);
   if (type == "message.changed") {
     const json& block = frame["data"]["block"];
     session.incoming =

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" width="800" height="300" role="img" aria-label="Footprint of the agents">
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .title { font-size: 13px; font-weight: 600; }
+  .name { font-size: 12px; }
+  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .note { font-size: 10px; fill: #656d76; }
+  .bar { fill: #b4bac1; }
+  .bar.uagent { fill: #0a69da; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #0d1117; }
+    text { fill: #e6edf3; }
+    .note { fill: #8b949e; }
+    .bar { fill: #4a525c; }
+    .bar.uagent { fill: #4493f8; }
+  }
+</style>
+<rect class="bg" width="800" height="300"/>
+<text class="title" x="20" y="32">Executable size, MB</text>
+<text class="name" x="20" y="59">µAgent</text>
+<rect class="bar uagent" x="104" y="46" width="6.0" height="18" rx="2"/>
+<text class="value" x="116.0" y="59">6.5</text>
+<text class="name" x="20" y="87">Claude Code</text>
+<rect class="bar" x="104" y="74" width="230.0" height="18" rx="2"/>
+<text class="value" x="340.0" y="87">247.9</text>
+<text class="name" x="20" y="115">Codex CLI</text>
+<rect class="bar" x="104" y="102" width="228.8" height="18" rx="2"/>
+<text class="value" x="338.8" y="115">246.6</text>
+<text class="title" x="420" y="32">Idle session memory, MB</text>
+<text class="name" x="420" y="59">µAgent</text>
+<rect class="bar uagent" x="504" y="46" width="30.7" height="18" rx="2"/>
+<text class="value" x="540.7" y="59">25.1</text>
+<text class="name" x="420" y="87">Claude Code</text>
+<rect class="bar" x="504" y="74" width="230.0" height="18" rx="2"/>
+<text class="value" x="740.0" y="87">188.5</text>
+<text class="name" x="420" y="115">Codex CLI</text>
+<rect class="bar" x="504" y="102" width="222.4" height="18" rx="2"/>
+<text class="value" x="732.4" y="115">182.2</text>
+<text class="title" x="20" y="167">CPU per headless turn, ms</text>
+<text class="name" x="20" y="194">µAgent</text>
+<rect class="bar uagent" x="104" y="181" width="18.8" height="18" rx="2"/>
+<text class="value" x="128.8" y="194">65</text>
+<text class="name" x="20" y="222">Claude Code</text>
+<rect class="bar" x="104" y="209" width="230.0" height="18" rx="2"/>
+<text class="value" x="340.0" y="222">790</text>
+<text class="name" x="20" y="250">Codex CLI</text>
+<rect class="bar" x="104" y="237" width="186.0" height="18" rx="2"/>
+<text class="value" x="296.0" y="250">639</text>
+<text class="title" x="420" y="167">Time to first screen, ms</text>
+<text class="name" x="420" y="194">µAgent</text>
+<rect class="bar uagent" x="504" y="181" width="7.2" height="18" rx="2"/>
+<text class="value" x="517.2" y="194">102</text>
+<text class="name" x="420" y="222">Claude Code</text>
+<rect class="bar" x="504" y="209" width="24.1" height="18" rx="2"/>
+<text class="value" x="534.1" y="222">344</text>
+<text class="name" x="420" y="250">Codex CLI</text>
+<rect class="bar" x="504" y="237" width="230.0" height="18" rx="2"/>
+<text class="value" x="740.0" y="250">3284</text>
+<text class="note" x="20" y="292">medians, Apple M1 Pro, 2026-10-14; see Footprint</text>
+</svg>

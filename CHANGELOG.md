@@ -69,6 +69,15 @@
 
 ### Added
 
+- Skills and memories that Claude Code and Codex keep can be imported:
+  `/skills import` and `/memory import` list what can be (nested skill
+  folders included, whether or not `UAGENT_OTHER_AGENTS` names the agent),
+  and `NAME` or `all` imports it. A skill folder is copied with its files
+  and its tool names turned into µAgent's, a Claude memory of this project
+  becomes a `project/NAME` memory, and what is too large, forbidden to copy
+  by its license or already present is named and left alone. The Library
+  has the same in its Import button. `$import` condenses Codex's memory
+  summary into global memories.
 - `browser`: `open` takes `path` in place of `url` and shows a self-contained
   `.html` or `.svg` file from the workspace. The agent no longer has to start
   a local server to look at a page it wrote; `file://` URLs stay refused.
@@ -156,6 +165,8 @@
 
 ### Fixed
 
+- `memory`: `list` and `search` accept the empty `key` and `content` that
+  models send for unused fields; they were refused.
 - `subagent`: `limits.seconds` stops a background child too. It was applied
   only by a parent that waited, so a child started in the background ran
   until someone stopped it.

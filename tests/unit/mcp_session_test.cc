@@ -540,6 +540,10 @@ void TestScopedBaseAndMemory() {
   CHECK(!fs::exists(project_memory));
   CHECK(ToolMemoryAction("forget", "project/build-uses-ninja", std::nullopt)
             .output.starts_with("error:"));
+  // A model that fills the unused fields with "" has not given any.
+  CHECK(ToolMemoryAction("list", "", std::string())
+            .output.starts_with("global/"));
+  CHECK(ToolMemoryAction("search", "tabs", std::string()).Ok());
 
   // Both scopes reach the separate evidence rail, project after global, each
   // labeled; human workspace rules remain the only project instructions.

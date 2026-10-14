@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "include/app/config_proposal.h"
+#include "include/app/import.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
 #include "include/core/file_watch.h"
@@ -214,6 +215,7 @@ json LibraryControl(const json& request,
   const std::string kind = JsonValue(request, "kind", "");
   if (kind == "memory") return MemoryControl(request, cwd);
   if (kind == "skills") return SkillControl(request, cwd);
+  if (kind == "import") return ImportControl(request, cwd);
   return {{"error", "unknown library kind"}};
 }
 }  // namespace uagent

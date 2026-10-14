@@ -208,13 +208,6 @@ function App() {
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
-  // Whoever opens the new-place dialog, it opens with empty fields.
-  useEffect(() => {
-    if (modal?.type === "new") {
-      setSpace("");
-      setFolder("");
-    }
-  }, [modal]);
   const [busy, setBusy] = useState(false);
   const {
     zoom,
@@ -901,7 +894,11 @@ function App() {
   const settings = useCallback(() => open({ type: "settings" }), [open]);
   // Asks for the place's name or path, which starts a conversation there.
   const newPlace = useCallback(
-    (place: "workspace" | "folder") => open({ type: "new", place }),
+    (place: "workspace" | "folder") => {
+      setSpace("");
+      setFolder("");
+      open({ type: "new", place });
+    },
     [open],
   );
   // A workspace by the name it goes by, a folder by the end of its path.
@@ -1231,6 +1228,7 @@ function App() {
                         outgoing={outgoing}
                         loadError={loadErrors[selected]}
                         menu={conversationMenu}
+                        newPlace={newPlace}
                         addMember={addMember}
                         draft={draft}
                         setDraft={setDraft}

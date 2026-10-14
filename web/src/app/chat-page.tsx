@@ -84,6 +84,7 @@ export default function ChatPage({
   draft,
   setDraft,
   menu,
+  newPlace,
   addMember,
   submit,
   updateView,
@@ -107,6 +108,8 @@ export default function ChatPage({
   setDraft: (value: Draft) => void;
   // A panel's roster: a row's own actions, and asking for another member.
   menu: (item: Session) => ComponentChildren;
+  // Asks for a workspace's name or a folder's path, to start a conversation.
+  newPlace: (place: "workspace" | "folder") => void;
   addMember: () => void;
   submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
@@ -292,15 +295,12 @@ export default function ChatPage({
         from the list.
       </p>
       <Actions>
-        <Button
-          onClick={() => setModal({ type: "new", place: "workspace" })}
-          disabled={!online}
-        >
+        <Button onClick={() => newPlace("workspace")} disabled={!online}>
           New workspace…
         </Button>
         <Button
           variant="primary"
-          onClick={() => setModal({ type: "new", place: "folder" })}
+          onClick={() => newPlace("folder")}
           disabled={!online}
         >
           New folder…

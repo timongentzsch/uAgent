@@ -1,9 +1,7 @@
 import { storage } from "../shared/storage.ts";
 import type {
-  AppModal,
   JSONValue,
   Draft,
-  InspectorTarget,
   InstallPrompt,
   ActivityTarget,
   Block,
@@ -41,7 +39,7 @@ import {
 } from "../shared/ui.tsx";
 import { Ellipsis, Globe2, ListTree, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
-import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
+import { ImageViewer } from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -80,6 +78,7 @@ import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
 import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
 import Modals from "./modals.tsx";
+import { useOverlays } from "./use-overlays.ts";
 import { usePreferences } from "./use-preferences.ts";
 import { useDraftUploads } from "./use-draft-uploads.ts";
 import {
@@ -116,17 +115,27 @@ function App() {
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  const [drawer, setDrawer] = useState(false);
   const compact = useMedia("(max-width: 900px)");
-  // On a phone a panel's board slides in from the right on demand
-  // instead of taking the top of its chat.
   const phone = usePhone();
-  const [boardOpen, setBoardOpen] = useState(false);
-  // The drawer belongs to the compact layout; a wider window drops it.
-  useEffect(() => setDrawer(false), [compact]);
-  const [modal, setModal] = useState<AppModal | null>(null);
-  // The command palette (Mod+K) or the shortcuts sheet (?).
-  const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
+  const {
+    drawer,
+    setDrawer,
+    boardOpen,
+    setBoardOpen,
+    modal,
+    setModal,
+    overlay,
+    setOverlay,
+    viewed,
+    setViewed,
+    side,
+    setSide,
+    closeSide,
+    inspector,
+    setInspector,
+    open,
+    openPalette,
+  } = useOverlays(compact);
   // Remembered per device, so the header's browser slot is right from the
   // first frame instead of appearing once the host answers.
   const [browserAvailable, setBrowserAvailable] = useState(
@@ -137,13 +146,6 @@ function App() {
   useEffect(() => {
     if (notice) setError("");
   }, [notice]);
-  // The one image viewer every tile opens.
-  const [viewed, setViewed] = useState<ViewedImage | null>(null);
-  const [side, setSide] = useState<{
-    question: string;
-    answer?: string;
-  } | null>(null);
-  const closeSide = useCallback(() => setSide(null), []);
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
@@ -220,7 +222,6 @@ function App() {
   );
   const levels = catalogue.verbosity?.order || [];
   const changeDetail = (level: string) => setVerbosity(level).catch(report);
-  const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
   const session =
     metadata || catalogue.sessions.find((item) => item.id === selected);
@@ -804,10 +805,6 @@ function App() {
     });
   }
 
-  const open = useCallback((value: AppModal) => {
-    setDrawer(false);
-    setModal(value);
-  }, []);
   // Forks any conversation from its menu, as /fork does the open one.
   const fork = useCallback(
     (item: Session) => latest.current.forkAndOpen(item).catch(report),
@@ -873,10 +870,6 @@ function App() {
   };
   // Only for a paired device: the pairing screen has nothing to find.
   useShortcuts(authenticated ? shortcutActions : {});
-  const openPalette = useCallback(() => {
-    setDrawer(false);
-    setOverlay("palette");
-  }, []);
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);

@@ -48,6 +48,7 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
 
 test("a place folds to its header with a count, remembered, and + starts a conversation in it", async ({
   page,
+  host,
   session,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -58,6 +59,10 @@ test("a place folds to its header with a count, remembered, and + starts a conve
     expanded: true,
   });
   await expect(folders.locator(".session")).toHaveCount(1);
+  // A folder goes by its own name, then the directory it is in.
+  const path = host.project.split("/").filter(Boolean);
+  await expect(folders.locator(".folder-own")).toHaveText(path.at(-1));
+  await expect(folders.locator(".folder-parent")).toHaveText(path.at(-2));
 
   await header.click();
   await expect(folders.locator(".session")).toHaveCount(0);

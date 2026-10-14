@@ -73,7 +73,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                           const json& args = {},
                           const ToolContext& context = {});
 struct GrepOptions {
-  std::string glob;
+  std::string glob{};
   int64_t context_lines = 0;
   bool files_only = false;      // match the pattern against file paths
   bool literal = false;         // fixed text, not a regex

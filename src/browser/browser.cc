@@ -27,6 +27,7 @@
 #include "include/browser/runtime.h"
 #include "include/core/config_registry.h"
 #include "include/core/fd.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 
@@ -180,8 +181,11 @@ bool StartService(const std::string& executable, ServiceProcess& process,
                   const_cast<char*>("--browser-service"), nullptr};
   std::vector<std::string> environment = {
       "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-      "HOME=" + DataDirectory(), "UAGENT_BROWSER_DATA=" + DataDirectory(),
-      "LANG=C.UTF-8", "TMPDIR=/tmp"};
+      "HOME=" + DataDirectory(),
+      "UAGENT_BROWSER_DATA=" + DataDirectory(),
+      "UAGENT_INTERNAL_RUNTIME_DIR=" + RuntimeDir(),
+      "LANG=C.UTF-8",
+      "TMPDIR=/tmp"};
   std::vector<char*> envp;
   envp.reserve(environment.size() + 1);
   for (auto& setting : environment) envp.push_back(setting.data());

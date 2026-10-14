@@ -173,6 +173,13 @@
 
 ### Fixed
 
+- `browser`: a second browser service on one machine, such as another web
+  host with its own browser data folder, starts on a free X display. Both
+  used display :99, so the second one's browser never opened.
+- `browser`: a request for the user's help is kept while its conversation
+  runs. When the browser data folder differed from the home folder (the
+  Docker image, many installs), the request showed as a card but was dropped
+  within seconds: Open browser took no control and Done answered nothing.
 - `memory`: `list` and `search` accept the empty `key` and `content` that
   models send for unused fields; they were refused.
 - `subagent`: `limits.seconds` stops a background child too. It was applied

@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -395,6 +396,131 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
   return ApprovalAnswer::kGuidance;
 }
 
+// A panel's thread acts inside its folder without review while
+// the sandbox holds it there: the commands the sandbox wraps (run and
+// scratch, which may also write the sandbox's other roots: temporary
+// files and tool caches), and file changes at a path its own check
+// finds inside the workspace. Stopping a process is not one of them: a
+// detached one may belong to another folder.
+// Without an enforced sandbox, or for anything else, it is reviewed like
+// any Auto session. A chat member reads what was shared in its panel's chat as
+// it reads the folder: without review.
+bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
+                      const json& arguments) {
+  const bool confined_thread =
+      JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
+      SandboxRuntime().mode == SandboxMode::kEnforced &&
+      (tool.name == "run" || tool.name == "scratch" ||
+       (tool.needs_approval && !tool.needs_approval(arguments)));
+  const json thread = JsonValue(app->options.session, "thread", json::object());
+  const bool shared_file =
+      tool.name == "read_path" && !ChatMember(thread).empty() &&
+      PathWithin(CanonicalAccessPath(JsonValue(arguments, "path", "")),
+                 CanonicalAccessPath(
+                     PanelPath(JsonValue(thread, "folder", "")) + ".assets"));
+  return confined_thread || shared_file;
+}
+
+// The outcome of an approval: who refused, for the model, is a person by
+// default.
+struct Verdict {
+  bool granted = true;
+  std::string refusal = "user denied this action";
+};
+
+// The automatic permission review's verdict, or nothing when it asks for a
+// person to decide. Records what it saw in review.
+std::optional<Verdict> ReviewAutomatically(AppContext* app, const Tool& tool,
+                                           const std::string& raw_payload,
+                                           int64_t turn, json& review) {
+  Verdict verdict;
+  AutoPermissionReview decision =
+      ReviewPermission(app->runtime.permission_api, app->runtime.config,
+                       app->runtime.side_usage, turn, tool, raw_payload,
+                       app->agent->History().LastText(MessageKind::kUser));
+  const bool ask = decision.decision == AutoPermissionDecision::kAsk;
+  const bool allow = decision.decision == AutoPermissionDecision::kAllow;
+  review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
+            {"probabilities", std::move(decision.probabilities)}};
+  if (!decision.error.empty()) review["error"] = decision.error;
+  // An undecided review with nobody to ask is a denial.
+  const bool decided = !ask || !InteractiveApprovalAvailable();
+  if (decided) {
+    verdict.granted = allow;
+    verdict.refusal =
+        ask ? "the automatic permission review could not decide "
+              "this action and nobody is here to ask"
+            : "the automatic permission review refused this action";
+    if (!decision.error.empty()) verdict.refusal += " (" + decision.error + ")";
+  }
+  DebugLog("permission_review", {{"tool", tool.name}, {"result", review}});
+  if (!decided) return std::nullopt;
+  return verdict;
+}
+
+// Puts the call to a person, and remembers an answer they ask to keep.
+Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
+                  const std::string& raw_payload, const std::string& request_id,
+                  const std::string& root, const std::string& key,
+                  bool mandatory) {
+  Verdict verdict;
+  // Reaching µAgent's own configuration is the reason a tool escalates by
+  // its path; a tool that escalates for its own reason names it.
+  std::string reason = tool.mandatory_reason.empty()
+                           ? "changes \u00b5Agent's own configuration"
+                           : tool.mandatory_reason;
+  // The request carries the full command/payload, so long commands are
+  // never truncated. A tool with more to show than its one-line label
+  // supplies its own preview.
+  Emit(Event{EventId::kApprovalRequested,
+             {{"id", request_id},
+              {"tool", tool.name},
+              {"preview", TerminalSafe(raw_payload)},
+              {"risks", ApprovalRisks(tool, arguments, root)},
+              {"mandatory_human", mandatory},
+              {"mandatory_reason", mandatory ? reason : std::string()}}});
+  InteractionRequest request{
+      .id = request_id,
+      .kind = "approval",
+      .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
+  if (mandatory && !InteractiveApprovalAvailable()) {
+    verdict.granted = false;
+    verdict.refusal = "this action needs a person's approval (" + reason +
+                      ") and nobody is here to give it";
+  } else if (mandatory) {
+    request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
+                                   {{"value", "n"}, {"label", "Deny"}}});
+    verdict.granted = Confirm(std::move(request));
+  } else {
+    request.options = ApprovalOptions();
+    bool cancelled = false;
+    bool eof = false;
+    std::string answer =
+        Trim(ReadChoiceLine(std::move(request), cancelled, eof));
+    const ApprovalAnswer chosen =
+        cancelled || eof ? ApprovalAnswer::kDeny : ParseApprovalAnswer(answer);
+    verdict.granted = chosen == ApprovalAnswer::kOnce ||
+                      chosen == ApprovalAnswer::kSession ||
+                      chosen == ApprovalAnswer::kRepository;
+    if (chosen == ApprovalAnswer::kSession) {
+      app->session_approvals.insert(key);
+    }
+    if (chosen == ApprovalAnswer::kRepository) {
+      std::string error;
+      if (!RememberRepositoryPermission(root, key, tool.name, raw_payload,
+                                        error)) {
+        Emit(NoticeEvent(
+            PresentationStatus::kWarned,
+            "allowed once; could not save permission rule: " + error));
+      }
+    }
+    if (chosen == ApprovalAnswer::kGuidance && !answer.empty()) {
+      SteeringState().Queue(answer);
+    }
+  }
+  return verdict;
+}
+
 // Approval policy in one place, so the prompt and the yolo shortcut cannot
 // drift apart from the debug record of what was granted. A mandatory-human
 // call ignores every automatic-approval switch and denies when no human can
@@ -411,34 +537,10 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool session_rule = !mandatory && app->session_approvals.contains(key);
     bool repository_rule =
         !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
-    // A panel's thread acts inside its folder without review while
-    // the sandbox holds it there: the commands the sandbox wraps (run and
-    // scratch, which may also write the sandbox's other roots: temporary
-    // files and tool caches), and file changes at a path its own check
-    // finds inside the workspace. Stopping a process is not one of them: a
-    // detached one may belong to another folder.
-    // Without an enforced sandbox, or for anything else, it is reviewed like
-    // any Auto session.
-    const bool confined_thread =
-        JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
-        SandboxRuntime().mode == SandboxMode::kEnforced &&
-        (tool.name == "run" || tool.name == "scratch" ||
-         (tool.needs_approval && !tool.needs_approval(arguments)));
-    // A chat member reads what was shared in its panel's chat as it
-    // reads the folder: without review.
-    const json thread =
-        JsonValue(app->options.session, "thread", json::object());
-    const bool shared_file =
-        tool.name == "read_path" && !ChatMember(thread).empty() &&
-        PathWithin(CanonicalAccessPath(JsonValue(arguments, "path", "")),
-                   CanonicalAccessPath(
-                       PanelPath(JsonValue(thread, "folder", "")) + ".assets"));
     bool automatic =
         !mandatory && (ApprovalIsYolo() || session_rule || repository_rule ||
-                       confined_thread || shared_file);
-    bool granted = true;
-    // Who refused, for the model: a person is the default.
-    std::string refusal = "user denied this action";
+                       ReviewedByPolicy(app, tool, arguments));
+    Verdict verdict;
     json review = json::object();
     std::string request_id =
         "approval-" + std::to_string(sequence.fetch_add(1) + 1);
@@ -447,82 +549,15 @@ Agent::Approver MakeApprover(AppContext* app) {
                                         : ToolSummary(tool, arguments);
     if (!automatic && !mandatory &&
         CurrentApprovalMode() == ApprovalMode::kAuto) {
-      AutoPermissionReview decision =
-          ReviewPermission(app->runtime.permission_api, app->runtime.config,
-                           app->runtime.side_usage, turn, tool, raw_payload,
-                           app->agent->History().LastText(MessageKind::kUser));
-      const bool ask = decision.decision == AutoPermissionDecision::kAsk;
-      const bool allow = decision.decision == AutoPermissionDecision::kAllow;
-      review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
-                {"probabilities", std::move(decision.probabilities)}};
-      if (!decision.error.empty()) review["error"] = decision.error;
-      // An undecided review with nobody to ask is a denial.
-      if (!ask || !InteractiveApprovalAvailable()) {
+      if (auto decided =
+              ReviewAutomatically(app, tool, raw_payload, turn, review)) {
         automatic = true;
-        granted = allow;
-        refusal = ask ? "the automatic permission review could not decide "
-                        "this action and nobody is here to ask"
-                      : "the automatic permission review refused this action";
-        if (!decision.error.empty()) refusal += " (" + decision.error + ")";
+        verdict = std::move(*decided);
       }
-      DebugLog("permission_review", {{"tool", tool.name}, {"result", review}});
     }
     if (!automatic) {
-      // Reaching µAgent's own configuration is the reason a tool escalates by
-      // its path; a tool that escalates for its own reason names it.
-      std::string reason = tool.mandatory_reason.empty()
-                               ? "changes \u00b5Agent's own configuration"
-                               : tool.mandatory_reason;
-      // The request carries the full command/payload, so long commands are
-      // never truncated. A tool with more to show than its one-line label
-      // supplies its own preview.
-      Emit(Event{EventId::kApprovalRequested,
-                 {{"id", request_id},
-                  {"tool", tool.name},
-                  {"preview", TerminalSafe(raw_payload)},
-                  {"risks", ApprovalRisks(tool, arguments, root)},
-                  {"mandatory_human", mandatory},
-                  {"mandatory_reason", mandatory ? reason : std::string()}}});
-      InteractionRequest request{
-          .id = request_id,
-          .kind = "approval",
-          .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
-      if (mandatory && !InteractiveApprovalAvailable()) {
-        granted = false;
-        refusal = "this action needs a person's approval (" + reason +
-                  ") and nobody is here to give it";
-      } else if (mandatory) {
-        request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
-                                       {{"value", "n"}, {"label", "Deny"}}});
-        granted = Confirm(std::move(request));
-      } else {
-        request.options = ApprovalOptions();
-        bool cancelled = false;
-        bool eof = false;
-        std::string answer =
-            Trim(ReadChoiceLine(std::move(request), cancelled, eof));
-        const ApprovalAnswer chosen = cancelled || eof
-                                          ? ApprovalAnswer::kDeny
-                                          : ParseApprovalAnswer(answer);
-        granted = chosen == ApprovalAnswer::kOnce ||
-                  chosen == ApprovalAnswer::kSession ||
-                  chosen == ApprovalAnswer::kRepository;
-        if (chosen == ApprovalAnswer::kSession) {
-          app->session_approvals.insert(key);
-        }
-        if (chosen == ApprovalAnswer::kRepository) {
-          std::string error;
-          if (!RememberRepositoryPermission(root, key, tool.name, raw_payload,
-                                            error)) {
-            Emit(NoticeEvent(
-                PresentationStatus::kWarned,
-                "allowed once; could not save permission rule: " + error));
-          }
-        }
-        if (chosen == ApprovalAnswer::kGuidance && !answer.empty()) {
-          SteeringState().Queue(answer);
-        }
-      }
+      verdict = AskPerson(app, tool, arguments, raw_payload, request_id, root,
+                          key, mandatory);
     }
     DebugLog("approval", {{"tool", tool.name},
                           {"automatic", automatic},
@@ -531,7 +566,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                           {"repository_rule", repository_rule},
                           {"review", review},
                           {"mandatory_human", mandatory},
-                          {"granted", granted}});
+                          {"granted", verdict.granted}});
     Emit(Event{EventId::kApprovalResolved,
                {{"id", request_id},
                 {"tool", tool.name},
@@ -539,8 +574,8 @@ Agent::Approver MakeApprover(AppContext* app) {
                 {"mode", ApprovalModeName(CurrentApprovalMode())},
                 {"review", review},
                 {"mandatory_human", mandatory},
-                {"granted", granted}}});
-    return granted ? std::string() : refusal;
+                {"granted", verdict.granted}}});
+    return verdict.granted ? std::string() : verdict.refusal;
   };
 }
 

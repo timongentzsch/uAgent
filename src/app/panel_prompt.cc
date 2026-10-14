@@ -19,30 +19,37 @@
 #include "include/transport/session.h"
 
 namespace uagent::session {
-// One request to a folder's panel from the command line: its answer,
-// with what its threads reported, on standard output.
-int PanelPromptMain(const Options& options) {
-  const std::string cwd = CanonicalCwd();
-  const std::string path = PanelPath(cwd);
-  std::string error;
-  auto connection = Open(ExecutablePath(), cwd, path, "", options, error);
-  if (!connection.socket) {
-    fprintf(stderr, "%s\n", error.c_str());
-    return 1;
-  }
-  auto send = [&](json command) {
-    StampFrame(command, HashHex(path), connection.generation);
-    command["request_id"] = command.value("request_id", RandomToken(16));
-    return WriteFrame(connection.socket.Get(), command);
-  };
+namespace {
+// What one request to a folder's panel has seen of it so far.
+struct PanelRequest {
+  PanelRequest(const Options& given, const Connection& socket,
+               std::string session_path, std::string folder)
+      : options(given),
+        connection(socket),
+        path(std::move(session_path)),
+        cwd(std::move(folder)) {}
+
+  const Options& options;
+  const Connection& connection;
+  const std::string path;
+  const std::string cwd;
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false, busy = true;
   bool accepted = false, paused = false, done = false;
   std::string probe;  // the request that asks the panel how it stands
+  std::string error;
   json stop = json::object();
   // The panel's session runs on; this request is its growth.
   Usage before, after;
-  const auto receive = [&](const json& frame) {
+
+  bool Send(json command) const {
+    StampFrame(command, HashHex(path), connection.generation);
+    command["request_id"] = command.value("request_id", RandomToken(16));
+    return WriteFrame(connection.socket.Get(), command);
+  }
+
+  // One frame from the panel; false ends the wait.
+  bool Receive(const json& frame) {
     const std::string kind = JsonValue(frame, "kind", "");
     if (kind == "outcome" && JsonValue(frame, "request_id", "") == request) {
       accepted = JsonValue(frame, "accepted", false);
@@ -62,7 +69,7 @@ int PanelPromptMain(const Options& options) {
     if (!submitted && !JsonValue(frame, "busy", true)) {
       before =
           UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
-      submitted = send({{"kind", "submit"},
+      submitted = Send({{"kind", "submit"},
                         {"request_id", request},
                         {"text", options.prompt}});
       return submitted;
@@ -71,7 +78,7 @@ int PanelPromptMain(const Options& options) {
     if (const json* pending = JsonObject(frame, "pending")) {
       fprintf(stderr, "· declined: %s\n",
               TerminalSafe(JsonValue(*pending, "prompt", "approval")).c_str());
-      send({{"kind", "reply"},
+      Send({{"kind", "reply"},
             {"interaction_id", JsonValue(*pending, "id", "")},
             {"text", ""}});
     }
@@ -93,20 +100,24 @@ int PanelPromptMain(const Options& options) {
     after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
     completed = true;
     return true;
-  };
-  // The work it delegated is part of the answer. Each step is in place
-  // before the one before it ends: a thread mails its report before it shows
-  // idle, the panel queues a report before acknowledging it, and the
-  // queue starts its turn. So when no thread owes anything, the panel
-  // is asked, and its word that it is idle is the end. A thread that waits
-  // for a person, or whose runtime is gone, is not waited for, nor are
-  // reports the spend limit holds. One buffer for the whole wait: a frame
-  // may arrive in pieces on either side of a tick.
+  }
+};
+
+// The work it delegated is part of the answer. Each step is in place
+// before the one before it ends: a thread mails its report before it shows
+// idle, the panel queues a report before acknowledging it, and the
+// queue starts its turn. So when no thread owes anything, the panel
+// is asked, and its word that it is idle is the end. A thread that waits
+// for a person, or whose runtime is gone, is not waited for, nor are
+// reports the spend limit holds. One buffer for the whole wait: a frame
+// may arrive in pieces on either side of a tick.
+void AwaitPanel(PanelRequest& panel) {
   constexpr int kTickMs = 250;
   FrameBuffer frames;
   char buffer[4096];
-  for (bool open = true; open && !rejected && !done;) {
-    pollfd wait{connection.socket.Get(), POLLIN, 0};
+  const auto receive = [&](const json& frame) { return panel.Receive(frame); };
+  for (bool open = true; open && !panel.rejected && !panel.done;) {
+    pollfd wait{panel.connection.socket.Get(), POLLIN, 0};
     const int ready = poll(&wait, 1, kTickMs);
     if (ready < 0 && errno != EINTR) break;
     if (ready > 0) {
@@ -117,22 +128,19 @@ int PanelPromptMain(const Options& options) {
                          receive);
       continue;
     }
-    if (!submitted || !completed || busy || !probe.empty() ||
-        (!paused && ThreadsOwe(cwd))) {
+    if (!panel.submitted || !panel.completed || panel.busy ||
+        !panel.probe.empty() || (!panel.paused && ThreadsOwe(panel.cwd))) {
       continue;
     }
-    probe = RandomToken(16);
-    open = send({{"kind", "refresh"}, {"request_id", probe}});
+    panel.probe = RandomToken(16);
+    open = panel.Send({{"kind", "refresh"}, {"request_id", panel.probe}});
   }
-  // A runtime that closed with work still owed has not answered.
-  if (rejected || !done) {
-    fprintf(stderr, "%s\n",
-            error.empty() ? "panel runtime closed" : error.c_str());
-    return 1;
-  }
-  // Everything the panel and its chat's members said since the
-  // request, in full: a thread's report reopens its turn or starts another,
-  // and each says part of it.
+}
+
+// Everything the panel and its chat's members said since the
+// request, in full: a thread's report reopens its turn or starts another,
+// and each says part of it.
+std::string AnswerSince(const std::string& path, const std::string& prompt) {
   std::string answer;
   SessionLoadResult saved = SessionStore::Inspect(path);
   Conversation conversation;
@@ -144,7 +152,7 @@ int PanelPromptMain(const Options& options) {
          --index) {
       const json& message = messages[index - 1];
       if (JsonValue(message, "role", "") == "user" &&
-          Trim(JsonValue(message, "content", "")) == Trim(options.prompt)) {
+          Trim(JsonValue(message, "content", "")) == Trim(prompt)) {
         asked = index - 1;
       }
     }
@@ -169,26 +177,55 @@ int PanelPromptMain(const Options& options) {
     // The request itself was compacted away: what was said last.
     if (asked == messages.size()) answer = conversation.LastAssistantText();
   }
+  return answer;
+}
+
+// Prints the answer, and why there is none when the turn did not complete.
+int PrintAnswer(const PanelRequest& panel, const std::string& answer) {
+  const Options& options = panel.options;
   if (options.json) {
-    printf("%s\n",
-           JsonDump({{"answer", answer},
-                     {"session_id", HashHex(path)},
-                     {"usage", UsageJson(UsageDifference(after, before))},
-                     {"stop", stop}})
-               .c_str());
+    printf("%s\n", JsonDump({{"answer", answer},
+                             {"session_id", HashHex(panel.path)},
+                             {"usage", UsageJson(UsageDifference(
+                                           panel.after, panel.before))},
+                             {"stop", panel.stop}})
+                       .c_str());
   } else {
     printf("%s\n", answer.c_str());
   }
-  const std::string reason = JsonValue(stop, "reason", "completed");
+  const std::string reason = JsonValue(panel.stop, "reason", "completed");
   if (reason == "completed") return 0;
   // Why there is no answer, where a person running this would look for it.
   if (!options.json) {
-    const std::string detail = JsonValue(stop, "detail", "");
+    const std::string detail = JsonValue(panel.stop, "detail", "");
     fprintf(
         stderr, "%s\n",
         TerminalSafe(detail.empty() ? "the turn stopped: " + reason : detail)
             .c_str());
   }
   return 1;
+}
+}  // namespace
+
+// One request to a folder's panel from the command line: its answer,
+// with what its threads reported, on standard output.
+int PanelPromptMain(const Options& options) {
+  const std::string cwd = CanonicalCwd();
+  const std::string path = PanelPath(cwd);
+  std::string error;
+  auto connection = Open(ExecutablePath(), cwd, path, "", options, error);
+  if (!connection.socket) {
+    fprintf(stderr, "%s\n", error.c_str());
+    return 1;
+  }
+  PanelRequest panel(options, connection, path, cwd);
+  AwaitPanel(panel);
+  // A runtime that closed with work still owed has not answered.
+  if (panel.rejected || !panel.done) {
+    fprintf(stderr, "%s\n",
+            panel.error.empty() ? "panel runtime closed" : panel.error.c_str());
+    return 1;
+  }
+  return PrintAnswer(panel, AnswerSince(path, options.prompt));
 }
 }  // namespace uagent::session

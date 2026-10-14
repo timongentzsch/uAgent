@@ -790,9 +790,10 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
 }
 
 ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
-                    const std::string& path, const std::string& glob,
-                    int64_t context_lines, const ToolContext& context,
-                    bool files_only, bool literal, bool matching_files) {
+                    const std::string& path, const GrepOptions& options,
+                    const ToolContext& context) {
+  const auto& [glob, context_lines, files_only, literal, matching_files] =
+      options;
   std::string target = path.empty() ? "." : path;
   std::error_code path_error;
   auto status = std::filesystem::status(target, path_error);

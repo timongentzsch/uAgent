@@ -72,11 +72,16 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                           const std::string& relative_path,
                           const json& args = {},
                           const ToolContext& context = {});
+struct GrepOptions {
+  std::string glob{};
+  int64_t context_lines = 0;
+  bool files_only = false;      // match the pattern against file paths
+  bool literal = false;         // fixed text, not a regex
+  bool matching_files = false;  // list the files with a match, not the lines
+};
 ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
-                    const std::string& path, const std::string& glob,
-                    int64_t context_lines = 0, const ToolContext& context = {},
-                    bool files_only = false, bool literal = false,
-                    bool matching_files = false);
+                    const std::string& path, const GrepOptions& options = {},
+                    const ToolContext& context = {});
 
 }  // namespace uagent
 

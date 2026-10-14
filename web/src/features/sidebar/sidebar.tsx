@@ -1,7 +1,6 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Component, type ComponentChildren } from "preact";
 import type { Session, Space, AppModal } from "../../shared/types.ts";
-import { useState } from "preact/hooks";
 import {
   Check,
   ChevronDown,
@@ -38,7 +37,7 @@ import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, panelsOpen, useFolding } from "./folding.ts";
+import { collapsed, panelsOpen, search, useFolding } from "./folding.ts";
 import "./sidebar.css";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
@@ -276,22 +275,28 @@ function placesByKind(sessions: Session[], spaces: Space[] = [], search = "") {
   ).filter(([, shown]) => shown.length);
 }
 
-// A panel's members and threads show under it once it is opened, or at once
-// when the place has no panel row to open.
-const threadsShown = ([path, group]: [string, Place]) =>
-  !group.panel || panelsOpen.has(path);
+// What a place shows. A search shows what it found, whatever is folded or
+// closed; a panel's members and threads show under it once it is opened, or
+// at once when the place has no panel row to open.
+const viewOf = (path: string, group: Place, query: string) => ({
+  folded: !query && collapsed.has(path),
+  open: !!query || panelsOpen.has(path),
+  threads: !!query || !group.panel || panelsOpen.has(path),
+});
 
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
-// What is folded away is not in it.
 export const sessionOrder = (sessions: Session[], spaces?: Space[]) =>
-  placesByKind(sessions, spaces).flatMap(([, places]) =>
-    places
-      .filter(([path]) => !collapsed.has(path))
-      .flatMap((place) => [
-        ...(place[1].panel ? [place[1].panel] : []),
-        ...(threadsShown(place) ? place[1].threads : []),
-        ...place[1].others,
-      ]),
+  placesByKind(sessions, spaces, search.text).flatMap(([, places]) =>
+    places.flatMap(([path, group]) => {
+      const view = viewOf(path, group, search.text);
+      return view.folded
+        ? []
+        : [
+            ...(group.panel ? [group.panel] : []),
+            ...(view.threads ? group.threads : []),
+            ...group.others,
+          ];
+    }),
   );
 
 type SessionRowProps = {
@@ -303,8 +308,19 @@ type SessionRowProps = {
   online: boolean;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
-  // A panel's row says who is in it and what it started.
+  // A panel's row says who is in it and what it started, and opens that
+  // list: the place it belongs to, whether it is open and what to call it.
   note?: string;
+  foldPath?: string;
+  foldOpen?: boolean;
+  foldLabel?: string;
+};
+
+// Opening or closing a panel's list keeps focus on the button that did it:
+// the list it leaves would take focus with it.
+const toggleFold = (event: MouseEvent, path: string) => {
+  (event.currentTarget as HTMLElement).focus();
+  panelsOpen.set(path, !panelsOpen.has(path));
 };
 
 // One conversation in the list, on one line: its title and its state. The
@@ -318,6 +334,9 @@ function SessionRowView({
   choose,
   menu,
   note,
+  foldPath,
+  foldOpen,
+  foldLabel,
 }: SessionRowProps) {
   const state = statusOf(item, online);
   const shown = STATES[state];
@@ -354,6 +373,16 @@ function SessionRowView({
           </span>
         )}
       </ListRow>
+      {foldPath !== undefined && (
+        <IconButton
+          class="disclosure"
+          label={foldLabel || ""}
+          aria-expanded={foldOpen}
+          onClick={(event) => toggleFold(event, foldPath)}
+        >
+          {foldOpen ? <ChevronDown /> : <ChevronRight />}
+        </IconButton>
+      )}
       {menu(item)}
     </div>
   );
@@ -418,8 +447,8 @@ function SidebarView({
   palette,
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
-  const [search, setSearch] = useState("");
   useFolding();
+  const query = search.text;
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
@@ -438,9 +467,7 @@ function SidebarView({
   const place = ([cwd, group]: [string, Place]) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
-    // A search shows what it found, whatever is folded.
-    const folded = !search && collapsed.has(cwd);
-    const open = !!search || panelsOpen.has(cwd);
+    const { folded, open, threads } = viewOf(cwd, group, query);
     const members = group.threads.filter((item) => item.member).length;
     const note = [
       members && plural(members, "member"),
@@ -464,7 +491,11 @@ function SidebarView({
               variant="quiet"
               aria-expanded={!folded}
               aria-current={folded && holdsOpen ? "true" : undefined}
-              onClick={() => collapsed.set(cwd, !folded)}
+              onClick={(event) => {
+                // Focus stays on the header, not in the rows it takes away.
+                event.currentTarget.focus();
+                collapsed.set(cwd, !folded);
+              }}
             >
               {folded ? <ChevronRight /> : <ChevronDown />}
               <FolderLabel path={cwd} space={!!space}>
@@ -513,26 +544,15 @@ function SidebarView({
                 unread={unread.has(group.panel.id)}
                 online={online}
                 choose={choose}
-                menu={(panel) => (
-                  <>
-                    {group.threads.length > 0 && (
-                      <IconButton
-                        class="disclosure"
-                        label={`Members and threads of ${name}`}
-                        aria-expanded={open}
-                        onClick={() => panelsOpen.set(cwd, !open)}
-                      >
-                        {open ? <ChevronDown /> : <ChevronRight />}
-                      </IconButton>
-                    )}
-                    {menu(panel)}
-                  </>
-                )}
+                menu={menu}
                 note={note}
+                foldPath={group.threads.length > 0 ? cwd : undefined}
+                foldOpen={open}
+                foldLabel={`Members and threads of ${name}`}
               />
             ) : (
               !drawing &&
-              !search && (
+              !query && (
                 <div class="session-row">
                   <Button
                     variant="quiet"
@@ -551,7 +571,7 @@ function SidebarView({
                 </div>
               )
             )}
-            {group.threads.length > 0 && (!group.panel || open) && (
+            {group.threads.length > 0 && threads && (
               <div
                 class="threads"
                 role="group"
@@ -566,7 +586,7 @@ function SidebarView({
       </section>
     );
   };
-  const list = placesByKind(all, drawing ? [] : spaces, search).map(
+  const list = placesByKind(all, drawing ? [] : spaces, query).map(
     ([kind, shown]) => (
       <div key={kind} class="list-group" role="group" aria-label={kind}>
         <p class="list-kind">{kind}</p>
@@ -661,8 +681,8 @@ function SidebarView({
         <Input
           id="session-search"
           type="search"
-          value={search}
-          onInput={(event) => setSearch(event.currentTarget.value)}
+          value={query}
+          onInput={(event) => search.set(event.currentTarget.value)}
           placeholder="Find a conversation…"
         />
       </label>
@@ -672,7 +692,7 @@ function SidebarView({
             list
           ) : (
             <EmptyState>
-              {search
+              {query
                 ? "No conversation matches."
                 : "No conversations yet. New starts one in a workspace or in a folder on your host."}
             </EmptyState>

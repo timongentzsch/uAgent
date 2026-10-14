@@ -15,8 +15,22 @@ const session = (id, index) => ({
   presence: "active",
   updated: 1_700_000_000_000 - index * 60_000,
 });
+// A panel with a thread under it, whose rows the stream must leave alone.
+const PANEL = {
+  ...session("c".repeat(32), 90),
+  kind: "panel",
+  cwd: "/project-1",
+};
+const THREAD = {
+  ...session("d".repeat(32), 91),
+  kind: "thread",
+  cwd: "/project-1",
+  folder: "/project-1",
+};
 const SESSIONS = [
   session(ID, 0),
+  PANEL,
+  THREAD,
   ...Array.from({ length: 40 }, (_, index) =>
     session((index + 1).toString(16).padStart(32, "b"), index + 1),
   ),

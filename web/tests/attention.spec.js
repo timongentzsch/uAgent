@@ -109,6 +109,12 @@ test("what a panel started nests under it", async ({
     await route.fulfill({ response, json: catalogue });
   });
   await page.goto("/");
+  // Under the panel's row, once its chevron has opened the list. Where the
+  // host's paths differ (a symlinked temp folder), the panel is another
+  // place and the thread is listed flat.
+  const opener = page.getByRole("button", { name: /^Members and threads of / });
+  await expect(page.getByRole("navigation")).toContainText("Panel");
+  if (await opener.count()) await opener.click();
   const threads = page.getByRole("group", {
     name: /^Members and threads of /,
   });

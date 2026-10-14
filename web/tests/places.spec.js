@@ -66,6 +66,10 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   // The fold is remembered.
   await page.reload();
   await expect(folders.locator(".session")).toHaveCount(0);
+  // Alt+↓ steps through the rows shown, and none is.
+  const at = page.url();
+  await page.keyboard.press("Alt+ArrowDown");
+  expect(page.url()).toBe(at);
 
   // + opens the fold, and starts a conversation in the place.
   await folders.getByRole("button", { name: /^New conversation in / }).click();

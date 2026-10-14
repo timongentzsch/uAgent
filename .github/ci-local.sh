@@ -42,7 +42,7 @@ docker run --rm \
   ubuntu:24.04 bash -euo pipefail -c '
     apt-get update -qq >/dev/null
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-      g++ cmake make curl python3 libcurl4-openssl-dev libssl-dev >/dev/null
+      g++ cmake make curl python3 libcurl4-openssl-dev zlib1g-dev libssl-dev >/dev/null
     cmake -S /work/uagent -B /work/build/release -DCMAKE_BUILD_TYPE=Release \
       -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON >/dev/null
     cmake --build /work/build/release --parallel "$(nproc)" -- -k

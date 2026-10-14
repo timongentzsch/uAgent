@@ -43,7 +43,7 @@ jobs:
           build-mode: manual
       - name: Install dependencies
         if: steps.changes.outputs.native == 'true'
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
       # CodeQL reads the compiler invocations, not the binary, so an unoptimised
       # build without the release link-time optimisation is enough.
       - name: Configure

@@ -1,5 +1,7 @@
-import { readdir, rename, rm, writeFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { extname, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
 const root = resolve(import.meta.dirname, "..");
 const current = resolve(root, "dist");
@@ -19,6 +21,21 @@ async function files(directory) {
 
 const assets = (await files(next)).sort();
 await writeFile(resolve(next, ".assets"), `${assets.join("\n")}\n`);
+
+// The binary embeds the `.gz` beside each text asset and serves it as is;
+// images and fonts are already compressed and stay raw.
+const text = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".svg"]);
+// The manifest names the bytes each `.gz` was made from, so the embed can
+// refuse a leftover one; file times do not survive an artifact download.
+const gzipped = {};
+for (const asset of assets) {
+  if (!text.has(extname(asset))) continue;
+  const path = resolve(next, asset);
+  const bytes = await readFile(path);
+  await writeFile(`${path}.gz`, gzipSync(bytes, { level: 9 }));
+  gzipped[asset] = createHash("sha256").update(bytes).digest("hex");
+}
+await writeFile(resolve(next, ".gzip-manifest.json"), JSON.stringify(gzipped));
 
 await rm(previous, { recursive: true, force: true });
 try {

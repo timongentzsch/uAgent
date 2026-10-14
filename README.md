@@ -29,7 +29,7 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 
 ### Requirements
 
-- CMake 3.21+, a C++20 compiler and libcurl 7.66+.
+- CMake 3.21+, a C++20 compiler, libcurl 7.66+ and zlib.
 - Node.js, to build the browser interface from `web/`. Without it the build
   is terminal-only. Each release also ships the built interface as
   `uagent-web-dist-<version>.tar.gz`; unpack it into `web/dist` before

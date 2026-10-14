@@ -233,7 +233,7 @@ json Runtime::Observe(bool image) {
       result ? JsonObject(*result, "cssVisualViewport") : nullptr;
   double width = viewport ? JsonValue(*viewport, "clientWidth", 0.0) : 0;
   double height = viewport ? JsonValue(*viewport, "clientHeight", 0.0) : 0;
-  if (width < 1 || width > 10000 || height < 1 || height > 10000) {
+  if (!viewport || width < 1 || width > 10000 || height < 1 || height > 10000) {
     return {{"error", "Chrome did not report its viewport"}};
   }
   // Capture exactly the visible CSS viewport at one image pixel per CSS

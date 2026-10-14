@@ -382,6 +382,14 @@ def measure_headless(tool, project):
     }
 
 
+def chip_name():
+    command = ["sysctl", "-n", "machdep.cpu.brand_string"]
+    try:
+        return subprocess.check_output(command, text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return platform.machine()
+
+
 def new_project(root, name):
     project = root / name
     project.mkdir()
@@ -485,6 +493,84 @@ def table(tools, report):
     return header + "\n" + "\n".join(rows)
 
 
+DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex CLI"}
+CHART_STYLE = """
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .title { font-size: 13px; font-weight: 600; }
+  .name { font-size: 12px; }
+  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .note { font-size: 10px; fill: #656d76; }
+  .bar { fill: #b4bac1; }
+  .bar.uagent { fill: #0a69da; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #0d1117; }
+    text { fill: #e6edf3; }
+    .note { fill: #8b949e; }
+    .bar { fill: #4a525c; }
+    .bar.uagent { fill: #4493f8; }
+  }
+"""
+
+
+def panel_values(tools, report, metric, key, divisor):
+    """One median per tool, or None where the tool could not be measured."""
+    values = {}
+    for tool in tools:
+        entry = report[tool["name"]]
+        samples = [entry["size"][key]] if metric == "size" else [s.get(key) for s in entry[metric]]
+        value = median(samples)
+        values[tool["name"]] = None if value is None else value / divisor
+    return values
+
+
+def chart_svg(tools, report):
+    panels = (
+        ("Executable size, MB", panel_values(tools, report, "size", "executable_bytes", 1e6), 1),
+        ("Idle session memory, MB", panel_values(tools, report, "idle", "rss_kib", 1024), 1),
+        ("CPU per headless turn, ms", panel_values(tools, report, "headless", "cpu_ms", 1), 0),
+        ("Time to first screen, ms", panel_values(tools, report, "idle", "first_screen_ms", 1), 0),
+    )
+    width, height, panel_width, panel_height = 800, 300, 380, 120
+    label_width, bar_width = 84, 230
+    out = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+        f'width="{width}" height="{height}" role="img" aria-label="Footprint of the agents">',
+        f"<style>{CHART_STYLE}</style>",
+        f'<rect class="bg" width="{width}" height="{height}"/>',
+    ]
+    for index, (title, values, places) in enumerate(panels):
+        left = 20 + (index % 2) * (panel_width + 20)
+        top = 20 + (index // 2) * (panel_height + 15)
+        out.append(f'<text class="title" x="{left}" y="{top + 12}">{title}</text>')
+        peak = max([v for v in values.values() if v is not None] or [1]) or 1
+        for row, tool in enumerate(tools):
+            name = tool["name"]
+            y = top + 26 + row * 28
+            out.append(f'<text class="name" x="{left}" y="{y + 13}">{DISPLAY_NAMES[name]}</text>')
+            value = values[name]
+            if value is None:
+                out.append(f'<text class="value" x="{left + label_width}" y="{y + 13}">n/a</text>')
+                continue
+            length = max(1, value / peak * bar_width)
+            css = "bar uagent" if name == "uagent" else "bar"
+            out.append(
+                f'<rect class="{css}" x="{left + label_width}" y="{y}" '
+                f'width="{length:.1f}" height="18" rx="2"/>'
+            )
+            out.append(
+                f'<text class="value" x="{left + label_width + length + 6:.1f}" y="{y + 13}">'
+                f"{value:.{places}f}</text>"
+            )
+    machine = report["_machine"]
+    out.append(
+        f'<text class="note" x="20" y="{height - 8}">medians, {machine["chip"]}, '
+        f"{machine['date']}; see Footprint</text>"
+    )
+    out.append("</svg>")
+    return "\n".join(out) + "\n"
+
+
 def stat_pair(entry, metric, key):
     samples = [s[key] for s in entry.get(metric, [])]
     if not samples:
@@ -509,6 +595,7 @@ def main():
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--session-runs", type=int, default=5, help="idle and headless runs")
     parser.add_argument("--skip", action="append", default=[], choices=["idle", "headless"])
+    parser.add_argument("--chart", type=pathlib.Path, help="also write an SVG bar chart here")
     parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("footprint.json"))
     args = parser.parse_args()
     tools = build_tools(args)
@@ -543,12 +630,15 @@ def main():
     report["_machine"] = {
         "platform": platform.platform(),
         "machine": platform.machine(),
+        "chip": chip_name(),
         "cpus": os.cpu_count(),
         "date": time.strftime("%Y-%m-%d"),
         "runs": {"version": args.version_runs, "session": args.session_runs},
     }
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(table(tools, report))
+    if args.chart:
+        args.chart.write_text(chart_svg(tools, report))
     for tool in tools:
         for error in report[tool["name"]]["errors"]:
             print(f"{tool['name']}: {error}", file=sys.stderr)

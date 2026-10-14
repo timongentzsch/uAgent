@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -58,7 +59,7 @@ class Steering {
  private:
   std::atomic<bool> requested_{false};
   mutable std::mutex queue_mutex_;
-  std::deque<Message> queued_;
+  std::deque<Message> queued_ UAGENT_GUARDED_BY(queue_mutex_);
 };
 
 Steering& SteeringState();

@@ -14,6 +14,7 @@
 
 #include "include/core/checked.h"
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -170,10 +171,10 @@ class UsageAccumulator {
 
  private:
   std::mutex mutex_;
-  Usage unassigned_;
-  RouteUsage routes_;
-  std::map<int64_t, Usage> turns_;
-  std::map<int64_t, json> turn_statistics_;
+  Usage unassigned_ UAGENT_GUARDED_BY(mutex_);
+  RouteUsage routes_ UAGENT_GUARDED_BY(mutex_);
+  std::map<int64_t, Usage> turns_ UAGENT_GUARDED_BY(mutex_);
+  std::map<int64_t, json> turn_statistics_ UAGENT_GUARDED_BY(mutex_);
 };
 
 }  // namespace uagent

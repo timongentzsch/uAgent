@@ -21,6 +21,7 @@
 #include "include/core/debug.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -195,19 +196,19 @@ class SessionJournal {
   static constexpr size_t kMaxEvents = 512;
   static constexpr size_t kMaxBytes = size_t{256} * 1024;
 
-  void ClearLocked();
+  void ClearLocked() UAGENT_REQUIRES(mutex_);
 
   mutable std::mutex mutex_;
 
-  std::deque<std::string> lines_;
-  size_t bytes_ = 0;
-  int64_t sequence_ = 0;
-  bool enabled_ = true;
+  std::deque<std::string> lines_ UAGENT_GUARDED_BY(mutex_);
+  size_t bytes_ UAGENT_GUARDED_BY(mutex_) = 0;
+  int64_t sequence_ UAGENT_GUARDED_BY(mutex_) = 0;
+  bool enabled_ UAGENT_GUARDED_BY(mutex_) = true;
   // Counts every change to the lines; where and at which count they were
   // last written, so a save that follows no event writes nothing.
-  uint64_t changes_ = 0;
-  mutable uint64_t flushed_changes_ = 0;
-  mutable std::string flushed_path_;
+  uint64_t changes_ UAGENT_GUARDED_BY(mutex_) = 0;
+  mutable uint64_t flushed_changes_ UAGENT_GUARDED_BY(mutex_) = 0;
+  mutable std::string flushed_path_ UAGENT_GUARDED_BY(mutex_);
 };
 
 // Directly owns the built-in terminal, public JSONL, private debug JSONL, and
@@ -241,14 +242,15 @@ class Observability {
   SessionJournal journal_;
   std::unique_ptr<TerminalPresenter> terminal_;
   std::unique_ptr<ActivityProjection> activity_;
-  std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_;
+  std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_
+      UAGENT_GUARDED_BY(mutex_);
   // Serializes subscriber delivery without holding the sink/state mutex.
   // Recursive so a callback may emit or unsubscribe itself.
   std::recursive_mutex delivery_mutex_;
   std::mutex mutex_;
-  uint64_t app_sequence_ = 0;
-  uint64_t next_subscription_ = 1;
-  bool shutdown_ = false;
+  uint64_t app_sequence_ UAGENT_GUARDED_BY(mutex_) = 0;
+  uint64_t next_subscription_ UAGENT_GUARDED_BY(mutex_) = 1;
+  bool shutdown_ UAGENT_GUARDED_BY(mutex_) = false;
 };
 
 // The active pointer is how low-level diagnostics reach the sinks. It is set

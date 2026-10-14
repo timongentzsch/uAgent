@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 
@@ -52,10 +53,10 @@ class DebugSink {
   FILE* file_ = nullptr;
   std::mutex mutex_;
   std::condition_variable wake_;
-  std::deque<json> queue_;
+  std::deque<json> queue_ UAGENT_GUARDED_BY(mutex_);
   std::thread writer_;
-  bool stopping_ = false;
-  bool writing_ = false;
+  bool stopping_ UAGENT_GUARDED_BY(mutex_) = false;
+  bool writing_ UAGENT_GUARDED_BY(mutex_) = false;
   std::chrono::steady_clock::time_point started_;
   std::string path_, error_;
   int64_t seq_ = 0;
@@ -79,7 +80,7 @@ class JsonEventStream {
  private:
   FILE* file_ = nullptr;
   std::mutex mutex_;
-  int64_t seq_ = 0;
+  int64_t seq_ UAGENT_GUARDED_BY(mutex_) = 0;
 };
 
 // One line in the trace. Typed semantic events use Emit(Event).

@@ -13,6 +13,7 @@
 
 #include "include/api/capabilities.h"
 #include "include/core/json.h"
+#include "include/core/thread_annotations.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -58,7 +59,7 @@ class AttachmentQueue {
 
  private:
   std::mutex mutex_;
-  std::vector<Attachment> pending_;
+  std::vector<Attachment> pending_ UAGENT_GUARDED_BY(mutex_);
 };
 
 AttachmentQueue& Attachments();

@@ -16,6 +16,14 @@ export const waiting = (sessions: Session[], folder?: string) =>
 // app badge all show this one number.
 export const needsYou = (sessions: Session[]) => waiting(sessions).length;
 
+// A session is running while the host is reachable and its turn is active.
+export const isRunning = (item: Session, online: boolean) =>
+  online && !!item.turn_active;
+
+// The session with this id, if the catalogue has it.
+export const sessionById = (sessions: Session[], id?: string) =>
+  sessions.find((item) => item.id === id);
+
 export type SessionState = "waiting" | "failed" | "working" | "idle";
 
 // What a session's row shows of it: it waits on you, it failed, it is
@@ -23,5 +31,5 @@ export type SessionState = "waiting" | "failed" | "working" | "idle";
 export function statusOf(item: Session, online: boolean): SessionState {
   if (online && item.pending) return "waiting";
   if (item.error) return "failed";
-  return online && item.turn_active ? "working" : "idle";
+  return isRunning(item, online) ? "working" : "idle";
 }

@@ -7,6 +7,7 @@ import type {
 import { useEffect, useState } from "preact/hooks";
 import { LoadError, Placeholder, Welcome } from "../../shared/ui.tsx";
 import { useHostContext } from "../../state/host-context.ts";
+import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
@@ -103,7 +104,7 @@ export default function Chat({
         role="log"
         aria-label="Conversation"
         aria-live="off"
-        aria-busy={(online && !!session.turn_active) || undefined}
+        aria-busy={isRunning(session, online) || undefined}
       >
         <HistoryStart
           view={view}

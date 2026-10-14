@@ -23,6 +23,14 @@ export const wholeStreamingMarkdownChars = 16_000;
 export const progressiveMarkdownScanLines = 40;
 export const retainedBackgroundViews = 4;
 export const commandReceiptWaitMs = 30_000;
+// How long a notification's link waits for its decision to be drawn.
+export const decisionFocusWaitMs = 15_000;
+// How long a closing conversation is given to retire before delete retries.
+export const deleteRetryDelayMs = 1_000;
+// How long a copy button shows that it copied.
+export const copiedFeedbackMs = 2_000;
+// A new scheduled task's interval, and how far ahead a one-off is set.
+export const defaultScheduleSeconds = 3_600;
 
 // A draft's attachments: how many, and the largest upload the host takes.
 export const maxDraftFiles = 8;

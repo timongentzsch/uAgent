@@ -1,9 +1,7 @@
 import { storage } from "../shared/storage.ts";
 import type {
-  AppModal,
   JSONValue,
   Draft,
-  InspectorTarget,
   InstallPrompt,
   ActivityTarget,
   Block,
@@ -41,7 +39,7 @@ import {
 } from "../shared/ui.tsx";
 import { Ellipsis, Globe2, ListTree, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
-import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
+import { ImageViewer } from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -64,7 +62,12 @@ import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
 import Board, { PanelHelp } from "../features/panel/board.tsx";
-import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
+import {
+  isRunning,
+  sessionById,
+  threadsOf,
+  waiting as waitingOn,
+} from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
   lockPageZoom,
@@ -80,6 +83,7 @@ import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
 import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
 import Modals from "./modals.tsx";
+import { useOverlays } from "./use-overlays.ts";
 import { usePreferences } from "./use-preferences.ts";
 import { useDraftUploads } from "./use-draft-uploads.ts";
 import {
@@ -116,17 +120,27 @@ function App() {
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  const [drawer, setDrawer] = useState(false);
   const compact = useMedia("(max-width: 900px)");
-  // On a phone a panel's board slides in from the right on demand
-  // instead of taking the top of its chat.
   const phone = usePhone();
-  const [boardOpen, setBoardOpen] = useState(false);
-  // The drawer belongs to the compact layout; a wider window drops it.
-  useEffect(() => setDrawer(false), [compact]);
-  const [modal, setModal] = useState<AppModal | null>(null);
-  // The command palette (Mod+K) or the shortcuts sheet (?).
-  const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
+  const {
+    drawer,
+    setDrawer,
+    boardOpen,
+    setBoardOpen,
+    modal,
+    setModal,
+    overlay,
+    setOverlay,
+    viewed,
+    setViewed,
+    side,
+    setSide,
+    closeSide,
+    inspector,
+    setInspector,
+    open,
+    openPalette,
+  } = useOverlays(compact);
   // Remembered per device, so the header's browser slot is right from the
   // first frame instead of appearing once the host answers.
   const [browserAvailable, setBrowserAvailable] = useState(
@@ -137,13 +151,6 @@ function App() {
   useEffect(() => {
     if (notice) setError("");
   }, [notice]);
-  // The one image viewer every tile opens.
-  const [viewed, setViewed] = useState<ViewedImage | null>(null);
-  const [side, setSide] = useState<{
-    question: string;
-    answer?: string;
-  } | null>(null);
-  const closeSide = useCallback(() => setSide(null), []);
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
@@ -156,6 +163,7 @@ function App() {
     loadErrors,
     catalogue,
     listed,
+    attention,
     upsertSession,
     setVerbosity,
     snapshots,
@@ -220,10 +228,8 @@ function App() {
   );
   const levels = catalogue.verbosity?.order || [];
   const changeDetail = (level: string) => setVerbosity(level).catch(report);
-  const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
-  const session =
-    metadata || catalogue.sessions.find((item) => item.id === selected);
+  const session = metadata || sessionById(catalogue.sessions, selected);
   // Until the catalogue answers, the shell renders with placeholders in the
   // places data will fill; a conversation in the URL keeps its surfaces.
   const booting = authenticated === null;
@@ -232,7 +238,7 @@ function App() {
   // Uploads belong to their conversation: one in flight elsewhere never
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
-  const running = online && !!session?.turn_active;
+  const running = !!session && isRunning(session, online);
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(snapshots, (all) => isBrowsing(all[selected]));
   // The update banner holds its reload while a turn waits on a decision.
@@ -637,6 +643,18 @@ function App() {
       setBusy(false);
     }
   }
+  // The other conversations of the open one's folder. A panel's chat
+  // names who of them wrote what and shows each one's prompt.
+  const threads = useMemo(
+    () => threadsOf(catalogue.sessions, session?.cwd || ""),
+    [catalogue.sessions, session?.cwd],
+  );
+  const teamNames =
+    session?.kind === "panel"
+      ? [session.member, ...threads.map((item) => item.member)]
+          .filter(Boolean)
+          .join(" ")
+      : "";
   // Every row reads these through one context value, so they must stay the
   // same function; they read the latest state through a ref.
   const current = {
@@ -650,7 +668,7 @@ function App() {
     deliver,
     busy,
     showContext,
-    sessions: catalogue.sessions,
+    threads,
   };
   const latest = useRef(current);
   latest.current = current;
@@ -748,27 +766,12 @@ function App() {
     }),
     [report, recallGuidance, branchFrom, selected],
   );
-  // The other conversations of the open one's folder. A panel's chat
-  // names who of them wrote what and shows each one's prompt.
-  const threads = useMemo(
-    () => threadsOf(catalogue.sessions, session?.cwd || ""),
-    [catalogue.sessions, session?.cwd],
-  );
-  const teamNames =
-    session?.kind === "panel"
-      ? [session.member, ...threads.map((item) => item.member)]
-          .filter(Boolean)
-          .join(" ")
-      : "";
   const chatActions = useMemo(
     () =>
       teamNames
         ? {
             ...messageActions,
-            team: threadsOf(
-              latest.current.sessions,
-              latest.current.session?.cwd || "",
-            ).filter((item) => item.member),
+            team: latest.current.threads.filter((item) => item.member),
             moderator: latest.current.session?.member || "Moderator",
             prompt: (member?: string) => latest.current.showContext(member),
           }
@@ -804,10 +807,6 @@ function App() {
     });
   }
 
-  const open = useCallback((value: AppModal) => {
-    setDrawer(false);
-    setModal(value);
-  }, []);
   // Forks any conversation from its menu, as /fork does the open one.
   const fork = useCallback(
     (item: Session) => latest.current.forkAndOpen(item).catch(report),
@@ -873,10 +872,6 @@ function App() {
   };
   // Only for a paired device: the pairing screen has nothing to find.
   useShortcuts(authenticated ? shortcutActions : {});
-  const openPalette = useCallback(() => {
-    setDrawer(false);
-    setOverlay("palette");
-  }, []);
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);
@@ -940,6 +935,7 @@ function App() {
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
       sessions={listed}
+      needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
       spaceMenu={(space, conversations) => (
         <SpaceMenu space={space} conversations={conversations} open={open} />
@@ -1203,6 +1199,9 @@ function App() {
                         }
                         selected={selected}
                         session={session}
+                        threads={
+                          session?.kind === "panel" ? threads : undefined
+                        }
                         opening={opening}
                         catalogue={catalogue}
                         outgoing={outgoing}

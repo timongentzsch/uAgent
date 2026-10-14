@@ -1,4 +1,5 @@
 import { entry, settled } from "./dismiss.ts";
+import { decisionFocusWaitMs } from "./limits.ts";
 
 export const selectedFromURL = () =>
   new URLSearchParams(location.hash.slice(1)).get("session") || "";
@@ -19,7 +20,7 @@ export function focusDecision() {
   const find = () =>
     document.querySelector<HTMLElement>(".conversation .decision h2");
   const observer = new MutationObserver(() => found());
-  const timer = setTimeout(() => observer.disconnect(), 15000);
+  const timer = setTimeout(() => observer.disconnect(), decisionFocusWaitMs);
   const found = () => {
     const heading = find();
     if (!heading) return false;

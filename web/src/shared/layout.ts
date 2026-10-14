@@ -4,6 +4,9 @@ export const maximumZoom = 200;
 const conversationMeasure = 1040;
 export const zoomChanged = "uagent:zoom";
 
+// A touch screen: the on-screen keyboard, no hover.
+export const coarsePointer = () => matchMedia("(pointer: coarse)").matches;
+
 export function normalizeZoom(value: number) {
   return Math.min(maximumZoom, Math.max(minimumZoom, value || 100));
 }

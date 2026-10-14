@@ -22,6 +22,7 @@ import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
 import { duration } from "../../shared/duration.ts";
 import { bytes } from "../../shared/quantities.ts";
+import { coarsePointer } from "../../shared/layout.ts";
 import { active } from "../../shared/activity-status.tsx";
 import { getToolRow } from "./tool-preview.ts";
 
@@ -340,7 +341,7 @@ export function ToolInline({
 // (images; HTML in a sandboxed frame the server also sandboxes; PDF on a
 // desktop), then its name, size and Open / Download.
 function SharedFile({ file, href }: { file: FilePart; href: string }) {
-  const touch = matchMedia("(pointer: coarse)").matches;
+  const touch = coarsePointer();
   const preview = file.mime.startsWith("image/") ? (
     <ImageTile src={href} name={file.name} />
   ) : file.mime === "text/html" ? (

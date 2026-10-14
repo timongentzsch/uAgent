@@ -1,4 +1,6 @@
 import json
+import os
+import time
 
 from integration_support import (
     Server,
@@ -9,6 +11,7 @@ from integration_support import (
     provider_env,
     run,
     run_dialog,
+    run_pty,
     save_settings,
     saved_settings,
     tool_call,
@@ -1199,3 +1202,37 @@ def test_provider_summary_capability_fallback(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true("summary-fallback-ok" in result.stdout, result.stdout)
         assert_true(len(server.requests) == 2, len(server.requests))
+
+
+def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home, *, binary):
+    delay = 4
+    catalog = {"data": [{"id": "catalog-model", "context_length": 32768}]}
+
+    def slow_catalog(_):
+        time.sleep(delay)
+        return catalog
+
+    with Server([event({"content": "catalog-ok"})] * 3, get_response=slow_catalog) as server:
+        env = base_env(home, server.url)
+        del env["UAGENT_MODEL"], env["UAGENT_CONTEXT"]
+        # The first start has no catalogue: it waits for the provider's.
+        cold = run_dialog(root, env, "probe\n/q\n", timeout=3 * delay, binary=binary)
+        assert_true(cold.returncode == 0, cold.stderr)
+        assert_true(len(server.get_requests) == 1, server.get_requests)
+
+        # The next shows its first screen long before the provider would
+        # answer, and the turn still runs on the model and window it names.
+        started = time.monotonic()
+        code, output = run_pty(root, env, [(b"probe\n", b"catalog-ok"), b"/q\n"], binary=binary)
+        assert_true(code == 0, output[-2000:])
+        assert_true(time.monotonic() - started < delay - 1, output[-2000:])
+        assert_true(len(server.get_requests) == 1, server.get_requests)
+        assert_true(server.requests[-1][1]["model"] == "catalog-model", server.requests[-1])
+
+        # A catalogue a day old is asked for again.
+        for cached in (home / ".uagent" / "models").iterdir():
+            old = time.time() - 25 * 3600
+            os.utime(cached, (old, old))
+        stale = run_dialog(root, env, "probe\n/q\n", timeout=3 * delay, binary=binary)
+        assert_true(stale.returncode == 0, stale.stderr)
+        assert_true(len(server.get_requests) == 2, server.get_requests)

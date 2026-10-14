@@ -102,6 +102,10 @@
 
 ### Changed
 
+- The first screen no longer waits for the provider's model list: when a
+  start needs the catalogue (no model or context window configured), it is
+  kept under `~/.uagent/models/` for a day, so only the first start of the
+  day asks the provider.
 - A session can no longer end up with two runtimes: a lease is held only on
   the file its path names, and stale runtime files are removed under their
   lease.

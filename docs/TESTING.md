@@ -280,9 +280,10 @@ A newer push to a pull request cancels the run of the older one; runs on
 spec gets one retry, locally and in CI.
 
 A pull request skips the slowest legs (ARM64, the variants and ThreadSanitizer)
-unless it is heavy: it touches `CMakeLists.txt`, `cmake/`, `third_party/`,
-`.github/`, `src/browser/`, `src/web/no_browser.cc` or `src/web/no_push.cc`
-(`heavy` in `.github/changes.py`). Master, the schedule and manual runs always
+unless it is heavy: it touches `CMakeLists.txt`, `CMakePresets.json`, `cmake/`,
+`third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/`,
+`include/browser/`, or a C++ file that mentions `UAGENT_WEB` or
+`UAGENT_BROWSER` (`heavy` in `.github/changes.py`). Master, the schedule and manual runs always
 run them.
 
 | Job | Runs |

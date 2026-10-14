@@ -1,5 +1,6 @@
 """Conservative job selection; unknown paths and non-PR runs get full coverage."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -11,17 +12,41 @@ def classify(paths):
     return {"native": native, "web": native or any(path.startswith("web/") for path in paths)}
 
 
-def heavy(paths):
+SWITCHES = ("UAGENT_WEB", "UAGENT_BROWSER")  # also matches UAGENT_WEB_PUSH
+HEAVY_DIRS = (
+    "src/web/",
+    "src/browser/",
+    "include/web/",
+    "include/browser/",
+    ".github/",
+    "cmake/",
+    "third_party/",
+)
+
+
+def heavy(paths, read):
     """Whether a pull request also runs the legs that master always runs:
     ThreadSanitizer, Linux ARM64 and the CLI-only and no-browser variants.
-    They matter for the build, the workflows and the sources only those
-    variants compile differently."""
+    They matter for the build, the workflows and any source that a feature
+    switch compiles differently; `read(path)` gives a file's text, or its old
+    text when it was deleted."""
     return any(
-        path.startswith((".github/", "cmake/", "third_party/", "src/browser/"))
+        path.startswith(HEAVY_DIRS)
         or path in ("CMakeLists.txt", "CMakePresets.json")
-        or path in ("src/web/no_browser.cc", "src/web/no_push.cc")
+        or (path.endswith((".cc", ".h")) and any(name in read(path) for name in SWITCHES))
         for path in paths
     )
+
+
+def build_matrix(with_arm):
+    """The Release builds of build-and-test; ARM64 only where it is run."""
+    legs = [
+        {"target": "linux-x86_64", "runner": "ubuntu-24.04", "arch": "x86_64"},
+        {"target": "linux-arm64", "runner": "ubuntu-24.04-arm", "arch": "aarch64"},
+        {"target": "macos-arm64", "runner": "macos-15", "arch": "arm64"},
+    ]
+    include = [{**leg, "build_type": "Release"} for leg in legs]
+    return json.dumps({"include": include if with_arm else [include[0], include[2]]})
 
 
 def tidy(paths):
@@ -47,9 +72,20 @@ if __name__ == "__main__":
     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
         changed = subprocess.check_output(["git", "diff", "--name-only", "-z", base, "HEAD"])
         paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
-        result = {**classify(paths), "tidy": tidy(paths), "heavy": heavy(paths)}
+
+        def read(path):
+            for command in (["cat", path], ["git", "show", f"{base}:{path}"]):
+                done = subprocess.run(command, capture_output=True, check=False)
+                if done.returncode == 0:
+                    return done.stdout.decode(errors="replace")
+            return ""
+
+        is_heavy = heavy(paths, read)
+        result = {**classify(paths), "tidy": tidy(paths), "heavy": is_heavy}
     else:
+        is_heavy = True
         result = {"native": True, "web": True, "tidy": "all", "heavy": True}
+    result["matrix"] = build_matrix(is_heavy)
     output = "".join(
         f"{name}={value if isinstance(value, str) else str(value).lower()}\n"
         for name, value in result.items()

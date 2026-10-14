@@ -176,8 +176,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
     const FileStamp stamp = SnapshotFile(item.path);
     session.updated =
         stamp.modified_seconds * 1000 + stamp.modified_nanoseconds / 1000000;
-    if (session.status == SessionStatus::kDraft)
+    if (session.status == SessionStatus::kDraft) {
       session.status = SessionStatus::kSaved;
+    }
     if (session.pid <= 0 || session.exited) session.error = item.error;
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);

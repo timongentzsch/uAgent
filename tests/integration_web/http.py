@@ -1,3 +1,4 @@
+import gzip
 import json
 import threading
 import time
@@ -387,3 +388,38 @@ def test_a_title_model_the_endpoint_cannot_take_falls_to_the_sessions(root, home
                 session, lambda value: value["metadata"]["title"] == "Named by the session model"
             )
             assert_true(models == ["session-model"], models)
+
+
+def test_web_bundle_is_served_gzipped_and_plain_to_a_client_that_cannot_take_it(
+    root, home, *, binary
+):
+    dist = Path(__file__).resolve().parents[2] / "web/dist"
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, _, _, _):
+            for path, mime in (
+                ("/", "text/html"),
+                ("/sw.js", "text/javascript"),
+                ("/manifest.webmanifest", "application/manifest+json"),
+            ):
+                expected = (dist / (path.lstrip("/") or "index.html")).read_bytes()
+                status, body, headers = client.request(
+                    path, headers={"Accept-Encoding": "gzip, deflate"}
+                )
+                assert_true(status == 200 and headers["Content-Encoding"] == "gzip", headers)
+                assert_true(headers["Vary"] == "Accept-Encoding", headers)
+                assert_true(headers["Content-Type"].startswith(mime), headers)
+                assert_true(gzip.decompress(body) == expected, f"{path} differs from web/dist")
+                status, body, headers = client.request(path)
+                assert_true(status == 200 and "Content-Encoding" not in headers, headers)
+                assert_true(headers["Vary"] == "Accept-Encoding", headers)
+                assert_true(body == expected, f"{path} plain body differs from web/dist")
+            # Already-compressed types are embedded raw and never relabelled.
+            status, body, headers = client.request(
+                "/icon-192.png", headers={"Accept-Encoding": "gzip"}
+            )
+            assert_true(
+                status == 200
+                and "Content-Encoding" not in headers
+                and body == (dist / "icon-192.png").read_bytes(),
+                headers,
+            )

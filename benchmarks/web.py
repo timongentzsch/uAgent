@@ -73,7 +73,8 @@ def main():
             report[name.replace("_bytes", "_stripped_bytes")] = stripped_bytes(path)
     assets = {}
     for path in sorted((SOURCE / "web/dist").rglob("*")):
-        if path.is_file():
+        # promote-dist.js leaves a .gz beside each text asset for the embed.
+        if path.is_file() and path.suffix != ".gz":
             data = path.read_bytes()
             assets[str(path.relative_to(SOURCE / "web/dist"))] = {
                 "raw": len(data),

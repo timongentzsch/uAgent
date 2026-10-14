@@ -4,6 +4,7 @@
 #include <curl/curl.h>
 #include <signal.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <algorithm>
 #include <atomic>
@@ -66,6 +67,28 @@ std::string PairingText(const std::string& origin, const std::string& code) {
   return "uagent web: " + origin +
          "\nPairing code (single use, 5 minutes): " + code +
          "\nOr open: " + origin + "/#pair=" + code + "\n";
+}
+
+// The plain bytes of an embedded gzip, for the rare client that does not send
+// Accept-Encoding: gzip. Empty on a corrupt stream, which the build excludes.
+std::string Gunzip(const Asset& asset) {
+  z_stream stream{};
+  if (inflateInit2(&stream, 15 + 16) != Z_OK) {
+    return {};
+  }
+  stream.next_in = const_cast<Bytef*>(asset.data);
+  stream.avail_in = static_cast<uInt>(asset.size);
+  std::string plain;
+  char chunk[KiB(16)];
+  int status = Z_OK;
+  while (status == Z_OK) {
+    stream.next_out = reinterpret_cast<Bytef*>(chunk);
+    stream.avail_out = sizeof chunk;
+    status = inflate(&stream, Z_NO_FLUSH);
+    plain.append(chunk, sizeof chunk - stream.avail_out);
+  }
+  inflateEnd(&stream);
+  return status == Z_STREAM_END ? plain : std::string();
 }
 }  // namespace
 
@@ -369,8 +392,20 @@ bool Master::Initialize(std::string& error) {
               ? "public, max-age=" + std::to_string(kSecondsPerYear) +
                     ", immutable"
               : "no-cache");
-      response.set_content(reinterpret_cast<const char*>(asset.data),
-                           asset.size, std::string(asset.mime));
+      if (!asset.gzip) {
+        response.set_content(reinterpret_cast<const char*>(asset.data),
+                             asset.size, std::string(asset.mime));
+        return;
+      }
+      response.set_header("Vary", "Accept-Encoding");
+      if (request.get_header_value("Accept-Encoding").find("gzip") !=
+          std::string::npos) {
+        response.set_header("Content-Encoding", "gzip");
+        response.set_content(reinterpret_cast<const char*>(asset.data),
+                             asset.size, std::string(asset.mime));
+      } else {
+        response.set_content(Gunzip(asset), std::string(asset.mime));
+      }
       return;
     }
     Error(response, "not found", 404);

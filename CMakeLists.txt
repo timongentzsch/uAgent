@@ -301,7 +301,8 @@ if(UAGENT_WEB)
   add_library(uagent_web src/web/master.cc src/web/master_auth.cc
                          src/web/master_command.cc src/web/master_stream.cc
                          "${_web_generated}")
-  target_link_libraries(uagent_web PUBLIC uagent_core)
+  find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
+  target_link_libraries(uagent_web PUBLIC uagent_core ZLIB::ZLIB)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
   # leave the browser unreferenced and the linker drops it.

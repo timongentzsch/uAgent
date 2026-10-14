@@ -8,6 +8,7 @@ struct Asset {
   std::string_view path, mime;
   const unsigned char* data;
   size_t size;
+  bool gzip;  // data is the gzip of the asset
 };
 std::span<const Asset> Assets();
 }  // namespace uagent::web

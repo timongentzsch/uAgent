@@ -58,7 +58,9 @@ Public headers live under `include/<module>/`, mirroring
 `KNOWN` set lists the remaining exceptions.
 
 The web host embeds the built `web/dist` (`npm ci && npm run build` in
-`web/`, or CI's web-dist artifact). A first configure without it builds
+`web/`, or CI's web-dist artifact), text assets gzipped at build time and
+served as `Content-Encoding: gzip`, or inflated for a client that does not
+accept it. A first configure without it builds
 CLI-only and says how to add the UI.
 
 ## Session runtime and clients

@@ -509,9 +509,9 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     closed_ = true;
     typing_.insert(kSelf);
     wake_(
-        "[chat, not a user message] The discussion has settled. Close it for "
-        "the user: what was decided, the answer or scores, and what is still "
-        "open. This message goes to the user; the members only read it.",
+        "[chat, not a user message] The discussion has settled.\nClose it "
+        "for the user: what was decided, the answer or scores, and what is "
+        "still open. This message goes to the user; the members only read it.",
         {{"round", round_}, {"asker", ""}});
   }
 }

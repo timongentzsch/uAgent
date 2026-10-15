@@ -264,7 +264,9 @@ function MessageView({ block, online, session }: MessageProps) {
     const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
     const label = match?.[1] ?? "Message";
     const body = match?.[2] ?? "";
-    const [first] = body.split("\n", 1);
+    // The first line is the event; what follows it is the detail.
+    const [first, ...rest] = body.split("\n");
+    const detail = rest.join("\n").trim() || body;
     return (
       <EventRow
         title={`${label.replace(", not a user message", "")} · ${first}`}
@@ -272,7 +274,7 @@ function MessageView({ block, online, session }: MessageProps) {
         icon={<Mail />}
         messageId={block.key || block.id}
       >
-        <p>{cleanText(body)}</p>
+        <p>{cleanText(detail)}</p>
       </EventRow>
     );
   }

@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { JSX, RefObject } from "preact";
+import type { RefObject, TargetedKeyboardEvent } from "preact";
 import type { SlashCommand } from "../../shared/types.ts";
 import { slashCompletion, slashMatches } from "./slash.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
@@ -14,7 +14,7 @@ export function useCommandSuggestions(
   commands: SlashCommand[],
   text: string,
   change: (text: string) => void,
-  input: RefObject<HTMLTextAreaElement>,
+  input: RefObject<HTMLTextAreaElement | null>,
 ) {
   const [selection, select] = useState({ text: "", index: -1 });
   const [dismissed, dismiss] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function useCommandSuggestions(
     select({ text: value, index: -1 });
     input.current?.focus({ preventScroll: true });
   }
-  function keyDown(event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) {
+  function keyDown(event: TargetedKeyboardEvent<HTMLTextAreaElement>) {
     if (!matches.length || event.keyCode === 229 || !plainKey(event))
       return false;
     if (event.key === "Escape") dismiss(text);

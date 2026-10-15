@@ -96,7 +96,7 @@ export default function Ask({
   // The furthest page seen: the steps lead back, never past it.
   const [reached, setReached] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
-  const advance = useRef<ReturnType<typeof setTimeout>>();
+  const advance = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const go = (to: number) => {
     clearTimeout(advance.current);
     setPage(to);

@@ -7,9 +7,12 @@ import {
   createContext,
   type ComponentChildren,
   type ComponentType,
-  type JSX,
+  type ButtonHTMLAttributes,
+  type GenericEventHandler,
   type Ref,
   type RefObject,
+  type SelectHTMLAttributes,
+  type TargetedEvent,
 } from "preact";
 import { failure } from "./types.ts";
 import {
@@ -161,9 +164,7 @@ export function Switch({
 
 // A choice shown as a row's trailing value; still a native select, so a
 // phone opens its own picker.
-export function ValueSelect(
-  props: JSX.SelectHTMLAttributes<HTMLSelectElement>,
-) {
+export function ValueSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return <Select {...props} class="value-select" />;
 }
 
@@ -467,7 +468,7 @@ export function DisclosureRow({
   icon?: ComponentChildren;
   // Leads the label on its line, e.g. a failure mark and its spoken prefix.
   marker?: ComponentChildren;
-  onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
+  onToggle?: GenericEventHandler<HTMLDetailsElement>;
   className?: string;
   messageId?: string;
   children: ComponentChildren;
@@ -504,7 +505,7 @@ export function DisclosureRow({
           setOpen(next);
           onToggle?.({
             currentTarget: { open: next },
-          } as JSX.TargetedEvent<HTMLDetailsElement>);
+          } as TargetedEvent<HTMLDetailsElement>);
         }}
       >
         {icon}
@@ -530,7 +531,7 @@ export function Button({
   children,
   disabled,
   ...props
-}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "quiet" | "destructive";
   size?: "default" | "compact" | "icon";
   busy?: boolean;
@@ -556,7 +557,7 @@ export function IconButton({
   label,
   children,
   ...props
-}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string;
   // Quiet unless it is the surface's main action (Send).
   variant?: "primary" | "quiet";
@@ -580,7 +581,7 @@ export function IconButton({
 const DialogContext = createContext<{
   title: string;
   titleId: string;
-  heading: RefObject<HTMLHeadingElement>;
+  heading: RefObject<HTMLHeadingElement | null>;
   close: () => void;
 } | null>(null);
 

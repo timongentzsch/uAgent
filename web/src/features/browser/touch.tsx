@@ -37,8 +37,8 @@ export default function BrowserTouch({
   label,
   children,
 }: {
-  screen: RefObject<HTMLDivElement>;
-  target: RefObject<HTMLDivElement>;
+  screen: RefObject<HTMLDivElement | null>;
+  target: RefObject<HTMLDivElement | null>;
   pointer?: (x: number, y: number, mask: number) => void;
   label: string;
   children?: ComponentChildren;

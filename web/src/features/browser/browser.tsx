@@ -91,7 +91,7 @@ function Screen({
   children,
 }: {
   viewer: RefObject<RFB | null>;
-  screen: RefObject<HTMLDivElement>;
+  screen: RefObject<HTMLDivElement | null>;
   readOnly: boolean;
   report: Report;
   connection: ConnectionPhase;

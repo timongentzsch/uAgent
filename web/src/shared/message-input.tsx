@@ -1,5 +1,5 @@
-import type { JSX, RefObject } from "preact";
-import { Textarea } from "./form-controls.tsx";
+import type { RefObject } from "preact";
+import { Textarea, type TextareaProps } from "./form-controls.tsx";
 import "./message-input.css";
 
 // Without a hardware pointer the on-screen keyboard's return key writes a
@@ -14,8 +14,8 @@ export default function MessageInput({
   onKeyDown,
   resizeKey,
   ...props
-}: JSX.TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  inputRef?: RefObject<HTMLTextAreaElement>;
+}: TextareaProps & {
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
   resizeKey?: number;
   submit: (event: Event) => void;
 }) {

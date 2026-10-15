@@ -160,8 +160,9 @@ void Master::AssetRead(const Request& request, Response& response) {
       return;
     }
   }
-  std::string stem = path + ".assets/" + request.matches[2].str();
-  if (!EnsurePrivateDirectory(path + ".assets")) {
+  std::string stem =
+      path + kSessionAssetsSuffix + "/" + request.matches[2].str();
+  if (!EnsurePrivateDirectory(path + kSessionAssetsSuffix)) {
     Error(response, "asset unavailable", 404);
     return;
   }
@@ -224,6 +225,6 @@ void Master::AssetRead(const Request& request, Response& response) {
                             "\"; filename*=UTF-8''" + encoded);
   }
   response.set_content(std::move(bytes),
-                       inline_view || html ? mime : "application/octet-stream");
+                       inline_view || html ? mime : kOctetStreamMime);
 }
 }  // namespace uagent::web::master

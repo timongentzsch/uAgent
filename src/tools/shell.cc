@@ -668,7 +668,9 @@ std::map<std::string, std::filesystem::file_time_type> RootEntries(
   for (fs::directory_iterator entry(workspace, ec), end; !ec && entry != end;
        entry.increment(ec)) {
     std::string name = entry->path().filename().string();
-    if (name == ".uagent") continue;
+    if (name == kWorkspaceDir) {
+      continue;
+    }
     std::error_code ignored;
     if (entry->is_directory(ignored)) name += '/';
     entries[std::move(name)] = entry->last_write_time(ignored);
@@ -696,7 +698,7 @@ std::optional<std::filesystem::path> ScratchScriptPath(
       return std::nullopt;
     }
   }
-  fs::path scratch = workspace / ".uagent" / "scratch";
+  fs::path scratch = ScratchDir(workspace);
   fs::path script = CanonicalAccessPath((scratch / requested).string());
   if (!PathWithin(script, CanonicalAccessPath(scratch.string()))) {
     error = "scratch script path escapes .uagent/scratch";
@@ -720,14 +722,13 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     return ToolFailure(
         ToolErrorCode::kNotFound,
         "no script at .uagent/scratch/" +
-            fs::relative(*script, workspace / ".uagent" / "scratch", ec)
-                .generic_string() +
+            fs::relative(*script, ScratchDir(workspace), ec).generic_string() +
             "; write it first with write_file");
   }
   // The scratch directory is private to the agent: keep it out of git.
   const fs::path ignore = script->parent_path() / ".gitignore";
   std::string write_error;
-  if (script->parent_path().filename() == "scratch" &&
+  if (script->parent_path().filename() == kScratchDir &&
       !fs::exists(ignore, ec) &&
       !AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
                        /*preserve_mode=*/false, write_error)) {

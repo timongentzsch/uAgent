@@ -32,7 +32,9 @@ namespace fs = std::filesystem;
 
 // Where a workspace keeps the name it goes by; its folder's own name is only
 // what it was first called, made safe for a path.
-fs::path LabelFile(const fs::path& space) { return space / ".uagent" / "name"; }
+fs::path LabelFile(const fs::path& space) {
+  return space / kWorkspaceDir / "name";
+}
 
 std::string Label(const fs::path& space) {
   const std::string label =
@@ -40,8 +42,13 @@ std::string Label(const fs::path& space) {
   return label.empty() ? space.filename().string() : label;
 }
 
+std::string InvalidSpaceNameMessage() {
+  return "a workspace's name is 1 to " + std::to_string(kSpaceNameChars) +
+         " characters without /";
+}
+
 bool ValidSpaceName(const std::string& name) {
-  return ValidSessionTitle(name) && name.size() <= 64 &&
+  return ValidSessionTitle(name) && name.size() <= kSpaceNameChars &&
          name.find('/') == std::string::npos;
 }
 
@@ -50,8 +57,8 @@ bool ValidSpaceName(const std::string& name) {
 // directories that are not workspaces, and holds none.
 std::optional<fs::path> SpaceAt(const std::string& path) {
   std::error_code error;
-  if (fs::is_symlink(UagentDir("spaces"), error)) return std::nullopt;
-  const auto root = CanonicalDirectory(UagentDir("spaces"));
+  if (fs::is_symlink(UagentDir(kSpacesDir), error)) return std::nullopt;
+  const auto root = CanonicalDirectory(UagentDir(kSpacesDir));
   const auto space = CanonicalDirectory(path);
   return root && space && space->parent_path() == *root ? space : std::nullopt;
 }
@@ -60,7 +67,8 @@ std::optional<fs::path> SpaceAt(const std::string& path) {
 json Spaces() {
   json spaces = json::array();
   std::error_code error;
-  for (const auto& entry : fs::directory_iterator(UagentDir("spaces"), error)) {
+  for (const auto& entry :
+       fs::directory_iterator(UagentDir(kSpacesDir), error)) {
     if (const auto space = SpaceAt(entry.path().string())) {
       spaces.push_back({{"path", space->string()}, {"name", Label(*space)}});
     }
@@ -74,7 +82,7 @@ json Spaces() {
 
 std::string SpaceFolder(const std::string& name, std::string& error) {
   if (!ValidSpaceName(name)) {
-    error = "a workspace's name is 1 to 64 characters without /";
+    error = InvalidSpaceNameMessage();
     return "";
   }
   for (const json& space : Spaces()) {
@@ -84,12 +92,12 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
   }
   // A folder of its own: the name made safe, numbered when that is taken.
   const std::string safe = SafeFileComponent(name);
-  std::string folder = UagentDir("spaces") + "/" + safe;
+  std::string folder = UagentDir(kSpacesDir) + "/" + safe;
   for (int n = 2; PathExists(folder); ++n) {
-    folder = UagentDir("spaces") + "/" + safe + "-" + std::to_string(n);
+    folder = UagentDir(kSpacesDir) + "/" + safe + "-" + std::to_string(n);
   }
   std::string ignored;
-  if (!EnsurePrivateDirectory(folder + "/.uagent") ||
+  if (!EnsurePrivateDirectory(folder + "/" + kWorkspaceDir) ||
       (safe != name &&
        !AtomicWriteFile(LabelFile(folder).string(), name + "\n",
                         kPrivateFileMode, /*preserve_mode=*/false, ignored))) {
@@ -104,7 +112,7 @@ std::string SessionHost::RenameSpace(const std::string& path,
   const auto space = SpaceAt(path);
   if (!space) return "no such workspace";
   if (!ValidSpaceName(name)) {
-    return "a workspace's name is 1 to 64 characters without /";
+    return InvalidSpaceNameMessage();
   }
   for (const json& other : Spaces()) {
     if (JsonValue(other, "path", "") != space->string() &&
@@ -114,8 +122,8 @@ std::string SessionHost::RenameSpace(const std::string& path,
   }
   std::string error;
   // As µAgent spells its own folder, which a link may lead to.
-  const fs::path kept = fs::path(UagentDir("spaces")) / space->filename();
-  if (!EnsurePrivateDirectory((kept / ".uagent").string()) ||
+  const fs::path kept = fs::path(UagentDir(kSpacesDir)) / space->filename();
+  if (!EnsurePrivateDirectory((kept / kWorkspaceDir).string()) ||
       !AtomicWriteFile(LabelFile(kept).string(), name + "\n", kPrivateFileMode,
                        /*preserve_mode=*/false, error)) {
     return error.empty() ? "the workspace could not be renamed" : error;
@@ -269,7 +277,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     std::string title = Trim(JsonValue(command, "title", ""));
     if (kind == SessionCommandKind::kRename && !ValidSessionTitle(title)) {
-      result.error = "title must be 1–256 bytes without control characters";
+      result.error = InvalidSessionTitleMessage();
       return result;
     }
     // In a chat the title is the name a message opens with.
@@ -289,7 +297,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     lock.unlock();
     UniqueLock scan(scan_mutex_);
     std::unique_lock asset_lock = assets_.GuardMutation();
-    std::string draft_path = directory_ + "/drafts/" + session->id + ".json";
+    std::string draft_path =
+        directory_ + "/" + kDraftsDir + "/" + session->id + ".json";
     SessionStoreStatus stored;
     if (kind == SessionCommandKind::kDelete) {
       stored = SessionStore::Remove(session->path, draft_path);

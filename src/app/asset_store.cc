@@ -43,7 +43,7 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
     if (entry.path().extension() == ".json") continue;
     if (cleanup && std::filesystem::file_time_type::clock::now() -
                            entry.last_write_time(ec) >
-                       std::chrono::hours(24)) {
+                       std::chrono::hours(kOrphanAgeHours)) {
       auto metadata = entry.path();
       metadata.replace_extension(".json");
       const json record = ReadJsonFile(metadata.string(), 1024);
@@ -139,7 +139,7 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
                                    const std::string& bytes, std::string name,
                                    bool committed, bool tool_copy) {
   std::lock_guard assets(mutex_);
-  const std::string folder = session_path + ".assets";
+  const std::string folder = session_path + kSessionAssetsSuffix;
   if (!EnsurePrivateDirectory(folder)) {
     return {{}, "cannot create asset storage", 500};
   }
@@ -151,7 +151,7 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     for (const auto& entry :
          std::filesystem::directory_iterator(folders.front(), ec)) {
       if (std::filesystem::is_directory(entry.symlink_status(ec)) &&
-          !entry.path().string().ends_with(".assets")) {
+          !entry.path().string().ends_with(kSessionAssetsSuffix)) {
         folders.push_back(entry.path());
       }
       if (folders.size() > kMaxCatalogueEntries) {
@@ -163,7 +163,8 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     for (const auto& directory : folders) {
       for (const auto& entry :
            std::filesystem::directory_iterator(directory, ec)) {
-        if (!entry.path().string().ends_with(".json.assets") ||
+        if (!entry.path().string().ends_with(std::string(".json") +
+                                             kSessionAssetsSuffix) ||
             !std::filesystem::is_directory(entry.symlink_status(ec))) {
           continue;
         }
@@ -199,7 +200,9 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
   }
   if (mime.empty()) {
     mime = AttachmentMime(name);
-    if (mime.starts_with("image/")) mime = "application/octet-stream";
+    if (mime.starts_with("image/")) {
+      mime = kOctetStreamMime;
+    }
   }
   std::string id = RandomToken(16), stem = folder + "/" + id;
   if (id.empty() || !ToolWritePrivateFile(stem + ".data", bytes).Ok()) {
@@ -232,7 +235,7 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
                               AssetClaim& receipt) {
   std::lock_guard assets(mutex_);
   if (ids.size() > kUploadCount) return "too many attachments";
-  if (!EnsurePrivateDirectory(session_path + ".assets")) {
+  if (!EnsurePrivateDirectory(session_path + kSessionAssetsSuffix)) {
     return "unsafe asset directory";
   }
   std::vector<std::pair<std::string, json>> claims;
@@ -248,7 +251,7 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
     if (!display.empty() && !ValidAssetName(display)) {
       return "invalid attachment name";
     }
-    std::string stem = session_path + ".assets/" + asset_id;
+    std::string stem = session_path + kSessionAssetsSuffix + "/" + asset_id;
     std::string metadata, read_error;
     if (!ReadRegularFile(stem + ".json", 1024, metadata, read_error)) {
       return "attachment is unavailable";
@@ -267,7 +270,7 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
         {{"path", stem + extension},
          {"id", asset_id},
          {"name", JsonValue(asset, "name", "attachment" + extension)},
-         {"mime", JsonValue(asset, "mime", "application/octet-stream")},
+         {"mime", JsonValue(asset, "mime", kOctetStreamMime)},
          {"image", JsonValue(asset, "image", extension != ".data")}});
   }
   if (std::string blocked = gate(); !blocked.empty()) {

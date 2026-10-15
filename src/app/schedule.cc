@@ -49,7 +49,7 @@ json Mutate(const std::function<json(json&)>& change) {
   // Wait for the lock: the host claims runs the moment a CLI write lands,
   // while that writer may still hold it; failing fast stranded the run. The
   // wait is bounded so a writer stopped with Ctrl+Z cannot block the host.
-  Fd lock(open((UagentDir("scheduled") + "/write.lock").c_str(),
+  Fd lock(open((UagentDir("scheduled") + "/" + kWriteLockFile).c_str(),
                O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, kPrivateFileMode));
   const auto give_up =
       std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -58,7 +58,7 @@ json Mutate(const std::function<json(json&)>& change) {
         std::chrono::steady_clock::now() >= give_up) {
       return {{"error", "scheduled tasks are busy; try again"}};
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPollTickMs));
   }
   if (!lock) return {{"error", "cannot lock scheduled tasks"}};
   auto store = ReadSchedules();
@@ -347,7 +347,7 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
   return {{"item", saved}};
 }
 json ScheduleRun(json& store, const std::string& id, const json& task) {
-  if (!FileLease::HasLiveOwner(UagentDir("web") + "/master.lock")) {
+  if (!FileLease::HasLiveOwner(UagentDir(kWebDir) + "/" + kMasterLockFile)) {
     return {{"error", "Start uagent --web to run scheduled tasks."}};
   }
   if (Busy(store, id)) {
@@ -395,7 +395,7 @@ json ScheduleControl(const json& request) {
   if (action == "list") {
     auto result = Public(ReadSchedules());
     result["runner_active"] =
-        FileLease::HasLiveOwner(UagentDir("web") + "/master.lock");
+        FileLease::HasLiveOwner(UagentDir(kWebDir) + "/" + kMasterLockFile);
     return result;
   }
   if (action == "preview") {

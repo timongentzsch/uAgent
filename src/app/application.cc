@@ -18,6 +18,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -43,7 +44,9 @@ Application::Application(AppContext& context)
                          !session_file_.empty());
   message_subscription_ =
       context_.observability.Subscribe([this](const AppEvent& event) {
-        if (event.type != "message.changed") return;
+        if (event.type != AppType(EventId::kMessageChanged)) {
+          return;
+        }
         std::string kind = JsonValue(event.data["block"], "kind", "");
         if ((!DelegatedSessionFile().empty() || kind == "user" ||
              kind == "attachment") &&
@@ -140,7 +143,8 @@ void Application::RunTurns(const std::string& input, json content,
   // The turn is over: the shared browser is free for the next conversation.
   if (!context_.browser_lease.empty()) {
     browser::Request(
-        {{"op", "release"}, {"session_id", context_.browser_lease}}, 1000);
+        {{"op", "release"}, {"session_id", context_.browser_lease}},
+        browser::kProbeMs);
   }
 #endif
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
@@ -162,8 +166,8 @@ void Application::Teardown(const char* reason) {
   std::remove(UsageLedger().c_str());
   if (!session_file_.empty()) {
     std::string error;
-    if (!context_.observability.Journal().Flush(session_file_ + ".events.jsonl",
-                                                error)) {
+    if (!context_.observability.Journal().Flush(
+            session_file_ + kSessionJournalSuffix, error)) {
       fprintf(stderr, "cannot save session journal: %s\n", error.c_str());
     }
   }

@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/client.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
 #include "include/core/thread_annotations.h"
@@ -77,33 +78,14 @@ bool PublicPushAddress(const sockaddr* address) {
     if (ntohs(value->sin_port) != 443) {
       return false;
     }
-    uint32_t ip = ntohl(value->sin_addr.s_addr);
-    constexpr std::pair<uint32_t, unsigned> kExcluded[] = {
-        {0x00000000, 8},  {0x0a000000, 8},  {0x64400000, 10}, {0x7f000000, 8},
-        {0xa9fe0000, 16}, {0xac100000, 12}, {0xc0000000, 24}, {0xc0000200, 24},
-        {0xc0a80000, 16}, {0xc6120000, 15}, {0xc6336400, 24}, {0xcb007100, 24},
-        {0xe0000000, 3},
-    };
-    for (auto [network, bits] : kExcluded) {
-      if ((ip & (UINT32_MAX << (32 - bits))) == network) {
-        return false;
-      }
-    }
-    return true;
+    return PublicSocketAddress(address, sizeof(sockaddr_in));
   }
   if (address->sa_family == AF_INET6) {
     const auto* value = reinterpret_cast<const sockaddr_in6*>(address);
-    const auto* bytes = value->sin6_addr.s6_addr;
-    if (ntohs(value->sin6_port) != 443 || value->sin6_scope_id != 0 ||
-        (bytes[0] & 0xe0) != 0x20) {
+    if (ntohs(value->sin6_port) != 443 || value->sin6_scope_id != 0) {
       return false;
     }
-    if (bytes[0] == 0x20 && bytes[1] == 0x01 &&
-        ((bytes[2] == 0x0d && bytes[3] == 0xb8) ||
-         (bytes[2] == 0 && bytes[3] <= 0x2f))) {
-      return false;
-    }
-    return true;
+    return PublicSocketAddress(address, sizeof(sockaddr_in6));
   }
   return false;
 }

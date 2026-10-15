@@ -10,6 +10,7 @@
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/session.h"
+#include "include/core/events.h"
 #include "include/core/json.h"
 
 namespace uagent::session {
@@ -28,9 +29,12 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   // the panel yields it (approval.escalated).
   const bool routed = JsonValue(JsonValue(value, "data", json::object()),
                                 "route", "") == kRoutePanel;
-  if (type == "turn.completed" ||
-      ((type == "approval.requested" || type == "ask.requested") && !routed) ||
-      type == "approval.escalated" || type == "error" || kind == "error") {
+  if (type == AppType(EventId::kTurnCompleted) ||
+      ((type == AppType(EventId::kApprovalRequested) ||
+        type == "ask.requested") &&
+       !routed) ||
+      type == "approval.escalated" || type == AppType(EventId::kError) ||
+      kind == "error") {
     notice.attention_id = epoch + ":" + std::to_string(sequence_ + 1);
     value["attention_id"] = notice.attention_id;
   }

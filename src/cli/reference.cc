@@ -259,7 +259,7 @@ std::vector<ReferenceFile> ReferenceFiles() {
           {"configuration.md", ConfigMarkdown()},
           {"system-prompt.md", PromptMarkdown()},
           {"tools.md", ToolsMarkdown()},
-          {"settings.schema.json", JsonDump(SettingsSchema(), 2) + "\n"},
+          {kSettingsSchemaFile, JsonDump(SettingsSchema(), 2) + "\n"},
           {"manifest.json", ReferenceManifest()}};
 }
 

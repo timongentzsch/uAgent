@@ -12,6 +12,7 @@
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -88,7 +89,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   }
   if (!EnsurePrivateDirectory(
           std::filesystem::path(path).parent_path().string()) ||
-      !EnsurePrivateDirectory(directory_ + "/drafts")) {
+      !EnsurePrivateDirectory(directory_ + "/" + kDraftsDir)) {
     error = "cannot create private session directory";
     return {};
   }
@@ -110,12 +111,13 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
 
 bool SessionHost::WriteDraft(const HostSession& session,
                              const std::string& title, int64_t updated) const {
-  return ToolWritePrivateFile(directory_ + "/drafts/" + session.id + ".json",
-                              JsonDump({{"cwd", session.cwd},
-                                        {"path", session.path},
-                                        {"id", session.id},
-                                        {"title", title},
-                                        {"updated", updated}}))
+  return ToolWritePrivateFile(
+             directory_ + "/" + kDraftsDir + "/" + session.id + ".json",
+             JsonDump({{"cwd", session.cwd},
+                       {"path", session.path},
+                       {"id", session.id},
+                       {"title", title},
+                       {"updated", updated}}))
       .Ok();
 }
 
@@ -399,15 +401,15 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
 void SessionHost::RecordRunEvent(HostSession& session, const std::string& type,
                                  json& frame) {
   if (!session.run_id.empty()) {
-    if (type == "turn.completed") {
+    if (type == AppType(EventId::kTurnCompleted)) {
       const std::string outcome = JsonValue(frame["data"], "outcome", "error");
       session.run_result = RunResultFor(outcome);
       if (session.run_result == "failed") {
         session.error = "Turn ended: " + outcome;
       }
-    } else if (type == "turn.stopped") {
+    } else if (type == AppType(EventId::kTurnStopped)) {
       session.run_result = "interrupted";
-    } else if (type == "error") {
+    } else if (type == AppType(EventId::kError)) {
       session.error = JsonValue(frame["data"], "error", "scheduled run failed");
     }
   }
@@ -441,22 +443,29 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string type = JsonValue(frame, "type", "");
   // Terminal renderings of what the transcript rows already show; terminals
   // read them from the worker, browsers never do.
-  if (type == "ui.presentation") return false;
+  if (type == AppType(EventId::kPresentation)) {
+    return false;
+  }
   RecordRunEvent(session, type, frame);
   json patch;
   ApplySessionEvent(session.state, type, frame["data"], &patch);
-  if (type == "tool.result") RetainExchange(session, frame["data"]);
-  if (type == "message.changed") {
+  if (type == AppType(EventId::kToolResult)) {
+    RetainExchange(session, frame["data"]);
+  }
+  if (type == AppType(EventId::kMessageChanged)) {
     const json& block = frame["data"]["block"];
     session.incoming =
         std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
   }
   // Browsers receive what changed in the host's view instead of the events
   // that changed it, so they apply rows and never re-derive them.
-  if (type == "response.started" || type == "response.answer.delta" ||
-      type == "response.reasoning.delta" || type == "response.finished" ||
-      type == "tool.call" || type == "tool.result" ||
-      type == "message.changed") {
+  if (type == AppType(EventId::kResponseStarted) ||
+      type == AppType(EventId::kAnswerDelta) ||
+      type == AppType(EventId::kReasoningDelta) ||
+      type == AppType(EventId::kResponseFinished) ||
+      type == AppType(EventId::kToolCall) ||
+      type == AppType(EventId::kToolResult) ||
+      type == AppType(EventId::kMessageChanged)) {
     if (patch.is_null()) return false;
     patch["time"] = frame["time"];
     frame = std::move(patch);

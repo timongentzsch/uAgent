@@ -12,6 +12,7 @@
 
 #include "include/core/config.h"
 #include "include/core/config_registry.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/project.h"
@@ -31,7 +32,7 @@ enum class PathTarget {
 // Any name an instruction file can have, AGENTS.md's fallbacks included.
 inline bool InstructionFileName(const std::filesystem::path& path) {
   const std::string name = path.filename().string();
-  return name == "PANEL.md" || name == "COORDINATOR.md" ||
+  return name == kPanelInstructionFile || name == kLegacyPanelInstructionFile ||
          std::ranges::find(kInstructionNames, name) !=
              std::end(kInstructionNames);
 }
@@ -60,8 +61,8 @@ inline bool SelfConfigurationPath(const std::string& path) {
   // A workspace .mcp.json decides which servers are spawned. Preserve the
   // basename rule for nested workspaces while recognizing either spelling of
   // a symlink.
-  return std::filesystem::path(path).filename() == ".mcp.json" ||
-         candidate.filename() == ".mcp.json";
+  return std::filesystem::path(path).filename() == kMcpConfigFile ||
+         candidate.filename() == kMcpConfigFile;
 }
 
 // HiddenPaths -- the browser profile, uAgent's settings, credential stores:

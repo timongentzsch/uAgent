@@ -9,6 +9,7 @@
 #include "include/app/config_proposal.h"
 #include "include/app/import.h"
 #include "include/core/config.h"
+#include "include/core/defaults.h"
 #include "include/core/effective_config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
@@ -150,7 +151,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
       return {{"error", "invalid skill destination"}};
     }
     path = (scope == "project" ? project : global) / key.substr(slash + 1) /
-           "SKILL.md";
+           kSkillFile;
   }
   const fs::path root = LibraryPath(global, path) ? global : project;
   if (!LibraryPath(root, path) ||

@@ -23,7 +23,7 @@ ToolResult ToolImageResult(const json& content, std::string source_call_id,
     return ToolFailure(ToolErrorCode::kRemoteError,
                        std::string(source) + " image is missing base64 data");
   }
-  std::string mime = JsonValue(content, "mimeType", "image/png");
+  std::string mime = JsonValue(content, "mimeType", kPngMime);
   std::string extension = ImageExtension(mime);
   if (extension.empty()) {
     return ToolFailure(

@@ -9,14 +9,19 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/process.h"
+#include "include/api/client.h"
 #include "include/app/import.h"
+#include "include/core/defaults.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
-#include "include/core/defaults.h"
 #include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
+#include "include/tools/subagent.h"
+#include "include/tools/web_fetch.h"
+#include "include/tools/web_search.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -114,13 +119,13 @@ void TestSkillDiscovery() {
         std::string::npos);
   CHECK(body.output.find("description:") == std::string::npos);
   CHECK(body.output.find(skills[0].dir) != std::string::npos);
+  // Compaction finds a read skill by this opening.
+  CHECK(body.output.starts_with(kSkillMarker));
 
   // A workspace skill of the same name shadows the global one.
   write_skill(
       workspace / ".uagent/skills/release",
       "---\nname: whatever\ndescription: this repo's release steps\n---\n\n"
-  // Compaction finds a read skill by this opening.
-  CHECK(body.output.starts_with(kSkillMarker));
       "Use the makefile.\n");
   write_skill(workspace / ".uagent/skills/lint",
               "---\ndescription: how this repo lints\n---\n\nRun ruff.\n");
@@ -344,6 +349,24 @@ void TestImportFromOtherAgents() {
   std::vector<std::string> required;
   ParseSkillFrontMatter(loaded, nullptr, &required);
   CHECK(required == std::vector<std::string>({"run", "read_path"}));
+  // Every name a vendor tool maps to is a tool the registry has.
+  ProcessSupervisor tool_processes;
+  std::vector<Tool> registered = BuiltinTools(tool_processes);
+  Api tool_api;
+  UsageAccumulator tool_usage;
+  registered.push_back(WebFetchTool(tool_api));
+  registered.push_back(WebSearchTool(tool_api, tool_usage, {}));
+  registered.push_back(SubagentTool(tool_api, tool_processes, {}, {}, false));
+  for (const char* vendor : {"Bash", "exec_command", "shell", "Read", "Write",
+                             "Edit", "MultiEdit", "apply_patch", "Grep", "Glob",
+                             "WebFetch", "WebSearch", "Task", "Agent"}) {
+    std::istringstream mapped(RewriteToolReferences(
+        std::string("---\nrequires-tools: [") + vendor + "]\n---\n"));
+    std::vector<std::string> targets;
+    ParseSkillFrontMatter(mapped, nullptr, &targets);
+    CHECK(targets.size() == 1);
+    CHECK(!targets.empty() && FindTool(registered, targets[0]) != nullptr);
+  }
 
   TestWorkspace test("import");
   auto write = [](const fs::path& path, const std::string& text) {

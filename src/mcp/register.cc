@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "include/core/config.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -261,7 +262,7 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
 bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
   const std::string dir = ConfigDir(server);
   const bool project = dir == CanonicalCwd() && dir != UserHome();
-  const std::string path = dir + "/.mcp.json";
+  const std::string path = dir + "/" + kMcpConfigFile;
   std::error_code ec;
   if (dir.empty() || std::filesystem::is_symlink(path, ec)) {
     error = "cannot edit " + path;
@@ -329,7 +330,7 @@ json McpStatus(const McpRuntime& runtime, const std::vector<Tool>& tools) {
     json row = {
         {"name", server.name},
         {"scope", dir == UserHome() ? "global" : "project"},
-        {"file", dir + "/.mcp.json"},
+        {"file", dir + "/" + kMcpConfigFile},
         {"state", state},
         {"command", command},
         {"overrides", JsonValue(server.config, "__uagent_overrides", false)},

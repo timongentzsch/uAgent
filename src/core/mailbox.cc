@@ -72,7 +72,8 @@ bool OverRate(const std::string& from) {
   std::lock_guard lock(mutex);
   const int64_t now = NowMillis();
   auto& times = sent[from];
-  while (!times.empty() && now - times.front() > int64_t{60} * 1000) {
+  while (!times.empty() &&
+         now - times.front() > kSecondsPerMinute * kMillisecondsPerSecond) {
     times.pop_front();
   }
   if (times.size() >= kMailSenderPerMinute) return true;
@@ -117,7 +118,7 @@ std::string MailboxIdFor(const std::string& session_path) {
 
 std::string MailboxDir(const std::string& id) {
   if (!ValidId(id)) return "";
-  const std::string dir = UagentDir("mail") + "/" + id;
+  const std::string dir = UagentDir(kMailDir) + "/" + id;
   CreatePrivateDirectories(dir + "/new");
   CreatePrivateDirectories(dir + "/cur");
   return dir;

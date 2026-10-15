@@ -17,6 +17,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
+#include "include/media/attachments.h"
 #include "include/tools/image_result.h"
 
 namespace uagent {
@@ -57,6 +58,10 @@ constexpr int kSettleMs = 8000;
 // Unchanged probes in a row (about half a second) that count as settled.
 constexpr int kQuietProbes = 2;
 
+// How long the user has, after saying they are done, for the browser to be
+// handed back.
+constexpr int kHandbackWaitMs = 5000;
+
 ToolResult Handover(const std::string& session_id, const std::string& reason,
                     const BrowserAsk& ask) {
   std::string interaction = RandomToken(16);
@@ -69,10 +74,10 @@ ToolResult Handover(const std::string& session_id, const std::string& reason,
   bool eof = false;
   std::string answer = ask(interaction, reason, &eof);
   json status;
-  for (int attempt = 0; attempt < 250; ++attempt) {
+  for (int waited = 0; waited < kHandbackWaitMs; waited += kPollTickMs) {
     status = browser::Request({{"op", "status"}});
     if (JsonValue(status, "mode", "") != "human") break;
-    poll(nullptr, 0, 20);
+    poll(nullptr, 0, kPollTickMs);
   }
   if (eof || answer != "done" || JsonValue(status, "mode", "") != "agent" ||
       JsonValue(status, "session_id", "") != session_id) {
@@ -86,9 +91,6 @@ ToolResult Handover(const std::string& session_id, const std::string& reason,
       "The user finished in the browser and handed it back. Observe the page "
       "before continuing.");
 }
-
-// How much of a page's text one result carries; kPageScript cuts there.
-constexpr int64_t kPageTextChars = 12000;
 
 // What a result says first when the page looks like a bot wall.
 std::string BlockLine(const json& page) {
@@ -104,7 +106,7 @@ std::string BlockLine(const json& page) {
 json Ask(const std::string& session_id, json command, const std::string& op) {
   command["op"] = op;
   command["session_id"] = session_id;
-  return browser::Request(command, 30000);
+  return browser::Request(command, browser::kActionMs);
 }
 
 // What read answers: the text asked for, and the links that go with it.
@@ -135,11 +137,11 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   const std::string done = lead.empty() ? "" : lead + "\n";
   json outcome = browser::Request(
       {{"op", "observe"}, {"session_id", session_id}, {"image", look}});
-  json current =
-      outcome.contains("error")
-          ? json::object()
-          : browser::Request(
-                {{"op", "agent_status"}, {"session_id", session_id}}, 1000);
+  json current = outcome.contains("error")
+                     ? json::object()
+                     : browser::Request(
+                           {{"op", "agent_status"}, {"session_id", session_id}},
+                           browser::kProbeMs);
   std::string failed = JsonValue(outcome, "error", "");
   if (failed.empty() && (!current.value("ok", false) ||
                          JsonValue(current, "generation", uint64_t{0}) !=
@@ -159,7 +161,7 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   }
   ToolResult attached =
       look ? ToolImageResult({{"data", JsonValue(outcome, "image", "")},
-                              {"mimeType", "image/jpeg"}},
+                              {"mimeType", kJpegMime}},
                              context.call_id, "browser", kArtifactsDir)
            : ToolSuccess("");
   if (!attached.Ok()) {
@@ -173,10 +175,10 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   const int64_t chars = JsonValue(*page, "chars", int64_t{0});
   const std::string elements = JsonValue(*page, "elements", "");
   const std::string more =
-      chars > kPageTextChars
-          ? " (the first " + std::to_string(kPageTextChars) + " of " +
+      chars > browser::kPageTextChars
+          ? " (the first " + std::to_string(browser::kPageTextChars) + " of " +
                 std::to_string(chars) + " characters; read with offset=" +
-                std::to_string(kPageTextChars) + " continues)"
+                std::to_string(browser::kPageTextChars) + " continues)"
           : "";
   // A canvas, a chart or an image says nothing here: the picture does.
   const std::string sparse =
@@ -419,7 +421,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   };
   // Text is counted in characters and results in bytes; a page in a script
   // of several bytes a character still arrives whole, with its elements.
-  tool.result_chars = 4 * kPageTextChars + 12288;
+  tool.result_chars = 4 * browser::kPageTextChars + 12288;
   tool.run = [session_id = std::move(session_id), ask = std::move(ask)](
                  const json& given, const ToolContext& context) {
     json args = given;

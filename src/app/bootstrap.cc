@@ -453,9 +453,10 @@ bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
   const json thread = JsonValue(app->options.session, "thread", json::object());
   const bool shared_file =
       tool.name == "read_path" && !ChatMember(thread).empty() &&
-      PathWithin(CanonicalAccessPath(JsonValue(arguments, "path", "")),
-                 CanonicalAccessPath(
-                     PanelPath(JsonValue(thread, "folder", "")) + ".assets"));
+      PathWithin(
+          CanonicalAccessPath(JsonValue(arguments, "path", "")),
+          CanonicalAccessPath(PanelPath(JsonValue(thread, "folder", "")) +
+                              kSessionAssetsSuffix));
   return confined_thread || shared_file;
 }
 
@@ -926,7 +927,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
         [chat = &*context->chat](Mail& mail) { chat->Heard(mail); });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
-    context->agent->OpenEditJournal(context->channel->SessionPath() + ".edits");
+    context->agent->OpenEditJournal(context->channel->SessionPath() +
+                                    kSessionEditsSuffix);
     context->agent->KeepToolFiles(
         [session_path = context->channel->SessionPath()](
             const std::string& path, const std::string& name) -> json {

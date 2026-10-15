@@ -22,6 +22,7 @@
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
@@ -276,7 +277,9 @@ class Terminal {
         timeout = PollTimeoutMs(*deadline);
       }
       // The working row's spinner and elapsed time advance on their own.
-      if (raw_ && running) timeout = timeout < 0 ? 100 : std::min(timeout, 100);
+      if (raw_ && running) {
+        timeout = timeout < 0 ? kWaitTickMs : std::min(timeout, kWaitTickMs);
+      }
       if (poll(waits, 4, timeout) < 0 && errno != EINTR) break;
       wake_.Drain();
       if (TakeIdleInterrupt()) {
@@ -404,7 +407,7 @@ class Terminal {
       while (!disconnected_) {
         if (raw_) Paint();
         pollfd ready{wake_.read.Get(), POLLIN, 0};
-        poll(&ready, 1, 20);
+        poll(&ready, 1, kPollTickMs);
       }
       reader_.join();
     }
@@ -691,13 +694,17 @@ class Terminal {
       std::string type = JsonValue(frame, "type", "");
       auto sent = frame.find("data");
       const json& data = sent != frame.end() ? *sent : kNone;
-      if (type == "session.ended") ended_ = true;
-      if (type == "notice" && !history_) return;
-      if (type == "usage.updated") {
+      if (type == AppType(EventId::kSessionEnded)) {
+        ended_ = true;
+      }
+      if (type == AppType(EventId::kNotice) && !history_) {
+        return;
+      }
+      if (type == AppType(EventId::kUsageUpdated)) {
         std::lock_guard lock(mutex_);
         ApplySessionEvent(state_, type, data);
         wake_.Wake();
-      } else if (type == "message.changed") {
+      } else if (type == AppType(EventId::kMessageChanged)) {
         const json* found = JsonObject(data, "block");
         const json& block = found ? *found : kNone;
         const auto block_kind = JsonValue(block, "kind", "");
@@ -710,7 +717,8 @@ class Terminal {
             block_kind == "user") {
           presenter_.Block(block);
         }
-      } else if (type == "command.completed" && data.contains("output")) {
+      } else if (type == AppType(EventId::kCommandCompleted) &&
+                 data.contains("output")) {
         std::string output = JsonValue(data, "output", "");
         if (output.empty() && data.contains("result") &&
             !data["result"].empty()) {
@@ -723,7 +731,7 @@ class Terminal {
       } else {
         // The level changed elsewhere (another terminal, the web, the file).
         if (const json* changed = JsonArray(data, "changed");
-            type == "config.changed" && !pinned_ && changed &&
+            type == AppType(EventId::kConfigChanged) && !pinned_ && changed &&
             std::ranges::find(*changed, json(kVerbositySetting)) !=
                 changed->end()) {
           if (const DetailPolicy* detail = &ConfiguredDetail({});

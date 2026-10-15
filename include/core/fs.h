@@ -79,6 +79,36 @@ inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kModelsDir = "models";
 inline constexpr const char* kConfigDir = "config";
+// A folder's panel session record, in its history folder (the file keeps the
+// name it had before the coordinator became the panel).
+inline constexpr const char* kPanelRecordFile = "coordinator.json";
+inline constexpr const char* kMailDir = "mail";
+// Named workspaces, one folder each.
+inline constexpr const char* kSpacesDir = "spaces";
+inline constexpr const char* kWebDir = "web";
+// Imports build in a staging folder that the pruner empties when one was
+// killed.
+inline constexpr const char* kStagingDir = "staging";
+// Session drafts sit in the sessions folder of a host, beside its records.
+inline constexpr const char* kDraftsDir = "drafts";
+// What a workspace keeps for itself, under its root; the home folder's own
+// directory carries the same name. The agent's scripts live in kScratchDir.
+inline constexpr const char* kWorkspaceDir = ".uagent";
+inline constexpr const char* kScratchDir = "scratch";
+inline std::filesystem::path ScratchDir(
+    const std::filesystem::path& workspace) {
+  return workspace / kWorkspaceDir / kScratchDir;
+}
+// A lease on a store's directory: the web host's, and the writers of the
+// scheduled-task and library stores. The scheduler reads the host's by name.
+inline constexpr const char* kMasterLockFile = "master.lock";
+inline constexpr const char* kWriteLockFile = "write.lock";
+// Files beside a session record (<id>.json) that its writers create and the
+// pruner must recognise; one list, so a new sidecar cannot be left behind.
+inline constexpr const char* kSessionLockSuffix = ".lock";
+inline constexpr const char* kSessionJournalSuffix = ".events.jsonl";
+inline constexpr const char* kSessionAssetsSuffix = ".assets";
+inline constexpr const char* kSessionEditsSuffix = ".edits";
 // Remembered approval rules under kConfigDir; they grant future authority.
 inline constexpr const char* kPermissionStoreFile = "permissions.json";
 

@@ -84,6 +84,7 @@ std::string ReplaceSettings(const AllSettings& settings);
 // The JSON Schema of the document, for an editor: written beside it as
 // settings.schema.json, which the document names.
 json SettingsSchema();
+inline constexpr char kSettingsSchemaFile[] = "settings.schema.json";
 
 }  // namespace uagent
 

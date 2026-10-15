@@ -102,7 +102,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   session.context.session_approvals.clear();
   std::string error;
   if (!session.context.observability.Journal().Load(
-          session.session_file + ".events.jsonl", error)) {
+          session.session_file + kSessionJournalSuffix, error)) {
     Emit(NoticeEvent(PresentationStatus::kFailed,
                      "cannot load session journal: " + error));
   }

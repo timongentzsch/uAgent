@@ -59,6 +59,13 @@ inline constexpr char kCollaboratorMarker[] = "\n[collaborator ";
 inline constexpr char kSkillMarker[] = "[skill ";
 inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
 
+// File names uAgent reads or writes in more than one place.
+inline constexpr char kSkillFile[] = "SKILL.md";
+inline constexpr char kMcpConfigFile[] = ".mcp.json";
+// A panel's instructions. COORDINATOR.md is what they were called before.
+inline constexpr char kPanelInstructionFile[] = "PANEL.md";
+inline constexpr char kLegacyPanelInstructionFile[] = "COORDINATOR.md";
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_DEFAULTS_H_

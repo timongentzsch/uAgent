@@ -136,23 +136,24 @@ class WorkerChannel final : public ApplicationChannel {
 
   void Event(const AppEvent& event) {
     std::lock_guard transient_lock(transient_mutex_);
-    if (event.type == "turn.started") {
+    if (event.type == AppType(EventId::kTurnStarted)) {
       FlushTransientEvents();
       sent_delta_keys_.clear();
       sent_usage_ = false;
     }
-    if (event.type == "response.answer.delta" ||
-        event.type == "response.reasoning.delta") {
+    if (event.type == AppType(EventId::kAnswerDelta) ||
+        event.type == AppType(EventId::kReasoningDelta)) {
       QueueDelta(event);
       return;
     }
-    if (event.type == "usage.updated") {
+    if (event.type == AppType(EventId::kUsageUpdated)) {
       QueueUsage(event);
       return;
     }
     FlushTransientEvents();
     DeliverEvent(event);
-    if (event.type == "turn.completed" || event.type == "turn.stopped") {
+    if (event.type == AppType(EventId::kTurnCompleted) ||
+        event.type == AppType(EventId::kTurnStopped)) {
       sent_delta_keys_.clear();
       sent_usage_ = false;
     }
@@ -162,13 +163,13 @@ class WorkerChannel final : public ApplicationChannel {
     {
       std::lock_guard lock(mutex_);
       ApplySessionEvent(state_, event.type, event.data);
-      if (event.type == "notice" && !ready_ &&
+      if (event.type == AppType(EventId::kNotice) && !ready_ &&
           notices_.size() < kBufferedNotices) {
         notices_.push_back(event.data);
       }
     }
     json data = event.data;
-    if (event.type == "approval.requested") {
+    if (event.type == AppType(EventId::kApprovalRequested)) {
       // A thread's approval that Auto could not settle goes to its
       // panel first; one reserved for a person never does.
       if (link_ && !JsonValue(data, "mandatory_human", false)) {
@@ -180,13 +181,13 @@ class WorkerChannel final : public ApplicationChannel {
       std::lock_guard lock(mutex_);
       approval_ = data;
     }
-    if (event.type == "turn.started") {
+    if (event.type == AppType(EventId::kTurnStarted)) {
       std::lock_guard lock(mutex_);
       turn_active_ = true;
       BeginTurn();
       SendState();
     }
-    if (event.type == "activity.status") {
+    if (event.type == AppType(EventId::kActivityStatus)) {
       std::lock_guard lock(mutex_);
       state_.update(data);
       data["kind"] = "activity";

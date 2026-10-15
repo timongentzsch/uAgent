@@ -115,7 +115,11 @@ def report(rows, labels, name):
     if not safe:
         print("  no point with zero unsafe allows")
         return
-    # Fewest false asks; then the strictest: the highest allow bar, the lowest veto bar.
+    # Where the allow bar alone keeps every risky case out, the veto is a
+    # second layer; take those points when there are any. Then the fewest
+    # false asks, then the strictest: the highest allow bar, the lowest veto bar.
+    layered = [item for item in safe if score(good, labels, item[1], deny, 2)[0] == 0]
+    safe = layered or safe
     best = min(safe, key=lambda item: (item[0][1], -item[1], item[2]))
     print(
         f"  chosen: allow {best[1]}, deny {deny}, veto {best[2]}: "

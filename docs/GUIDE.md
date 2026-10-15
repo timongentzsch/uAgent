@@ -167,8 +167,9 @@ Two separate things keep a turn in bounds.
 **Auto approval** asks a *decision model* (a model that answers questions with
 probabilities; OpenRouter serves `~typesafe/jev-latest` and
 `openai/gpt-6-luna-decisions`) about each call the sandbox contains. It never
-judges a command that runs outside the sandbox, a path outside the folder or
-anything else that always asks: those go to you. It sends your last message and
+judges a command that runs outside the sandbox (or any command while the
+sandbox is off or not enforced), a path outside the folder or anything else
+that always asks: those go to you. It sends your last message and
 the action. It allows when P(allow) reaches the model's allow bar and none of
 four risk questions (irreversible, beyond your request, sends data off the
 machine, touches credentials) reaches its risk bar, refuses when P(deny)

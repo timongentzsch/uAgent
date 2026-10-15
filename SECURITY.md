@@ -16,7 +16,7 @@ write. They are separate: no approval mode turns the sandbox off.
 | Mode | Set with | Effect |
 | --- | --- | --- |
 | `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the workspace |
-| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, and every call that leaves the sandbox or the folder, goes to a person, and is denied when nobody can answer |
+| `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, and every call that leaves the sandbox or the folder (and every `run` or `scratch` call while the sandbox is off or not enforced), goes to a person, and is denied when nobody can answer |
 | `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed |
 
 In every mode:
@@ -79,7 +79,8 @@ Two kinds of session act for you unattended:
   `decisions` (OpenRouter by default), asking it to use providers that retain
   no data and identifying the conversation by a hash. It allows only above the
   model's allow bar with no risk question above its risk bar, never judges a
-  call outside the sandbox or the folder, and without such an endpoint asks.
+  call outside the sandbox or the folder, never judges a command while the
+  sandbox is off, degraded or refused, and without such an endpoint asks.
 - Paths are canonicalized to reduce symlink escapes, and path restrictions
   are checked again when the call runs. Writes are atomic.
 - Requests, responses, attachments, tool output, scans, jobs, MCP data and

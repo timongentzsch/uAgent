@@ -443,12 +443,16 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 // Without an enforced sandbox, or for anything else, it is reviewed like
 // any Auto session. A chat member reads what was shared in its panel's chat as
 // it reads the folder: without review.
+bool WrapsCommands(const Tool& tool) {
+  return tool.name == "run" || tool.name == "scratch";
+}
+
 bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
                       const json& arguments) {
   const bool confined_thread =
       JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
       SandboxRuntime().mode == SandboxMode::kEnforced &&
-      (tool.name == "run" || tool.name == "scratch" ||
+      (WrapsCommands(tool) ||
        (tool.needs_approval && !tool.needs_approval(arguments)));
   const json thread = JsonValue(app->options.session, "thread", json::object());
   const bool shared_file =
@@ -604,10 +608,13 @@ Agent::Approver MakeApprover(AppContext* app) {
                                         ? tool.approval_preview(arguments)
                                         : ToolSummary(tool, arguments);
     // The model judges only what the sandbox contains: a call that names a
-    // path outside the folder goes to the person, as a mandatory one does.
+    // path outside the folder, or a command with no enforced sandbox around
+    // it, goes to the person, as a mandatory one does.
+    const bool contained = !PathOutsideFolder(arguments, root) &&
+                           !(WrapsCommands(tool) &&
+                             SandboxRuntime().mode != SandboxMode::kEnforced);
     if (!automatic && !mandatory &&
-        CurrentApprovalMode() == ApprovalMode::kAuto &&
-        !PathOutsideFolder(arguments, root)) {
+        CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
       if (auto decided =
               ReviewAutomatically(app, tool, raw_payload, turn, review)) {
         automatic = true;

@@ -86,7 +86,8 @@
   OpenRouter by name: an endpoint that declares `decisions` serves it
   (OpenRouter does, with `OPENROUTER_API_KEY`), and without one every call goes
   to you. A call that leaves the sandbox (`sandbox: false`, a path outside the
-  folder) or that always asks is never sent to the model. It allows only when
+  folder), any `run` or `scratch` call while the sandbox is off or not
+  enforced, and a call that always asks are never sent to the model. It allows only when
   P(allow) reaches the model's allow bar and none of four risk questions
   (irreversible, beyond your request, sends data off the machine, touches
   credentials) reaches its risk bar, so some calls it allowed before now ask.

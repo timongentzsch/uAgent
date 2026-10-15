@@ -87,6 +87,28 @@ test("always allowing an action remembers it in Settings", async ({
   );
 });
 
+test.describe("Auto approval", () => {
+  test.use({ autoReview: true });
+
+  test("asks with the reasons and the bar that decided", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await send(page, "request approval");
+    const card = page.getByRole("region", { name: "Pending decision" });
+    await expect(card.locator(".risk-chip")).toContainText([
+      "makes changes",
+      "sends data off this machine 78%",
+    ]);
+    await expect(card).toContainText(
+      "Auto review sends data off this machine 78% reaches the 70% that asks",
+    );
+    await card.getByRole("button", { name: "Deny", exact: true }).click();
+    await expect(card).toHaveCount(0);
+  });
+});
+
 test("an undone turn puts its file back", async ({ page, session, host }) => {
   await page.goto(`/#session=${session.id}`);
   await send(page, "request approval");

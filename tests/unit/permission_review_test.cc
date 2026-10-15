@@ -118,7 +118,7 @@ void TestPermissionReview() {
   const Endpoint openrouter = OpenRouterEndpoint();
   const RuntimeConfig defaults = RuntimeConfig::FromValues({});
   ReviewBars jev = ReviewBarsFor(openrouter, "~typesafe/jev-latest", defaults);
-  CHECK(jev.allow == 0.6 && jev.deny == 0.95 && jev.veto == 0.7);
+  CHECK(jev.allow == 0.85 && jev.deny == 0.95 && jev.veto == 0.9);
   ReviewBars luna =
       ReviewBarsFor(openrouter, "openai/gpt-6-luna-decisions", defaults);
   CHECK(luna.allow == 0.85 && luna.veto == 0.9);
@@ -137,7 +137,7 @@ void TestPermissionReview() {
   ReviewBars overridden =
       ReviewBarsFor(openrouter, "~typesafe/jev-latest", tuned);
   CHECK(overridden.allow == 0.97);
-  CHECK(overridden.deny == 0.95 && overridden.veto == 0.7);
+  CHECK(overridden.deny == 0.95 && overridden.veto == 0.9);
 
   // The review asks an endpoint that serves decision models, and says so when
   // there is none: nothing else stands in.

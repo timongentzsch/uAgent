@@ -123,7 +123,9 @@ def decision_answers(allow, deny=0.0, **reasons):
     return {"answers": answers, "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001}}
 
 
-def auto_review_run(root, home, binary, calls, reviewer, *, finish=None, **provider):
+def auto_review_run(
+    root, home, binary, calls, reviewer, *, finish=None, environment=None, **provider
+):
     """Runs one headless turn in Auto mode whose tool calls the mock reviewer
     judges; returns the envelope, the model's last view of a tool result and
     the reviewer's requests."""
@@ -142,6 +144,7 @@ def auto_review_run(root, home, binary, calls, reviewer, *, finish=None, **provi
                 model="test",
             )
             env["UAGENT_APPROVAL"] = "auto"
+            env.update(environment or {})
             result = run(root, env, "--json", "-p", "go", binary=binary)
             envelope = json.loads(result.stdout)
             assert_true(result.returncode == 0, (result.stderr, envelope))
@@ -356,6 +359,26 @@ def test_auto_permission_never_reviews_outside_the_folder(root, home, *, binary)
     assert_true(requests == [], requests)
     assert_true(not outside.exists(), outside)
     assert_true("denied" in tool, tool)
+
+
+def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *, binary):
+    def must_not_be_asked(*_):
+        raise AssertionError("the reviewer was asked about a command with no sandbox")
+
+    for name, arguments in [
+        ("run", {"command": "echo hi"}),
+        ("scratch", {"path": "t.py", "code": "print(1)"}),
+    ]:
+        _, tool, requests = auto_review_run(
+            root,
+            home,
+            binary,
+            [tool_call(name, arguments)],
+            must_not_be_asked,
+            environment={"UAGENT_SANDBOX": "off"},
+        )
+        assert_true(requests == [], (name, requests))
+        assert_true("denied" in tool, (name, tool))
 
 
 def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):

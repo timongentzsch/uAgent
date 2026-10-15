@@ -43,7 +43,7 @@ constexpr char kOpenRouterOptions[] = R"({
   "decisions_url": "https://openrouter.ai/api/alpha/decisions",
   "decisions_model": "~typesafe/jev-latest",
   "decision_bars": {
-    "~typesafe/jev-latest": {"allow": 0.6, "deny": 0.95, "veto": 0.7},
+    "~typesafe/jev-latest": {"allow": 0.85, "deny": 0.95, "veto": 0.9},
     "openai/gpt-6-luna-decisions": {"allow": 0.85, "deny": 0.9, "veto": 0.9}
   }
 })";

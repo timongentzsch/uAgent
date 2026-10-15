@@ -189,7 +189,10 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
             assert_true(result.returncode == 0, result.stderr)
             assert_true(target.read_text() == "approved", result.stdout)
             assert_true(len(seen) == 1, seen)
-            assert_true("write reviewed.txt" in seen[0] and "also keep it short" in seen[0], seen)
+            # The latest message leads, so a cut for length never loses it.
+            assert_true(
+                0 <= seen[0].find("also keep it short") < seen[0].find("write reviewed.txt"), seen
+            )
 
 
 def test_auto_permission_reviewer_failure_denies_headless(root, home, *, binary):

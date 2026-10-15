@@ -492,9 +492,11 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
     const std::string key =
         route.base_url + "\n" + route.model + ":" + HashHex(JsonDump(input));
     std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;
-    if (analysis.empty() && analyze) {
+    if (analysis.empty() && analyze && !failed_image_analyses_.contains(key)) {
       analysis = AnalyzeImageContent(input, error);
-      if (!analysis.empty()) {
+      if (analysis.empty()) {
+        failed_image_analyses_.insert(key);
+      } else {
         image_analyses_[key] = analysis;
         while (image_analyses_.size() > kImageAnalysisCacheEntries) {
           image_analyses_.erase(image_analyses_.begin());

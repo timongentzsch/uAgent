@@ -270,6 +270,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   last_stop_ = nullptr;
   ++turn_id_;
   turn_side_statistics_ = json::object();
+  failed_image_analyses_.clear();
   turn_root_.clear();
   reply_to_.clear();
   reply_excerpt_.clear();

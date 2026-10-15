@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -479,6 +480,9 @@ class Agent {
   bool retain_exchanges_ = false;
   std::string turn_root_, reply_to_, reply_excerpt_;
   json image_analyses_ = json::object();
+  // Images whose analysis failed this turn. Each later step would otherwise
+  // ask again and pay the same failure; the next turn tries once more.
+  std::set<std::string> failed_image_analyses_;
   mutable std::pair<std::string, SideRoute> image_route_;
   mutable FileLease writer_;
   std::string session_title_;

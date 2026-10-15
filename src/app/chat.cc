@@ -296,7 +296,8 @@ std::vector<SessionInfo> ChatMembers(const std::string& folder) {
 }
 
 bool ChatWakesPanel(const std::string& folder) {
-  const json* ids = JsonArray(ReadPanelFile(folder, kState), "typing");
+  const json saved = ReadPanelFile(folder, kState);
+  const json* ids = JsonArray(saved, "typing");
   return ids && std::ranges::find(*ids, json(kSelf)) != ids->end();
 }
 

@@ -578,14 +578,17 @@ def test_sandbox_extra_roots_are_granted_and_screened(root, home, *, binary):
     assert_true(not denied.exists(), "an ancestor of ~/.uagent was granted")
 
 
-def tcp_reachable(root, home, allow, *, binary):
+def tcp_reachable(root, home, allow, *, binary, **settings):
     """Whether a sandboxed command can open a TCP connection to a live socket.
 
     The listener is local and the marker is a file, so a run that never got as
     far as connecting is indistinguishable from one that was denied -- which is
     the assertion either way.
     """
-    marker = workspace(root) / f"net-{int(allow)}.txt"
+    marker = (
+        workspace(root)
+        / f"net-{allow}-{len(settings)}-{settings.get('UAGENT_SANDBOX_NET', '')}.txt"
+    )
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -594,7 +597,7 @@ def tcp_reachable(root, home, allow, *, binary):
     try:
         run_once(
             root,
-            sandbox_env(home, "", UAGENT_SANDBOX_NET="1" if allow else "0"),
+            sandbox_env(home, "", **({"UAGENT_SANDBOX_NET": "1" if allow else "0"} | settings)),
             f'{sys.executable} -c "{connect}" && echo up > {marker}',
             binary=binary,
         )
@@ -668,21 +671,20 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home, *, binar
 
 
 def test_sandbox_protects_project_authority(root, home, *, binary):
-    """The workspace is writable, but not the two files that grant authority.
+    """The workspace is writable, but not the file that grants authority.
 
-    Seatbelt only: Landlock has no deny form, so on Linux the same guarantee
-    would mean not granting the workspace at all. The case skips rather than
-    pretending, and the gap is written down in SECURITY.md.
+    Seatbelt denies the write. Landlock has no deny form, so there the file is
+    put back when the command ends, and the model is told.
     """
-    if sys.platform != "darwin":
-        raise Skipped("only macOS protects this")
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
     (ws / ".uagent").mkdir(exist_ok=True)
     mcp, scratch = ws / ".mcp.json", ws / ".uagent" / "s.py"
     command = f"echo b > {mcp}; echo c > {scratch}; true"
-    run_once(root, sandbox_env(home, ""), command, binary=binary)
+    output = tool_output(root, sandbox_env(home, ""), command, binary=binary)
     assert_true(not mcp.exists(), "a command wrote the project .mcp.json")
+    if sys.platform != "darwin":
+        assert_true("restored .mcp.json" in output, f"the restore was silent: {output}")
     # The carve-out is that file, not the folder's own scratch space.
     assert_true(scratch.exists(), "the carve-out took the .uagent directory")
 
@@ -690,12 +692,10 @@ def test_sandbox_protects_project_authority(root, home, *, binary):
 def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):
     """A command may commit, but not plant config or hooks your own git runs.
 
-    Seatbelt only, like the project config carve-out above.
+    Denied under Seatbelt; under Landlock undone when the command ends, and said.
     """
     import subprocess
 
-    if sys.platform != "darwin":
-        raise Skipped("only macOS protects this")
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
     subprocess.run(["git", "init", "-q", str(ws)], check=True)
@@ -706,6 +706,9 @@ def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):
     )
     output = tool_output(root, sandbox_env(home, ""), command, binary=binary)
     assert_true("committed" in output, output)
+    if sys.platform != "darwin":
+        assert_true("restored .git/hooks" in output, f"the restore was silent: {output}")
+        assert_true("restored .git/config" in output, f"the restore was silent: {output}")
     config = subprocess.run(
         ["git", "-C", str(ws), "config", "--get", "core.fsmonitor"], capture_output=True, text=True
     )
@@ -821,3 +824,249 @@ def test_sandbox_off_leaves_spawning_unchanged(root, home, *, binary):
     target = root / "unconfined.txt"
     run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), f"echo x > {target}", binary=binary)
     assert_true(target.exists(), "the unsandboxed path changed")
+
+
+def file_tool_output(root, env, name, arguments, *, binary):
+    """What a file tool reported back to the model for one call."""
+    seen = []
+
+    def route(_, body):
+        contents = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        if contents:
+            seen.append(contents[-1])
+            return event({"content": "ok"})
+        return tool_call(name, arguments)
+
+    with Server([route]) as server:
+        env = dict(env)
+        env["UAGENT_BASE_URL"] = server.url
+        run(workspace(root), env, "--yolo", "-p", "go", timeout=30, binary=binary)
+    return seen[0] if seen else ""
+
+
+def plant_credentials(home):
+    """Stores of each kind: hidden by default, deliberately readable, and one
+    nobody has heard of."""
+    for relative in (
+        ".aws/credentials",
+        ".ssh/id_marker",
+        ".config/gh/hosts.yml",
+        ".config/mycloud/token",
+    ):
+        path = home / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"marker-{path.name}\n")
+    (home / ".uagent" / "config").mkdir(parents=True, exist_ok=True)
+    (home / ".uagent" / "config" / "notes.txt").write_text("marker-notes.txt\n")
+
+
+def readable(root, env, path, *, binary):
+    return f"marker-{path.name}" in tool_output(root, env, f"cat {path}", binary=binary)
+
+
+def test_sandbox_hides_credential_stores_by_default(root, home, *, binary):
+    """Commands cannot read the cloud and settings credentials; ssh and the
+    GitHub CLI login stay readable, as does a store nobody listed. The
+    unsandboxed control shows each command itself works."""
+    require_sandbox(root, home, binary=binary)
+    plant_credentials(home)
+    env = sandbox_env(home, "")
+    for hidden in (home / ".aws" / "credentials", home / ".uagent" / "config" / "notes.txt"):
+        assert_true(not readable(root, env, hidden, binary=binary), f"a command read {hidden}")
+        control = sandbox_env(home, "", UAGENT_SANDBOX="off")
+        assert_true(
+            readable(root, control, hidden, binary=binary), f"the control could not read {hidden}"
+        )
+    for open_path in (
+        home / ".ssh" / "id_marker",
+        home / ".config" / "gh" / "hosts.yml",
+        home / ".config" / "mycloud" / "token",
+    ):
+        assert_true(
+            readable(root, env, open_path, binary=binary), f"{open_path} should stay readable"
+        )
+
+
+def test_sandbox_hide_and_reveal_adjust_the_list(root, home, *, binary):
+    """sandbox.hide adds a store, sandbox.reveal lifts a default."""
+    require_sandbox(root, home, binary=binary)
+    plant_credentials(home)
+    env = sandbox_env(
+        home,
+        "",
+        UAGENT_SANDBOX_HIDE="~/.config/mycloud",
+        UAGENT_SANDBOX_REVEAL=str(home / ".aws"),
+    )
+    assert_true(
+        not readable(root, env, home / ".config" / "mycloud" / "token", binary=binary),
+        "a path from sandbox.hide was readable",
+    )
+    assert_true(
+        readable(root, env, home / ".aws" / "credentials", binary=binary),
+        "a path from sandbox.reveal stayed hidden",
+    )
+
+
+def test_file_tools_refuse_the_hidden_set(root, home, *, binary):
+    """The built-in file tools refuse what commands cannot read, with no sandbox
+    needed; a revealed path opens for both."""
+    plant_credentials(home)
+    env = sandbox_env(home, "")
+    for path in (home / ".aws" / "credentials", home / ".uagent" / "config" / "notes.txt"):
+        output = file_tool_output(root, env, "read_path", {"path": str(path)}, binary=binary)
+        assert_true("marker-" not in output, f"a file tool read {path}: {output}")
+        assert_true(
+            "credentials or uAgent" in output, f"the refusal did not explain itself: {output}"
+        )
+    ssh = home / ".ssh" / "id_marker"
+    assert_true(
+        "marker-id_marker"
+        in file_tool_output(root, env, "read_path", {"path": str(ssh)}, binary=binary),
+        "a file tool could not read ~/.ssh",
+    )
+    revealed = sandbox_env(home, "", UAGENT_SANDBOX_REVEAL=str(home / ".aws"))
+    assert_true(
+        "marker-credentials"
+        in file_tool_output(
+            root, revealed, "read_path", {"path": str(home / ".aws" / "credentials")}, binary=binary
+        ),
+        "a revealed path stayed refused",
+    )
+
+
+def test_sandbox_levels(root, home, *, binary):
+    """strict closes the network; relaxed opens the home folder except
+    ~/.uagent and the hidden stores; the 0 and 1 spellings still mean off and
+    default."""
+    require_sandbox(root, home, binary=binary)
+    plant_credentials(home)
+    project = home / "project"
+    project.mkdir(exist_ok=True)
+
+    def writes(level):
+        reached = {}
+        env = sandbox_env(home, "", UAGENT_SANDBOX=level)
+        targets = {
+            "project": project / f"{level}.txt",
+            "agent state": home / ".uagent" / f"{level}.txt",
+            "hidden store": home / ".aws" / f"{level}.txt",
+        }
+        command = "; ".join(f"echo x > {path}" for path in targets.values()) + "; true"
+        run_once(root, env, command, binary=binary)
+        for name, path in targets.items():
+            reached[name] = path.exists()
+        return reached
+
+    assert_true(
+        writes("default") == {"project": False, "agent state": False, "hidden store": False},
+        "default reached into the home folder",
+    )
+    assert_true(
+        writes("relaxed") == {"project": True, "agent state": False, "hidden store": False},
+        "relaxed is not the home folder minus ~/.uagent and the hidden stores",
+    )
+    assert_true(writes("strict")["project"] is False, "strict reached into the home folder")
+    assert_true(writes("true")["project"] is False, "1 and true no longer mean default")
+    assert_true(writes("0")["project"] is True, "0 no longer means off")
+
+    if sys.platform == "darwin" or landlock_abi() >= 4:
+        assert_true(
+            not tcp_reachable(root, home, None, binary=binary, UAGENT_SANDBOX="strict"),
+            "strict left the network open",
+        )
+        assert_true(
+            tcp_reachable(
+                root, home, None, binary=binary, UAGENT_SANDBOX="strict", UAGENT_SANDBOX_NET="1"
+            ),
+            "an explicit sandbox.network did not override strict",
+        )
+
+
+def mcp_probe_server(path):
+    """A stdio MCP server whose one tool tries to write each path it is given."""
+    path.write_text(
+        "import json, sys\n"
+        "for line in sys.stdin:\n"
+        "    message = json.loads(line)\n"
+        "    if 'id' not in message:\n"
+        "        continue\n"
+        "    method = message.get('method')\n"
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'put', 'description': 'write files', "
+        "'inputSchema': {'type': 'object', 'properties': {'paths': {'type': 'array'}}}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        for target in message['params']['arguments']['paths']:\n"
+        "            try:\n"
+        "                open(target, 'w').write('x')\n"
+        "            except OSError:\n"
+        "                pass\n"
+        "        result = {'content': [{'type': 'text', 'text': 'done'}]}\n"
+        "    else:\n"
+        "        result = {}\n"
+        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), flush=True)\n",
+        encoding="utf-8",
+    )
+
+
+def mcp_writes(root, home, entry, *, binary):
+    """Whether a trusted project server could write outside the workspace."""
+    ws = workspace(root)
+    fake = root / "probe_mcp.py"
+    mcp_probe_server(fake)
+    (ws / ".mcp.json").write_text(
+        json.dumps(
+            {"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)], **entry}}}
+        )
+    )
+    outside, inside = root / "mcp-outside.txt", ws / "mcp-inside.txt"
+    outside.unlink(missing_ok=True)
+    inside.unlink(missing_ok=True)
+    with Server(
+        [tool_call("probe_put", {"paths": [str(outside), str(inside)]}), event({"content": "ok"})]
+    ) as server:
+        run(
+            ws,
+            sandbox_env(home, server.url),
+            "--trust-project-config",
+            "--yolo",
+            "-p",
+            "go",
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(inside.exists(), "the server could not write the workspace")
+    return outside.exists()
+
+
+def test_mcp_servers_are_confined_unless_they_opt_out(root, home, *, binary):
+    """A stdio server runs under the sandbox: it cannot write outside the
+    workspace. `"sandbox": false` in its entry lifts that, after the project is
+    trusted."""
+    require_sandbox(root, home, binary=binary)
+    assert_true(
+        not mcp_writes(root, home, {}, binary=binary), "an MCP server wrote outside the workspace"
+    )
+    assert_true(
+        mcp_writes(root, home, {"sandbox": False}, binary=binary),
+        "sandbox: false did not lift the confinement",
+    )
+
+
+def test_mcp_trust_prompt_names_servers_that_run_unconfined(root, home, *, binary):
+    """Trusting a project's .mcp.json is where `"sandbox": false` is approved."""
+    ws = workspace(root)
+    entry = {"command": "true"}
+    (ws / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"confined": entry, "loose": {**entry, "sandbox": False}}})
+    )
+    with Server([event({"content": "ok"})]) as server:
+        _, output = run_pty(
+            ws,
+            base_env(home, server.url),
+            [(b"", b"outside the sandbox: loose"), b"n\n", b"/q\n"],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(b"outside the sandbox: loose." in output, f"the prompt did not say: {output!r}")

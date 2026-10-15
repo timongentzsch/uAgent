@@ -4,6 +4,18 @@
     "scope": {
       "additionalProperties": false,
       "properties": {
+        "approval.allowAbove": {
+          "default": "",
+          "description": "probability 0-1 of allow that auto permissions need",
+          "type": "string",
+          "x-env": "UAGENT_PERMISSION_ALLOW_ABOVE"
+        },
+        "approval.denyAbove": {
+          "default": "",
+          "description": "probability 0-1 of deny at which auto permissions refuse without asking",
+          "type": "string",
+          "x-env": "UAGENT_PERMISSION_DENY_ABOVE"
+        },
         "approval.mode": {
           "anyOf": [
             {
@@ -25,16 +37,16 @@
           "x-env": "UAGENT_APPROVAL"
         },
         "approval.reviewerModel": {
-          "default": "~typesafe/jev-latest",
+          "default": "",
           "description": "Judges risky actions when approval is Auto",
           "type": "string",
           "x-env": "UAGENT_PERMISSION_MODEL"
         },
-        "approval.reviewerUrl": {
-          "default": "https://openrouter.ai/api/alpha",
-          "description": "OpenRouter Decisions API base URL",
+        "approval.vetoAbove": {
+          "default": "",
+          "description": "probability 0-1 of a risk reason (destructive, beyond the request, sends data, touches secrets) above which auto permissions ask",
           "type": "string",
-          "x-env": "UAGENT_PERMISSION_URL"
+          "x-env": "UAGENT_PERMISSION_VETO_ABOVE"
         },
         "attachments.maxMb": {
           "anyOf": [

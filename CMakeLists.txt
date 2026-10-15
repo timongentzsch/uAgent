@@ -394,6 +394,7 @@ if(BUILD_TESTING)
     tests/unit/memory_test.cc
     tests/unit/mcp_session_test.cc
     tests/unit/openrouter_server_search_test.cc
+    tests/unit/permission_review_test.cc
     tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc
     tests/unit/prompt_test.cc

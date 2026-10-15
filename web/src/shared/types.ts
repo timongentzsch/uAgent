@@ -394,8 +394,11 @@ export interface ApprovalPending extends PendingBase {
     mandatory_human?: boolean;
     mandatory_reason?: string;
     preview?: string;
-    // What approving risks, most serious first.
-    risks?: { id: "runs" | "writes" | "network" | "outside"; label: string }[];
+    // What approving risks, most serious first; then the reasons the
+    // automatic review gave, by name and probability.
+    risks?: { id: string; label: string }[];
+    // What the automatic review made of the call and which bar it fell on.
+    review?: string;
   };
 }
 // A line of text, a file to edit, or a step done in the browser.

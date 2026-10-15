@@ -630,18 +630,43 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             kApprovalModes),
         "Approval mode")),
     registry::Named(
-        registry::Str("approval.reviewerModel", "UAGENT_PERMISSION_MODEL",
-                      "permission_model", "~typesafe/jev-latest",
-                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                      "behaviour",
-                      "OpenRouter Decisions model used by auto permissions"),
+        registry::Fallback(
+            registry::Str("approval.reviewerModel", "UAGENT_PERMISSION_MODEL",
+                          "permission_model", "", ReloadPolicy::kNextUserTurn,
+                          Sensitivity::kPublic, "behaviour",
+                          "[endpoint/]decision model used by auto permissions"),
+            "the endpoint's own decision model"),
         "Permission reviewer", "Judges risky actions when approval is Auto"),
     registry::Terminal(registry::Named(
-        registry::Str("approval.reviewerUrl", "UAGENT_PERMISSION_URL",
-                      "permission_url", "https://openrouter.ai/api/alpha",
-                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                      "behaviour", "OpenRouter Decisions API base URL"),
-        "Permission reviewer address")),
+        registry::Fallback(
+            registry::Str(
+                "approval.allowAbove", "UAGENT_PERMISSION_ALLOW_ABOVE",
+                "permission_allow_above", "", ReloadPolicy::kNextUserTurn,
+                Sensitivity::kPublic, "behaviour",
+                "probability 0-1 of allow that auto permissions need"),
+            "the decision model's own"),
+        "Auto allow bar")),
+    registry::Terminal(registry::Named(
+        registry::Fallback(
+            registry::Str("approval.denyAbove", "UAGENT_PERMISSION_DENY_ABOVE",
+                          "permission_deny_above", "",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "behaviour",
+                          "probability 0-1 of deny at which auto permissions "
+                          "refuse without asking"),
+            "the decision model's own"),
+        "Auto deny bar")),
+    registry::Terminal(registry::Named(
+        registry::Fallback(
+            registry::Str("approval.vetoAbove", "UAGENT_PERMISSION_VETO_ABOVE",
+                          "permission_veto_above", "",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "behaviour",
+                          "probability 0-1 of a risk reason (destructive, "
+                          "beyond the request, sends data, touches secrets) "
+                          "above which auto permissions ask"),
+            "the decision model's own"),
+        "Auto risk bar")),
     registry::Named(
         registry::Fallback(
             registry::Str("title.model", "UAGENT_TITLE_MODEL", "title_model",

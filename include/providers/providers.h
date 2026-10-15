@@ -99,6 +99,16 @@ RouteResolution ResolveImageRoute(const Api& api,
                                   const std::vector<Endpoint>& providers,
                                   const std::string& setting);
 
+// Where the automatic permission review asks: `setting`
+// (approval.reviewerModel,
+// `[endpoint/]model`) if set, else the endpoint's own decision model, on the
+// conversation's endpoint when it serves decision models, else the first
+// configured one that does. `none` says why when no endpoint serves them;
+// nothing else stands in, since a chat model is no calibrated judge.
+RouteResolution ResolveReviewRoute(const Api& api,
+                                   const std::vector<Endpoint>& providers,
+                                   const std::string& setting);
+
 std::string NormalizeModelId(std::string model);
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);

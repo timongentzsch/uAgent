@@ -121,6 +121,7 @@ namespace uagent {
   X(TestLocalAbortIsolation)                      \
   X(TestRuntimeOwnershipHelpers)                  \
   X(TestPermissionAndToolCategoryPolicy)          \
+  X(TestPermissionReview)                         \
   X(TestAttributedUsageAccumulator)               \
   X(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) \
   X(TestAgentConfigAllowlist)                     \

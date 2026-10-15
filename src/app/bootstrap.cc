@@ -473,14 +473,19 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, const Tool& tool,
                                            const std::string& raw_payload,
                                            int64_t turn, json& review) {
   Verdict verdict;
-  AutoPermissionReview decision =
-      ReviewPermission(app->runtime.permission_api, app->runtime.config,
-                       app->runtime.side_usage, turn, tool, raw_payload,
-                       app->agent->History().LastText(MessageKind::kUser));
+  AutoPermissionReview decision = ReviewPermission(
+      app->runtime.permission_api,
+      ResolveReviewRoute(app->runtime.api, app->provider.providers,
+                         app->runtime.config.permission_model),
+      app->runtime.config, app->runtime.side_usage,
+      {tool, raw_payload, app->agent->History().LastText(MessageKind::kUser),
+       app->agent->SessionId(), turn});
   const bool ask = decision.decision == AutoPermissionDecision::kAsk;
   const bool allow = decision.decision == AutoPermissionDecision::kAllow;
   review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
-            {"probabilities", std::move(decision.probabilities)}};
+            {"probabilities", std::move(decision.probabilities)},
+            {"reasons", std::move(decision.reasons)},
+            {"note", std::move(decision.note)}};
   if (!decision.error.empty()) review["error"] = decision.error;
   // An undecided review with nobody to ask is a denial.
   const bool decided = !ask || !InteractiveApprovalAvailable();
@@ -501,23 +506,35 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, const Tool& tool,
 Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& raw_payload, const std::string& request_id,
                   const std::string& root, const std::string& key,
-                  bool mandatory) {
+                  bool mandatory, const json& review) {
   Verdict verdict;
   // Reaching µAgent's own configuration is the reason a tool escalates by
   // its path; a tool that escalates for its own reason names it.
   std::string reason = tool.mandatory_reason.empty()
                            ? "changes \u00b5Agent's own configuration"
                            : tool.mandatory_reason;
+  // What the automatic review made of it, when it was asked: its reasons
+  // join the risks, and in words which bar it fell on, or why it could not
+  // decide.
+  json risks = ApprovalRisks(tool, arguments, root);
+  for (const json& caution : JsonValue(review, "reasons", json::array())) {
+    risks.push_back(caution);
+  }
+  std::string verdict_line = JsonValue(review, "error", "");
+  verdict_line = verdict_line.empty() ? JsonValue(review, "note", "")
+                                      : "could not decide: " + verdict_line;
   // The request carries the full command/payload, so long commands are
   // never truncated. A tool with more to show than its one-line label
   // supplies its own preview.
-  Emit(Event{EventId::kApprovalRequested,
-             {{"id", request_id},
-              {"tool", tool.name},
-              {"preview", TerminalSafe(raw_payload)},
-              {"risks", ApprovalRisks(tool, arguments, root)},
-              {"mandatory_human", mandatory},
-              {"mandatory_reason", mandatory ? reason : std::string()}}});
+  Emit(Event{
+      EventId::kApprovalRequested,
+      {{"id", request_id},
+       {"tool", tool.name},
+       {"preview", TerminalSafe(raw_payload)},
+       {"risks", std::move(risks)},
+       {"review", verdict_line.empty() ? "" : "Auto review " + verdict_line},
+       {"mandatory_human", mandatory},
+       {"mandatory_reason", mandatory ? reason : std::string()}}});
   InteractionRequest request{
       .id = request_id,
       .kind = "approval",
@@ -586,17 +603,22 @@ Agent::Approver MakeApprover(AppContext* app) {
     const std::string raw_payload = tool.approval_preview
                                         ? tool.approval_preview(arguments)
                                         : ToolSummary(tool, arguments);
+    // The model judges only what the sandbox contains: a call that names a
+    // path outside the folder goes to the person, as a mandatory one does.
     if (!automatic && !mandatory &&
-        CurrentApprovalMode() == ApprovalMode::kAuto) {
+        CurrentApprovalMode() == ApprovalMode::kAuto &&
+        !PathOutsideFolder(arguments, root)) {
       if (auto decided =
               ReviewAutomatically(app, tool, raw_payload, turn, review)) {
         automatic = true;
         verdict = std::move(*decided);
+        // An identical call is not reviewed twice in a session.
+        if (verdict.granted) app->session_approvals.insert(key);
       }
     }
     if (!automatic) {
       verdict = AskPerson(app, tool, arguments, raw_payload, request_id, root,
-                          key, mandatory);
+                          key, mandatory, review);
     }
     DebugLog("approval", {{"tool", tool.name},
                           {"automatic", automatic},

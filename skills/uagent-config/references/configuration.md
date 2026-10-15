@@ -43,8 +43,10 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | --- | --- | --- | --- | --- | --- |
 | `prompt.adaptSystem` | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
 | `approval.mode` | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
-| `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
-| `approval.reviewerUrl` | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
+| `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | string | empty | next-user-turn | [endpoint/]decision model used by auto permissions |
+| `approval.allowAbove` | `UAGENT_PERMISSION_ALLOW_ABOVE` | string | empty | next-user-turn | probability 0-1 of allow that auto permissions need |
+| `approval.denyAbove` | `UAGENT_PERMISSION_DENY_ABOVE` | string | empty | next-user-turn | probability 0-1 of deny at which auto permissions refuse without asking |
+| `approval.vetoAbove` | `UAGENT_PERMISSION_VETO_ABOVE` | string | empty | next-user-turn | probability 0-1 of a risk reason (destructive, beyond the request, sends data, touches secrets) above which auto permissions ask |
 | `title.model` | `UAGENT_TITLE_MODEL` | string | empty | next-user-turn | model route that names new sessions, or off |
 | `tools.capabilities` | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `shell.envAllow` | `UAGENT_SHELL_ENV_ALLOW` | string | empty | next-user-turn | comma-separated sensitive variables approved shells may inherit |

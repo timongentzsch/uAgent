@@ -226,6 +226,7 @@ void TestSettingsStore() {
     TestWorkspace endpoints("settings-store-endpoints");
     Put(SettingsPath(),
         R"({"format": 2, "all": {"openrouter.provider": "streamlake",)"
+        R"( "approval.reviewerUrl": "https://x.test/alpha",)"
         R"( "openrouter.variant": "nitro", "model": "vendor/m:high",)"
         R"( "pdf.engine": "mistral-ocr", "webSearch.backend": "openrouter",)"
         R"( "providers": {"gateway": {"base_url": "https://gw.test/v1",)"
@@ -240,6 +241,7 @@ void TestSettingsStore() {
     const json& held = now["all"];
     CHECK(held["model"] == "vendor/m:nitro:high");
     CHECK(held["webSearch.backend"] == "auto");
+    CHECK(!held.contains("approval.reviewerUrl"));
     CHECK(!held.contains("openrouter.provider") &&
           !held.contains("openrouter.variant") && !held.contains("pdf.engine"));
     const json& openrouter = held["providers"]["openrouter"];

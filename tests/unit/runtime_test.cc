@@ -1069,21 +1069,21 @@ void TestEffectiveConfigReload() {
   ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
   ScopedEnv scoped_model("UAGENT_MODEL");
   ScopedEnv scoped_route_key("OPENROUTER_API_KEY");
-  ScopedEnv scoped_review_url("UAGENT_PERMISSION_URL");
+  ScopedEnv scoped_base_url("UAGENT_BASE_URL");
   ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
-  CHECK(SaveSettings(
-            {{"UAGENT_MAX_STEPS", "4"},
-             {"UAGENT_INTERNAL_TOOLSET", "lean"},
-             {"UAGENT_MAX_TOOL_CALLS", "2"},
-             {"UAGENT_MAX_TURN_TOKENS", "100"},
-             {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
-             {"UAGENT_MCP_TIMEOUT", "9"},
-             {"UAGENT_MODEL", "initial-model"},
-             {"UAGENT_SESSION_BUDGET", "1"},
-             {"UAGENT_PERMISSION_URL", "https://user:pass@review.example/v1"},
-             {"route_secret", "private-route-key"},
-             {"OPENROUTER_API_KEY", "$route_secret"}})
-            .empty());
+  CHECK(
+      SaveSettings({{"UAGENT_MAX_STEPS", "4"},
+                    {"UAGENT_INTERNAL_TOOLSET", "lean"},
+                    {"UAGENT_MAX_TOOL_CALLS", "2"},
+                    {"UAGENT_MAX_TURN_TOKENS", "100"},
+                    {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
+                    {"UAGENT_MCP_TIMEOUT", "9"},
+                    {"UAGENT_MODEL", "initial-model"},
+                    {"UAGENT_SESSION_BUDGET", "1"},
+                    {"UAGENT_BASE_URL", "https://user:pass@review.example/v1"},
+                    {"route_secret", "private-route-key"},
+                    {"OPENROUTER_API_KEY", "$route_secret"}})
+          .empty());
   // The CLI layer outranks the environment and what is saved.
   ConfigManager manager = ConfigManager::Capture(
       {{"UAGENT_SESSION_BUDGET", "3.5"}, {"UAGENT_MEMORY", "0"}});

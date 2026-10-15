@@ -374,6 +374,8 @@ void UpgradeEndpoints(json& scope) {
       pin && !pin->empty()) {
     gateway["provider"] = *pin;
   }
+  // The decisions address belongs to the endpoint that serves them now.
+  scope.erase("approval.reviewerUrl");
   FoldVariant(scope);
   MoveToOpenRouter(scope, "openrouter.provider", "provider");
   MoveToOpenRouter(scope, "pdf.engine", "pdf_engine");

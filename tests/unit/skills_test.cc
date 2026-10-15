@@ -12,6 +12,7 @@
 #include "include/app/import.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/defaults.h"
 #include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
@@ -118,6 +119,8 @@ void TestSkillDiscovery() {
   write_skill(
       workspace / ".uagent/skills/release",
       "---\nname: whatever\ndescription: this repo's release steps\n---\n\n"
+  // Compaction finds a read skill by this opening.
+  CHECK(body.output.starts_with(kSkillMarker));
       "Use the makefile.\n");
   write_skill(workspace / ".uagent/skills/lint",
               "---\ndescription: how this repo lints\n---\n\nRun ruff.\n");

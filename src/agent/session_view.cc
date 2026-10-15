@@ -16,6 +16,8 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/core/defaults.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -770,14 +772,14 @@ json ConversationExchange(const Conversation& conversation,
 
 std::string StripModelHints(std::string text) {
   for (std::string_view hint :
-       {"[running] activity ", "[started] subagent id ", "[detached] pid "}) {
+       {kRunningActivityMarker, kStartedSubagentMarker, kDetachedMarker}) {
     if (text.starts_with(hint)) {
       const size_t end = text.find('\n');
       text.erase(0, end == std::string::npos ? text.size() : end + 1);
       break;
     }
   }
-  const size_t line = text.rfind("\n[collaborator ");
+  const size_t line = text.rfind(kCollaboratorMarker);
   if (line != std::string::npos && text.back() == ']' &&
       text.find('\n', line + 1) == std::string::npos) {
     text.resize(line);
@@ -786,10 +788,10 @@ std::string StripModelHints(std::string text) {
 }
 
 std::string StripAttachedTrailer(const std::string& text) {
-  constexpr std::string_view kMarker = "\n\nAttached:\n";
-  const size_t marker = text.rfind(kMarker);
+  const std::string trailer = std::string(kAttachedList) + "\n";
+  const size_t marker = text.rfind(trailer);
   if (marker == std::string::npos) return text;
-  size_t pos = marker + kMarker.size();
+  size_t pos = marker + trailer.size();
   bool referenced = false;
   while (pos < text.size()) {
     size_t end = text.find('\n', pos);

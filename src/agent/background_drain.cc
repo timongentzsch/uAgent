@@ -20,6 +20,7 @@
 #include "include/agent/process.h"
 #include "include/agent/protocol.h"
 #include "include/core/debug.h"
+#include "include/core/defaults.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -61,12 +62,11 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
       // the cause, which is how eight failures came to be labelled with a
       // condition that did not fail anything. `CapResult` states the same
       // convention: errors live at the end.
-      std::string output = RedactMemorySecrets(completion.output);
       // ArtifactHint appends a captured-log pointer after everything else, so
       // it is the last line whenever output was spilled to a file. It is
       // structure, never the cause; drop it before looking for one.
-      size_t hint = output.find("\n[captured log: ");
-      if (hint != std::string::npos) output.resize(hint);
+      std::string output =
+          StripArtifactHint(RedactMemorySecrets(completion.output));
       std::string_view tail(output);
       while (!tail.empty()) {
         size_t line = tail.find_last_not_of("\r\n");

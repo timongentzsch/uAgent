@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "include/agent/jobs.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -273,7 +274,7 @@ ShellCommandResult StartDetachedShell(
   const std::string& cmd = spec.command;
   if (std::optional<DetachedActivity> existing =
           FindRunningDetachedActivity(cmd)) {
-    return {ToolSuccess("[detached] pid " + std::to_string(existing->pid) +
+    return {ToolSuccess(kDetachedMarker + std::to_string(existing->pid) +
                         ", log: " + existing->log +
                         " — reused existing live activity id " +
                         std::to_string(existing->pid) +
@@ -328,7 +329,7 @@ ShellCommandResult StartDetachedShell(
     return fail_and_reap(JobLimitError());
   }
   ToolResult detached =
-      ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " + log +
+      ToolSuccess(kDetachedMarker + std::to_string(pid) + ", log: " + log +
                   " — activity id " + std::to_string(pid) +
                   "; verify readiness with activity output");
   detached.parts = json::array({LinkPart("activity", pid, "Open activity")});
@@ -567,7 +568,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   if (is_subagent) {
     ToolResult started = ToolSuccess(
-        "[started] subagent id " + std::to_string(activity_id) +
+        kStartedSubagentMarker + std::to_string(activity_id) +
         "; completion is added to the next natural model call without "
         "starting one; inspect activity output for progress/readiness, or "
         "wait when the next step is blocked");
@@ -582,7 +583,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         LimitOutput(session->pending_output.Drain(), interaction_cap);
     session->last_used = std::chrono::steady_clock::now();
   }
-  std::string output = "[running] activity " + std::to_string(activity_id) +
+  std::string output = kRunningActivityMarker + std::to_string(activity_id) +
                        (handed_off ? " moved to background; " : "; ") +
                        "it keeps running while you work; poll or wait on it "
                        "for output";

@@ -44,6 +44,21 @@ inline constexpr std::string_view kPackageCaches[] = {
 // On macOS, the native cache folder as well (uv keeps using ~/.cache there).
 inline constexpr std::string_view kMacPackageCaches[] = {"Library/Caches"};
 
+// Markers a tool result carries for the model, which the transcript view,
+// compaction and the memory extractor later find by their opening. Each is
+// written in one place and read in another; one constant keeps the two from
+// drifting, and the tests pin that the reader accepts what the writer emits.
+inline constexpr char kDetachedMarker[] = "[detached] pid ";
+inline constexpr char kStartedSubagentMarker[] = "[started] subagent id ";
+inline constexpr char kRunningActivityMarker[] = "[running] activity ";
+// Appended by ArtifactHint(); StripArtifactHint() removes it.
+inline constexpr char kCapturedLogMarker[] = "\n[captured log: ";
+// The last line of a subagent's result (ChildAgentResumeNote).
+inline constexpr char kCollaboratorMarker[] = "\n[collaborator ";
+// A skill body: the skill tool's result and what `$skill` pushed.
+inline constexpr char kSkillMarker[] = "[skill ";
+inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_DEFAULTS_H_

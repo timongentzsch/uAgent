@@ -16,7 +16,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/app/panel.cc`, `chat.cc`, `thread_link.cc`, `launch.cc` | A folder's panel, its threads, its chat with members and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and observation records |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
-| `src/providers/` | Route catalog, model selection grammar and route policy |
+| `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
 | `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
@@ -327,9 +327,9 @@ A value comes from one of these scopes, the later winning:
 | Command line | one run | flags |
 | This conversation | one conversation | its session |
 
-Only the model (`UAGENT_MODEL`, with its variant and effort) and the approval
+Only the model (`UAGENT_MODEL`, with its effort) and the approval
 mode (`UAGENT_APPROVAL`) may be chosen for one conversation; `/model`,
-`/effort`, `/variant`, `/permissions` and `/yolo` choose them there, and a flag
+`/effort`, `/permissions` and `/yolo` choose them there, and a flag
 that names one (`--model`, `--yolo`) chooses it for the conversation it starts.
 One resolver answers what applies, where it comes from and what each scope
 holds, so a settings list can say what a change would override. Reload happens

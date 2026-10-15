@@ -107,7 +107,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
                      "cannot load session journal: " + error));
   }
   Emit(Event{EventId::kSessionResumed,
-             {{"model", session.ApiClient().RequestModel()},
+             {{"model", session.ApiClient().model},
               {"messages", session.ActiveAgent().MessageCount()}}});
 }
 
@@ -148,9 +148,6 @@ CommandReply RunSlashCommand(AppSession& session,
                  "that message to edit; the original stays as it is");
       return reply;
     }
-    case SlashCommandId::kVariant:
-      HandleVariant(session, command.argument, reply);
-      break;
     case SlashCommandId::kHelp: {
       result =
           DescribeSelf(SelfTopic::kCommands, "", DescriptionInputs(session));

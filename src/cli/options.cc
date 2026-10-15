@@ -54,7 +54,7 @@ constexpr FlagSpec kFlags[] = {
     {"--verbosity", FlagKind::kConfig, nullptr, "UAGENT_VERBOSITY", "LEVEL",
      "detail shown in this terminal: minimal, default or full"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
-     "conversation model as [provider/]model[:variant][:effort]"},
+     "conversation model as [provider/]model[:effort]"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
      "SELECTION", "read attached images with this model route"},
     {"--web-search-model", FlagKind::kConfig, nullptr,

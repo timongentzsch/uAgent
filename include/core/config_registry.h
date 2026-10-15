@@ -134,13 +134,9 @@ struct ConfigDescriptor {
   }
 };
 
-inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
-                                                           "exacto"};
 inline constexpr std::string_view kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
-// "openrouter" is the earlier spelling of auto and reads as it.
-inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
-                                                          "off"};
+inline constexpr std::string_view kWebSearchBackends[] = {"auto", "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 // 0 and 1 (also false and true) are the values of the switch this setting was.
 inline constexpr std::string_view kSandboxLevels[] = {
@@ -328,20 +324,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             ReloadPolicy::kRestartRequired, Sensitivity::kCompositeSecret,
             "route", "JSON object of named endpoints, transports, and aliases"),
         "Named providers"),
-    registry::Named(
-        registry::Str("openrouter.provider", "UAGENT_OPENROUTER_PROVIDER",
-                      "openrouter_provider", "", ReloadPolicy::kNextUserTurn,
-                      Sensitivity::kPublic, "route",
-                      "pin OpenRouter to one upstream provider"),
-        "OpenRouter provider"),
-    registry::Named(
-        registry::Choice(
-            registry::Str("openrouter.variant", "UAGENT_OPENROUTER_VARIANT",
-                          "openrouter_variant", "", ReloadPolicy::kNextUserTurn,
-                          Sensitivity::kPublic, "route",
-                          "nitro, floor, or exacto routing preference"),
-            kOpenRouterVariants),
-        "OpenRouter routing"),
     registry::Named(
         registry::Int("contextWindow", "UAGENT_CONTEXT", {}, 0, kConfigAnyMin,
                       kConfigAnyMax, ReloadPolicy::kRestartRequired, "route",
@@ -619,12 +601,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Image reader",
         "Describes attached images when the conversation model cannot see "
         "them"),
-    registry::Named(
-        registry::Str("pdf.engine", "UAGENT_PDF_ENGINE", "pdf_engine",
-                      "cloudflare-ai", ReloadPolicy::kNextUserTurn,
-                      Sensitivity::kPublic, "media",
-                      "OpenRouter file-parser engine for documents"),
-        "PDF reader"),
     registry::Named(
         registry::Int("attachments.maxMb", "UAGENT_ATTACHMENT_MB", {}, 10, 1,
                       kConfigMaxMegabytes, ReloadPolicy::kNextUserTurn, "media",

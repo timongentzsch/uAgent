@@ -153,8 +153,7 @@ void TestWireAdapters() {
   CHECK(WireEndpoint(WireApi::kChatCompletions) == "/chat/completions");
   Api switched(RuntimeConfig{});
   switched.model = "chat-test";
-  switched.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, "https://chat.test/v1");
+  UseEndpoint(switched, "https://chat.test/v1");
   json switched_payload =
       json::parse(switched.ChatPayload(messages, schemas), nullptr, false);
   CHECK(switched_payload.is_object());
@@ -164,17 +163,13 @@ void TestWireAdapters() {
   config.web_search_backend = "auto";
   Api api(config);
   api.model = "gpt-name-does-not-imply-search";
-  api.capabilities = CapabilitiesForRoute(ProviderProtocol::kOpenAi,
-                                          "https://provider.test/v1",
-                                          WireApi::kResponses, false);
+  UseEndpoint(api, "https://provider.test/v1", WireApi::kResponses, false);
   CHECK(!api.NativeHostedTool(HostedTool::kWebSearch));
   json fallback = api.BuildRequestBody(json::array(), schemas);
   CHECK(ItemsOfType(fallback["tools"], "web_search") == 0);
   CHECK(ItemsOfType(fallback["tools"], "function") == 2);
 
-  api.capabilities = CapabilitiesForRoute(ProviderProtocol::kOpenAi,
-                                          "https://provider.test/v1",
-                                          WireApi::kResponses, true);
+  UseEndpoint(api, "https://provider.test/v1", WireApi::kResponses, true);
   CHECK(api.NativeHostedTool(HostedTool::kWebSearch));
   bool web_available = false;
   json native =
@@ -184,16 +179,10 @@ void TestWireAdapters() {
   CHECK(ItemsOfType(native["tools"], "function") == 1);
   CHECK(native["include"] == json::array({"reasoning.encrypted_content"}));
 
-  api.capabilities = CapabilitiesForRoute(ProviderProtocol::kOpenAi,
-                                          "https://api.openai.com/v1",
-                                          WireApi::kResponses, true);
+  UseEndpoint(api, "https://api.openai.com/v1", WireApi::kResponses, true);
   json official = api.BuildRequestBody(json::array(), schemas);
   CHECK(official["include"] == json::array({"reasoning.encrypted_content",
                                             "web_search_call.action.sources"}));
-
-  // The earlier spelling of auto reads as auto.
-  api.config.web_search_backend = "openrouter";
-  CHECK(api.NativeHostedTool(HostedTool::kWebSearch));
 
   api.config.web_search_backend = "off";
   web_available = true;
@@ -732,7 +721,7 @@ void TestWireCacheParity() {
   // shrinking history, tool changes, and switches between wire dialects.
   for (WireApi wire : {WireApi::kResponses, WireApi::kAnthropicMessages,
                        WireApi::kChatCompletions}) {
-    switched.capabilities.wire_api = wire;
+    switched.wire_api = wire;
     json history = messages;
     history[3][kReadRangeField] = {"README.md", 1, 10};
     json tools = schemas;
@@ -762,12 +751,12 @@ void TestWireCacheParity() {
     switched.capabilities.parallel_tools = false;
     parity();
     switched.capabilities.parallel_tools = true;
-    switched.capabilities.hosted_web_search = true;
+    switched.features.Add(Feature::kHostedSearch);
     parity();
     switched.config.web_search_backend = "off";
     parity();
     switched.config.web_search_backend = "auto";
-    switched.capabilities.hosted_web_search = false;
+    switched.features.Remove(Feature::kHostedSearch);
     history[2][kWireReplayField] = {
         {"wire_api", "responses"},
         {"items", json::array({{{"type", "reasoning"},

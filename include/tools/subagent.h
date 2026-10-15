@@ -31,8 +31,8 @@ ToolResult MessageAgent(const ProcessSupervisor& processes,
                         const std::string& id, const std::string& text);
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
-                  const std::vector<ModelRoute>& routes,
-                  const std::vector<NamedProvider>& providers, bool debug);
+                  const std::vector<Route>& routes,
+                  const std::vector<Endpoint>& providers, bool debug);
 
 }  // namespace uagent
 

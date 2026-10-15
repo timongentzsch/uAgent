@@ -15,8 +15,6 @@
 
 namespace uagent {
 
-bool ValidOpenRouterVariant(std::string_view variant);
-
 // Core request, MCP, and persistence settings. Bootstrap builds one snapshot;
 // a validated turn-boundary reload may replace explicitly safe fields.
 std::string RuntimeConfigField(std::string_view environment);
@@ -57,15 +55,10 @@ struct RuntimeConfig : TurnBudgets {
   std::string approval;
   std::string permission_model;
   std::string permission_url;
-  std::string openrouter_provider;
-  std::string openrouter_variant;
   std::string web_search_backend;
   std::string web_search_model;
   std::string image_model;
   std::string title_model;
-  // OpenRouter file-parser engine for documents a model cannot read natively:
-  // cloudflare-ai (free), mistral-ocr (scans, billed per page) or native.
-  std::string pdf_engine;
   std::string mcp_roots;
   bool memory_enabled{};
   bool memory_generate{};

@@ -183,14 +183,15 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
   std::string selection = SettingText(Cfg("UAGENT_MEMORY_MODEL"));
   ProviderCatalog catalog =
       selection.empty() ? ProviderCatalog{} : SessionProviderCatalog();
-  SideRoute route =
+  RouteResolution resolved =
       ResolveSideRoute(api, catalog.models, catalog.providers, selection);
-  if (!route.none.empty()) {
+  if (!resolved.none.empty()) {
     ReleaseClaim(source, cwd);
-    return route.none;
+    return resolved.none;
   }
 
-  EnvironmentOverrides environment = ChildAgentEnvironment(std::move(route));
+  EnvironmentOverrides environment =
+      ChildAgentEnvironment(std::move(resolved.route));
   environment.insert(environment.end(),
                      {{"UAGENT_MAX_STEPS", "5"},
                       {"UAGENT_MAX_TOOL_CALLS", "4"},

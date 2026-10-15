@@ -507,8 +507,6 @@ export interface State {
   route?: string;
   effort?: string;
   efforts?: string[];
-  variant?: string;
-  variants?: string[];
   view?: View;
   // Bumped by an in-place rewind, which replaces the view.
   view_epoch?: number;
@@ -726,7 +724,6 @@ export interface Model {
   name?: string;
   active?: boolean;
   efforts?: string[];
-  variants?: string[];
 }
 export interface ModelCatalogue {
   models: Model[];
@@ -900,7 +897,6 @@ export interface CommandFields {
   operation?: string;
   model?: string;
   effort?: string;
-  variant?: string;
   // Model select: also save the choice for all conversations.
   default?: boolean;
   mode?: string;

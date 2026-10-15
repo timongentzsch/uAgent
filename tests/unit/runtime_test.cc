@@ -200,7 +200,6 @@ void TestRuntimeOwnershipHelpers() {
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
       {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
-      {"UAGENT_OPENROUTER_VARIANT", "floor"},
   };
   for (const auto& entry : kRuntimeEnv) setenv(entry.first, entry.second, 1);
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
@@ -214,7 +213,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
-  CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
   CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
   CHECK(diagnostics.value("max_turn_tokens", int64_t{0}) == 123);
@@ -222,12 +220,8 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(diagnostics.value("web_search_model", "") == config.web_search_model);
   CHECK(diagnostics.value("web_search_backend", "") ==
         config.web_search_backend);
-  CHECK(diagnostics.value("openrouter_variant", "") == "floor");
   CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
   for (const auto& entry : kRuntimeEnv) unsetenv(entry.first);
-  setenv("UAGENT_OPENROUTER_VARIANT", "invalid", 1);
-  CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
-  unsetenv("UAGENT_OPENROUTER_VARIANT");
   RuntimeConfig defaults;
   CHECK(defaults.max_steps == 0);
   CHECK(defaults.max_tool_calls == 0);
@@ -240,11 +234,10 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(defaults.request_timeout_s == 600);
 
   RuntimeConfig routed;
-  routed.openrouter_provider = "streamlake";
   Api api(routed);
   api.base_url = "https://openrouter.ai/api/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
+  UseOpenRouterDialect(api);
+  api.options["provider"] = "streamlake";
   api.model = "test";
   json body =
       api.BuildRequestBody(json::array(), json::array(), "stable-session");
@@ -252,38 +245,26 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body["provider"]["order"][0] == "streamlake");
   CHECK(!body["provider"].value("allow_fallbacks", true));
   CHECK(!body.contains("stream_options"));
-  api.config.openrouter_variant = "nitro";
-  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
-  CHECK(body.value("model", "") == "test:nitro");
-  api.model = "test:exacto";
-  api.config.openrouter_variant = "floor";
-  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
-  CHECK(body.value("model", "") == "test:floor");
-  api.model = "test:free";
-  api.config.openrouter_variant = "exacto";
+  // A routing suffix is part of the id the endpoint is asked for.
+  api.model = "test:free:exacto";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:free:exacto");
   api.reasoning_effort = "low";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body["reasoning"].value("effort", "") == "low");
   CHECK(!body.contains("reasoning_effort"));
-  // Anthropic models behind OpenRouter cache only when asked to.
-  CHECK(!body.contains("cache_control"));
-  api.model = "anthropic/claude-test";
-  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
+  // An endpoint that declares it asks for prompt caching for every model.
   CHECK(body["cache_control"].value("type", "") == "ephemeral");
   api.model = "test:free";
-  api.base_url = "http://127.0.0.1:8080/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
+  UseEndpoint(api, "http://127.0.0.1:8080/v1");
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:free");
   CHECK(!body.contains("session_id"));
   CHECK(!body.contains("provider"));
+  CHECK(!body.contains("cache_control"));
 
   api.base_url = "https://api.openai.com/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
+  UseEndpoint(api, api.base_url);
   api.reasoning_effort = "high";
   body = api.BuildRequestBody(json::array(), json::array());
   CHECK(body.value("reasoning_effort", "") == "high");
@@ -297,7 +278,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(!body.contains("max_tokens"));
   unsetenv("UAGENT_MAX_TOKENS");
   CHECK(body["stream_options"].value("include_usage", false));
-  api.capabilities.wire_api = WireApi::kResponses;
+  api.wire_api = WireApi::kResponses;
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
   // A proxy in front of the API gets the key as well, and passes it on.
@@ -305,8 +286,7 @@ void TestRuntimeOwnershipHelpers() {
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
   api.base_url = "https://api.openai.com/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
+  UseEndpoint(api, api.base_url);
 
   // The file-parser plugin rides the conversation request, so it is sent only
   // where it is understood and only when a document is actually attached.
@@ -318,8 +298,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(
       !api.BuildRequestBody(documented, json::array(), "").contains("plugins"));
   Api via_open_router(config);
-  via_open_router.capabilities = CapabilitiesForRoute(
-      ProviderProtocol::kOpenRouter, via_open_router.base_url);
+  UseEndpoint(via_open_router, "https://openrouter.ai/api/v1");
   json plugged =
       via_open_router.BuildRequestBody(documented, json::array(), "");
   CHECK(plugged["plugins"][0]["id"] == "file-parser");
@@ -340,8 +319,7 @@ void TestRuntimeOwnershipHelpers() {
                     {"index", 0},
                     {"text", "reasoning state"}}});
   api.base_url = "https://openrouter.ai/api/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
+  UseOpenRouterDialect(api);
   api.PreserveAssistantReasoning(assistant, reasoning_result);
   CHECK(!assistant.contains("reasoning"));
   CHECK(assistant["reasoning_details"] == reasoning_result.reasoning_details);
@@ -363,8 +341,7 @@ void TestRuntimeOwnershipHelpers() {
   api.PreserveAssistantReasoning(local_assistant, reasoning_result);
   CHECK(local_assistant.value("reasoning", "") == "reasoning state");
   api.base_url = "https://example.com/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
+  UseEndpoint(api, api.base_url);
   json generic_assistant = {{"role", "assistant"}, {"content", ""}};
   api.PreserveAssistantReasoning(generic_assistant, reasoning_result);
   CHECK(!generic_assistant.contains("reasoning"));
@@ -394,15 +371,16 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(RemoteErrorType(routed_error) == "timeout");
   CHECK(RemoteErrorCode(routed_error) == "slow");
 
-  ProviderCapabilities generic = CapabilitiesForRoute(
-      ProviderProtocol::kOpenAi, "http://127.0.0.1:8080/v1");
-  ProviderCapabilities router = CapabilitiesForRoute(
-      ProviderProtocol::kOpenRouter, "http://127.0.0.1:8080/v1");
+  Api generic_api(config), router_api(config);
+  UseEndpoint(generic_api, "http://127.0.0.1:8080/v1");
+  UseOpenRouterDialect(router_api);
+  const ProviderCapabilities& generic = generic_api.capabilities;
+  const ProviderCapabilities& router = router_api.capabilities;
   CHECK(generic.stream_usage_option);
-  CHECK(!generic.raw_slash_models);
+  CHECK(!generic_api.features.Has(Feature::kRawVendorIds));
   CHECK(!router.stream_usage_option);
-  CHECK(router.raw_slash_models);
-  CHECK(router.reasoning_object);
+  CHECK(router_api.features.Has(Feature::kRawVendorIds));
+  CHECK(router_api.features.Has(Feature::kReasoningObject));
   ChatResult rejected;
   rejected.http_status = 400;
   rejected.remote_error_code = "unsupported_parallel_tool_calls";
@@ -439,13 +417,12 @@ void TestRuntimeOwnershipHelpers() {
   // Native tool calls are not a negotiable capability: a route that rejects
   // them has no fallback to degrade to, so this stays an ordinary error and
   // the turn reports the provider's own message.
-  auto summaries =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi,
-                           "https://api.openai.com/v1", WireApi::kResponses);
+  Api summary_api(config);
+  UseEndpoint(summary_api, "https://api.openai.com/v1", WireApi::kResponses);
+  auto summaries = summary_api.capabilities;
   CHECK(summaries.reasoning_summary);
-  CHECK(!CapabilitiesForRoute(ProviderProtocol::kOpenAi,
-                              "https://proxy.test/v1", WireApi::kResponses)
-             .reasoning_summary);
+  UseEndpoint(summary_api, "https://proxy.test/v1", WireApi::kResponses);
+  CHECK(!summary_api.capabilities.reasoning_summary);
   rejected.error = "Unsupported parameter: reasoning.summary";
   CHECK(RejectedRouteCapability(rejected, summaries) ==
         RejectedCapability::kReasoningSummary);
@@ -757,16 +734,15 @@ void TestChildEnvironmentPolicy() {
   CHECK(delegated.Contains("UAGENT_API_KEY"));
   CHECK(delegated.Contains("UAGENT_INTERNAL_USAGE_FILE"));
 
-  SideRoute route;
+  Route route;
   route.base_url = "https://child.example/v1";
   route.api_key = "child-key";
   route.model = "child-model";
-  route.context = 32768;
-  route.effort = "high";
-  route.protocol = ProviderProtocol::kOpenRouter;
+  route.ctx_window = 32768;
+  route.reasoning_effort = "high";
   route.wire_api = WireApi::kResponses;
-  route.hosted_web_search = true;
-  route.variant = "nitro";
+  route.features = FeaturesOf({Feature::kHostedSearch, Feature::kPdfParser});
+  route.options = {{"pdf_engine", "mistral-ocr"}};
   EnvironmentOverrides child_overrides = ChildAgentEnvironment(route);
   auto child_value = [&](std::string_view key) {
     auto found =
@@ -779,10 +755,10 @@ void TestChildEnvironmentPolicy() {
   CHECK(child_value("UAGENT_MODEL") == "child-model");
   CHECK(child_value("UAGENT_CONTEXT") == "32768");
   CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
-  CHECK(child_value("UAGENT_INTERNAL_PROVIDER_PROTOCOL") == "openrouter");
   CHECK(child_value("UAGENT_INTERNAL_WIRE_API") == "responses");
-  CHECK(child_value("UAGENT_INTERNAL_HOSTED_TOOLS") == "web_search");
-  CHECK(child_value("UAGENT_OPENROUTER_VARIANT") == "nitro");
+  CHECK(child_value("UAGENT_INTERNAL_FEATURES") == "hosted_search,pdf_parser");
+  CHECK(child_value("UAGENT_INTERNAL_ENDPOINT_OPTIONS") ==
+        R"({"pdf_engine":"mistral-ocr"})");
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
   CHECK(child.Contains("UAGENT_API_KEY"));
@@ -829,35 +805,58 @@ void TestChildEnvironmentPolicy() {
   }
 }
 
-void TestProviderTemplates() {
-  const ProviderTemplate* openrouter =
-      FindProviderTemplateForUrl("https://openrouter.ai/api/v1");
-  CHECK(openrouter != nullptr);
-  CHECK(openrouter && openrouter->name == std::string("openrouter"));
-  CHECK(openrouter && openrouter->matches_url("https://openrouter.ai/api/v1"));
-  CHECK(FindProviderTemplateForUrl("https://edge.openrouter.ai/v1") ==
-        openrouter);
+void TestKnownEndpoints() {
+  Endpoint openrouter;
+  openrouter.base_url = "https://openrouter.ai/api/v1";
+  CHECK(DeclareEndpoint(openrouter, {}));
+  CHECK(openrouter.features.Has(Feature::kPromptCacheControl));
+  CHECK(openrouter.features.Has(Feature::kSearchPlugin));
+  CHECK(openrouter.Option("pdf_engine") == "cloudflare-ai");
+  Endpoint edge;
+  edge.base_url = "https://edge.openrouter.ai/v1";
+  CHECK(DeclareEndpoint(edge, {}) && edge.features == openrouter.features);
+  Endpoint openai;
+  openai.base_url = "https://api.openai.com/v1";
+  CHECK(DeclareEndpoint(openai, {}));
+  CHECK(openai.features.Has(Feature::kMaxCompletionTokens));
+  CHECK(!openai.features.Has(Feature::kSearchPlugin));
+  Endpoint unknown;
+  unknown.base_url = "https://provider.test/v1";
+  CHECK(!DeclareEndpoint(unknown, {}));
+  CHECK(unknown.features == FeatureSet{});
+  // A provider entry that has the address says what the endpoint is.
+  Endpoint configured;
+  configured.name = "gateway";
+  configured.base_url = "https://provider.test/v1";
+  configured.features = FeaturesOf({Feature::kReasoningObject});
+  configured.options = {{"provider", "fast"}};
+  CHECK(DeclareEndpoint(unknown, {configured}));
+  CHECK(unknown.name == "gateway");
+  CHECK(unknown.features.Has(Feature::kReasoningObject));
+  CHECK(unknown.Option("provider") == "fast");
 
-  constexpr ProviderTemplate kTestProvider = {
-      "test",
-      "https://provider.test/v1",
-      "UAGENT_TEST_PROVIDER_KEY",
-      // Signature fixed by ProviderUrlMatcher, whose real implementations
-      // consume the string they are handed.
-      // NOLINTNEXTLINE(performance-unnecessary-value-param)
-      +[](std::string url) { return url == "https://provider.test/v1"; },
-      ProviderProtocol::kOpenAi,
-      WireApi::kChatCompletions,
-      false,
-  };
-  ScopedEnv scoped_key(kTestProvider.api_key_env, "test-key");
-  RuntimeConfig config;
-  Api api(config);
-  CHECK(ApplyProviderTemplate(api, kTestProvider));
-  CHECK(api.base_url == kTestProvider.base_url);
-  CHECK(api.api_key == "test-key");
-  // A template names no model: choosing one is the person's.
-  CHECK(api.model.empty());
+  // An endpoint is available when its key is set; it names no model.
+  ScopedEnv no_providers("UAGENT_PROVIDERS");
+  ScopedEnv scoped_key("OPENROUTER_API_KEY");
+  CHECK(DefaultEndpoint(SessionProviderCatalog().providers) == nullptr);
+  setenv("OPENROUTER_API_KEY", "test-key", 1);
+  ProviderCatalog catalog = SessionProviderCatalog();
+  const Endpoint* available = DefaultEndpoint(catalog.providers);
+  REQUIRE(available != nullptr);
+  CHECK(available->name == "openrouter");
+  CHECK(available->api_key == "test-key");
+  CHECK(available->base_url == openrouter.base_url);
+  CHECK(available->features == openrouter.features);
+  // A provider entry named like a known endpoint states what differs.
+  setenv("UAGENT_PROVIDERS",
+         R"json({"openrouter":{"options":{"provider":"streamlake"}}})json", 1);
+  catalog = SessionProviderCatalog();
+  REQUIRE(catalog.providers.size() == 1);
+  CHECK(catalog.providers[0].base_url == openrouter.base_url);
+  CHECK(catalog.providers[0].api_key == "test-key");
+  CHECK(catalog.providers[0].Option("provider") == "streamlake");
+  CHECK(catalog.providers[0].Option("pdf_engine") == "cloudflare-ai");
+  unsetenv("UAGENT_PROVIDERS");
 }
 
 void TestNamedProviders() {
@@ -868,12 +867,10 @@ void TestNamedProviders() {
   ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
                           std::getenv("UAGENT_REASONING_EFFORT"));
   ScopedEnv scoped_context("UAGENT_CONTEXT", std::getenv("UAGENT_CONTEXT"));
-  ScopedEnv scoped_protocol("UAGENT_INTERNAL_PROVIDER_PROTOCOL",
-                            std::getenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL"));
+  ScopedEnv scoped_features("UAGENT_INTERNAL_FEATURES",
+                            std::getenv("UAGENT_INTERNAL_FEATURES"));
   ScopedEnv scoped_wire("UAGENT_INTERNAL_WIRE_API",
                         std::getenv("UAGENT_INTERNAL_WIRE_API"));
-  ScopedEnv scoped_hosted("UAGENT_INTERNAL_HOSTED_TOOLS",
-                          std::getenv("UAGENT_INTERNAL_HOSTED_TOOLS"));
   ScopedEnv scoped_providers("UAGENT_PROVIDERS",
                              std::getenv("UAGENT_PROVIDERS"));
   ScopedEnv scoped_openrouter("OPENROUTER_API_KEY",
@@ -885,7 +882,7 @@ void TestNamedProviders() {
       {"codex-local",
        {{"base_url", "http://127.0.0.1:8787/api/v1/"},
         {"api_key", "local-key"},
-        {"protocol", "openrouter"},
+        {"supports", json::array({"raw_vendor_ids", "reasoning_object"})},
         {"context", 16384}}},
       {"static",
        {{"base_url", "https://static.test/v1"},
@@ -895,33 +892,32 @@ void TestNamedProviders() {
       {"bad-wire",
        {{"base_url", "https://bad-wire.test/v1"},
         {"wire_api", "model-name-is-not-a-wire-api"}}},
-      {"bad-protocol",
-       {{"base_url", "https://bad-protocol.test/v1"},
-        {"protocol", "model-name-is-not-a-protocol"}}},
+      {"bad-feature",
+       {{"base_url", "https://bad-feature.test/v1"},
+        {"supports", json::array({"model-name-is-not-a-feature"})}}},
   };
   setenv("UAGENT_PROVIDERS", JsonDump(configured).c_str(), 1);
   ProviderCatalog catalog = LoadProviderCatalog();
   CHECK(catalog.providers.size() == 2);
   CHECK(catalog.models.size() == 1);
-  const NamedProvider* codex =
-      FindNamedProvider(catalog.providers, "codex-local");
+  const Endpoint* codex = FindEndpoint(catalog.providers, "codex-local");
   CHECK(codex != nullptr);
   CHECK(codex && codex->base_url == "http://127.0.0.1:8787/api/v1");
   CHECK(codex && codex->api_key == "local-key");
   CHECK(codex && codex->context == 16384);
-  CHECK(codex && codex->protocol == ProviderProtocol::kOpenRouter);
+  CHECK(codex && codex->features.Has(Feature::kRawVendorIds));
   CHECK(codex && codex->wire_api == WireApi::kChatCompletions);
-  CHECK(codex && !codex->hosted_web_search);
-  const NamedProvider* native = FindNamedProvider(catalog.providers, "static");
+  CHECK(codex && !codex->features.Has(Feature::kHostedSearch));
+  const Endpoint* native = FindEndpoint(catalog.providers, "static");
   CHECK(native && native->wire_api == WireApi::kResponses);
-  CHECK(native && native->hosted_web_search);
+  CHECK(native && native->features.Has(Feature::kHostedSearch));
 
   // Startup consumes the same selection grammar as interactive and side
   // routes. Suffixes configure policy and never leak into the provider model
   // identifier.
-  setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:nitro:low", 1);
+  setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:low", 1);
   setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);
   unsetenv("UAGENT_BASE_URL");
   unsetenv("UAGENT_REASONING_EFFORT");
   RuntimeConfig startup_config;
@@ -932,7 +928,6 @@ void TestNamedProviders() {
   CHECK(startup.api_key == "local-key");
   CHECK(startup.model == "gpt-5.6-luna");
   CHECK(startup.reasoning_effort == "low");
-  CHECK(startup.config.openrouter_variant == "nitro");
   CHECK(SelectModel(startup, catalog.models, catalog.providers,
                     "codex-local/gpt-5.6-sol:high") ==
         "codex-local/gpt-5.6-sol:high");
@@ -952,24 +947,25 @@ void TestNamedProviders() {
              .empty());
   CHECK(startup.ctx_window == 16384);
 
-  // [provider/]model[:variant][:effort] — suffixes peel from the right
-  // against two closed sets and stop at the first unrecognized one.
+  // [provider/]model[:effort] — an effort peels from the right; any other
+  // suffix stays in the model id.
   ModelSelection plain = ParseModelSelection("gpt-5.5");
   CHECK(plain.base == "gpt-5.5");
-  CHECK(plain.variant.empty() && plain.effort.empty());
+  CHECK(plain.effort.empty());
   ModelSelection scoped = ParseModelSelection("openrouter/deepseek/v4:xhigh");
   CHECK(scoped.base == "openrouter/deepseek/v4");
   CHECK(scoped.effort == "xhigh");
-  CHECK(scoped.variant.empty());
-  ModelSelection both = ParseModelSelection("openrouter/v4:nitro:xhigh");
-  ModelSelection swapped = ParseModelSelection("openrouter/v4:xhigh:nitro");
-  CHECK(both.base == "openrouter/v4" && swapped.base == "openrouter/v4");
-  CHECK(both.variant == "nitro" && swapped.variant == "nitro");
-  CHECK(both.effort == "xhigh" && swapped.effort == "xhigh");
-  // An OpenRouter id suffix is not an effort, and it stops the peel.
+  // A routing suffix is not an effort: it stays in the id, and it stops the
+  // peel.
+  ModelSelection suffixed = ParseModelSelection("openrouter/v4:nitro:xhigh");
+  CHECK(suffixed.base == "openrouter/v4:nitro" && suffixed.effort == "xhigh");
+  ModelSelection trailing_suffix =
+      ParseModelSelection("openrouter/v4:xhigh:nitro");
+  CHECK(trailing_suffix.base == "openrouter/v4:xhigh:nitro");
+  CHECK(trailing_suffix.effort.empty());
   ModelSelection free_id = ParseModelSelection("openrouter/deepseek-chat:free");
   CHECK(free_id.base == "openrouter/deepseek-chat:free");
-  CHECK(free_id.effort.empty() && free_id.variant.empty());
+  CHECK(free_id.effort.empty());
   ModelSelection free_effort =
       ParseModelSelection("openrouter/deepseek-chat:free:high");
   CHECK(free_effort.base == "openrouter/deepseek-chat:free");
@@ -981,21 +977,21 @@ void TestNamedProviders() {
   CHECK(trailing.base == "model:" && trailing.effort.empty());
   CHECK(ParseModelSelection("  spaced/model:high  ").base == "spaced/model");
 
-  std::optional<ModelRoute> dynamic = ResolveModelRoute(
+  std::optional<Route> dynamic = ResolveModelRoute(
       catalog.models, catalog.providers, "codex-local/org/model");
   REQUIRE(dynamic.has_value());
   CHECK(dynamic->model == "org/model");
-  CHECK(dynamic->context == 16384);
-  CHECK(dynamic->protocol == ProviderProtocol::kOpenRouter);
+  CHECK(dynamic->ctx_window == 16384);
+  CHECK(dynamic->features.Has(Feature::kRawVendorIds));
   RuntimeConfig config;
   Api routed(config);
   routed.reasoning_effort = "medium";
   ApplyRoute(routed, *dynamic);
   CHECK(routed.reasoning_effort.empty());
-  CHECK(routed.capabilities.OpenRouter());
-  ModelRoute fixed_effort = *dynamic;
-  fixed_effort.effort = "low";
-  fixed_effort.supported_efforts = {"low", "high"};
+  CHECK(routed.features.Has(Feature::kRawVendorIds));
+  Route fixed_effort = *dynamic;
+  fixed_effort.reasoning_effort = "low";
+  fixed_effort.supported_reasoning_efforts = {"low", "high"};
   ApplyRoute(routed, fixed_effort);
   CHECK(routed.reasoning_effort == "low");
   CHECK(SupportsReasoningEffort(routed, "high"));
@@ -1010,8 +1006,7 @@ void TestNamedProviders() {
   CHECK(NormalizeModelQuery("gpt-5.6") == "gpt-5.6");
   Api openrouter_api(config);
   openrouter_api.base_url = "https://openrouter.ai/api/v1";
-  openrouter_api.capabilities = CapabilitiesForRoute(
-      ProviderProtocol::kOpenRouter, openrouter_api.base_url);
+  UseOpenRouterDialect(openrouter_api);
   openrouter_api.model = "parent-model";
   // The runtime context names the parent in schema form, so the child can be
   // asked for a route in the same spelling the user would type.
@@ -1023,61 +1018,49 @@ void TestNamedProviders() {
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   openrouter_api.base_url = "http://127.0.0.1:8787/api/v1";
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
-  openrouter_api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, openrouter_api.base_url);
+  UseEndpoint(openrouter_api, openrouter_api.base_url);
   CHECK(!CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
-  std::optional<ModelRoute> fixed =
+  std::optional<Route> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   REQUIRE(fixed.has_value());
   CHECK(fixed->model == "actual-model");
   CHECK(fixed->wire_api == WireApi::kResponses);
-  CHECK(fixed->hosted_web_search);
+  CHECK(fixed->features.Has(Feature::kHostedSearch));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "missing/model"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local/"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local"));
   Api no_catalog(RuntimeConfig{});
-  std::vector<ModelRoute> aliases = {{"static/low",
-                                      "https://static.test/v1",
-                                      "key",
-                                      "same-model",
-                                      "low",
-                                      0,
-                                      ProviderProtocol::kOpenAi,
-                                      WireApi::kChatCompletions,
-                                      false,
-                                      {}},
-                                     {"static/high",
-                                      "https://static.test/v1",
-                                      "key",
-                                      "same-model",
-                                      "high",
-                                      0,
-                                      ProviderProtocol::kOpenAi,
-                                      WireApi::kChatCompletions,
-                                      false,
-                                      {}}};
+  const auto alias = [](const char* name, const char* effort) {
+    Route route;
+    route.base_url = "https://static.test/v1";
+    route.api_key = "key";
+    route.route_name = name;
+    route.model = "same-model";
+    route.reasoning_effort = effort;
+    return route;
+  };
+  std::vector<Route> aliases = {alias("static/low", "low"),
+                                alias("static/high", "high")};
   ModelSearch alias_search = SearchModels(no_catalog, aliases, {}, "static");
   CHECK(alias_search.matches.size() == 2);
 
   setenv("OPENROUTER_API_KEY", "openrouter-key", 1);
-  AddAvailableProviderTemplates(catalog);
-  const NamedProvider* openrouter =
-      FindNamedProvider(catalog.providers, "openrouter");
+  catalog = SessionProviderCatalog();
+  const Endpoint* openrouter = FindEndpoint(catalog.providers, "openrouter");
   CHECK(openrouter != nullptr);
   CHECK(openrouter && openrouter->base_url == "https://openrouter.ai/api/v1");
   CHECK(openrouter && openrouter->api_key == "openrouter-key");
-  AddAvailableProviderTemplates(catalog);
   CHECK(catalog.providers.size() == 3);
 
   setenv("UAGENT_BASE_URL", "https://direct.test/v1", 1);
   setenv("UAGENT_MODEL", "direct-model", 1);
   setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);
   Api invalid_direct(RuntimeConfig{});
   ProviderSetup invalid_setup = ConfigureProvider(invalid_direct);
   CHECK(invalid_direct.base_url.empty());
   CHECK(invalid_setup.warning.find("invalid wire API") != std::string::npos);
-  CHECK(invalid_setup.warning.find("invalid provider protocol") !=
+  CHECK(invalid_setup.warning.find("invalid endpoint feature") !=
         std::string::npos);
 }
 

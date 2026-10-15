@@ -51,7 +51,7 @@ void TestConfigProposalAndCommit() {
       ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_BACKEND", "foo", false}},
       manager);
   CHECK(!choice.ok);
-  CHECK(choice.error.find("auto openrouter off") != std::string::npos);
+  CHECK(choice.error.find("auto off") != std::string::npos);
 
   // A credential may never arrive through a tool argument.
   ConfigProposal secret =
@@ -114,8 +114,7 @@ void TestConfigProposalAndCommit() {
   ConfigManager resolved_manager = ConfigManager::Capture({});
   resolved_manager.Initialize();
   ProviderCatalog catalog = LoadProviderCatalog();
-  const NamedProvider* resolved =
-      FindNamedProvider(catalog.providers, "codex-local");
+  const Endpoint* resolved = FindEndpoint(catalog.providers, "codex-local");
   CHECK(resolved && resolved->api_key == "resolved-local-key");
 
   for (const std::string credential : {"literal-secret", "Bearer secret",

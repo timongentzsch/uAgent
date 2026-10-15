@@ -202,16 +202,12 @@ json SessionActivity(AppSession& session, const json& request) {
 json SelectModelControl(AppSession& session, const json& request) {
   std::string value = JsonValue(request, "model", "");
   ModelSelection selection = ParseModelSelection(value);
-  std::string variant = JsonValue(request, "variant", "default");
   std::string effort = JsonValue(request, "effort", "default");
-  if (variant == "default") variant.clear();
   if (effort == "default") effort.clear();
-  if (selection.base.empty() || !ValidOpenRouterVariant(variant) ||
-      (!effort.empty() && !ValidEffort(effort))) {
+  if (selection.base.empty() || (!effort.empty() && !ValidEffort(effort))) {
     return {{"error", "invalid model selection"}};
   }
   value = selection.base;
-  if (!variant.empty()) value += ":" + variant;
   if (!effort.empty()) value += ":" + effort;
   std::string selected =
       SelectModel(session.ApiClient(), session.context.provider.routes,

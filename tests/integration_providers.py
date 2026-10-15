@@ -3,6 +3,7 @@ import os
 import time
 
 from integration_support import (
+    OPENROUTER_SUPPORTS,
     SMALL_PNG,
     Server,
     assert_true,
@@ -206,7 +207,7 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
-        assert_true("web_search OpenRouter HTTP 429: rate limited" in result, result)
+        assert_true("web_search HTTP 429: rate limited" in result, result)
         return event({"content": "search-contract-ok"})
 
     with Server([successful_search, rejected_search], repeat_last=True) as search_server:
@@ -220,14 +221,14 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_INTERNAL_PROVIDER_PROTOCOL": "openrouter",
-                    "UAGENT_WEB_SEARCH_BACKEND": "openrouter",
+                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
+                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
                             "search": {
                                 "base_url": search_server.url,
                                 "api_key": "search-key",
-                                "protocol": "openrouter",
+                                "supports": OPENROUTER_SUPPORTS,
                             }
                         }
                     ),
@@ -293,7 +294,7 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home, *, binary):
     )
     with Server([first, verify_tool_step]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_INTERNAL_PROVIDER_PROTOCOL"] = "openrouter"
+        env["UAGENT_INTERNAL_FEATURES"] = ",".join(OPENROUTER_SUPPORTS)
         result = run(root, env, "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
@@ -382,27 +383,14 @@ def test_model_route_switch(root, home, *, binary):
         second.close()
 
 
-def test_openrouter_variant_is_scoped_to_openrouter(root, home, *, binary):
-    router = Server(
-        [
-            event({"content": "nitro-ok"}),
-            event({"content": "floor-ok"}),
-            event({"content": "exacto-ok"}),
-            event({"content": "default-ok"}),
-        ]
-    )
-    generic = Server([event({"content": "generic-ok"})])
+def test_routing_suffix_in_a_model_id_is_sent_as_written(root, home, *, binary):
+    router = Server([event({"content": "nitro-ok"}), event({"content": "floor-ok"})])
     providers = {
         "router": {
             "base_url": router.url,
             "api_key": "router-key",
-            "protocol": "openrouter",
-            "models": {"main": "vendor/model"},
-        },
-        "generic": {
-            "base_url": generic.url,
-            "api_key": "generic-key",
-            "models": {"main": "other/model"},
+            "supports": OPENROUTER_SUPPORTS,
+            "models": {"main": "vendor/model:nitro"},
         },
     }
     try:
@@ -410,33 +398,21 @@ def test_openrouter_variant_is_scoped_to_openrouter(root, home, *, binary):
         result = run_dialog(
             root,
             env,
-            "/variant\n/variant :nitro\none\n/variant floor\ntwo\n"
-            "/variant exacto\nthree\n/variant default\nfour\n"
-            "/model generic/main\n/variant nitro\nfive\n/q\n",
+            "one\n/model router/vendor/model:floor\ntwo\n/variant\n/q\n",
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true("choose default, nitro, floor, or exacto" in result.stdout, result.stdout)
-        assert_true("/variant is unavailable on the active route" in result.stdout, result.stdout)
-        for reply in ("nitro-ok", "floor-ok", "exacto-ok", "default-ok", "generic-ok"):
+        for reply in ("nitro-ok", "floor-ok"):
             assert_true(reply in result.stdout, result.stdout)
-        router_bodies = [body for _, body in router.requests]
+        bodies = [body for _, body in router.requests]
         assert_true(
-            [body.get("model") for body in router_bodies]
-            == [
-                "vendor/model:nitro",
-                "vendor/model:floor",
-                "vendor/model:exacto",
-                "vendor/model",
-            ],
-            router_bodies,
+            [body.get("model") for body in bodies] == ["vendor/model:nitro", "vendor/model:floor"],
+            bodies,
         )
-        assert_true(generic.requests[0][1].get("model") == "other/model", generic.requests)
-        session_ids = [body.get("session_id") for body in router_bodies]
-        assert_true(all(session_ids) and len(set(session_ids)) == 4, session_ids)
+        session_ids = [body.get("session_id") for body in bodies]
+        assert_true(all(session_ids) and len(set(session_ids)) == 2, session_ids)
     finally:
         router.close()
-        generic.close()
 
 
 def test_dynamic_provider_catalog_and_model(root, home, *, binary):
@@ -763,14 +739,14 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
             {
                 "UAGENT_API_KEY": "response-key",
                 "UAGENT_INTERNAL_WIRE_API": "responses",
-                "UAGENT_INTERNAL_HOSTED_TOOLS": "web_search",
+                "UAGENT_INTERNAL_FEATURES": "hosted_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
                         "search": {
                             "base_url": server.url,
                             "api_key": "fallback-key",
-                            "protocol": "openrouter",
+                            "supports": OPENROUTER_SUPPORTS,
                         }
                     }
                 ),
@@ -898,14 +874,14 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, bina
                 {
                     "UAGENT_API_KEY": "search-key",
                     "UAGENT_INTERNAL_WIRE_API": wire_api,
-                    "UAGENT_INTERNAL_HOSTED_TOOLS": "web_search",
+                    "UAGENT_INTERNAL_FEATURES": "hosted_search",
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
                             "search": {
                                 "base_url": server.url,
                                 "api_key": "fallback-key",
-                                "protocol": "openrouter",
+                                "supports": OPENROUTER_SUPPORTS,
                             }
                         }
                     ),
@@ -1052,14 +1028,14 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
             {
                 "UAGENT_API_KEY": "anthropic-key",
                 "UAGENT_INTERNAL_WIRE_API": "anthropic_messages",
-                "UAGENT_INTERNAL_HOSTED_TOOLS": "web_search",
+                "UAGENT_INTERNAL_FEATURES": "hosted_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
                         "search": {
                             "base_url": server.url,
                             "api_key": "fallback-key",
-                            "protocol": "openrouter",
+                            "supports": OPENROUTER_SUPPORTS,
                         }
                     }
                 ),
@@ -1114,7 +1090,7 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true(route["credential"] == "set", described)
         scoped = {provider["name"] for provider in described["providers"]}
         assert_true("fixture-provider" in scoped, described)
-        assert_true(described["selection"] == "[provider/]model[:variant][:effort]", described)
+        assert_true(described["selection"] == "[provider/]model[:effort]", described)
         assert_true("high" in described["efforts"], described)
         # The table names routes; it never carries what authenticates them.
         assert_true("canary-route-key" not in json.dumps(described), described)
@@ -1447,7 +1423,7 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
             "search": {
                 "base_url": search_server.url,
                 "api_key": "search-key",
-                "protocol": "openrouter",
+                "supports": OPENROUTER_SUPPORTS,
             }
         }
         with Server(
@@ -1489,7 +1465,7 @@ def test_search_is_offered_to_a_conversation_that_chose_its_model_late(root, hom
     with Server([event({"content": "answered"})], get_response=models) as server:
         env = base_env(home, server.url)
         del env["UAGENT_MODEL"]
-        env["UAGENT_INTERNAL_PROVIDER_PROTOCOL"] = "openrouter"
+        env["UAGENT_INTERNAL_FEATURES"] = ",".join(OPENROUTER_SUPPORTS)
         result = run_dialog(root, env, "1\nprobe\n/q\n", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true("web_search" in function_names(server.requests[0][1]), server.requests)

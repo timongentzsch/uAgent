@@ -45,35 +45,12 @@ bool EndpointOffers(const Api& api, const std::string& id) {
 
 }  // namespace
 
-// Two selections naming the same endpoint, model and protocol are the same
-// route however they were spelled; only one of them is offered.
-std::string RouteIdentity(const std::string& base_url, const std::string& model,
-                          ProviderProtocol protocol, WireApi wire_api,
-                          bool hosted_web_search) {
-  return base_url + "\n" + model + "\n" + ProviderProtocolName(protocol) +
-         "\n" + WireApiName(wire_api) + "\n" +
-         (hosted_web_search ? "web_search" : "");
-}
-
-// The configured provider serving a base URL, else the built-in template that
-// matches it, else nothing — a custom endpoint has no name to scope with.
-std::string ProviderScope(const std::string& base_url,
-                          const std::vector<NamedProvider>& providers) {
-  for (const NamedProvider& provider : providers) {
-    if (provider.base_url == base_url) return provider.name;
-  }
-  const ProviderTemplate* provider = FindProviderTemplateForUrl(base_url);
-  return provider ? provider->name : std::string();
-}
-
-std::string ComposeSelection(const std::string& scope, const std::string& model,
-                             const std::string& variant,
-                             const std::string& effort) {
-  std::string selection = scope.empty() ? "" : scope + "/";
-  selection += model;
-  if (!variant.empty()) selection += ":" + variant;
-  if (!effort.empty()) selection += ":" + effort;
-  return selection;
+// Two selections naming the same endpoint, model and wire are the same route
+// however they were spelled; only one of them is offered.
+std::string RouteIdentity(const Route& route) {
+  return route.base_url + "\n" + route.model + "\n" +
+         WireApiName(route.wire_api) + "\n" +
+         std::to_string(route.features.bits) + "\n" + route.options.dump();
 }
 
 ModelSelection ParseModelSelection(const std::string& selection) {
@@ -83,13 +60,8 @@ ModelSelection ParseModelSelection(const std::string& selection) {
     size_t colon = parsed.base.rfind(':');
     if (colon == std::string::npos || colon + 1 == parsed.base.size()) break;
     std::string suffix = parsed.base.substr(colon + 1);
-    if (parsed.effort.empty() && ValidEffort(suffix)) {
-      parsed.effort = std::move(suffix);
-    } else if (parsed.variant.empty() && ValidOpenRouterVariant(suffix)) {
-      parsed.variant = std::move(suffix);
-    } else {
-      break;
-    }
+    if (!parsed.effort.empty() || !ValidEffort(suffix)) break;
+    parsed.effort = std::move(suffix);
     parsed.base.resize(colon);
   }
   return parsed;
@@ -99,35 +71,29 @@ bool ValidEffort(const std::string& effort) {
   return Cfg("UAGENT_REASONING_EFFORT").Accepts(effort);
 }
 
-std::optional<ModelRoute> ResolveModelRoute(
-    const std::vector<ModelRoute>& routes,
-    const std::vector<NamedProvider>& providers, const std::string& selection) {
-  for (const ModelRoute& route : routes) {
-    if (route.name == selection) return route;
+std::optional<Route> ResolveModelRoute(const std::vector<Route>& routes,
+                                       const std::vector<Endpoint>& providers,
+                                       const std::string& selection) {
+  for (const Route& route : routes) {
+    if (route.route_name == selection) return route;
   }
   size_t slash = selection.find('/');
   if (slash == std::string::npos || slash + 1 == selection.size()) {
     return std::nullopt;
   }
-  const NamedProvider* provider =
-      FindNamedProvider(providers, selection.substr(0, slash));
+  const Endpoint* provider =
+      FindEndpoint(providers, selection.substr(0, slash));
   if (!provider) return std::nullopt;
-  ModelRoute route{selection,
-                   provider->base_url,
-                   provider->api_key,
-                   selection.substr(slash + 1),
-                   "",
-                   provider->context,
-                   provider->protocol,
-                   provider->wire_api,
-                   provider->hosted_web_search,
-                   {}};
-  route.features = provider->features;
+  Route route;
+  static_cast<Endpoint&>(route) = *provider;
+  route.route_name = selection;
+  route.model = selection.substr(slash + 1);
+  route.ctx_window = provider->context;
   return route;
 }
 
 bool CanUseRawModel(const Api& api, std::string_view name) {
-  return api.capabilities.raw_slash_models &&
+  return api.features.Has(Feature::kRawVendorIds) &&
          name.find('/') != std::string_view::npos;
 }
 
@@ -137,32 +103,42 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   }
   if (api.ctx_window > 0 &&
       (!discover_efforts || !api.supported_reasoning_efforts.empty()) &&
-      !(api.capabilities.Anthropic() &&
+      !(api.wire_api == WireApi::kAnthropicMessages &&
         api.capabilities.model_features.is_null())) {
     return true;
   }
   // Discover effort support on demand, without delaying a configured startup
   // for optional metadata. Unavailable metadata leaves the route usable.
   auto started = std::chrono::steady_clock::now();
-  const std::string base = api.CatalogModel();
+  // The catalogue lists an id without the routing suffixes (`:nitro`) an
+  // endpoint takes on any id: the exact id wins, else the id without them.
+  const auto listed = [&](const std::vector<ModelInfo>& models) {
+    std::string id = api.model;
+    for (;;) {
+      auto found = std::ranges::find(models, id, &ModelInfo::id);
+      if (found != models.end()) return &*found;
+      const size_t colon = id.rfind(':');
+      if (!api.features.Has(Feature::kModelVariants) ||
+          colon == std::string::npos) {
+        return static_cast<const ModelInfo*>(nullptr);
+      }
+      id.resize(colon);
+    }
+  };
   // A cached catalogue that lacks the chosen model may predate it.
   auto models = CachedModels(api);
-  if (!models || std::ranges::none_of(*models, [&](const ModelInfo& info) {
-        return info.id == api.model || info.id == base;
-      })) {
+  if (!models || !listed(*models)) {
     models = QueryModels(api, /*abortable=*/false, 8);
   }
   if (models && !models->empty()) {
-    for (const ModelInfo& info : *models) {
-      if (info.id != api.model && info.id != base) continue;
-      if (api.ctx_window == 0) api.ctx_window = info.context;
-      api.supported_reasoning_efforts = info.efforts;
-      api.capabilities.SetInputModalities(info.input_modalities);
-      api.capabilities.SetModelFeatures(info.features);
+    if (const ModelInfo* info = listed(*models)) {
+      if (api.ctx_window == 0) api.ctx_window = info->context;
+      api.supported_reasoning_efforts = info->efforts;
+      api.capabilities.SetInputModalities(info->input_modalities, api.wire_api);
+      api.capabilities.SetModelFeatures(info->features);
       if (!SupportsReasoningEffort(api, api.reasoning_effort)) {
         api.reasoning_effort.clear();
       }
-      break;
     }
   }
   DebugLog("models_probe", {{"duration_ms", ElapsedMs(started)},
@@ -172,20 +148,23 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   return true;
 }
 
-std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
-                        const std::vector<NamedProvider>& providers,
+std::string SelectModel(Api& api, const std::vector<Route>& routes,
+                        const std::vector<Endpoint>& providers,
                         const std::string& name) {
   const std::string previous_url = api.base_url;
-  const std::string previous_model = api.CatalogModel();
+  const std::string previous_model = api.model;
   const int64_t previous_context = api.ctx_window;
   const auto previous_efforts = api.supported_reasoning_efforts;
   const auto previous_capabilities = api.capabilities;
+  const WireApi previous_wire = api.wire_api;
+  const FeatureSet previous_features = api.features;
+  const json previous_options = api.options;
   ModelSelection selection = ParseModelSelection(name);
   std::string selected = selection.base;
-  if (std::optional<ModelRoute> route =
+  if (std::optional<Route> route =
           ResolveModelRoute(routes, providers, selection.base)) {
     ApplyRoute(api, *route);
-    selected = route->name;
+    selected = route->route_name;
   } else if (CanUseRawModel(api, selection.base) ||
              EndpointOffers(api, selection.base)) {
     api.model = selection.base;
@@ -193,31 +172,25 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     api.ctx_window = 0;
     api.reasoning_effort.clear();
     api.supported_reasoning_efforts.clear();
-    api.config.openrouter_variant.clear();
-    api.capabilities = CapabilitiesForRoute(
-        api.capabilities.protocol, api.base_url, api.capabilities.wire_api,
-        api.capabilities.hosted_web_search);
+    api.capabilities = CapabilitiesForRoute(api.wire_api, api.features);
   } else {
     return "";
   }
-  if (api.base_url == previous_url && api.CatalogModel() == previous_model) {
+  if (api.base_url == previous_url && api.model == previous_model) {
     if (api.ctx_window == 0) api.ctx_window = previous_context;
     api.supported_reasoning_efforts = previous_efforts;
-    if (api.capabilities.protocol == previous_capabilities.protocol &&
-        api.capabilities.wire_api == previous_capabilities.wire_api) {
+    if (api.features == previous_features && api.wire_api == previous_wire &&
+        api.options == previous_options) {
       api.capabilities = previous_capabilities;
     }
   } else {
     ProbeModel(api, /*discover_efforts=*/true);
   }
   ApplySelectionPolicy(api, selection);
-  std::string variant = api.config.openrouter_variant == selection.variant
-                            ? selection.variant
-                            : std::string();
   std::string effort = api.reasoning_effort == selection.effort
                            ? selection.effort
                            : std::string();
-  return ComposeSelection("", selected, variant, effort);
+  return ComposeSelection("", selected, effort);
 }
 
 std::string NormalizeModelQuery(std::string query) {
@@ -243,38 +216,35 @@ bool MatchesModelQuery(const std::string& haystack, const std::string& query) {
   return ContainsCaseInsensitive(SearchKey(haystack), SearchKey(query));
 }
 
-ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
-                         const std::vector<NamedProvider>& providers,
+ModelSearch SearchModels(const Api& api, const std::vector<Route>& routes,
+                         const std::vector<Endpoint>& providers,
                          std::string query) {
   query = NormalizeModelQuery(std::move(query));
   ModelSearch result;
   std::set<std::string> selections;
   std::set<std::string> route_identities;
-  for (const ModelRoute& route : routes) {
-    if (!MatchesModelQuery(route.name + " " + route.model, query)) {
+  for (const Route& route : routes) {
+    if (!MatchesModelQuery(route.route_name + " " + route.model, query)) {
       continue;
     }
-    std::string identity =
-        RouteIdentity(route.base_url, route.model, route.protocol,
-                      route.wire_api, route.hosted_web_search);
-    if (!selections.insert(route.name).second) continue;
-    route_identities.insert(std::move(identity));
-    ModelInfo info{route.model, route.effort, route.supported_efforts,
-                   route.context};
-    result.matches.push_back({route.name, route, std::move(info)});
+    if (!selections.insert(route.route_name).second) continue;
+    route_identities.insert(RouteIdentity(route));
+    ModelInfo info{route.model, route.reasoning_effort,
+                   route.supported_reasoning_efforts, route.ctx_window};
+    result.matches.push_back({route, std::move(info)});
   }
 
   // Configured providers plus, when it is not one of them, the active
   // endpoint — which has no name, and therefore no `provider/model` prefix.
-  std::vector<NamedProvider> catalogs = providers;
-  bool active_is_named = std::any_of(catalogs.begin(), catalogs.end(),
-                                     [&](const NamedProvider& source) {
-                                       return source.base_url == api.base_url;
-                                     });
+  std::vector<Endpoint> catalogs = providers;
+  bool active_is_named = std::any_of(
+      catalogs.begin(), catalogs.end(),
+      [&](const Endpoint& source) { return source.base_url == api.base_url; });
   if (!active_is_named && !api.base_url.empty()) {
-    catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window,
-                        api.capabilities.protocol, api.capabilities.wire_api,
-                        api.capabilities.hosted_web_search});
+    Endpoint active = api;
+    active.name.clear();
+    active.context = api.ctx_window;
+    catalogs.push_back(std::move(active));
   }
 
   using CatalogModels = std::optional<std::vector<ModelInfo>>;
@@ -289,20 +259,17 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     workers.push_back(std::async(std::launch::async, [&] {
       for (size_t index; !AbortRequested() &&
                          (index = next.fetch_add(1)) < catalogs.size();) {
-        const NamedProvider& source = catalogs[index];
         Api catalog_api(api.config);
-        catalog_api.base_url = source.base_url;
-        catalog_api.api_key = source.api_key;
+        static_cast<Endpoint&>(catalog_api) = catalogs[index];
         catalog_api.capabilities =
-            CapabilitiesForRoute(source.protocol, source.base_url,
-                                 source.wire_api, source.hosted_web_search);
+            CapabilitiesForRoute(catalog_api.wire_api, catalog_api.features);
         responses[index] = QueryModels(catalog_api, /*abortable=*/true);
       }
     }));
   }
   for (auto& worker : workers) worker.get();
   for (size_t i = 0; i < catalogs.size(); ++i) {
-    const NamedProvider& source = catalogs[i];
+    const Endpoint& source = catalogs[i];
     CatalogModels models = std::move(responses[i]);
     if (!models) {
       result.unavailable.push_back(
@@ -312,58 +279,45 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     for (ModelInfo& info : *models) {
       std::string selection =
           source.name.empty() ? info.id : source.name + "/" + info.id;
-      std::string identity =
-          RouteIdentity(source.base_url, info.id, source.protocol,
-                        source.wire_api, source.hosted_web_search);
+      Route route;
+      static_cast<Endpoint&>(route) = source;
+      route.route_name = selection;
+      route.model = info.id;
+      const std::string identity = RouteIdentity(route);
       // Aliases keep their configured routing/defaults, but must not hide the
       // live model's capabilities behind the generic effort fallback.
       for (ModelCandidate& candidate : result.matches) {
-        ModelRoute& route = candidate.route;
-        if (RouteIdentity(route.base_url, route.model, route.protocol,
-                          route.wire_api,
-                          route.hosted_web_search) != identity) {
-          continue;
-        }
-        route.supported_efforts = info.efforts;
-        route.input_modalities = info.input_modalities;
-        route.features = MergeFeatures(info.features, route.features);
-        if (route.context == 0) route.context = info.context;
+        Route& alias = candidate.route;
+        if (RouteIdentity(alias) != identity) continue;
+        alias.supported_reasoning_efforts = info.efforts;
+        alias.model_features =
+            MergeFeatures(info.features, alias.model_features);
+        if (alias.ctx_window == 0) alias.ctx_window = info.context;
         candidate.info = info;
-        candidate.info.context = route.context;
+        candidate.info.context = alias.ctx_window;
       }
       if (!MatchesModelQuery(selection + " " + info.name, query) ||
           !selections.insert(selection).second ||
-          !route_identities.insert(std::move(identity)).second) {
+          !route_identities.insert(identity).second) {
         continue;
       }
-      int64_t context = info.context > 0 ? info.context : source.context;
-      ModelRoute route{selection,
-                       source.base_url,
-                       source.api_key,
-                       info.id,
-                       "",
-                       context,
-                       source.protocol,
-                       source.wire_api,
-                       source.hosted_web_search,
-                       info.efforts};
-      route.effort = info.default_effort;
-      route.input_modalities = info.input_modalities;
-      route.features = MergeFeatures(info.features, source.features);
-      if (info.context == 0) info.context = context;
-      result.matches.push_back(
-          {std::move(selection), std::move(route), std::move(info)});
+      route.ctx_window = info.context > 0 ? info.context : source.context;
+      route.supported_reasoning_efforts = info.efforts;
+      route.reasoning_effort = info.default_effort;
+      route.model_features = MergeFeatures(info.features, route.model_features);
+      if (info.context == 0) info.context = route.ctx_window;
+      result.matches.push_back({std::move(route), std::move(info)});
     }
   }
   std::sort(result.matches.begin(), result.matches.end(),
             [](const ModelCandidate& a, const ModelCandidate& b) {
-              return a.selection < b.selection;
+              return a.route.route_name < b.route.route_name;
             });
   return result;
 }
 
-json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
-                    const std::vector<NamedProvider>& providers,
+json ModelCatalogue(Api& api, const std::vector<Route>& routes,
+                    const std::vector<Endpoint>& providers,
                     const std::string& query) {
   ModelSearch search = SearchModels(api, routes, providers, query);
   json models = json::array();
@@ -372,21 +326,18 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
                   candidate.route.model == api.model;
     if (active) {
       api.supported_reasoning_efforts = candidate.info.efforts;
-      api.capabilities.SetInputModalities(candidate.info.input_modalities);
-      api.capabilities.SetModelFeatures(candidate.route.features);
+      api.capabilities.SetInputModalities(candidate.info.input_modalities,
+                                          api.wire_api);
+      api.capabilities.SetModelFeatures(candidate.route.model_features);
     }
     models.push_back(
-        {{"value", candidate.selection},
+        {{"value", candidate.route.route_name},
          {"label",
-          RouteSelection(SideRoute{.model = candidate.route.model,
-                                   .base_url = candidate.route.base_url},
-                         providers)},
+          ComposeSelection(ProviderScope(candidate.route.base_url, providers),
+                           candidate.route.model, "")},
          {"name", candidate.info.name},
          {"efforts", candidate.info.efforts},
          {"input_modalities", candidate.info.input_modalities},
-         {"variants", candidate.route.protocol == ProviderProtocol::kOpenRouter
-                          ? json(kOpenRouterVariants)
-                          : json::array()},
          {"default_effort", candidate.info.default_effort},
          {"active", active}});
   }

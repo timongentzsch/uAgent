@@ -386,7 +386,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
       DebugLog("provider_continuation",
                {{"turn", turn_id_},
                 {"step", loop.step},
-                {"wire_api", WireApiName(api_.capabilities.wire_api)}});
+                {"wire_api", WireApiName(api_.wire_api)}});
       continue;
     }
 

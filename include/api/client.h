@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "include/api/capabilities.h"
+#include "include/api/endpoint.h"
 #include "include/api/types.h"
 #include "include/api/wire.h"
 #include "include/core/env.h"
@@ -38,13 +39,7 @@ class HttpExchange;
 
 // Copyable request settings; transport handles and accumulated usage stay
 // with the single-owner client. Side requests snapshot this exact route.
-struct ApiSettings {
-  std::string base_url, api_key, model, reasoning_effort;
-  // The selection a catalogue route was chosen by and the model it named,
-  // so the choice can be written down as it was made (an alias stays one).
-  std::string route_name, route_model;
-  std::vector<std::string> supported_reasoning_efforts;
-  int64_t ctx_window = 0;
+struct ApiSettings : Route {
   ProviderCapabilities capabilities;
   RuntimeConfig config;
 };
@@ -71,8 +66,6 @@ class Api : public ApiSettings {
 
   void PreserveAssistantReasoning(json& message,
                                   const ChatResult& result) const;
-  std::string RequestModel() const;
-  std::string CatalogModel() const;
   bool NativeHostedTool(HostedTool tool) const;
   json BuildRequestBody(const json& messages, const json& tool_schemas,
                         const std::string& session_id = "",

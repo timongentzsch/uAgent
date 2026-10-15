@@ -144,7 +144,7 @@ void Agent::DebugModelRequest(int64_t request, int64_t step,
       {"turn", turn_id_},
       {"step", step},
       {"purpose", purpose},
-      {"model", api_.RequestModel()},
+      {"model", api_.model},
       {"session_id", session_id_},
       {"total_messages", conversation_.Size()},
       {"tool_schemas", schemas.size()},
@@ -405,7 +405,7 @@ void AppendContentNote(json& content, const std::string& note) {
 
 // The route that reads images when the conversation's model cannot. Resolved
 // once per route: the lookup may read the endpoint's catalogue.
-const SideRoute& Agent::ImageRoute() const {
+const RouteResolution& Agent::ImageRoute() const {
   const std::string key = api_.config.image_model + "\n" + api_.base_url +
                           "\n" + api_.model + "\n" +
                           (api_.capabilities.image_input ? "y" : "n");
@@ -422,20 +422,20 @@ std::string Agent::EffectiveImageModel() const {
   if (api_.capabilities.image_input && api_.config.image_model.empty()) {
     return {};
   }
-  const SideRoute& route = ImageRoute();
+  const RouteResolution& route = ImageRoute();
   return route.none.empty() ? route.selection : std::string();
 }
 
 std::string Agent::AnalyzeImageContent(const json& content,
                                        std::string& error) {
   error.clear();
-  const SideRoute& route = ImageRoute();
-  if (!route.none.empty()) {
-    error = route.none;
+  const RouteResolution& resolved = ImageRoute();
+  if (!resolved.none.empty()) {
+    error = resolved.none;
     return "";
   }
   Api vision(api_.config);
-  ApplySideRoute(vision, route);
+  ApplyRoute(vision, resolved.route);
   // The route decides where the request goes; these facts are true of
   // any vision side call regardless of provider.
   vision.capabilities.parallel_tools = false;
@@ -453,8 +453,8 @@ std::string Agent::AnalyzeImageContent(const json& content,
       vision.Chat(messages, json::array(), api_.config.request_timeout_s);
   Usage usage;
   usage.Add(result.usage);
-  side_usage_.Add(RouteKey(vision.base_url, "image_analysis",
-                           vision.RequestModel(), vision.reasoning_effort),
+  side_usage_.Add(RouteKey(vision.base_url, "image_analysis", vision.model,
+                           vision.reasoning_effort),
                   usage, turn_id_,
                   {{"model_calls", 1},
                    {"model_ms", result.duration_ms},
@@ -488,7 +488,7 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
       std::string type = JsonValue(part, "type", "");
       if (type == "text" || type == "image_url") input.push_back(part);
     }
-    const SideRoute& route = ImageRoute();
+    const Route& route = ImageRoute().route;
     const std::string key =
         route.base_url + "\n" + route.model + ":" + HashHex(JsonDump(input));
     std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;

@@ -17,29 +17,9 @@
 
 namespace uagent {
 
-struct ModelRoute {
-  std::string name, base_url, api_key, model, effort;
-  int64_t context = 0;
-  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
-  WireApi wire_api = WireApi::kChatCompletions;
-  bool hosted_web_search = false;
-  std::vector<std::string> supported_efforts;
-  json input_modalities = nullptr;
-  json features = nullptr;
-};
-
-struct NamedProvider {
-  std::string name, base_url, api_key;
-  int64_t context = 0;
-  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
-  WireApi wire_api = WireApi::kChatCompletions;
-  bool hosted_web_search = false;
-  json features = nullptr;
-};
-
 struct ProviderCatalog {
-  std::vector<NamedProvider> providers;
-  std::vector<ModelRoute> models;
+  std::vector<Endpoint> providers;
+  std::vector<Route> models;
 };
 
 struct ModelInfo {
@@ -53,9 +33,9 @@ struct ModelInfo {
   json features = nullptr;
 };
 
+// route.route_name is the selection that chooses it.
 struct ModelCandidate {
-  std::string selection;
-  ModelRoute route;
+  Route route;
   ModelInfo info;
 };
 
@@ -66,39 +46,26 @@ struct ModelSearch {
   size_t queried = 0;
 };
 
-json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
-                    const std::vector<NamedProvider>& providers,
+json ModelCatalogue(Api& api, const std::vector<Route>& routes,
+                    const std::vector<Endpoint>& providers,
                     const std::string& query = "all");
 
-using ProviderUrlMatcher = bool (*)(std::string);
-struct ProviderTemplate {
-  const char* name;
-  const char* base_url;
-  const char* api_key_env;
-  ProviderUrlMatcher matches_url;
-  ProviderProtocol protocol;
-  WireApi wire_api;
-  bool hosted_web_search;
-};
-
 struct ProviderSetup {
-  std::vector<ModelRoute> routes;
-  std::vector<NamedProvider> providers;
+  std::vector<Route> routes;
+  std::vector<Endpoint> providers;
   std::string warning;
 };
 
 // One selection grammar for every model-valued setting:
 //
-//   [provider/]model[:variant][:effort]
+//   [endpoint/]model[:effort]
 //
-// Suffixes are peeled from the right and classified against two closed sets —
-// kReasoningEfforts and kOpenRouterVariants — so their order does not matter.
-// Peeling stops at the first unrecognized suffix, which stays in the model id:
-// that is what keeps OpenRouter ids like `deepseek-chat:free` intact without an
-// escape syntax. `base` is what the route resolvers still see, unchanged.
+// The effort is peeled from the right when it is one of kReasoningEfforts.
+// Any other suffix stays in the model id, which is what keeps ids like
+// `deepseek-chat:free` and an endpoint's routing suffixes (`:nitro`) intact
+// without an escape syntax. `base` is what the route resolvers still see.
 struct ModelSelection {
   std::string base;
-  std::string variant;
   std::string effort;
 };
 
@@ -109,88 +76,75 @@ ModelSelection ParseModelSelection(const std::string& selection);
 // only the execution paths treat as an error. `none` says why no model serves
 // the route, when none does. Shared by the title, subagent, vision and
 // memory-extraction paths so one selection means one thing.
-struct SideRoute {
-  std::string selection{}, model{}, base_url{}, api_key{}, effort{}, variant{};
-  int64_t context = 0;
-  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
-  WireApi wire_api = WireApi::kChatCompletions;
-  bool hosted_web_search = false;
+struct RouteResolution {
+  Route route;
+  std::string selection, none;
   bool unresolved = false;
-  std::string none{};
-  json features = nullptr;
 };
 
 // The route variables a process started for this route reads: endpoint,
-// model, dialect, capabilities and selection suffixes. Never the API key.
-EnvironmentOverrides RouteEnvironment(const SideRoute& route);
+// model, features and options. Never the API key.
+EnvironmentOverrides RouteEnvironment(const Route& route);
 
-SideRoute ResolveSideRoute(const Api& api,
-                           const std::vector<ModelRoute>& routes,
-                           const std::vector<NamedProvider>& providers,
-                           const std::string& requested);
+RouteResolution ResolveSideRoute(const Api& api,
+                                 const std::vector<Route>& routes,
+                                 const std::vector<Endpoint>& providers,
+                                 const std::string& requested);
 
 // The route that reads images when the conversation's model cannot: `setting`
 // (image.model) if set, else the first model of the same endpoint that accepts
 // them. `none` says why when there is none.
-SideRoute ResolveImageRoute(const Api& api,
-                            const std::vector<ModelRoute>& routes,
-                            const std::vector<NamedProvider>& providers,
-                            const std::string& setting);
+RouteResolution ResolveImageRoute(const Api& api,
+                                  const std::vector<Route>& routes,
+                                  const std::vector<Endpoint>& providers,
+                                  const std::string& setting);
 
 std::string NormalizeModelId(std::string model);
-const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
-// The built-in default template (OpenRouter) for unattributed endpoints.
-const ProviderTemplate& DefaultProviderTemplate();
-bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);
+// The providers of the settings plus the well-known endpoints whose key is
+// set, with the routes their aliases name.
 ProviderCatalog LoadProviderCatalog();
-// The catalog a side model should resolve against: configured providers plus
-// the built-in templates whose API key is present, so `openrouter/<id>` means
-// the same thing to every consumer of the selection schema.
+// Every consumer of the selection schema reads the same catalogue, so
+// `openrouter/<id>` means the same thing to all of them.
 ProviderCatalog SessionProviderCatalog();
-const NamedProvider* FindNamedProvider(
-    const std::vector<NamedProvider>& providers, const std::string& name);
-void AddAvailableProviderTemplates(ProviderCatalog& catalog);
-std::optional<ModelRoute> ResolveModelRoute(
-    const std::vector<ModelRoute>& routes,
-    const std::vector<NamedProvider>& providers, const std::string& selection);
-// The selection that would reproduce the active route in the shared schema,
-// [provider/]model[:variant][:effort] — the same string the user could pass
-// to --model. The provider scope is omitted when no configured provider or
-// template serves this base URL.
-std::string RouteSelection(const Api& api,
-                           const std::vector<NamedProvider>& providers);
+const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
+                             const std::string& name);
+// The endpoint used when none is addressed: the first well-known one whose
+// key is set, else nothing.
+const Endpoint* DefaultEndpoint(const std::vector<Endpoint>& providers);
+// What an endpoint declares of itself, by its address: the provider entry
+// that has it, else the well-known endpoint. False when neither does.
+bool DeclareEndpoint(Endpoint& endpoint,
+                     const std::vector<Endpoint>& providers);
+std::optional<Route> ResolveModelRoute(const std::vector<Route>& routes,
+                                       const std::vector<Endpoint>& providers,
+                                       const std::string& selection);
+// The selection that would reproduce a route in the shared schema,
+// [endpoint/]model[:effort] — the same string the user could pass to
+// --model. The endpoint scope is omitted when no provider or well-known
+// endpoint serves its base URL.
+std::string RouteSelection(const Route& route,
+                           const std::vector<Endpoint>& providers);
 // The same, by the name the route was chosen by where it has one of its own
 // (an alias): what a provider says of an alias is found again by that name
 // only, so a session handed this selection resolves the same route.
 std::string ChosenSelection(const Api& api,
-                            const std::vector<NamedProvider>& providers);
-std::string RouteSelection(const SideRoute& route,
-                           const std::vector<NamedProvider>& providers);
-// Selection formatting shared by preference storage and route
-// serialization: identity for dedupe, scope for display, composition for
-// persistence.
-std::string RouteIdentity(const std::string& base_url, const std::string& model,
-                          ProviderProtocol protocol, WireApi wire_api,
-                          bool hosted_web_search);
+                            const std::vector<Endpoint>& providers);
 std::string ProviderScope(const std::string& base_url,
-                          const std::vector<NamedProvider>& providers);
+                          const std::vector<Endpoint>& providers);
 std::string ComposeSelection(const std::string& scope, const std::string& model,
-                             const std::string& variant,
                              const std::string& effort);
 void ApplySelectionPolicy(Api& api, const ModelSelection& selection);
-void ApplyRoute(Api& api, const ModelRoute& route);
-// The in-process counterpart for side models: same fields as ApplyRoute
-// plus the routing variant the selection asked for.
-void ApplySideRoute(Api& api, const SideRoute& route);
+// Makes `route` the one `api` talks to and starts its capabilities afresh.
+void ApplyRoute(Api& api, const Route& route);
 void ActivateRoute(Api& api);
 ProviderSetup ConfigureProvider(Api& api);
 // Discover a missing model or context limit; a failed limit probe is advisory.
 bool ProbeModel(Api& api, bool discover_efforts = false);
 bool CanUseRawModel(const Api& api, std::string_view name);
-std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
-                        const std::vector<NamedProvider>& providers,
+std::string SelectModel(Api& api, const std::vector<Route>& routes,
+                        const std::vector<Endpoint>& providers,
                         const std::string& name);
 int64_t CatalogContextLength(const json& model);
 std::optional<std::vector<ModelInfo>> ParseModels(const json& response);
@@ -205,8 +159,8 @@ std::string NormalizeModelQuery(std::string query);
 // unifies spaces, underscores and hyphens ("Muse Spark" finds
 // "muse-spark"). Selection stays id-based; only matching is lenient.
 bool MatchesModelQuery(const std::string& haystack, const std::string& query);
-ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
-                         const std::vector<NamedProvider>& providers,
+ModelSearch SearchModels(const Api& api, const std::vector<Route>& routes,
+                         const std::vector<Endpoint>& providers,
                          std::string query);
 
 }  // namespace uagent

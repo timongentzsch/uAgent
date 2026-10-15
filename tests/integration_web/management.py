@@ -3,6 +3,7 @@ import threading
 from pathlib import Path
 
 from integration_support import (
+    OPENROUTER_SUPPORTS,
     Server,
     assert_true,
     budget,
@@ -445,7 +446,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
             provider.url,
             extra_env={
                 "UAGENT_MODEL": "mock/old",
-                "UAGENT_INTERNAL_PROVIDER_PROTOCOL": "openrouter",
+                "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
             },
         ) as (client, code, _, _):
             client.pair(code)

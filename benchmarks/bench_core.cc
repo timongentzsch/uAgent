@@ -192,7 +192,7 @@ int RunBenchmarks() {
                        WireApi::kAnthropicMessages}) {
     Api cached;
     cached.model = benchmark_model;
-    cached.capabilities.wire_api = wire;
+    cached.wire_api = wire;
     const std::string label = std::string(WireApiName(wire));
     size_t revision = 0;
     auto change_tail = [&] {

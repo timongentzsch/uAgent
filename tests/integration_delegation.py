@@ -9,6 +9,7 @@ import threading
 import time
 
 from integration_support import (
+    OPENROUTER_SUPPORTS,
     Server,
     assert_token_budget_stop,
     assert_true,
@@ -701,7 +702,7 @@ def test_subagent_uses_selected_model_route(root, home, *, binary):
                 "codex-local": {
                     "base_url": child.url,
                     "api_key": "local-key",
-                    "protocol": "openrouter",
+                    "supports": OPENROUTER_SUPPORTS,
                     "models": {"child-model": {"id": "child-model", "effort": "low"}},
                 }
             }

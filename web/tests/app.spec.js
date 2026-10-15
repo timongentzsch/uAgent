@@ -28,7 +28,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     name: "Model and effort",
     exact: true,
   });
-  await expect(model).toHaveText("mock/model-a:floor:high");
+  await expect(model).toHaveText("mock/model-a:high");
   await page.getByLabel("Message or guidance").fill("Keep this unsent draft");
   await model.click();
   await expect(
@@ -44,22 +44,20 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByRole("dialog", { name: "Model and effort" }),
   ).toHaveCount(0);
-  await expect(model).toHaveText("mock/model-a:floor:high");
+  await expect(model).toHaveText("mock/model-a:high");
   await model.click();
   await page
     .getByRole("combobox", { name: "Model", exact: true })
     .selectOption("mock/model-b");
   await page.getByLabel("Effort", { exact: true }).selectOption("high");
-  await page.getByLabel("Variant", { exact: true }).selectOption("floor");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
     "mock/model-b",
   );
-  await expect(model).toHaveText("mock/model-a:floor:high");
+  await expect(model).toHaveText("mock/model-a:high");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(model).toHaveText("mock/model-b:floor:high");
+  await expect(model).toHaveText("mock/model-b:high");
   await model.click();
   await expect(page.getByLabel("Model", { exact: true })).toBeEnabled();
-  await page.getByLabel("Variant", { exact: true }).selectOption("default");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText("mock/model-b:high");
   const textbox = await page.getByLabel("Message or guidance").boundingBox();

@@ -140,10 +140,6 @@ std::string RedactedUrl(std::string url);
 std::string RouteKey(const std::string& base_url, const std::string& provider,
                      const std::string& model, const std::string& effort);
 
-bool OpenrouterUrl(std::string url);
-
-bool OpenaiUrl(std::string url);
-
 // Stable short digest helper: FNV-1a hex truncated to `chars`.
 // Centralizes the `HashHex(...).substr(0, N)` idiom so fingerprint widths
 // are chosen once, not re-typed at every call site.

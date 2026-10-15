@@ -251,13 +251,13 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
   json out = {{"topic", SelfTopicName(topic)}, {"version", kVersion}};
   switch (topic) {
     case SelfTopic::kStatus: {
-      out["model"] = inputs.api.RequestModel();
+      out["model"] = inputs.api.model;
       out["route"] = RouteSelection(inputs.api, {});
       out["base_url"] = RedactedUrl(inputs.api.base_url);
       out["effort"] = inputs.api.reasoning_effort.empty()
                           ? "provider default"
                           : inputs.api.reasoning_effort;
-      out["wire_api"] = WireApiName(inputs.api.capabilities.wire_api);
+      out["wire_api"] = WireApiName(inputs.api.wire_api);
       out["approval"] = ApprovalModeName(CurrentApprovalMode());
       out["context_window"] = inputs.api.ctx_window;
       out["tools"] = inputs.tools.size();
@@ -288,35 +288,33 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       // endpoint fails as an authentication error rather than as a typo.
       ProviderCatalog catalog = SessionProviderCatalog();
       json models = json::array();
-      for (const ModelRoute& route : catalog.models) {
-        if (!name.empty() && route.name != name) continue;
+      for (const Route& route : catalog.models) {
+        if (!name.empty() && route.route_name != name) continue;
         models.push_back(
-            {{"name", route.name},
+            {{"name", route.route_name},
              {"model", route.model},
              {"base_url", RedactedUrl(route.base_url)},
-             {"protocol", ProviderProtocolName(route.protocol)},
              {"wire_api", WireApiName(route.wire_api)},
-             {"context", route.context},
-             {"effort", route.effort},
-             {"hosted_web_search", route.hosted_web_search},
+             {"features", FeatureNames(route.features)},
+             {"context", route.ctx_window},
+             {"effort", route.reasoning_effort},
              {"credential", route.api_key.empty() ? "unset" : "set"}});
       }
       json providers = json::array();
-      for (const NamedProvider& provider : catalog.providers) {
+      for (const Endpoint& provider : catalog.providers) {
         if (!name.empty() && provider.name != name) continue;
         providers.push_back(
             {{"name", provider.name},
              {"base_url", RedactedUrl(provider.base_url)},
-             {"protocol", ProviderProtocolName(provider.protocol)},
              {"wire_api", WireApiName(provider.wire_api)},
+             {"features", FeatureNames(provider.features)},
              {"context", provider.context},
-             {"hosted_web_search", provider.hosted_web_search},
              {"credential", provider.api_key.empty() ? "unset" : "set"}});
       }
       out["active"] = RouteSelection(inputs.api, catalog.providers);
       out["models"] = std::move(models);
       out["providers"] = std::move(providers);
-      out["selection"] = "[provider/]model[:variant][:effort]";
+      out["selection"] = "[provider/]model[:effort]";
       out["efforts"] = kReasoningEfforts;
       out["note"] =
           "A named model route resolves by its own name; any other id resolves "

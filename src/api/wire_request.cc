@@ -500,8 +500,9 @@ bool HasContentPart(const json& messages, std::string_view type) {
 }
 
 bool Api::NativeHostedTool(HostedTool tool) const {
-  return config.web_search_backend != "off" && capabilities.Supports(tool) &&
-         WireSupportsHostedTool(capabilities.wire_api, tool);
+  return config.web_search_backend != "off" && tool == HostedTool::kWebSearch &&
+         features.Has(Feature::kHostedSearch) &&
+         WireSupportsHostedTool(wire_api, tool);
 }
 
 json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
@@ -521,7 +522,7 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   if (web_available) *web_available = native_web || function_web;
 
   WireRequest request{
-      .model = RequestModel(),
+      .model = model,
       .messages = messages,
       .tool_schemas = tool_schemas,
       .reasoning_effort = reasoning_effort,
@@ -530,52 +531,52 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
       .stream_usage = capabilities.stream_usage_option,
       .native_web_search = native_web,
       .function_web_search = allow_function_web,
-      .include_web_search_sources = capabilities.web_search_sources,
+      .include_web_search_sources = features.Has(Feature::kSearchSources),
       .reasoning_summary = capabilities.reasoning_summary,
       .adaptive_thinking = capabilities.adaptive_thinking};
-  json body = cache ? cache->Encode(capabilities.wire_api, request)
-                    : EncodeWireRequest(capabilities.wire_api, request);
-  if (capabilities.wire_api != WireApi::kChatCompletions) {
+  json body = cache ? cache->Encode(wire_api, request)
+                    : EncodeWireRequest(wire_api, request);
+  if (wire_api != WireApi::kChatCompletions) {
     // The Responses API caches matching prefixes automatically. A stable,
     // session-scoped routing key improves the chance that later turns reach
     // the same cache without exposing the session identifier itself; a
     // proxy in front of it passes the key on.
-    if (capabilities.wire_api == WireApi::kResponses && !session_id.empty()) {
+    if (wire_api == WireApi::kResponses && !session_id.empty()) {
       body["prompt_cache_key"] = HashHex(session_id);
     }
     return body;
   }
 
-  if (capabilities.OpenRouter() && !config.pdf_engine.empty() &&
+  if (features.Has(Feature::kPdfParser) && !Option("pdf_engine").empty() &&
       HasContentPart(messages, "file")) {
     body["plugins"] = json::array(
-        {{{"id", "file-parser"}, {"pdf", {{"engine", config.pdf_engine}}}}});
+        {{{"id", "file-parser"}, {"pdf", {{"engine", Option("pdf_engine")}}}}});
   }
-  // OpenRouter caches most providers' prefixes by itself. Anthropic models
-  // cache only when asked, and the top-level form moves the breakpoint along
-  // as the conversation grows.
-  if (capabilities.OpenRouter() && (request.model.starts_with("anthropic/") ||
-                                    request.model.starts_with("~anthropic/"))) {
+  // Some providers cache matching prefixes by themselves; others cache only
+  // when asked, and the top-level form moves the breakpoint along as the
+  // conversation grows.
+  if (features.Has(Feature::kPromptCacheControl)) {
     body["cache_control"] = {{"type", "ephemeral"}};
   }
   int64_t max_tokens = MaxOutputTokens();
   if (max_tokens > 0) {
-    body[capabilities.max_completion_tokens ? "max_completion_tokens"
-                                            : "max_tokens"] = max_tokens;
+    body[features.Has(Feature::kMaxCompletionTokens) ? "max_completion_tokens"
+                                                     : "max_tokens"] =
+        max_tokens;
   }
   if (!reasoning_effort.empty()) {
-    if (capabilities.reasoning_object) {
+    if (features.Has(Feature::kReasoningObject)) {
       body["reasoning"] = {{"effort", reasoning_effort}};
     } else {
       body["reasoning_effort"] = reasoning_effort;
     }
   }
-  if (capabilities.session_passthrough && !session_id.empty()) {
+  if (features.Has(Feature::kSessionPassthrough) && !session_id.empty()) {
     body["session_id"] = session_id;
   }
   // A pin is a pin: another provider never answers in its place.
-  if (capabilities.provider_routing && !config.openrouter_provider.empty()) {
-    body["provider"] = {{"order", json::array({config.openrouter_provider})},
+  if (features.Has(Feature::kProviderRouting) && !Option("provider").empty()) {
+    body["provider"] = {{"order", json::array({Option("provider")})},
                         {"allow_fallbacks", false}};
   }
   return body;

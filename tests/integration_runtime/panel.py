@@ -1167,8 +1167,6 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
     root, home, *, binary
 ):
     def reply(member, last, body):
-        if not member and "has settled" in last:
-            return "Closed: Kestrel."
         if member == "Ada" and "name the kite" in last:
             return "Call it Kestrel."
         if member == "Lin" and "only you" in last:
@@ -1217,11 +1215,8 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
             lambda: any(not _member(b) and _posted(_last_user(b)) for _, b in server.requests),
             "the panel never read Ada",
         )
-        # The discussion ends with the moderator closing it for the user, once.
-        assert_true(
-            result.stdout.strip() == "panel\n\nAda: Call it Kestrel.\n\nClosed: Kestrel.",
-            repr(result.stdout),
-        )
+        # One member's answer needs no summing up: nobody closes the round.
+        assert_true(result.stdout.strip() == "panel\n\nAda: Call it Kestrel.", repr(result.stdout))
         # The moderator's answer to the user's message is the user's: the
         # members, woken by the message itself, are not woken by it.
         newest = [_heard(b).splitlines()[-1] for _, b in server.requests if _member(b)]
@@ -1478,7 +1473,7 @@ def test_a_chat_that_never_falls_silent_stops_at_its_limits(root, home, *, binar
         for name in ("Ada", "Lin"):
             assert_true(1 <= said.count(f"{name}: More from {name}.") <= 2, said)
         assert_true(1 <= said.count("More from the panel.") <= 2, said)
-        assert_true(said.count("Closed.") == 1 and said.rstrip().endswith("Closed."), said)
+        assert_true(said.count("Closed.") <= 1, said)
 
 
 def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *, binary):

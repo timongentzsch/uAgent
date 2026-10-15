@@ -140,7 +140,7 @@ Chat::Chat(std::string folder,
   const json saved = ReadPanelFile(folder_, kState);
   each_ = JsonValue(saved, "each", int64_t{0});
   round_ = JsonValue(saved, "round", int64_t{0});
-  posted_ = JsonValue(saved, "posted", false);
+  posted_ = JsonValue(saved, "posted", 0);
   closed_ = JsonValue(saved, "closed", false);
   for (const char* list : {"typing", "waiting"}) {
     const json* ids = JsonArray(saved, list);
@@ -295,6 +295,11 @@ std::vector<SessionInfo> ChatMembers(const std::string& folder) {
   return members;
 }
 
+bool ChatWakesPanel(const std::string& folder) {
+  const json* ids = JsonArray(ReadPanelFile(folder, kState), "typing");
+  return ids && std::ranges::find(*ids, json(kSelf)) != ids->end();
+}
+
 std::set<std::string> ChatTyping(const std::string& folder) {
   std::set<std::string> typing;
   const json saved = ReadPanelFile(folder, kState);
@@ -440,7 +445,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   // it, is discussion the panel closes.
   if (from != kSelf && !from.empty() && !late &&
       !(answers && JsonValue(to, "asker", "") == "")) {
-    posted_ = true;
+    ++posted_;
   }
   Start(std::move(started));
   return self ? asks(kSelf) : json();
@@ -494,11 +499,12 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     typing_.insert(who);
     Start({*member});
   }
-  // Silent after a member spoke, with nothing the panel handed out still
-  // under way: the moderator closes the round for the user, once.
-  if (typing_.empty() && waiting_.empty() && posted_ && !closed_ &&
+  // Silent after members discussed (one answer needs no summing up), with
+  // nothing the panel handed out still under way: the moderator closes the
+  // round for the user, once.
+  if (typing_.empty() && waiting_.empty() && posted_ >= 2 && !closed_ &&
       !ThreadsWorking(folder_)) {
-    posted_ = false;
+    posted_ = 0;
     closed_ = true;
     typing_.insert(kSelf);
     wake_(
@@ -516,7 +522,7 @@ json Chat::Begin(bool answers) {
   waiting_.clear();
   seats_.clear();
   heard_.clear();
-  posted_ = false;
+  posted_ = 0;
   closed_ = false;
   if (!answers) return json();
   seats_[kSelf].turns = 1;
@@ -540,7 +546,7 @@ void Chat::Answered(const std::string& text, const json& to) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
   if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
-    posted_ = false;
+    posted_ = 0;
     Deliver(kSelf, ModeratorName(folder_), Trim(text), to);
   }
   Release(members);

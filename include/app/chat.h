@@ -40,6 +40,8 @@ std::set<std::string> Addressed(const std::string& text,
 // then reads it without taking a turn.
 bool ForMembersOnly(const std::string& folder, const std::string& text);
 
+// Whether the chat woke the panel itself and has not heard its answer yet.
+bool ChatWakesPanel(const std::string& folder);
 // The mailboxes of the members woken and not yet heard from.
 std::set<std::string> ChatTyping(const std::string& folder);
 
@@ -119,7 +121,7 @@ class Chat {
   std::function<void(const std::string&, const json&)> wake_;
   int64_t each_ = 0;     // turns one participant may take this round
   int64_t round_ = 0;    // when the user's message that began this round came
-  bool posted_ = false;  // members discussed since the panel last wrote
+  int posted_ = 0;       // members' messages since the panel last wrote
   bool closed_ = false;  // the panel closed the round for the user
   // Participants woken and not yet heard from, those who chose to wait (the
   // earliest first), and what each has done this round. A member is known by

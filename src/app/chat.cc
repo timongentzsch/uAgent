@@ -544,8 +544,8 @@ json Chat::Said(const std::string& text) {
 }
 
 void Chat::Answered(const std::string& text, const json& to) {
+  // Kept with members or without: the panel's turn ends either way.
   const std::vector<SessionInfo> members = ChatMembers(folder_);
-  if (members.empty()) return;
   if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
     posted_ = 0;
     Deliver(kSelf, ModeratorName(folder_), Trim(text), to);

@@ -24,7 +24,7 @@
     "markdown-it": "15.0.2",
     "mermaid": "12.1.0",
     "perfect-freehand": "1.2.3",
-    "preact": "10.29.8"
+    "preact": "11.0.1"
   },
   "overrides": {
     "lodash-es": "4.18.1",

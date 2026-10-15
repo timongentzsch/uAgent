@@ -144,8 +144,8 @@ bool McpTakeLine(McpServer& s, std::string& line) {
   return true;
 }
 
-bool McpSpawn(McpServer& s, const std::string& cmd,
-              const std::vector<std::string>& args,
+bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
+              const std::string& cmd, const std::vector<std::string>& args,
               const std::vector<std::pair<std::string, std::string>>& env,
               const std::string& cwd) {
   int inp[2], outp[2];  // inp: us -> server stdin, outp: server stdout -> us
@@ -201,7 +201,10 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
   // multithreaded here, so the child may only use async-signal-safe operations
   // before exec; allocator locks inherited from another thread can deadlock.
   std::vector<char*> argv;
-  argv.reserve(args.size() + 2);
+  argv.reserve(wrapper.size() + args.size() + 2);
+  for (const std::string& word : wrapper) {
+    argv.push_back(const_cast<char*>(word.c_str()));
+  }
   argv.push_back(const_cast<char*>(cmd.c_str()));
   for (const std::string& arg : args) {
     argv.push_back(const_cast<char*>(arg.c_str()));
@@ -230,7 +233,7 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
     if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(126);
     environ = child_environment.Data();
     signal(SIGINT, SIG_DFL);
-    execvp(cmd.c_str(), argv.data());
+    execvp(argv[0], argv.data());
     _exit(127);
   }
   in_read.Reset();

@@ -40,12 +40,23 @@ void Offer(std::string_view root, const SandboxInputs& inputs,
 }
 
 // Sorting first puts a parent immediately before everything nested inside it,
-// so one pass folds the whole tree away and the duplicates with it.
-void FoldNested(std::vector<std::string>* roots) {
+// so one pass folds the whole tree away and the duplicates with it. A root
+// inside a withheld path stays: folding it into the parent would lose it.
+void FoldNested(std::vector<std::string>* roots,
+                const std::vector<std::string>& withheld) {
   std::sort(roots->begin(), roots->end());
   std::vector<std::string> kept;
   for (std::string& root : *roots) {
-    if (!kept.empty() && SandboxPathWithin(root, kept.back())) continue;
+    const bool in_withheld = std::any_of(
+        withheld.begin(), withheld.end(),
+        [&](const std::string& path) { return SandboxPathWithin(root, path); });
+    const bool covered =
+        std::any_of(kept.begin(), kept.end(), [&](const std::string& parent) {
+          return SandboxPathWithin(root, parent);
+        });
+    const bool duplicate =
+        std::find(kept.begin(), kept.end(), root) != kept.end();
+    if (duplicate || (covered && !in_withheld)) continue;
     kept.push_back(std::move(root));
   }
   *roots = std::move(kept);
@@ -61,7 +72,40 @@ std::string QuoteSbpl(std::string_view path) {
   return out;
 }
 
+// Denies unlinking, which is how seatbelt names a rename, every folder above
+// `path`: the rules match paths, so no ancestor may be moved out from under
+// them.
+std::string DenyUnlinkAbove(const std::string& path) {
+  std::string out = "(deny file-write-unlink";
+  for (size_t slash = path.find('/', 1); slash != std::string::npos;
+       slash = path.find('/', slash + 1)) {
+    out += " (literal " + QuoteSbpl(path.substr(0, slash)) + ")";
+  }
+  return out + ")\n";
+}
+
 }  // namespace
+
+bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset) {
+  struct Spelling {
+    std::string_view text;
+    SandboxPreset preset;
+  };
+  for (const Spelling& spelling : {Spelling{"strict", SandboxPreset::kStrict},
+                                   {"default", SandboxPreset::kDefault},
+                                   {"relaxed", SandboxPreset::kRelaxed},
+                                   {"off", SandboxPreset::kOff},
+                                   {"1", SandboxPreset::kDefault},
+                                   {"true", SandboxPreset::kDefault},
+                                   {"0", SandboxPreset::kOff},
+                                   {"false", SandboxPreset::kOff}}) {
+    if (text == spelling.text) {
+      *preset = spelling.preset;
+      return true;
+    }
+  }
+  return false;
+}
 
 bool SandboxPathWithin(std::string_view path, std::string_view root) {
   if (root.empty() || path.size() < root.size()) return false;
@@ -85,7 +129,11 @@ std::string SandboxWritesNote(const SandboxPolicy& policy,
     roots += (roots.empty() ? "" : ", ") + root;
   }
   if (SandboxWritable(policy, workspace)) {
-    return "commands may write only under " + roots;
+    std::string note = "commands may write only under " + roots;
+    for (const std::string& path : policy.withheld) {
+      note += ", not " + path;
+    }
+    return note;
   }
   // Reads around a hidden path are granted folder by folder as a command
   // starts, so a workspace that holds one goes stale for a running command.
@@ -119,7 +167,13 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   for (const std::string& root : inputs.extra_roots) {
     Offer(root, inputs, &accepted, &result.rejected);
   }
-  FoldNested(&accepted);
+  // The relaxed level's home is no ordinary root: it holds ~/.uagent, which
+  // Acceptable() would refuse, so it is withheld from it here instead.
+  if (!inputs.open_home.empty()) {
+    accepted.push_back(inputs.open_home);
+    result.policy.withheld = {inputs.global_base};
+  }
+  FoldNested(&accepted, result.policy.withheld);
   result.policy.writable_roots = std::move(accepted);
   // A trusted workspace's .mcp.json carries authority over the session
   // running in it, and a repository's config and hooks run
@@ -143,6 +197,16 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
   for (const std::string& root : policy.writable_roots) {
     out += "(allow file-write* (subpath " + QuoteSbpl(root) + "))\n";
   }
+  // A root granted inside a withheld path is granted again after the denial.
+  for (const std::string& withheld : policy.withheld) {
+    out += "(deny file-write* (subpath " + QuoteSbpl(withheld) + "))\n";
+    for (const std::string& root : policy.writable_roots) {
+      if (SandboxPathWithin(root, withheld)) {
+        out += "(allow file-write* (subpath " + QuoteSbpl(root) + "))\n";
+      }
+    }
+    out += DenyUnlinkAbove(withheld);
+  }
   for (const std::string& denied : policy.denied_writes) {
     out += "(deny file-write* (subpath " + QuoteSbpl(denied) + "))\n";
   }
@@ -153,12 +217,7 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
   for (const std::string& hidden : policy.hidden) {
     out += "(deny file-read* file-write* (subpath " + QuoteSbpl(hidden) +
            "))\n(deny network-outbound (remote unix-socket (path-prefix " +
-           QuoteSbpl(hidden) + ")))\n(deny file-write-unlink";
-    for (size_t slash = hidden.find('/', 1); slash != std::string::npos;
-         slash = hidden.find('/', slash + 1)) {
-      out += " (literal " + QuoteSbpl(hidden.substr(0, slash)) + ")";
-    }
-    out += ")\n";
+           QuoteSbpl(hidden) + ")))\n" + DenyUnlinkAbove(hidden);
   }
   if (out.size() > kSeatbeltProfileLimit) return {};
   return out;
@@ -166,13 +225,17 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
 
 std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
   std::vector<std::string> words;
-  words.reserve(policy.writable_roots.size() + policy.hidden.size() + 2);
+  words.reserve(policy.writable_roots.size() + policy.hidden.size() +
+                policy.withheld.size() + 2);
   words.emplace_back(policy.allow_network ? "net=1" : "net=0");
   words.emplace_back("roots=" + std::to_string(policy.writable_roots.size()));
   words.insert(words.end(), policy.writable_roots.begin(),
                policy.writable_roots.end());
   for (const std::string& hidden : policy.hidden) {
     words.push_back("hide=" + hidden);
+  }
+  for (const std::string& withheld : policy.withheld) {
+    words.push_back("withhold=" + withheld);
   }
   return words;
 }
@@ -198,11 +261,18 @@ bool DecodeSandboxPolicy(const std::vector<std::string>& words,
   if (words.size() < 2 + count) return false;
   auto first = words.begin() + 2;
   policy->writable_roots.assign(first, first + static_cast<ptrdiff_t>(count));
-  // Paths are absolute, so a hide word is never the `--` that ends the policy.
+  // Paths are absolute, so these words are never the `--` that ends the policy.
   size_t index = 2 + count;
   policy->hidden.clear();
-  for (; index < words.size() && words[index].starts_with("hide=/"); ++index) {
-    policy->hidden.push_back(words[index].substr(5));
+  policy->withheld.clear();
+  for (; index < words.size(); ++index) {
+    if (words[index].starts_with("hide=/")) {
+      policy->hidden.push_back(words[index].substr(5));
+    } else if (words[index].starts_with("withhold=/")) {
+      policy->withheld.push_back(words[index].substr(9));
+    } else {
+      break;
+    }
   }
   *consumed = index;
   return true;

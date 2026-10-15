@@ -34,6 +34,7 @@ inline constexpr std::string_view kKnown[] = {"type",
                                               "tools",
                                               "roots",
                                               "trust",
+                                              "sandbox",
                                               "required",
                                               "disabled",
                                               "__uagent_config_dir",
@@ -59,6 +60,7 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
       !require_type("tools", json::value_t::array, "an array") ||
       !require_type("roots", json::value_t::array, "an array") ||
       !require_type("trust", json::value_t::boolean, "a boolean") ||
+      !require_type("sandbox", json::value_t::boolean, "a boolean") ||
       !require_type("required", json::value_t::boolean, "a boolean") ||
       !require_type("disabled", json::value_t::boolean, "a boolean")) {
     return false;

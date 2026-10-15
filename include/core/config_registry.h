@@ -142,6 +142,9 @@ inline constexpr std::string_view kReasoningEfforts[] = {
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
+// 0 and 1 (also false and true) are the values of the switch this setting was.
+inline constexpr std::string_view kSandboxLevels[] = {
+    "strict", "default", "relaxed", "off", "0", "1", "false", "true"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
                                                         "full"};
@@ -436,10 +439,16 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     // OS sandbox for agent-run commands. Restart-required because the policy is
     // built once and every spawn is wrapped with it; a mid-session change would
     // leave already-running jobs under the old confinement.
-    registry::Named(registry::Bul("sandbox.enabled", "UAGENT_SANDBOX", {}, true,
-                                  ReloadPolicy::kRestartRequired, "tools",
-                                  "confine shell commands with the OS sandbox"),
-                    "Sandbox"),
+    registry::Named(
+        registry::Choice(
+            registry::Str("sandbox.level", "UAGENT_SANDBOX", {}, "default",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "tools",
+                          "how far the OS sandbox confines shell commands: "
+                          "strict (no network), default, relaxed (home "
+                          "writable) or off"),
+            kSandboxLevels),
+        "Sandbox"),
     registry::Named(registry::Bul("sandbox.network", "UAGENT_SANDBOX_NET", {},
                                   true, ReloadPolicy::kRestartRequired, "tools",
                                   "let sandboxed commands reach the network"),
@@ -450,6 +459,20 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "tools",
                       "extra writable roots for the sandbox, colon-separated"),
         "Sandbox writable folders"),
+    registry::Named(
+        registry::Str("sandbox.hide", "UAGENT_SANDBOX_HIDE", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "tools",
+                      "more paths the sandbox hides from commands and file "
+                      "tools, colon-separated"),
+        "Sandbox hidden paths"),
+    registry::Named(
+        registry::Str("sandbox.reveal", "UAGENT_SANDBOX_REVEAL", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "tools",
+                      "paths hidden by default that commands and file tools "
+                      "may read, colon-separated"),
+        "Sandbox revealed paths"),
 
     // Delegation.
     registry::Named(

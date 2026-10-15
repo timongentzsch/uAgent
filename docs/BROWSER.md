@@ -141,7 +141,7 @@ several paired devices.
   namespaces, takeover fails and the browser stays stopped.
 - With the command sandbox on, agent commands cannot read the browser data
   directory (saved logins, cookies) or connect to its sockets, and the file
-  tools refuse it. `run(sandbox=false)` and a disabled sandbox lift that, as
+  tools refuse it. `run(sandbox=false)` and `sandbox.level=off` lift that, as
   they lift the sandbox; yolo does not. See
   [SECURITY.md](../SECURITY.md#sandboxing).
 - Screenshots draw every password field as dots, including one a site's

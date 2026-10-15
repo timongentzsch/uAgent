@@ -31,6 +31,11 @@ struct SandboxPolicy {
   // rights per path with no deny form, so a Linux policy that needs a hole has
   // to not grant the parent in the first place.
   std::vector<std::string> denied_writes;
+  // Paths inside a writable root that no write may reach, except through a
+  // root nested inside them: the relaxed level opens the home folder and
+  // withholds ~/.uagent, yet still grants its terminal logs and a workspace
+  // kept there. Seatbelt denies them; Landlock grants the root around them.
+  std::vector<std::string> withheld;
   // HiddenPaths(), filled in when a wrapper is built: never read, written or
   // connected to.
   std::vector<std::string> hidden;
@@ -47,23 +52,31 @@ struct SandboxInputs {
   // reach of a command that can otherwise write freely.
   std::string global_base;
   std::string tmpdir;  // $TMPDIR; empty when unset
-  // Package-manager caches, which are per-user rather than per-project and so
-  // sit outside every other root. A list because a platform has more than one
-  // and they do not partition by platform: uv keeps its cache in ~/.cache even
-  // on macOS, where the native location is ~/Library/Caches. Of the data
-  // directory only uv's part: the rest holds keyrings, autostart entries and
-  // other programs' state.
+  // Package-manager caches (kPackageCaches in include/core/defaults.h).
   std::vector<std::string> tool_caches;
   // ~/.uagent/terminals/logs -- the one deliberate exception inside
   // global_base, because a detached job's own log pump writes there.
   std::string terminal_logs;
   std::vector<std::string> extra_roots;  // UAGENT_SANDBOX_WRITE, one per entry
+  // The home folder, when the relaxed level makes it writable; empty otherwise.
+  // global_base stays withheld from it.
+  std::string open_home;
   bool allow_network = true;
   // The workspace already is a repository (its .git is a directory), so its
   // config and hooks exist and must not be rewritten; before `git init` they
   // cannot be denied without denying the init itself.
   bool git_repository = false;
 };
+
+// The `sandbox.level` setting: what a command may do before the individual
+// overrides (sandbox.network, sandbox.write, sandbox.hide, sandbox.reveal)
+// apply. Not SandboxLevel, which is what the host can enforce.
+enum class SandboxPreset { kStrict, kDefault, kRelaxed, kOff };
+
+// strict, default, relaxed and off; also 0 and false for off, 1 and true for
+// default, which is how the setting was spelled while it was a switch. False
+// for anything else, leaving *preset alone.
+bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset);
 
 struct SandboxPolicyResult {
   SandboxPolicy policy;
@@ -89,7 +102,8 @@ std::string SeatbeltProfile(const SandboxPolicy& policy);
 // Round-trip for the Linux self-reexec. The policy travels as separate argv
 // words so that no quoting rule sits between the parent and the trampoline;
 // denied_writes is not carried because Landlock cannot express it. One
-// `hide=<path>` word follows per hidden path.
+// `hide=<path>` word follows per hidden path, then one `withhold=<path>` per
+// withheld one.
 std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy);
 // Reads words written by EncodeSandboxPolicy. Reports how many it consumed so
 // the caller can find the command that follows. False leaves *policy
@@ -179,9 +193,17 @@ std::string SandboxWorkspaceRefusal();
 // HiddenPaths() too. Empty when the status does not enforce.
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status);
 
-// The browser profile (UAGENT_BROWSER_DATA), canonical, when it exists: the
-// file tools refuse it and sandboxed commands cannot read it.
+// What sandboxed commands cannot read and the file tools refuse, canonical and
+// existing: the browser profile, the web host's state, uAgent's settings, the
+// cloud and gpg credential stores, ~/.netrc and Docker's login. sandbox.hide
+// adds to that and sandbox.reveal takes from it. ~/.ssh and the GitHub CLI
+// login stay readable: git over ssh and `gh` are agent work.
 std::vector<std::string> HiddenPaths();
+
+// The paths of status.policy.denied_writes that this host cannot deny, which a
+// caller guards with a SandboxWatch instead: all of them where Landlock is the
+// mechanism, none under Seatbelt.
+std::vector<std::string> SandboxUnenforcedWrites(const SandboxStatus& status);
 
 }  // namespace uagent
 

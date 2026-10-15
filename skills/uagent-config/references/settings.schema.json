@@ -502,18 +502,35 @@
           "description": "total seconds allowed for one model request",
           "x-env": "UAGENT_REQUEST_TIMEOUT"
         },
-        "sandbox.enabled": {
+        "sandbox.hide": {
+          "default": "",
+          "description": "more paths the sandbox hides from commands and file tools, colon-separated",
+          "type": "string",
+          "x-env": "UAGENT_SANDBOX_HIDE"
+        },
+        "sandbox.level": {
           "anyOf": [
             {
-              "default": true,
-              "type": "boolean"
+              "default": "default",
+              "enum": [
+                "",
+                "strict",
+                "default",
+                "relaxed",
+                "off",
+                "0",
+                "1",
+                "false",
+                "true"
+              ],
+              "type": "string"
             },
             {
               "pattern": "\\$",
               "type": "string"
             }
           ],
-          "description": "confine shell commands with the OS sandbox",
+          "description": "how far the OS sandbox confines shell commands: strict (no network), default, relaxed (home writable) or off",
           "x-env": "UAGENT_SANDBOX"
         },
         "sandbox.network": {
@@ -529,6 +546,12 @@
           ],
           "description": "let sandboxed commands reach the network",
           "x-env": "UAGENT_SANDBOX_NET"
+        },
+        "sandbox.reveal": {
+          "default": "",
+          "description": "paths hidden by default that commands and file tools may read, colon-separated",
+          "type": "string",
+          "x-env": "UAGENT_SANDBOX_REVEAL"
         },
         "sandbox.write": {
           "default": "",

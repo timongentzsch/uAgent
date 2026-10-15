@@ -24,6 +24,32 @@
   only when `webSearch.model` names the model; a call without it says so, and
   with no such endpoint `web_search` is not offered. `webSearch.backend` is
   `auto` or `off`; a stored `openrouter` reads as `auto`.
+- **Commands and file tools no longer see your saved logins.** The sandbox now
+  hides `~/.uagent/config` (settings and API keys), `~/.aws`,
+  `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`, `~/.netrc` and
+  `~/.docker/config.json`, in addition to the browser profile. A command that
+  needs one fails to read it; `sandbox.reveal` (`UAGENT_SANDBOX_REVEAL`) lifts
+  a default, `sandbox.hide` (`UAGENT_SANDBOX_HIDE`) adds your own. `~/.ssh` and
+  the GitHub CLI login stay readable.
+- **MCP servers now run under the sandbox.** They can write the workspace and
+  the usual roots, the package caches among them (so `npx` and `uvx` servers
+  start as before), not the rest of your files, and cannot read the hidden
+  stores. Commands and servers may now also write `~/.npm`. A server that needs more takes `sandbox.write`, or
+  `"sandbox": false` in its `.mcp.json` entry, which the trust prompt names.
+- **`UAGENT_SANDBOX` takes a level**: `strict`, `default`, `relaxed` or `off`.
+  `0` and `false` still mean `off`, `1` and `true` `default`.
+- **`sandbox.enabled` is now `sandbox.level`.** A saved `false` becomes `off`
+  and `true` `default` when the settings are next saved; nothing to do.
+
+### Added
+
+- The sandbox level: `strict` also denies the network, `relaxed` also makes
+  your home folder writable except `~/.uagent` and the hidden stores (on
+  Linux a new file made directly in the home folder is not writable). An
+  explicit `sandbox.network` or `sandbox.write` still wins over the level.
+- On Linux, `.mcp.json` and a repository's `.git/config` and `.git/hooks` are
+  put back when a sandboxed command ends if it changed them, and the model and
+  you are told (macOS denies the write, as before).
 
 ### Changed
 
@@ -31,6 +57,9 @@
   conversation's route, and say so when there is no model; images take their
   setting, else the conversation's route, else a model of the same endpoint
   that accepts them.
+- The file tools refuse the whole hidden set, not only the browser profile.
+- SECURITY.md describes the sandbox by level, and the stale pointer to the
+  web's old **New conversation** is **New → Workspace…**.
 
 ### Fixed
 

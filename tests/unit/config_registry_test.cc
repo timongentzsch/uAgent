@@ -36,8 +36,10 @@ struct GetterCheck {
 // validator would then normalize and whose getter would have to restate the
 // default -- fails here rather than drifting quietly.
 constexpr const char* kBoolSettings[] = {
-    "UAGENT_SANDBOX",  "UAGENT_SANDBOX_NET",          "UAGENT_ADAPT_SYSTEM",
-    "UAGENT_MARKDOWN", "UAGENT_TRUST_PROJECT_CONFIG",
+    "UAGENT_SANDBOX_NET",
+    "UAGENT_ADAPT_SYSTEM",
+    "UAGENT_MARKDOWN",
+    "UAGENT_TRUST_PROJECT_CONFIG",
 };
 
 constexpr GetterCheck kIntGetters[] = {

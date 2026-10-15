@@ -17,7 +17,9 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/platform.h"
+#include "include/core/sandbox_watch.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -184,6 +186,7 @@ std::vector<std::string> TakeCompleted(
       }
     }
     output += artifact_note;
+    output += SandboxRestoreNote(job.watch.get(), CanonicalCwd());
     std::string formatted =
         BgResultHeader(job) + "\n" + output + FmtExit(status, /*show_ok=*/true);
     notes.push_back(formatted);

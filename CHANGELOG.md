@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+### Upgrade notes
+
+- **No model is chosen for you.** The built-in default model
+  (`~deepseek/deepseek-flash-latest`) is gone, and so is taking the first model
+  an endpoint lists. With no model set, the terminal and the web open the model
+  picker on the first start and save the choice for new conversations, as
+  `/model NAME --default` does; `-p` and
+  `--json` exit with `no model set` and up to ten of the endpoint's models.
+  Set `model` (`UAGENT_MODEL`) to keep scripted runs working.
+- **The title model is the conversation's.** `title.model` is empty by default,
+  which names a conversation with the model it runs on; `off` still keeps the
+  first message. Set it to keep a cheaper model for titles.
+- **Images go to a vision model of the same endpoint.** When the conversation's
+  model cannot read images and `image.model` is empty, the first model of the
+  endpoint's catalogue that accepts images describes them; if there is none,
+  the warning says to set `image.model`.
+- **Web search needs its model named off the conversation's endpoint.** A
+  conversation on OpenRouter searches with its own model. A conversation on
+  another endpoint searches through the first configured OpenRouter endpoint
+  only when `webSearch.model` names the model; a call without it says so, and
+  with no such endpoint `web_search` is not offered. `webSearch.backend` is
+  `auto` or `off`; a stored `openrouter` reads as `auto`.
+
+### Changed
+
+- The title, memory extraction and subagents take their setting, else the
+  conversation's route, and say so when there is no model; images take their
+  setting, else the conversation's route, else a model of the same endpoint
+  that accepts them.
+
+### Fixed
+
+- A model's input modalities from the endpoint's catalogue survive starting a
+  route, so a text-only model is known as one before its first image is
+  rejected.
+- The web's model picker takes a model the endpoint's own catalogue lists on
+  an endpoint no provider names; it answered `unknown model` before.
+
 ## v1.4.0 - 2026-10-15
 
 ### Upgrade notes

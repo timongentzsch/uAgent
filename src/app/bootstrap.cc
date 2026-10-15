@@ -74,6 +74,28 @@ BootstrapResult Failure(std::string error, int exit_code = 1) {
   return {nullptr, std::move(error), exit_code};
 }
 
+// A run nobody can answer never picks a model for the person: it says what the
+// endpoint offers.
+std::string NoModelMessage(Api& api) {
+  constexpr size_t kListed = 10;
+  std::string message = "no model set: set `model` (UAGENT_MODEL)";
+  std::optional<std::vector<ModelInfo>> models = CachedModels(api);
+  if (!models) {
+    models = QueryModels(api);
+  }
+  if (!models || models->empty()) {
+    return message + "; " + UrlHost(api.base_url) + " lists no models";
+  }
+  message += "; " + UrlHost(api.base_url) + " offers:";
+  for (size_t i = 0; i < models->size() && i < kListed; ++i) {
+    message += (i ? ", " : " ") + (*models)[i].id;
+  }
+  if (models->size() > kListed) {
+    message += ", and " + std::to_string(models->size() - kListed) + " more";
+  }
+  return message;
+}
+
 class ScopedChannelInput {
  public:
   explicit ScopedChannelInput(ApplicationChannel* channel)
@@ -254,9 +276,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                                   app->agent.get()});
       },
       prepare, std::make_shared<ConfigApprovals>()));
-  WebSearchRoute search_route =
-      SelectWebSearchRoute(api, context.provider.providers);
-  if (search_route.Valid()) {
+  if (OffersWebSearch(api, context.provider.providers)) {
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));
   }
@@ -815,12 +835,14 @@ BootstrapResult Bootstrap(Options options, const char* executable,
         "UAGENT_BASE_URL at a supported API endpoint, e.g.\n"
         "  export UAGENT_BASE_URL=http://localhost:8080/v1");
   }
-  if (!context->options.show_system_prompt && !ProbeModel(api)) {
+  if (!context->options.show_system_prompt && api.model.empty() &&
+      !context->channel) {
     DebugLog("startup_error",
-             {{"error", "no usable model"}, {"base_url", api.base_url}});
-    return Failure("UAGENT_MODEL is not set and " + api.base_url +
-                   "/models returned nothing usable");
+             {{"error", "no model set"}, {"base_url", api.base_url}});
+    return Failure(NoModelMessage(api));
   }
+  // A conversation without a model starts at the model picker.
+  ProbeModel(api);
   ActivateRoute(api);
   // A flag for a conversation's setting sets it for that conversation, and
   // is kept with it: a run started with a model and a mode (a scheduled

@@ -597,8 +597,8 @@ void TestAttributedUsageAccumulator() {
 }
 
 // Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model
-// wins, a vision-capable main route is inherited, otherwise the shared
-// flash default backs the analysis side call.
+// wins, a vision-capable main route is inherited, otherwise a vision model of
+// the same endpoint's catalogue backs the analysis side call.
 void TestEffectiveImageModel() {
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
@@ -614,7 +614,8 @@ void TestEffectiveImageModel() {
   api.capabilities.image_input = true;
   CHECK(agent.EffectiveImageModel().empty());
   api.capabilities.image_input = false;
-  CHECK(agent.EffectiveImageModel() == kDefaultModelRoute);
+  // No catalogue to find a vision model in: none, said in words.
+  CHECK(agent.EffectiveImageModel().empty());
 }
 
 // Mail that wakes a session is its to lose until the turn it starts has the
@@ -828,7 +829,6 @@ void TestProviderTemplates() {
       "test",
       "https://provider.test/v1",
       "UAGENT_TEST_PROVIDER_KEY",
-      "default-model",
       // Signature fixed by ProviderUrlMatcher, whose real implementations
       // consume the string they are handed.
       // NOLINTNEXTLINE(performance-unnecessary-value-param)
@@ -843,7 +843,8 @@ void TestProviderTemplates() {
   CHECK(ApplyProviderTemplate(api, kTestProvider));
   CHECK(api.base_url == kTestProvider.base_url);
   CHECK(api.api_key == "test-key");
-  CHECK(api.model == "default-model");
+  // A template names no model: choosing one is the person's.
+  CHECK(api.model.empty());
 }
 
 void TestNamedProviders() {

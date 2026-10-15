@@ -34,10 +34,12 @@ void PublishActiveRoute(const Api& api) {
 
 void ResetRouteCapabilities(Api& api) {
   const json features = api.capabilities.model_features;
+  const json modalities = api.capabilities.input_modalities;
   api.capabilities = CapabilitiesForRoute(
       api.capabilities.protocol, api.base_url, api.capabilities.wire_api,
       api.capabilities.hosted_web_search);
   api.capabilities.SetModelFeatures(features);
+  api.capabilities.SetInputModalities(modalities);
 }
 
 }  // namespace
@@ -100,7 +102,63 @@ SideRoute ResolveSideRoute(const Api& api,
   // route's configured value and the session default.
   if (!parsed.variant.empty()) resolved.variant = parsed.variant;
   if (!parsed.effort.empty()) resolved.effort = parsed.effort;
+  if (resolved.model.empty()) {
+    resolved.none = "no model set; choose one with /models";
+  }
   return resolved;
+}
+
+namespace {
+bool AcceptsImages(const ModelInfo& info) {
+  return info.input_modalities.is_array() &&
+         std::ranges::any_of(info.input_modalities, [](const json& modality) {
+           return modality.is_string() &&
+                  modality.get<std::string>() == "image";
+         });
+}
+
+// The first model of the conversation's own endpoint that declares image
+// input. The cached catalogue answers; a live query fills it when absent.
+std::optional<std::string> VisionModelOnEndpoint(const Api& api) {
+  std::optional<std::vector<ModelInfo>> models = CachedModels(api);
+  if (!models) {
+    Api catalog_api(api.config);
+    catalog_api.base_url = api.base_url;
+    catalog_api.api_key = api.api_key;
+    catalog_api.capabilities = api.capabilities;
+    models = QueryModels(catalog_api, /*abortable=*/false, /*timeout_s=*/8);
+  }
+  if (models) {
+    for (const ModelInfo& info : *models) {
+      if (AcceptsImages(info)) {
+        return info.id;
+      }
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
+SideRoute ResolveImageRoute(const Api& api,
+                            const std::vector<ModelRoute>& routes,
+                            const std::vector<NamedProvider>& providers,
+                            const std::string& setting) {
+  SideRoute route = ResolveSideRoute(api, routes, providers, setting);
+  if (!route.none.empty() || !setting.empty() || api.capabilities.image_input) {
+    return route;
+  }
+  std::optional<std::string> vision = VisionModelOnEndpoint(api);
+  if (!vision) {
+    route.none =
+        "no model on this endpoint accepts images; set image.model "
+        "(UAGENT_IMAGE_MODEL)";
+    return route;
+  }
+  route.selection = route.model = *vision;
+  route.effort.clear();
+  route.context = 0;
+  route.features = nullptr;
+  return route;
 }
 
 // A configured route also carries catalog facts a side route does not.
@@ -124,6 +182,9 @@ std::string RouteSelection(const Api& api,
                            const std::vector<NamedProvider>& providers) {
   // CatalogModel strips a routing variant the request appends, so the suffixes
   // are added once and in schema order.
+  if (api.CatalogModel().empty()) {
+    return {};
+  }
   return ComposeSelection(
       ProviderScope(api.base_url, providers), api.CatalogModel(),
       api.capabilities.model_variants ? api.config.openrouter_variant

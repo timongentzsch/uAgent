@@ -47,7 +47,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | `approval.mode` | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
 | `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
 | `approval.reviewerUrl` | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
-| `title.model` | `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
+| `title.model` | `UAGENT_TITLE_MODEL` | string | empty | next-user-turn | model route that names new sessions, or off |
 | `tools.capabilities` | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `shell.envAllow` | `UAGENT_SHELL_ENV_ALLOW` | string | empty | next-user-turn | comma-separated sensitive variables approved shells may inherit |
 | `project.trustConfig` | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json |
@@ -111,7 +111,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 
 | Setting | Environment | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- | --- |
-| `webSearch.backend` | `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
+| `webSearch.backend` | `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto or off |
 | `webSearch.model` | `UAGENT_WEB_SEARCH_MODEL` | string | empty | next-user-turn | model route used for search |
 
 ## Memory
@@ -141,7 +141,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 
 | Setting | Environment | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- | --- |
-| `image.model` | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
+| `image.model` | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the first model on its endpoint that does |
 | `pdf.engine` | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
 | `attachments.maxMb` | `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
 

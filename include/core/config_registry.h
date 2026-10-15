@@ -138,18 +138,13 @@ inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
                                                            "exacto"};
 inline constexpr std::string_view kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
+// "openrouter" is the earlier spelling of auto and reads as it.
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
                                                         "full"};
-
-// Default model route when nothing is configured: DeepSeek flash through
-// OpenRouter auto-routing. One constant so the provider template and side-model
-// defaults cannot drift apart.
-inline constexpr const char* kDefaultModelRoute =
-    "~deepseek/deepseek-flash-latest";
 
 // Sent when a route has no credential; local OpenAI-compatible servers accept
 // any bearer value, and "no key configured" checks compare against it.
@@ -514,7 +509,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             registry::Str("webSearch.backend", "UAGENT_WEB_SEARCH_BACKEND",
                           "web_search_backend", "auto",
                           ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                          "search", "auto, openrouter, or off"),
+                          "search", "auto or off"),
             kWebSearchBackends),
         "Web search"),
     registry::Named(
@@ -523,7 +518,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "web_search_model", "", ReloadPolicy::kNextUserTurn,
                           Sensitivity::kPublic, "search",
                           "model route used for search"),
-            "conversation model on OpenRouter, else the default route"),
+            "the conversation model, on an endpoint that offers search"),
         "Web search model", "Answers web lookups"),
 
     // Memory.
@@ -587,9 +582,10 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                 "image_model", "", ReloadPolicy::kNextUserTurn,
                 Sensitivity::kPublic, "media",
                 "model route that reads attached images; empty uses the "
-                "main route when it reads images, else the shared "
-                "default route"),
-            "main route if it reads images, else the default route"),
+                "main route when it reads images, else the first model on "
+                "its endpoint that does"),
+            "main route if it reads images, else a vision model of its "
+            "endpoint"),
         "Image reader",
         "Describes attached images when the conversation model cannot see "
         "them"),
@@ -641,10 +637,12 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "behaviour", "OpenRouter Decisions API base URL"),
         "Permission reviewer address")),
     registry::Named(
-        registry::Str("title.model", "UAGENT_TITLE_MODEL", "title_model",
-                      kDefaultModelRoute, ReloadPolicy::kNextUserTurn,
-                      Sensitivity::kPublic, "behaviour",
-                      "model route that names new sessions, or off"),
+        registry::Fallback(
+            registry::Str("title.model", "UAGENT_TITLE_MODEL", "title_model",
+                          "", ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "behaviour",
+                          "model route that names new sessions, or off"),
+            "the conversation model"),
         "Title model",
         "Names new conversations; off keeps the first message as the title"),
     registry::Named(

@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--binary", type=pathlib.Path, required=True)
 parser.add_argument("--port", type=int, default=8765)
 parser.add_argument("--fixture", type=pathlib.Path, required=True)
+parser.add_argument("--no-model", action="store_true")
 args = parser.parse_args()
 stop = threading.Event()
 signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -228,7 +229,7 @@ with (
         provider.url,
         args.port,
         extra_env={
-            "UAGENT_MODEL": "mock/main:floor:high",
+            "UAGENT_MODEL": None if args.no_model else "mock/main:floor:high",
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.
             **(

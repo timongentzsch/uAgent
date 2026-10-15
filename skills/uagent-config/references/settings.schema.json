@@ -661,7 +661,7 @@
           "x-env": "UAGENT_REDUCED_MOTION"
         },
         "title.model": {
-          "default": "~deepseek/deepseek-flash-latest",
+          "default": "",
           "description": "Names new conversations; off keeps the first message as the title",
           "type": "string",
           "x-env": "UAGENT_TITLE_MODEL"
@@ -799,7 +799,7 @@
               "type": "string"
             }
           ],
-          "description": "auto, openrouter, or off",
+          "description": "auto or off",
           "x-env": "UAGENT_WEB_SEARCH_BACKEND"
         },
         "webSearch.model": {

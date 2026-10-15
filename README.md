@@ -160,7 +160,7 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 ## Quick start
 
 1. **Give it a key.** With an [OpenRouter](https://openrouter.ai) key and
-   nothing else it picks a default model:
+   nothing else, the first start opens the model picker:
 
    ```sh
    export OPENROUTER_API_KEY=replace-me

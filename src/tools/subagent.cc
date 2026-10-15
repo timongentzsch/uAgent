@@ -358,6 +358,9 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
       JsonValue(arguments, "model", JsonValue(role, "model", "")));
   // No route named: the parent's own, whatever it is now.
   SideRoute route = ResolveSideRoute(api, routes, providers, requested);
+  if (!route.none.empty()) {
+    return ToolFailure(ToolErrorCode::kUnavailable, route.none);
+  }
   const std::string route_label = SubagentDiagnosticRoute(route, providers);
   if (route.unresolved && route.selection.find('/') != std::string::npos &&
       !CanUseRawModel(api, route.selection)) {

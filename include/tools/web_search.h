@@ -36,6 +36,10 @@ struct WebSearchResult {
   bool truncated = false;
 };
 
+// Whether the conversation's endpoint or a configured one declares search; the
+// tool is offered then, and a call says what is missing.
+bool OffersWebSearch(const Api& api,
+                     const std::vector<NamedProvider>& providers);
 WebSearchRoute SelectWebSearchRoute(
     const Api& api, const std::vector<NamedProvider>& providers);
 json WebSearchRequest(const WebSearchRoute& route, const std::string& prompt);

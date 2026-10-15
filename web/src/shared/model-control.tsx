@@ -18,6 +18,8 @@ export default function ModelControl(
       className="model-control"
       buttonClass="model-selector"
       disabled={!props.online || props.running}
+      // A conversation with no model yet starts at the picker.
+      openWhen={props.state?.route === ""}
       trigger={
         <>
           <Gauge />

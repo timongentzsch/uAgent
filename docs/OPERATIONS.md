@@ -190,8 +190,10 @@ start, what survives the conversation and how a result is delivered.
 
 Set `UAGENT_IMAGE_MODEL` to a vision-capable route when the main route is
 text-only. When the main route cannot read an image, µAgent sends it once to
-the image route (by default the shared default route), removes the image bytes
-from the conversation and keeps the textual description.
+the image route (by default the first model of the same endpoint that accepts
+images), removes the image bytes from the conversation and keeps the textual
+description. If no model of the endpoint accepts images, µAgent says to set
+`UAGENT_IMAGE_MODEL`.
 
 ## MCP
 

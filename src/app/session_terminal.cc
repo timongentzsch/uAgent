@@ -249,9 +249,19 @@ class Terminal {
     while (!quit && !disconnected_ && !navigate_) {
       if (raw_) Paint();  // the last input's draft
       bool running;
+      bool needs_model;
       {
         std::lock_guard lock(mutex_);
         running = running_;
+        // Another terminal's picker, or a command running, is not asked twice.
+        needs_model = state_.contains("route") &&
+                      JsonValue(state_, "route", "x").empty() &&
+                      pending_.is_null() && !running_ && !input_blocked_;
+      }
+      // A conversation that has no model yet starts at the picker, once.
+      if (needs_model && !model_asked_) {
+        model_asked_ = true;
+        Send({{"kind", "submit"}, {"text", "/models all"}});
       }
       g_streaming = running ? 1 : 0;
       SetQuitGesture(true);
@@ -814,6 +824,7 @@ class Terminal {
   std::thread reader_;
   std::mutex mutex_, send_mutex_;
   json state_ = json::object(), pending_;
+  bool model_asked_ = false;
   bool running_ = false, history_ = false, raw_ = false;
   bool quit_hint_ = false;
   std::atomic<bool> interrupting_{false};

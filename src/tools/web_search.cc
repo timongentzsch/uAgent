@@ -2,6 +2,7 @@
 
 #include "include/tools/web_search.h"
 
+#include <algorithm>
 #include <chrono>
 #include <optional>
 #include <string>
@@ -45,6 +46,15 @@ WebSearchResult ParseWebSearch(const json& response) {
   return result;
 }
 
+bool OffersWebSearch(const Api& api,
+                     const std::vector<NamedProvider>& providers) {
+  return api.config.web_search_backend != "off" &&
+         (api.capabilities.OpenRouter() ||
+          std::ranges::any_of(providers, [](const NamedProvider& provider) {
+            return provider.protocol == ProviderProtocol::kOpenRouter;
+          }));
+}
+
 WebSearchRoute SelectWebSearchRoute(
     const Api& api, const std::vector<NamedProvider>& providers) {
   const RuntimeConfig& config = api.config;
@@ -75,22 +85,17 @@ WebSearchRoute SelectWebSearchRoute(
         selection.effort};
   };
 
-  // The conversation's own route, then any OpenRouter-protocol provider, then
-  // the built-in route.
+  // The conversation's own route, then the first configured endpoint that
+  // offers search. Another endpoint has no model of the conversation's to
+  // borrow: it searches with the one UAGENT_WEB_SEARCH_MODEL names.
   std::vector<WebSearchRoute> candidates;
   if (api.capabilities.OpenRouter()) {
     candidates.push_back(candidate(api.base_url, api.api_key, api.model));
   }
   for (const NamedProvider& provider : providers) {
     if (provider.protocol != ProviderProtocol::kOpenRouter) continue;
-    candidates.push_back(candidate(provider.base_url, provider.api_key,
-                                   std::string(kDefaultModelRoute)));
+    candidates.push_back(candidate(provider.base_url, provider.api_key, ""));
     break;
-  }
-  if (std::string key = SettingText(Cfg("OPENROUTER_API_KEY")); !key.empty()) {
-    candidates.push_back(candidate("https://openrouter.ai/api/v1",
-                                   std::move(key),
-                                   std::string(kDefaultModelRoute)));
   }
   for (WebSearchRoute& winner : candidates) {
     if (winner.Valid()) return std::move(winner);
@@ -133,7 +138,8 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         WebSearchRoute active = SelectWebSearchRoute(api, providers);
         if (!active.Valid()) {
           return ToolFailure(ToolErrorCode::kUnavailable,
-                             "web_search is not configured");
+                             "web_search has no model to run on: set "
+                             "webSearch.model (UAGENT_WEB_SEARCH_MODEL)");
         }
         std::vector<std::string> queries;
         queries.reserve(a["queries"].size());

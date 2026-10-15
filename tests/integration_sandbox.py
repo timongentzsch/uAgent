@@ -330,11 +330,13 @@ def test_sandbox_opens_the_package_cache_not_the_data_directory(root, home, *, b
     run_once(
         root,
         sandbox_env(home, ""),
-        f"echo x > {data}/uv/tool; echo x > {data}/autostart/job; echo x > {home}/.cache/entry",
+        f"echo x > {data}/uv/tool; echo x > {data}/autostart/job; "
+        f"echo x > {home}/.cache/entry; echo x > {home}/.npm/entry",
         binary=binary,
     )
     assert_true((data / "uv" / "tool").exists(), "the package manager's own folder was closed")
     assert_true((home / ".cache" / "entry").exists(), "the cache was closed")
+    assert_true((home / ".npm" / "entry").exists(), "npm's cache, which npx needs, was closed")
     assert_true(not (data / "autostart" / "job").exists(), "wrote another program's data")
 
 

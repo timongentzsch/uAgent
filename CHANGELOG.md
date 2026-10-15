@@ -32,8 +32,9 @@
   a default, `sandbox.hide` (`UAGENT_SANDBOX_HIDE`) adds your own. `~/.ssh` and
   the GitHub CLI login stay readable.
 - **MCP servers now run under the sandbox.** They can write the workspace and
-  the usual roots, not the rest of your files, and cannot read the hidden
-  stores. A server that needs more takes `sandbox.write`, or
+  the usual roots, the package caches among them (so `npx` and `uvx` servers
+  start as before), not the rest of your files, and cannot read the hidden
+  stores. Commands and servers may now also write `~/.npm`. A server that needs more takes `sandbox.write`, or
   `"sandbox": false` in its `.mcp.json` entry, which the trust prompt names.
 - **`UAGENT_SANDBOX` takes a level**: `strict`, `default`, `relaxed` or `off`.
   `0` and `false` still mean `off`, `1` and `true` `default`.

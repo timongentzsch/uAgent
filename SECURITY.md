@@ -180,8 +180,9 @@ is not in either table: it stops the questions, not the confinement.
 
 - the workspace;
 - `$TMPDIR`, `/tmp`, `/var/tmp` and `/dev`;
-- the package caches: `~/.cache`, `~/.local/share/uv` and, on macOS,
-  `~/Library/Caches`;
+- the package caches: `~/.cache`, `~/.local/share/uv`, `~/.npm` and, on
+  macOS, `~/Library/Caches` (the list is `kPackageCaches` in
+  `include/core/defaults.h`; grant another with `sandbox.write`);
 - `~/.uagent/terminals/logs`, because a detached job's log pump writes there;
 - the roots `sandbox.write` adds;
 - at the `relaxed` level, your home folder.
@@ -269,8 +270,9 @@ edit.
 **MCP servers.** A stdio server is spawned under the same policy as a command
 (hidden stores included; its network follows the level, so it has the network
 unless the level is `strict` or `sandbox.network` is off), with the workspace
-as its writable area. A server that needs more, such as a package manager's
-cache in your home folder, can have a root through `sandbox.write`. A server
+and the package caches as its writable area, so a server started with `npx`
+or `uvx` runs as before. A server that needs more can have a root through
+`sandbox.write`. A server
 entry that sets `"sandbox": false` runs unconfined; this works in the project's
 `.mcp.json` and in `~/.mcp.json`. The prompt that asks you to trust a project's
 `.mcp.json` names the servers that would run unconfined, and a changed entry

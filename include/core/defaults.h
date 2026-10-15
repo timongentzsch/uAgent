@@ -31,6 +31,19 @@ inline constexpr std::string_view kHiddenCredentialStores[] = {
     ".docker/config.json"  // Docker registry logins
 };
 
+// Package-manager caches sandboxed commands and MCP servers may write,
+// relative to the home folder. They are per-user, so they sit outside every
+// other root; a missing one is created so the tool can fill it. Of the data
+// directory only uv's part: the rest holds keyrings, autostart entries and
+// other programs' state. Another cache is granted with `sandbox.write`.
+inline constexpr std::string_view kPackageCaches[] = {
+    ".cache",           // XDG cache: pip, uv, Go, Playwright and most others
+    ".local/share/uv",  // uv's tools and Python installs
+    ".npm",             // npm and npx, which start most stdio MCP servers
+};
+// On macOS, the native cache folder as well (uv keeps using ~/.cache there).
+inline constexpr std::string_view kMacPackageCaches[] = {"Library/Caches"};
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_DEFAULTS_H_

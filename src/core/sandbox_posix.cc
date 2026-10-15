@@ -290,14 +290,18 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
   const std::string home = UserHome();
   if (!home.empty()) {
     if (preset == SandboxPreset::kRelaxed) inputs.open_home = canonical(home);
-    // A root that does not exist grants nothing, and uv could not then make
-    // its own folder beneath a closed one.
-    std::error_code error;
-    std::filesystem::create_directories(home + "/.local/share/uv", error);
-    inputs.tool_caches = {canonical(home + "/.cache"),
-                          canonical(home + "/.local/share/uv")};
+    // A root that does not exist grants nothing, and the tool could not then
+    // make its own folder beneath a closed one.
+    for (std::string_view cache : kPackageCaches) {
+      const std::string path = home + "/" + std::string(cache);
+      std::error_code error;
+      std::filesystem::create_directories(path, error);
+      inputs.tool_caches.push_back(canonical(path));
+    }
 #if defined(__APPLE__)
-    inputs.tool_caches.push_back(canonical(home + "/Library/Caches"));
+    for (std::string_view cache : kMacPackageCaches) {
+      inputs.tool_caches.push_back(canonical(home + "/" + std::string(cache)));
+    }
 #endif
   }
   return inputs;

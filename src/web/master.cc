@@ -491,7 +491,7 @@ int Master::Run() {
       // Whoever saves a setting (here, a terminal) reaches every browser.
       paths.push_back(SettingsPath());
       // Wakes for a catalogue scan the throttle deferred.
-      auto deadline = Clock::now() + std::chrono::hours(24);
+      auto deadline = Clock::now() + std::chrono::hours(kIdleSleepHours);
       if (auto rescan = host_.RescanDue()) {
         deadline = std::min(deadline, *rescan);
       }
@@ -607,7 +607,7 @@ int MasterMain(const WebOptions& options, char** argv) {
   if (!curl.Ready()) {
     return 1;
   }
-  if (!lease.Acquire(directory + "/master.lock", error, true)) {
+  if (!lease.Acquire(directory + "/" + kMasterLockFile, error, true)) {
     // The lock, not a PID/port/metadata file, is authority. A contender only
     // authenticates the recorded instance; it never binds an alternate port.
     for (int attempt = 0; attempt < kStartupAttempts; ++attempt) {

@@ -228,7 +228,7 @@ json Master::BrowserControl(const json& command, const std::string& device,
                         {"interaction_id", interaction},
                         {"name", JsonValue(command, "name", "")},
                         {"profile_id", JsonValue(command, "profile_id", "")}},
-                       30000);
+                       browser::kActionMs);
   error = JsonValue(result, "error", "");
   if (!error.empty() || action != "done") return result;
   const std::string session_id = JsonValue(result, "session_id", "");
@@ -252,7 +252,7 @@ json Master::BrowserControl(const json& command, const std::string& device,
       {{"op", "done"}, {"device", device}, {"interaction_id", interaction}});
   error = JsonValue(result, "error", "");
   if (error == "browser service timed out or disconnected") {
-    json current = browser::Request({{"op", "status"}}, 1000);
+    json current = browser::Request({{"op", "status"}}, browser::kProbeMs);
     if (current.value("ok", false) &&
         JsonValue(current, "mode", "") != "human" &&
         JsonValue(current, "interaction_id", "").empty() &&

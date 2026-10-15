@@ -377,7 +377,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .model = api_.RequestModel(),
       .session_id = session_id_,
       .turns = UserTurns(),
-      .title = Utf8Prefix(FirstUserText(), 256),
+      .title = Utf8Prefix(FirstUserText(), kUserTitleBytes),
       .custom_title = custom_title_,
       .parent_session_id = parent_session_id_,
       .forked_at_turn = forked_at_turn_,

@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "include/agent/jobs.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -273,7 +274,7 @@ ShellCommandResult StartDetachedShell(
   const std::string& cmd = spec.command;
   if (std::optional<DetachedActivity> existing =
           FindRunningDetachedActivity(cmd)) {
-    return {ToolSuccess("[detached] pid " + std::to_string(existing->pid) +
+    return {ToolSuccess(kDetachedMarker + std::to_string(existing->pid) +
                         ", log: " + existing->log +
                         " — reused existing live activity id " +
                         std::to_string(existing->pid) +
@@ -328,7 +329,7 @@ ShellCommandResult StartDetachedShell(
     return fail_and_reap(JobLimitError());
   }
   ToolResult detached =
-      ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " + log +
+      ToolSuccess(kDetachedMarker + std::to_string(pid) + ", log: " + log +
                   " — activity id " + std::to_string(pid) +
                   "; verify readiness with activity output");
   detached.parts = json::array({LinkPart("activity", pid, "Open activity")});
@@ -567,7 +568,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   if (is_subagent) {
     ToolResult started = ToolSuccess(
-        "[started] subagent id " + std::to_string(activity_id) +
+        kStartedSubagentMarker + std::to_string(activity_id) +
         "; completion is added to the next natural model call without "
         "starting one; inspect activity output for progress/readiness, or "
         "wait when the next step is blocked");
@@ -582,7 +583,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         LimitOutput(session->pending_output.Drain(), interaction_cap);
     session->last_used = std::chrono::steady_clock::now();
   }
-  std::string output = "[running] activity " + std::to_string(activity_id) +
+  std::string output = kRunningActivityMarker + std::to_string(activity_id) +
                        (handed_off ? " moved to background; " : "; ") +
                        "it keeps running while you work; poll or wait on it "
                        "for output";
@@ -667,7 +668,9 @@ std::map<std::string, std::filesystem::file_time_type> RootEntries(
   for (fs::directory_iterator entry(workspace, ec), end; !ec && entry != end;
        entry.increment(ec)) {
     std::string name = entry->path().filename().string();
-    if (name == ".uagent") continue;
+    if (name == kWorkspaceDir) {
+      continue;
+    }
     std::error_code ignored;
     if (entry->is_directory(ignored)) name += '/';
     entries[std::move(name)] = entry->last_write_time(ignored);
@@ -695,7 +698,7 @@ std::optional<std::filesystem::path> ScratchScriptPath(
       return std::nullopt;
     }
   }
-  fs::path scratch = workspace / ".uagent" / "scratch";
+  fs::path scratch = ScratchDir(workspace);
   fs::path script = CanonicalAccessPath((scratch / requested).string());
   if (!PathWithin(script, CanonicalAccessPath(scratch.string()))) {
     error = "scratch script path escapes .uagent/scratch";
@@ -719,14 +722,13 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     return ToolFailure(
         ToolErrorCode::kNotFound,
         "no script at .uagent/scratch/" +
-            fs::relative(*script, workspace / ".uagent" / "scratch", ec)
-                .generic_string() +
+            fs::relative(*script, ScratchDir(workspace), ec).generic_string() +
             "; write it first with write_file");
   }
   // The scratch directory is private to the agent: keep it out of git.
   const fs::path ignore = script->parent_path() / ".gitignore";
   std::string write_error;
-  if (script->parent_path().filename() == "scratch" &&
+  if (script->parent_path().filename() == kScratchDir &&
       !fs::exists(ignore, ec) &&
       !AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
                        /*preserve_mode=*/false, write_error)) {

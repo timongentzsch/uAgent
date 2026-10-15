@@ -38,6 +38,7 @@ import { queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   maxLocalRequests,
+  reconnectBaseDelayMs,
   reconnectGraceMs,
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
@@ -357,7 +358,7 @@ export function useHost(
   const retryLater = () => {
     const delay = Math.min(
       reconnectMaxDelayMs,
-      1000 * 2 ** retry.current.attempt++,
+      reconnectBaseDelayMs * 2 ** retry.current.attempt++,
     );
     retry.current.timer = setTimeout(
       () => refresh(),

@@ -2,6 +2,7 @@ import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
+import { downloadRevokeMs } from "../../shared/limits.ts";
 import {
   Actions,
   Button,
@@ -230,7 +231,7 @@ export default function Raw({
             link.download = `${exchange?.id || id || "result"}-${tab}.txt`;
             link.click();
             // Some browsers start the download after click() returns.
-            setTimeout(() => URL.revokeObjectURL(url), 30_000);
+            setTimeout(() => URL.revokeObjectURL(url), downloadRevokeMs);
           }}
         >
           <Download />

@@ -1,5 +1,6 @@
 import { Fragment, createContext } from "preact";
 import { CircleX } from "lucide-preact";
+import { maxInlineFactChars } from "../../shared/limits.ts";
 import {
   Button,
   DisclosureRow,
@@ -176,7 +177,7 @@ export function ToolRow({
   // Short one-line arguments read as facts beside the tool's name; long or
   // multi-line ones stay blocks below.
   const brief = ([, value]: [string, string]) =>
-    value.length <= 40 && !value.includes("\n");
+    value.length <= maxInlineFactChars && !value.includes("\n");
   const input = block.view?.input || [];
   const facts = input.flatMap((part) =>
     part.kind === "fields" ? part.rows.filter(brief) : [],

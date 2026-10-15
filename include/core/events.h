@@ -161,6 +161,9 @@ struct EventPolicy {
 };
 
 const EventPolicy& PolicyFor(EventId id);
+// The type a subscriber receives for `id` (AppEvent::type). Code that tells
+// events apart by type compares against this, so a typo cannot compile.
+inline std::string_view AppType(EventId id) { return PolicyFor(id).app_type; }
 
 // Transport-neutral application protocol. Subscribers receive every semantic
 // event, including streaming deltas and interactive decisions. Delivery is

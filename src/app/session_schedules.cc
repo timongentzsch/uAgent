@@ -14,6 +14,7 @@
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
@@ -24,7 +25,8 @@
 namespace uagent::session {
 std::chrono::steady_clock::time_point SessionHost::NextScheduleDeadline()
     const {
-  auto deadline = std::chrono::steady_clock::now() + std::chrono::hours(24);
+  auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::hours(kIdleSleepHours);
   const int64_t now = NowSeconds();
   if (const auto* tasks = JsonArray(schedule_state_, "tasks")) {
     for (const json& task : *tasks) {

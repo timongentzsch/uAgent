@@ -30,6 +30,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/transport/session.h"
 
 namespace uagent::browser {
 namespace {
@@ -109,7 +110,7 @@ bool EnsureDataDirectory(const std::string& path) {
     current /= part;
     struct stat info{};
     if (lstat(current.c_str(), &info) != 0) {
-      if (errno != ENOENT || mkdir(current.c_str(), 0700) != 0 ||
+      if (errno != ENOENT || mkdir(current.c_str(), kPrivateDirMode) != 0 ||
           lstat(current.c_str(), &info) != 0) {
         return false;
       }
@@ -118,7 +119,7 @@ bool EnsureDataDirectory(const std::string& path) {
   }
   struct stat info{};
   return lstat(path.c_str(), &info) == 0 && info.st_uid == geteuid() &&
-         (info.st_mode & 0077) == 0;
+         (info.st_mode & kGroupOtherModeBits) == 0;
 }
 
 ServiceProcess::~ServiceProcess() {
@@ -201,9 +202,11 @@ bool StartService(const std::string& executable, ServiceProcess& process,
   child.Reset();
   process.pid = pid;
   process.owner = std::move(parent);
-  for (int attempt = 0; attempt < 100; ++attempt) {
-    if (Request({{"op", "ping"}}, 100).value("ok", false)) return true;
-    poll(nullptr, 0, 20);
+  for (int waited = 0; waited < kServiceStartMs; waited += kPollTickMs) {
+    if (Request({{"op", "ping"}}, kPingMs).value("ok", false)) {
+      return true;
+    }
+    poll(nullptr, 0, kPollTickMs);
   }
   process.owner.Reset();
   error = "browser service did not start";
@@ -216,16 +219,17 @@ int ServiceMain(int owner_fd) {
       !EnsureDataDirectory(DataDirectory()) || !CloseOnExec(owner_fd)) {
     return 2;
   }
-  Fd listener = ListenUnix(path, 16);
+  Fd listener = ListenUnix(path, session::kSocketBacklog);
   if (!listener) return 2;
   auto runtime = std::make_shared<Runtime>();
   auto mutex = std::make_shared<std::mutex>();
   auto active = std::make_shared<std::atomic<int>>(0);
   // An idle Chrome is checked once a minute.
+  constexpr int kOwnerPollMs = 60000;
   for (;;) {
     pollfd wait[] = {{owner_fd, POLLIN | POLLHUP, 0},
                      {listener.Get(), POLLIN, 0}};
-    int ready = poll(wait, 2, 60000);
+    int ready = poll(wait, 2, kOwnerPollMs);
     if (ready < 0) {
       if (errno == EINTR) continue;
       break;
@@ -245,13 +249,13 @@ int ServiceMain(int owner_fd) {
     }
     std::thread([runtime, mutex, active, client = std::move(client)]() mutable {
       json request;
-      if (Packet(client.Get(), request, false, 30000)) {
+      if (Packet(client.Get(), request, false, kActionMs)) {
         json answer;
         {
           std::lock_guard lock(*mutex);
           answer = runtime->Execute(request);
         }
-        Packet(client.Get(), answer, true, 30000);
+        Packet(client.Get(), answer, true, kActionMs);
       }
       --*active;
     }).detach();

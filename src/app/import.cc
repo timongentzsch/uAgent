@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/defaults.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/library.h"
@@ -363,7 +364,7 @@ void FindSkills(const fs::path& dir, int depth, Budget& budget,
   auto take = [&](const fs::path& skill) {
     const std::string name = SafeFileComponent(skill.filename().string());
     std::error_code gone;
-    if (!wanted.Name(name, HashHex((skill / "SKILL.md").string())) ||
+    if (!wanted.Name(name, HashHex((skill / kSkillFile).string())) ||
         (wanted.fresh &&
          fs::exists(fs::symlink_status(fs::path(GlobalBase()) / "skills" / name,
                                        gone)))) {
@@ -371,7 +372,7 @@ void FindSkills(const fs::path& dir, int depth, Budget& budget,
     }
     found.push_back(skill);
   };
-  if (fs::is_regular_file(dir / "SKILL.md", probe)) {
+  if (fs::is_regular_file(dir / kSkillFile, probe)) {
     take(dir);
     return;
   }
@@ -385,7 +386,7 @@ void FindSkills(const fs::path& dir, int depth, Budget& budget,
     if (fs::is_directory(status)) {
       children.push_back(it->path());
     } else if (fs::is_symlink(status) &&
-               fs::is_regular_file(it->path() / "SKILL.md", probe)) {
+               fs::is_regular_file(it->path() / kSkillFile, probe)) {
       take(it->path());
     }
   }
@@ -401,7 +402,7 @@ void FindSkills(const fs::path& dir, int depth, Budget& budget,
 
 json SkillItem(const std::string& source, const fs::path& root,
                const fs::path& dir, Budget& budget) {
-  const fs::path manifest = dir / "SKILL.md";
+  const fs::path manifest = dir / kSkillFile;
   const std::string name = SafeFileComponent(dir.filename().string());
   std::string text, error, description;
   const bool read =
@@ -567,7 +568,7 @@ std::string ImportSkill(const json& item) {
   if (fs::exists(fs::symlink_status(destination, ec))) {
     return "skill " + name + " already exists";
   }
-  if (!ReadRegularFile((dir / "SKILL.md").string(), kSkillBodyBytes, manifest,
+  if (!ReadRegularFile((dir / kSkillFile).string(), kSkillBodyBytes, manifest,
                        error)) {
     return "SKILL.md: " + error;
   }
@@ -578,7 +579,7 @@ std::string ImportSkill(const json& item) {
   // complete or not at all. The staging folder is outside every searched
   // root, on the same filesystem, and only the one made here is ever removed.
   CreatePrivateDirectories(skills);
-  std::string pattern = UagentDir("staging") + "/" + name + ".XXXXXX";
+  std::string pattern = UagentDir(kStagingDir) + "/" + name + ".XXXXXX";
   if (mkdtemp(pattern.data()) == nullptr) {
     return std::string("cannot create a staging folder: ") + strerror(errno);
   }
@@ -590,7 +591,9 @@ std::string ImportSkill(const json& item) {
       error = file.relative.string() + ": " + failure;
       break;
     }
-    if (file.relative == "SKILL.md") content = RewriteToolReferences(content);
+    if (file.relative == kSkillFile) {
+      content = RewriteToolReferences(content);
+    }
     const bool executable = (fs::status(file.source, ec).permissions() &
                              fs::perms::owner_exec) != fs::perms::none;
     if (!AtomicWriteFile(

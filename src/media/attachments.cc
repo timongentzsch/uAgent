@@ -35,11 +35,11 @@ constexpr char kBase64Alphabet[] =
 // Extension to MIME type. Also read backwards to name a saved image, so the
 // first entry for a type is the one its files get (.jpg, never .jpeg).
 constexpr std::pair<const char*, const char*> kTypes[] = {
-    {".png", "image/png"},
-    {".jpg", "image/jpeg"},
-    {".jpeg", "image/jpeg"},
-    {".webp", "image/webp"},
-    {".gif", "image/gif"},
+    {".png", kPngMime},
+    {".jpg", kJpegMime},
+    {".jpeg", kJpegMime},
+    {".webp", kWebpMime},
+    {".gif", kGifMime},
     {".heic", "image/heic"},
     {".heif", "image/heif"},
     {".svg", "image/svg+xml"},
@@ -97,19 +97,19 @@ std::string RasterMime(std::string_view bytes) {
   if (bytes.size() >= 24 &&
       bytes.starts_with(std::string_view("\x89PNG\r\n\x1a\n", 8)) &&
       bytes.substr(12, 4) == "IHDR") {
-    return "image/png";
+    return kPngMime;
   }
   if (bytes.size() >= 4 &&
       bytes.starts_with(std::string_view("\xff\xd8\xff", 3))) {
-    return "image/jpeg";
+    return kJpegMime;
   }
   if (bytes.size() >= 13 &&
       (bytes.starts_with("GIF87a") || bytes.starts_with("GIF89a"))) {
-    return "image/gif";
+    return kGifMime;
   }
   if (bytes.size() >= 16 && bytes.starts_with("RIFF") &&
       bytes.substr(8, 4) == "WEBP") {
-    return "image/webp";
+    return kWebpMime;
   }
   // HEIC/HEIF stills share the ISO BMFF `ftyp` header with MP4 video, so
   // the brand allowlist is the whole check: still-photo brands in, video
@@ -223,8 +223,8 @@ std::string SvgMime(std::string_view bytes) {
 }
 
 bool IsRasterMime(const std::string& mime) {
-  return mime == "image/png" || mime == "image/jpeg" || mime == "image/gif" ||
-         mime == "image/webp";
+  return mime == kPngMime || mime == kJpegMime || mime == kGifMime ||
+         mime == kWebpMime;
 }
 
 bool IsAudioMime(const std::string& mime) { return mime.starts_with("audio/"); }
@@ -249,7 +249,7 @@ std::string AttachmentMime(const std::string& name) {
   for (const auto& [suffix, mime] : kTypes) {
     if (ext == suffix) return mime;
   }
-  return "application/octet-stream";
+  return kOctetStreamMime;
 }
 
 bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
@@ -497,7 +497,7 @@ Attachment AttachmentFromJson(const json& item) {
   Attachment attachment;
   attachment.path = JsonValue(item, "path", "");
   attachment.name = JsonValue(item, "name", "attachment");
-  attachment.mime = JsonValue(item, "mime", "application/octet-stream");
+  attachment.mime = JsonValue(item, "mime", kOctetStreamMime);
   attachment.image = JsonValue(item, "image", false);
   attachment.asset_id = JsonValue(item, "id", "");
   return attachment;
@@ -608,7 +608,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
       return "";
     }
     path = raster_file.Path();
-    mime = "image/png";
+    mime = kPngMime;
   }
 #ifdef __APPLE__
   auto inspected = CaptureProcess(
@@ -644,7 +644,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   if (width > kMaxImageDimension || height > kMaxImageDimension ||
       attachment.bytes > kImageBytes || normalize) {
     const std::string format =
-        (mime == "image/jpeg" || mime == "image/heic" || mime == "image/heif")
+        (mime == kJpegMime || mime == "image/heic" || mime == "image/heif")
             ? "jpeg"
             : "png";
     if (!temporary_file) {
@@ -763,7 +763,7 @@ bool PrepareAttachments(json& messages,
         }
       }
       if (!processed && detail.empty()) {
-        if (attachment.mime == "application/octet-stream") {
+        if (attachment.mime == kOctetStreamMime) {
           attachment.mime = stored_mime;
         }
         if (TextMime(attachment.mime)) {

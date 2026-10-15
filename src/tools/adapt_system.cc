@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -23,6 +24,16 @@ Tool AdaptSystemTool(const AdaptiveSystemState& state,
   };
   // What the user approved is the previewed text, committed byte for byte.
   auto proposals = std::make_shared<ApprovedProposals<json>>();
+  json schema = json::parse(R"({"type":"object","properties":{
+        "action":{"type":"string","enum":["show","set","edit","reset"]},
+        "mode":{"type":"string","enum":["overlay","replace"]},
+        "revision":{"type":"string","description":"revision from show, required for writes"},
+        "text":{"type":"string"},
+        "old":{"type":"string","description":"unique exact text to replace"},
+        "new":{"type":"string"},
+        "reason":{"type":"string","minLength":1,"maxLength":512,"description":"triggering observation and material strategy delta; required for writes"}
+      },"required":["action"]})");
+  schema["properties"]["text"]["maxLength"] = kAdaptiveSystemBytes;
   Tool tool = MakeTool(
       "adapt_system",
       "Show, set, edit or reset your self-directive: text added to (or, with "
@@ -32,15 +43,7 @@ Tool AdaptSystemTool(const AdaptiveSystemState& state,
       "Self-adaptation is an exception, not a planning ritual: name the "
       "triggering observation and material strategy delta. It cannot change "
       "host permissions, tools or limits.",
-      json::parse(R"({"type":"object","properties":{
-        "action":{"type":"string","enum":["show","set","edit","reset"]},
-        "mode":{"type":"string","enum":["overlay","replace"]},
-        "revision":{"type":"string","description":"revision from show, required for writes"},
-        "text":{"type":"string","maxLength":65536},
-        "old":{"type":"string","description":"unique exact text to replace"},
-        "new":{"type":"string"},
-        "reason":{"type":"string","minLength":1,"maxLength":512,"description":"triggering observation and material strategy delta; required for writes"}
-      },"required":["action"]})"),
+      std::move(schema),
       [control, mandatory, proposals](const json& args, const ToolContext&) {
         json request = args;
         request["action"] = JsonValue(args, "action", "set");
@@ -88,7 +91,8 @@ Tool AdaptSystemTool(const AdaptiveSystemState& state,
     approved["mode"] = result["item"]["mode"];
     approved["text"] = result["item"]["text"];
     proposals->Put(args, std::move(approved),
-                   std::chrono::steady_clock::now() + std::chrono::minutes(5));
+                   std::chrono::steady_clock::now() +
+                       std::chrono::minutes(kProposalLifetimeMinutes));
     return "self-directive · next model request\n" +
            JsonValue(result, "diff", "");
   };

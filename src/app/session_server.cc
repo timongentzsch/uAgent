@@ -27,6 +27,7 @@
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/thread_annotations.h"
@@ -50,9 +51,9 @@ Connection Connect(const std::string& path) {
   struct stat info{};
   if (lstat(std::filesystem::path(address).parent_path().c_str(), &info) ||
       !S_ISDIR(info.st_mode) || info.st_uid != geteuid() ||
-      (info.st_mode & 0077) || lstat(address.c_str(), &info) ||
+      (info.st_mode & kGroupOtherModeBits) || lstat(address.c_str(), &info) ||
       !S_ISSOCK(info.st_mode) || info.st_uid != geteuid() ||
-      (info.st_mode & 0077)) {
+      (info.st_mode & kGroupOtherModeBits)) {
     return result;
   }
   result.socket = Socket(address, false);
@@ -116,7 +117,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
   CreatePrivateDirectories(folder);
   struct stat info{};
   if (lstat(folder.c_str(), &info) || !S_ISDIR(info.st_mode) ||
-      info.st_uid != geteuid() || (info.st_mode & 0077)) {
+      info.st_uid != geteuid() || (info.st_mode & kGroupOtherModeBits)) {
     error = "session runtime directory must be private";
     return {};
   }
@@ -130,7 +131,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
   for (;;) {
     const std::string launch =
         folder.string() + "/" + RandomToken(16) + ".json";
-    if (!AtomicWriteFile(launch, JsonDump(config), 0600, false, error)) {
+    if (!AtomicWriteFile(launch, JsonDump(config), kPrivateFileMode, false,
+                         error)) {
       return {};
     }
     std::vector<std::string> args{executable, "--session-worker", cwd,
@@ -180,7 +182,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
     while (ended->load() < 0 && std::chrono::steady_clock::now() < deadline) {
       connected = Connect(path);
       if (connected.socket) return connected;
-      poll(nullptr, 0, 20);
+      poll(nullptr, 0, kPollTickMs);
     }
     // It may have ended because another runtime owns the session: use that.
     connected = Connect(path);
@@ -199,7 +201,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
     }
     // The owner is leaving or arriving; it is reached, or replaced, shortly.
     if (exit == kWorkerOwned && std::chrono::steady_clock::now() < deadline) {
-      poll(nullptr, 0, 100);
+      poll(nullptr, 0, kWaitTickMs);
       continue;
     }
     error = exit == kWorkerOwned ? "another runtime still holds this session"

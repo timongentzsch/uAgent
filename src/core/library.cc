@@ -36,6 +36,6 @@ bool LibraryPath(const std::filesystem::path& root,
   return true;
 }
 bool AcquireLibraryWriteLease(FileLease& lease, std::string& error) {
-  return lease.Acquire(UagentDir("library") + "/write.lock", error);
+  return lease.Acquire(UagentDir("library") + "/" + kWriteLockFile, error);
 }
 }  // namespace uagent

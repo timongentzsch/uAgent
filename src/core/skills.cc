@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "include/core/config_registry.h"
+#include "include/core/defaults.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -129,7 +130,7 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
         end;
     for (; it != end && !ec; it.increment(ec)) {
       if (it.depth() >= kSkillDiscoveryDepth) it.disable_recursion_pending();
-      if (!it->is_regular_file(ec) || it->path().filename() != "SKILL.md") {
+      if (!it->is_regular_file(ec) || it->path().filename() != kSkillFile) {
         continue;
       }
       dirs.push_back(it->path().parent_path());
@@ -137,7 +138,7 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
     }
     std::sort(dirs.begin(), dirs.end());
     for (const fs::path& dir : dirs) {
-      fs::path file = dir / "SKILL.md";
+      fs::path file = dir / kSkillFile;
       std::ifstream input(file);
       if (!input) continue;
       std::string description;
@@ -204,7 +205,8 @@ SkillReadResult ReadSkillBody(const Skill& skill,
   }
   ReplaceAll(body, "${SKILL_DIR}", skill.dir);
   ReplaceAll(body, "$ARGUMENTS", arguments);
-  std::string out = "[skill " + skill.name + " — files in " + skill.dir + "]\n";
+  std::string out =
+      kSkillMarker + skill.name + " — files in " + skill.dir + "]\n";
   if (!arguments.empty()) out += "[arguments: " + arguments + "]\n";
   std::string normalized = std::filesystem::path(skill.path).generic_string();
   if (normalized.find("/.codex/skills/") != std::string::npos ||

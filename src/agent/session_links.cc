@@ -25,7 +25,7 @@ bool SocietySession(const std::string& path) {
   const std::filesystem::path file(path);
   const std::string name = file.filename().string();
   return file.extension() == ".json" &&
-         (name == "coordinator.json" || name.starts_with("thread-"));
+         (name == kPanelRecordFile || name.starts_with("thread-"));
 }
 
 namespace {

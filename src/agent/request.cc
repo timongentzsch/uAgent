@@ -289,7 +289,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     }
     turn_budget = static_cast<int64_t>(
         std::chrono::duration_cast<std::chrono::seconds>(
-            active_deadline_ - now + std::chrono::milliseconds(999))
+            active_deadline_ - now +
+            std::chrono::milliseconds(kMillisecondsPerSecond - 1))
             .count());
   }
   api_.exchange_context = {{"turn_root", turn_root_},

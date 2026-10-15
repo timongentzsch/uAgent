@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "include/core/config_registry.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -85,17 +86,17 @@ bool AgentConfigKey(const std::string& key) {
 
 bool ProjectMcpPresent() {
   std::error_code ec;
-  return std::filesystem::is_regular_file(".mcp.json", ec);
+  return std::filesystem::is_regular_file(kMcpConfigFile, ec);
 }
 
 bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
   std::error_code ec;
-  uintmax_t bytes = std::filesystem::file_size(".mcp.json", ec);
+  uintmax_t bytes = std::filesystem::file_size(kMcpConfigFile, ec);
   if (ec || bytes > kMcpConfigBytes) {
     error = ec ? ec.message() : "configuration exceeds byte limit";
     return false;
   }
-  std::ifstream file(".mcp.json");
+  std::ifstream file(kMcpConfigFile);
   snapshot = json::parse(file, nullptr, false);
   if (!snapshot.is_object()) {
     error = "project .mcp.json is not a valid JSON object";

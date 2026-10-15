@@ -7,7 +7,7 @@
 }
 .management-toolbar > .field {
   flex: 1;
-  max-width: 34rem;
+  max-width: var(--size-476);
 }
 .management-toolbar > p {
   flex: 1;

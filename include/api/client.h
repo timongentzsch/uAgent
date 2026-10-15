@@ -5,6 +5,8 @@
 // Provider-neutral API client declaration. Wire encoders and stream decoders
 // live under include/api and src/api.
 
+#include <sys/socket.h>
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +26,12 @@ using CURL = void;
 using CURLM = void;
 
 namespace uagent {
+
+// Whether a socket address is an ordinary public destination: not loopback,
+// private, link-local, shared, documentation, multicast or reserved space,
+// and for IPv6 only allocated global unicast. The model transport and web push
+// both refuse to connect anywhere else.
+bool PublicSocketAddress(const sockaddr* address, socklen_t length);
 
 struct StreamCtx;
 class HttpExchange;

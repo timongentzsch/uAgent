@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/core/checked.h"
+#include "include/core/defaults.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/skills.h"
@@ -47,14 +48,15 @@ std::filesystem::path InstructionPath(bool panel, bool project,
                                      : std::filesystem::path(GlobalBase()));
   }
   const std::filesystem::path dir =
-      project ? cwd / ".uagent" : std::filesystem::path(GlobalBase());
+      project ? cwd / kWorkspaceDir : std::filesystem::path(GlobalBase());
   // The file's name from before the coordinator became the panel still
   // counts where no PANEL.md has replaced it.
   std::error_code ignored;
-  return !std::filesystem::exists(dir / "PANEL.md", ignored) &&
-                 std::filesystem::exists(dir / "COORDINATOR.md", ignored)
-             ? dir / "COORDINATOR.md"
-             : dir / "PANEL.md";
+  return !std::filesystem::exists(dir / kPanelInstructionFile, ignored) &&
+                 std::filesystem::exists(dir / kLegacyPanelInstructionFile,
+                                         ignored)
+             ? dir / kLegacyPanelInstructionFile
+             : dir / kPanelInstructionFile;
 }
 
 bool ParseInstructionTarget(const std::string& audience,
@@ -187,8 +189,8 @@ std::string WriteInstructionFile(bool panel, bool project,
   // live in your private ~/.uagent. A project's .uagent stays private too.
   std::string error;
   if (!project || panel) CreatePrivateDirectories(path.parent_path());
-  AtomicWriteFile(path.string(), text, project ? 0644 : kPrivateFileMode, true,
-                  error);
+  AtomicWriteFile(path.string(), text,
+                  project ? kSharedFileMode : kPrivateFileMode, true, error);
   return error;
 }
 

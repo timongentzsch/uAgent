@@ -18,6 +18,7 @@
 
 #include "include/browser/browser.h"
 #include "include/core/fd.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/web/rfb_filter.h"
 
@@ -36,7 +37,8 @@ struct Lease {
   bool controller = false;
 };
 std::optional<Lease> ReadLease(const std::string& device) {
-  json status = browser::Request({{"op", "viewer"}, {"device", device}}, 1000);
+  json status = browser::Request({{"op", "viewer"}, {"device", device}},
+                                 browser::kProbeMs);
   if (!status.value("ok", false)) return std::nullopt;
   return Lease{JsonValue(status, "display", uint64_t{0}),
                JsonValue(status, "generation", uint64_t{0}),
@@ -67,7 +69,9 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
   bool driving = initial->controller;
   uint64_t generation = initial->generation;
   const auto release = [&] {
-    if (driving) WriteAllWithin(rfb.Get(), filter.Release(), 2000);
+    if (driving) {
+      WriteAllWithin(rfb.Get(), filter.Release(), browser::kRfbIoMs);
+    }
     driving = false;
   };
   std::thread output([&] {
@@ -106,7 +110,7 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
     }
     std::lock_guard lock(input);
     if (!filter.Push(data, forwarded, driving) ||
-        !WriteAllWithin(rfb.Get(), forwarded, 2000)) {
+        !WriteAllWithin(rfb.Get(), forwarded, browser::kRfbIoMs)) {
       break;
     }
   }

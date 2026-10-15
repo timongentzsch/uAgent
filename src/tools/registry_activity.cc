@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/agent/jobs.h"
@@ -15,6 +16,34 @@ namespace uagent {
 
 void RegisterActivityTool(std::vector<Tool>& tools,
                           ProcessSupervisor& supervisor) {
+  json schema = json::parse(
+      R"json({"type":"object","additionalProperties":false,"properties":{
+                  "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
+                  "id":{"type":"integer","minimum":1,"maximum":2147483647,
+                    "description":"required for poll, write, resize, stop"},
+                  "ids":{"type":"array","minItems":1,"maxItems":64,
+                    "items":{"type":"integer","minimum":1,"maximum":2147483647},
+                    "description":"wait targets; omitted means all eligible activities"},
+                  "chars":{"type":"string",
+                    "description":"bytes for write; empty is intentional"},
+                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000,
+                    "description":"required for wait"},
+                  "until":{"type":"string","maxLength":256,
+                    "description":"readiness marker for poll"},
+                  "mode":{"type":"string","enum":["any","all"],
+                    "description":"completion mode for wait"},
+                  "rows":{"type":"integer"},
+                  "cols":{"type":"integer"},
+                  "max_output_chars":{"type":"integer"}},
+                  "required":["operation"]})json");
+  json& properties = schema["properties"];
+  properties["chars"]["maxLength"] = kToolTextArgChars;
+  const std::string dimensions =
+      "required for resize; 1.." + std::to_string(kPtyMaxDimension);
+  properties["rows"]["description"] = dimensions;
+  properties["cols"]["description"] = dimensions;
+  properties["max_output_chars"]["minimum"] = kToolMinOutputChars;
+  properties["max_output_chars"]["maximum"] = kToolTextArgChars;
   Tool& activity = AddTool(
       tools,
       MakeTool(
@@ -23,26 +52,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
           "any/all; "
           "write sends stdin; resize sets PTY dimensions; stop terminates the "
           "process group and removes its log.",
-          json::parse(
-              R"json({"type":"object","additionalProperties":false,"properties":{
-                  "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
-                  "id":{"type":"integer","minimum":1,"maximum":2147483647,
-                    "description":"required for poll, write, resize, stop"},
-                  "ids":{"type":"array","minItems":1,"maxItems":64,
-                    "items":{"type":"integer","minimum":1,"maximum":2147483647},
-                    "description":"wait targets; omitted means all eligible activities"},
-                  "chars":{"type":"string","maxLength":65536,
-                    "description":"bytes for write; empty is intentional"},
-                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000,
-                    "description":"required for wait"},
-                  "until":{"type":"string","maxLength":256,
-                    "description":"readiness marker for poll"},
-                  "mode":{"type":"string","enum":["any","all"],
-                    "description":"completion mode for wait"},
-                  "rows":{"type":"integer","description":"required for resize; 1..1000"},
-                  "cols":{"type":"integer","description":"required for resize; 1..1000"},
-                  "max_output_chars":{"type":"integer","minimum":256,"maximum":65536}},
-                  "required":["operation"]})json"),
+          std::move(schema),
           [&supervisor](const json& a, const ToolContext& context) {
             std::string operation = JsonValue(a, "operation", "");
             int64_t id = JsonValue(a, "id", int64_t{0});
@@ -146,9 +156,11 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     if (operation == "resize") {
       int64_t rows = JsonValue(a, "rows", int64_t{0});
       int64_t cols = JsonValue(a, "cols", int64_t{0});
-      if (rows < 1 || rows > 1000 || cols < 1 || cols > 1000) {
+      if (rows < 1 || rows > kPtyMaxDimension || cols < 1 ||
+          cols > kPtyMaxDimension) {
         return ArgumentIssue("activity.invalid_dimensions",
-                             "resize requires rows and cols in 1..1000");
+                             "resize requires rows and cols in 1.." +
+                                 std::to_string(kPtyMaxDimension));
       }
     }
     return std::nullopt;

@@ -11,6 +11,7 @@
 
 #include "include/core/config.h"
 #include "include/core/config_registry.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
@@ -23,30 +24,26 @@ std::string KeyOf(std::string_view entry) {
   return std::string(entry.substr(0, equals));
 }
 
-// The keys an approved shell may keep despite looking sensitive. Parsed once
-// per child rather than once per inherited variable.
-std::vector<std::string> ShellAllowList() {
-  std::vector<std::string> allowed;
-  std::string configured = StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
-  for (std::string entry : SplitPathList(configured, ',')) {
+// A comma-separated setting as a list of names. Parsed once per child rather
+// than once per inherited variable.
+std::vector<std::string> NameList(const ConfigDescriptor& setting) {
+  std::vector<std::string> names;
+  for (std::string entry : SplitPathList(StringSetting(setting), ',')) {
     entry = Trim(entry);
-    if (!entry.empty()) allowed.push_back(std::move(entry));
+    if (!entry.empty()) {
+      names.push_back(std::move(entry));
+    }
   }
-  return allowed;
+  return names;
 }
 
 bool SensitiveEnvironmentKey(std::string_view key) {
   std::string lower = AsciiLower(std::string(key));
-  if (lower == "uagent_api_key" || lower == "uagent_providers" ||
-      lower == "uagent_session_budget" ||
-      lower == "uagent_internal_usage_file" || lower == "openrouter_api_key" ||
-      lower == "ssh_auth_sock" || lower == "xauthority") {
+  if (std::ranges::find(kHiddenEnvNames, lower) != std::end(kHiddenEnvNames)) {
     return true;
   }
   if (CredentialLikeKey(lower)) return true;
-  static constexpr std::string_view kAdditionalMarkers[] = {
-      "_access_key", "_private_key", "_cookie"};
-  for (std::string_view marker : kAdditionalMarkers) {
+  for (std::string_view marker : kHiddenEnvMarkers) {
     if (lower.find(marker) != std::string::npos) return true;
   }
   return false;
@@ -58,10 +55,18 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
                                    ChildEnvironmentPolicy policy) {
   std::vector<std::string> allow_list;
   if (policy == ChildEnvironmentPolicy::kApprovedShell) {
-    allow_list = ShellAllowList();
+    allow_list = NameList(Cfg("UAGENT_SHELL_ENV_ALLOW"));
+  }
+  std::vector<std::string> hidden = NameList(Cfg("UAGENT_SANDBOX_HIDE_ENV"));
+  for (std::string& name : hidden) {
+    name = AsciiLower(name);
   }
   const bool agent = policy == ChildEnvironmentPolicy::kAgent;
   auto permitted = [&](const std::string& key) {
+    // A name the user hides stays hidden, whoever asks.
+    if (std::ranges::find(hidden, AsciiLower(key)) != hidden.end()) {
+      return false;
+    }
     // What the user lets an approved shell have by name, it has, a
     // credential of uagent's own included.
     if (std::ranges::find(allow_list, key) != allow_list.end()) return true;

@@ -76,6 +76,13 @@ inline constexpr char kAttachedOnRequest[] = "[attached on request]";
 // Separates a message's own words from the list of files it names.
 inline constexpr char kAttachedList[] = "\n\nAttached:";
 
+// The MIME types spelled outside the extension table in attachments.cc.
+inline constexpr char kPngMime[] = "image/png";
+inline constexpr char kJpegMime[] = "image/jpeg";
+inline constexpr char kGifMime[] = "image/gif";
+inline constexpr char kWebpMime[] = "image/webp";
+inline constexpr char kOctetStreamMime[] = "application/octet-stream";
+
 // The text part always names every path, so a route that cannot take a kind
 // of attachment still learns where it is and can reach it with other tools.
 json AttachmentContent(const std::string& prompt,

@@ -20,7 +20,7 @@ dialog.settings-view {
   padding: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: calc(240rem / 14) minmax(0, 1fr);
+  grid-template-columns: var(--size-240) minmax(0, 1fr);
   min-height: 0;
   background: var(--bg);
 }
@@ -79,7 +79,7 @@ dialog.settings-view {
   gap: var(--space-3);
 }
 .setting-field .row-value > .text-control:not(.select) {
-  width: calc(220rem / 14);
+  width: var(--size-220);
 }
 /* A model's name is cut short rather than pushed out of its row. */
 .setting-field .sheet-control {
@@ -167,7 +167,7 @@ dialog.settings-view {
 }
 .mcp-log {
   margin: 0;
-  max-height: calc(160rem / 14);
+  max-height: var(--size-160);
   overflow: auto;
 }
 .mcp-detail > .row {

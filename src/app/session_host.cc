@@ -98,7 +98,7 @@ void SessionHost::Stop() {
 
 void SessionHost::LoadDrafts() {
   std::error_code ec;
-  const std::string folder = directory_ + "/drafts";
+  const std::string folder = directory_ + "/" + kDraftsDir;
   if (!EnsurePrivateDirectory(folder)) return;
   std::lock_guard lock(mutex_);
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {

@@ -1,4 +1,5 @@
 import { storage } from "../shared/storage.ts";
+import { idlePreloadMs } from "../shared/limits.ts";
 import type {
   JSONValue,
   Draft,
@@ -333,7 +334,7 @@ function App() {
           toolsDialog,
           instructionsDialog,
         ].forEach((load) => preloadDeferred<never>(load).catch(() => {})),
-      2000,
+      idlePreloadMs,
     );
     return () => clearTimeout(warm);
   }, []);

@@ -565,7 +565,7 @@ bool LikelyTextSample(std::string_view sample) {
 bool LikelyTextFile(const std::filesystem::path& path) {
   const std::string mime = AttachmentMime(path.string());
   if (mime.starts_with("image/") ||
-      (mime.starts_with("application/") && mime != "application/octet-stream" &&
+      (mime.starts_with("application/") && mime != kOctetStreamMime &&
        mime != "application/json" && mime != "application/xml")) {
     return false;
   }

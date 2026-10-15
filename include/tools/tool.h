@@ -60,6 +60,9 @@ struct ToolArtifact {
 };
 
 std::string ArtifactHint(const ToolArtifact& artifact);
+// `output` without a trailing ArtifactHint, which is structure and never the
+// cause of a failure.
+std::string StripArtifactHint(std::string output);
 
 struct ReadRange {
   std::string path;

@@ -24,10 +24,9 @@ namespace {
 constexpr size_t kSettingsBytes = size_t{4} * 1024 * 1024;
 constexpr int kFormat = 2;
 constexpr char kVariables[] = "variables";
-constexpr char kSchemaFile[] = "settings.schema.json";
 
 json EmptyDocument() {
-  return {{"$schema", std::string("./") + kSchemaFile},
+  return {{"$schema", std::string("./") + kSettingsSchemaFile},
           {"format", kFormat},
           {"all", json::object()},
           {"projects", json::object()}};
@@ -260,7 +259,7 @@ bool Upgrade(json& document) {
 
 // The schema beside the document, kept current with this build.
 void WriteSchema() {
-  const std::string path = UagentDir(kConfigDir) + "/" + kSchemaFile;
+  const std::string path = UagentDir(kConfigDir) + "/" + kSettingsSchemaFile;
   const std::string text = JsonDump(SettingsSchema(), 2) + "\n";
   if (ReadFile(path, kSettingsBytes).value_or("") == text) return;
   std::string ignored;

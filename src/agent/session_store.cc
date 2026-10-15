@@ -328,12 +328,12 @@ json SessionHeader(const std::string& path) {
 
 std::string PanelPath(const std::string& cwd) {
   return (std::filesystem::path(GlobalBase()) / kHistoryDir / WorkspaceId(cwd) /
-          "coordinator.json")
+          kPanelRecordFile)
       .string();
 }
 
 std::string SessionLockPath(const std::string& path) {
-  return CanonicalAccessPath(path).string() + ".lock";
+  return CanonicalAccessPath(path).string() + kSessionLockSuffix;
 }
 
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
@@ -427,9 +427,14 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
 }
 
 bool ValidSessionTitle(const std::string& title) {
-  return !title.empty() && title.size() <= 256 &&
+  return !title.empty() && title.size() <= kUserTitleBytes &&
          std::none_of(title.begin(), title.end(),
                       [](unsigned char ch) { return ch < 32 || ch == 127; });
+}
+
+std::string InvalidSessionTitleMessage() {
+  return "title must be 1–" + std::to_string(kUserTitleBytes) +
+         " bytes without control characters";
 }
 
 json SessionStore::Fork(const std::string& source, const std::string& title,
@@ -496,20 +501,20 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   // Owned assets are immutable; independent directory entries make deletion
   // independent without a reference-count database. Metadata is copied.
   if (std::filesystem::is_symlink(
-          std::filesystem::symlink_status(source + ".assets", ec))) {
+          std::filesystem::symlink_status(source + kSessionAssetsSuffix, ec))) {
     return {{"error", "unsafe source attachment directory"}};
   }
   ec.clear();
-  if (std::filesystem::exists(source + ".assets", ec)) {
-    CreatePrivateDirectories(path + ".assets");
-    for (const auto& entry :
-         std::filesystem::directory_iterator(source + ".assets", ec)) {
+  if (std::filesystem::exists(source + kSessionAssetsSuffix, ec)) {
+    CreatePrivateDirectories(path + kSessionAssetsSuffix);
+    for (const auto& entry : std::filesystem::directory_iterator(
+             source + kSessionAssetsSuffix, ec)) {
       if (!entry.is_regular_file(ec) || entry.is_symlink(ec)) {
         ec = std::make_error_code(std::errc::invalid_argument);
         break;
       }
-      auto destination =
-          std::filesystem::path(path + ".assets") / entry.path().filename();
+      auto destination = std::filesystem::path(path + kSessionAssetsSuffix) /
+                         entry.path().filename();
       std::filesystem::copy_file(entry.path(), destination, ec);
       if (ec) break;
     }
@@ -558,7 +563,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
       }
       value = it->second;
     } else {
-      ReplaceAll(text, source + ".assets/", path + ".assets/");
+      ReplaceAll(text, source + kSessionAssetsSuffix + "/",
+                 path + kSessionAssetsSuffix + "/");
       value = std::move(text);
     }
   };
@@ -588,13 +594,13 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     record.metadata.title = Utf8Prefix(
         "Fork of " + record.metadata.title +
             (fork_turn > 0 ? " @ turn " + std::to_string(fork_turn) : ""),
-        256);
+        kUserTitleBytes);
   }
   record.metadata.custom_title = true;
   auto result =
       ec ? Error(SessionStoreError::kIo, ec.message()) : Save(path, record);
   if (!result.Ok()) {
-    std::filesystem::remove_all(path + ".assets", ec);
+    std::filesystem::remove_all(path + kSessionAssetsSuffix, ec);
     for (const auto& [original, copy] : copies) {
       if (!copy.empty()) unlink(copy.c_str());
     }
@@ -698,8 +704,7 @@ json SessionStore::Share(const std::string& path) {
 SessionStoreStatus SessionStore::Rename(const std::string& path,
                                         const std::string& title) {
   if (!ValidSessionTitle(title)) {
-    return Error(SessionStoreError::kInvalid,
-                 "title must be 1–256 bytes without control characters");
+    return Error(SessionStoreError::kInvalid, InvalidSessionTitleMessage());
   }
   FileLease writer;
   std::string error;
@@ -726,9 +731,15 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   // a completed deletion. Acquire ownership before changing any files.
   if (!draft_path.empty()) std::filesystem::remove(draft_path, ec);
   // These are session-owned siblings; remove_all never follows symlinks.
-  if (!ec) std::filesystem::remove_all(path + ".assets", ec);
-  if (!ec) std::filesystem::remove_all(path + ".edits", ec);
-  if (!ec) std::filesystem::remove(path + ".events.jsonl", ec);
+  if (!ec) {
+    std::filesystem::remove_all(path + kSessionAssetsSuffix, ec);
+  }
+  if (!ec) {
+    std::filesystem::remove_all(path + kSessionEditsSuffix, ec);
+  }
+  if (!ec) {
+    std::filesystem::remove(path + kSessionJournalSuffix, ec);
+  }
   if (!ec) std::filesystem::remove(path, ec);
   if (!ec && loaded.record) {
     const json facts =

@@ -7,6 +7,7 @@
 
 #include "include/agent/path_policy.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -52,9 +53,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // one changes nothing a person relies on. Running it is what asks, and the
   // scratch approval shows the script.
   auto outside_scratch = [workspace](const json& args) {
-    return !PathWithin(
-        CanonicalAccessPath(JsonValue(args, "path", "")),
-        CanonicalAccessPath((workspace / ".uagent" / "scratch").string()));
+    return !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
+                       CanonicalAccessPath(ScratchDir(workspace).string()));
   };
   auto reads_only = [](Tool& tool) {
     tool.approval_class = [](const json& args) {

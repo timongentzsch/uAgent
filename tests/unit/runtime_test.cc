@@ -739,6 +739,19 @@ void TestChildEnvironmentPolicy() {
   CHECK(!approved.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!approved.Contains("UAGENT_PROVIDERS"));
 
+  // sandbox.hideEnv adds names, matched without regard to case, and wins over
+  // shell.envAllow. Overrides a caller sets itself are not filtered.
+  ScopedEnv scoped_hidden_env("UAGENT_SANDBOX_HIDE_ENV",
+                              " Internal_Url , GITHUB_TOKEN ");
+  ScopedEnv scoped_internal("INTERNAL_URL", "https://corp.example");
+  ChildEnvironment hiding({}, ChildEnvironmentPolicy::kApprovedShell);
+  CHECK(!hiding.Contains("INTERNAL_URL"));
+  CHECK(!hiding.Contains("GITHUB_TOKEN"));
+  CHECK(!ChildEnvironment({}, ChildEnvironmentPolicy::kAgent)
+             .Contains("INTERNAL_URL"));
+  CHECK(ChildEnvironment({{"INTERNAL_URL", "explicit"}})
+            .Contains("INTERNAL_URL"));
+
   ChildEnvironment delegated({{"UAGENT_API_KEY", "explicit"},
                               {"UAGENT_INTERNAL_USAGE_FILE", "/tmp/child"}});
   CHECK(delegated.Contains("UAGENT_API_KEY"));

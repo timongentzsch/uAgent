@@ -13,6 +13,8 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/jobs.h"
+#include "include/agent/session_view.h"
+#include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
 #include "include/core/tool_activity.h"
 #include "include/tools/adapt_system.h"
@@ -410,7 +412,8 @@ void TestToolExecutionPolicy() {
                        .immediate = true,
                        .activity_kind = ActivityKind::kSubagent})
           .result;
-  CHECK(launched.output.starts_with("[started] subagent id "));
+  CHECK(launched.output.starts_with(kStartedSubagentMarker));
+  CHECK(StripModelHints(launched.output).empty());
   CHECK(task_processes.JoinableCount() == 1);
   std::vector<BgJob> tasks = task_processes.Snapshot();
   CHECK(tasks.size() == 1);

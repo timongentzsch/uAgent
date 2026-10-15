@@ -23,6 +23,7 @@ namespace uagent {
   X(TestToolViews)                                \
   X(TestVerbosityLevels)                          \
   X(TestModelHints)                               \
+  X(TestModelHintMarkers)                         \
   X(TestRegistries)                               \
   X(TestCommandAndDisplayRegistries)              \
   X(TestModelCatalogParsing)                      \

@@ -16,9 +16,12 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/core/defaults.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/media/attachments.h"
 
 namespace uagent {
 namespace {
@@ -262,13 +265,13 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
   const auto changed = [&](const json* block) {
     if (patch && block) *patch = {{"kind", "block"}, {"block", *block}};
   };
-  if (type == "usage.updated") {
+  if (type == AppType(EventId::kUsageUpdated)) {
     state["usage"] = data["usage"];
     if (data.contains("context_tokens")) {
       state["context_tokens"] = data["context_tokens"];
     }
     if (data.contains("statistics")) state["statistics"] = data["statistics"];
-  } else if (type == "response.started") {
+  } else if (type == AppType(EventId::kResponseStarted)) {
     const std::string response_id = JsonValue(data, "response_id", "");
     if (!response_id.empty()) {
       changed(
@@ -286,14 +289,14 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
                                             {"reasoning_revision", 1},
                                             {"reasoning_complete", false}}));
     }
-  } else if (type == "response.answer.delta" ||
-             type == "response.reasoning.delta") {
+  } else if (type == AppType(EventId::kAnswerDelta) ||
+             type == AppType(EventId::kReasoningDelta)) {
     // Deltas without a response id have no started block to extend (the
     // started branch above requires one). The full block still arrives via
     // message.changed, so skipping here loses nothing.
     const std::string response_id = JsonValue(data, "response_id", "");
     json* found = FindBlock(state, response_id);
-    const bool answer = type == "response.answer.delta";
+    const bool answer = type == AppType(EventId::kAnswerDelta);
     if (!found ||
         JsonValue(*found, answer ? "content_complete" : "reasoning_complete",
                   false)) {
@@ -330,7 +333,7 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
                 {"id", response_id},
                 {"append", {{field, std::move(added)}}}};
     }
-  } else if (type == "response.finished") {
+  } else if (type == AppType(EventId::kResponseFinished)) {
     if (json* found = FindBlock(state, JsonValue(data, "response_id", ""))) {
       (*found)["streaming"] = false;
       if (patch) {
@@ -339,18 +342,20 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
                   {"set", {{"streaming", false}}}};
       }
     }
-  } else if (type == "tool.call" || type == "tool.result") {
+  } else if (type == AppType(EventId::kToolCall) ||
+             type == AppType(EventId::kToolResult)) {
     if (JsonValue(data, "detail_id", "").empty()) return true;
-    changed(MergeDisplayBlock(state["view"], type == "tool.call"
+    changed(MergeDisplayBlock(state["view"], type == AppType(EventId::kToolCall)
                                                  ? LiveToolRow(data)
                                                  : LiveToolResult(data)));
-  } else if (type == "message.changed") {
+  } else if (type == AppType(EventId::kMessageChanged)) {
     changed(MergeDisplayBlock(state["view"], data["block"]));
-  } else if (type == "activities.changed") {
+  } else if (type == AppType(EventId::kActivitiesChanged)) {
     state["activities"] = data["activities"];
-  } else if (type == "http.exchange") {
+  } else if (type == AppType(EventId::kHttpExchange)) {
     state["http"] = json::array({data});
-  } else if (type == "config.changed" && data.contains("permissions")) {
+  } else if (type == AppType(EventId::kConfigChanged) &&
+             data.contains("permissions")) {
     state["permissions"] = data["permissions"];
     state["yolo"] = JsonValue(data["permissions"], "effective", "") == "yolo";
   } else {
@@ -701,7 +706,7 @@ json ReadPrivateArtifact(const std::string& path, size_t offset) {
   auto base = CanonicalAccessPath(file_path.parent_path());
   const bool diff =
       file_path.filename().string().starts_with("diff-") &&
-      base.string().ends_with(".json.edits") &&
+      base.string().ends_with(std::string(".json") + kSessionEditsSuffix) &&
       PathWithin(base, CanonicalAccessPath(UagentDir(kHistoryDir)));
   if (!diff && base != CanonicalAccessPath(UagentDir(kArtifactsDir))) {
     return {{"error", "retained body unavailable"}};
@@ -770,14 +775,14 @@ json ConversationExchange(const Conversation& conversation,
 
 std::string StripModelHints(std::string text) {
   for (std::string_view hint :
-       {"[running] activity ", "[started] subagent id ", "[detached] pid "}) {
+       {kRunningActivityMarker, kStartedSubagentMarker, kDetachedMarker}) {
     if (text.starts_with(hint)) {
       const size_t end = text.find('\n');
       text.erase(0, end == std::string::npos ? text.size() : end + 1);
       break;
     }
   }
-  const size_t line = text.rfind("\n[collaborator ");
+  const size_t line = text.rfind(kCollaboratorMarker);
   if (line != std::string::npos && text.back() == ']' &&
       text.find('\n', line + 1) == std::string::npos) {
     text.resize(line);
@@ -786,10 +791,10 @@ std::string StripModelHints(std::string text) {
 }
 
 std::string StripAttachedTrailer(const std::string& text) {
-  constexpr std::string_view kMarker = "\n\nAttached:\n";
-  const size_t marker = text.rfind(kMarker);
+  const std::string trailer = std::string(kAttachedList) + "\n";
+  const size_t marker = text.rfind(trailer);
   if (marker == std::string::npos) return text;
-  size_t pos = marker + kMarker.size();
+  size_t pos = marker + trailer.size();
   bool referenced = false;
   while (pos < text.size()) {
     size_t end = text.find('\n', pos);

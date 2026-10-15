@@ -78,8 +78,8 @@ bool AppSession::Save(std::string& error, bool force) {
       !ActiveAgent().Save(session_file, error)) {
     return false;
   }
-  if (!context.observability.Journal().Flush(session_file + ".events.jsonl",
-                                             error)) {
+  if (!context.observability.Journal().Flush(
+          session_file + kSessionJournalSuffix, error)) {
     return false;
   }
   saved_revision = ActiveAgent().Revision();

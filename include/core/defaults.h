@@ -44,6 +44,45 @@ inline constexpr std::string_view kPackageCaches[] = {
 // On macOS, the native cache folder as well (uv keeps using ~/.cache there).
 inline constexpr std::string_view kMacPackageCaches[] = {"Library/Caches"};
 
+// Markers a tool result carries for the model, which the transcript view,
+// compaction and the memory extractor later find by their opening. Each is
+// written in one place and read in another; one constant keeps the two from
+// drifting, and the tests pin that the reader accepts what the writer emits.
+inline constexpr char kDetachedMarker[] = "[detached] pid ";
+inline constexpr char kStartedSubagentMarker[] = "[started] subagent id ";
+inline constexpr char kRunningActivityMarker[] = "[running] activity ";
+// Appended by ArtifactHint(); StripArtifactHint() removes it.
+inline constexpr char kCapturedLogMarker[] = "\n[captured log: ";
+// The last line of a subagent's result (ChildAgentResumeNote).
+inline constexpr char kCollaboratorMarker[] = "\n[collaborator ";
+// A skill body: the skill tool's result and what `$skill` pushed.
+inline constexpr char kSkillMarker[] = "[skill ";
+inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
+
+// Environment variables that never reach a child process: shell commands,
+// MCP servers and delegated agents (see ChildEnvironment). Names are matched
+// without regard to case, and a variable whose name holds a marker, or looks
+// like a credential (CredentialLikeKey), is held back as well. A shell may
+// keep one by name with `shell.envAllow`; `sandbox.hideEnv` adds your own
+// names, e.g. sandbox.hideEnv=MYCLOUD_SESSION,INTERNAL_URL.
+inline constexpr std::string_view kHiddenEnvNames[] = {
+    "uagent_api_key",
+    "uagent_providers",
+    "uagent_session_budget",
+    "uagent_internal_usage_file",
+    "openrouter_api_key",
+    "ssh_auth_sock",  // the agent that holds your ssh keys
+    "xauthority"};    // the X display's login cookie
+inline constexpr std::string_view kHiddenEnvMarkers[] = {
+    "_access_key", "_private_key", "_cookie"};
+
+// File names uAgent reads or writes in more than one place.
+inline constexpr char kSkillFile[] = "SKILL.md";
+inline constexpr char kMcpConfigFile[] = ".mcp.json";
+// A panel's instructions. COORDINATOR.md is what they were called before.
+inline constexpr char kPanelInstructionFile[] = "PANEL.md";
+inline constexpr char kLegacyPanelInstructionFile[] = "COORDINATOR.md";
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_DEFAULTS_H_

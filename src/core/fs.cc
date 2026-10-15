@@ -70,8 +70,9 @@ std::string Tilde(const std::string& path) {
 // home, never to a project-controlled location.
 std::string GlobalBase() {
   std::string home = UserHome();
-  return home.empty() ? "/tmp/uagent-" + std::to_string(getuid()) + "/.uagent"
-                      : home + "/.uagent";
+  return home.empty()
+             ? "/tmp/uagent-" + std::to_string(getuid()) + "/" + kWorkspaceDir
+             : home + "/" + kWorkspaceDir;
 }
 
 std::string RuntimeDir() {
@@ -82,7 +83,7 @@ std::string RuntimeDir() {
 // The directory a workspace opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
-  return cwd / ".uagent";
+  return cwd / kWorkspaceDir;
 }
 
 // Write every byte or report why not; errno is left set for the caller.
@@ -226,7 +227,7 @@ bool EnsurePrivateDirectory(const std::string& path) {
   CreatePrivateDirectories(path);
   struct stat info{};
   return lstat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode) &&
-         info.st_uid == geteuid() && (info.st_mode & 0077) == 0;
+         info.st_uid == geteuid() && (info.st_mode & kGroupOtherModeBits) == 0;
 }
 namespace {
 
@@ -280,10 +281,15 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
       // A session's lock, journal, undo blobs and attachments age out, but
       // never count against the sessions themselves.
       const std::string path = artifact.path.string();
-      bool session_sidecar = path.ends_with(".json.lock") ||
-                             path.ends_with(".events.jsonl") ||
-                             path.find(".json.edits/") != std::string::npos ||
-                             path.find(".json.assets/") != std::string::npos;
+      const auto beside_record = [&](const char* suffix) {
+        return path.find(std::string(".json") + suffix + "/") !=
+               std::string::npos;
+      };
+      bool session_sidecar =
+          path.ends_with(std::string(".json") + kSessionLockSuffix) ||
+          path.ends_with(kSessionJournalSuffix) ||
+          beside_record(kSessionEditsSuffix) ||
+          beside_record(kSessionAssetsSuffix);
       if (max_files > 0 && !session_sidecar) {
         kept.push(std::move(artifact));
         if (kept.size() > static_cast<size_t>(max_files)) {
@@ -300,13 +306,13 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
 
 void PruneSessionJournalOrphans(const std::string& dir) {
   namespace fs = std::filesystem;
-  constexpr std::string_view kSuffix = ".events.jsonl";
+  const std::string_view suffix = kSessionJournalSuffix;
   ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
     std::error_code ec;
     if (!entry.is_regular_file(ec)) return;
     std::string path = entry.path().string();
-    if (!path.ends_with(kSuffix)) return;
-    std::string session = path.substr(0, path.size() - kSuffix.size());
+    if (!path.ends_with(suffix)) return;
+    std::string session = path.substr(0, path.size() - suffix.size());
     std::error_code exists_error;
     if (!fs::exists(session, exists_error) && !exists_error) {
       std::error_code remove_error;
@@ -323,7 +329,7 @@ void MaintainArtifacts() {
                     HistoryDays(), kHistoryFiles);
   PruneArtifactTree(UagentDir(kSessionsDir), kDebugDays, kDebugFiles);
   // Mail by age only: a count would drop mail still waiting to be read.
-  PruneArtifactTree(UagentDir("mail"), kDebugDays, 0);
+  PruneArtifactTree(UagentDir(kMailDir), kDebugDays, 0);
   PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
@@ -332,10 +338,10 @@ void MaintainArtifacts() {
   // A skill import that was killed leaves its staging folder; nothing else
   // lives there, and no import runs for a day.
   std::error_code staging_error;
-  const auto staging_cutoff =
-      std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+  const auto staging_cutoff = std::filesystem::file_time_type::clock::now() -
+                              std::chrono::hours(kOrphanAgeHours);
   for (const auto& entry : std::filesystem::directory_iterator(
-           UagentDir("staging"), staging_error)) {
+           UagentDir(kStagingDir), staging_error)) {
     std::error_code time_error;
     if (entry.last_write_time(time_error) < staging_cutoff && !time_error) {
       std::filesystem::remove_all(entry.path(), time_error);

@@ -22,7 +22,8 @@
 namespace uagent {
 namespace {
 
-constexpr auto kProposalLifetime = std::chrono::minutes(5);
+constexpr auto kProposalLifetime =
+    std::chrono::minutes(kProposalLifetimeMinutes);
 
 // A neighbouring line in the diff may assign a secret this change does not
 // touch, so both sides are sanitized before any hunk is built.

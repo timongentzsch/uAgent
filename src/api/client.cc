@@ -97,27 +97,31 @@ bool PublicIpv6(const unsigned char* bytes) {
 
   // Only currently allocated global unicast space (2000::/3), minus the two
   // prefixes that tunnel an IPv4 destination inside it: 2001::/23 (Teredo and
-  // neighbours) and 2002::/16 (6to4).
+  // neighbours) and 2002::/16 (6to4), and the documentation prefix
+  // 2001:db8::/32.
   if ((bytes[0] & 0xe0) != 0x20) return false;
   return !(bytes[0] == 0x20 &&
-           ((bytes[1] == 0x01 && bytes[2] < 0x02) || bytes[1] == 0x02));
+           ((bytes[1] == 0x01 &&
+             (bytes[2] < 0x02 || (bytes[2] == 0x0d && bytes[3] == 0xb8))) ||
+            bytes[1] == 0x02));
 }
+}  // namespace
 
-bool PublicSocketAddress(const curl_sockaddr& address) {
-  if (address.family == AF_INET && address.addrlen >= sizeof(sockaddr_in)) {
-    const auto* socket_address =
-        reinterpret_cast<const sockaddr_in*>(&address.addr);
+bool PublicSocketAddress(const sockaddr* address, socklen_t length) {
+  if (address->sa_family == AF_INET && length >= sizeof(sockaddr_in)) {
+    const auto* socket_address = reinterpret_cast<const sockaddr_in*>(address);
     return PublicIpv4(
         reinterpret_cast<const unsigned char*>(&socket_address->sin_addr));
   }
-  if (address.family == AF_INET6 && address.addrlen >= sizeof(sockaddr_in6)) {
-    const auto* socket_address =
-        reinterpret_cast<const sockaddr_in6*>(&address.addr);
+  if (address->sa_family == AF_INET6 && length >= sizeof(sockaddr_in6)) {
+    const auto* socket_address = reinterpret_cast<const sockaddr_in6*>(address);
     return PublicIpv6(
         reinterpret_cast<const unsigned char*>(&socket_address->sin6_addr));
   }
   return false;
 }
+
+namespace {
 
 struct PublicSocketPolicy {
   bool denied = false;
@@ -126,7 +130,8 @@ struct PublicSocketPolicy {
 curl_socket_t OpenPublicSocket(void* user, curlsocktype purpose,
                                curl_sockaddr* address) {
   auto* policy = static_cast<PublicSocketPolicy*>(user);
-  if (purpose != CURLSOCKTYPE_IPCXN || !PublicSocketAddress(*address)) {
+  if (purpose != CURLSOCKTYPE_IPCXN ||
+      !PublicSocketAddress(&address->addr, address->addrlen)) {
     policy->denied = true;
     return CURL_SOCKET_BAD;
   }
@@ -236,6 +241,10 @@ bool StreamDeadlineExpired(StreamCtx* context) {
   return true;
 }
 
+// A stream on a thread with its own abort flag polls in slices this long, so
+// the flag is noticed.
+constexpr int kLocalPollSliceMs = 250;
+
 int CurlPollTimeout(CURLM* multi, StreamCtx* context) {
   long curl_timeout = -1;  // NOLINT: libcurl ABI
   (void)curl_multi_timeout(multi, &curl_timeout);
@@ -265,8 +274,9 @@ CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
          !StreamDeadlineExpired(context)) {
     curl_waitfd wake = {AbortWakeFd(), CURL_WAIT_POLLIN, 0};
     int descriptors = 0;
-    const int timeout = local ? std::min(CurlPollTimeout(multi, context), 250)
-                              : CurlPollTimeout(multi, context);
+    const int timeout =
+        local ? std::min(CurlPollTimeout(multi, context), kLocalPollSliceMs)
+              : CurlPollTimeout(multi, context);
     multi_result = curl_multi_poll(multi, local ? nullptr : &wake,
                                    local ? 0 : 1, timeout, &descriptors);
     if ((wake.revents & CURL_WAIT_POLLIN) && !AbortRequested()) {
@@ -712,9 +722,10 @@ bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
     for (;;) {
       auto now = std::chrono::steady_clock::now();
       if (now >= deadline || AbortRequested()) break;
-      int ready = poll(&wake, 1,
-                       local ? std::min(PollTimeoutMs(deadline), 250)
-                             : PollTimeoutMs(deadline));
+      int ready =
+          poll(&wake, 1,
+               local ? std::min(PollTimeoutMs(deadline), kLocalPollSliceMs)
+                     : PollTimeoutMs(deadline));
       if (ready < 0 && errno == EINTR) continue;
       if (ready < 0) break;
       if (ready == 0) {

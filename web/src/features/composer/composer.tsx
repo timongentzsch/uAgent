@@ -48,7 +48,7 @@ import {
   SessionSummary,
 } from "../../shared/session-summary.tsx";
 const decisionPanel = () => import("../../shared/decision.tsx");
-import { maxRecalledPromptSessions } from "../../shared/limits.ts";
+import { maxRecalledPromptSessions, stopGuardMs } from "../../shared/limits.ts";
 import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
@@ -623,7 +623,8 @@ export default function Composer({
             onClick={
               stopping
                 ? () => {
-                    if (performance.now() - lastSent.current < 500) return;
+                    if (performance.now() - lastSent.current < stopGuardMs)
+                      return;
                     act("interrupt").catch(report);
                   }
                 : undefined

@@ -24,12 +24,14 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
+#include "include/agent/session_view.h"
 #include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
@@ -485,7 +487,8 @@ void TestActivitySessions() {
     ToolResult yielded = public_run->run(
         {{"command", "sleep 60"}, {"yield_ms", kMinYieldMs}}, context);
     CHECK(yielded.Ok());
-    CHECK(yielded.output.find("[running] activity") != std::string::npos);
+    CHECK(yielded.output.starts_with(kRunningActivityMarker));
+    CHECK(!StripModelHints(yielded.output).starts_with(kRunningActivityMarker));
     for (const BgJob& job : automatic_yield.Snapshot()) {
       CHECK_OK(ToolActivityStop(automatic_yield, ActivityId(job)));
     }

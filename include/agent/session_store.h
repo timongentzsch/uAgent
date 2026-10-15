@@ -155,6 +155,8 @@ struct SessionLoadResult {
 };
 
 bool ValidSessionTitle(const std::string& title);
+// What the rule is, for the error that rejects a title.
+std::string InvalidSessionTitleMessage();
 
 class SessionStore {
  public:

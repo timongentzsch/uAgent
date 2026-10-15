@@ -15,9 +15,11 @@
 #include "include/agent/tool_presentation.h"
 #include "include/cli/options.h"
 #include "include/core/activity.h"
+#include "include/core/defaults.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
+#include "include/tools/tool.h"
 #include "include/ui/display.h"
 #include "tests/unit/terminal_test_support.h"
 
@@ -459,6 +461,22 @@ void TestModelHints() {
         "Serving");
   CHECK(StripModelHints("[started] subagent id 7; wait").empty());
   CHECK(StripModelHints("plain") == "plain");
+}
+
+// Each marker a tool writes for the model is stripped from the view, and the
+// parser reads exactly what the writer emits.
+void TestModelHintMarkers() {
+  for (const char* marker :
+       {kRunningActivityMarker, kStartedSubagentMarker, kDetachedMarker}) {
+    CHECK(StripModelHints(std::string(marker) + "7; hint\nbody") == "body");
+    CHECK(StripModelHints("body " + std::string(marker) + "7") ==
+          "body " + std::string(marker) + "7");
+  }
+  CHECK(StripModelHints("done" + ChildAgentResumeNote("agent-1")) == "done");
+  const std::string hint = ArtifactHint({"/tmp/log.txt", 99});
+  CHECK(hint.starts_with(kCapturedLogMarker));
+  CHECK(StripArtifactHint("tail line" + hint) == "tail line");
+  CHECK(StripArtifactHint("tail line") == "tail line");
 }
 
 void TestDiffLineColoring() {

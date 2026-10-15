@@ -32,7 +32,9 @@ constexpr const char* kProbeScript =
 //
 // Reading gets text from `offset`, or with `find` the lines that contain it
 // (from match `offset` on) and the links that do.
-constexpr const char* kPageScript = R"js(((offset, find, acting) => {
+std::string PageScript() {
+  const std::string chars = std::to_string(kPageTextChars);
+  return std::string(R"js(((offset, find, acting) => {
   const t = document.body ? document.body.innerText : '';
   const title = document.title || '';
   let block = null;
@@ -98,7 +100,9 @@ constexpr const char* kPageScript = R"js(((offset, find, acting) => {
       kept.push(n);
       rows.push('[' + kept.length + '] ' + kind + ' "' + name + '"' + state);
     }
-    return {...page, text: t.slice(0, 12000), elements: rows.join('\n')};
+    return {...page, text: t.slice(0, )js") +
+         chars +
+         R"js(), elements: rows.join('\n')};
   }
   const wanted = find.toLowerCase();
   const links = new Map();
@@ -113,7 +117,9 @@ constexpr const char* kPageScript = R"js(((offset, find, acting) => {
   }
   const list = [...links].map(([to, name]) => name + ' -> ' + to).join('\n');
   if (!find) {
-    return {...page, text: t.slice(offset, offset + 12000), links: list};
+    return {...page, text: t.slice(offset, offset + )js" +
+         chars +
+         R"js(), links: list};
   }
   // A long line is cut around what was searched for, not before it.
   const hits = [];
@@ -126,6 +132,7 @@ constexpr const char* kPageScript = R"js(((offset, find, acting) => {
   return {...page, matches: hits.length,
           text: hits.slice(offset, offset + 200).join('\n'), links: list};
 }))js";
+}
 }  // namespace
 
 // The web page tabs, capped: id, clean URL, title and the tab that opened it.
@@ -205,7 +212,7 @@ json Runtime::Read(const json& command) {
   json page =
       Call("Runtime.evaluate",
            {{"expression",
-             std::string(kPageScript) + "(" +
+             PageScript() + "(" +
                  std::to_string(std::max(JsonValue(command, "offset", 0), 0)) +
                  "," + JsonDump(JsonValue(command, "find", "")) + ",false)"},
             {"returnByValue", true}},
@@ -266,10 +273,10 @@ json Runtime::Observe(bool image) {
     }
     picture = JsonValue(*taken, "data", "");
   }
-  json page = Call("Runtime.evaluate",
-                   {{"expression", std::string(kPageScript) + "(0,\"\",true)"},
-                    {"returnByValue", true}},
-                   page_session_);
+  json page = Call(
+      "Runtime.evaluate",
+      {{"expression", PageScript() + "(0,\"\",true)"}, {"returnByValue", true}},
+      page_session_);
   json details = json::object();
   if (const json* response = JsonObject(page, "result")) {
     if (const json* remote = JsonObject(*response, "result")) {

@@ -68,3 +68,66 @@ test("spacing, font sizes and line heights use the scale tokens", () => {
   }
   assert.deepEqual(stray, []);
 });
+
+// Fixed sizes come from the --size-N scale in style.css, so an icon or a
+// control is the same size wherever it appears. A hairline is 1px, and 0px is
+// zero where a math function needs a length rather than a number. A length
+// in em follows the element's own font size, which is the scale there, so em
+// is not flagged. Stacking and loop durations are tokens too: a literal
+// z-index or animation time is a layer or a speed one screen picked alone.
+const SIZED =
+  /^\s*(?:width|height|min-width|max-width|min-height|max-height)\s*:\s*([^;]*)/;
+const SIZE_LITERAL = /[\d.]+(?:px|rem)\b/;
+const STACKED = /^\s*z-index\s*:\s*([^;]*)/;
+const ANIMATED = /^\s*animation(?:-duration)?\s*:\s*([^;]*)/;
+const DURATION_LITERAL = /[\d.]+m?s\b/;
+
+test("sizes, stacking and animation times use the scale tokens", () => {
+  const stray = [];
+  const bare = (value) => value?.replace(/var\([^)]*\)/g, "");
+  for (const path of sheets("src")) {
+    if (SCALE_EXEMPT.has(path)) continue;
+    for (const [index, line] of readFileSync(join("src", path), "utf8")
+      .split("\n")
+      .entries()) {
+      const size = bare(SIZED.exec(line)?.[1])?.replace(/\b[01]px\b/g, "");
+      const layer = bare(STACKED.exec(line)?.[1]);
+      const time = bare(ANIMATED.exec(line)?.[1]);
+      if (
+        (size && SIZE_LITERAL.test(size)) ||
+        (layer && /\d/.test(layer)) ||
+        (time && DURATION_LITERAL.test(time))
+      )
+        stray.push(`${path}:${index + 1}: ${line.trim()}`);
+    }
+  }
+  assert.deepEqual(stray, []);
+});
+
+// A media query cannot read a custom property, so the breakpoints are
+// written out in the stylesheets and again where a script asks the same
+// question. This pins the set, and that the scripts use the same numbers.
+test("breakpoints in the stylesheets match the scripts'", () => {
+  const found = new Set();
+  for (const path of sheets("src")) {
+    const css = readFileSync(join("src", path), "utf8");
+    for (const [, kind, width] of css.matchAll(
+      /@media[^{]*\((max|min)-width:\s*(\d+)px\)/g,
+    ))
+      found.add(`${kind}-width: ${width}px`);
+  }
+  // 601 is the first width the 600px phone layout does not cover.
+  assert.deepEqual([...found].sort(), [
+    "max-width: 600px",
+    "max-width: 900px",
+    "min-width: 601px",
+  ]);
+  assert.match(
+    readFileSync("src/shared/layout.ts", "utf8"),
+    /useMedia\("\(max-width: 600px\)"\)/,
+  );
+  assert.match(
+    readFileSync("src/app/app.tsx", "utf8"),
+    /useMedia\("\(max-width: 900px\)"\)/,
+  );
+});

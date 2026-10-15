@@ -21,6 +21,7 @@
 #include "include/api/retry.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/limits.h"
@@ -76,7 +77,7 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 
 void Agent::PushSkillContext(std::string skill) {
   conversation_.Push(
-      HarnessMessage("[explicit skill instructions; user selected]\n" +
+      HarnessMessage(kExplicitSkillMarker + std::string("; user selected]\n") +
                      std::move(skill)),
       MessageKind::kInternal);
 }

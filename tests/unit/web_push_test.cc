@@ -68,6 +68,18 @@ int TestPush() {
   }
   inet_pton(AF_INET, "142.250.185.42", &address.sin_addr);
   REQUIRE(PublicPushAddress(reinterpret_cast<sockaddr*>(&address)));
+  // The same ranges the model transport refuses, in either family.
+  inet_pton(AF_INET, "192.88.99.1", &address.sin_addr);
+  REQUIRE(!PublicPushAddress(reinterpret_cast<sockaddr*>(&address)));
+  sockaddr_in6 v6{};
+  v6.sin6_family = AF_INET6;
+  v6.sin6_port = htons(443);
+  for (const char* ip : {"2001:db8::1", "2002::1", "fe80::1", "::1"}) {
+    inet_pton(AF_INET6, ip, &v6.sin6_addr);
+    REQUIRE(!PublicPushAddress(reinterpret_cast<sockaddr*>(&v6)));
+  }
+  inet_pton(AF_INET6, "2606:4700::1111", &v6.sin6_addr);
+  REQUIRE(PublicPushAddress(reinterpret_cast<sockaddr*>(&v6)));
   std::string authorization =
       VapidAuthorization(key.get(), "https://fcm.googleapis.com",
                          "mailto:test@example.com", 1800000000);

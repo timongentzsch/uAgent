@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
@@ -113,7 +114,7 @@ void ReadFrames(int fd, int stop_fd, size_t limit,
                       : PollTimeoutMs(deadline);
     if (timeout == 0) return;
     if (timeout > 0 || interruptible) {
-      timeout = timeout < 0 ? 100 : std::min(timeout, 100);
+      timeout = timeout < 0 ? kWaitTickMs : std::min(timeout, kWaitTickMs);
     }
     pollfd waits[] = {{fd, POLLIN, 0}, {stop_fd, POLLIN, 0}};
     int ready = poll(waits, 2, timeout);

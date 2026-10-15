@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/defaults.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/time.h"
@@ -48,10 +49,18 @@ ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
 }
 
 std::string ArtifactHint(const ToolArtifact& artifact) {
-  return "\n[captured log: " + artifact.path + " (" +
+  return kCapturedLogMarker + artifact.path + " (" +
          std::to_string(artifact.bytes) +
          " bytes); query with jq/python via run or read selected ranges; do "
          "not read it whole]";
+}
+
+std::string StripArtifactHint(std::string output) {
+  const size_t hint = output.find(kCapturedLogMarker);
+  if (hint != std::string::npos) {
+    output.resize(hint);
+  }
+  return output;
 }
 
 ToolResult ToolSuccess(std::string output, int64_t result_chars) {

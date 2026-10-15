@@ -614,7 +614,7 @@ def save_settings(home, folder=None, **values):
     the document replaced in one step. Settings are named as the environment
     names them; any other name is a variable. None removes one."""
     path = settings_path(home)
-    document = {"format": 2, "all": {}, "projects": {}}
+    document = {"format": 3, "all": {}, "projects": {}}
     if path.exists():
         document = json.loads(path.read_text())
     scope = document["all"]

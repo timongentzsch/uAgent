@@ -62,14 +62,14 @@ def ask(url, key, model, case, intent, questions):
 
 
 def decide(row, allow, deny, veto):
-    """The binary's rule: allow needs P(allow) >= allow and no veto question at
-    or above veto; deny needs P(deny) >= deny; anything else asks."""
+    """The binary's rule: deny needs P(deny) >= deny; allow needs P(allow) >=
+    allow and no veto question at or above veto; anything else asks."""
     answers = row["body"]["answers"]
     probabilities = answers["permission"]["probabilities"]
     vetoed = any(answers[name]["noul"] >= veto for name in VETOES)
-    if probabilities.get("allow", 0) >= allow and not vetoed:
-        return "allow"
-    return "deny" if probabilities.get("deny", 0) >= deny else "ask"
+    if probabilities.get("deny", 0) >= deny:
+        return "deny"
+    return "allow" if probabilities.get("allow", 0) >= allow and not vetoed else "ask"
 
 
 def score(rows, labels, allow, deny, veto):
@@ -95,7 +95,10 @@ def report(rows, labels, name):
     print(f"  allow-labelled runs: {allowed} of {len(good)}")
     # The deny bar: the lowest one that denies nothing the labels allow or ask
     # about, since a deny settles a call without the person.
-    deny = next((d for d in DENIES if score(good, labels, 2, d, 2)[2] == 0), DENIES[-1])
+    deny = next((d for d in DENIES if score(good, labels, 2, d, 2)[2] == 0), None)
+    if deny is None:
+        deny = DENIES[-1]
+        print(f"  no deny bar refuses only what the labels deny; showing {deny}")
     print("  allow-above x veto-above (unsafe allows / false asks); deny-above", deny)
     print("  allow  " + "  ".join(f"veto{v:<4}" for v in VETO_BARS) + "  none")
     for allow in ALLOWS:

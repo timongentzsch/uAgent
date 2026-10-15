@@ -94,12 +94,24 @@ std::string Percent(double probability) {
   return std::to_string(std::lround(probability * 100)) + "%";
 }
 
+bool IsProbability(double value) { return value >= 0 && value <= 1; }
+
 // A bar from its setting; text that is no probability leaves the bar alone.
 void Override(double& bar, const std::string& text) {
   double value = 0;
-  if (ParseFiniteDouble(text.c_str(), value) && value >= 0 && value <= 1) {
+  if (ParseFiniteDouble(text.c_str(), value) && IsProbability(value)) {
     bar = value;
   }
+}
+
+// The number under `key` when it is a probability.
+bool Probability(const json& object, const char* key, double& value) {
+  const auto found = object.find(key);
+  if (found == object.end() || !found->is_number()) return false;
+  const double number = found->get<double>();
+  if (!IsProbability(number)) return false;
+  value = number;
+  return true;
 }
 
 // The reviewer's refusal in words, from the status and the error envelope
@@ -268,9 +280,10 @@ ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model,
   ReviewBars bars = kStrictBars;
   const json* table = JsonObject(endpoint.options, "decision_bars");
   if (const json* row = table ? JsonObject(*table, model.c_str()) : nullptr) {
-    bars.allow = JsonValue(*row, "allow", bars.allow);
-    bars.deny = JsonValue(*row, "deny", bars.deny);
-    bars.veto = JsonValue(*row, "veto", bars.veto);
+    // A row that states no probability keeps the strict bar.
+    Probability(*row, "allow", bars.allow);
+    Probability(*row, "deny", bars.deny);
+    Probability(*row, "veto", bars.veto);
   }
   Override(bars.allow, config.permission_allow_above);
   Override(bars.deny, config.permission_deny_above);
@@ -288,25 +301,30 @@ AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars) {
     return review;
   }
   review.probabilities = *probabilities;
-  const double allow = JsonValue(*probabilities, "allow", 0.0);
-  const double deny = JsonValue(*probabilities, "deny", 0.0);
+  double allow = 0;
+  double deny = 0;
+  if (!Probability(*probabilities, "allow", allow) ||
+      !Probability(*probabilities, "deny", deny)) {
+    review.error = "permission reviewer returned no probabilities";
+    return review;
+  }
   const Reason* vetoing = nullptr;
   double vetoing_probability = 0;
   for (const Reason& reason : kReasons) {
     const json* answer = JsonObject(answers, reason.id);
-    auto noul = answer ? answer->find("noul") : json::const_iterator();
-    if (!answer || noul == answer->end() || !noul->is_number()) {
+    double probability = 0;
+    if (!answer || !Probability(*answer, "noul", probability)) {
       review.error =
           std::string("permission reviewer did not answer ") + reason.id;
       return review;
     }
-    const double probability = noul->get<double>();
     if (probability >= std::min(bars.veto, kReasonShown)) {
       review.reasons.push_back(
           {{"id", reason.id},
            {"label", std::string(reason.label) + " " + Percent(probability)}});
     }
-    if (probability >= bars.veto && probability > vetoing_probability) {
+    if (probability >= bars.veto &&
+        (!vetoing || probability > vetoing_probability)) {
       vetoing = &reason;
       vetoing_probability = probability;
     }
@@ -343,7 +361,12 @@ AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
   // The address names the whole resource; the client wants it as a base and
   // a path.
   const std::string url = endpoint.Option("decisions_url");
+  const size_t scheme = url.find("://");
   const size_t path = url.rfind('/');
+  if (scheme == std::string::npos || path <= scheme + 2) {
+    result.error = "decisions_url is not an address with a path";
+    return result;
+  }
   api.base_url = url.substr(0, path);
   api.api_key = endpoint.api_key;
   api.wire_api = WireApi::kChatCompletions;

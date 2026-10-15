@@ -95,6 +95,19 @@ void TestPermissionReview() {
   CHECK(unanswered.decision == Decision::kAsk);
   CHECK(unanswered.error.find("touches_secrets") != std::string::npos);
   CHECK(!JudgeAnswers(json::object(), bars).error.empty());
+  // Probabilities that are none, or that are not all given, never allow.
+  for (const double wrong : {2.0, -1.0}) {
+    CHECK(JudgeAnswers(Answers(wrong, 0), bars).decision == Decision::kAsk);
+    CHECK(!JudgeAnswers(Answers(wrong, 0), bars).error.empty());
+    CHECK(!JudgeAnswers(Answers(0.9, 0, wrong), bars).error.empty());
+  }
+  json no_deny = Answers(0.99, 0);
+  no_deny["permission"]["probabilities"].erase("deny");
+  CHECK(JudgeAnswers(no_deny, bars).decision == Decision::kAsk);
+  CHECK(!JudgeAnswers(no_deny, bars).error.empty());
+  // A veto bar of zero vetoes whatever is answered.
+  CHECK(JudgeAnswers(Answers(0.99, 0), {0.6, 0.95, 0}).decision ==
+        Decision::kAsk);
   json argmax_only = Answers(0, 0);
   argmax_only["permission"] = {{"type", "choice"}, {"choice", "allow"}};
   AutoPermissionReview undecided = JudgeAnswers(argmax_only, bars);
@@ -112,6 +125,11 @@ void TestPermissionReview() {
   // A model nobody calibrated is held to the strict bars.
   ReviewBars unknown = ReviewBarsFor(openrouter, "other/model", defaults);
   CHECK(unknown.allow == 0.9 && unknown.deny == 0.95 && unknown.veto == 0.3);
+  // A row that is no probability keeps the strict bar.
+  Endpoint careless = openrouter;
+  careless.options["decision_bars"]["careless"] = {{"allow", -1}, {"veto", 2}};
+  ReviewBars kept = ReviewBarsFor(careless, "careless", defaults);
+  CHECK(kept.allow == 0.9 && kept.veto == 0.3);
   const RuntimeConfig tuned =
       RuntimeConfig::FromValues({{"UAGENT_PERMISSION_ALLOW_ABOVE", "0.97"},
                                  {"UAGENT_PERMISSION_DENY_ABOVE", "wat"},

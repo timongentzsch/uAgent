@@ -214,15 +214,19 @@ def test_auto_permission_reviewer_bars(root, home, *, binary):
     assert_true("refused this action" in tool, tool)
     assert_true(not target.exists(), target)
 
-    # The bars are data of the endpoint: this one allows only at 0.99.
+    # The bars are data of the endpoint: the same 0.9 that the ordinary bars
+    # allow asks under a row that wants 0.99.
+    def fairly_sure(handler, _):
+        write_json_response(handler, decision_answers(0.9))
+
     def sure(handler, _):
         write_json_response(handler, decision_answers(0.99))
 
     strict = {"judge-model": {"allow": 0.99, "deny": 0.95, "veto": 0.7}}
     _, tool, _ = auto_review_run(
-        root, home, binary, [write_call(target)], unsure, decision_bars=strict
+        root, home, binary, [write_call(target)], fairly_sure, decision_bars=strict
     )
-    assert_true(not target.exists(), tool)
+    assert_true("could not decide" in tool and not target.exists(), tool)
     auto_review_run(root, home, binary, [write_call(target)], sure, decision_bars=strict)
     assert_true(target.read_text() == "x", target)
 
@@ -277,6 +281,19 @@ def test_auto_permission_reviewer_errors_in_words(root, home, *, binary):
         assert_true(words in tool, (status, tool))
         assert_true(len(requests) == 1, (status, requests))
         assert_true(not target.exists(), target)
+
+
+def test_auto_permission_reviewer_needs_an_address(root, home, *, binary):
+    target = root / "no-address.txt"
+
+    def never(*_):
+        raise AssertionError("no address, no request")
+
+    _, tool, requests = auto_review_run(
+        root, home, binary, [write_call(target)], never, decisions_url="decide"
+    )
+    assert_true("not an address" in tool and requests == [], (tool, requests))
+    assert_true(not target.exists(), target)
 
 
 def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):

@@ -139,8 +139,10 @@ bool McpFillBuffer(McpServer& s, bool eof_is_fatal = true);
 // Take one complete newline-terminated message out of the read buffer.
 bool McpTakeLine(McpServer& s, std::string& line);
 
-bool McpSpawn(McpServer& s, const std::string& cmd,
-              const std::vector<std::string>& args,
+// `wrapper` is the sandbox's argv words in front of the command (empty: the
+// server runs unconfined).
+bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
+              const std::string& cmd, const std::vector<std::string>& args,
               const std::vector<std::pair<std::string, std::string>>& env,
               const std::string& cwd);
 

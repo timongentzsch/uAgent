@@ -155,9 +155,27 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
       exit_code = 2;
       return false;
     }
+    // Said where it is approved: a server that opts out of the sandbox is the
+    // part of this file that can reach what the sandbox keeps from commands.
+    std::string unconfined;
+    json file;
+    std::string unread;
+    const json* servers = ProjectMcpSnapshot(file, unread)
+                              ? JsonObject(file, "mcpServers")
+                              : nullptr;
+    if (servers) {
+      for (const auto& [name, server] : servers->items()) {
+        if (JsonValue(server, "sandbox", true)) continue;
+        unconfined += (unconfined.empty() ? "" : ", ") + name;
+      }
+    }
     trusted = Confirm(
         {.kind = "project.trust",
-         .prompt = "Trust this workspace's .mcp.json?",
+         .prompt = "Trust this workspace's .mcp.json?" +
+                   (unconfined.empty()
+                        ? std::string()
+                        : " It runs unconfined, outside the sandbox: " +
+                              unconfined + "."),
          .options = json::array({{{"value", "y"}, {"label", "Trust"}},
                                  {{"value", "n"}, {"label", "Decline"}}})});
     if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
@@ -636,6 +654,12 @@ void ReportSandbox() {
                          ". Start in a project folder or a named workspace "
                          "to give commands one"));
   }
+#if defined(__linux__)
+  if (!status.policy.withheld.empty()) {
+    Emit(NoticeEvent(PresentationStatus::kNeutral,
+                     "sandbox: relaxed -- " + SandboxNote()));
+  }
+#endif
   std::string dropped;
   for (const std::string& root : status.rejected) {
     if (root == workspace) continue;

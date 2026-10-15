@@ -19,6 +19,7 @@
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
+#include "include/core/sandbox.h"
 #include "include/core/time.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
@@ -60,7 +61,22 @@ bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
       return false;
     }
   }
-  if (!McpSpawn(server, conf["command"].get<std::string>(), args, env,
+  // Confined like a command, unless the entry says `"sandbox": false`. The
+  // same refusal applies: a session told to confine that cannot does not spawn.
+  std::vector<std::string> wrapper;
+  const SandboxStatus& sandbox = SandboxRuntime();
+  if (JsonValue(conf, "sandbox", true)) {
+    if (sandbox.mode == SandboxMode::kRefused) {
+      error = "the sandbox cannot be enforced: " + sandbox.reason;
+      return false;
+    }
+    wrapper = SandboxWrapperArgv(sandbox);
+    if (wrapper.empty() && sandbox.mode == SandboxMode::kEnforced) {
+      error = "the sandbox policy is too large to enforce";
+      return false;
+    }
+  }
+  if (!McpSpawn(server, wrapper, conf["command"].get<std::string>(), args, env,
                 cwd.string())) {
     error = "failed to start";
     return false;

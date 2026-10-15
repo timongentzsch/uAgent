@@ -391,10 +391,9 @@ std::string ProcessSupervisor::Owner() const {
 }
 
 json ProcessSupervisor::ActivityViews() const {
-  std::vector<BgJob> jobs;
+  std::vector<BgJob> jobs = Running();
   {
     std::lock_guard lock(mutex_);
-    jobs = jobs_;
     jobs.insert(jobs.end(), retained_.begin(), retained_.end());
   }
   json rows = json::array();
@@ -487,6 +486,9 @@ std::optional<BgJob> ProcessSupervisor::Find(int64_t id) const {
   std::lock_guard<std::mutex> lock(mutex_);
   size_t index = IndexOfLocked(id);
   if (index != jobs_.size()) return jobs_[index];
+  for (const BgJob& job : foreground_) {
+    if (ActivityId(job) == id) return job;
+  }
   index = RetainedIndexOfLocked(id);
   return index == retained_.size() ? std::nullopt
                                    : std::optional<BgJob>(retained_[index]);
@@ -519,6 +521,13 @@ std::optional<BgJob> ProcessSupervisor::Take(int64_t id, bool retain) {
 std::vector<BgJob> ProcessSupervisor::Snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return jobs_;
+}
+
+std::vector<BgJob> ProcessSupervisor::Running() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::vector<BgJob> jobs = jobs_;
+  jobs.insert(jobs.end(), foreground_.begin(), foreground_.end());
+  return jobs;
 }
 
 std::vector<BgJob> ProcessSupervisor::TakeAllForShutdown() {

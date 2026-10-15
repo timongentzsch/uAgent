@@ -557,6 +557,62 @@ def test_parallel_subagents_auto_join(root, home, *, binary):
             assert_true("subagent" in function_names(request), request)
 
 
+def test_a_batch_of_children_runs_together_and_shares_the_budget(root, home, *, binary):
+    """Children the turn waits for run side by side; under a session budget
+    each takes an equal share of what is left."""
+    children_lock = threading.Lock()
+    active = {"now": 0, "most": 0}
+
+    def route(_, body):
+        messages = body["messages"]
+        child = next(
+            (
+                m["content"]
+                for m in messages
+                if m.get("role") == "user" and m.get("content") in {"child-a", "child-b"}
+            ),
+            None,
+        )
+        if child:
+            with children_lock:
+                active["now"] += 1
+                active["most"] = max(active["most"], active["now"])
+            try:
+                time.sleep(1)
+                return event({"content": f"{child}-result"})
+            finally:
+                with children_lock:
+                    active["now"] -= 1
+        results = tool_results(messages)
+        if results:
+            shared = all("limits.cost to $0.5000, its share" in result for result in results)
+            return event({"content": "shared-ok" if shared else " | ".join(results)})
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": f"task-{index}",
+                        "function": {
+                            "name": "subagent",
+                            "arguments": json.dumps({"prompt": prompt, "limits": {"cost": 0.9}}),
+                        },
+                    }
+                    for index, prompt in enumerate(("child-a", "child-b"))
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_SESSION_BUDGET"] = "1"
+        result = run(root, env, "--yolo", "-p", "delegate twice", timeout=8, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "shared-ok", result.stdout)
+        assert_true(active["most"] == 2, active)
+
+
 def test_subagent_interrupt_reaps_child(root, home, *, binary):
     """A soft interrupt during the tool batch must not orphan delegation."""
     batch = event(

@@ -74,7 +74,7 @@ bool ValidAgentName(std::string_view name) {
 
 std::optional<int64_t> RunningAgent(const ProcessSupervisor& processes,
                                     const std::string& id) {
-  for (const BgJob& job : processes.Snapshot()) {
+  for (const BgJob& job : processes.Running()) {
     if (job.source_id == id) return ActivityId(job);
   }
   return std::nullopt;
@@ -124,7 +124,7 @@ std::vector<json> AgentSummaries(const ProcessSupervisor& processes) {
   }
   // The supervisor knows what runs; a child that has not saved yet is listed
   // from what its spawn stamped on the job.
-  for (const BgJob& job : processes.Snapshot()) {
+  for (const BgJob& job : processes.Running()) {
     if (job.kind != ActivityKind::kSubagent || job.source_id.empty()) continue;
     auto row = std::find_if(rows.begin(), rows.end(), [&](const json& item) {
       return JsonValue(item, "id", "") == job.source_id;
@@ -361,7 +361,10 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   if (!route.none.empty()) {
     return ToolFailure(ToolErrorCode::kUnavailable, route.none);
   }
+  // What a failure reports: the route asked for, what it resolved to, and
+  // where. Everywhere else the child is shown by the model it runs on.
   const std::string route_label = SubagentDiagnosticRoute(route, providers);
+  const std::string model_label = RouteSelection(route.route, providers);
   if (route.unresolved && route.selection.find('/') != std::string::npos &&
       !CanUseRawModel(api, route.selection)) {
     return ToolFailure(
@@ -376,6 +379,9 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
           api, processes, remaining_budget, remaining_token_budget)) {
     return *blocked;
   }
+  // Children of one batch run together, so each takes an equal share.
+  remaining_budget /= static_cast<double>(context.delegations);
+  remaining_token_budget /= context.delegations;
   const std::string child_model = route.route.model;
   EnvironmentOverrides environment =
       ChildAgentEnvironment(std::move(route.route));
@@ -397,7 +403,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
        {"parent_session", OwnSessionFile()},
        {"mode", mode},
        {"model", requested},
-       {"route", route_label},
+       {"route", model_label},
        {"label", Utf8Trunc(FirstLine(JsonValue(arguments, "prompt", "")), 160)},
        {"memory", child_memory}});
   environment.insert(
@@ -433,7 +439,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
     if (child_budget <= 0 || child_budget > remaining_budget) {
       if (child_budget > remaining_budget) {
         clamped.push_back("limits.cost to " + FmtCost(remaining_budget) +
-                          ", the session's remainder");
+                          ", its share of the session's remainder");
       }
       child_budget = remaining_budget;
     }
@@ -471,13 +477,16 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
        // could not. Its own commands run under this session's sandbox.
        .sandbox = false,
        .activity_kind = ActivityKind::kSubagent,
-       .activity_label = route_label,
+       // Named as its tool row is; a failure report names the route.
+       .activity_label = (name.empty() ? "" : name + ": ") +
+                         JsonValue(role, "label", std::string()),
        .source_id = id,
        .completion_notes = clamped,
        .activity_metadata = {{"label", JsonValue(role, "label", "")},
                              {"name", name},
                              {"mode", mode},
-                             {"model", route_label}},
+                             {"model", model_label},
+                             {"route", route_label}},
        .environment = std::move(environment),
        .environment_policy = ChildEnvironmentPolicy::kAgent});
   ToolResult result = std::move(child.result);
@@ -548,8 +557,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       {"background",
        {{"type", "boolean"},
         {"description",
-         "default false: wait and get the child's answer directly; true "
-         "when several start in one batch or other work is waiting"}}},
+         "default false: wait and get the child's answer directly (one "
+         "batch runs together); true when other work is waiting"}}},
       {"mode",
        {{"type", "string"},
         {"enum", json::array({"lean", "full"})},
@@ -595,6 +604,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // unsupervised nor unbounded — limits.seconds and the turn bound it, and
   // Escape still returns immediately.
   tool.timeout_s = 0;
+  // Children of one batch run side by side, each in its own process.
+  tool.parallel_safe = true;
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.delegates = true;
@@ -702,7 +713,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
              : ", memory off");
     return preview;
   };
-  return tool;  // Spawns serialize; immediate-background children overlap.
+  return tool;
 }
 
 }  // namespace uagent

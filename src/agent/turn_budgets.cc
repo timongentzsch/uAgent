@@ -198,7 +198,7 @@ bool Agent::StopForRepeatedRejections(
       message += ": " + rejection.issue_field;
     }
     message += ")";
-    FailTurn(state, std::move(message));
+    FailBudget(state, TurnStopReason::kRepeatedCalls, std::move(message));
     DebugLog("deterministic_rejection_loop",
              {{"turn", turn_id_},
               {"step", loop.step},

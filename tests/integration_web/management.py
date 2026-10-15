@@ -532,6 +532,79 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
             assert_true("Child follow-up result" in json.dumps(detail["conversation"]), detail)
 
 
+def test_web_lists_the_children_a_turn_waits_on_and_stops_one(root, home, *, binary):
+    """Children of one batch the turn waits for run side by side, are listed
+    while they run, and one can be stopped alone."""
+    project = root / "waited-children"
+    project.mkdir()
+    started = {name: threading.Event() for name in ("A", "B")}
+    release = threading.Event()
+
+    def answer(_, body):
+        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
+        for name, seen in started.items():
+            if f"WAITED_CHILD_{name}" in users:
+                seen.set()
+                assert release.wait(timeout=budget(20))
+                return event({"content": f"Child {name} result"})
+        results = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        if results:
+            return event({"content": "Parent saw: " + " | ".join(results)})
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": f"waited-{name}",
+                        "function": {
+                            "name": "subagent",
+                            "arguments": json.dumps({"prompt": f"WAITED_CHILD_{name}"}),
+                        },
+                    }
+                    for index, name in enumerate(("A", "B"))
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="Delegate two")
+            try:
+                # Both run before either answers: the batch is not taken in turn.
+                assert_true(all(seen.wait(timeout=budget(10)) for seen in started.values()), "")
+                snapshot = client.until(
+                    session,
+                    lambda value: (
+                        len(
+                            [
+                                r
+                                for r in value["state"].get("activities", [])
+                                if r["kind"] == "agent"
+                            ]
+                        )
+                        == 2
+                    ),
+                )
+                rows = snapshot["state"]["activities"]
+                assert_true(all(row["status"] == "running" for row in rows), rows)
+                first = next(r for r in rows if "WAITED_CHILD_A" in r["label"])
+                stopped = client.command(
+                    "activity", session, operation="stop", activity_id=first["id"]
+                )
+                assert_true("error" not in stopped.get("result", {}), stopped)
+            finally:
+                release.set()
+            done = client.until(session, lambda value: value["metadata"]["status"] == "idle")
+            assert_true(not done["state"].get("activities"), done["state"])
+            final = json.dumps(provider.requests[-1][1]["messages"])
+            assert_true("Child B result" in final and "Child A result" not in final, final)
+
+
 def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binary):
     import http.client
 

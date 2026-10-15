@@ -135,8 +135,9 @@ Two separate things keep a turn in bounds.
   `/permissions yolo` (or `--yolo`) asks nobody. A few actions always ask,
   such as changing µAgent's own settings.
 - **The sandbox** decides what a command can touch: it writes only inside
-  the folder, whatever the approval mode, unless you switch it off
-  (`sandbox.enabled`). A command that fails on a path outside the folder is
+  the folder, and cannot read your saved logins, whatever the approval mode,
+  unless you change its level (`sandbox.level`: `strict`, `default`,
+  `relaxed` or `off`). A command that fails on a path outside the folder is
   the sandbox working.
 
 `/changes` lists the files the last turn changed and `/undo` puts them back

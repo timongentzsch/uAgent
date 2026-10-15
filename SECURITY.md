@@ -72,8 +72,8 @@ Two kinds of session act for you unattended:
   approval enforce the boundary; the system prompt reinforces it. µAgent does
   not semantically detect every prompt injection.
 - An MCP call skips approval only when its server is trusted and marks the
-  tool read-only. MCP servers run with the user's permissions, outside the
-  command sandbox.
+  tool read-only. MCP servers run under the command sandbox unless their
+  entry sets `"sandbox": false`.
 - Auto mode sends the current request and a bounded action preview to the
   configured OpenRouter Decisions model.
 - Paths are canonicalized to reduce symlink escapes, and path restrictions
@@ -140,21 +140,41 @@ command). Pin its npm version when reproducible or offline execution matters.
 
 ## Sandboxing
 
-Commands the agent runs (`run`, `scratch`) are confined by the OS:
-`sandbox-exec` (Seatbelt) on macOS, Landlock on Linux. The sandbox is on by
-default and is the same in every approval mode.
+Commands the agent runs (`run`, `scratch`) and the stdio MCP servers it starts
+are confined by the OS: `sandbox-exec` (Seatbelt) on macOS, Landlock on Linux.
+The sandbox is on by default and is the same in every approval mode.
 
-| To | Use |
-| --- | --- |
-| see what is enforced | `/status` names the mechanism; `/context` lists every writable root |
-| let commands write another folder | `UAGENT_SANDBOX_WRITE=/path/a:/path/b` |
-| deny commands the network | `UAGENT_SANDBOX_NET=0` |
-| run one command unconfined | the agent calls `run(sandbox=false)`; a person must approve it |
-| run every command unconfined | `UAGENT_SANDBOX=0` |
+One setting chooses how far it goes, `sandbox.level` in the settings file or
+`UAGENT_SANDBOX` in the environment:
 
-The three settings take effect at the next start of the conversation
-(`/restart`). `--yolo` is not in this table: it stops the questions, not the
-confinement.
+| Level | Writes | Network | Hidden stores |
+| --- | --- | --- | --- |
+| `strict` | the roots below | none | yes |
+| `default` | the roots below | allowed | yes |
+| `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | allowed | yes |
+| `off` | unconfined | allowed | no |
+
+`0` and `false` are accepted as `off`, `1` and `true` as `default`, which is
+how `UAGENT_SANDBOX` was spelled while it was a switch. A saved
+`sandbox.enabled` is renamed to `sandbox.level` (`false` becomes `off`, `true`
+`default`) the first time the settings are saved.
+
+The level sets the starting point; three more settings, each of which wins
+over it, adjust one thing:
+
+| To | Setting | Environment |
+| --- | --- | --- |
+| allow or deny the network whatever the level | `sandbox.network` | `UAGENT_SANDBOX_NET=0` or `1` |
+| let commands write another folder | `sandbox.write` | `UAGENT_SANDBOX_WRITE=/path/a:/path/b` |
+| hide more paths from commands and the file tools | `sandbox.hide` | `UAGENT_SANDBOX_HIDE=~/.config/mycloud:/path/b` |
+| show a path that is hidden by default | `sandbox.reveal` | `UAGENT_SANDBOX_REVEAL=~/.aws` |
+
+The paths in `sandbox.hide` and `sandbox.reveal` are absolute, or start with
+`~/`. Other ways to see or change what is enforced: `/status` names the
+mechanism and `/context` lists every writable root; the agent can call
+`run(sandbox=false)` for one command, which a person must approve. All of
+them take effect at the next start of the conversation (`/restart`). `--yolo`
+is not in either table: it stops the questions, not the confinement.
 
 **Writes** are what the sandbox restricts. A confined command may write:
 
@@ -163,66 +183,105 @@ confinement.
 - the package caches: `~/.cache`, `~/.local/share/uv` and, on macOS,
   `~/Library/Caches`;
 - `~/.uagent/terminals/logs`, because a detached job's log pump writes there;
-- the roots `UAGENT_SANDBOX_WRITE` adds.
+- the roots `sandbox.write` adds;
+- at the `relaxed` level, your home folder.
 
 Everything else is refused. `~/.uagent` is never granted, and a requested
 root is rejected, and reported at startup, when it is `/`, `~/.uagent` or one
 of its ancestors, or lies inside `~/.uagent/config`. That keeps the saved
 settings, trust store, collaborator records and detached-job records out of
-reach.
+reach. The `relaxed` level opens the home folder around `~/.uagent`: its
+terminal logs, and a workspace kept under `~/.uagent/spaces`, stay writable;
+nothing else in it is. On Linux, Landlock can only grant, so the home folder
+is granted entry by entry, as it is when a command starts: a new file made
+directly in the home folder is not writable (files in folders are, and so are
+the existing files). The startup note says so.
 
 The workspace is held to the same rule. A session started in your home
-directory, which holds `~/.uagent`, has no writable workspace: its commands
-can write only the other roots above, while the file tools still work there.
-Startup says so, the model is told at the start of the conversation, and a
-refused write names the roots. Start in a project folder instead, or in a
-space: the web's **New conversation** takes a name and keeps a folder for it
-at `~/.uagent/spaces/<name>`, which is granted like any other workspace.
+directory, which holds `~/.uagent`, has no writable workspace below the
+`relaxed` level: its commands can write only the other roots above, while the
+file tools still work there. Startup says so, the model is told at the start of
+the conversation, and a refused write names the roots. Start in a project
+folder instead, or in a workspace: the web's **New → Workspace…** takes a name
+and keeps a folder for it at `~/.uagent/spaces/<name>`, which is granted like
+any other workspace.
 
-**Reads** are not restricted on either platform, with one exception below: a
-confined `cat ~/.uagent/config/settings.json` still pulls the file into model
-context.
+**Reads** are not restricted on either platform, with the exceptions below. A
+confined `cat ~/.ssh/config` still pulls the file into model context.
 
-**The browser profile and the web host's state** are the exception. With the
-sandbox on, commands cannot read the browser data directory
-(`UAGENT_BROWSER_DATA`) or `~/.uagent/web` (which holds the paired devices'
-tokens), or connect to their sockets. `run(sandbox=false)` and a disabled
-sandbox lift that, as they lift the sandbox itself; yolo does not. The file
-tools refuse both paths in every mode. On Linux, Landlock hides the files on
-any supported kernel but the sockets only from Linux 7.1 (ABI 9). Keep the
-browser data directory outside the sandbox's writable roots, e.g.
-`~/.uagent/browser`. See [the web guide](docs/BROWSER.md#isolation).
+**Hidden stores.** With the sandbox on, commands cannot read, write or connect
+to the sockets of these paths (those that exist), and the file tools refuse
+them in every mode:
+
+- the browser data directory (`UAGENT_BROWSER_DATA`) and `~/.uagent/web`,
+  which holds the paired devices' tokens;
+- `~/.uagent/config`: the saved settings and API keys, the trust store and
+  remembered approvals;
+- the credential stores of other tools: `~/.aws`, `~/.config/gcloud`,
+  `~/.azure`, `~/.kube`, `~/.gnupg`, `~/.netrc` and `~/.docker/config.json`.
+  The list is `kHiddenCredentialStores` in
+  [`include/core/defaults.h`](include/core/defaults.h).
+
+`~/.ssh` and the GitHub CLI login (`~/.config/gh`) are deliberately readable:
+git over ssh and `gh` are expected agent work and need them. Your own
+credential store goes in `sandbox.hide`, for example
+`sandbox.hide=~/.config/mycloud`; `sandbox.reveal` takes a default out of the
+list (`sandbox.reveal=~/.aws`), for the file tools too. macOS keychains are
+not on the list: keychain access goes through the `securityd` service, so
+hiding the files in `~/Library/Keychains` would not stop a command asking it
+for a password (the files themselves are encrypted).
+
+`run(sandbox=false)` and `off` lift the hiding, as they lift the sandbox
+itself; yolo does not. On Linux, Landlock hides the files on any supported
+kernel but the sockets only from Linux 7.1 (ABI 9). Keep the browser data
+directory outside the sandbox's writable roots, e.g. `~/.uagent/browser`. See
+[the web guide](docs/BROWSER.md#isolation).
 
 On Linux this has one side effect. Landlock can only grant, so reads are
 granted folder by folder around a hidden path, as the folders are when a
 command starts. A command that is still running (a server, a watcher) cannot
 read a file created or replaced afterwards directly in a folder on the way to
-a hidden path: `/`, `/home`, your home directory and `~/.uagent`. Files in
-any other folder, a project among them, are unaffected. A session whose
-workspace is one of those folders is told so with the rest of what its
-commands cannot do there.
+a hidden path: `/`, `/home`, your home directory, `~/.uagent`, `~/.config`
+and `~/.docker`. Files in any other folder, a project among them, are
+unaffected. A session whose workspace is one of those folders is told so with
+the rest of what its commands cannot do there.
 
-**Network.** Outbound access is allowed by default because git, npm and pip
-need it. `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and TCP (bind
-and connect) on Linux, where Landlock cannot express the rest.
+**Network.** Outbound access is allowed except at the `strict` level, because
+git, npm and pip need it. Denying it (`strict`, or `sandbox.network` off)
+blocks all IP traffic on macOS and TCP (bind and connect) on Linux, where
+Landlock cannot express the rest.
 
-**Inside the workspace**, `.mcp.json`, and in a
-repository its `.git/config` and `.git/hooks` (which your own git would run),
-are carved out of the writable workspace on macOS only; sandboxed commands can
-still commit, but not change git config. Landlock has no deny rule, so the
-same guarantee on Linux would mean not granting the workspace. On Linux, a
-command that changes `.mcp.json` still revokes project trust, so the next
-launch asks again. A project's instruction files (`AGENTS.md`,
-`.uagent/PANEL.md`) are ordinary repository files that any session in
-it may edit.
+**Inside the workspace**, `.mcp.json`, and in a repository its `.git/config`
+and `.git/hooks` (which your own git would run), cannot be changed by a
+sandboxed command; sandboxed commands can still commit. macOS denies the
+write. Landlock has no deny rule, so on Linux the three are recorded before a
+sandboxed command runs and put back when it ends (when it returns, or when a
+background or detached job is collected), and the model and you are told:
+`restored .git/hooks: sandboxed commands may not change it`. A project's
+trust still follows `.mcp.json`'s content. This is a check at the end of a
+command, not a wall: a hook added by a long-running command is live until it
+ends; a change you make to those paths yourself while a sandboxed command is
+running is undone with it; and a detached job still running when the session
+ends is not checked. A project's instruction files (`AGENTS.md`,
+`.uagent/PANEL.md`) are ordinary repository files that any session in it may
+edit.
+
+**MCP servers.** A stdio server is spawned under the same policy as a command
+(hidden stores included; its network follows the level, so it has the network
+unless the level is `strict` or `sandbox.network` is off), with the workspace
+as its writable area. A server that needs more, such as a package manager's
+cache in your home folder, can have a root through `sandbox.write`. A server
+entry that sets `"sandbox": false` runs unconfined; this works in the project's
+`.mcp.json` and in `~/.mcp.json`. The prompt that asks you to trust a project's
+`.mcp.json` names the servers that would run unconfined, and a changed entry
+asks again like any other change to the file.
 
 **Not confined by the sandbox:** the built-in file tools (approval and path
 checks govern them; they reach `.mcp.json`, and the `uagent` tool the saved
-settings, with mandatory human approval for each change), MCP servers, and
-the µAgent process of a subagent (its commands are confined).
+settings, with mandatory human approval for each change), an MCP server that
+opts out, and the µAgent process of a subagent (its commands are confined).
 
-A session can run unconfined in two ways besides `UAGENT_SANDBOX=0`, both
-reported:
+A session can run unconfined in two ways besides `off`, both reported:
 
 - `run(sandbox=false)` always asks a person. Yolo and a remembered grant
   cannot give that approval, and headless or delegated runs have nobody to
@@ -231,8 +290,8 @@ reported:
   startup warning, a `capability.changed` event, `sandbox.mode=degraded`, and
   commands run unconfined. A session that requested the sandbox explicitly, in
   the environment or a saved setting, refuses to run commands instead. So
-  does one that set `UAGENT_SANDBOX_NET=0` on a kernel whose Landlock cannot
-  restrict the network (before ABI 4).
+  does one that denies the network (`strict`, or `sandbox.network` off) on a
+  kernel whose Landlock cannot restrict it (before ABI 4).
 
 On macOS, a sandbox profile larger than 64 KiB (very many writable roots)
 refuses the command rather than running it under a truncated profile.

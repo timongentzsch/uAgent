@@ -212,7 +212,9 @@ retry one or switch it.
 - The workspace is the default root. `UAGENT_MCP_ROOTS` (colon-separated) or a
   server's `roots` array in `.mcp.json` replaces it; per-server paths are
   relative to that file. Roots are cooperative protocol scope, not a sandbox:
-  servers run with the user's permissions, outside the command sandbox.
+  servers are spawned under the command sandbox, with the workspace as their
+  writable area, unless their entry sets `"sandbox": false` (in `.mcp.json`
+  or `~/.mcp.json`; the trust prompt names such servers).
 - Server stderr goes to a rotating log under `~/.uagent/mcp/`, bounded at
   16 MiB. Errors without text point to that log.
 - Not supported: HTTP transport, sampling, elicitation, task extensions,
@@ -232,21 +234,26 @@ retry one or switch it.
 - **A command was refused a write.** It reports the errno plus a
   `[sandbox: ...]` line that names the writable roots, as `/context` does.
   Widen them with `UAGENT_SANDBOX_WRITE` (colon-separated, applies after a
-  restart), or run the one command with `run(sandbox=false)`, which always
+  restart), raise the level (`UAGENT_SANDBOX=relaxed` opens your home
+  folder), or run the one command with `run(sandbox=false)`, which always
   asks a person. The same exemption applies to a command that needs
   credentials from a protected path (see [Tools](TOOLS.md#files-and-search)).
   A session started in your home directory has no writable workspace at all:
   see [Sandboxing](../SECURITY.md#sandboxing).
 - **`sudo` or `ping` fails on Linux.** The sandbox sets `no_new_privs`, so
   setuid binaries fail inside it. Privileged work needs unconfined execution:
-  `UAGENT_SANDBOX=0` or an approved `run(sandbox=false)`. `--yolo` does not
+  `UAGENT_SANDBOX=off` or an approved `run(sandbox=false)`. `--yolo` does not
   lift the sandbox; it only stops the questions.
 - **Every command is refused, or startup reports `degraded`.** The Linux
   kernel has no Landlock (5.13 or newer has it). With `UAGENT_SANDBOX`
-  explicitly switched on, every command is refused; with it unset, commands
-  run unconfined and startup says so. `UAGENT_SANDBOX_NET=0` on a kernel
-  whose Landlock cannot restrict the network (before ABI 4) also refuses
-  every command.
+  explicitly set to a level, every command is refused; with it unset, commands
+  run unconfined and startup says so. A denied network (`UAGENT_SANDBOX=strict`
+  or `UAGENT_SANDBOX_NET=0`) on a kernel whose Landlock cannot restrict it
+  (before ABI 4) also refuses every command.
+- **A command cannot read a credentials file.** The sandbox hides the saved
+  settings, the cloud CLIs' credentials and similar stores; the file tools
+  refuse them too. Name your own with `UAGENT_SANDBOX_HIDE`, or lift a default
+  with `UAGENT_SANDBOX_REVEAL` (see [Sandboxing](../SECURITY.md#sandboxing)).
 - **Old terminal logs pile up.** `~/.uagent/terminals/logs` is not pruned by
   age because live detached terminals write there. A crash between creating a
   log and writing its record leaves a `pending-*` file to delete by hand.

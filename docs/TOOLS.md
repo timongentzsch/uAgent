@@ -84,8 +84,12 @@ panel's threads differ is in
 - `run`, `scratch` and `grep` execute inside the OS sandbox: writes are
   limited to the workspace, temporary directories and package caches; reads
   and, by default, the network stay open, except for the browser profile,
-  which the file tools refuse too. See [SECURITY.md](../SECURITY.md) for the
-  full policy.
+  uAgent's settings and the credential stores of the cloud CLIs, which the
+  file tools refuse too (`sandbox.hide` and `sandbox.reveal` adjust the list).
+  The `sandbox.level` setting moves all of this: `strict` also denies the
+  network, `relaxed` also opens the home folder. Stdio MCP servers run under
+  the same policy. See [SECURITY.md](../SECURITY.md#sandboxing) for the full
+  policy.
 
 ## Activities
 

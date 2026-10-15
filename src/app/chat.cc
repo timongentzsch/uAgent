@@ -378,10 +378,9 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   std::set<std::string> some = opens;
   if (answers) some.insert(JsonValue(to, "asker", ""));
   const bool narrowed = !opens.empty() || answers;
-  // The panel's answer to the user is the user's. Members who joined while
-  // it was written have no seat yet; they are greeted by it.
-  const bool to_user =
-      from == kSelf && answers && JsonValue(to, "asker", "") == "";
+  // An answer to the user is the user's. The panel's greets only members
+  // who joined while it was written, who have no seat yet.
+  const bool for_user = answers && JsonValue(to, "asker", "") == "";
   // What a reader it wakes answers to: only one it names answers its author.
   const auto asks = [&](const std::string& reader) {
     json re = {{"round", round_}};
@@ -393,7 +392,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   std::vector<const SessionInfo*> woken;
   for (const SessionInfo& member : members) {
     const std::string id = MailboxIdFor(member.path);
-    const bool joined = to_user && !seats_.contains(id);
+    const bool joined = for_user && from == kSelf && !seats_.contains(id);
     if (!late && id != from &&
         Wakes(id, narrowed, some.contains(id) || joined)) {
       woken.push_back(&member);
@@ -444,10 +443,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   }
   // A member's message in the round, not its answer to the user who asked
   // it, is discussion the panel closes.
-  if (from != kSelf && !from.empty() && !late &&
-      !(answers && JsonValue(to, "asker", "") == "")) {
-    ++posted_;
-  }
+  if (from != kSelf && !from.empty() && !late && !for_user) ++posted_;
   Start(std::move(started));
   return self ? asks(kSelf) : json();
 }

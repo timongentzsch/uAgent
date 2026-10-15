@@ -120,7 +120,7 @@ class Chat {
   std::string folder_;
   std::function<void(const std::string&, const json&)> wake_;
   int64_t each_ = 0;     // turns one participant may take this round
-  int64_t round_ = 0;    // when the user's message that began this round came
+  int64_t round_ = 0;    // when the message or report that began it came
   int posted_ = 0;       // members' messages since the panel last wrote
   bool closed_ = false;  // the panel closed the round for the user
   // Participants woken and not yet heard from, those who chose to wait (the

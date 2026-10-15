@@ -473,13 +473,13 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, const Tool& tool,
                                            const std::string& raw_payload,
                                            int64_t turn, json& review) {
   Verdict verdict;
-  // What the session was asked first stands beside its latest message: a
-  // thread's brief still authorizes what a later note from its panel adds.
+  // The latest message, then what the session was asked first: a thread's
+  // brief still authorizes what a later note from its panel adds. A cut for
+  // length takes the brief's end, never the latest word.
   const Conversation& history = app->agent->History();
-  std::string request = history.FirstUserText();
-  if (const std::string latest = history.LastText(MessageKind::kUser);
-      latest != request) {
-    request += (request.empty() ? "" : "\n\n[latest message]\n") + latest;
+  std::string request = history.UserMessageText(history.UserTurns());
+  if (const std::string first = history.UserMessageText(1); first != request) {
+    request += "\n\n[first message]\n" + first;
   }
   AutoPermissionReview decision = ReviewPermission(
       app->runtime.permission_api, app->runtime.config, app->runtime.side_usage,

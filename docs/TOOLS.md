@@ -152,9 +152,12 @@ activity ID at once.
 ## Web
 
 `web_fetch` needs no hosted-search route. It decodes HTML, JSON, XML and plain
-text and refuses other content types; download PDFs and images with `run` and
-open them with `read_path`. Bodies over the attachment cap
-(`UAGENT_ATTACHMENT_MB`) are truncated and marked partial. Pages behind a login
+text. A PDF is saved and attached to the model's next step, as `read_path`
+attaches one: a route that reads documents gets it whole, any other its path.
+Other content types are refused; download images with `run` and open them
+with `read_path`. A 404 says to find the page with `web_search` rather than
+guess its address. Bodies over the attachment cap (`UAGENT_ATTACHMENT_MB`) are
+truncated and marked partial. Pages behind a login
 or built by scripts need the browser.
 
 Only public Internet addresses are accepted, on redirects too; loopback,

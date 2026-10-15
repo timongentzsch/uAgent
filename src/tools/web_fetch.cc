@@ -11,9 +11,11 @@
 #include <utility>
 
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/tools/image_result.h"
 
 namespace uagent {
 namespace {
@@ -233,6 +235,51 @@ std::string HtmlToText(const std::string& html) {
   return out;
 }
 
+ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
+                           const std::string& call_id) {
+  if (!page.error.empty()) {
+    // A guessed deep link is the usual 404: searching finds the page.
+    const bool missing = page.error.starts_with("HTTP 404") ||
+                         page.error.starts_with("HTTP 410");
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "web_fetch " + page.error +
+                           (missing ? "; no page at this address: find it with "
+                                      "web_search instead of guessing a path"
+                                    : ""));
+  }
+  // A PDF goes to the model as a document, as an attached file does;
+  // a route that cannot read one gets its path.
+  if (!page.truncated && page.body.starts_with("%PDF-")) {
+    return ToolAttachedFile(page.body, "fetched", ".pdf",
+                            "PDF from " + TerminalSafe(url), call_id,
+                            kArtifactsDir);
+  }
+  bool html = page.content_type.find("html") != std::string::npos;
+  if (!html && !Textual(page.content_type)) {
+    // This tool turns markup into text and nothing else. Whether the
+    // route can read the bytes some other way is not knowable here, so
+    // the remedy names the tools that always work rather than a
+    // capability that may not be there.
+    return ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "web_fetch cannot read " +
+            (page.content_type.empty() ? "this content type"
+                                       : page.content_type) +
+            "; download it and extract its text locally with run or "
+            "scratch");
+  }
+  // Non-markup arrives readable; reflowing it would only destroy the
+  // indentation that carries meaning in JSON, XML and plain text.
+  std::string text = html ? HtmlToText(page.body) : std::move(page.body);
+  if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "web_fetch found no text at " + TerminalSafe(url));
+  }
+  std::string head = "[" + TerminalSafe(url);
+  if (page.truncated) head += "; truncated at the byte cap";
+  return ToolSuccess(head + "]\n" + std::move(text));
+}
+
 Tool WebFetchTool(Api& api) {
   Tool t = MakeTool(
       "web_fetch",
@@ -260,34 +307,7 @@ Tool WebFetchTool(Api& api) {
         if (AbortRequested()) {
           return ToolCancelled("error: fetch cancelled by user");
         }
-        if (!page.error.empty()) {
-          return ToolFailure(ToolErrorCode::kRemoteError,
-                             "web_fetch " + page.error);
-        }
-        bool html = page.content_type.find("html") != std::string::npos;
-        if (!html && !Textual(page.content_type)) {
-          // This tool turns markup into text and nothing else. Whether the
-          // route can read the bytes some other way is not knowable here, so
-          // the remedy names the tools that always work rather than a
-          // capability that may not be there.
-          return ToolFailure(
-              ToolErrorCode::kUnavailable,
-              "web_fetch cannot read " +
-                  (page.content_type.empty() ? "this content type"
-                                             : page.content_type) +
-                  "; download it and extract its text locally with run or "
-                  "scratch");
-        }
-        // Non-markup arrives readable; reflowing it would only destroy the
-        // indentation that carries meaning in JSON, XML and plain text.
-        std::string text = html ? HtmlToText(page.body) : std::move(page.body);
-        if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
-          return ToolFailure(ToolErrorCode::kUnavailable,
-                             "web_fetch found no text at " + TerminalSafe(url));
-        }
-        std::string head = "[" + TerminalSafe(url);
-        if (page.truncated) head += "; truncated at the byte cap";
-        return ToolSuccess(head + "]\n" + std::move(text));
+        return ReadFetchedPage(url, std::move(page), context.call_id);
       });
   t.capabilities = Capability(ToolCapability::kInspect) |
                    Capability(ToolCapability::kExternal);

@@ -16,6 +16,11 @@ namespace uagent {
 // block boundaries kept as newlines, entities decoded. Exposed for tests.
 std::string HtmlToText(const std::string& html);
 
+// What a fetched page gives the model: its text, a PDF attached for the next
+// step, or why not. Exposed for tests.
+ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
+                           const std::string& call_id);
+
 Tool WebFetchTool(Api& api);
 
 }  // namespace uagent

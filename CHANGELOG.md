@@ -133,6 +133,14 @@
 
 ### Fixed
 
+- `web_fetch` reads PDFs: one is saved and attached to the model's next step,
+  so a route that reads documents gets it whole. Before, every PDF failed and
+  the model had to download and convert it itself. A 404 now says to find the
+  page with `web_search` rather than guess its address.
+- The automatic permission review judges a call against the session's first
+  request as well as its latest message. A panel thread's research fetches were
+  refused because the reviewer saw only the panel's latest note, not the
+  thread's brief.
 - A model's input modalities from the endpoint's catalogue survive starting a
   route, so a text-only model is known as one before its first image is
   rejected.

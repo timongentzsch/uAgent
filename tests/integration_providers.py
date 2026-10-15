@@ -1407,6 +1407,36 @@ def test_images_go_to_a_vision_model_of_the_same_endpoint(root, home, *, binary)
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_an_image_the_vision_model_cannot_read_is_tried_once_per_turn(root, home, *, binary):
+    picture = root / "shot.png"
+    picture.write_bytes(SMALL_PNG)
+    models = {
+        "data": [
+            {"id": "text-model", "input_modalities": ["text"]},
+            {"id": "vision-model", "input_modalities": ["text", "image"]},
+        ]
+    }
+    answers = iter([tool_call("run", {"command": "true"}), event({"content": "done"})])
+
+    def respond(handler, body):
+        if body.get("model") == "vision-model":
+            write_json_response(handler, {"error": {"message": "Could not process image"}}, 400)
+            return None
+        assert_true("[Image analysis failed" in json.dumps(body["messages"]), body["messages"])
+        return next(answers)
+
+    with Server([respond], get_response=models) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MODEL"] = "text-model"
+        del env["UAGENT_CONTEXT"]
+        result = run(root, env, "--yolo", "--attach", str(picture), "-p", "what", binary=binary)
+        assert_true(result.stdout.strip() == "done", result.stdout + result.stderr)
+        # Two steps of one turn, one attempt at the image: the failure is
+        # remembered rather than paid again before every step.
+        vision = [body for _, body in server.requests if body.get("model") == "vision-model"]
+        assert_true(len(vision) == 1, [body.get("model") for _, body in server.requests])
+
+
 def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, home, *, binary):
     def searched(_, body):
         assert_true(body["model"] == "search-model", body)

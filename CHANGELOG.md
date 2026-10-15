@@ -79,6 +79,8 @@
   rejected.
 - The web's model picker takes a model the endpoint's own catalogue lists on
   an endpoint no provider names; it answered `unknown model` before.
+- An image the vision model fails to read is tried once per turn. Before, each
+  step of the turn asked again and paid the same failure, retries included.
 
 ## v1.4.0 - 2026-10-15
 

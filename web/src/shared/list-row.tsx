@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from "preact";
+import type { ButtonHTMLAttributes, ComponentChildren } from "preact";
 import { Button } from "./ui.tsx";
 import "./list-row.css";
 
@@ -12,7 +12,7 @@ export function ListRow({
   class: className = "",
   children,
   ...props
-}: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
   title: ComponentChildren;
   meta?: ComponentChildren;
   unread?: string | false;

@@ -169,7 +169,7 @@ export default function Inspector({
   // An inner page is a layer of its own: back returns to the activity.
   useDismiss(page !== null, () => setPage(null));
   const inspection = useRef(0);
-  const inspectionRequest = useRef<AbortController>();
+  const inspectionRequest = useRef<AbortController | undefined>(undefined);
   // Progress ticks can outpace a refresh: one runs at a time and the latest
   // tick waits for it, instead of each tick aborting the one before.
   const refreshing = useRef(false);

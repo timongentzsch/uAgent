@@ -3,8 +3,9 @@ import { settled } from "./motion.ts";
 import {
   createContext,
   type ComponentChildren,
-  type JSX,
+  type ButtonHTMLAttributes,
   type Ref,
+  type TargetedKeyboardEvent,
 } from "preact";
 import {
   useCallback,
@@ -127,7 +128,7 @@ export function Menu({
     "aria-controls": open ? id : undefined,
     "aria-expanded": open,
     onClick: () => (open ? close() : openAt("first")),
-    onKeyDown: (event: JSX.TargetedKeyboardEvent<HTMLButtonElement>) => {
+    onKeyDown: (event: TargetedKeyboardEvent<HTMLButtonElement>) => {
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       event.preventDefault();
       if (!open) openAt(event.key === "ArrowUp" ? "last" : "first");
@@ -276,7 +277,7 @@ export function MenuSub({
 }
 
 export function MenuItem(
-  props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+  props: ButtonHTMLAttributes<HTMLButtonElement> & {
     buttonRef?: Ref<HTMLButtonElement>;
   },
 ) {

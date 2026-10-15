@@ -87,7 +87,7 @@ export function useHost(
   const [slowReconnect, setSlowReconnect] = useState(false);
   const [loadErrors, setLoadErrors] = useState<Record<string, unknown>>({});
   const revoked = useRef(false);
-  const catalogueRef = useRef<Catalogue>();
+  const catalogueRef = useRef<Catalogue | undefined>(undefined);
   const loads = useRef(new Map<string, Promise<Snapshot>>());
   const lifetime = useRef(new AbortController());
   // The last list this device saw paints the sidebar, title and composer
@@ -124,7 +124,7 @@ export function useHost(
     readStored<Outgoing[]>(sessionStorage, "uagent-outgoing", []),
   );
   const [following, setFollowing] = useState(true);
-  const stream = useRef<EventSource>();
+  const stream = useRef<EventSource | undefined>(undefined);
   const reconnecting = useRef(false);
   const refreshAgain = useRef(false);
   // A failed load retries on its own, backing off to reconnectMaxDelayMs.

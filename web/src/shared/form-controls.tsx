@@ -1,4 +1,10 @@
-import { createElement, type JSX, type RefObject } from "preact";
+import {
+  createElement,
+  type InputHTMLAttributes,
+  type RefObject,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "preact";
 import { useCallback, useLayoutEffect, useRef } from "preact/hooks";
 import { ChevronDown } from "lucide-preact";
 import { coarsePointer, observeResize, zoomChanged } from "./layout.ts";
@@ -6,12 +12,19 @@ import { focusFontFloor } from "./limits.ts";
 
 type ControlElement =
   HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+// Preact 11 types a textarea role as "textbox" only; the composer is a combobox.
+export type TextareaProps = Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "role"
+> & {
+  role?: string;
+};
 type ControlProps =
-  | JSX.InputHTMLAttributes<HTMLInputElement>
-  | JSX.TextareaHTMLAttributes<HTMLTextAreaElement>
-  | JSX.SelectHTMLAttributes<HTMLSelectElement>;
+  | InputHTMLAttributes<HTMLInputElement>
+  | TextareaProps
+  | SelectHTMLAttributes<HTMLSelectElement>;
 type Sizing = {
-  inputRef?: RefObject<ControlElement>;
+  inputRef?: RefObject<ControlElement | null>;
   grow?: boolean;
   resizeKey?: number;
 };
@@ -81,7 +94,9 @@ function Control({
   );
 }
 
-export function Input(props: JSX.InputHTMLAttributes<HTMLInputElement>) {
+export function Input(
+  props: InputHTMLAttributes<HTMLInputElement> & { list?: string },
+) {
   // These controls have no editable text and already scale with the UI tokens.
   if (
     [
@@ -97,16 +112,14 @@ export function Input(props: JSX.InputHTMLAttributes<HTMLInputElement>) {
       "image",
     ].includes(String(props.type))
   )
-    return <input {...props} />;
+    return createElement("input", props);
   return <Control tag="input" {...props} />;
 }
 
-export function Textarea(
-  props: JSX.TextareaHTMLAttributes<HTMLTextAreaElement> & Sizing,
-) {
+export function Textarea(props: TextareaProps & Sizing) {
   return <Control tag="textarea" {...props} />;
 }
 
-export function Select(props: JSX.SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return <Control tag="select" {...props} />;
 }

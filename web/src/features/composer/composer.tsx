@@ -23,7 +23,7 @@ import type {
   Draft,
   SessionStatus,
 } from "../../shared/types.ts";
-import type { JSX } from "preact";
+import type { TargetedKeyboardEvent } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command, routes } from "../../state/api.ts";
@@ -142,7 +142,7 @@ export default function Composer({
     });
   };
   const mentionKeyDown = (
-    event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>,
+    event: TargetedKeyboardEvent<HTMLTextAreaElement>,
   ) => {
     if (!plainKey(event)) return false;
     if (event.key === "Escape") setMentionClosed(true);
@@ -220,9 +220,7 @@ export default function Composer({
   };
   // Recall only from an empty draft or the entry being browsed, so arrows
   // still move the caret through text the person is writing.
-  const recallKeyDown = (
-    event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>,
-  ) => {
+  const recallKeyDown = (event: TargetedKeyboardEvent<HTMLTextAreaElement>) => {
     const past = sentPrompts.get(session.id) || [];
     const at = recalled.current;
     const browsing = at >= 0 && draft.text === past[at];

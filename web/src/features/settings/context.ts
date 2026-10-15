@@ -1,6 +1,7 @@
 import { createContext } from "preact";
+import type { RefObject } from "preact";
 import { useContext } from "preact/hooks";
-import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
+import type { Dispatch, StateUpdater } from "preact/hooks";
 import type {
   Catalogue,
   InstallPrompt,
@@ -32,7 +33,7 @@ export interface SettingsProps {
   online: boolean;
   notificationMode: boolean;
   setNotificationMode: Dispatch<StateUpdater<boolean>>;
-  notifications: MutableRef<boolean>;
+  notifications: RefObject<boolean>;
   refresh: () => Promise<void>;
   selected: string;
   session?: Session;

@@ -19,8 +19,7 @@ import type {
   InspectorTarget,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
-import type { JSX } from "preact";
-import { render } from "preact";
+import { render, type TargetedSubmitEvent } from "preact";
 import {
   useCallback,
   useEffect,
@@ -417,7 +416,7 @@ function App() {
     };
   }, [choose]);
   // A conversation in the workspace or folder typed into the dialog.
-  async function create(event: JSX.TargetedSubmitEvent<HTMLFormElement>) {
+  async function create(event: TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {

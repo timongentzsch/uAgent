@@ -5,7 +5,7 @@ import type {
   Session,
 } from "../shared/types.ts";
 import { folderOf } from "../shared/display.ts";
-import type { ComponentProps, JSX } from "preact";
+import type { ComponentProps, TargetedSubmitEvent } from "preact";
 import {
   Modal,
   Deferred,
@@ -95,7 +95,7 @@ export default function Modals({
   setFolder: (folder: string) => void;
   space: string;
   setSpace: (space: string) => void;
-  create: (event: JSX.TargetedSubmitEvent<HTMLFormElement>) => void;
+  create: (event: TargetedSubmitEvent<HTMLFormElement>) => void;
   preferences: Preferences;
 }) {
   const {

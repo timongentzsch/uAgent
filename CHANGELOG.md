@@ -145,6 +145,12 @@
   wrote again. A thread's report that the moderator passes on begins a round
   too, so the members discuss it. A member's introduction is read by everyone
   and wakes nobody.
+- A panel's discussion ends with the moderator's answer for the user. When
+  the chat falls silent and the panel's threads are done, the moderator closes
+  the round: what was decided and what is open. Its answers to the user wake
+  no member, so members no longer answer a question that was meant for the
+  user. After the close, thread reports reach the moderator alone, so the
+  panel stops instead of discussing each follow-up thread.
 
 ## v1.4.0 - 2026-10-15
 

@@ -57,8 +57,10 @@ std::set<std::string> ChatTyping(const std::string& folder);
 // beside the panel's session, so a runtime that starts again takes it up.
 class Chat {
  public:
-  // `wake` starts a turn of the panel's own on a note.
-  Chat(std::string folder, std::function<void(const std::string&)> wake);
+  // `wake` starts a turn of the panel's own on a note; its answer answers
+  // `re` (see Deliver).
+  Chat(std::string folder,
+       std::function<void(const std::string&, const json&)> wake);
 
   // The user wrote here: a new round. Returns what the panel's answer
   // is an answer to (see Deliver).
@@ -114,9 +116,11 @@ class Chat {
   void Save() const;
 
   std::string folder_;
-  std::function<void(const std::string&)> wake_;
-  int64_t each_ = 0;   // turns one participant may take this round
-  int64_t round_ = 0;  // when the user's message that began this round came
+  std::function<void(const std::string&, const json&)> wake_;
+  int64_t each_ = 0;     // turns one participant may take this round
+  int64_t round_ = 0;    // when the user's message that began this round came
+  bool posted_ = false;  // members discussed since the panel last wrote
+  bool closed_ = false;  // the panel closed the round for the user
   // Participants woken and not yet heard from, those who chose to wait (the
   // earliest first), and what each has done this round. A member is known by
   // its mailbox, the panel by kSelf.

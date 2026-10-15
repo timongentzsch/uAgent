@@ -134,11 +134,14 @@ std::set<std::string> Addressed(const std::string& text,
                                               : std::set<std::string>();
 }
 
-Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
+Chat::Chat(std::string folder,
+           std::function<void(const std::string&, const json&)> wake)
     : folder_(std::move(folder)), wake_(std::move(wake)) {
   const json saved = ReadPanelFile(folder_, kState);
   each_ = JsonValue(saved, "each", int64_t{0});
   round_ = JsonValue(saved, "round", int64_t{0});
+  posted_ = JsonValue(saved, "posted", false);
+  closed_ = JsonValue(saved, "closed", false);
   for (const char* list : {"typing", "waiting"}) {
     const json* ids = JsonArray(saved, list);
     if (!ids) continue;
@@ -176,6 +179,8 @@ void Chat::Save() const {
   const std::string error = WritePanelFile(folder_, kState,
                                            {{"each", each_},
                                             {"round", round_},
+                                            {"posted", posted_},
+                                            {"closed", closed_},
                                             {"typing", typing_},
                                             {"waiting", waiting_},
                                             {"heard", heard_},
@@ -367,6 +372,10 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   std::set<std::string> some = opens;
   if (answers) some.insert(JsonValue(to, "asker", ""));
   const bool narrowed = !opens.empty() || answers;
+  // The panel's answer to the user is the user's. Members who joined while
+  // it was written have no seat yet; they are greeted by it.
+  const bool to_user =
+      from == kSelf && answers && JsonValue(to, "asker", "") == "";
   // What a reader it wakes answers to: only one it names answers its author.
   const auto asks = [&](const std::string& reader) {
     json re = {{"round", round_}};
@@ -378,7 +387,9 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   std::vector<const SessionInfo*> woken;
   for (const SessionInfo& member : members) {
     const std::string id = MailboxIdFor(member.path);
-    if (!late && id != from && Wakes(id, narrowed, some.contains(id))) {
+    const bool joined = to_user && !seats_.contains(id);
+    if (!late && id != from &&
+        Wakes(id, narrowed, some.contains(id) || joined)) {
       woken.push_back(&member);
     }
   }
@@ -425,6 +436,12 @@ json Chat::Deliver(const std::string& from, const std::string& author,
     }
     if (wake) started.push_back(member);
   }
+  // A member's message in the round, not its answer to the user who asked
+  // it, is discussion the panel closes.
+  if (from != kSelf && !from.empty() && !late &&
+      !(answers && JsonValue(to, "asker", "") == "")) {
+    posted_ = true;
+  }
   Start(std::move(started));
   return self ? asks(kSelf) : json();
 }
@@ -459,7 +476,7 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     if (who == kSelf) {
       ++seat.turns;
       typing_.insert(who);
-      wake_(note);
+      wake_(note, {{"round", round_}});
       return;
     }
     const auto member = std::ranges::find_if(members, [&](const auto& item) {
@@ -477,6 +494,19 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     typing_.insert(who);
     Start({*member});
   }
+  // Silent after a member spoke, with nothing the panel handed out still
+  // under way: the moderator closes the round for the user, once.
+  if (typing_.empty() && waiting_.empty() && posted_ && !closed_ &&
+      !ThreadsWorking(folder_)) {
+    posted_ = false;
+    closed_ = true;
+    typing_.insert(kSelf);
+    wake_(
+        "[chat, not a user message] The discussion has settled. Close it for "
+        "the user: what was decided, the answer or scores, and what is still "
+        "open. This message goes to the user; the members only read it.",
+        {{"round", round_}, {"asker", ""}});
+  }
 }
 
 json Chat::Begin(bool answers) {
@@ -486,6 +516,8 @@ json Chat::Begin(bool answers) {
   waiting_.clear();
   seats_.clear();
   heard_.clear();
+  posted_ = false;
+  closed_ = false;
   if (!answers) return json();
   seats_[kSelf].turns = 1;
   typing_.insert(kSelf);
@@ -498,7 +530,7 @@ json Chat::Said(const std::string& text) {
   // for members alone. Members it adds while answering take part.
   const std::set<std::string> opens = Named(folder_, members, text);
   json re = Begin(opens.empty() || opens.contains(kSelf));
-  if (!opens.empty() && !re.is_null()) re["asker"] = "";
+  if (!re.is_null()) re["asker"] = "";
   Deliver("", "user", text);
   Save();
   return re;
@@ -508,6 +540,7 @@ void Chat::Answered(const std::string& text, const json& to) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
   if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
+    posted_ = false;
     Deliver(kSelf, ModeratorName(folder_), Trim(text), to);
   }
   Release(members);
@@ -518,7 +551,10 @@ void Chat::Heard(Mail& mail) {
   // A thread's report is news to discuss: what the panel makes of it
   // begins a round, as the user's message does.
   if (mail.type == kMailTaskCompleted) {
-    mail.body["re"] = Begin(true);
+    // Once the round is closed, the panel's answer to a report is the
+    // user's: the chat waits for the user.
+    mail.body["re"] =
+        closed_ ? json{{"round", round_}, {"asker", ""}} : Begin(true);
     Save();
     return;
   }

@@ -1390,7 +1390,7 @@ void TestAChatCountsAMailOnce() {
   int64_t round = 0;
   const auto heard = [&](const std::string& id, const std::string& text) {
     // As a runtime started again would: from what the last one saved.
-    Chat chat(folder, [](const std::string&) {});
+    Chat chat(folder, [](const std::string&, const json&) {});
     Mail mail;
     mail.id = id;
     mail.from = MailboxIdFor(ada);
@@ -1399,7 +1399,7 @@ void TestAChatCountsAMailOnce() {
     chat.Heard(mail);
     return JsonValue(mail.body, "text", "");
   };
-  Chat(folder, [](const std::string&) {}).Said("hello");
+  Chat(folder, [](const std::string&, const json&) {}).Said("hello");
   // An answer to an earlier round is read and uses up nothing.
   CHECK(heard("m0", "Zero.") == "Ada: Zero.");
   // Its own name before its message is not said twice.

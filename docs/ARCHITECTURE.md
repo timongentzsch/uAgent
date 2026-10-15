@@ -164,6 +164,13 @@ participants, with no part of its own beyond its tools.
   member past the chat. Members spend from the same daily limit as threads.
   An answer that arrives after the user has written again belongs to the
   round before: it is read by everyone and is nobody's turn in the new one.
+- The panel's answer to the user's message is the user's. It wakes only
+  the members it opens with and those who joined while it was written.
+  When the chat falls silent after members discussed, and no thread of the
+  panel has work ahead, the moderator is woken once to close the round for
+  the user; that message wakes nobody. A thread's report begins a round
+  only while the round is open. After the close, the moderator's answer to a
+  report is the user's, and the chat waits for the user.
 - A file the user attaches reaches the members as its path in the message;
   they read what is shared in the panel's chat without review, like
   the folder itself.

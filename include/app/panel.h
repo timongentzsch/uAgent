@@ -61,6 +61,9 @@ inline constexpr const char* kMemberTools[] = {"read_path", "grep", "skill",
 
 // Whether a thread this folder's panel started is working a turn now.
 bool ThreadsOwe(const std::string& folder);
+// Whether work the panel handed out is still ahead: a thread that is not a
+// chat member is working or has not begun, or its report waits unread.
+bool ThreadsWorking(const std::string& folder);
 // Whether something can still bring the answer of a chat member that was
 // woken: a runtime that does not wait on a person, or a wake-up sent moments
 // ago that is starting one.

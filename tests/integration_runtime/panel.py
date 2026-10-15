@@ -1167,6 +1167,8 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
     root, home, *, binary
 ):
     def reply(member, last, body):
+        if not member and "has settled" in last:
+            return "Closed: Kestrel."
         if member == "Ada" and "name the kite" in last:
             return "Call it Kestrel."
         if member == "Lin" and "only you" in last:
@@ -1215,7 +1217,15 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
             lambda: any(not _member(b) and _posted(_last_user(b)) for _, b in server.requests),
             "the panel never read Ada",
         )
-        assert_true(result.stdout.strip() == "panel\n\nAda: Call it Kestrel.", repr(result.stdout))
+        # The discussion ends with the moderator closing it for the user, once.
+        assert_true(
+            result.stdout.strip() == "panel\n\nAda: Call it Kestrel.\n\nClosed: Kestrel.",
+            repr(result.stdout),
+        )
+        # The moderator's answer to the user's message is the user's: the
+        # members, woken by the message itself, are not woken by it.
+        newest = [_heard(b).splitlines()[-1] for _, b in server.requests if _member(b)]
+        assert_true(not any("Moderator: panel" in line for line in newest), newest)
         # Each is told who else is answering, and nobody reads an @ or a label.
         woken = [b for _, b in server.requests if _member(b) and "name the kite" in _heard(b)]
         assert_true(any("(typing: " in _heard(b) for b in woken), server.requests)
@@ -1327,6 +1337,73 @@ def test_a_threads_report_begins_a_round_the_members_discuss(root, home, *, bina
         wait_until(lambda: _asked(server, "Lin", "3 files"), "Lin never discussed the report")
 
 
+def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, home, *, binary):
+    """Silence while a thread works does not close the round; its report is
+    discussed, then the moderator closes the round once. A report after that
+    reaches the moderator alone: the chat waits for the user."""
+
+    def spawn(title, objective):
+        return tool_call(
+            "thread",
+            {"action": "spawn", "title": title, "objective": objective, "environment": "local"},
+        )
+
+    def reply(member, last, body):
+        newest = last.splitlines()[-1] if last else ""
+        if member:
+            if "count the files" in newest:
+                return "Counting matters."
+            if "The count is 3 files." in newest:
+                return "Agreed, 3."
+            return "PASS"
+        text = json.dumps(body)
+        if "Objective: count the files" in text:
+            time.sleep(budget(2))
+            return "3 files counted."
+        if "Objective: recount" in text:
+            return "recount done"
+        if "[thread event" in last:
+            return "Recount: still 3." if "Recount" in last else "The count is 3 files."
+        if "has settled" in last:
+            return (
+                "Closed: 3 files."
+                if '"Recount files"' in text
+                else spawn("Recount files", "recount")
+            )
+        if "count the files" in last:
+            return (
+                "Started a count."
+                if '"Count files"' in text
+                else spawn("Count files", "count the files")
+            )
+        return "PASS"
+
+    with Server([_room(reply)]) as server:
+        env = base_env(home, server.url)
+        _team(root, env, binary)
+        server.requests.clear()
+        result = run(root, env, "panel", "-p", "count the files", binary=binary, timeout=30)
+        assert_true(result.returncode == 0, result.stderr)
+        wait_until(
+            lambda: any("Recount: still 3." in json.dumps(b) for _, b in server.requests),
+            "the recount was never reported",
+        )
+        time.sleep(budget(1))
+        moderator = [
+            json.dumps(b["messages"])
+            for _, b in server.requests
+            if not _member(b) and "Objective:" not in json.dumps(b["messages"])
+        ][-1]
+        # Closed once, and only after the count was in.
+        settled = "The discussion has settled"
+        assert_true(moderator.count(settled) == 1, moderator)
+        assert_true(moderator.index("finished its turn") < moderator.index(settled), moderator)
+        assert_true(_asked(server, "Ada", "The count is 3 files."), server.requests)
+        # What the moderator made of the later report wakes no member.
+        newest = [_heard(b).splitlines()[-1] for _, b in server.requests if _member(b)]
+        assert_true(not any("Recount: still 3." in line for line in newest), newest)
+
+
 def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root, home, *, binary):
     def reply(member, last, _body):
         if "slow start" in last:
@@ -1380,7 +1457,9 @@ def test_a_long_message_reaches_the_chat_whole(root, home, *, binary):
 
 
 def test_a_chat_that_never_falls_silent_stops_at_its_limits(root, home, *, binary):
-    def reply(member, _last, _body):
+    def reply(member, last, _body):
+        if not member and "has settled" in last:
+            return "Closed."
         return f"More from {member or 'the panel'}."
 
     with Server([_room(reply)]) as server:
@@ -1389,15 +1468,17 @@ def test_a_chat_that_never_falls_silent_stops_at_its_limits(root, home, *, binar
         _team(root, env, binary)
         server.requests.clear()
         # Every answer would wake everyone else for ever. Three participants
-        # get nine turns between them and two messages each, and no more.
+        # get nine turns between them and two messages each, and the panel
+        # one more to close the round.
         result = run(root, env, "panel", "-p", "keep talking", binary=binary, timeout=30)
         assert_true(result.returncode == 0, result.stderr)
         time.sleep(budget(1))
-        assert_true(len(server.requests) <= 9, [_last_user(b)[:60] for _, b in server.requests])
+        assert_true(len(server.requests) <= 10, [_last_user(b)[:60] for _, b in server.requests])
         said = result.stdout
         for name in ("Ada", "Lin"):
             assert_true(1 <= said.count(f"{name}: More from {name}.") <= 2, said)
         assert_true(1 <= said.count("More from the panel.") <= 2, said)
+        assert_true(said.count("Closed.") == 1 and said.rstrip().endswith("Closed."), said)
 
 
 def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *, binary):
@@ -1470,7 +1551,8 @@ def test_an_answer_to_an_earlier_message_is_read_and_is_no_turn_of_the_next(root
             repr(result.stdout),
         )
         round_ = json.loads(pathlib.Path(str(panel) + ".chat").read_text(encoding="utf-8"))
-        assert_true(sorted(seat["posts"] for seat in round_["seats"].values()) == [0, 1, 1], round_)
+        members = [seat["posts"] for who, seat in round_["seats"].items() if who != "coordinator"]
+        assert_true(sorted(members) == [0, 1], round_)
 
 
 def test_a_chat_round_outlives_the_panels_runtime(root, home, *, binary):

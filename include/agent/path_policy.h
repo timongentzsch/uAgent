@@ -64,8 +64,9 @@ inline bool SelfConfigurationPath(const std::string& path) {
          candidate.filename() == ".mcp.json";
 }
 
-// The browser profile (HiddenPaths): the file tools refuse it outright rather
-// than asking, and the OS sandbox hides it from commands.
+// HiddenPaths -- the browser profile, uAgent's settings, credential stores:
+// the file tools refuse them outright rather than asking, and the OS sandbox
+// hides them from commands.
 inline bool HiddenPath(const std::string& path) {
   if (path.empty()) return false;
   const std::filesystem::path candidate = CanonicalAccessPath(path);
@@ -78,8 +79,9 @@ inline bool HiddenPath(const std::string& path) {
 inline std::optional<ToolArgumentIssue> RefuseHidden(const json& args) {
   if (!HiddenPath(JsonValue(args, "path", "."))) return std::nullopt;
   return ArgumentIssue("policy.hidden",
-                       "the browser profile and the web host's state are "
-                       "private to them",
+                       "this path holds credentials or uAgent's own state "
+                       "and is not available to tools (sandbox.reveal lifts "
+                       "that)",
                        "path");
 }
 

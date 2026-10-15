@@ -131,6 +131,7 @@ add_library(
   src/core/project.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
+  src/core/sandbox_watch.cc
   src/core/settings_store.cc
   src/core/signals.cc
   src/core/skills.cc

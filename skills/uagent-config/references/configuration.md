@@ -85,9 +85,11 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | --- | --- | --- | --- | --- | --- |
 | `tools.resultChars` | `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
 | `tools.readFileLines` | `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
-| `sandbox.enabled` | `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
+| `sandbox.level` | `UAGENT_SANDBOX` | string | `default` | restart-required | how far the OS sandbox confines shell commands: strict (no network), default, relaxed (home writable) or off |
 | `sandbox.network` | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
 | `sandbox.write` | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
+| `sandbox.hide` | `UAGENT_SANDBOX_HIDE` | string | empty | restart-required | more paths the sandbox hides from commands and file tools, colon-separated |
+| `sandbox.reveal` | `UAGENT_SANDBOX_REVEAL` | string | empty | restart-required | paths hidden by default that commands and file tools may read, colon-separated |
 
 ## Subagents
 

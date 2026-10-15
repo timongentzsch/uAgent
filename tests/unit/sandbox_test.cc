@@ -6,15 +6,22 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
 #include "include/core/config.h"
 #include "include/core/env.h"
+#include "include/core/sandbox_watch.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 namespace {
+
+void WriteFile(const std::filesystem::path& path, const std::string& text) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream(path) << text;
+}
 
 bool HasRoot(const SandboxPolicy& policy, const std::string& root) {
   return std::find(policy.writable_roots.begin(), policy.writable_roots.end(),
@@ -143,6 +150,124 @@ void TestSandboxPolicy() {
   CHECK(!SandboxPathWithin("/de", "/dev"));
 }
 
+void TestSandboxLevels() {
+  SandboxPreset preset = SandboxPreset::kStrict;
+  for (const auto& [text, expected] :
+       {std::pair<const char*, SandboxPreset>{"strict", SandboxPreset::kStrict},
+        {"default", SandboxPreset::kDefault},
+        {"relaxed", SandboxPreset::kRelaxed},
+        {"off", SandboxPreset::kOff},
+        // The values of the switch the setting replaced.
+        {"1", SandboxPreset::kDefault},
+        {"true", SandboxPreset::kDefault},
+        {"0", SandboxPreset::kOff},
+        {"false", SandboxPreset::kOff}}) {
+    CHECK(ParseSandboxPreset(text, &preset));
+    CHECK(preset == expected);
+  }
+  preset = SandboxPreset::kRelaxed;
+  CHECK(!ParseSandboxPreset("loose", &preset));
+  CHECK(!ParseSandboxPreset("", &preset));
+  CHECK(preset == SandboxPreset::kRelaxed);
+
+  // Relaxed opens the home folder and withholds ~/.uagent from it; what is
+  // granted inside ~/.uagent stays granted rather than folding into the home.
+  SandboxInputs relaxed = BaseInputs();
+  relaxed.open_home = "/home/u";
+  const SandboxPolicyResult opened = BuildSandboxPolicy(relaxed);
+  CHECK(HasRoot(opened.policy, "/home/u"));
+  CHECK(!HasRoot(opened.policy, "/home/u/work"));
+  CHECK(!HasRoot(opened.policy, "/home/u/.cache"));
+  CHECK(HasRoot(opened.policy, "/home/u/.uagent/terminals/logs"));
+  CHECK(opened.policy.withheld == std::vector<std::string>{"/home/u/.uagent"});
+  CHECK(opened.rejected.empty());
+  // A workspace kept in ~/.uagent is granted too.
+  relaxed.workspace = "/home/u/.uagent/spaces/w";
+  CHECK(
+      HasRoot(BuildSandboxPolicy(relaxed).policy, "/home/u/.uagent/spaces/w"));
+  // The extra roots keep their screen: ~/.uagent is still not one.
+  relaxed.extra_roots = {"/home/u/.uagent"};
+  CHECK(Rejected(BuildSandboxPolicy(relaxed), "/home/u/.uagent"));
+  // Other levels withhold nothing.
+  CHECK(BuildSandboxPolicy(BaseInputs()).policy.withheld.empty());
+
+  // Seatbelt: the denial follows the home allow, the nested roots are allowed
+  // again after it, and the folder cannot be renamed away.
+  const std::string profile = SeatbeltProfile(opened.policy);
+  const size_t home_allow =
+      profile.find("(allow file-write* (subpath \"/home/u\"))");
+  const size_t withhold =
+      profile.find("(deny file-write* (subpath \"/home/u/.uagent\"))");
+  const size_t logs = profile.rfind(
+      "(allow file-write* (subpath \"/home/u/.uagent/terminals/logs\"))");
+  REQUIRE(home_allow != std::string::npos);
+  REQUIRE(withhold != std::string::npos);
+  REQUIRE(logs != std::string::npos);
+  CHECK(home_allow < withhold && withhold < logs);
+  CHECK(profile.find("(deny file-write-unlink (literal \"/home\") (literal "
+                     "\"/home/u\"))") != std::string::npos);
+  // The profile with every default hidden path still fits.
+  SandboxPolicy crowded = opened.policy;
+  crowded.hidden = {"/home/u/.uagent/config", "/home/u/.aws",
+                    "/home/u/.config/gcloud", "/home/u/.azure",
+                    "/home/u/.kube",          "/home/u/.gnupg",
+                    "/home/u/.netrc",         "/home/u/.docker/config.json",
+                    "/home/u/.uagent/web"};
+  const std::string full = SeatbeltProfile(crowded);
+  CHECK(!full.empty() && full.size() < kSeatbeltProfileLimit / 8);
+
+  // The trampoline carries it.
+  std::vector<std::string> words = EncodeSandboxPolicy(crowded);
+  words.emplace_back("--");
+  SandboxPolicy decoded;
+  size_t consumed = 0;
+  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
+  CHECK(decoded.hidden == crowded.hidden);
+  CHECK(decoded.withheld == crowded.withheld);
+  CHECK(words[consumed] == "--");
+}
+
+// Where Landlock cannot deny a write, it is undone and said.
+void TestSandboxWatch() {
+  namespace fs = std::filesystem;
+  TestWorkspace test("watch");
+  const fs::path hooks = test.workspace / ".git" / "hooks";
+  const fs::path config = test.workspace / ".git" / "config";
+  const fs::path mcp = test.workspace / ".mcp.json";
+  fs::create_directories(hooks);
+  WriteFile(hooks / "pre-commit.sample", "sample");
+  WriteFile(config, "[core]\n");
+  const std::string workspace = test.workspace.string();
+  const SandboxWatch watch({mcp.string(), config.string(), hooks.string()});
+  // Nothing changed, nothing said.
+  CHECK(watch.Restore(workspace).empty());
+
+  // A hook added, a config rewritten, a .mcp.json made that did not exist.
+  WriteFile(hooks / "pre-commit", "#!/bin/sh\nevil\n");
+  WriteFile(hooks / "pre-commit.sample", "changed");
+  WriteFile(config, "[alias]\n");
+  WriteFile(mcp, "{}");
+  const std::vector<std::string> notices = watch.Restore(workspace);
+  CHECK(notices.size() == 3);
+  CHECK(
+      std::find(notices.begin(), notices.end(),
+                "restored .git/hooks: sandboxed commands may not change it") !=
+      notices.end());
+  CHECK(!fs::exists(mcp));
+  CHECK(!fs::exists(hooks / "pre-commit"));
+  CHECK(ReadFile((hooks / "pre-commit.sample").string(), 100).value_or("") ==
+        "sample");
+  CHECK(ReadFile(config.string(), 100).value_or("") == "[core]\n");
+  CHECK(watch.Restore(workspace).empty());
+
+  // A removed folder comes back.
+  fs::remove_all(hooks);
+  CHECK(watch.Restore(workspace).size() == 1);
+  CHECK(ReadFile((hooks / "pre-commit.sample").string(), 100).value_or("") ==
+        "sample");
+  CHECK(SandboxRestoreNote(nullptr, workspace).empty());
+}
+
 void TestSandboxRendering() {
   SandboxPolicy policy;
   policy.writable_roots = {"/private/tmp", "/w"};
@@ -266,11 +391,16 @@ void TestSandboxTrampolineArgs() {
   }
 }
 
-// The browser profile, canonical, only while it exists.
+// What is hidden, canonical, only while it exists.
 void TestSandboxHiddenPaths() {
   namespace fs = std::filesystem;
   TestWorkspace test("hidden");
-  const fs::path browser = fs::canonical(test.home) / "browser";
+  const fs::path home = fs::canonical(test.home);
+  const fs::path browser = home / "browser";
+  const auto has = [](const std::vector<std::string>& paths,
+                      const fs::path& path) {
+    return std::find(paths.begin(), paths.end(), path.string()) != paths.end();
+  };
   {
     ScopedEnv unset("UAGENT_BROWSER_DATA");
     CHECK(HiddenPaths().empty());
@@ -279,6 +409,35 @@ void TestSandboxHiddenPaths() {
   CHECK(HiddenPaths().empty());
   fs::create_directories(browser);
   CHECK(HiddenPaths() == std::vector<std::string>{browser.string()});
+
+  // The credential stores that exist, and not ~/.ssh or the GitHub CLI login,
+  // which are agent work.
+  for (const char* store : {".aws", ".kube", ".ssh", ".config/gh",
+                            ".config/mycloud", ".uagent/config"}) {
+    fs::create_directories(home / store);
+  }
+  WriteFile(home / ".netrc", "machine x");
+  fs::create_directories(home / ".docker");
+  WriteFile(home / ".docker" / "config.json", "{}");
+  std::vector<std::string> hidden = HiddenPaths();
+  for (const char* store :
+       {".aws", ".kube", ".netrc", ".docker/config.json", ".uagent/config"}) {
+    CHECK(has(hidden, home / store));
+  }
+  CHECK(!has(hidden, home / ".ssh"));
+  CHECK(!has(hidden, home / ".config" / "gh"));
+  CHECK(!has(hidden, home / ".azure"));  // not there, so not listed
+  CHECK(!has(hidden, home / ".config" / "mycloud"));
+
+  // sandbox.hide adds, with ~/ for the home folder; a relative entry names
+  // nothing. sandbox.reveal takes a default away.
+  ScopedEnv hide("UAGENT_SANDBOX_HIDE", "~/.config/mycloud:rel/path");
+  ScopedEnv reveal("UAGENT_SANDBOX_REVEAL", (home / ".aws").string());
+  hidden = HiddenPaths();
+  CHECK(has(hidden, home / ".config" / "mycloud"));
+  CHECK(!has(hidden, home / ".aws"));
+  CHECK(has(hidden, home / ".kube"));
+  CHECK(hidden.size() == 6);
 }
 
 void TestSandboxProbe() {

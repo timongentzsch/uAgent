@@ -52,7 +52,7 @@ void TestSettingsStore() {
   // The document names a setting as people do and holds its value in its
   // own type; what a value refers to is kept apart under "variables".
   CHECK(Set("", "UAGENT_MAX_STEPS", "12").empty());
-  CHECK(Set("", "UAGENT_SANDBOX", "0").empty());
+  CHECK(Set("", "UAGENT_SANDBOX", "relaxed").empty());
   CHECK(Set("", "UAGENT_API_KEY", "$MY_KEY").empty());
   const auto document = [] {
     return json::parse(ReadFile(SettingsPath(), 1 << 20).value_or(""));
@@ -60,12 +60,12 @@ void TestSettingsStore() {
   CHECK(document()["format"] == 2);
   const json all = document()["all"];
   CHECK(all["model"] == "m2" && all["limits.maxSteps"] == 12);
-  CHECK(all["sandbox.enabled"] == false);
+  CHECK(all["sandbox.level"] == "relaxed");
   CHECK(all["endpoint.apiKey"] == "$MY_KEY");
   CHECK(all["variables"] == json({{"MY_KEY", "secret"}}));
   CHECK(!all.contains("UAGENT_MODEL") && !all.contains("MY_KEY"));
   CHECK(ReadSettings(folder).all.at("UAGENT_MAX_STEPS") == "12");
-  CHECK(ReadSettings(folder).all.at("UAGENT_SANDBOX") == "0");
+  CHECK(ReadSettings(folder).all.at("UAGENT_SANDBOX") == "relaxed");
   CHECK(ReadSettings(folder).warning.empty());
   for (const char* name :
        {"UAGENT_MAX_STEPS", "UAGENT_SANDBOX", "UAGENT_API_KEY"}) {
@@ -121,9 +121,26 @@ void TestSettingsStore() {
     CHECK(kept["all"]["variables"]["A"] == 1);
     // What was not taken is not made takeable by a save of something else.
     CHECK(kept["all"]["memory.enabled"] == 1);
-    CHECK(kept["all"]["sandbox.enabled"] == "off");
+    CHECK(kept["all"]["sandbox.level"] == "off");
     // What the document holds is what a correction is compared with.
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
+  }
+
+  // The sandbox was a switch, saved as sandbox.enabled: its true and false
+  // are the levels default and off, and a save writes the new name.
+  {
+    TestWorkspace switched("settings-store-sandbox-switch");
+    Put(SettingsPath(), R"({"format": 2, "all": {"sandbox.enabled": false},)"
+                        R"( "projects": {"/p": {"sandbox.enabled": true}}})");
+    const SavedSettings read = ReadSettings("/p");
+    CHECK(read.warning.empty());
+    CHECK(read.all.at("UAGENT_SANDBOX") == "off");
+    CHECK(read.project.at("UAGENT_SANDBOX") == "default");
+    CHECK(Set("", "UAGENT_MODEL", "m").empty());
+    const json rewritten =
+        json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
+    CHECK(rewritten["all"]["sandbox.level"] == "off");
+    CHECK(!rewritten["all"].contains("sandbox.enabled"));
   }
 
   // An editor takes no lock. What it saves while a change is being made is
@@ -181,10 +198,10 @@ void TestSettingsStore() {
     CHECK(ReadSettings("/p").all == (SettingValues{{"TOKEN", "t"},
                                                    {"UAGENT_MAX_STEPS", "9"},
                                                    {"UAGENT_MODEL", "old"}}));
-    CHECK(ReadSettings("/p").project.at("UAGENT_SANDBOX") == "0");
+    CHECK(ReadSettings("/p").project.at("UAGENT_SANDBOX") == "false");
     const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
     CHECK(now["format"] == 2 && now["all"]["limits.maxSteps"] == 9);
-    CHECK(now["projects"]["/p"]["sandbox.enabled"] == false);
+    CHECK(now["projects"]["/p"]["sandbox.level"] == "false");
     // A panel's settings under the names they had as a coordinator's.
     CHECK(now["projects"]["/p"]["panel.maxThreads"] == 7);
     AllSettings handed;

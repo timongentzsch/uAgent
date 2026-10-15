@@ -71,6 +71,8 @@ namespace uagent {
   X(TestHostCommandKinds)                         \
   X(TestToolCopiesKeepRoomForUserFiles)           \
   X(TestSandboxPolicy)                            \
+  X(TestSandboxLevels)                            \
+  X(TestSandboxWatch)                             \
   X(TestSandboxRendering)                         \
   X(TestSandboxTrampolineArgs)                    \
   X(TestSandboxHiddenPaths)                       \

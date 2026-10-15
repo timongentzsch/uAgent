@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,7 @@
 #endif
 
 #include "include/core/config_registry.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -134,14 +136,14 @@ bool Fatal(const char* what) {
   return false;
 }
 
-// Grants `access` beneath `root`, except beneath any hidden path. Landlock
-// has no deny form, so a root holding a hidden path is granted child by
+// Grants `access` beneath `root`, except beneath any `skipped` path. Landlock
+// has no deny form, so a root holding a skipped path is granted child by
 // child, recursing only down the one branch that leads to it. Rules bind to
-// inodes, so renaming a hidden directory later does not uncover it.
+// inodes, so renaming a skipped directory later does not uncover it.
 bool AddRulesExcept(int ruleset, const std::string& root, uint64_t access,
-                    const std::vector<std::string>& hidden) {
+                    const std::vector<std::string>& skipped) {
   bool holds_hidden = false;
-  for (const std::string& path : hidden) {
+  for (const std::string& path : skipped) {
     if (SandboxPathWithin(root, path)) return true;
     holds_hidden = holds_hidden || SandboxPathWithin(path, root);
   }
@@ -175,7 +177,7 @@ bool AddRulesExcept(int ruleset, const std::string& root, uint64_t access,
   }
   closedir(directory);
   for (const std::string& child : children) {
-    if (!AddRulesExcept(ruleset, child, access, hidden)) return false;
+    if (!AddRulesExcept(ruleset, child, access, skipped)) return false;
   }
   return true;
 }
@@ -203,10 +205,15 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
   Fd ruleset(static_cast<int>(syscall(kCreateRuleset, &attr, attr_size, 0U)));
   if (!ruleset) return Fatal("landlock_create_ruleset");
 
-  // A writable root that holds a hidden path is granted around it too.
+  // A writable root that holds a hidden or withheld path is granted around it
+  // too. A withheld path that holds the root is no reason to skip it: that is
+  // a root granted inside one, such as the terminal logs.
   for (const std::string& root : policy.writable_roots) {
-    if (!AddRulesExcept(ruleset.Get(), root, HandledFsAccess(abi),
-                        policy.hidden)) {
+    std::vector<std::string> skipped = policy.hidden;
+    for (const std::string& path : policy.withheld) {
+      if (!SandboxPathWithin(root, path)) skipped.push_back(path);
+    }
+    if (!AddRulesExcept(ruleset.Get(), root, HandledFsAccess(abi), skipped)) {
       return false;
     }
   }
@@ -254,13 +261,16 @@ namespace {
 // paths seatbelt and Landlock both match on. macOS makes this mandatory rather
 // than tidy: /tmp there is a symlink to /private/tmp, and a profile naming the
 // symlink confines nothing.
-SandboxInputs CollectInputs() {
+SandboxInputs CollectInputs(SandboxPreset preset) {
   auto canonical = [](const std::string& path) {
     return path.empty() ? std::string() : CanonicalAccessPath(path).string();
   };
   SandboxInputs inputs;
-  // Outbound TCP. Allowed by default: git, npm and pip all need it.
-  inputs.allow_network = BoolSetting(Cfg("UAGENT_SANDBOX_NET"));
+  // Outbound TCP. Allowed except at the strict level: git, npm and pip all
+  // need it. A value somebody wrote down wins over the level.
+  inputs.allow_network = SettingText(Cfg("UAGENT_SANDBOX_NET")).empty()
+                             ? preset != SandboxPreset::kStrict
+                             : BoolSetting(Cfg("UAGENT_SANDBOX_NET"));
   inputs.workspace = CanonicalCwd();
   std::error_code ec;
   inputs.git_repository =
@@ -279,6 +289,7 @@ SandboxInputs CollectInputs() {
   }
   const std::string home = UserHome();
   if (!home.empty()) {
+    if (preset == SandboxPreset::kRelaxed) inputs.open_home = canonical(home);
     // A root that does not exist grants nothing, and uv could not then make
     // its own folder beneath a closed one.
     std::error_code error;
@@ -318,6 +329,7 @@ SandboxStatus InheritedStatus(const std::string& text) {
   };
   status.policy.writable_roots = paths("roots");
   status.policy.denied_writes = paths("denied");
+  status.policy.withheld = paths("withheld");
   return status;
 }
 
@@ -327,7 +339,11 @@ SandboxStatus BuildStatus() {
       !inherited.empty()) {
     return InheritedStatus(inherited);
   }
-  if (!BoolSetting(Cfg("UAGENT_SANDBOX"))) return status;
+  // A value that names no level is held to the default: never less confined
+  // than a typo suggests.
+  SandboxPreset preset = SandboxPreset::kDefault;
+  ParseSandboxPreset(StringSetting(Cfg("UAGENT_SANDBOX")), &preset);
+  if (preset == SandboxPreset::kOff) return status;
   status.level = SandboxSupported();
   // Test-only, and only ever stricter: it can make an enforceable host look
   // unenforceable, never the other way round.
@@ -349,7 +365,7 @@ SandboxStatus BuildStatus() {
 #endif
     return status;
   }
-  SandboxInputs inputs = CollectInputs();
+  SandboxInputs inputs = CollectInputs(preset);
   // Denying the network on a host that can only confine writes would be a
   // policy nobody is enforcing. Unlike the tier above this refuses whatever
   // asked for it: a default cannot ask for a network denial, so anything that
@@ -392,7 +408,8 @@ std::string SandboxInheritance() {
                    {"reason", status.reason},
                    {"network", status.policy.allow_network},
                    {"roots", status.policy.writable_roots},
-                   {"denied", status.policy.denied_writes}});
+                   {"denied", status.policy.denied_writes},
+                   {"withheld", status.policy.withheld}});
 }
 
 json SandboxDiagnosticJson() {
@@ -435,7 +452,15 @@ std::string SandboxNote() {
 #if defined(__linux__)
   policy.hidden = HiddenPaths();
 #endif
-  return SandboxWritesNote(policy, CanonicalCwd());
+  std::string note = SandboxWritesNote(policy, CanonicalCwd());
+#if defined(__linux__)
+  // Landlock grants the home folder entry by entry, so what does not exist yet
+  // has no rule to allow it.
+  if (!policy.withheld.empty()) {
+    note += "; a new file made directly in the home folder is not writable";
+  }
+#endif
+  return note;
 }
 
 std::string SandboxWorkspaceRefusal() {
@@ -479,19 +504,64 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
 }
 
 std::vector<std::string> HiddenPaths() {
-  // The browser's profile, and the web host's own state: its paired devices'
-  // tokens would let a command act as the person at a browser.
-  std::vector<std::string> hidden;
-  for (const std::string& path :
-       {SettingText(Cfg("UAGENT_BROWSER_DATA")), GlobalBase() + "/web"}) {
-    if (path.empty() || path.front() != '/') continue;
-    std::string canonical = CanonicalAccessPath(path).string();
+  const std::string home = UserHome();
+  // A listed path may start with ~/. Relative paths name nothing: they would
+  // resolve against whatever folder the session happens to be in.
+  auto absolute = [&](std::string path) {
+    if (path.starts_with("~/") && !home.empty()) path = home + path.substr(1);
+    return path.empty() || path.front() != '/'
+               ? std::string()
+               : CanonicalAccessPath(path).string();
+  };
+  auto exists = [](const std::string& path) {
     struct stat info{};
-    if (lstat(canonical.c_str(), &info) == 0) {
-      hidden.push_back(std::move(canonical));
+    return !path.empty() && lstat(path.c_str(), &info) == 0;
+  };
+  // The browser's profile, and the web host's own state: its paired devices'
+  // tokens would let a command act as the person at a browser. uAgent's
+  // settings hold the API keys.
+  std::vector<std::string> candidates = {
+      SettingText(Cfg("UAGENT_BROWSER_DATA")), GlobalBase() + "/web",
+      GlobalBase() + "/" + kConfigDir};
+  if (!home.empty()) {
+    for (std::string_view store : kHiddenCredentialStores) {
+      candidates.push_back(home + "/" + std::string(store));
     }
   }
+  std::vector<std::string> revealed;
+  for (const std::string& raw :
+       SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_REVEAL")))) {
+    revealed.push_back(absolute(raw));
+  }
+  std::vector<std::string> hidden;
+  auto add = [&](std::string path) {
+    if (exists(path) &&
+        std::find(hidden.begin(), hidden.end(), path) == hidden.end()) {
+      hidden.push_back(std::move(path));
+    }
+  };
+  for (const std::string& path : candidates) {
+    const std::string canonical = absolute(path);
+    const bool shown = std::any_of(
+        revealed.begin(), revealed.end(), [&](const std::string& root) {
+          return !root.empty() && SandboxPathWithin(canonical, root);
+        });
+    if (!shown) add(canonical);
+  }
+  for (const std::string& raw :
+       SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_HIDE")))) {
+    add(absolute(raw));
+  }
   return hidden;
+}
+
+std::vector<std::string> SandboxUnenforcedWrites(const SandboxStatus& status) {
+#if defined(__linux__)
+  return status.policy.denied_writes;
+#else
+  static_cast<void>(status);
+  return {};
+#endif
 }
 
 int SandboxChildMain(int argc, char** argv) {

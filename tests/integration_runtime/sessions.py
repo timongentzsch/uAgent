@@ -83,7 +83,7 @@ def test_a_settings_file_edited_by_hand_says_what_it_cannot_take(root, home, *, 
     setting does not take are named at the start; the rest applies."""
     path = settings_path(home)
     path.parent.mkdir(parents=True)
-    edited = {"limits.maxToolCalls": 1, "limits.maxStps": 3, "sandbox.enabled": "maybe"}
+    edited = {"limits.maxToolCalls": 1, "limits.maxStps": 3, "sandbox.level": "maybe"}
     path.write_text(json.dumps({"format": 2, "all": edited, "projects": {}}))
     calls = tool_calls([("one", "read_path", {"path": "."}), ("two", "read_path", {"path": "."})])
     responses = [calls, event({"content": "answered-at-the-limit"}), event({"content": "scripted"})]
@@ -91,7 +91,7 @@ def test_a_settings_file_edited_by_hand_says_what_it_cannot_take(root, home, *, 
         result = run_dialog(root, base_env(home, server.url), "go\n/q\n", timeout=12, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("limits.maxStps is not a setting" in result.stdout, result.stdout)
-        assert_true("sandbox.enabled expects 0 or 1" in result.stdout, result.stdout)
+        assert_true("sandbox.level expects one of" in result.stdout, result.stdout)
         # What it could take applies.
         assert_true("tool call limit reached (1)" in result.stdout, result.stdout)
         # A script reads a headless run's stdout as its answer: the same

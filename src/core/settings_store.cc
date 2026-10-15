@@ -148,6 +148,15 @@ bool KindFits(const ConfigDescriptor& descriptor, const json& held) {
   return false;
 }
 
+// The sandbox was a switch (sandbox.enabled) before it was a level; the
+// switch's name is renamed with the registry, its value here.
+json CurrentValue(const std::string& key, const json& written) {
+  if (key == "sandbox.enabled" && written.is_boolean()) {
+    return written.get<bool>() ? "default" : "off";
+  }
+  return written;
+}
+
 // A scope of the document as settings. With `problems`, what cannot be taken
 // is named there, each with `where` before it, and left out; without, every
 // value of a setting is taken as it stands.
@@ -157,7 +166,8 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
   const auto report = [&](std::string problem) {
     if (problems) problems->push_back(where + std::move(problem));
   };
-  for (const auto& [key, held] : scope.items()) {
+  for (const auto& [key, written] : scope.items()) {
+    const json held = CurrentValue(key, written);
     if (key == kVariables) {
       if (!held.is_object()) {
         report("variables must map names to text");

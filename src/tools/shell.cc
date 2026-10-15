@@ -32,6 +32,7 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/sandbox.h"
+#include "include/core/sandbox_watch.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -224,8 +225,8 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
   if (!spec.sandbox) return {};
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kRefused) {
-    return "error: UAGENT_SANDBOX is on but cannot be enforced: " +
-           status.reason + ". Set UAGENT_SANDBOX=0 to run commands unconfined";
+    return "error: the sandbox cannot be enforced: " + status.reason +
+           ". Set UAGENT_SANDBOX=off to run commands unconfined";
   }
   if (status.mode != SandboxMode::kEnforced) return {};
   *wrapper = SandboxWrapperArgv(status);
@@ -235,6 +236,16 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
            " writable roots); remove entries from UAGENT_SANDBOX_WRITE";
   }
   return {};
+}
+
+// What a wrapped command may not change but this host cannot deny, recorded
+// before it runs; null when nothing is wrapped or the host denies it outright.
+std::shared_ptr<const SandboxWatch> WatchUnenforced(
+    const std::vector<std::string>& wrapper) {
+  if (wrapper.empty()) return nullptr;
+  std::vector<std::string> paths = SandboxUnenforcedWrites(SandboxRuntime());
+  return paths.empty() ? nullptr
+                       : std::make_shared<const SandboxWatch>(std::move(paths));
 }
 
 // A refused write arrives as the kernel's errno, which names a permission and
@@ -255,9 +266,10 @@ std::string SandboxHint(const std::string& output) {
 // A detached terminal outlives the turn that starts it: its output goes to a
 // rotating log through a pump child, it has no session, no pipe and no
 // deadline, and an identical live command is reused rather than started twice.
-ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
-                                      ShellCommand& spec,
-                                      const std::vector<std::string>& wrapper) {
+ShellCommandResult StartDetachedShell(
+    ProcessSupervisor& supervisor, ShellCommand& spec,
+    const std::vector<std::string>& wrapper,
+    std::shared_ptr<const SandboxWatch> watch) {
   const std::string& cmd = spec.command;
   if (std::optional<DetachedActivity> existing =
           FindRunningDetachedActivity(cmd)) {
@@ -310,7 +322,8 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
             .id = pid,
             .display_label = std::move(spec.activity_label),
             .receipt_path = std::move(spec.receipt_path),
-            .source_id = std::move(spec.source_id)};
+            .source_id = std::move(spec.source_id),
+            .watch = std::move(watch)};
   if (!supervisor.TryAdd(std::move(job), kMaxBackgroundJobs)) {
     return fail_and_reap(JobLimitError());
   }
@@ -344,7 +357,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (std::string error = SandboxWrapperFor(spec, &wrapper); !error.empty()) {
     return {ToolFailure(ToolErrorCode::kUnavailable, error)};
   }
-  if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper);
+  std::shared_ptr<const SandboxWatch> watch = WatchUnenforced(wrapper);
+  if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper, watch);
 
   // Everything below is the supervised foreground lifecycle.
   bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
@@ -426,6 +440,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                    .receipt_path = std::move(spec.receipt_path),
                    .source_id = std::move(spec.source_id),
                    .completion_notes = std::move(spec.completion_notes),
+                   .watch = watch,
                    .metadata = std::move(spec.activity_metadata)};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
@@ -492,6 +507,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     if (!result.Ok() && !wrapper.empty()) {
       result.output += SandboxHint(result.output);
     }
+    result.output += SandboxRestoreNote(watch.get(), CanonicalCwd());
     result.artifact = std::move(artifact);
     return ShellCommandResult{std::move(result), status, /*launched=*/true};
   };
@@ -500,6 +516,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     RemoveLog(log);
+    (void)SandboxRestoreNote(watch.get(), CanonicalCwd());
     return {ToolCancelled("error: command cancelled by user"), std::nullopt,
             /*launched=*/true};
   }

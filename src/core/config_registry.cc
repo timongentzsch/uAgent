@@ -14,12 +14,14 @@
 namespace uagent {
 
 namespace {
-// A setting's name from before the coordinator became the panel, as its name
-// now: a saved file that spells it the old way keeps its values.
+// A setting's name from before the coordinator became the panel, or before the
+// sandbox switch became a level, as its name now: a saved file that spells it
+// the old way keeps its values.
 std::string CurrentName(std::string_view name) {
   using Pair = std::pair<std::string_view, std::string_view>;
   for (const auto& [old, now] :
        {Pair{"coordinator.", "panel."},
+        Pair{"sandbox.enabled", "sandbox.level"},
         Pair{"UAGENT_COORDINATOR_", "UAGENT_PANEL_"}}) {
     if (name.starts_with(old)) {
       return std::string(now) + std::string(name.substr(old.size()));

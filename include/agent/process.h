@@ -19,6 +19,7 @@
 #include "include/core/fd.h"
 #include "include/core/json.h"
 #include "include/core/output_buffer.h"
+#include "include/core/sandbox_watch.h"
 #include "include/core/thread_annotations.h"
 
 namespace uagent {
@@ -84,6 +85,8 @@ struct BgJob {
   std::string receipt_path{};
   std::string source_id{};
   std::vector<std::string> completion_notes{};
+  // Put right when the job ends, where the sandbox could not deny its writes.
+  std::shared_ptr<const SandboxWatch> watch{};
   json metadata = json::object();
   int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())

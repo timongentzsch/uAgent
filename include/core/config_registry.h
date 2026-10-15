@@ -467,6 +467,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "tools, colon-separated"),
         "Sandbox hidden paths"),
     registry::Named(
+        registry::Str("sandbox.hideEnv", "UAGENT_SANDBOX_HIDE_ENV", {}, "",
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "tools",
+                      "more environment variables withheld from commands, MCP "
+                      "servers and delegated agents, comma-separated"),
+        "Hidden variables"),
+    registry::Named(
         registry::Str("sandbox.reveal", "UAGENT_SANDBOX_REVEAL", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "tools",

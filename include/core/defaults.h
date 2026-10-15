@@ -59,6 +59,23 @@ inline constexpr char kCollaboratorMarker[] = "\n[collaborator ";
 inline constexpr char kSkillMarker[] = "[skill ";
 inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
 
+// Environment variables that never reach a child process: shell commands,
+// MCP servers and delegated agents (see ChildEnvironment). Names are matched
+// without regard to case, and a variable whose name holds a marker, or looks
+// like a credential (CredentialLikeKey), is held back as well. A shell may
+// keep one by name with `shell.envAllow`; `sandbox.hideEnv` adds your own
+// names, e.g. sandbox.hideEnv=MYCLOUD_SESSION,INTERNAL_URL.
+inline constexpr std::string_view kHiddenEnvNames[] = {
+    "uagent_api_key",
+    "uagent_providers",
+    "uagent_session_budget",
+    "uagent_internal_usage_file",
+    "openrouter_api_key",
+    "ssh_auth_sock",  // the agent that holds your ssh keys
+    "xauthority"};    // the X display's login cookie
+inline constexpr std::string_view kHiddenEnvMarkers[] = {
+    "_access_key", "_private_key", "_cookie"};
+
 // File names uAgent reads or writes in more than one place.
 inline constexpr char kSkillFile[] = "SKILL.md";
 inline constexpr char kMcpConfigFile[] = ".mcp.json";

@@ -50,9 +50,20 @@
 - On Linux, `.mcp.json` and a repository's `.git/config` and `.git/hooks` are
   put back when a sandboxed command ends if it changed them, and the model and
   you are told (macOS denies the write, as before).
+- `sandbox.hideEnv` (`UAGENT_SANDBOX_HIDE_ENV`, comma-separated) adds
+  environment variable names that commands, MCP servers and delegated agents
+  never inherit, next to `shell.envAllow` on the allow side. A name listed
+  here stays hidden even when `shell.envAllow` names it.
 
 ### Changed
 
+- Names, limits and paths that several files spelled (the markers the
+  transcript reads out of tool results, directory and sidecar names, polling
+  and timeout values, compaction budgets, schema limits, z-index and animation
+  tokens) are each defined once, with tests where one file writes what another
+  reads. Behaviour is unchanged, except that web push and model requests now
+  refuse the same address ranges: push adds `192.88.99.0/24` and the IPv6
+  tunnel prefixes, model requests the documentation prefix `2001:db8::/32`.
 - The title, memory extraction and subagents take their setting, else the
   conversation's route, and say so when there is no model; images take their
   setting, else the conversation's route, else a model of the same endpoint

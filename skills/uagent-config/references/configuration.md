@@ -89,6 +89,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | `sandbox.network` | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
 | `sandbox.write` | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
 | `sandbox.hide` | `UAGENT_SANDBOX_HIDE` | string | empty | restart-required | more paths the sandbox hides from commands and file tools, colon-separated |
+| `sandbox.hideEnv` | `UAGENT_SANDBOX_HIDE_ENV` | string | empty | next-user-turn | more environment variables withheld from commands, MCP servers and delegated agents, comma-separated |
 | `sandbox.reveal` | `UAGENT_SANDBOX_REVEAL` | string | empty | restart-required | paths hidden by default that commands and file tools may read, colon-separated |
 
 ## Subagents

@@ -508,6 +508,12 @@
           "type": "string",
           "x-env": "UAGENT_SANDBOX_HIDE"
         },
+        "sandbox.hideEnv": {
+          "default": "",
+          "description": "more environment variables withheld from commands, MCP servers and delegated agents, comma-separated",
+          "type": "string",
+          "x-env": "UAGENT_SANDBOX_HIDE_ENV"
+        },
         "sandbox.level": {
           "anyOf": [
             {

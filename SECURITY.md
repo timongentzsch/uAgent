@@ -90,7 +90,8 @@ Two kinds of session act for you unattended:
   receive a centralized secret-deny environment; only class-specific
   credentials are re-added. Approved `run` commands can opt in exact variables
   with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to MCP servers,
-  delegated agents or `scratch`.
+  delegated agents or `scratch`. `UAGENT_SANDBOX_HIDE_ENV` adds names that no
+  child inherits, whatever the allowlist says.
 - A `run(tty=true)` activity keeps a writable PTY for the harness lifetime.
   `activity(operation=write, chars=...)` sends raw bytes with the original
   process's permissions, so treat every write, interrupt and resize as process

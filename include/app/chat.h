@@ -53,8 +53,8 @@ std::set<std::string> ChatTyping(const std::string& folder);
 // everyone. Whoever waited is woken by the next message. Two limits keep an
 // exchange from running on by itself:
 // UAGENT_PANEL_CHAT_TURNS turns per participant for one message of the
-// user's or one thread's report, and two messages each. The round is kept beside the panel's
-// session, so a runtime that starts again takes it up.
+// user's or one thread's report, and two messages each. The round is kept
+// beside the panel's session, so a runtime that starts again takes it up.
 class Chat {
  public:
   // `wake` starts a turn of the panel's own on a note.

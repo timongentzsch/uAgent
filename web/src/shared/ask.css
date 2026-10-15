@@ -135,7 +135,7 @@
 .ask-options.visual {
   grid-template-columns: repeat(
     auto-fit,
-    minmax(min(100%, calc(240rem / 14)), 1fr)
+    minmax(min(100%, var(--size-240)), 1fr)
   );
 }
 .ask-options.visual .ask-option {
@@ -156,7 +156,7 @@
 }
 .ask-preview {
   margin: 0;
-  max-height: calc(240rem / 14);
+  max-height: var(--size-240);
   padding: var(--space-3);
   overflow: auto;
   background: var(--surface);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { defaultZoom } from "./limits.ts";
 export const minimumZoom = 50;
 export const maximumZoom = 200;
 const conversationMeasure = 1040;
@@ -8,7 +9,7 @@ export const zoomChanged = "uagent:zoom";
 export const coarsePointer = () => matchMedia("(pointer: coarse)").matches;
 
 export function normalizeZoom(value: number) {
-  return Math.min(maximumZoom, Math.max(minimumZoom, value || 100));
+  return Math.min(maximumZoom, Math.max(minimumZoom, value || defaultZoom));
 }
 
 export function applyZoom(value: number) {

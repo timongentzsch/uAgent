@@ -5,8 +5,8 @@
   position: absolute;
   bottom: calc(100% + 4rem / 14);
   inset-inline: 0;
-  z-index: 5;
-  max-height: min(calc(220rem / 14), calc(var(--viewport-height) * 0.4));
+  z-index: var(--z-popover);
+  max-height: min(var(--size-220), calc(var(--viewport-height) * 0.4));
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--field-border);
@@ -17,7 +17,7 @@
   align-items: center;
   gap: var(--gap);
   width: 100%;
-  min-height: calc(40rem / 14);
+  min-height: var(--size-40);
   border: 0;
   border-left: 2px solid transparent;
   text-align: left;

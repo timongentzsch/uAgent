@@ -11,7 +11,19 @@ const source = ["runtime_act.cc", "runtime_page.cc"]
   .join("\n");
 const script = (name) =>
   source.match(new RegExp(`${name} = R"js\\(([\\s\\S]*?)\\)js";`))[1];
-const pageScript = script("kPageScript");
+// The page script is built from three pieces around the text limit it takes
+// from browser.h, which this joins the way PageScript() does.
+const pageTextChars = readFileSync(
+  new URL("../../include/browser/browser.h", import.meta.url),
+  "utf8",
+).match(/kPageTextChars = (\d+)/)[1];
+const pageScript = [
+  ...source
+    .match(/std::string PageScript\(\) \{[\s\S]*?\n\}\n/)[0]
+    .matchAll(/R"js\(([\s\S]*?)\)js"/g),
+]
+  .map((piece) => piece[1])
+  .join(pageTextChars);
 const elementScript = script("kElementScript");
 const keys = Object.fromEntries(
   [

@@ -2,7 +2,11 @@ import { useState } from "preact/hooks";
 import type { StatisticsModal } from "../../shared/types.ts";
 import { command, manage } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
-import { deleteRetryDelayMs } from "../../shared/limits.ts";
+import {
+  deleteRetryDelayMs,
+  maxSpaceNameChars,
+  maxTitleChars,
+} from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 export default function ConversationActions({
@@ -93,7 +97,7 @@ export default function ConversationActions({
             value={title}
             onInput={(event) => setTitle(event.currentTarget.value)}
             required
-            maxLength={modal.space ? 64 : 256}
+            maxLength={modal.space ? maxSpaceNameChars : maxTitleChars}
             autoComplete="off"
           />
         </label>

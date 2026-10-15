@@ -6,7 +6,7 @@
   margin: 0 var(--column-inset);
   padding: var(--space-2) 0;
   background: var(--bg);
-  max-height: calc(var(--viewport-height) - calc(100rem / 14));
+  max-height: calc(var(--viewport-height) - var(--size-100));
   overflow: visible;
 }
 .composer > form {
@@ -51,8 +51,8 @@
 }
 .composer-primary > .stop-icon {
   fill: currentColor;
-  width: calc(12rem / 14);
-  height: calc(12rem / 14);
+  width: var(--size-12);
+  height: var(--size-12);
 }
 .composer-primary[data-mode="stop"] > .send-icon,
 .composer-primary[data-mode="send"] > .stop-icon {
@@ -79,7 +79,7 @@
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  height: calc(28rem / 14);
+  height: var(--size-28);
   margin-bottom: var(--space-1);
 }
 /* One line at any width: a long state ("Waiting for approval…") truncates. */
@@ -98,7 +98,7 @@
 /* The slot's action appears and leaves by opacity alone. */
 .status-action > button {
   position: relative;
-  min-height: calc(24rem / 14);
+  min-height: var(--size-24);
   padding-block: 0;
   font-size: var(--font-micro);
   transition:

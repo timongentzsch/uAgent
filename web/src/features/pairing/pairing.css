@@ -1,13 +1,13 @@
 .pairing {
-  max-width: calc(560rem / 14);
+  max-width: var(--size-560);
   margin: auto;
   padding: var(--pad);
   min-height: 0;
   overflow: auto;
 }
 .pairing .wordmark {
-  width: calc(48rem / 14);
-  height: calc(48rem / 14);
+  width: var(--size-48);
+  height: var(--size-48);
   margin-bottom: var(--gap);
 }
 .pairing h1 {

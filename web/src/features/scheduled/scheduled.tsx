@@ -1,5 +1,9 @@
 import { manage } from "../../state/api.ts";
-import { defaultScheduleSeconds } from "../../shared/limits.ts";
+import {
+  defaultScheduleSeconds,
+  maxScheduleMinutes,
+  schedulePreviewDebounceMs,
+} from "../../shared/limits.ts";
 import type {
   ScheduledTask,
   ScheduledState,
@@ -128,7 +132,7 @@ export default function Scheduled({
           .catch((failure) => {
             if (active) setPreviewError(failure);
           }),
-      200,
+      schedulePreviewDebounceMs,
     );
     return () => {
       active = false;
@@ -347,7 +351,7 @@ export default function Scheduled({
                       <Input
                         type="number"
                         min={1}
-                        max={525600}
+                        max={maxScheduleMinutes}
                         value={
                           (task.schedule.seconds || defaultScheduleSeconds) / 60
                         }

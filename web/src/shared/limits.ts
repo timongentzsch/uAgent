@@ -32,6 +32,32 @@ export const copiedFeedbackMs = 2_000;
 // A new scheduled task's interval, and how far ahead a one-off is set.
 export const defaultScheduleSeconds = 3_600;
 
+// A scheduled task's interval is at most a year, as the host has it
+// (kSecondsPerYear); the form waits this long after an edit to ask the host
+// when the schedule next fires.
+export const maxScheduleMinutes = 525_600;
+export const schedulePreviewDebounceMs = 200;
+
+// A session's title and a workspace's name are bounded as on the host
+// (kUserTitleBytes, kSpaceNameChars).
+export const maxTitleChars = 256;
+export const maxSpaceNameChars = 64;
+
+// Zoom shown and stored when the device has not chosen one.
+export const defaultZoom = 100;
+// How long after start the idle screens are fetched ahead of use.
+export const idlePreloadMs = 2_000;
+// A second press of Stop within this is the first one bouncing, not a decision.
+export const stopGuardMs = 500;
+// The first reconnect delay; it doubles with each failure up to
+// reconnectMaxDelayMs.
+export const reconnectBaseDelayMs = 1_000;
+// An object URL handed to a download outlives the click by this long, for
+// browsers that start the download afterwards.
+export const downloadRevokeMs = 30_000;
+// A tool argument this short reads as a fact beside the tool's name.
+export const maxInlineFactChars = 40;
+
 // A draft's attachments: how many, and the largest upload the host takes.
 export const maxDraftFiles = 8;
 export const maxUploadBytes = 8 * 1024 * 1024;

@@ -1,4 +1,5 @@
 import { normalizeZoom } from "./layout.ts";
+import { defaultZoom } from "./limits.ts";
 import { storage } from "./storage.ts";
 import {
   defaultTimePrefs,
@@ -38,9 +39,9 @@ const parsed = (text: string | null) => JSON.parse(text || "null");
 export const devicePrefs = {
   theme: kept("uagent-theme", "system", (text) => text || "system", String),
   motion: kept("uagent-motion", "system", (text) => text || "system", String),
-  zoom: kept("uagent-zoom", 100, (text) => {
+  zoom: kept("uagent-zoom", defaultZoom, (text) => {
     const value = parsed(text);
-    return normalizeZoom(typeof value === "number" ? value : 100);
+    return normalizeZoom(typeof value === "number" ? value : defaultZoom);
   }),
   time: kept<TimePrefs>("uagent-time", defaultTimePrefs, (text) =>
     normalizeTimePrefs(parsed(text)),

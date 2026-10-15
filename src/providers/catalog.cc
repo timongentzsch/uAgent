@@ -18,15 +18,48 @@
 
 namespace uagent {
 namespace {
-constexpr ProviderTemplate kProviderTemplates[] = {{
-    "openrouter",
-    "https://openrouter.ai/api/v1",
-    "OPENROUTER_API_KEY",
-    OpenrouterUrl,
-    ProviderProtocol::kOpenRouter,
-    WireApi::kChatCompletions,
-    false,
-}};
+// The well-known endpoints, as data: an address, the variable its key is read
+// from (empty: none is offered by itself) and what it declares. An endpoint
+// is available when its key is set; a provider entry of the same name only
+// states what differs. This table and the provider entries are the only
+// places a vendor is named.
+struct KnownEndpoint {
+  const char* name;
+  const char* base_url;
+  const char* host;
+  const char* key_variable;
+  FeatureSet features;
+  const char* options;
+};
+
+constexpr KnownEndpoint kKnownEndpoints[] = {
+    {"openrouter", "https://openrouter.ai/api/v1", "openrouter.ai",
+     "OPENROUTER_API_KEY",
+     FeaturesOf({Feature::kSearchPlugin, Feature::kProviderRouting,
+                 Feature::kSessionPassthrough, Feature::kRawVendorIds,
+                 Feature::kModelVariants, Feature::kReasoningObject,
+                 Feature::kReasoningReplayText, Feature::kPromptCacheControl,
+                 Feature::kPdfParser, Feature::kInlineUsage}),
+     R"({"pdf_engine":"cloudflare-ai"})"},
+    {"openai", "https://api.openai.com/v1", "api.openai.com", "",
+     FeaturesOf({Feature::kMaxCompletionTokens, Feature::kSearchSources,
+                 Feature::kReasoningSummary}),
+     ""},
+};
+
+const KnownEndpoint* KnownEndpointForUrl(const std::string& url) {
+  const std::string host = UrlHost(url);
+  for (const KnownEndpoint& known : kKnownEndpoints) {
+    const std::string name = known.host;
+    if (host == name || host.ends_with("." + name)) return &known;
+  }
+  return nullptr;
+}
+
+void Declare(Endpoint& endpoint, const KnownEndpoint& known) {
+  endpoint.features = known.features;
+  endpoint.options = *known.options ? json::parse(known.options) : json();
+}
 
 constexpr std::chrono::hours kCatalogueLife{24};
 constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
@@ -34,8 +67,7 @@ constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
 // What a catalogue answers for: the endpoint and the way it is asked. The
 // credential is no part of it, so nothing derived from one is written down.
 std::string CatalogueIdentity(const Api& api) {
-  return api.base_url + "\n" + ProviderProtocolName(api.capabilities.protocol) +
-         "\n" + WireApiName(api.capabilities.wire_api);
+  return api.base_url + "\n" + WireApiName(api.wire_api);
 }
 
 std::string CataloguePath(const std::string& identity) {
@@ -61,26 +93,47 @@ std::string NormalizeModelId(std::string model) {
   return normalized;
 }
 
-const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url) {
-  for (const ProviderTemplate& provider : kProviderTemplates) {
-    if (provider.matches_url(url)) return &provider;
+const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
+                             const std::string& name) {
+  for (const Endpoint& provider : providers) {
+    if (provider.name == name) return &provider;
   }
   return nullptr;
 }
 
-const ProviderTemplate& DefaultProviderTemplate() {
-  return kProviderTemplates[0];
+// The provider serving a base URL, else the well-known endpoint whose name
+// selects it; a custom endpoint has no name to scope with.
+std::string ProviderScope(const std::string& base_url,
+                          const std::vector<Endpoint>& providers) {
+  for (const Endpoint& provider : providers) {
+    if (provider.base_url == base_url) return provider.name;
+  }
+  const KnownEndpoint* known = KnownEndpointForUrl(base_url);
+  return known && *known->key_variable ? known->name : std::string();
 }
 
-bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
-  std::string api_key = SettingText(provider.api_key_env);
-  if (api_key.empty()) return false;
-  api.base_url = provider.base_url;
-  api.api_key = std::move(api_key);
-  api.capabilities =
-      CapabilitiesForRoute(provider.protocol, api.base_url, provider.wire_api,
-                           provider.hosted_web_search);
-  return true;
+const Endpoint* DefaultEndpoint(const std::vector<Endpoint>& providers) {
+  for (const KnownEndpoint& known : kKnownEndpoints) {
+    if (!*known.key_variable) continue;
+    if (const Endpoint* endpoint = FindEndpoint(providers, known.name)) {
+      return endpoint;
+    }
+  }
+  return nullptr;
+}
+
+bool DeclareEndpoint(Endpoint& endpoint,
+                     const std::vector<Endpoint>& providers) {
+  for (const Endpoint& provider : providers) {
+    if (provider.base_url != endpoint.base_url) continue;
+    endpoint.name = provider.name;
+    endpoint.features = provider.features;
+    endpoint.options = provider.options;
+    return true;
+  }
+  const KnownEndpoint* known = KnownEndpointForUrl(endpoint.base_url);
+  if (known) Declare(endpoint, *known);
+  return known != nullptr;
 }
 
 ProviderCatalog LoadProviderCatalog() {
@@ -94,51 +147,70 @@ ProviderCatalog LoadProviderCatalog() {
         provider_name.find('/') != std::string::npos) {
       continue;
     }
+    // An entry named like a well-known endpoint may state only what differs.
+    const KnownEndpoint* known = nullptr;
+    for (const KnownEndpoint& row : kKnownEndpoints) {
+      if (provider_name == row.name) known = &row;
+    }
+    Endpoint endpoint;
+    endpoint.name = provider_name;
     std::string base_url = JsonValue(provider, "base_url", "");
+    endpoint.api_key = JsonValue(provider, "api_key", kPlaceholderApiKey);
+    if (base_url.empty() && known) {
+      base_url = known->base_url;
+      if (!provider.contains("api_key")) {
+        endpoint.api_key =
+            *known->key_variable ? SettingText(known->key_variable) : "";
+        if (endpoint.api_key.empty()) continue;
+      }
+    }
     if (base_url.empty()) continue;
-    base_url = StripTrailingSlashes(std::move(base_url));
-    std::string api_key = JsonValue(provider, "api_key", kPlaceholderApiKey);
-    int64_t context = JsonValue(provider, "context", int64_t{0});
+    endpoint.base_url = StripTrailingSlashes(std::move(base_url));
+    endpoint.context = JsonValue(provider, "context", int64_t{0});
     std::optional<WireApi> wire_api =
         ParseWireApi(JsonValue(provider, "wire_api", "chat_completions"));
     if (!wire_api) continue;
-    std::string protocol_name = JsonValue(provider, "protocol", "");
-    std::optional<ProviderProtocol> configured_protocol;
-    if (!protocol_name.empty()) {
-      configured_protocol = ParseProviderProtocol(protocol_name);
-      if (!configured_protocol) continue;
+    endpoint.wire_api = *wire_api;
+    if (const KnownEndpoint* row = KnownEndpointForUrl(endpoint.base_url)) {
+      Declare(endpoint, *row);
     }
-    ProviderProtocol protocol =
-        configured_protocol.value_or(ProviderProtocol::kOpenAi);
-    bool hosted_web_search =
-        HasHostedTool(JsonValue(provider, "hosted_tools", json::array()),
-                      HostedTool::kWebSearch);
-    catalog.providers.push_back(
-        {provider_name, base_url, api_key, context, protocol, *wire_api,
-         hosted_web_search, JsonValue(provider, "features", json(nullptr))});
+    if (provider.contains("supports")) {
+      std::string unknown;
+      endpoint.features = {};
+      if (!ParseFeatures(provider["supports"], endpoint.features, unknown)) {
+        continue;
+      }
+    }
+    if (HasHostedTool(JsonValue(provider, "hosted_tools", json::array()),
+                      HostedTool::kWebSearch)) {
+      endpoint.features.Add(Feature::kHostedSearch);
+    }
+    if (const json* options = JsonObject(provider, "options")) {
+      if (!endpoint.options.is_object()) endpoint.options = json::object();
+      endpoint.options.update(*options);
+    }
+    endpoint.model_features = JsonValue(provider, "features", json(nullptr));
+    catalog.providers.push_back(endpoint);
     if (!provider.contains("models") || !provider["models"].is_object()) {
       continue;
     }
     for (const auto& [alias, spec] : provider["models"].items()) {
       if (alias.empty() || alias.find('/') != std::string::npos) continue;
-      ModelRoute route;
-      route.name = provider_name + "/" + alias;
-      route.base_url = base_url;
-      route.api_key = api_key;
-      route.protocol = protocol;
-      route.wire_api = *wire_api;
-      route.hosted_web_search = hosted_web_search;
-      route.features = JsonValue(provider, "features", json(nullptr));
+      Route route;
+      static_cast<Endpoint&>(route) = endpoint;
+      route.route_name = provider_name + "/" + alias;
       if (spec.is_string()) {
         route.model = spec.get<std::string>();
       } else if (spec.is_object()) {
         route.model = JsonValue(spec, "id", "");
         if (const json* features = JsonObject(spec, "features")) {
-          if (!route.features.is_object()) route.features = json::object();
-          route.features.update(*features);
+          if (!route.model_features.is_object()) {
+            route.model_features = json::object();
+          }
+          route.model_features.update(*features);
         }
-        route.effort = JsonValue(spec, "effort", "");
-        route.context = JsonValue(spec, "context", context);
+        route.reasoning_effort = JsonValue(spec, "effort", "");
+        route.ctx_window = JsonValue(spec, "context", endpoint.context);
         if (spec.contains("wire_api")) {
           std::optional<WireApi> model_wire =
               ParseWireApi(JsonValue(spec, "wire_api", ""));
@@ -146,12 +218,15 @@ ProviderCatalog LoadProviderCatalog() {
           route.wire_api = *model_wire;
         }
         if (spec.contains("hosted_tools")) {
-          route.hosted_web_search =
-              HasHostedTool(spec["hosted_tools"], HostedTool::kWebSearch);
+          if (HasHostedTool(spec["hosted_tools"], HostedTool::kWebSearch)) {
+            route.features.Add(Feature::kHostedSearch);
+          } else {
+            route.features.Remove(Feature::kHostedSearch);
+          }
         }
       }
-      if (!route.context) route.context = context;
-      if (!route.model.empty() && ValidEffort(route.effort)) {
+      if (!route.ctx_window) route.ctx_window = endpoint.context;
+      if (!route.model.empty() && ValidEffort(route.reasoning_effort)) {
         catalog.models.push_back(std::move(route));
       }
     }
@@ -159,30 +234,21 @@ ProviderCatalog LoadProviderCatalog() {
   return catalog;
 }
 
-const NamedProvider* FindNamedProvider(
-    const std::vector<NamedProvider>& providers, const std::string& name) {
-  for (const NamedProvider& provider : providers) {
-    if (provider.name == name) return &provider;
-  }
-  return nullptr;
-}
-
-void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
-  for (const ProviderTemplate& provider : kProviderTemplates) {
-    std::string api_key = SettingText(provider.api_key_env);
-    if (api_key.empty() ||
-        FindNamedProvider(catalog.providers, provider.name)) {
-      continue;
-    }
-    catalog.providers.push_back(
-        {provider.name, provider.base_url, std::move(api_key), 0,
-         provider.protocol, provider.wire_api, provider.hosted_web_search});
-  }
-}
-
 ProviderCatalog SessionProviderCatalog() {
   ProviderCatalog catalog = LoadProviderCatalog();
-  AddAvailableProviderTemplates(catalog);
+  for (const KnownEndpoint& known : kKnownEndpoints) {
+    std::string api_key =
+        *known.key_variable ? SettingText(known.key_variable) : std::string();
+    if (api_key.empty() || FindEndpoint(catalog.providers, known.name)) {
+      continue;
+    }
+    Endpoint endpoint;
+    endpoint.name = known.name;
+    endpoint.base_url = known.base_url;
+    endpoint.api_key = std::move(api_key);
+    Declare(endpoint, known);
+    catalog.providers.push_back(std::move(endpoint));
+  }
   return catalog;
 }
 

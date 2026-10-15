@@ -690,7 +690,6 @@ void LogReady(const AppContext& context) {
   // top level of the event.
   const json behavior = {
       {"reasoning_effort", api.reasoning_effort},
-      {"openrouter_variant", config.openrouter_variant},
       {"context_window", api.ctx_window},
       {"memory", config.memory_enabled},
       {"memory_generate", config.memory_generate},
@@ -708,10 +707,11 @@ void LogReady(const AppContext& context) {
   provenance["behavior"] = behavior;
   json ready = {
       {"base_url", RedactedUrl(api.base_url)},
-      {"model", api.RequestModel()},
+      {"model", api.model},
       {"route", RouteSelection(api, context.provider.providers)},
       {"provenance", std::move(provenance)},
-      {"capabilities", api.capabilities.DiagnosticJson()},
+      {"capabilities",
+       api.capabilities.DiagnosticJson(api.wire_api, api.features)},
       {"configured_models", context.provider.routes.size()},
       {"tools", context.tools.size()},
       {"toolset", toolset},
@@ -719,7 +719,6 @@ void LogReady(const AppContext& context) {
                           ? "json-stream"
                           : (context.options.json ? "json" : "text")},
       {"yolo", ApprovalIsYolo()},
-      {"openrouter_provider", config.openrouter_provider},
       {"attachment_mb", AttachmentLimitMb()},
       {"limits", config.DiagnosticJson()},
       {"effective_config", context.config_manager.DiagnosticJson(config)}};

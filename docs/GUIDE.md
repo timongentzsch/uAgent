@@ -40,8 +40,10 @@ screen reader ([Accessibility](ACCESSIBILITY.md)).
 
 ## Models and providers
 
-A model is named `[provider/]model[:variant][:effort]`, for example
-`deepseek/deepseek-v4-flash:high`.
+A model is named `[provider/]model[:effort]`, for example
+`deepseek/deepseek-v4-flash:high`. A suffix that is no effort stays in the
+model id, so an endpoint's own routing suffix (OpenRouter's `:nitro`, `:floor`
+or `:free`) is part of the name: `openrouter/vendor/model:nitro:high`.
 
 - `/models QUERY` searches the models your key offers and selects one.
 - `/model NAME` chooses for this conversation; `/model NAME --default` also
@@ -54,9 +56,9 @@ A model is named `[provider/]model[:variant][:effort]`, for example
   images does too when that model can; otherwise it falls to the first model
   of the same endpoint that accepts images, or says to set `image.model`.
 - Web search uses the conversation's route when it has hosted search, else the
-  first configured endpoint that offers OpenRouter's search, with the model
-  `webSearch.model` names; with no such endpoint it is off. The `auto` approval
-  reviewer needs an OpenRouter key.
+  first configured endpoint that declares a search plugin (OpenRouter does),
+  with the model `webSearch.model` names; with no such endpoint it is off. The
+  `auto` approval reviewer needs an OpenRouter key.
 
 To keep a key between shells, save it once instead of exporting it:
 
@@ -73,7 +75,7 @@ editable in the web's Settings):
 
 ```json
 {
-  "format": 2,
+  "format": 3,
   "projects": {},
   "all": {
     "model": "work/sonnet",
@@ -82,8 +84,10 @@ editable in the web's Settings):
         "base_url": "https://llm.example.com/anthropic/v1",
         "api_key": "$WORK_KEY",
         "wire_api": "anthropic_messages",
-        "protocol": "anthropic",
         "models": { "sonnet": "claude-sonnet-5-5" }
+      },
+      "openrouter": {
+        "options": { "provider": "Fireworks", "pdf_engine": "mistral-ocr" }
       },
       "local": {
         "base_url": "http://localhost:8080/v1",
@@ -99,6 +103,19 @@ editable in the web's Settings):
 `anthropic_messages`. `models` gives short names; `work/sonnet` then selects
 that model at that provider, and `local/anything` passes the name through.
 `context` states the context window where the endpoint does not report one.
+
+An endpoint is an address, a wire API and what it declares of itself. A
+provider that has an OpenRouter or OpenAI address is known by it; a provider
+named `openrouter` needs no `base_url` or `api_key` (the key is
+`OPENROUTER_API_KEY`) and states only what differs, as above: its `options`
+pin the upstream provider (`provider`) and choose the engine that reads
+documents (`pdf_engine`, `cloudflare-ai` by default). Any other gateway that
+speaks OpenRouter's dialect lists what it does in `supports`, from
+`hosted_search`, `search_plugin`, `provider_routing`, `session_passthrough`,
+`raw_vendor_ids`, `model_variants`, `reasoning_object`, `reasoning_replay_text`,
+`prompt_cache_control`, `pdf_parser`, `max_completion_tokens`,
+`search_sources`, `reasoning_summary` and `inline_usage`; `hosted_tools:
+["web_search"]` is `hosted_search` for a route that runs its own search.
 A start that must read the endpoint's `/models` for a default model or the
 window keeps the answer for a day under `~/.uagent/models/`; delete the file
 to ask again.

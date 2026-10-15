@@ -402,9 +402,9 @@ void TestRegistries() {
   // Named, not a temporary: SubagentTool's handlers capture routes and
   // providers by reference and outlive this call, so a temporary here is a
   // dangling read the moment the preview or the handler runs.
-  const std::vector<ModelRoute> delegation_routes;
-  const std::vector<NamedProvider> delegation_providers = {
-      NamedProvider{.name = "codex-local", .base_url = "", .api_key = ""}};
+  const std::vector<Route> delegation_routes;
+  const std::vector<Endpoint> delegation_providers = {
+      Endpoint{.name = "codex-local", .base_url = "", .api_key = ""}};
   Tool subagent = SubagentTool(delegation_api, delegation_processes,
                                delegation_routes, delegation_providers, false);
   const json& subagent_properties = subagent.parameters["properties"];
@@ -477,8 +477,7 @@ void TestCommandAndDisplayRegistries() {
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
   CHECK(command.argument == "vendor/model");
   command = ParseSlashCommand("/variant nitro");
-  CHECK(command.spec && command.spec->id == SlashCommandId::kVariant);
-  CHECK(command.argument == "nitro");
+  CHECK(!command.spec);
   command = ParseSlashCommand("/verbosity full");
   CHECK(command.spec && command.spec->id == SlashCommandId::kVerbosity);
   CHECK(command.argument == "full");

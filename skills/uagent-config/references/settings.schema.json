@@ -310,32 +310,6 @@
           "type": "string",
           "x-env": "OPENROUTER_API_KEY"
         },
-        "openrouter.provider": {
-          "default": "",
-          "description": "pin OpenRouter to one upstream provider",
-          "type": "string",
-          "x-env": "UAGENT_OPENROUTER_PROVIDER"
-        },
-        "openrouter.variant": {
-          "anyOf": [
-            {
-              "default": "",
-              "enum": [
-                "",
-                "nitro",
-                "floor",
-                "exacto"
-              ],
-              "type": "string"
-            },
-            {
-              "pattern": "\\$",
-              "type": "string"
-            }
-          ],
-          "description": "nitro, floor, or exacto routing preference",
-          "x-env": "UAGENT_OPENROUTER_VARIANT"
-        },
         "panel.chatTurns": {
           "anyOf": [
             {
@@ -401,12 +375,6 @@
           ],
           "description": "threads one panel may run at once",
           "x-env": "UAGENT_PANEL_MAX_THREADS"
-        },
-        "pdf.engine": {
-          "default": "cloudflare-ai",
-          "description": "OpenRouter file-parser engine for documents",
-          "type": "string",
-          "x-env": "UAGENT_PDF_ENGINE"
         },
         "project.trustConfig": {
           "anyOf": [
@@ -818,7 +786,6 @@
               "enum": [
                 "",
                 "auto",
-                "openrouter",
                 "off"
               ],
               "type": "string"
@@ -850,7 +817,7 @@
       "description": "Settings for all conversations."
     },
     "format": {
-      "const": 2
+      "const": 3
     },
     "projects": {
       "additionalProperties": {

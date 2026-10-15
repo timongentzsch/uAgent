@@ -156,7 +156,9 @@ void HandleContext(AppSession& session, CommandReply& reply) {
   reply.result = {
       {"effective_config",
        session.context.config_manager.DiagnosticJson(session.Runtime().config)},
-      {"capabilities", session.ApiClient().capabilities.DiagnosticJson()},
+      {"capabilities",
+       session.ApiClient().capabilities.DiagnosticJson(
+           session.ApiClient().wire_api, session.ApiClient().features)},
       {"model_request", session.ActiveAgent().ModelRequest()}};
   json effective = reply.result["effective_config"];
   effective["capabilities"] = reply.result["capabilities"];
@@ -173,7 +175,7 @@ void HandleContext(AppSession& session, CommandReply& reply) {
   effective["route"] = {
       {"base_url", RedactedUrl(session.ApiClient().base_url)},
       {"base_url_source", source("UAGENT_BASE_URL")},
-      {"model", session.ApiClient().RequestModel()},
+      {"model", session.ApiClient().model},
       {"model_source", std::move(model_source)},
       {"credentials", session.ApiClient().api_key.empty() ||
                               session.ApiClient().api_key == kPlaceholderApiKey

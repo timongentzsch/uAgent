@@ -25,6 +25,22 @@ SMALL_PNG = base64.b64decode(
 )
 
 
+# What an OpenRouter endpoint declares of itself, for a mock server standing in
+# for one.
+OPENROUTER_SUPPORTS = [
+    "search_plugin",
+    "provider_routing",
+    "session_passthrough",
+    "raw_vendor_ids",
+    "model_variants",
+    "reasoning_object",
+    "reasoning_replay_text",
+    "prompt_cache_control",
+    "pdf_parser",
+    "inline_usage",
+]
+
+
 # A sanitized or coverage-instrumented binary starts and renders several times
 # slower than a plain one, which turns every wall-clock budget below into a
 # coin flip on a shared runner. Those jobs raise the multiplier instead of each
@@ -598,7 +614,7 @@ def save_settings(home, folder=None, **values):
     the document replaced in one step. Settings are named as the environment
     names them; any other name is a variable. None removes one."""
     path = settings_path(home)
-    document = {"format": 2, "all": {}, "projects": {}}
+    document = {"format": 3, "all": {}, "projects": {}}
     if path.exists():
         document = json.loads(path.read_text())
     scope = document["all"]

@@ -57,7 +57,7 @@ void TestSettingsStore() {
   const auto document = [] {
     return json::parse(ReadFile(SettingsPath(), 1 << 20).value_or(""));
   };
-  CHECK(document()["format"] == 2);
+  CHECK(document()["format"] == 3);
   const json all = document()["all"];
   CHECK(all["model"] == "m2" && all["limits.maxSteps"] == 12);
   CHECK(all["sandbox.level"] == "relaxed");
@@ -96,7 +96,7 @@ void TestSettingsStore() {
   {
     TestWorkspace edited("settings-store-edited");
     Put(SettingsPath(),
-        R"({"format": 2, "projects": {}, "all": {"model": "kept",)"
+        R"({"format": 3, "projects": {}, "all": {"model": "kept",)"
         R"( "limits.maxSteps": "many", "limits.maxToolCalls": -4,)"
         R"( "limits.maxTurnSeconds": false, "title.model": 7,)"
         R"( "sandbox.enabled": "off", "memory.enabled": 1,)"
@@ -130,7 +130,7 @@ void TestSettingsStore() {
   // are the levels default and off, and a save writes the new name.
   {
     TestWorkspace switched("settings-store-sandbox-switch");
-    Put(SettingsPath(), R"({"format": 2, "all": {"sandbox.enabled": false},)"
+    Put(SettingsPath(), R"({"format": 3, "all": {"sandbox.enabled": false},)"
                         R"( "projects": {"/p": {"sandbox.enabled": true}}})");
     const SavedSettings read = ReadSettings("/p");
     CHECK(read.warning.empty());
@@ -149,7 +149,7 @@ void TestSettingsStore() {
     TestWorkspace raced("settings-store-raced");
     CHECK(Set("", "UAGENT_MODEL", "first").empty());
     const std::string edited =
-        R"({"format": 2, "projects": {}, "all": {"model": "by hand"}})";
+        R"({"format": 3, "projects": {}, "all": {"model": "by hand"}})";
     const std::string refused = ChangeSettings("", [&](SettingValues& scope) {
       Put(SettingsPath(), edited);
       scope["UAGENT_MAX_STEPS"] = "5";
@@ -168,7 +168,7 @@ void TestSettingsStore() {
   {
     TestWorkspace referring("settings-store-referring");
     Put(SettingsPath(),
-        R"({"format": 2, "projects": {}, "all": {"limits.maxSteps": "$COUNT",)"
+        R"({"format": 3, "projects": {}, "all": {"limits.maxSteps": "$COUNT",)"
         R"( "limits.maxToolCalls": "$CALLS", "limits.maxTurnSeconds": "$NONE",)"
         R"( "variables": {"COUNT": "many", "CALLS": "7"}}})");
     const SavedSettings read = ReadSettings("");
@@ -200,7 +200,7 @@ void TestSettingsStore() {
                                                    {"UAGENT_MODEL", "old"}}));
     CHECK(ReadSettings("/p").project.at("UAGENT_SANDBOX") == "false");
     const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
-    CHECK(now["format"] == 2 && now["all"]["limits.maxSteps"] == 9);
+    CHECK(now["format"] == 3 && now["all"]["limits.maxSteps"] == 9);
     CHECK(now["projects"]["/p"]["sandbox.level"] == "false");
     // A panel's settings under the names they had as a coordinator's.
     CHECK(now["projects"]["/p"]["panel.maxThreads"] == 7);
@@ -217,6 +217,102 @@ void TestSettingsStore() {
     spelled["all"]["coordinator.chatTurns"] = 2;
     Put(SettingsPath(), JsonDump(spelled));
     CHECK(ReadSettings("").all.at("UAGENT_PANEL_CHAT_TURNS") == "2");
+  }
+
+  // Format 2 kept OpenRouter's settings beside the others. They move into
+  // that endpoint, a provider's protocol becomes its features, and the routing
+  // variant joins the model id before its effort.
+  {
+    TestWorkspace endpoints("settings-store-endpoints");
+    Put(SettingsPath(),
+        R"({"format": 2, "all": {"openrouter.provider": "streamlake",)"
+        R"( "openrouter.variant": "nitro", "model": "vendor/m:high",)"
+        R"( "pdf.engine": "mistral-ocr", "webSearch.backend": "openrouter",)"
+        R"( "providers": {"gateway": {"base_url": "https://gw.test/v1",)"
+        R"( "protocol": "openrouter"}, "plain": {"base_url": "https://p.test",)"
+        R"( "protocol": "anthropic"}}},)"
+        R"( "projects": {"/p": {"openrouter.variant": "floor",)"
+        R"( "openrouter.provider": "$WHO", "pdf.engine": "native"}}})");
+    const SavedSettings read = ReadSettings("/p");
+    CHECK(read.error.empty());
+    const json now = json::parse(ReadFile(SettingsPath(), 8192).value_or(""));
+    CHECK(now["format"] == 3);
+    const json& held = now["all"];
+    CHECK(held["model"] == "vendor/m:nitro:high");
+    CHECK(held["webSearch.backend"] == "auto");
+    CHECK(!held.contains("openrouter.provider") &&
+          !held.contains("openrouter.variant") && !held.contains("pdf.engine"));
+    const json& openrouter = held["providers"]["openrouter"];
+    CHECK(openrouter["options"] ==
+          (json{{"provider", "streamlake"}, {"pdf_engine", "mistral-ocr"}}));
+    CHECK(!openrouter.contains("base_url"));
+    const json& gateway = held["providers"]["gateway"];
+    CHECK(!gateway.contains("protocol"));
+    // What the global settings meant for it, an OpenRouter-protocol
+    // provider, is its own options now.
+    CHECK(gateway["options"] ==
+          (json{{"pdf_engine", "mistral-ocr"}, {"provider", "streamlake"}}));
+    CHECK(std::ranges::find(gateway["supports"], "prompt_cache_control") !=
+          gateway["supports"].end());
+    CHECK(!held["providers"]["plain"].contains("protocol"));
+    CHECK(!held["providers"]["plain"].contains("supports"));
+    // A project scope with no model drops the variant; a value that refers
+    // to a variable stays, and is reported as the setting it no longer is.
+    const json& project = now["projects"]["/p"];
+    CHECK(!project.contains("openrouter.variant"));
+    CHECK(project["openrouter.provider"] == "$WHO");
+    CHECK(project["providers"]["openrouter"]["options"] ==
+          (json{{"pdf_engine", "native"}}));
+    CHECK(read.warning.find("openrouter.provider is not a setting") !=
+          std::string::npos);
+    // The environment still reads the migrated provider entry.
+    CHECK(read.all.at("UAGENT_WEB_SEARCH_BACKEND") == "auto");
+    AllSettings handed;
+    std::string why;
+    CHECK(ParseSettings(json::parse(R"({"format": 2, "projects": {},)"
+                                    R"( "all": {"webSearch.backend":)"
+                                    R"( "openrouter"}})"),
+                        handed, why));
+    CHECK(handed.all.at("UAGENT_WEB_SEARCH_BACKEND") == "auto");
+  }
+
+  // A variant belongs to the model an alias names; a model that is a
+  // reference to a variable cannot take it, and the variant stays, reported.
+  // The names the settings had in format 1 are read as the settings they were.
+  {
+    TestWorkspace aliased("settings-store-alias-variant");
+    Put(SettingsPath(),
+        R"({"format": 2, "all": {"model": "gw/fast:low",)"
+        R"( "openrouter.variant": "floor", "providers": {"gw":)"
+        R"( {"base_url": "https://gw.test", "protocol": "openrouter",)"
+        R"( "models": {"fast": "vendor/m", "slow": {"id": "vendor/s"}}}}},)"
+        R"( "projects": {"/p": {"model": "$CHOSEN",)"
+        R"( "openrouter.variant": "nitro"}}})");
+    const SavedSettings read = ReadSettings("/p");
+    const json now = json::parse(ReadFile(SettingsPath(), 8192).value_or(""));
+    CHECK(now["all"]["model"] == "gw/fast:low");
+    CHECK(now["all"]["providers"]["gw"]["models"]["fast"] == "vendor/m:floor");
+    CHECK(now["all"]["providers"]["gw"]["options"] ==
+          (json{{"pdf_engine", "cloudflare-ai"}}));
+    CHECK(now["projects"]["/p"]["model"] == "$CHOSEN");
+    CHECK(now["projects"]["/p"]["openrouter.variant"] == "nitro");
+    CHECK(read.warning.find("openrouter.variant is not a setting") !=
+          std::string::npos);
+  }
+  {
+    TestWorkspace names("settings-store-format-1-openrouter");
+    Put(SettingsPath(), JsonDump(json{{"format", 1},
+                                      {"all",
+                                       {{"UAGENT_OPENROUTER_PROVIDER", "pin"},
+                                        {"UAGENT_PDF_ENGINE", "native"},
+                                        {"TOKEN", "t"}}},
+                                      {"projects", json::object()}}));
+    CHECK(ReadSettings("").error.empty());
+    const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
+    CHECK(now["format"] == 3);
+    CHECK(now["all"]["providers"]["openrouter"]["options"] ==
+          (json{{"provider", "pin"}, {"pdf_engine", "native"}}));
+    CHECK(now["all"]["variables"] == json({{"TOKEN", "t"}}));
   }
 
   // A document that cannot be read is reported and never saved over.

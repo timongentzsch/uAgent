@@ -66,9 +66,9 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
 
 // The interactive catalog picker: prints the matches, then reads a choice.
 // Its only caller is /models, so it stays here rather than in a header.
-std::optional<ModelCandidate> PickModel(
-    ModelSearch search, Api& api, const std::vector<NamedProvider>& providers,
-    CommandReply& reply) {
+std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
+                                        const std::vector<Endpoint>& providers,
+                                        CommandReply& reply) {
   std::string current = RouteSelection(api, {});
   if (current.empty()) {
     current = "no model";
@@ -79,7 +79,8 @@ std::optional<ModelCandidate> PickModel(
     bool active = candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
     if (active) {
-      current = candidate.selection;  // already a selection the user can type
+      current =
+          candidate.route.route_name;  // already a selection the user can type
       if (candidate.info.context > 0) {
         api.ctx_window = candidate.info.context;
         OverrideSetting("UAGENT_CONTEXT", std::to_string(api.ctx_window));
@@ -87,13 +88,14 @@ std::optional<ModelCandidate> PickModel(
     }
     reply.Print("%s[%zu]%s %s%c %s", BOLD(), i + 1, RST(),
                 active ? BOLD() : DIM(), active ? '*' : ' ',
-                TerminalSafe(candidate.selection).c_str());
+                TerminalSafe(candidate.route.route_name).c_str());
     if (!candidate.info.name.empty() &&
         candidate.info.name != candidate.info.id &&
-        candidate.info.name != candidate.selection) {
+        candidate.info.name != candidate.route.route_name) {
       reply.Print(" · %s", TerminalSafe(candidate.info.name).c_str());
     }
-    std::string effort = active ? api.reasoning_effort : candidate.route.effort;
+    std::string effort =
+        active ? api.reasoning_effort : candidate.route.reasoning_effort;
     if (effort.empty()) effort = candidate.info.default_effort;
     reply.Print(" · effort %s", effort.empty() ? "default" : effort.c_str());
     if (candidate.info.context > 0) {
@@ -107,11 +109,10 @@ std::optional<ModelCandidate> PickModel(
     reply.Print("%s\n", RST());
     std::string route_label =
         active ? RouteSelection(api, providers)
-               : RouteSelection(SideRoute{.model = candidate.route.model,
-                                          .base_url = candidate.route.base_url,
-                                          .effort = effort},
-                                providers);
-    std::string option_label = candidate.selection;
+               : ComposeSelection(
+                     ProviderScope(candidate.route.base_url, providers),
+                     candidate.route.model, effort);
+    std::string option_label = candidate.route.route_name;
     if (!candidate.info.name.empty() &&
         candidate.info.name != candidate.info.id) {
       option_label += " · " + candidate.info.name;
@@ -204,8 +205,11 @@ void HandleModels(AppSession& session, const std::string& argument,
   // ask again.
   const bool first = session.ApiClient().model.empty();
   ApplyRoute(session.ApiClient(), selected->route);
-  reply.Print("%s",
-              SaveSelectedModel(session, selected->selection, first).c_str());
+  session.ApiClient().capabilities.SetInputModalities(
+      selected->info.input_modalities, session.ApiClient().wire_api);
+  reply.Print(
+      "%s",
+      SaveSelectedModel(session, selected->route.route_name, first).c_str());
 }
 
 void HandleModel(AppSession& session, const std::string& argument,
@@ -240,8 +244,8 @@ void HandleModel(AppSession& session, const std::string& argument,
   reply.Print("%s", SaveSelectedModel(session, selected, as_default).c_str());
 }
 
-// /effort and /variant change the selection /model chose: the same setting
-// at the same scope.
+// /effort changes the selection /model chose: the same setting at the same
+// scope.
 void HandleEffort(AppSession& session, const std::string& argument,
                   CommandReply& reply) {
   if (ValidEffort(argument)) {
@@ -268,44 +272,6 @@ void HandleEffort(AppSession& session, const std::string& argument,
     ChooseCurrentRoute(session);
     reply.Note(Tone::kNeutral, "effort " + argument);
   }
-}
-
-void HandleVariant(AppSession& session, const std::string& argument,
-                   CommandReply& reply) {
-  if (!session.ApiClient().capabilities.model_variants) {
-    reply.Note(Tone::kError, "/variant is unavailable on the active route");
-    return;
-  }
-  std::string variant = argument;
-  if (variant.starts_with(':')) variant.erase(0, 1);
-  if (variant.empty()) {
-    std::string label =
-        session.ApiClient().config.openrouter_variant.empty()
-            ? "default"
-            : ":" + session.ApiClient().config.openrouter_variant;
-    reply.Note(Tone::kNeutral, "variant " + label +
-                                   " · choose default, nitro, floor, or "
-                                   "exacto");
-    return;
-  }
-  if (variant == "default") variant.clear();
-  if (!ValidOpenRouterVariant(variant)) {
-    reply.Note(Tone::kError,
-               "variant must be default, nitro, floor, or exacto");
-    return;
-  }
-  session.ApiClient().config.openrouter_variant = variant;
-  session.Runtime().config.openrouter_variant = variant;
-  OverrideSetting("UAGENT_OPENROUTER_VARIANT", variant);
-  ChooseCurrentRoute(session);
-  const char* detail = "provider default";
-  if (variant == "nitro") detail = "highest throughput";
-  if (variant == "floor") detail = "lowest price";
-  if (variant == "exacto") detail = "quality-first tool reliability";
-  DebugLog("variant_changed", {{"variant", variant},
-                               {"model", session.ApiClient().RequestModel()}});
-  std::string label = variant.empty() ? "default" : ":" + variant;
-  reply.Note(Tone::kNeutral, "variant " + label + " — " + detail);
 }
 
 }  // namespace uagent

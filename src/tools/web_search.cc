@@ -24,7 +24,7 @@ namespace uagent {
 namespace {
 
 ToolResult SearchError(int64_t http_status, const std::string& detail) {
-  std::string message = "error: web_search OpenRouter";
+  std::string message = "error: web_search";
   if (http_status) message += " HTTP " + std::to_string(http_status);
   return ToolFailure(ToolErrorCode::kRemoteError, message + detail);
 }
@@ -46,64 +46,66 @@ WebSearchResult ParseWebSearch(const json& response) {
   return result;
 }
 
-bool OffersWebSearch(const Api& api,
-                     const std::vector<NamedProvider>& providers) {
+bool OffersWebSearch(const Api& api, const std::vector<Endpoint>& providers) {
   return api.config.web_search_backend != "off" &&
-         (api.capabilities.OpenRouter() ||
-          std::ranges::any_of(providers, [](const NamedProvider& provider) {
-            return provider.protocol == ProviderProtocol::kOpenRouter;
+         (api.features.Has(Feature::kSearchPlugin) ||
+          std::ranges::any_of(providers, [](const Endpoint& provider) {
+            return provider.features.Has(Feature::kSearchPlugin);
           }));
 }
 
-WebSearchRoute SelectWebSearchRoute(
-    const Api& api, const std::vector<NamedProvider>& providers) {
+std::optional<Route> SelectWebSearchRoute(
+    const Api& api, const std::vector<Endpoint>& providers) {
   const RuntimeConfig& config = api.config;
-  if (config.web_search_backend == "off") return {};
+  if (config.web_search_backend == "off") return std::nullopt;
 
   // UAGENT_WEB_SEARCH_MODEL follows the shared selection schema. A provider
   // scope makes it a route of its own; a bare id only renames the model on
   // whichever candidate wins, which is how it behaved before the schema.
   ModelSelection selection = ParseModelSelection(config.web_search_model);
+  const auto usable = [&](Route route) -> std::optional<Route> {
+    route.reasoning_effort = selection.effort;
+    if (route.api_key.empty() || route.base_url.empty() ||
+        route.model.empty()) {
+      return std::nullopt;
+    }
+    return route;
+  };
   if (selection.base.find('/') != std::string::npos) {
     ProviderCatalog catalog = SessionProviderCatalog();
-    if (std::optional<ModelRoute> route = ResolveModelRoute(
+    if (std::optional<Route> route = ResolveModelRoute(
             catalog.models, catalog.providers, selection.base)) {
-      // An explicit selection is authoritative: a provider that does not speak
-      // the OpenRouter protocol disables search rather than silently
-      // redirecting the request to a different endpoint.
-      if (route->protocol != ProviderProtocol::kOpenRouter) return {};
-      return {route->base_url,
-              route->api_key.empty() ? kPlaceholderApiKey : route->api_key,
-              route->model, selection.effort};
+      // An explicit selection is authoritative: an endpoint that declares no
+      // search disables it rather than silently redirecting the request to a
+      // different endpoint.
+      if (!route->features.Has(Feature::kSearchPlugin)) return std::nullopt;
+      if (route->api_key.empty()) route->api_key = kPlaceholderApiKey;
+      return usable(std::move(*route));
     }
   }
-  auto candidate = [&](std::string base_url, std::string api_key,
-                       std::string model) {
-    return WebSearchRoute{
-        std::move(base_url), std::move(api_key),
-        selection.base.empty() ? std::move(model) : selection.base,
-        selection.effort};
+  const auto named = [&](Route route) {
+    if (!selection.base.empty()) route.model = selection.base;
+    return usable(std::move(route));
   };
 
   // The conversation's own route, then the first configured endpoint that
   // offers search. Another endpoint has no model of the conversation's to
   // borrow: it searches with the one UAGENT_WEB_SEARCH_MODEL names.
-  std::vector<WebSearchRoute> candidates;
-  if (api.capabilities.OpenRouter()) {
-    candidates.push_back(candidate(api.base_url, api.api_key, api.model));
+  if (api.features.Has(Feature::kSearchPlugin)) {
+    if (std::optional<Route> route = named(api)) return route;
   }
-  for (const NamedProvider& provider : providers) {
-    if (provider.protocol != ProviderProtocol::kOpenRouter) continue;
-    candidates.push_back(candidate(provider.base_url, provider.api_key, ""));
-    break;
+  for (const Endpoint& provider : providers) {
+    if (!provider.features.Has(Feature::kSearchPlugin)) continue;
+    Route route;
+    static_cast<Endpoint&>(route) = provider;
+    return named(std::move(route));
   }
-  for (WebSearchRoute& winner : candidates) {
-    if (winner.Valid()) return std::move(winner);
-  }
-  return {};
+  return std::nullopt;
 }
 
-json WebSearchRequest(const WebSearchRoute& route, const std::string& prompt) {
+// The request the `search_plugin` feature stands for: Chat Completions with
+// the endpoint's server-side search tool.
+json WebSearchRequest(const Route& route, const std::string& prompt) {
   json parameters = {
       {"engine", "auto"},
       {"max_results", kWebSearchMaxResults},
@@ -118,12 +120,14 @@ json WebSearchRequest(const WebSearchRoute& route, const std::string& prompt) {
       {"tools", json::array({{{"type", "openrouter:web_search"},
                               {"parameters", std::move(parameters)}}})},
       {"messages", json::array({{{"role", "user"}, {"content", prompt}}})}};
-  if (!route.effort.empty()) body["reasoning"] = {{"effort", route.effort}};
+  if (!route.reasoning_effort.empty()) {
+    body["reasoning"] = {{"effort", route.reasoning_effort}};
+  }
   return body;
 }
 
 Tool WebSearchTool(Api& api, UsageAccumulator& usage,
-                   std::vector<NamedProvider> providers) {
+                   std::vector<Endpoint> providers) {
   Tool t = MakeTool(
       "web_search",
       "Search the web with cited sources; put up to 3 related queries in one "
@@ -135,12 +139,13 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           "required":["queries"]})json"),
       [&api, &usage, providers = std::move(providers)](
           const json& a, const ToolContext& context) -> ToolResult {
-        WebSearchRoute active = SelectWebSearchRoute(api, providers);
-        if (!active.Valid()) {
+        const std::optional<Route> found = SelectWebSearchRoute(api, providers);
+        if (!found) {
           return ToolFailure(ToolErrorCode::kUnavailable,
                              "web_search has no model to run on: set "
                              "webSearch.model (UAGENT_WEB_SEARCH_MODEL)");
         }
+        const Route& active = *found;
         std::vector<std::string> queries;
         queries.reserve(a["queries"].size());
         for (const json& value : a["queries"]) {
@@ -207,7 +212,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         if (response.body.is_object()) {
           usage.Add(
               RouteKey(active.base_url, "web_search", active.model,
-                       active.effort),
+                       active.reasoning_effort),
               normalized, context.turn_id,
               {{"model_calls", 1},
                {"model_ms", ElapsedMs(started)},

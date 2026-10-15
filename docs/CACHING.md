@@ -18,7 +18,8 @@ CLI and web sessions share one request encoder and one usage accounting path.
   once a long tool round exceeds the automatic 20-block lookback. See
   [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
 - **OpenRouter.** Most providers behind it cache matching prefixes by
-  themselves. Anthropic models do not, so a request for an `anthropic/…` model
+  themselves; some, such as Anthropic's models, only when asked, so every
+  request to an endpoint that declares `prompt_cache_control` (OpenRouter does)
   carries the same top-level `cache_control`. See
   [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching).
 - **All routes.** Every model request carries an `X-Session-Id` header so a

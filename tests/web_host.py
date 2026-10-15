@@ -11,7 +11,14 @@ import tempfile
 import threading
 import time
 
-from integration_support import Server, event, save_settings, tool_call, write_sse_sequence
+from integration_support import (
+    OPENROUTER_SUPPORTS,
+    Server,
+    event,
+    save_settings,
+    tool_call,
+    write_sse_sequence,
+)
 from web_support import web_host
 
 parser = argparse.ArgumentParser()
@@ -215,7 +222,7 @@ with (
         "mock": {
             "base_url": provider.url,
             "api_key": "mock-key",
-            "protocol": "openrouter",
+            "supports": OPENROUTER_SUPPORTS,
             "models": {"main": {"id": "model-a", "effort": "high"}},
         }
     }
@@ -229,7 +236,7 @@ with (
         provider.url,
         args.port,
         extra_env={
-            "UAGENT_MODEL": None if args.no_model else "mock/main:floor:high",
+            "UAGENT_MODEL": None if args.no_model else "mock/main:high",
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.
             **(

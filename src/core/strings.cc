@@ -515,17 +515,6 @@ std::string RedactedUrl(std::string url) {
   return url;
 }
 
-bool OpenrouterUrl(std::string url) {
-  url = UrlHost(std::move(url));
-  constexpr std::string_view kSuffix = ".openrouter.ai";
-  return url == "openrouter.ai" ||
-         (url.size() > kSuffix.size() && url.ends_with(kSuffix));
-}
-
-bool OpenaiUrl(std::string url) {
-  return UrlHost(std::move(url)) == "api.openai.com";
-}
-
 std::string_view ScopePrefix(std::string_view key) noexcept {
   return key.substr(0, key.find('/'));
 }

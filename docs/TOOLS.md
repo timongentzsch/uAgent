@@ -35,7 +35,7 @@ or `subagent` tool.
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
-| `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
+| `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a route or configured endpoint that declares `search_plugin` |
 | `thread`, `decide`, `state`, `history` | a panel's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's panel only; see the [guide](GUIDE.md#the-panel) |
 | `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a panel and its threads are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
@@ -161,9 +161,9 @@ Only public Internet addresses are accepted, on redirects too; loopback,
 private and link-local addresses are refused and proxy variables are
 ignored.
 
-`web_search` calls OpenRouter's hosted search on a route of its own: the
-conversation's when it is on OpenRouter, else the first configured OpenRouter
-endpoint, which needs `UAGENT_WEB_SEARCH_MODEL` to name the model (a route
+`web_search` calls the search plugin of an endpoint that declares one
+(OpenRouter does) on a route of its own: the conversation's when it declares
+one, else the first configured endpoint that does, which needs `UAGENT_WEB_SEARCH_MODEL` to name the model (a route
 that has hosted search of its own uses that instead). A call without that
 model says so; with no such endpoint at all the tool is not offered.
 `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.

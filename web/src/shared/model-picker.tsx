@@ -27,7 +27,6 @@ export default function ModelPicker({
 }) {
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
-  const [variant, setVariant] = useState(state?.variant || "default");
   // The choice is this conversation's; saving it for all is asked for.
   // The first choice is for every conversation to come.
   const [forAll, setForAll] = useState(!save && state?.route === "");
@@ -65,9 +64,6 @@ export default function ModelPicker({
         setEffort(
           suffixes.find((part) => chosen.efforts?.includes(part)) || "default",
         );
-        setVariant(
-          suffixes.find((part) => chosen.variants?.includes(part)) || "default",
-        );
       }
       return response.result;
     },
@@ -97,9 +93,6 @@ export default function ModelPicker({
           : []),
     ]),
   ];
-  const variants = [
-    ...new Set(["default", ...(selected?.variants || state?.variants || [])]),
-  ];
   return (
     <div class="model-form" ref={form}>
       {!catalog ? (
@@ -114,7 +107,6 @@ export default function ModelPicker({
               onChange={(event) => {
                 setModel(event.currentTarget.value);
                 setEffort("default");
-                setVariant("default");
               }}
             >
               {model && !selected && <option value={model}>{model}</option>}
@@ -150,20 +142,6 @@ export default function ModelPicker({
                 ))}
               </Select>
             </Field>
-            {variants.length > 1 && (
-              <Field label="Variant">
-                <Select
-                  aria-label="Variant"
-                  value={variant}
-                  disabled={action.busy}
-                  onChange={(event) => setVariant(event.currentTarget.value)}
-                >
-                  {variants.map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </Select>
-              </Field>
-            )}
           </div>
           {!save && (
             <Row
@@ -190,11 +168,7 @@ export default function ModelPicker({
           action.run(async () => {
             if (save) {
               const taken = await save(
-                [
-                  model,
-                  variant === "default" ? "" : variant,
-                  effort === "default" ? "" : effort,
-                ]
+                [model, effort === "default" ? "" : effort]
                   .filter(Boolean)
                   .join(":"),
               );
@@ -205,7 +179,6 @@ export default function ModelPicker({
               operation: "select",
               model,
               effort,
-              variant,
               default: forAll,
             });
             if (result.pending)

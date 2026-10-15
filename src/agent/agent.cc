@@ -147,9 +147,9 @@ void Agent::StartTitle(const std::string& user_input) {
     return;
   }
   ProviderCatalog catalog = SessionProviderCatalog();
-  SideRoute route =
+  RouteResolution resolved =
       ResolveSideRoute(api_, catalog.models, catalog.providers, selection);
-  if (!route.none.empty()) {
+  if (!resolved.none.empty()) {
     return;
   }
   json messages = json::array(
@@ -163,7 +163,7 @@ void Agent::StartTitle(const std::string& user_input) {
        {{"role", "user"},
         {"content", Utf8Prefix(user_input, kTitleInputChars)}}});
   title_thread_ = std::jthread(
-      [this, config = api_.config, route = std::move(route),
+      [this, config = api_.config, route = std::move(resolved.route),
        messages = std::move(messages)](const std::stop_token& stop) {
         // Its own abort flag: the turn's Escape never reaches it, and replacing
         // or destroying the thread cancels the request within one poll slice.
@@ -172,13 +172,13 @@ void Agent::StartTitle(const std::string& user_input) {
         LocalAbort local(cancel);
         QuietEvents quiet;
         Api api(config);
-        ApplySideRoute(api, route);
+        ApplyRoute(api, route);
         ChatResult result =
             api.Chat(messages, json::array(), kTitleTimeoutSeconds);
         Usage usage;
         usage.Add(result.usage);
-        side_usage_.Add(RouteKey(api.base_url, "session_title",
-                                 api.RequestModel(), api.reasoning_effort),
+        side_usage_.Add(RouteKey(api.base_url, "session_title", api.model,
+                                 api.reasoning_effort),
                         usage);
         // Models still wrap titles in quotes or markdown; keep only the words.
         std::string title = FirstLine(Trim(result.content));
@@ -271,8 +271,8 @@ void Agent::RouteChanged() {
 }
 
 std::string Agent::ActiveRoute() const {
-  return RouteKey(api_.base_url, api_.config.openrouter_provider,
-                  api_.RequestModel(), api_.reasoning_effort);
+  return RouteKey(api_.base_url, api_.Option("provider"), api_.model,
+                  api_.reasoning_effort);
 }
 
 std::string Agent::FirstUserText() const {
@@ -374,7 +374,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
   // header would silently reassign the rest of the save.
   record.metadata = {
       .cwd = CanonicalCwd(),
-      .model = api_.RequestModel(),
+      .model = api_.model,
       .session_id = session_id_,
       .turns = UserTurns(),
       .title = Utf8Prefix(FirstUserText(), kUserTitleBytes),

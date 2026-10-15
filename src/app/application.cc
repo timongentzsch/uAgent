@@ -282,7 +282,6 @@ void Application::RunPrompt(const std::string& input) {
 json Application::InterfaceState() const {
   return {{"route", RouteSelection(api_, context_.provider.providers)},
           {"effort", api_.reasoning_effort},
-          {"variant", api_.config.openrouter_variant},
           {"context_tokens", agent_.ContextUsed()},
           {"context_window", api_.ctx_window},
           {"attachments", attachments_.size()},

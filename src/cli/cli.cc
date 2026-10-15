@@ -146,8 +146,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kRestart, "/restart", "",
      "restart this conversation to apply settings that need it",
      kNoViewer | kClientOnly | kTerminal},
-    {SlashCommandId::kVariant, "/variant", "MODE",
-     "set OpenRouter provider routing", kNoViewer | kTerminal},
     {SlashCommandId::kBtw, "/btw", "QUESTION",
      "ask a side question without adding it to the conversation",
      kNoViewer | kClientOnly},

@@ -22,8 +22,7 @@ void TestOpenRouterServerSearch() {
   RuntimeConfig config;
   Api api(config);
   api.base_url = "https://openrouter.ai/api/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
+  UseOpenRouterDialect(api);
   api.model = "vendor/model";
   json schemas = json::array(
       {{{"type", "function"},
@@ -51,18 +50,15 @@ void TestOpenRouterServerSearch() {
     CHECK(body["tools"][0]["function"]["name"] == "web_search");
   };
   api.base_url = "http://127.0.0.1:8080/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
+  UseEndpoint(api, api.base_url);
   check_native_search();
 
   api.base_url = "http://127.0.0.1:8787/api/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
+  UseOpenRouterDialect(api);
   check_native_search();
 
   api.base_url = "https://openrouter.ai/api/v1";
-  api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
+  UseOpenRouterDialect(api);
   body = api.BuildRequestBody(json::array(), json::array());
   CHECK(!body.contains("tools"));  // compact/title requests stay tool-free
 
@@ -181,7 +177,7 @@ void TestOpenRouterServerSearch() {
   setenv("UAGENT_PROVIDERS",
          R"json({"seeker":{"base_url":"https://seek.example/v1",
                             "api_key":"seek-key",
-                            "protocol":"openrouter"},
+                            "supports":["search_plugin"]},
                  "plain":{"base_url":"https://plain.example/v1",
                            "api_key":"plain-key"}})json",
          1);
@@ -190,12 +186,13 @@ void TestOpenRouterServerSearch() {
   Api scoped_api(scoped_config);
   scoped_api.base_url = "https://inference.example/v1";
   scoped_api.api_key = "inference-key";
-  WebSearchRoute scoped = SelectWebSearchRoute(scoped_api, {});
-  CHECK(scoped.base_url == "https://seek.example/v1");
-  CHECK(scoped.api_key == "seek-key");
-  CHECK(scoped.model == "finder-model");
-  CHECK(scoped.effort == "high");
-  CHECK(WebSearchRequest(scoped, "q")["reasoning"]["effort"] == "high");
+  std::optional<Route> scoped = SelectWebSearchRoute(scoped_api, {});
+  REQUIRE(scoped.has_value());
+  CHECK(scoped->base_url == "https://seek.example/v1");
+  CHECK(scoped->api_key == "seek-key");
+  CHECK(scoped->model == "finder-model");
+  CHECK(scoped->reasoning_effort == "high");
+  CHECK(WebSearchRequest(*scoped, "q")["reasoning"]["effort"] == "high");
   // A selection scoped to a provider that does not speak the OpenRouter
   // protocol disables search rather than searching somewhere else.
   RuntimeConfig foreign_config = scoped_config;
@@ -203,7 +200,7 @@ void TestOpenRouterServerSearch() {
   Api foreign_api(foreign_config);
   foreign_api.base_url = "https://inference.example/v1";
   foreign_api.api_key = "inference-key";
-  CHECK(!SelectWebSearchRoute(foreign_api, {}).Valid());
+  CHECK(!SelectWebSearchRoute(foreign_api, {}).has_value());
   // A bare id only renames the model on the winning candidate, here the first
   // OpenRouter-protocol provider.
   RuntimeConfig bare_config = search_config;
@@ -211,43 +208,44 @@ void TestOpenRouterServerSearch() {
   Api bare_api(bare_config);
   bare_api.base_url = "https://inference.example/v1";
   bare_api.api_key = "inference-key";
-  const NamedProvider seeker{.name = "seeker",
-                             .base_url = "https://seek.example/v1",
-                             .api_key = "seek-key",
-                             .protocol = ProviderProtocol::kOpenRouter};
-  WebSearchRoute bare = SelectWebSearchRoute(bare_api, {seeker});
-  CHECK(bare.base_url == "https://seek.example/v1");
-  CHECK(bare.api_key == "seek-key");
-  CHECK(bare.model == "plain-model");
+  const Endpoint seeker{.name = "seeker",
+                        .base_url = "https://seek.example/v1",
+                        .api_key = "seek-key",
+                        .features = FeaturesOf({Feature::kSearchPlugin})};
+  std::optional<Route> bare = SelectWebSearchRoute(bare_api, {seeker});
+  REQUIRE(bare.has_value());
+  CHECK(bare->base_url == "https://seek.example/v1");
+  CHECK(bare->api_key == "seek-key");
+  CHECK(bare->model == "plain-model");
   // Another endpoint has no model of the conversation's to borrow: with none
   // named for it, search is off there.
   Api unnamed_api(search_config);
   unnamed_api.base_url = "https://inference.example/v1";
   unnamed_api.api_key = "inference-key";
   unnamed_api.model = "conversation-model";
-  CHECK(!SelectWebSearchRoute(unnamed_api, {seeker}).Valid());
+  CHECK(!SelectWebSearchRoute(unnamed_api, {seeker}).has_value());
   unsetenv("UAGENT_PROVIDERS");
   // Without any configured search route, an OpenRouter conversation route is
-  // the search route; an OpenAI-protocol one leaves search unavailable.
+  // the search route; one that declares no search leaves it unavailable.
   RuntimeConfig inherit_config;
   Api inherit_api(inherit_config);
   inherit_api.base_url = "https://openrouter.ai/api/v1";
   inherit_api.api_key = "inference-key";
   inherit_api.model = "vendor/model";
-  inherit_api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, inherit_api.base_url);
-  CHECK(SelectWebSearchRoute(inherit_api, {}).model == "vendor/model");
-  inherit_api.capabilities =
-      CapabilitiesForRoute(ProviderProtocol::kOpenAi, inherit_api.base_url);
-  CHECK(!SelectWebSearchRoute(inherit_api, {}).Valid());
+  UseOpenRouterDialect(inherit_api);
+  CHECK(SelectWebSearchRoute(inherit_api, {})->model == "vendor/model");
+  inherit_api.features = {};
+  CHECK(!SelectWebSearchRoute(inherit_api, {}).has_value());
   // `off` refuses every candidate.
   RuntimeConfig disabled_config = search_config;
   disabled_config.web_search_backend = "off";
   Api disabled_api(disabled_config);
-  CHECK(!SelectWebSearchRoute(disabled_api, {}).Valid());
+  CHECK(!SelectWebSearchRoute(disabled_api, {}).has_value());
 
-  WebSearchRoute openrouter_route{"https://openrouter.ai/api/v1", "key",
-                                  "vendor/search-model", ""};
+  Route openrouter_route;
+  openrouter_route.base_url = "https://openrouter.ai/api/v1";
+  openrouter_route.api_key = "key";
+  openrouter_route.model = "vendor/search-model";
   json openrouter_body = WebSearchRequest(openrouter_route, "current facts");
   CHECK(openrouter_body["model"] == "vendor/search-model");
   CHECK(openrouter_body["tools"].size() == 1);

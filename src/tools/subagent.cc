@@ -235,12 +235,11 @@ const json& ChildLimits(const json& arguments) {
   return limits != nullptr ? *limits : kNone;
 }
 
-std::string ModelPropertyDescription(
-    const std::vector<ModelRoute>& routes,
-    const std::vector<NamedProvider>& providers) {
+std::string ModelPropertyDescription(const std::vector<Route>& routes,
+                                     const std::vector<Endpoint>& providers) {
   std::vector<std::string> aliases;
   aliases.reserve(routes.size());
-  for (const ModelRoute& route : routes) aliases.push_back(route.name);
+  for (const Route& route : routes) aliases.push_back(route.route_name);
 
   // Naming an alias here is an override, not the default. Spelling that out
   // matters: a child sent to an unreachable alias fails outright rather than
@@ -261,9 +260,10 @@ std::string ModelPropertyDescription(
   return description;
 }
 
-std::string SubagentDiagnosticRoute(
-    const SideRoute& route, const std::vector<NamedProvider>& providers) {
-  std::string selected = route.selection;
+std::string SubagentDiagnosticRoute(const RouteResolution& resolution,
+                                    const std::vector<Endpoint>& providers) {
+  const Route& route = resolution.route;
+  std::string selected = resolution.selection;
   std::string resolved = RouteSelection(route, providers);
   std::string label = selected.empty() ? resolved : selected;
   if (!resolved.empty() && resolved != label) label += " -> " + resolved;
@@ -273,8 +273,8 @@ std::string SubagentDiagnosticRoute(
 }
 
 ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
-                       const std::vector<ModelRoute>& routes,
-                       const std::vector<NamedProvider>& providers, bool debug,
+                       const std::vector<Route>& routes,
+                       const std::vector<Endpoint>& providers, bool debug,
                        const json& arguments, const ToolContext& context) {
   std::string operation = JsonValue(arguments, "operation", "spawn");
   std::string id = JsonValue(arguments, "agent_id", "");
@@ -357,7 +357,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   const std::string requested = NormalizeModelId(
       JsonValue(arguments, "model", JsonValue(role, "model", "")));
   // No route named: the parent's own, whatever it is now.
-  SideRoute route = ResolveSideRoute(api, routes, providers, requested);
+  RouteResolution route = ResolveSideRoute(api, routes, providers, requested);
   if (!route.none.empty()) {
     return ToolFailure(ToolErrorCode::kUnavailable, route.none);
   }
@@ -376,8 +376,9 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
           api, processes, remaining_budget, remaining_token_budget)) {
     return *blocked;
   }
-  const std::string child_model = route.model;
-  EnvironmentOverrides environment = ChildAgentEnvironment(std::move(route));
+  const std::string child_model = route.route.model;
+  EnvironmentOverrides environment =
+      ChildAgentEnvironment(std::move(route.route));
   // A caller that knows the shape of the subtask may raise or lower the
   // ceiling for that one child; the schema bounds it, and the session
   // budgets still apply underneath.
@@ -513,8 +514,8 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
 }  // namespace
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
-                  const std::vector<ModelRoute>& routes,
-                  const std::vector<NamedProvider>& providers, bool debug) {
+                  const std::vector<Route>& routes,
+                  const std::vector<Endpoint>& providers, bool debug) {
   json properties = {
       {"operation",
        {{"type", "string"},
@@ -611,7 +612,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     if (operation == "message") return "[message " + id + "] " + prompt;
     std::string label = RouteSelection(
         ResolveSideRoute(api, routes, providers,
-                         NormalizeModelId(JsonValue(arguments, "model", ""))),
+                         NormalizeModelId(JsonValue(arguments, "model", "")))
+            .route,
         providers);
     const std::string name = JsonValue(arguments, "name", "");
     if (!name.empty()) label = name + " · " + label;

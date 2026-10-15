@@ -68,7 +68,7 @@ version they match.
   configuration reference marks them 🔒.
 - Do not add secrets to a repository. Saved settings live in µAgent's own
   private `~/.uagent/config/settings.json`, never in a project.
-- `/model`, `/effort` and `/variant` choose for the conversation they are
+- `/model` and `/effort` choose for the conversation they are
   typed in only. `/model NAME --default` also saves the model for new
   conversations (`UAGENT_MODEL`).
 - Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, project trust, credential

@@ -341,8 +341,8 @@ void Api::PreserveAssistantReasoning(json& message,
   }
   if (!result.reasoning_details.empty()) {
     message["reasoning_details"] = result.reasoning_details;
-  } else if (capabilities.reasoning_replay_text && result.reasoning_field &&
-             !result.reasoning.empty()) {
+  } else if (features.Has(Feature::kReasoningReplayText) &&
+             result.reasoning_field && !result.reasoning.empty()) {
     message["reasoning"] = result.reasoning;
   } else if (result.reasoning_content_field && !result.reasoning.empty()) {
     message["reasoning_content"] = result.reasoning;
@@ -351,31 +351,6 @@ void Api::PreserveAssistantReasoning(json& message,
     // different continuation semantics on OpenAI-compatible routes.
     message["reasoning_details"] = result.reasoning_details;
   }
-}
-
-std::string Api::CatalogModel() const {
-  if (!capabilities.model_variants) return model;
-  std::string base = model;
-  bool stripped = true;
-  while (stripped) {
-    stripped = false;
-    for (std::string_view variant : kOpenRouterVariants) {
-      std::string suffix = ":" + std::string(variant);
-      if (!base.ends_with(suffix)) continue;
-      base.resize(base.size() - suffix.size());
-      stripped = true;
-      break;
-    }
-  }
-  return base;
-}
-
-std::string Api::RequestModel() const {
-  std::string base = CatalogModel();
-  if (!capabilities.model_variants || config.openrouter_variant.empty()) {
-    return base;
-  }
-  return base + ":" + config.openrouter_variant;
 }
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
@@ -443,10 +418,9 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     json metadata = exchange_context;
     metadata.update(
         {{"method", "POST"},
-         {"url", RedactedUrl(base_url +
-                             std::string(WireEndpoint(capabilities.wire_api)))},
+         {"url", RedactedUrl(base_url + std::string(WireEndpoint(wire_api)))},
          {"attempt", attempt},
-         {"model", RequestModel()}});
+         {"model", model}});
     HttpExchange exchange(capture_http, payload, std::move(metadata));
     json response_context = exchange_context;
     response_context["attempt"] = attempt;
@@ -592,8 +566,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ChatResult res;
   res.response_id = JsonValue(response_context, "response_id", "");
   res.attempt = JsonValue(response_context, "attempt", int64_t{0});
-  CURL* h =
-      Prepare(base_url + std::string(WireEndpoint(capabilities.wire_api)));
+  CURL* h = Prepare(base_url + std::string(WireEndpoint(wire_api)));
   if (!h) {
     res.error = kCurlInitFailed;
     return res;
@@ -604,7 +577,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.unsaid = unsaid;
   ctx.handle = h;
   ctx.res = &res;
-  ctx.wire_api = capabilities.wire_api;
+  ctx.wire_api = wire_api;
   ctx.started = std::chrono::steady_clock::now();
   ctx.last_byte = ctx.started;
   ctx.stream_timeout_s = config.stream_timeout_s;
@@ -612,7 +585,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;
   bool headers_ok = headers.Add("Content-Type: application/json") &&
-                    AddApiHeaders(headers, capabilities.wire_api, api_key) &&
+                    AddApiHeaders(headers, wire_api, api_key) &&
                     headers.Add("Accept: text/event-stream");
   // Proxies use this transport hint for account affinity across every dialect.
   // Keep it independent of OpenRouter's separate session_id body extension.
@@ -751,7 +724,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
   SizedBuffer out;
   out.cap = kResponseBytes;
   CurlHeaders headers;
-  bool headers_ok = AddApiHeaders(headers, capabilities.wire_api, api_key);
+  bool headers_ok = AddApiHeaders(headers, wire_api, api_key);
   if (payload) {
     headers_ok = headers_ok && headers.Add("Content-Type: application/json");
     curl_easy_setopt(h, CURLOPT_POSTFIELDS, payload->c_str());

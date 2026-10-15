@@ -183,7 +183,7 @@ std::string ChildAgentFailureReport(std::string_view route,
   return report;
 }
 
-EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
+EnvironmentOverrides ChildAgentEnvironment(Route route) {
   EnvironmentOverrides environment = RouteEnvironment(route);
   environment.emplace_back("UAGENT_INTERNAL_DEPTH",
                            std::to_string(AgentDepth() + 1));

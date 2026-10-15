@@ -57,7 +57,8 @@ void TestAttachmentEncoding() {
   CHECK(JsonDump(content).find("base64,") == std::string::npos);
   const json original = json::array({{{"role", "user"}, {"content", content}}});
   ProviderCapabilities capabilities;
-  capabilities.SetInputModalities(json::array({"text"}));
+  capabilities.SetInputModalities(json::array({"text"}),
+                                  WireApi::kChatCompletions);
   json request = original, deliveries;
   CHECK(PrepareAttachments(request, capabilities, false, "text-only", error,
                            &deliveries));
@@ -66,7 +67,8 @@ void TestAttachmentEncoding() {
   CHECK(deliveries[1]["delivery"] == "Text");
   CHECK(JsonDump(request).find("image_url") == std::string::npos);
   CHECK(JsonDump(request).find("Attached text") != std::string::npos);
-  capabilities.SetInputModalities(json::array({"text", "image", "pdf"}));
+  capabilities.SetInputModalities(json::array({"text", "image", "pdf"}),
+                                  WireApi::kChatCompletions);
   request = original;
   CHECK(PrepareAttachments(request, capabilities, false, "vision", error,
                            &deliveries));
@@ -99,7 +101,8 @@ void TestAttachmentEncoding() {
         {"content", AttachmentContent("again", {image_attachment}, error)}}});
   CHECK(error.empty());
   twin[0]["content"].push_back(twin[0]["content"][1]);
-  capabilities.SetInputModalities(json::array({"text", "image", "pdf"}));
+  capabilities.SetInputModalities(json::array({"text", "image", "pdf"}),
+                                  WireApi::kChatCompletions);
   request = twin;
   CHECK(PrepareAttachments(request, capabilities, false, "vision", error,
                            &deliveries));
@@ -253,7 +256,8 @@ void TestVectorAndHeicAttachments() {
   // Truncated HEIC bytes can never pass for a photo at request time:
   // conversion fails loudly instead of sending provider-rejected bytes.
   ProviderCapabilities capabilities;
-  capabilities.SetInputModalities(json::array({"text", "image"}));
+  capabilities.SetInputModalities(json::array({"text", "image"}),
+                                  WireApi::kChatCompletions);
   // Re-inspect the photo so the part below carries the image claim.
   error.clear();
   CHECK(InspectAttachment(photo.string(), attachment, error));
@@ -321,7 +325,8 @@ void TestAudioVideoAttachments() {
   // Wire shapes: raw base64 plus a format word for speech, a data URL
   // mirroring image_url for video.
   ProviderCapabilities capabilities;
-  capabilities.SetInputModalities(json::array({"text", "audio", "video"}));
+  capabilities.SetInputModalities(json::array({"text", "audio", "video"}),
+                                  WireApi::kChatCompletions);
   CHECK(capabilities.audio_input);
   CHECK(capabilities.video_input);
   CHECK(!capabilities.image_input);
@@ -351,11 +356,9 @@ void TestAudioVideoAttachments() {
   // Responses and Anthropic Messages have no speech or video parts, so a
   // route there degrades to file paths instead of silently dropping them.
   for (WireApi dialect : {WireApi::kResponses, WireApi::kAnthropicMessages}) {
-    ProviderCapabilities other;
-    other.wire_api = dialect;
-    other.ResetNegotiated();
+    ProviderCapabilities other = CapabilitiesForRoute(dialect, {});
     CHECK(!other.audio_input && !other.video_input);
-    other.SetInputModalities(json::array({"text", "audio", "video"}));
+    other.SetInputModalities(json::array({"text", "audio", "video"}), dialect);
     CHECK(!other.audio_input && !other.video_input);
   }
   error.clear();
@@ -371,7 +374,8 @@ void TestAudioVideoAttachments() {
   CHECK(JsonValue(request[0]["content"][1]["video_url"], "url", "")
             .starts_with("data:video/mp4;base64,"));
   // Without the flags both kinds degrade to file paths, like images.
-  capabilities.SetInputModalities(json::array({"text"}));
+  capabilities.SetInputModalities(json::array({"text"}),
+                                  WireApi::kChatCompletions);
   error.clear();
   CHECK(InspectAttachment(song.string(), attachment, error));
   request = json::array(

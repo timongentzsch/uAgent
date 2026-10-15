@@ -46,7 +46,6 @@ PROVENANCE_FIELDS = (
 )
 BEHAVIOR_FIELDS = (
     "reasoning_effort",
-    "openrouter_variant",
     "context_window",
     "memory",
     "memory_generate",

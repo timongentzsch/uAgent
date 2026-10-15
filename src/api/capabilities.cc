@@ -10,22 +10,48 @@
 
 namespace uagent {
 
-const char* ProviderProtocolName(ProviderProtocol protocol) {
-  switch (protocol) {
-    case ProviderProtocol::kOpenAi:
-      return "openai";
-    case ProviderProtocol::kOpenRouter:
-      return "openrouter";
+namespace {
+constexpr const char* kFeatureNames[] = {
+    "hosted_search",       "search_plugin",         "provider_routing",
+    "session_passthrough", "raw_vendor_ids",        "model_variants",
+    "reasoning_object",    "reasoning_replay_text", "prompt_cache_control",
+    "pdf_parser",          "max_completion_tokens", "search_sources",
+    "reasoning_summary",   "inline_usage"};
+static_assert(std::size(kFeatureNames) == static_cast<size_t>(Feature::kCount));
+}  // namespace
+
+json FeatureNames(const FeatureSet& features) {
+  json names = json::array();
+  for (uint8_t i = 0; i < static_cast<uint8_t>(Feature::kCount); ++i) {
+    if (features.Has(static_cast<Feature>(i))) {
+      names.push_back(kFeatureNames[i]);
+    }
   }
-  return "openai";
+  return names;
 }
 
-std::optional<ProviderProtocol> ParseProviderProtocol(
-    std::string_view protocol) {
-  if (protocol == "openai") return ProviderProtocol::kOpenAi;
-  if (protocol == "openrouter") return ProviderProtocol::kOpenRouter;
-  if (protocol == "anthropic") return ProviderProtocol::kOpenAi;
-  return std::nullopt;
+bool ParseFeatures(const json& names, FeatureSet& features,
+                   std::string& unknown) {
+  if (!names.is_array()) {
+    unknown = "a list of feature names";
+    return false;
+  }
+  for (const json& name : names) {
+    bool found = false;
+    for (uint8_t i = 0;
+         name.is_string() && i < static_cast<uint8_t>(Feature::kCount); ++i) {
+      if (name.get_ref<const std::string&>() == kFeatureNames[i]) {
+        features.Add(static_cast<Feature>(i));
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      unknown = name.is_string() ? name.get<std::string>() : name.dump();
+      return false;
+    }
+  }
+  return true;
 }
 
 const char* WireApiName(WireApi wire_api) {
@@ -59,7 +85,8 @@ bool HasHostedTool(const json& hosted_tools, HostedTool tool) {
   return false;
 }
 
-void ProviderCapabilities::SetInputModalities(const json& modalities) {
+void ProviderCapabilities::SetInputModalities(const json& modalities,
+                                              WireApi wire_api) {
   if (!modalities.is_array() || modalities == input_modalities) return;
   input_modalities = modalities;
   image_input = std::find(modalities.begin(), modalities.end(), "image") !=
@@ -68,8 +95,6 @@ void ProviderCapabilities::SetInputModalities(const json& modalities) {
                    modalities.end() ||
                std::find(modalities.begin(), modalities.end(), "file") !=
                    modalities.end();
-  // Only the Chat Completions dialect has speech and video parts; Responses
-  // and Anthropic Messages accept text, images and files.
   const bool chat = wire_api == WireApi::kChatCompletions;
   audio_input = chat && std::find(modalities.begin(), modalities.end(),
                                   "audio") != modalities.end();
@@ -90,16 +115,18 @@ void ProviderCapabilities::SetModelFeatures(const json& features) {
       JsonValue(model_features, "adaptive_thinking", adaptive_thinking);
 }
 
-void ProviderCapabilities::ResetNegotiated() {
+void ProviderCapabilities::ResetNegotiated(WireApi wire_api,
+                                           const FeatureSet& declared) {
   parallel_tools = true;
-  stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
+  stream_usage_option = wire_api == WireApi::kChatCompletions &&
+                        !declared.Has(Feature::kInlineUsage);
   image_input = true;
   file_input = true;
   audio_input = wire_api == WireApi::kChatCompletions;
   video_input = audio_input;
   json modalities = std::move(input_modalities);
   input_modalities = nullptr;
-  SetInputModalities(modalities);
+  SetInputModalities(modalities, wire_api);
   reasoning_text = false;
   reasoning_details = false;
   reasoning_content = false;
@@ -116,11 +143,10 @@ void ProviderCapabilities::Observe(const ChatResult& result) {
       reported_usage || (result.usage.is_object() && !result.usage.empty());
 }
 
-json ProviderCapabilities::DiagnosticJson() const {
-  return {{"protocol", ProviderProtocolName(protocol)},
-          {"wire_api", WireApiName(wire_api)},
-          {"hosted_tools",
-           hosted_web_search ? json::array({"web_search"}) : json::array()},
+json ProviderCapabilities::DiagnosticJson(WireApi wire_api,
+                                          const FeatureSet& declared) const {
+  return {{"wire_api", WireApiName(wire_api)},
+          {"features", FeatureNames(declared)},
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
           {"reasoning_summary", reasoning_summary},
@@ -130,14 +156,6 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"audio_input", audio_input},
           {"video_input", video_input},
           {"input_modalities", input_modalities},
-          {"web_search_sources", web_search_sources},
-          {"raw_slash_models", raw_slash_models},
-          {"reasoning_object", reasoning_object},
-          {"reasoning_replay_text", reasoning_replay_text},
-          {"max_completion_tokens", max_completion_tokens},
-          {"provider_routing", provider_routing},
-          {"session_passthrough", session_passthrough},
-          {"model_variants", model_variants},
           {"observed_reasoning_text", reasoning_text},
           {"observed_reasoning_details", reasoning_details},
           {"observed_reasoning_content", reasoning_content},
@@ -145,31 +163,12 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"observed_usage", reported_usage}};
 }
 
-ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
-                                          const std::string& base_url,
-                                          WireApi wire_api,
-                                          bool hosted_web_search) {
+ProviderCapabilities CapabilitiesForRoute(WireApi wire_api,
+                                          const FeatureSet& declared) {
   ProviderCapabilities capabilities;
-  capabilities.protocol = protocol;
-  capabilities.wire_api = wire_api;
-  capabilities.hosted_web_search = hosted_web_search;
-  if (protocol == ProviderProtocol::kOpenRouter) {
-    capabilities.raw_slash_models = true;
-    capabilities.reasoning_object = true;
-    capabilities.reasoning_replay_text = true;
-    capabilities.provider_routing = true;
-    capabilities.session_passthrough = true;
-    capabilities.model_variants = true;
-  } else if (OpenaiUrl(base_url)) {
-    // Exact official host, not a model-name or substring heuristic: OpenAI's
-    // Chat Completions dialect uses max_completion_tokens.
-    capabilities.max_completion_tokens = true;
-  }
-  if (wire_api == WireApi::kResponses) {
-    capabilities.web_search_sources = OpenaiUrl(base_url);
-    capabilities.reasoning_summary = OpenaiUrl(base_url);
-  }
-  capabilities.ResetNegotiated();
+  capabilities.reasoning_summary = wire_api == WireApi::kResponses &&
+                                   declared.Has(Feature::kReasoningSummary);
+  capabilities.ResetNegotiated(wire_api, declared);
   return capabilities;
 }
 

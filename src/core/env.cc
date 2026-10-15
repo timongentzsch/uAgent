@@ -167,13 +167,10 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_APPROVAL"), &RuntimeConfig::approval},
     {&Cfg("UAGENT_PERMISSION_MODEL"), &RuntimeConfig::permission_model},
     {&Cfg("UAGENT_PERMISSION_URL"), &RuntimeConfig::permission_url},
-    {&Cfg("UAGENT_OPENROUTER_PROVIDER"), &RuntimeConfig::openrouter_provider},
-    {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
     {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
     {&Cfg("UAGENT_TITLE_MODEL"), &RuntimeConfig::title_model},
-    {&Cfg("UAGENT_PDF_ENGINE"), &RuntimeConfig::pdf_engine},
     {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };
 constexpr FieldBinding<bool> kBoolOptions[] = {
@@ -221,10 +218,6 @@ RuntimeConfig::RuntimeConfig() {
       this->*option.field = std::get<Field>(option.descriptor->default_value);
     }
   });
-}
-
-bool ValidOpenRouterVariant(std::string_view variant) {
-  return Cfg("UAGENT_OPENROUTER_VARIANT").Accepts(variant);
 }
 
 RuntimeConfig RuntimeConfig::FromEnvironment() {

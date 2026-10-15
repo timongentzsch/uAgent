@@ -146,13 +146,6 @@ void Application::PublishChannelState(bool checkpoint) {
       state["efforts"].push_back(effort);
     }
   }
-  state["variants"] = json::array();
-  if (api_.capabilities.model_variants) {
-    state["variants"].push_back("default");
-    for (std::string_view variant : kOpenRouterVariants) {
-      state["variants"].push_back(variant);
-    }
-  }
   state["turns"] = agent_.UserTurns();
   state["turn_active"] = turn_active_;
   state["chat_re"] = agent_.ChatRe();

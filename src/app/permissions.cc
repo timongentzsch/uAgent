@@ -193,7 +193,7 @@ AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,
   AutoPermissionReview result;
   api.base_url = config.permission_url;
   api.api_key = SettingText(Cfg("OPENROUTER_API_KEY"));
-  api.capabilities.wire_api = WireApi::kChatCompletions;
+  api.wire_api = WireApi::kChatCompletions;
   if (api.api_key.empty()) {
     result.error = "OPENROUTER_API_KEY is not configured";
     return result;

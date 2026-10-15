@@ -246,11 +246,6 @@ void TestStrictBooleanSettings() {
   // alike, and struct defaults are the registry's.
   CHECK(RuntimeConfig::FromValues({{"UAGENT_PERMISSION_URL", ""}})
             .permission_url == "https://openrouter.ai/api/alpha");
-  CHECK(RuntimeConfig{}.pdf_engine == "cloudflare-ai");
-  {
-    ScopedEnv empty("UAGENT_PDF_ENGINE", "");
-    CHECK(RuntimeConfig::FromEnvironment().pdf_engine == "cloudflare-ai");
-  }
 }
 
 void TestSelfDescriptionSchemas() {

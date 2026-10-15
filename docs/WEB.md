@@ -203,7 +203,7 @@ before Submit.
 
 ### Composer
 
-- The model control combines provider/model, variant and reasoning effort.
+- The model control combines provider/model and reasoning effort.
   Choosing does not send a message and applies to this conversation; **Also
   use for new conversations** makes it the default.
 - Enter sends; Shift+Enter inserts a newline. On a touch keyboard Enter

@@ -14,7 +14,7 @@ Settings are saved in one private document,
 ```json
 {
   "$schema": "./settings.schema.json",
-  "format": 2,
+  "format": 3,
   "all": {
     "model": "openrouter/vendor/model",
     "limits.maxTurnCost": 2,

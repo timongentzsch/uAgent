@@ -127,7 +127,7 @@ namespace uagent {
   X(TestEffectiveConfigReload)                    \
   X(TestChildEnvironmentPolicy)                   \
   X(TestEffectiveImageModel)                      \
-  X(TestProviderTemplates)                        \
+  X(TestKnownEndpoints)                           \
   X(TestNamedProviders)                           \
   X(TestSafeJsonValues)                           \
   X(TestProjectInstructionDiscovery)              \

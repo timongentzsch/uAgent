@@ -24,8 +24,6 @@ void HandleModel(AppSession& session, const std::string& argument,
 
 void HandleEffort(AppSession& session, const std::string& argument,
                   CommandReply& reply);
-void HandleVariant(AppSession& session, const std::string& argument,
-                   CommandReply& reply);
 void HandleAttach(AppSession& session, const std::string& argument,
                   CommandReply& reply);
 void HandleCost(const AppSession& session, CommandReply& reply);

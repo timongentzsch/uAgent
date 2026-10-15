@@ -6,6 +6,7 @@
 // provider name, model name, or response rendering shape.
 
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -15,9 +16,6 @@
 
 namespace uagent {
 
-// Anthropic routes are identified by their wire API; "anthropic" is still
-// accepted as a protocol name and means the OpenAI-compatible default.
-enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter };
 enum class WireApi : uint8_t {
   kChatCompletions,
   kResponses,
@@ -35,18 +33,60 @@ enum class RejectedCapability : uint8_t {
   kReasoningSummary,
 };
 
-const char* ProviderProtocolName(ProviderProtocol protocol);
-std::optional<ProviderProtocol> ParseProviderProtocol(
-    std::string_view protocol);
+// What an endpoint declares it does beyond the wire API it speaks. Nothing
+// else in the code asks which vendor an endpoint is.
+enum class Feature : uint8_t {
+  kHostedSearch,         // the route's own web search (Responses, Anthropic)
+  kSearchPlugin,         // a search tool the endpoint runs for web_search
+  kProviderRouting,      // options.provider pins an upstream
+  kSessionPassthrough,   // the request carries the session id
+  kRawVendorIds,         // `vendor/model` ids are served without an alias
+  kModelVariants,        // an id may end in a routing suffix (`:nitro`)
+  kReasoningObject,      // effort is {"reasoning": {"effort": ...}}
+  kReasoningReplayText,  // reasoning text is sent back as `reasoning`
+  kPromptCacheControl,   // a top-level cache_control asks for prompt caching
+  kPdfParser,            // options.pdf_engine reads documents
+  kMaxCompletionTokens,  // the output limit is max_completion_tokens
+  kSearchSources,        // Responses can return the full source list
+  kReasoningSummary,     // Responses can summarize reasoning
+  kInlineUsage,          // usage arrives without asking for it in the stream
+  kCount,
+};
+
+struct FeatureSet {
+  uint32_t bits = 0;
+
+  constexpr bool Has(Feature feature) const {
+    return ((bits >> static_cast<uint8_t>(feature)) & 1U) != 0;
+  }
+  constexpr void Add(Feature feature) {
+    bits |= uint32_t{1} << static_cast<uint8_t>(feature);
+  }
+  constexpr void Remove(Feature feature) {
+    bits &= ~(uint32_t{1} << static_cast<uint8_t>(feature));
+  }
+  bool operator==(const FeatureSet&) const = default;
+};
+
+constexpr FeatureSet FeaturesOf(std::initializer_list<Feature> features) {
+  FeatureSet set;
+  for (Feature feature : features) set.Add(feature);
+  return set;
+}
+
+// The names of a set, in declaration order.
+json FeatureNames(const FeatureSet& features);
+// An array of names as a set; false names the first that is none.
+bool ParseFeatures(const json& names, FeatureSet& features,
+                   std::string& unknown);
+
 const char* WireApiName(WireApi wire_api);
 std::optional<WireApi> ParseWireApi(std::string_view wire_api);
 bool HasHostedTool(const json& hosted_tools, HostedTool tool);
 
+// What one route has negotiated or learned on top of what its endpoint
+// declares. Built fresh whenever the route changes.
 struct ProviderCapabilities {
-  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
-  WireApi wire_api = WireApi::kChatCompletions;
-  bool hosted_web_search = false;
-
   // Request features that may be downgraded after a structured rejection.
   bool parallel_tools = true;
   bool stream_usage_option = true;
@@ -61,19 +101,6 @@ struct ProviderCapabilities {
   bool audio_input = true;
   bool video_input = true;
 
-  // Stable route dialect features.
-  bool raw_slash_models = false;
-  bool reasoning_object = false;
-  bool reasoning_replay_text = false;
-  bool max_completion_tokens = false;
-  // Optional Responses expansion supported by the official OpenAI endpoint.
-  // Compatible routes can still run hosted search without returning its full
-  // internal source list.
-  bool web_search_sources = false;
-  bool provider_routing = false;
-  bool session_passthrough = false;
-  bool model_variants = false;
-
   // Features observed in successful responses. They are diagnostic facts, not
   // prerequisites and never drive the current turn.
   bool reasoning_text = false;
@@ -82,22 +109,18 @@ struct ProviderCapabilities {
   bool citations = false;
   bool reported_usage = false;
 
-  bool OpenRouter() const { return protocol == ProviderProtocol::kOpenRouter; }
-  bool Anthropic() const { return wire_api == WireApi::kAnthropicMessages; }
-  bool Supports(HostedTool tool) const {
-    return tool == HostedTool::kWebSearch && hosted_web_search;
-  }
-  void SetInputModalities(const json& modalities);
+  // Only the Chat Completions dialect has speech and video parts; Responses
+  // and Anthropic Messages accept text, images and files.
+  void SetInputModalities(const json& modalities, WireApi wire_api);
   void SetModelFeatures(const json& features);
-  void ResetNegotiated();
+  void ResetNegotiated(WireApi wire_api, const FeatureSet& declared);
   void Observe(const ChatResult& result);
-  json DiagnosticJson() const;
+  json DiagnosticJson(WireApi wire_api, const FeatureSet& declared) const;
 };
 
-ProviderCapabilities CapabilitiesForRoute(
-    ProviderProtocol protocol, const std::string& base_url,
-    WireApi wire_api = WireApi::kChatCompletions,
-    bool hosted_web_search = false);
+// The capabilities a route starts from, given what its endpoint declares.
+ProviderCapabilities CapabilitiesForRoute(WireApi wire_api,
+                                          const FeatureSet& declared);
 RejectedCapability RejectedRouteCapability(
     const ChatResult& result, const ProviderCapabilities& capabilities);
 const char* CapabilityName(RejectedCapability capability);

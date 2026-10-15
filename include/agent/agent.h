@@ -296,7 +296,7 @@ class Agent {
     kEndTurn,
   };
 
-  const SideRoute& ImageRoute() const;
+  const RouteResolution& ImageRoute() const;
   std::string AnalyzeImageContent(const json& content, std::string& error);
   std::string ApplyImageAnalysisFallback(json& messages, bool analyze = true,
                                          json* deliveries = nullptr);
@@ -483,7 +483,7 @@ class Agent {
   // Images whose analysis failed this turn. Each later step would otherwise
   // ask again and pay the same failure; the next turn tries once more.
   std::set<std::string> failed_image_analyses_;
-  mutable std::pair<std::string, SideRoute> image_route_;
+  mutable std::pair<std::string, RouteResolution> image_route_;
   mutable FileLease writer_;
   std::string session_title_;
   bool custom_title_ = false;

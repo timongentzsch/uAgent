@@ -19,7 +19,7 @@
 | `--plain` | screen-reader output: labelled lines, no animation |
 | `--no-memory` | disable memory recall and writes for this conversation |
 | `--verbosity LEVEL` | detail shown in this terminal: minimal, default or full |
-| `--model SELECTION` | conversation model as [provider/]model[:variant][:effort] |
+| `--model SELECTION` | conversation model as [provider/]model[:effort] |
 | `--image-model SELECTION` | read attached images with this model route |
 | `--web-search-model SELECTION` | model route for web search |
 | `--memory-model SELECTION` | model route for background memory extraction |

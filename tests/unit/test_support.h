@@ -22,11 +22,34 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/client.h"
 #include "include/core/fs.h"
 #include "include/core/settings_store.h"
+#include "include/providers/providers.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
+
+// Points `api` at `url` as the address declares that endpoint, and starts its
+// capabilities afresh.
+inline void UseEndpoint(Api& api, const std::string& url,
+                        WireApi wire_api = WireApi::kChatCompletions,
+                        bool hosted_search = false) {
+  api.base_url = url;
+  api.wire_api = wire_api;
+  api.features = {};
+  api.options = nullptr;
+  DeclareEndpoint(api, {});
+  if (hosted_search) api.features.Add(Feature::kHostedSearch);
+  api.capabilities = CapabilitiesForRoute(api.wire_api, api.features);
+}
+
+// What OpenRouter declares of itself, at whatever address `api` is on.
+inline void UseOpenRouterDialect(Api& api) {
+  const std::string url = api.base_url;
+  UseEndpoint(api, "https://openrouter.ai/api/v1");
+  api.base_url = url;
+}
 
 // Scale a millisecond deadline for an instrumented build, mirroring the Python
 // harness's budget(). A sanitizer leg starts and renders several times slower

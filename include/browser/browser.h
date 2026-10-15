@@ -19,6 +19,22 @@ inline constexpr size_t kListedTabs = 16;
 // Chrome and Xvnc may each consume their grace; allow another for cleanup.
 inline constexpr int kServiceShutdownGraceMs = 3 * kChildShutdownGraceMs;
 
+// How long a caller waits on the service. A probe answers at once or not at
+// all; an action may drive the page, and the service allows itself the same
+// for reading a request and writing its answer.
+inline constexpr int kRequestDefaultMs = 15000;
+inline constexpr int kProbeMs = 1000;
+inline constexpr int kActionMs = 30000;
+// One read or write on the remote-framebuffer socket, and on Chrome's pipe.
+inline constexpr int kRfbIoMs = 2000;
+inline constexpr int kCdpIoMs = 10000;
+// A new service answers its first ping, and Xvnc binds its socket, within.
+inline constexpr int kServiceStartMs = 2000;
+inline constexpr int kPingMs = 100;
+inline constexpr int kRfbSocketWaitMs = 3000;
+// How much of a page's text one read carries; the page script cuts there.
+inline constexpr int kPageTextChars = 12000;
+
 // The appliance sets one private directory for its browser profiles.
 // An empty value disables the browser feature in ordinary native installs.
 std::string DataDirectory();
@@ -43,7 +59,7 @@ int ServiceMain(int owner_fd);
 
 // One bounded request/reply per local Unix connection. No generic RPC surface
 // or caller-selected CDP method is exposed by the service.
-json Request(const json& command, int timeout_ms = 15000);
+json Request(const json& command, int timeout_ms = kRequestDefaultMs);
 
 }  // namespace uagent::browser
 

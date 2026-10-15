@@ -415,9 +415,11 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   std::shared_ptr<ActivitySession> session = job->session;
   std::lock_guard<std::mutex> interaction(session->interaction);
   const bool resize = rows > 0 || cols > 0;
-  if (resize && (rows <= 0 || cols <= 0 || rows > 1000 || cols > 1000)) {
+  if (resize && (rows <= 0 || cols <= 0 || rows > kPtyMaxDimension ||
+                 cols > kPtyMaxDimension)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "PTY resize requires rows and cols in 1..1000");
+                       "PTY resize requires rows and cols in 1.." +
+                           std::to_string(kPtyMaxDimension));
   }
 
   const bool needs_input =

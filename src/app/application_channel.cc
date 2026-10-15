@@ -11,6 +11,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
@@ -158,7 +159,7 @@ void Application::PublishChannelState(bool checkpoint) {
   state["activities"] = runtime_.processes.ActivityViews();
   state["agents"] = AgentSummaries(runtime_.processes);
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
-  state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
+  state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleBytes);
   state["stop"] = agent_.LastStop();
   if (channel_) channel_->PublishState(state, checkpoint);
 }

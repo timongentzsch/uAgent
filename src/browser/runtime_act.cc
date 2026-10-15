@@ -16,6 +16,7 @@
 #include "include/browser/runtime.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "src/browser/runtime_internal.h"
 
@@ -70,7 +71,9 @@ bool PressOnDisplay(std::initializer_list<std::pair<uint32_t, int>> keys) {
     bytes.assign(count, '\0');
     for (size_t have = 0; have < count;) {
       pollfd ready{rfb.Get(), POLLIN, 0};
-      if (poll(&ready, 1, 2000) <= 0) return false;
+      if (poll(&ready, 1, kRfbIoMs) <= 0) {
+        return false;
+      }
       const ssize_t n = read(rfb.Get(), bytes.data() + have, count - have);
       if (n <= 0) return false;
       have += static_cast<size_t>(n);
@@ -78,7 +81,7 @@ bool PressOnDisplay(std::initializer_list<std::pair<uint32_t, int>> keys) {
     return true;
   };
   const auto send = [&](std::string_view data) {
-    return WriteAllWithin(rfb.Get(), data, 2000);
+    return WriteAllWithin(rfb.Get(), data, kRfbIoMs);
   };
   using std::string_view_literals::operator""sv;
   // Version, the one security type the display is started with (none), its

@@ -17,6 +17,7 @@
 #include "include/agent/trace.h"
 #include "include/api/types.h"
 #include "include/core/debug.h"
+#include "include/core/defaults.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -27,11 +28,11 @@
 namespace uagent {
 
 json Agent::CompactionMessages() const {
-  size_t transcript_bytes = size_t{256} * 1024;
-  if (api_.ctx_window > 0 && api_.ctx_window < int64_t{128} * 1024) {
+  size_t transcript_bytes = kCompactionTranscriptBytes;
+  if (api_.ctx_window > 0 && api_.ctx_window < kCompactionSmallWindowTokens) {
     size_t route_bytes = static_cast<size_t>(api_.ctx_window) * 2;
-    transcript_bytes =
-        std::clamp(route_bytes, size_t{16} * 1024, transcript_bytes);
+    transcript_bytes = std::clamp(route_bytes, kCompactionTranscriptFloorBytes,
+                                  transcript_bytes);
   }
   constexpr const char* kToolFallbackName = "tool";
   constexpr size_t kProseBytes = size_t{8} * 1024;
@@ -113,11 +114,11 @@ json Agent::CompactionMessages() const {
 }
 
 json Agent::CompactionSkillMessages() const {
-  size_t remaining = size_t{32} * 1024;
+  size_t remaining = kCompactionSkillBytes;
   if (api_.ctx_window > 0) {
-    remaining = std::min(
-        remaining,
-        std::max(size_t{4} * 1024, static_cast<size_t>(api_.ctx_window) / 4));
+    remaining =
+        std::min(remaining, std::max(kCompactionRouteFloorBytes,
+                                     static_cast<size_t>(api_.ctx_window) / 4));
   }
   std::vector<const std::string*> newest_first;
   for (size_t index = conversation_.Size(); index > BaselineSize(); --index) {
@@ -127,9 +128,9 @@ json Agent::CompactionSkillMessages() const {
     // What `$skill` pushed, and what the skill tool returned for a body (a
     // catalogue listing does not open with the skill's name).
     if (!content || !((kind == MessageKind::kInternal &&
-                       content->starts_with("[explicit skill instructions")) ||
+                       content->starts_with(kExplicitSkillMarker)) ||
                       (kind == MessageKind::kToolResult &&
-                       content->starts_with("[skill ")))) {
+                       content->starts_with(kSkillMarker)))) {
       continue;
     }
     // A skill opened twice is kept once; one that no longer fits is left out
@@ -146,7 +147,7 @@ json Agent::CompactionSkillMessages() const {
   json retained = json::array();
   for (auto it = newest_first.rbegin(); it != newest_first.rend(); ++it) {
     retained.push_back(HarnessMessage(
-        (*it)->starts_with("[skill ")
+        (*it)->starts_with(kSkillMarker)
             ? "[skill instructions kept across compaction]\n" + **it
             : **it));
   }
@@ -157,10 +158,10 @@ json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
   // A summary is lossy by definition. Keep recent real user instructions as
   // an independent source of truth, while bounding them to a small fraction
   // of the next context. Codex uses the same summary-plus-user-message shape.
-  size_t cap = size_t{80} * 1024;
+  size_t cap = kCompactionUserBytes;
   if (api_.ctx_window > 0) {
     size_t route_cap = static_cast<size_t>(api_.ctx_window) / 2;
-    cap = std::min(cap, std::max(size_t{4} * 1024, route_cap));
+    cap = std::min(cap, std::max(kCompactionRouteFloorBytes, route_cap));
   }
 
   std::vector<std::string> newest_first;

@@ -65,6 +65,10 @@ inline constexpr size_t kGenericTitleReplacementMinChars = 12;
 // deadline after which the first line stays.
 inline constexpr size_t kTitleInputChars = 2000;
 inline constexpr size_t kTitleChars = 80;
+// The longest title a user (or a fork) may give a session, and the longest
+// workspace name. The web form mirrors both (web/src/shared/limits.ts).
+inline constexpr size_t kUserTitleBytes = 256;
+inline constexpr size_t kSpaceNameChars = 64;
 inline constexpr int64_t kTitleTimeoutSeconds = 30;
 // Upload and subsequent claim validation must accept the same display names.
 inline constexpr size_t kAssetNameChars = 128;
@@ -117,6 +121,32 @@ inline constexpr int64_t kMillisecondsPerSecond = 1000;
 // Named so the three schedule.cc checks and any future caller agree.
 inline constexpr int64_t kMaxScheduleEpoch = 4102444800LL;
 
+// Compaction budgets. The summarizer reads up to kCompactionTranscriptBytes of
+// transcript; a route whose window is under kCompactionSmallWindowTokens gets
+// twice its window in bytes, never below the floor. The skills and the user
+// messages carried over the summary are capped, and shrink with the window
+// down to kCompactionRouteFloorBytes.
+inline constexpr size_t kCompactionTranscriptBytes = KiB(256);
+inline constexpr size_t kCompactionTranscriptFloorBytes = KiB(16);
+inline constexpr int64_t kCompactionSmallWindowTokens = int64_t{128} * 1024;
+inline constexpr size_t kCompactionSkillBytes = KiB(32);
+inline constexpr size_t kCompactionUserBytes = KiB(80);
+inline constexpr size_t kCompactionRouteFloorBytes = KiB(4);
+
+// Polling. A poll tick re-checks something that has no event to wake on (a
+// socket that is not bound yet, a lock another process holds); a wait tick
+// bounds a blocking wait so an abort or a spinner is noticed.
+inline constexpr int kPollTickMs = 20;
+inline constexpr int kWaitTickMs = 100;
+
+// Lifetimes shared by more than one site. A proposal (an adaptive prompt, a
+// settings change) waits this long for the user's decision. An upload or an
+// import that nothing claimed is an orphan after a day. A host with no wake
+// due sleeps a day.
+inline constexpr int64_t kProposalLifetimeMinutes = 5;
+inline constexpr int64_t kOrphanAgeHours = 24;
+inline constexpr int64_t kIdleSleepHours = 24;
+
 // Hash-fingerprint widths for stable short digests. The occurrence/detail
 // pair must stay in sync between request construction and view projection.
 inline constexpr size_t kDigestChars = 12;
@@ -138,15 +168,25 @@ inline constexpr size_t kMemoryEventLineBytes = 4096;
 // shared machine cannot read transcripts or credentials out of ~/.uagent.
 inline constexpr int kPrivateFileMode = 0600;
 inline constexpr int kPrivateDirMode = 0700;
+// The group and other permission bits: set on a private file, they mean
+// someone else can reach it.
+inline constexpr int kGroupOtherModeBits = 0077;
 
 // Files written into the user's workspace on their behalf, which follow the
 // usual world-readable convention rather than the private-artifact policy.
 inline constexpr int kSharedFileMode = 0644;
 
+// Bounds on tool arguments. The schemas the model sees are built from these,
+// and the policy check enforces the schema, so they are stated once.
+inline constexpr int64_t kToolTextArgChars = 65536;
+inline constexpr int64_t kToolMinOutputChars = 256;
+inline constexpr int64_t kToolArgChars = 4096;
+inline constexpr int64_t kPtyMaxDimension = 1000;
+
 // Bounds for the `run` tool's initial yield. The lower bound keeps a yield from
 // degenerating into a busy poll; the upper bound keeps one call from consuming
-// the turn. The tool schema, the argument validator and the clamp in the shell
-// runner must agree.
+// the turn. The tool schema is built from them, so the argument validator and
+// the clamp in the shell runner agree with it.
 inline constexpr int64_t kMinYieldMs = 250;
 inline constexpr int64_t kMaxYieldMs = 30000;
 inline constexpr int64_t kDefaultYieldMs = 10000;

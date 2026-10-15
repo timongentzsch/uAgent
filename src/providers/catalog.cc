@@ -12,6 +12,7 @@
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/providers/providers.h"
 
@@ -295,7 +296,7 @@ std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable,
     AtomicWriteFile(CataloguePath(identity),
                     JsonDump({{"identity", identity},
                               {"response", std::move(response.body)}}),
-                    0600, false, error);
+                    kPrivateFileMode, false, error);
   }
   return models;
 }

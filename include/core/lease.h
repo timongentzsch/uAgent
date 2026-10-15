@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "include/core/fd.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 
 namespace uagent {
@@ -39,12 +40,12 @@ class FileLease {
     if (fd_ && path == path_) return true;
     Fd next;
     for (;;) {
-      next.Reset(
-          open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600));
+      next.Reset(open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW,
+                      kPrivateFileMode));
       struct stat info{};
       if (!next || fstat(next.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
           info.st_uid != geteuid() || info.st_nlink > 1 ||
-          (info.st_mode & 0077) != 0) {
+          (info.st_mode & kGroupOtherModeBits) != 0) {
         error = "cannot open private ownership file: " + path;
         return false;
       }
@@ -105,7 +106,7 @@ class FileLease {
     struct stat info{};
     if (!file || fstat(file.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
         info.st_uid != geteuid() || info.st_nlink != 1 ||
-        (info.st_mode & 0077)) {
+        (info.st_mode & kGroupOtherModeBits)) {
       return {};
     }
     char buffer[128];

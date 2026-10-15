@@ -21,6 +21,7 @@
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/private_store.h"
 #include "include/tools/files.h"
@@ -270,7 +271,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     return false;
   }
   profile_lock_.Reset(open((base + "/profile.lock").c_str(),
-                           O_CREAT | O_RDWR | O_CLOEXEC, 0600));
+                           O_CREAT | O_RDWR | O_CLOEXEC, kPrivateFileMode));
   if (!profile_lock_ || flock(profile_lock_.Get(), LOCK_EX | LOCK_NB) != 0) {
     error = "Chrome profile is in use";
     profile_lock_.Reset();
@@ -299,7 +300,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     error = "cannot create X authorization";
     return false;
   }
-  chmod(authority.c_str(), 0600);
+  chmod(authority.c_str(), kPrivateFileMode);
   setenv("DISPLAY", display.c_str(), 1);
   setenv("XAUTHORITY", authority.c_str(), 1);
   unlink(RfbPath().c_str());
@@ -330,9 +331,10 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     error = "cannot launch Xtigervnc";
     return false;
   }
-  for (int attempt = 0; attempt < 100 && access(RfbPath().c_str(), F_OK);
-       ++attempt) {
-    poll(nullptr, 0, 30);
+  for (int waited = 0;
+       waited < kRfbSocketWaitMs && access(RfbPath().c_str(), F_OK);
+       waited += kPollTickMs) {
+    poll(nullptr, 0, kPollTickMs);
   }
   if (access(RfbPath().c_str(), F_OK)) {
     error = "Xtigervnc did not create its Unix display socket";
@@ -441,7 +443,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
   if (!session.empty()) command["sessionId"] = session;
   std::string packet = JsonDump(command);
   packet.push_back('\0');
-  if (!WriteAllWithin(cdp_in_.Get(), packet, 10000)) {
+  if (!WriteAllWithin(cdp_in_.Get(), packet, kCdpIoMs)) {
     return {{"error", "Chrome control pipe is stuck or closed"}};
   }
   for (;;) {
@@ -476,7 +478,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       return {{"error", "Chrome response exceeded limit"}};
     }
     pollfd ready{cdp_out_.Get(), POLLIN, 0};
-    if (poll(&ready, 1, 10000) <= 0) {
+    if (poll(&ready, 1, kCdpIoMs) <= 0) {
       return {{"error", "Chrome read timed out"}};
     }
     char bytes[16384];

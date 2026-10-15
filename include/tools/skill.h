@@ -144,7 +144,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
            "optional installed-catalogue filter; {} lists all names"}}},
         {"arguments",
          {{"type", "string"},
-          {"maxLength", 4096},
+          {"maxLength", kToolArgChars},
           {"description", "optional skill arguments replacing $ARGUMENTS"}}}}},
       {"additionalProperties", false}};
   Tool t = MakeTool(

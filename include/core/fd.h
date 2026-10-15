@@ -16,6 +16,8 @@
 #include <string>
 #include <utility>
 
+#include "include/core/limits.h"
+
 namespace uagent {
 
 class Fd {
@@ -90,7 +92,8 @@ inline Fd ListenUnix(const std::string& path, int backlog) {
   unlink(path.c_str());
   if (bind(fd.Get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) !=
           0 ||
-      chmod(path.c_str(), 0600) != 0 || listen(fd.Get(), backlog) != 0) {
+      chmod(path.c_str(), kPrivateFileMode) != 0 ||
+      listen(fd.Get(), backlog) != 0) {
     return {};
   }
   return fd;

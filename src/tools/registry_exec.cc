@@ -19,10 +19,24 @@ namespace uagent {
 
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
-  // The schema below is a raw JSON literal, so its yield bounds cannot be
-  // spelled as constants; this assert fails the build if one moves.
-  static_assert(kMaxYieldMs == 30000 && kDefaultYieldMs == 10000,
-                "update yield_ms in the run schema");
+  // The limits in the schemas are filled in from their constants.
+  json run_schema = json::parse(R"json({"type":"object","properties":{
+                    "command":{"type":"string"},
+                    "shell":{"type":"string","description":"default bash"},
+                    "tty":{"type":"boolean","description":"retain an interactive PTY"},
+                    "yield_ms":{"type":"integer","minimum":0},
+                    "max_output_chars":{"type":"integer",
+                      "description":"lower per-call returned-output cap"},
+                    "detach":{"type":"boolean",
+                      "description":"persist terminal and log"}},
+                    "required":["command"]})json");
+  json& run_properties = run_schema["properties"];
+  run_properties["yield_ms"]["maximum"] = kMaxYieldMs;
+  run_properties["yield_ms"]["description"] =
+      "initial wait; 0 blocks to deadline; omitted waits " +
+      std::to_string(kDefaultYieldMs);
+  run_properties["max_output_chars"]["minimum"] = kToolMinOutputChars;
+  run_properties["max_output_chars"]["maximum"] = kToolTextArgChars;
   Tool& run = AddTool(
       tools,
       MakeTool(
@@ -30,17 +44,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
           "Execute a command in cwd; omit cd. tty=true enables "
           "interactive stdin; detach persists a terminal beyond this "
           "session.",
-          json::parse(R"json({"type":"object","properties":{
-                    "command":{"type":"string"},
-                    "shell":{"type":"string","description":"default bash"},
-                    "tty":{"type":"boolean","description":"retain an interactive PTY"},
-                    "yield_ms":{"type":"integer","minimum":0,"maximum":30000,
-                      "description":"initial wait; 0 blocks to deadline; omitted waits 10000"},
-                    "max_output_chars":{"type":"integer","minimum":256,"maximum":65536,
-                      "description":"lower per-call returned-output cap"},
-                    "detach":{"type":"boolean",
-                      "description":"persist terminal and log"}},
-                    "required":["command"]})json"),
+          std::move(run_schema),
           [&supervisor](const json& a, const ToolContext& context) {
             const bool detach = JsonValue(a, "detach", false);
             return RunShellCommand(
@@ -128,6 +132,18 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // only sh, but gating the whole tool on the interpreter its Python half
   // needs keeps one condition instead of two.
   if (ExecutableOnPath("uv") || ExecutableOnPath("python3")) {
+    json scratch_schema = json::parse(
+        R"json({"type":"object","additionalProperties":false,"properties":{
+                    "path":{"type":"string","minLength":1,
+                      "description":"the script's path relative to .uagent/scratch"},
+                    "code":{"type":"string","minLength":1,
+                      "description":"the script's text: written to path, then run"},
+                    "args":{"type":"array","items":{"type":"string"},"maxItems":32,
+                      "description":"argv for this run, read from sys.argv or $@"}},
+                    "required":["path"]})json");
+    json& scratch_properties = scratch_schema["properties"];
+    scratch_properties["code"]["maxLength"] = kToolTextArgChars;
+    scratch_properties["args"]["items"]["maxLength"] = kToolArgChars;
     Tool& python = AddTool(
         tools,
         MakeTool(
@@ -138,15 +154,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "and run it in this call; without code the file at path runs "
             "again, with new args, instead of a long pipeline resent through "
             "run.",
-            json::parse(
-                R"json({"type":"object","additionalProperties":false,"properties":{
-                    "path":{"type":"string","minLength":1,
-                      "description":"the script's path relative to .uagent/scratch"},
-                    "code":{"type":"string","minLength":1,"maxLength":65536,
-                      "description":"the script's text: written to path, then run"},
-                    "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
-                      "description":"argv for this run, read from sys.argv or $@"}},
-                    "required":["path"]})json"),
+            std::move(scratch_schema),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
               if (a.contains("code")) {

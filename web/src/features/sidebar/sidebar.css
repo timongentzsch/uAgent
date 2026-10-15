@@ -7,7 +7,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
-  min-height: var(--size-40);
+  min-height: var(--control-l);
 }
 .sidebar-head button {
   font-size: var(--font-small);

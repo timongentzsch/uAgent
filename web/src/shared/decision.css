@@ -43,7 +43,7 @@
 }
 .decision form > label {
   flex: 1;
-  min-width: var(--size-100);
+  min-width: calc(var(--pane) / 2);
   font-size: var(--font-small);
 }
 /* An approval's headline: the command or change, where, and what it risks. */

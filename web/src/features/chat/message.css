@@ -116,8 +116,8 @@
   display: none;
 }
 .disclosure-chevron {
-  width: var(--size-16);
-  height: var(--size-16);
+  width: var(--icon);
+  height: var(--icon);
   transition: transform var(--motion-fast) var(--ease-standard);
 }
 .disclosure-row[open] > summary .disclosure-chevron {
@@ -259,7 +259,7 @@
   }
   .message summary,
   .disclosure-row > summary {
-    min-height: var(--size-44);
+    min-height: var(--touch);
   }
 }
 @media (max-width: 600px) {
@@ -304,8 +304,8 @@
 }
 .event-row > summary svg {
   flex-shrink: 0;
-  width: var(--size-16);
-  height: var(--size-16);
+  width: var(--icon);
+  height: var(--icon);
 }
 .event-row > summary small,
 .event-row time {
@@ -437,11 +437,11 @@
 .tool-file {
   display: grid;
   gap: var(--space-2);
-  max-width: var(--size-560);
+  max-width: var(--sheet);
 }
 .tool-file > iframe {
   width: 100%;
-  height: var(--size-240);
+  height: var(--pane);
   border: 1px solid var(--line);
   background: var(--surface);
 }

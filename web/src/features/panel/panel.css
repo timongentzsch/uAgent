@@ -2,7 +2,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--size-240);
+  grid-template-columns: minmax(0, 1fr) var(--pane);
 }
 .panel-chat {
   min-width: 0;

@@ -3,8 +3,8 @@
 .avatar-button {
   display: inline-grid;
   place-items: center;
-  min-width: var(--size-24);
-  min-height: var(--size-24);
+  min-width: var(--control-s);
+  min-height: var(--control-s);
   padding: 0;
   background: none;
 }
@@ -17,7 +17,7 @@
   position: fixed;
   inset: auto;
   margin: 0;
-  width: var(--size-340);
+  width: var(--popover);
   max-width: calc(100% - 2 * var(--gap));
   padding: 0;
   border: 1px solid var(--field-border);

@@ -87,10 +87,7 @@
 }
 .ask-options {
   display: grid;
-  grid-template-columns: repeat(
-    auto-fit,
-    minmax(min(100%, calc(200rem / 14)), 1fr)
-  );
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--pane)), 1fr));
   gap: var(--space-2);
 }
 .ask-option {
@@ -133,10 +130,7 @@
    enough to compare, the picture or preview under the label. A tap on the
    picture opens it whole; anywhere else on the card chooses it. */
 .ask-options.visual {
-  grid-template-columns: repeat(
-    auto-fit,
-    minmax(min(100%, var(--size-240)), 1fr)
-  );
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--pane)), 1fr));
 }
 .ask-options.visual .ask-option {
   align-content: start;
@@ -156,7 +150,7 @@
 }
 .ask-preview {
   margin: 0;
-  max-height: var(--size-240);
+  max-height: var(--pane);
   padding: var(--space-3);
   overflow: auto;
   background: var(--surface);

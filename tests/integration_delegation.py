@@ -111,6 +111,45 @@ def test_subagent_inherits_only_remaining_session_token_budget(root, home, *, bi
         assert_true(len(server.requests) == 2, server.requests)
 
 
+def test_a_batch_never_hands_a_child_an_unlimited_token_share(root, home, *, binary):
+    """A remainder too small to split still bounds each child: a share is never
+    0, which would mean no limit at all."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if any(has_message(messages, "user", name) for name in ("share-a", "share-b")):
+            response = tool_call("read_path", {"path": "."})
+            response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
+            return response
+        response = event(
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": f"share-{index}",
+                        "function": {"name": "subagent", "arguments": json.dumps({"prompt": name})},
+                    }
+                    for index, name in enumerate(("share-a", "share-b"))
+                ]
+            },
+            finish="tool_calls",
+        )
+        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
+        return response
+
+    with Server([route]) as server:
+        assert_token_budget_stop(
+            root, home, server, "--yolo", "--token-budget", "4", "-p", "delegate", binary=binary
+        )
+        # Each child stopped at its one-token share after its first round.
+        children = [
+            b
+            for _, b in server.requests
+            if any(has_message(b["messages"], "user", n) for n in ("share-a", "share-b"))
+        ]
+        assert_true(len(children) == 2, len(children))
+
+
 def test_subagent_auto_join_continues_turn(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]

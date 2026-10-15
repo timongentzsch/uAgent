@@ -391,9 +391,12 @@ std::string ProcessSupervisor::Owner() const {
 }
 
 json ProcessSupervisor::ActivityViews() const {
-  std::vector<BgJob> jobs = Running();
+  // One copy under one lock: a job retained meanwhile is not listed twice.
+  std::vector<BgJob> jobs;
   {
     std::lock_guard lock(mutex_);
+    jobs = jobs_;
+    jobs.insert(jobs.end(), foreground_.begin(), foreground_.end());
     jobs.insert(jobs.end(), retained_.begin(), retained_.end());
   }
   json rows = json::array();

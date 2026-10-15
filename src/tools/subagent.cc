@@ -379,9 +379,11 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
           api, processes, remaining_budget, remaining_token_budget)) {
     return *blocked;
   }
-  // Children of one batch run together, so each takes an equal share.
+  // Children of one batch run together, so each takes an equal share; a
+  // token share is never 0, which would mean no limit at all.
   remaining_budget /= static_cast<double>(context.delegations);
-  remaining_token_budget /= context.delegations;
+  remaining_token_budget =
+      std::max<int64_t>(1, remaining_token_budget / context.delegations);
   const std::string child_model = route.route.model;
   EnvironmentOverrides environment =
       ChildAgentEnvironment(std::move(route.route));

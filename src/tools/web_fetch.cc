@@ -239,8 +239,7 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
                            const std::string& call_id) {
   if (!page.error.empty()) {
     // A guessed deep link is the usual 404: searching finds the page.
-    const bool missing = page.error.starts_with("HTTP 404") ||
-                         page.error.starts_with("HTTP 410");
+    const bool missing = page.http_status == 404 || page.http_status == 410;
     return ToolFailure(ToolErrorCode::kRemoteError,
                        "web_fetch " + page.error +
                            (missing ? "; no page at this address: find it with "

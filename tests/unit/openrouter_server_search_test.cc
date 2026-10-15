@@ -363,11 +363,13 @@ void TestOpenRouterServerSearch() {
     TestWorkspace workspace("fetched-page");
     WebResponse missing;
     missing.error = "HTTP 404";
+    missing.http_status = 404;
     CHECK(ReadFetchedPage("https://example.com/guess", missing, "c")
               .output.find("web_search instead of guessing") !=
           std::string::npos);
     WebResponse refused;
     refused.error = "HTTP 403";
+    refused.http_status = 403;
     CHECK(ReadFetchedPage("https://example.com/", refused, "c")
               .output.find("guessing") == std::string::npos);
     // A PDF reaches the model's next step as a document, under the call

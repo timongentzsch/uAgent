@@ -56,7 +56,6 @@
   conversation's route, and say so when there is no model; images take their
   setting, else the conversation's route, else a model of the same endpoint
   that accepts them.
-
 - The file tools refuse the whole hidden set, not only the browser profile.
 - SECURITY.md describes the sandbox by level, and the stale pointer to the
   web's old **New conversation** is **New → Workspace…**.

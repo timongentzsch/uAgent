@@ -24,6 +24,47 @@
   only when `webSearch.model` names the model; a call without it says so, and
   with no such endpoint `web_search` is not offered. `webSearch.backend` is
   `auto` or `off`; a stored `openrouter` reads as `auto`.
+- **OpenRouter's settings are options of its endpoint.** `openrouter.provider`
+  (`UAGENT_OPENROUTER_PROVIDER`), `openrouter.variant`
+  (`UAGENT_OPENROUTER_VARIANT`) and `pdf.engine` (`UAGENT_PDF_ENGINE`) are
+  gone, and the environment variables are no longer read. The settings file is
+  now format 3 and is rewritten the first time it is read: the provider and the
+  PDF engine become `providers.openrouter.options.provider` and
+  `…options.pdf_engine`, and `webSearch.backend: openrouter` becomes `auto`. A
+  provider that had `"protocol": "openrouter"` (below) gets the same two as its
+  own options, with `cloudflare-ai` where no engine was set. A value that
+  refers to a variable (`$NAME`) cannot move and stays, reported as a setting
+  that no longer exists. In `UAGENT_PROVIDERS` set in the
+  environment, write the `options` yourself. `pdf_engine` is still
+  `cloudflare-ai` unless you set it.
+- **A routing variant is part of the model id.** `/variant` and the web's
+  Variant field are gone, and `[provider/]model[:variant][:effort]` is
+  `[provider/]model[:effort]`: write `openrouter/vendor/model:nitro:high`, and
+  the endpoint receives `vendor/model:nitro` (OpenRouter takes `:nitro`,
+  `:floor`, `:exacto` and `:free` as part of the id). Migration appends a
+  saved `openrouter.variant` to the saved `model` of its scope, before its
+  effort, or to the model an alias in that scope names; with no `model` in
+  that scope it is dropped, and with a `model` that refers to a variable it
+  stays, reported.
+- **A provider's `protocol` is replaced by `supports`.** `"protocol":
+  "openrouter"` becomes the list of features an OpenRouter-compatible gateway
+  has (`search_plugin`, `provider_routing`, `session_passthrough`,
+  `raw_vendor_ids`, `reasoning_object`, `reasoning_replay_text`,
+  `prompt_cache_control`, `pdf_parser`, `model_variants`, `inline_usage`) when
+  the settings file is rewritten; `"protocol": "anthropic"` did nothing and
+  goes, and a provider whose protocol was not recognised is no longer skipped. In
+  `UAGENT_PROVIDERS` set in the environment, write `supports` yourself.
+  `hosted_tools: ["web_search"]` is unchanged.
+- **An address declares what it is.** `UAGENT_BASE_URL` (or a provider) at
+  `openrouter.ai` now has OpenRouter's dialect without a `protocol`, and one
+  at `api.openai.com` OpenAI's, as the other way of reaching them always had.
+- **Every request to OpenRouter asks for prompt caching.** The top-level
+  `cache_control` went only to `anthropic/…` models; it now goes with every
+  model on an endpoint that declares `prompt_cache_control`, which OpenRouter
+  does. Providers that cache take it; by OpenRouter's routing rules, the
+  others receive the request and ignore the parameter.
+- **The model catalogues kept under `~/.uagent/models/` are fetched again once.**
+  Their key no longer names a protocol.
 - **Commands and file tools no longer see your saved logins.** The sandbox now
   hides `~/.uagent/config` (settings and API keys), `~/.aws`,
   `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`, `~/.netrc` and
@@ -43,6 +84,10 @@
 
 ### Added
 
+- A provider entry named like a well-known endpoint states only what
+  differs: `"openrouter": {"options": {"provider": "…"}}` needs no address or
+  key. `supports` lists the features of any other endpoint, and `options` the
+  extras they read.
 - The sandbox level: `strict` also denies the network, `relaxed` also makes
   your home folder writable except `~/.uagent` and the hidden stores (on
   Linux a new file made directly in the home folder is not writable). An
@@ -56,6 +101,20 @@
   here stays hidden even when `shell.envAllow` names it.
 
 ### Changed
+
+- One `Endpoint` (address, key, wire API, window, declared features, options)
+  and one `Route` (an endpoint, a model, an effort) replace `ModelRoute`,
+  `NamedProvider`, `SideRoute`, `ProviderTemplate` and the protocol enum.
+  Request fields the OpenRouter protocol decided (the PDF plugin, the provider
+  pin, session passthrough, the reasoning object, prompt caching, the usage
+  option) follow the features an endpoint declares. The well-known endpoints
+  (OpenRouter, and OpenAI by its address) are one table; an endpoint is
+  available when its key variable is set.
+- The `capabilities` in the start diagnostics and the routes `uagent` inspects
+  list `features` in place of `protocol` and the dialect flags.
+- A child process receives its parent's endpoint features and options as
+  `UAGENT_INTERNAL_FEATURES` and `UAGENT_INTERNAL_ENDPOINT_OPTIONS`; the
+  internal protocol and hosted-tools variables are gone.
 
 - Names, limits and paths that several files spelled (the markers the
   transcript reads out of tool results, directory and sidecar names, polling

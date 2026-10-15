@@ -34,8 +34,6 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | `model` | `UAGENT_MODEL` | string | empty | restart-required | model or named route as [provider/]model[:variant][:effort] |
 | `reasoningEffort` | `UAGENT_REASONING_EFFORT` | string | empty | restart-required | none, minimal, low, medium, high, xhigh, or max |
 | `providers` | `UAGENT_PROVIDERS 🔒` | string | empty | restart-required | JSON object of named endpoints, transports, and aliases |
-| `openrouter.provider` | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
-| `openrouter.variant` | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
 | `contextWindow` | `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
 | `maxOutputTokens` | `UAGENT_MAX_TOKENS` | integer | `-1` | next-user-turn | maximum response tokens; -1 omits the optional cap |
 
@@ -145,7 +143,6 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | Setting | Environment | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- | --- |
 | `image.model` | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the first model on its endpoint that does |
-| `pdf.engine` | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
 | `attachments.maxMb` | `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
 
 ## History

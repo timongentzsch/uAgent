@@ -40,7 +40,6 @@
 | `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
 | `/mcp [retry|on|off NAME]` | show MCP servers; retry one or switch it on or off |
 | `/restart` | restart this conversation to apply settings that need it |
-| `/variant MODE` | set OpenRouter provider routing |
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbosity [minimal|default|full]` | set how much of the agent's work is shown, everywhere |
 | `/yolo` | toggle acting without asking; the sandbox setting still applies |

@@ -69,14 +69,15 @@ test("spacing, font sizes and line heights use the scale tokens", () => {
   assert.deepEqual(stray, []);
 });
 
-// Fixed sizes come from the --size-N scale in style.css, so an icon or a
-// control is the same size wherever it appears. A hairline is 1px, and 0px is
+// Fixed sizes come from the size tokens in style.css (--control-s, --pane,
+// --popover and the like), so an icon or a control is the same size wherever
+// it appears. A hairline is 1px, and 0px is
 // zero where a math function needs a length rather than a number. A length
 // in em follows the element's own font size, which is the scale there, so em
 // is not flagged. Stacking and loop durations are tokens too: a literal
 // z-index or animation time is a layer or a speed one screen picked alone.
 const SIZED =
-  /^\s*(?:width|height|min-width|max-width|min-height|max-height)\s*:\s*([^;]*)/;
+  /^\s*(?:width|height|min-width|max-width|min-height|max-height|grid-template-columns|grid-template-rows)\s*:\s*([^;]*)/;
 const SIZE_LITERAL = /[\d.]+(?:px|rem)\b/;
 const STACKED = /^\s*z-index\s*:\s*([^;]*)/;
 const ANIMATED = /^\s*animation(?:-duration)?\s*:\s*([^;]*)/;

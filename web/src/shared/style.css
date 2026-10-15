@@ -28,36 +28,27 @@
   --space-6: calc(12rem / 14);
   --space-12: calc(24rem / 14);
   --space-24: calc(48rem / 14);
-  /* Sizes of icons, controls and panels: --size-N is N px at the 14px root,
-     in rem so zoom scales it. A width or height names one of these. */
-  --size-12: calc(12rem / 14);
-  --size-16: calc(16rem / 14);
-  --size-18: calc(18rem / 14);
-  --size-20: calc(20rem / 14);
-  --size-24: calc(24rem / 14);
-  --size-28: calc(28rem / 14);
-  --size-32: calc(32rem / 14);
-  --size-36: calc(36rem / 14);
-  --size-40: calc(40rem / 14);
-  --size-44: calc(44rem / 14);
-  --size-48: calc(48rem / 14);
-  --size-56: calc(56rem / 14);
-  --size-70: calc(70rem / 14);
-  --size-72: calc(72rem / 14);
-  --size-96: calc(96rem / 14);
-  --size-100: calc(100rem / 14);
-  --size-160: calc(160rem / 14);
-  --size-180: calc(180rem / 14);
-  --size-220: calc(220rem / 14);
-  --size-224: calc(224rem / 14);
-  --size-240: calc(240rem / 14);
-  --size-320: calc(320rem / 14);
-  --size-336: calc(336rem / 14);
-  --size-340: calc(340rem / 14);
-  --size-476: calc(476rem / 14);
-  --size-520: calc(520rem / 14);
-  --size-560: calc(560rem / 14);
-  --size-640: calc(640rem / 14);
+  /* Fixed sizes, named by what they are for and in rem so zoom scales them.
+     A width or height names one of these (or --icon, --icon-s, --control).
+     Controls: a compact button or hit target, a dense row, a roomy row,
+     and the 44px a touch needs. */
+  --control-s: calc(24rem / 14);
+  --control-m: calc(32rem / 14);
+  --control-l: calc(40rem / 14);
+  --touch: calc(44rem / 14);
+  /* A radio button or a switch's thumb; a logo or loading mark. */
+  --icon-l: calc(20rem / 14);
+  --logo: calc(48rem / 14);
+  /* An attachment's thumbnail height; its width is 4:3. */
+  --thumb: calc(72rem / 14);
+  /* A box in a layout: a narrow column or card and the height of a short
+     scrolling area; a menu or an inline preview; a popover or drawer; a
+     page-width sheet. */
+  --pane: calc(220rem / 14);
+  --sidebar: calc(260rem / 14);
+  --pane-s: calc(180rem / 14);
+  --popover: calc(320rem / 14);
+  --sheet: calc(560rem / 14);
   --surface-inset: var(--space-4);
   --dialog-gutter: var(--surface-inset);
   /* Controls and spacing use rem throughout so zoom also changes density.
@@ -241,10 +232,10 @@ textarea {
 }
 input[type="checkbox"],
 input[type="radio"] {
-  width: var(--size-18);
-  height: var(--size-18);
-  min-width: var(--size-18);
-  min-height: var(--size-18);
+  width: var(--icon-l);
+  height: var(--icon-l);
+  min-width: var(--icon-l);
+  min-height: var(--icon-l);
   margin: var(--space-1) 0 0;
   padding: 0;
   accent-color: var(--accent);
@@ -263,10 +254,10 @@ input[type="radio"] {
 .switch input[role="switch"] {
   appearance: none;
   position: relative;
-  width: var(--size-40);
-  min-width: var(--size-40);
-  height: var(--size-24);
-  min-height: var(--size-24);
+  width: var(--control-l);
+  min-width: var(--control-l);
+  height: var(--control-s);
+  min-height: var(--control-s);
   margin: 0;
   border: 1px solid var(--field-border);
   background: var(--raised);
@@ -278,8 +269,8 @@ input[type="radio"] {
   position: absolute;
   top: 1px;
   left: 1px;
-  width: var(--size-20);
-  height: var(--size-20);
+  width: var(--icon-l);
+  height: var(--icon-l);
   background: var(--knob);
   transition: translate var(--motion-fast) var(--ease-standard);
 }
@@ -300,7 +291,7 @@ button,
 }
 /* A secondary action inside a row or toolbar: shorter and quieter. */
 .compact-button {
-  min-height: var(--size-24);
+  min-height: var(--control-s);
   padding: var(--space-1) var(--space-3);
   font-size: var(--font-small);
 }
@@ -366,8 +357,8 @@ button[aria-pressed="true"] {
   flex-shrink: 0;
 }
 .lucide {
-  width: var(--size-16);
-  height: var(--size-16);
+  width: var(--icon);
+  height: var(--icon);
   flex-shrink: 0;
   vertical-align: -3px;
   stroke-width: 1.75;
@@ -411,7 +402,7 @@ textarea {
   padding: var(--space-2) var(--space-4);
 }
 input[type="range"] {
-  min-height: var(--size-24);
+  min-height: var(--control-s);
   margin: 0;
   padding: 0;
   border: 0;
@@ -572,7 +563,7 @@ pre code {
   z-index: var(--z-toast);
   top: calc(var(--safe-top) + var(--gap));
   left: calc(var(--safe-left) + var(--gap));
-  width: min(var(--size-640), calc(var(--content-width) - 2 * var(--gap)));
+  width: min(var(--sheet), calc(var(--content-width) - 2 * var(--gap)));
   display: grid;
   gap: var(--gap);
   pointer-events: none;
@@ -658,8 +649,8 @@ pre code {
   text-decoration: none;
 }
 .brand .mark {
-  width: var(--size-32);
-  height: var(--size-32);
+  width: var(--control-m);
+  height: var(--control-m);
 }
 
 /* The shell has one header per column; only the transcript owns chat scrolling. */
@@ -667,7 +658,7 @@ pre code {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: min(30vw, calc(260rem / 14)) minmax(0, 1fr);
+  grid-template-columns: min(30vw, var(--sidebar)) minmax(0, 1fr);
   overflow: hidden;
 }
 .sidebar {
@@ -840,7 +831,7 @@ dialog.sidebar:not([open]) {
   align-items: center;
   gap: var(--gap);
   flex-shrink: 0;
-  min-height: var(--size-44);
+  min-height: var(--touch);
   padding: var(--space-2) var(--pad);
   border-bottom: 1px solid var(--line);
 }
@@ -883,7 +874,7 @@ dialog.sidebar:not([open]) {
 .empty {
   margin: auto;
   text-align: center;
-  max-width: var(--size-520);
+  max-width: var(--sheet);
   padding: var(--pad);
 }
 .transcript .empty {
@@ -929,8 +920,8 @@ dialog.sidebar:not([open]) {
   font-weight: 400;
 }
 .mark.cursor-mark {
-  width: var(--size-56);
-  height: var(--size-56);
+  width: var(--logo);
+  height: var(--logo);
 }
 
 .text-control {
@@ -1001,7 +992,7 @@ dialog.sidebar:not([open]) {
   gap: var(--space-3);
   text-align: left;
   min-width: 0;
-  min-height: var(--size-24);
+  min-height: var(--control-s);
   padding: 0 var(--space-1);
   font-size: var(--font-micro);
 }
@@ -1017,7 +1008,7 @@ dialog.sidebar:not([open]) {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  min-height: var(--size-24);
+  min-height: var(--control-s);
   padding: 0 var(--space-3);
   font-size: var(--font-micro);
 }
@@ -1055,7 +1046,7 @@ dialog.sidebar:not([open]) {
 }
 .metrics > button {
   font-size: inherit;
-  min-height: var(--size-24);
+  min-height: var(--control-s);
   min-width: 0;
   padding: 0 var(--space-3);
   overflow: hidden;
@@ -1077,8 +1068,8 @@ details:not(.disclosure-row) > summary::-webkit-details-marker {
 details:not(.disclosure-row) > summary::before {
   content: "";
   flex-shrink: 0;
-  width: var(--size-16);
-  height: var(--size-16);
+  width: var(--icon);
+  height: var(--icon);
   background: currentColor;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
     center / contain no-repeat;
@@ -1124,7 +1115,7 @@ details[open]:not(.disclosure-row) > summary::before {
   position: fixed;
   inset: auto;
   margin: 0;
-  min-width: var(--size-180);
+  min-width: var(--pane-s);
   padding: var(--space-2);
   border: 1px solid var(--field-border);
   background: var(--surface);
@@ -1423,7 +1414,7 @@ dialog section {
   .activity-toggle,
   .activity-button,
   .metrics > button {
-    min-height: var(--size-32);
+    min-height: var(--control-m);
   }
   /* Dense rows keep their 32px look but take a 44px touch: an invisible
      hit area extends above and below, never over a neighbour. */
@@ -1461,7 +1452,7 @@ dialog section {
     height: calc(var(--content-height) + var(--safe-bottom));
     max-height: none;
     padding-bottom: var(--safe-bottom);
-    width: min(var(--size-320), calc(var(--content-width) - 2 * var(--pad)));
+    width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }
   .drawer > .dialog-body {
@@ -1499,13 +1490,13 @@ dialog section {
 }
 @container app (max-height: 500px) {
   .conversation-head {
-    min-height: var(--size-40);
+    min-height: var(--control-l);
   }
   .transcript {
     padding-block: var(--space-2);
   }
   .decision {
-    max-height: calc(var(--viewport-height) - var(--size-100));
+    max-height: calc(var(--viewport-height) - 2 * var(--touch));
     padding: var(--space-4);
   }
 }
@@ -1697,7 +1688,7 @@ dialog > header .icon-button {
   gap: var(--gap);
   width: 100%;
   border: 0;
-  min-height: var(--size-44);
+  min-height: var(--touch);
   padding: var(--space-3) var(--space-6);
   text-align: start;
   background: transparent;

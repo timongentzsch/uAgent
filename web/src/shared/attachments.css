@@ -15,7 +15,7 @@
 }
 .composer .file-chip {
   flex: none;
-  max-width: var(--size-220);
+  max-width: var(--pane);
 }
 .file-chip {
   display: inline-flex;
@@ -41,8 +41,8 @@
   font-size: var(--font-micro);
 }
 .file-chip .attachment-tile {
-  width: var(--size-36);
-  height: var(--size-36);
+  width: var(--control-l);
+  height: var(--control-l);
   border: 0;
 }
 /* Rename control: reads as the file name until focused. */
@@ -73,8 +73,8 @@
 }
 .attachment-tile {
   display: block;
-  width: var(--size-96);
-  height: var(--size-72);
+  width: calc(var(--thumb) * 4 / 3);
+  height: var(--thumb);
   min-height: 0;
   padding: 0;
   overflow: hidden;
@@ -92,8 +92,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
-  width: min(var(--size-220), 100%);
-  height: var(--size-72);
+  width: min(var(--pane), 100%);
+  height: var(--thumb);
   padding: 0 var(--space-4);
   border: 1px solid var(--field-border);
   background: var(--raised);
@@ -126,19 +126,19 @@
 .tool-file > .attachment-tile {
   width: auto;
   height: auto;
-  max-width: min(100%, var(--size-320));
+  max-width: min(100%, var(--popover));
 }
 .mention-image img,
 .tool-file > .attachment-tile img {
   height: auto;
-  max-height: var(--size-180);
+  max-height: var(--pane-s);
   object-fit: contain;
 }
 .tool-file > .attachment-tile {
   max-width: 100%;
 }
 .tool-file > .attachment-tile img {
-  max-height: var(--size-320);
+  max-height: var(--popover);
 }
 /* The viewer: the image fits the dialog; tapping it closes. */
 /* The image viewer takes the whole screen, like a native photo viewer. */

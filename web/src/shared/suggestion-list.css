@@ -6,7 +6,7 @@
   bottom: calc(100% + 4rem / 14);
   inset-inline: 0;
   z-index: var(--z-popover);
-  max-height: min(var(--size-220), calc(var(--viewport-height) * 0.4));
+  max-height: min(var(--pane), calc(var(--viewport-height) * 0.4));
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--field-border);
@@ -17,7 +17,7 @@
   align-items: center;
   gap: var(--gap);
   width: 100%;
-  min-height: var(--size-40);
+  min-height: var(--control-l);
   border: 0;
   border-left: 2px solid transparent;
   text-align: left;

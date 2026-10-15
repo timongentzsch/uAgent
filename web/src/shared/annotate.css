@@ -24,7 +24,7 @@
 /* The note bubble sits beside its pin (--x, --y: the pin in the stage),
    kept inside the stage at any zoom. */
 .annotator-note {
-  --note-width: min(var(--size-240), calc(100% - 2 * var(--space-4)));
+  --note-width: min(var(--pane), calc(100% - 2 * var(--space-4)));
   position: absolute;
   width: var(--note-width);
   left: clamp(
@@ -50,8 +50,8 @@
   position: absolute;
   left: var(--x);
   top: var(--y);
-  width: var(--size-24);
-  height: var(--size-24);
+  width: var(--control-s);
+  height: var(--control-s);
   translate: -50% -50%;
   pointer-events: none;
   background:

@@ -47,7 +47,7 @@
 }
 .shortcut-list div {
   display: grid;
-  grid-template-columns: calc(120rem / 14) 1fr;
+  grid-template-columns: calc(var(--pane) / 2) 1fr;
   align-items: center;
   gap: var(--gap);
 }

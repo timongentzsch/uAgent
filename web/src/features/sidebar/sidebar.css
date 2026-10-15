@@ -5,9 +5,12 @@
 .sidebar-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--gap);
   min-height: var(--control-l);
+}
+/* The mark at the left; search and New together at the right. */
+.sidebar-head .brand {
+  margin-right: auto;
 }
 .sidebar-head button {
   font-size: var(--font-small);
@@ -34,11 +37,12 @@
 .list-group + .list-group {
   margin-top: var(--space-6);
 }
-/* A place's header: fold it, its name (which opens its panel), the avatars of
-   the panel's members, start a conversation in it, its menu. The name
-   truncates first. */
+/* A place's header: fold it, its name (which opens its panel), start a
+   conversation in it, its menu; the avatars of the panel's members on a line
+   of their own below, so the name keeps the row's width. */
 .place-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   border-left: 2px solid transparent;
@@ -89,12 +93,14 @@
 .place-body {
   padding-left: var(--indent);
 }
-/* Who is in the panel's chat, overlapping; the avatars take the row's
-   background so the ones beneath do not show through. */
+/* Who is in the panel's chat, overlapping, set in under the name; the
+   avatars take the row's background so the ones beneath do not show
+   through. */
 .place-seats {
   display: flex;
+  flex-basis: 100%;
   align-items: center;
-  flex: none;
+  padding: 0 0 var(--space-2) calc(var(--indent) + 2 * var(--space-2));
 }
 .place-seats .member-avatar + .member-avatar,
 .place-seats .member-avatar + .place-count {

@@ -12,6 +12,15 @@
   margin: 0;
   color: var(--text);
 }
+/* The circle shows the hover and press, never a square behind it. */
+.avatar-button:enabled:hover,
+.avatar-button:enabled:active {
+  background: none;
+}
+.avatar-button:enabled:hover .avatar,
+.avatar-button:enabled:active .avatar {
+  border-color: var(--text);
+}
 /* Its card, placed against the avatar by script like a menu's panel. */
 .member-popover {
   position: fixed;

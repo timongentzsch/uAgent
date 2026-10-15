@@ -232,8 +232,18 @@
   content: "$ ";
   color: var(--muted);
 }
-.tool-code {
-  margin: var(--space-2) 0;
+/* A tool's input is read, not scanned in columns: it wraps, and each part
+   stands apart from the next. */
+.tool-code,
+.tool-fields {
+  margin: var(--pad) 0;
+}
+.tool-code .code-block {
+  margin: var(--space-2) 0 0;
+}
+.tool-code pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .tool-code figcaption {
   font-size: var(--font-small);
@@ -243,7 +253,6 @@
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: var(--space-1) var(--space-4);
-  margin: var(--space-2) 0;
   font-size: var(--font-small);
 }
 .tool-fields dt {

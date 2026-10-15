@@ -102,6 +102,10 @@
 
 ### Changed
 
+- Web: a workspace's member avatars sit on a line of their own under its name,
+  which keeps the row's width; hovering one marks its circle, not a square
+  behind it. The sidebar's search button sits beside New. A tool call's input
+  wraps instead of scrolling sideways, and its parts stand apart.
 - One `Endpoint` (address, key, wire API, window, declared features, options)
   and one `Route` (an endpoint, a model, an effort) replace `ModelRoute`,
   `NamedProvider`, `SideRoute`, `ProviderTemplate` and the protocol enum.

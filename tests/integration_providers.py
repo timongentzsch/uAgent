@@ -145,6 +145,56 @@ def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
             )
 
 
+def test_auto_permission_reviewer_judges_against_the_first_request_too(root, home, *, binary):
+    """A later message narrows what was asked; the reviewer reads both, so an
+    action the first request covers is not judged against the note alone."""
+    target = root / "reviewed.txt"
+    seen = []
+
+    def reviewer(handler, body):
+        seen.append(body["state"]["user_request"])
+        write_json_response(
+            handler,
+            {
+                "answers": {
+                    "permission": {
+                        "type": "choice",
+                        "choice": "allow",
+                        "probabilities": {"allow": 0.9, "ask": 0.1, "deny": 0.0},
+                    }
+                },
+                "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001},
+            },
+        )
+
+    with Server([reviewer]) as permission_server:
+        with Server(
+            [
+                event({"content": "noted"}),
+                tool_call("write_file", {"path": str(target), "content": "approved"}),
+                event({"content": "written"}),
+            ]
+        ) as model_server:
+            env = base_env(home, model_server.url)
+            env.update(
+                {
+                    "OPENROUTER_API_KEY": "review-key",
+                    "UAGENT_APPROVAL": "auto",
+                    "UAGENT_PERMISSION_URL": permission_server.url,
+                }
+            )
+            result = run_dialog(
+                root, env, "write reviewed.txt\nalso keep it short\n/q\n", binary=binary
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(target.read_text() == "approved", result.stdout)
+            assert_true(len(seen) == 1, seen)
+            # The latest message leads, so a cut for length never loses it.
+            assert_true(
+                0 <= seen[0].find("also keep it short") < seen[0].find("write reviewed.txt"), seen
+            )
+
+
 def test_auto_permission_reviewer_failure_denies_headless(root, home, *, binary):
     target = root / "must-not-exist.txt"
 

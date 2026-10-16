@@ -11,6 +11,7 @@
 #include "include/api/stream.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
+#include "include/media/attachments.h"
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "include/ui/display.h"
@@ -355,6 +356,39 @@ void TestOpenRouterServerSearch() {
         "if x:\n    pass");
   CHECK(HtmlToText("<p>before</p><pre>  kept  </pre><p>after</p>") ==
         "before\n\n  kept  \n\nafter");
+
+  {
+    // What a fetched page gives the model. A missing page says to search
+    // for it; models guessed deep links and fetched them again and again.
+    TestWorkspace workspace("fetched-page");
+    WebResponse missing;
+    missing.error = "HTTP 404";
+    missing.http_status = 404;
+    CHECK(ReadFetchedPage("https://example.com/guess", missing, "c")
+              .output.find("web_search instead of guessing") !=
+          std::string::npos);
+    WebResponse refused;
+    refused.error = "HTTP 403";
+    refused.http_status = 403;
+    CHECK(ReadFetchedPage("https://example.com/", refused, "c")
+              .output.find("guessing") == std::string::npos);
+    // A PDF reaches the model's next step as a document, under the call
+    // that fetched it.
+    WebResponse pdf;
+    pdf.content_type = "application/pdf";
+    pdf.body = "%PDF-1.4\n%%EOF\n";
+    ToolResult attached =
+        ReadFetchedPage("https://example.com/report.pdf", pdf, "call-pdf");
+    CHECK(attached.Ok() &&
+          attached.output.find("attached") != std::string::npos);
+    const std::vector<Attachment> queued = Attachments().Take();
+    CHECK(queued.size() == 1 && queued[0].source_call_id == "call-pdf" &&
+          queued[0].mime == "application/pdf");
+    // Cut short at the byte cap, it is no document to hand over.
+    pdf.truncated = true;
+    CHECK(!ReadFetchedPage("https://example.com/report.pdf", pdf, "c").Ok());
+    CHECK(Attachments().Take().empty());
+  }
 
   ChatResult result;
   StreamCtx stream;

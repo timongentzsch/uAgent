@@ -137,6 +137,14 @@
 
 ### Fixed
 
+- `web_fetch` reads PDFs: one is saved and attached to the model's next step,
+  so a route that reads documents gets it whole. Before, every PDF failed and
+  the model had to download and convert it itself. A 404 now says to find the
+  page with `web_search` rather than guess its address.
+- The automatic permission review judges a call against the session's first
+  request as well as its latest message. A panel thread's research fetches were
+  refused because the reviewer saw only the panel's latest note, not the
+  thread's brief.
 - Subagents started in one batch run together. Before, the parent waited for
   each in turn unless the model set `background`, and five researchers took
   16 minutes instead of four. Under a session budget, which every panel thread

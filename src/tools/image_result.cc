@@ -38,10 +38,20 @@ ToolResult ToolImageResult(const json& content, std::string source_call_id,
                        std::string(source) + " image is invalid or exceeds " +
                            std::to_string(limit_mb) + " MB");
   }
+  return ToolAttachedFile(bytes, "image", extension,
+                          std::string(source) + " image",
+                          std::move(source_call_id), directory);
+}
+
+ToolResult ToolAttachedFile(const std::string& bytes, const char* stem,
+                            const std::string& extension,
+                            const std::string& what, std::string source_call_id,
+                            const char* directory) {
   static std::atomic<uint64_t> sequence{0};
-  std::string path =
-      UagentDir(directory) + "/image-" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
-      std::to_string(getpid()) + "-" + std::to_string(sequence++) + extension;
+  std::string path = UagentDir(directory) + "/" + stem + "-" +
+                     UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
+                     std::to_string(getpid()) + "-" +
+                     std::to_string(sequence++) + extension;
   ToolResult saved = ToolWritePrivateFile(path, bytes);
   if (!saved.Ok()) return saved;
   ToolResult attached = Attachments().Add(path, std::move(source_call_id));
@@ -50,10 +60,10 @@ ToolResult ToolImageResult(const json& content, std::string source_call_id,
     if (reason.starts_with(kToolErrorPrefix)) {
       reason.erase(0, kToolErrorPrefix.size());
     }
-    return ToolSuccess(std::string("[") + source + " image saved: " + path +
+    return ToolSuccess("[" + what + " saved: " + path +
                        "; not attached: " + reason + "]");
   }
-  return ToolSuccess(std::string("[") + source + " image saved: " + path +
+  return ToolSuccess("[" + what + " saved: " + path +
                      "; attached — readable in your next step]");
 }
 }  // namespace uagent

@@ -208,6 +208,14 @@ test("a member joins the chat, is addressed by name and answers under its name",
   const seats = page.locator(".sidebar .place-seats .avatar");
   await expect(seats).toHaveText(["M", "A"]);
   await expect(page.locator(".sidebar .session .avatar")).toHaveCount(0);
+  // The avatars have a line of their own below the place's name, which
+  // keeps the header's width.
+  const name = await page
+    .getByTitle(/^Panel of /)
+    .first()
+    .boundingBox();
+  const seat = await seats.first().boundingBox();
+  expect(seat.y).toBeGreaterThanOrEqual(name.y + name.height);
   await page.reload();
   await expect(seats).toHaveText(["M", "A"]);
   const said = page.locator(".transcript .message", {

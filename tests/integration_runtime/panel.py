@@ -27,7 +27,7 @@ from integration_support import (
 from session_support import SessionClient, runtime_directory, stop_sessions
 
 
-def _spawn(title, objective, environment="local"):
+def _spawn(title, objective, *, environment="local"):
     """A thread spawn's arguments; `environment=None` leaves it to the setting."""
     spawn = {"action": "spawn", "title": title, "objective": objective}
     return spawn | ({"environment": environment} if environment else {})
@@ -257,9 +257,7 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true(heard.wait(budget(10)), [json.dumps(b)[-300:] for _, b in server.requests])
         latency = reported["heard"] - reported["finished"]
         assert_true(latency < budget(5), f"panel heard back after {latency:.1f}s")
-        threads = _threads(home)
-        assert_true(len(threads) == 1, threads)
-        header = json.loads(threads[0].read_text(encoding="utf-8").splitlines()[0])
+        header = json.loads(_thread_session(home).read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["kind"] == "thread", header)
         link = header["thread"]
         assert_true(link["folder"] == str(root.resolve()), link)
@@ -611,6 +609,7 @@ def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, bin
         },
     )
     message = {"action": "message", "session_id": fnv1a64(str(thread)), "text": "again"}
+
     def idle():
         try:
             client = SessionClient(_socket(home, thread))
@@ -672,7 +671,7 @@ def test_a_thread_outside_git_runs_in_place_unless_a_worktree_is_asked_for(root,
         if "Objective: list files" in json.dumps(body["messages"]):
             return event({"content": "listed"})
         results = tool_results(body["messages"])
-        spawn = _spawn("Here", "list files", None)
+        spawn = _spawn("Here", "list files", environment=None)
         if not results:
             return tool_call("thread", spawn)
         if len(results) == 1:
@@ -760,12 +759,12 @@ def test_panel_caps_working_threads_in_worktrees(root, home, *, binary):
                     (
                         "call-1",
                         "thread",
-                        _spawn("First", "first", None),
+                        _spawn("First", "first", environment=None),
                     ),
                     (
                         "call-2",
                         "thread",
-                        _spawn("Second", "second", None),
+                        _spawn("Second", "second", environment=None),
                     ),
                 ]
             )
@@ -829,8 +828,7 @@ def test_panel_closes_an_idle_thread(root, home, *, binary):
         # "closed" is only reported once the runtime no longer answers; the
         # session itself stays.
         assert_true(closed["result"] == "closed", closed)
-        thread = _threads(home)
-        assert_true(len(thread) == 1, thread)
+        _thread_session(home)
 
 
 def test_panel_deletes_only_with_the_user(root, home, *, binary):
@@ -1187,12 +1185,8 @@ def _newest(text):
 
 
 def _moderator_saw(server):
-    """The moderator's newest conversation: no member's, no thread's."""
-    return [
-        json.dumps(b["messages"])
-        for _, b in server.requests
-        if not _member(b) and "Objective:" not in json.dumps(b["messages"])
-    ][-1]
+    """The newest conversation that was no member's."""
+    return [json.dumps(b["messages"]) for _, b in server.requests if not _member(b)][-1]
 
 
 def _asked(server, name, text):
@@ -1261,7 +1255,7 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         assert_true(result.stdout.strip() == "panel\n\nAda: Call it Kestrel.", repr(result.stdout))
         # The moderator's answer to the user's message is the user's: the
         # members, woken by the message itself, are not woken by it.
-        newest = [_newest(_heard(b)) for _, b in server.requests if _member(b)]
+        newest = [_heard(b).splitlines()[-1] for _, b in server.requests if _member(b)]
         assert_true(not any("Moderator: panel" in line for line in newest), newest)
         # Each is told who else is answering, and nobody reads an @ or a label.
         woken = [b for _, b in server.requests if _member(b) and "name the kite" in _heard(b)]
@@ -1416,14 +1410,18 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
             "the recount was never reported",
         )
         time.sleep(budget(1))
-        moderator = _moderator_saw(server)
+        moderator = [
+            json.dumps(b["messages"])
+            for _, b in server.requests
+            if not _member(b) and "Objective:" not in json.dumps(b["messages"])
+        ][-1]
         # Closed once, and only after the count was in.
         settled = "The discussion has settled"
         assert_true(moderator.count(settled) == 1, moderator)
         assert_true(moderator.index("finished its turn") < moderator.index(settled), moderator)
         assert_true(_asked(server, "Ada", "The count is 3 files."), server.requests)
         # What the moderator made of the later report wakes no member.
-        newest = [_newest(_heard(b)) for _, b in server.requests if _member(b)]
+        newest = [_heard(b).splitlines()[-1] for _, b in server.requests if _member(b)]
         assert_true(not any("Recount: still 3." in line for line in newest), newest)
 
 

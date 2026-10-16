@@ -162,9 +162,7 @@ def test_a_batch_never_hands_a_child_an_unlimited_token_share(root, home, *, bin
         )
         # Each child stopped at its one-token share after its first round.
         children = [
-            b
-            for _, b in server.requests
-            if any(has_message(b["messages"], "user", n) for n in ("share-a", "share-b"))
+            b for _, b in server.requests if user_prompt(b["messages"], ("share-a", "share-b"))
         ]
         assert_true(len(children) == 2, len(children))
 

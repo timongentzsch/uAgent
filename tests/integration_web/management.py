@@ -422,11 +422,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
     release_child = threading.Event()
 
     def answer(_, body):
-        users = [
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "user"
-        ]
+        users = user_texts(body["messages"])
         if "WEB_CHILD_SEED" in users:
             if "WEB_CHILD_FOLLOWUP" in users:
                 assert any(message.get("content") == "Child result" for message in body["messages"])

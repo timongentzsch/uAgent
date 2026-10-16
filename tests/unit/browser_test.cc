@@ -440,6 +440,22 @@ void TestBrowserSecretMaskAndBack() {
             .value("error", "") == "that element is gone; look again");
   CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
              .contains("error"));
+  // An earlier look at the same page still names its elements, so one look
+  // serves several actions; a point needs the latest look, and another page
+  // takes none of the earlier ones.
+  CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+  CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+             .contains("error"));
+  CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+  CHECK(act({{"op", "click"}, {"x", 5}, {"y", 5}, {"view_id", view}})
+            .value("error", "") ==
+        "click needs view_id from the latest observe");
+  CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
+             .contains("error"));
+  CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+  CHECK(act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+            .value("error", "") ==
+        "click needs view_id from a look at this page");
   CHECK(act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
   CHECK(act({{"op", "read"}, {"find", "clip"}}).value("text", "") ==
         "Clip one");

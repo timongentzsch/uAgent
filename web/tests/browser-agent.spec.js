@@ -56,11 +56,17 @@ async function control(page) {
         awaitPromise: true,
       })
     ).result.value;
+  // Each look is named, as Runtime::Observe names it; a number is of the
+  // latest look unless another is given.
+  let looks = 0;
   return {
-    look: () => run(`${pageScript}(0,"",true)`),
+    look: () => run(`${pageScript}(0,"","look${++looks}")`),
     read: (offset, find) =>
-      run(`${pageScript}(${offset},${JSON.stringify(find)},false)`),
-    where: (number) => run(`${elementScript}(${number})`),
+      run(`${pageScript}(${offset},${JSON.stringify(find)},"")`),
+    where: (number, look = `look${looks}`) =>
+      run(
+        `${elementScript}((window.__uagentLooks?.get("${look}") || [])[${number - 1}])`,
+      ),
     secret: () => run(secretFieldScript),
     // As Runtime::Act sends a key.
     press: async (name) => {
@@ -138,6 +144,31 @@ test("an element is clicked where it is now, and not when it is gone or covered"
   expect(await agent.where(3)).toBeNull();
   expect(await agent.where(4)).toEqual({ covered: "div" });
   expect(await agent.where(99)).toBeNull();
+});
+
+test("a number of an earlier look still names what that look numbered, on the same page alone", async ({
+  page,
+}) => {
+  await page.goto("about:blank");
+  await page.setContent(`<input id=name placeholder=Name>
+    <input id=email placeholder=Email>`);
+  const agent = await control(page);
+  expect((await agent.look()).fresh).toBe(true);
+  // A button shows up before the second field: a new look numbers that
+  // field 3, while the first look's 2 is still the same field.
+  await page.evaluate(() =>
+    document.getElementById("email").before(document.createElement("button")),
+  );
+  const later = await agent.look();
+  expect(later.fresh).toBe(false);
+  expect(later.elements.split("\n")).toHaveLength(3);
+  const point = async (where) =>
+    page.evaluate(({ x, y }) => document.elementFromPoint(x, y).id, where);
+  expect(await point(await agent.where(2, "look1"))).toBe("email");
+  expect(await point(await agent.where(3))).toBe("email");
+  await page.reload();
+  expect(await agent.where(2, "look1")).toBeNull();
+  expect((await agent.look()).fresh).toBe(true);
 });
 
 test("a covered element names what covers it, and a moving one is clicked where it stops or not at all", async ({

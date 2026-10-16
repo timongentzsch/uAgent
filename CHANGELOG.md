@@ -151,6 +151,11 @@
 
 ### Fixed
 
+- `browser`: several actions from one look work. An element number of an
+  earlier look at the same page still names what that look numbered, so a
+  form can be filled in one step. Before, every action after the first was
+  refused for an outdated `view_id`, and the model fell back to one field
+  per step. A point (`x`, `y`) and a scroll still need the latest look.
 - `browser`: "Allow for this conversation" (or always, in this repository)
   on a browser action now covers that action on that site. Before, the
   remembered approval named the look the action came from, so it never

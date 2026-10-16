@@ -245,6 +245,7 @@ void Runtime::Stop(bool preserve_lease) {
   sessions_.clear();
   dialogs_.clear();
   observation_.clear();
+  looks_.clear();
   known_targets_.clear();
   action_target_.clear();
   view_width_ = view_height_ = 0;
@@ -561,6 +562,7 @@ json* Runtime::OpenDialog() {
 // `target` by value: SelectPage passes target_ itself, which is replaced here.
 bool Runtime::AttachPage(std::string target, std::string& error) {
   observation_.clear();
+  looks_.clear();
   view_width_ = view_height_ = 0;
   loading_ = false;
   if (auto known = sessions_.find(target); known != sessions_.end()) {

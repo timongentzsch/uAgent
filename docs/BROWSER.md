@@ -49,8 +49,9 @@ measured workload needs more space.
 The agent's `browser` tool and the viewer drive the same visible tab. Each
 agent action waits for the page to settle and returns the page as text: what
 can be clicked or filled, numbered, and the page's text. The agent acts on a
-number, reads more of a long page or only the lines it searches for, and
-asks for a screenshot where text does not describe the page. A tab the
+number, which keeps naming that element while the page stays, so several
+actions can come from one look. It reads more of a long page or only the
+lines it searches for, and asks for a screenshot where text does not describe the page. A tab the
 action opens becomes the active tab, and the agent can open one of its own. A page that looks like a bot
 check or rate limit is flagged as a suspected block, so the agent can hand
 off or try another source. A page's alert, confirm or prompt is reported in

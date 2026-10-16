@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import signal
 import socket
 import struct
@@ -122,11 +123,14 @@ while chunk := os.read(3, 4096):
                 )
                 emit("Browser.downloadProgress", None, guid="g1", state="completed")
         # A dialog on press, on release (a click), or while the page is looked at.
-        phase = command["params"].get("type") or command["params"].get("expression", "")[-9:]
-        marker = {"mousePressed": "dialog-on-press", "mouseReleased": "dialog-on-click"}
-        if opens_dialog(
-            marker.get(phase, "dialog-on-look" if phase == ',"",true)' else "-"), command
-        ):
+        looking = re.search(r',"","\w+"\)$', command["params"].get("expression", ""))
+        phase = command["params"].get("type") or ("look" if looking else "-")
+        marker = {
+            "mousePressed": "dialog-on-press",
+            "mouseReleased": "dialog-on-click",
+            "look": "dialog-on-look",
+        }
+        if opens_dialog(marker.get(phase, "-"), command):
             continue
         if method == "Page.navigate" and opens_dialog("dialog-on-navigate", command):
             continue
@@ -162,13 +166,19 @@ while chunk := os.read(3, 4096):
             asked = command["params"]["expression"]
             if "scrollIntoView" in asked:
                 # Element 1 is on the page; any other is gone.
-                value = {"x": 40, "y": 30} if asked.endswith("(1)") else None
+                value = {"x": 40, "y": 30} if asked.endswith("[0])") else None
                 result = {"result": {"value": value}}
-            elif asked.endswith(',"clip",false)'):
+            elif asked.endswith(',"clip","")'):
                 read = {"url": "https://example.com/", "title": "Clips", "chars": 9, "matches": 1}
                 result = {"result": {"value": read | {"text": "Clip one", "links": ""}}}
-            elif asked.endswith(',"",true)'):
-                looked = {"url": "https://example.com/", "title": "Clips", "chars": 5}
+            elif looking:
+                # Every look is at the same page as the one before.
+                looked = {
+                    "url": "https://example.com/",
+                    "title": "Clips",
+                    "chars": 5,
+                    "fresh": False,
+                }
                 looked |= {"text": "Clips", "elements": '[1] text "Search" (empty)'}
                 result = {"result": {"value": looked}}
             elif "data-uagent-secret" in asked and "activeElement" in asked:

@@ -22,13 +22,12 @@
 
 namespace uagent::browser {
 namespace {
-// Where a numbered element is now, brought into view and the same over two
-// frames, since a page may animate it there (a hidden tab draws no frames
-// and is not waited for). Nothing when it left the page or has no size;
-// whether it is still moving after ten frames; and what lies on top when
-// something else would take the click, so the model can deal with that.
-constexpr const char* kElementScript = R"js((async n => {
-  const e = (window.__uagentElements || [])[n - 1];
+// Where an element is now, brought into view and the same over two frames,
+// since a page may animate it there (a hidden tab draws no frames and is not
+// waited for). Nothing when it left the page or has no size; whether it is
+// still moving after ten frames; and what lies on top when something else
+// would take the click, so the model can deal with that.
+constexpr const char* kElementScript = R"js((async e => {
   if (!e || !e.isConnected) return null;
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
   // Its box, and the box of each frame it sits in, any of which may move.
@@ -80,6 +79,12 @@ constexpr const char* kElementScript = R"js((async n => {
   }
   return {x: Math.round(x), y: Math.round(y)};
 }))js";
+
+// The element a look numbered, as the page holds it (runtime_page.cc).
+std::string Numbered(const std::string& look, int number) {
+  return "(window.__uagentLooks?.get(" + JsonDump(look) + ") || [])[" +
+         std::to_string(number - 1) + "]";
+}
 
 // Whether the field typed text reaches is one the screenshots mask
 // (kSecretScript), followed into shadow roots and frames: "frame" for a
@@ -206,6 +211,19 @@ json Runtime::Act(const std::string& op, const json& command) {
           .empty()) {
     download_path_ = into;
   }
+  // A number names what any look at this page numbered, which is still that
+  // element; a point is one of the latest look's alone.
+  const std::string view = JsonValue(command, "view_id", "");
+  const int element = JsonValue(command, "element", 0);
+  const auto unseen = [&]() -> std::string {
+    if (observation_.empty()) return "observe the current tab, then " + op;
+    if (view == observation_ ||
+        (element > 0 && std::ranges::find(looks_, view) != looks_.end())) {
+      return "";
+    }
+    return op + (element > 0 ? " needs view_id from a look at this page"
+                             : " needs view_id from the latest observe");
+  };
   // A click may open a file chooser: held back, it never shows a window the
   // agent cannot answer, and upload fills its field instead.
   struct Release {
@@ -239,6 +257,7 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "URL must be HTTP(S)"}};
     }
     observation_.clear();
+    looks_.clear();
     if (JsonValue(command, "new_tab", false)) {
       json created = Call("Target.createTarget", {{"url", "about:blank"}});
       const json* made = JsonObject(created, "result");
@@ -278,6 +297,7 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "the previous page is not HTTP(S)"}};
     }
     observation_.clear();
+    looks_.clear();
     leaving_ = true;
     reply = Call(
         "Page.navigateToHistoryEntry",
@@ -286,21 +306,16 @@ json Runtime::Act(const std::string& op, const json& command) {
         page_session_);
     leaving_ = false;
   } else if (op == "click") {
-    if (observation_.empty() ||
-        observation_ != JsonValue(command, "view_id", "")) {
-      // The model has to pass the view_id its latest observe returned.
-      return {{"error", observation_.empty()
-                            ? "observe the current tab before clicking"
-                            : "click needs view_id from the latest observe"}};
+    if (const std::string why = unseen(); !why.empty()) {
+      return {{"error", why}};
     }
     int x = -1, y = -1;
-    const int element = JsonValue(command, "element", 0);
     const std::string named = "element " + std::to_string(element);
     // Where the element is now, or why it cannot be clicked there.
     const auto locate = [&]() -> std::string {
       json where = Call("Runtime.evaluate",
                         {{"expression", std::string(kElementScript) + "(" +
-                                            std::to_string(element) + ")"},
+                                            Numbered(view, element) + ")"},
                          {"returnByValue", true},
                          {"awaitPromise", true}},
                         page_session_);
@@ -457,12 +472,8 @@ json Runtime::Act(const std::string& op, const json& command) {
       reply = Call("Input.dispatchKeyEvent", event, page_session_);
     }
   } else if (op == "scroll") {
-    if (observation_.empty() ||
-        observation_ != JsonValue(command, "view_id", "")) {
-      // The model has to pass the view_id its latest observe returned.
-      return {{"error", observation_.empty()
-                            ? "observe the current tab before scrolling"
-                            : "scroll needs view_id from the latest observe"}};
+    if (const std::string why = unseen(); !why.empty()) {
+      return {{"error", why}};
     }
     int x = JsonValue(command, "x", 640), y = JsonValue(command, "y", 400);
     int delta = JsonValue(command, "delta_y", 0);
@@ -481,21 +492,17 @@ json Runtime::Act(const std::string& op, const json& command) {
                   {"deltaY", delta}},
                  page_session_);
   } else if (op == "upload") {
-    const int element = JsonValue(command, "element", 0);
     const std::string file = JsonValue(command, "file", "");
     if (element < 1 || file.empty()) {
       return {{"error", "upload takes an element and a path"}};
     }
-    if (observation_.empty() ||
-        observation_ != JsonValue(command, "view_id", "")) {
-      return {{"error", "upload needs view_id from the latest observe"}};
+    if (const std::string why = unseen(); !why.empty()) {
+      return {{"error", why}};
     }
     // A file field takes the file itself; anything else is clicked, and the
     // file field whose chooser that opens takes it.
     json held = Call("Runtime.evaluate",
-                     {{"expression", "(window.__uagentElements || [])[" +
-                                         std::to_string(element - 1) + "]"}},
-                     page_session_);
+                     {{"expression", Numbered(view, element)}}, page_session_);
     const json* found = JsonObject(held, "result");
     found = found ? JsonObject(*found, "result") : nullptr;
     const std::string id = found ? JsonValue(*found, "objectId", "") : "";
@@ -544,10 +551,10 @@ json Runtime::Act(const std::string& op, const json& command) {
 // have moved since it was approved, by itself or by a person. `url` is the
 // page's when known; else the attached tab is asked.
 json Runtime::Elsewhere(const json& command, std::string url) {
-  // On a page that is no web site, the look it was approved on is the page;
-  // a call's own earlier steps (type's click) leave no look to compare.
+  // On a page that is no web site, the look it was approved on is the page,
+  // as long as it shows the same document.
   if (const std::string look = JsonValue(command, "look", "");
-      !look.empty() && !observation_.empty() && look != observation_) {
+      !look.empty() && std::ranges::find(looks_, look) == looks_.end()) {
     return {{"error",
              "the page changed since the look this was approved on; observe "
              "it, then act again"}};

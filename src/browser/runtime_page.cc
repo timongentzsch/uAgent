@@ -20,22 +20,24 @@ constexpr const char* kProbeScript =
     "return {ready:document.readyState,doc:String(performance.timeOrigin),"
     "sig:t.length+':'+h+':'+document.getElementsByTagName('*').length}})()";
 
-// The page, for a look (`acting`) or for reading. Both get its address,
+// The page, for a look (named `look`) or for reading. Both get its address,
 // title, how long its text is, and narrow, high-signal evidence of a bot
 // wall: an error status, a challenge title, a large visible challenge frame,
 // or a short page that asks for human verification. Advisory only; the agent
 // decides.
 //
-// A look also gets what can be acted on, numbered and kept on the page so a
-// click can name one by its number: in the document, its open shadow roots
-// and the frames of its own site. A field says whether it holds text, never
-// what; a control says when it is disabled, required, expanded or not.
+// A look also gets what can be acted on, numbered and kept on the page under
+// the look's name, for its last eight looks (`fresh` when it held none), so
+// an action can name one by look and number: in the document, its open
+// shadow roots and the frames of its own site. A field says whether it holds
+// text, never what; a control says when it is disabled, required, expanded or
+// not.
 //
 // Reading gets text from `offset`, or with `find` the lines that contain it
 // (from match `offset` on) and the links that do.
 std::string PageScript() {
   const std::string chars = std::to_string(kPageTextChars);
-  return std::string(R"js(((offset, find, acting) => {
+  return std::string(R"js(((offset, find, look) => {
   const t = document.body ? document.body.innerText : '';
   const title = document.title || '';
   let block = null;
@@ -68,8 +70,12 @@ std::string PageScript() {
   const page = {url: location.href.split(/[?#]/)[0], title, chars: t.length,
                 block};
   const plain = s => (s || '').replace(/\s+/g, ' ').trim();
-  if (acting) {
-    const kept = window.__uagentElements = [];
+  if (look) {
+    const fresh = !window.__uagentLooks;
+    const looks = window.__uagentLooks = window.__uagentLooks || new Map();
+    const kept = [];
+    looks.set(look, kept);
+    if (looks.size > 8) looks.delete(looks.keys().next().value);
     const rows = [];
     const actable =
         'a[href],button,select,textarea,summary,input:not([type=hidden]),' +
@@ -127,7 +133,7 @@ std::string PageScript() {
     }
     return {...page, text: t.slice(0, )js") +
          chars +
-         R"js(), elements: rows.join('\n')};
+         R"js(), elements: rows.join('\n'), fresh};
   }
   const wanted = find.toLowerCase();
   const links = new Map();
@@ -251,7 +257,7 @@ json Runtime::Read(const json& command) {
            {{"expression",
              PageScript() + "(" +
                  std::to_string(std::max(JsonValue(command, "offset", 0), 0)) +
-                 "," + JsonDump(JsonValue(command, "find", "")) + ",false)"},
+                 "," + JsonDump(JsonValue(command, "find", "")) + ",\"\")"},
             {"returnByValue", true}},
            page_session_);
   if (auto reason = CdError(page); !reason.empty()) {
@@ -313,9 +319,11 @@ json Runtime::Observe(bool image) {
     }
     picture = JsonValue(*taken, "data", "");
   }
+  observation_ = RandomToken(12);
   json page = Call(
       "Runtime.evaluate",
-      {{"expression", PageScript() + "(0,\"\",true)"}, {"returnByValue", true}},
+      {{"expression", PageScript() + "(0,\"\"," + JsonDump(observation_) + ")"},
+       {"returnByValue", true}},
       page_session_);
   json details = json::object();
   if (const json* response = JsonObject(page, "result")) {
@@ -323,7 +331,10 @@ json Runtime::Observe(bool image) {
       if (const json* value = JsonObject(*remote, "value")) details = *value;
     }
   }
-  observation_ = RandomToken(12);
+  // Another document holds none of the earlier looks' elements.
+  if (JsonValue(details, "fresh", true)) looks_.clear();
+  looks_.push_back(observation_);
+  if (looks_.size() > 8) looks_.erase(looks_.begin());
   view_width_ = static_cast<int>(width);
   view_height_ = static_cast<int>(height);
   return {{"ok", true},

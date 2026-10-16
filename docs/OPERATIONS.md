@@ -145,7 +145,9 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   that the corresponding limit cannot be enforced.
 - The session token budget survives resume.
 - A delegated child receives only its parent's remaining session
-  allowance. While a session budget is set, children run one at a time.
+  allowance; the children of one batch run together and share it equally.
+  While a session budget is set, no child starts while a background one
+  runs.
   Child usage is charged to the parent by delta, so follow-ups do not reset
   accounting.
 - Before a response reports usage, context size is estimated as serialized

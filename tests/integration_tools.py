@@ -477,7 +477,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):
         assert_true(signals[0]["data"]["rounds"] == 8, signals)
 
 
-def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home, *, binary):
+def test_invalid_tool_rejection_loop_stops_and_answers_from_what_it_has(root, home, *, binary):
     trace = root / "rejected-tools.jsonl"
     dimensions = [(0, 80), (24, 0), (1001, 80)]
     responses = [
@@ -494,7 +494,8 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home, *, bi
         )
         for attempt, (rows, cols) in enumerate(dimensions, start=1)
     ]
-    responses.append(event({"content": "fourth-round-should-not-run"}))
+    # The loop ends the turn's tool calls, not the work done before it.
+    responses.append(event({"content": "answered-after-the-loop"}))
     with Server(responses) as server:
         result = run(
             root,
@@ -505,13 +506,15 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home, *, bi
             "inspect",
             binary=binary,
         )
-        assert_true(result.returncode != 0, result.stdout)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "answered-after-the-loop", result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
+        told = json.dumps(server.requests[-1][1]["messages"])
         assert_true(
-            "equivalent rejected activity call 3 times "
-            "(activity.invalid_dimensions)" in result.stderr,
-            result.stderr,
+            "equivalent rejected activity call 3 times (activity.invalid_dimensions)" in told
+            and "No further tool call will run" in told,
+            told,
         )
-        assert_true(len(server.requests) == 3, len(server.requests))
         records = [json.loads(line) for line in trace.read_text().splitlines()]
         loops = [r for r in records if r["event"] == "deterministic_rejection_loop"]
         assert_true(len(loops) == 1, loops)
@@ -523,16 +526,18 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home, *, bi
 def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home, *, binary):
     call = {"operation": "list", "wait_ms": 1}
     responses = [tool_call("activity", call) for _ in range(12)]
-    responses.append(event({"content": "thirteenth-round-should-not-run"}))
+    # Stopped, the loop's turn answers from what it has, in one more round.
+    responses.append(event({"content": "answered-after-the-loop"}))
     with Server(responses) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "list", binary=binary)
-        assert_true(result.returncode != 0, result.stdout)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "answered-after-the-loop", result.stdout)
+        assert_true(len(server.requests) == 13, len(server.requests))
+        told = json.dumps(server.requests[-1][1]["messages"])
         assert_true(
-            "model repeated the same tool call 12 times after two recovery instructions"
-            in result.stderr,
-            result.stderr,
+            "model repeated the same tool call 12 times after two recovery instructions" in told,
+            told,
         )
-        assert_true(len(server.requests) == 12, len(server.requests))
 
 
 def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):

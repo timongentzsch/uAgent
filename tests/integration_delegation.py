@@ -111,6 +111,45 @@ def test_subagent_inherits_only_remaining_session_token_budget(root, home, *, bi
         assert_true(len(server.requests) == 2, server.requests)
 
 
+def test_a_batch_never_hands_a_child_an_unlimited_token_share(root, home, *, binary):
+    """A remainder too small to split still bounds each child: a share is never
+    0, which would mean no limit at all."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if any(has_message(messages, "user", name) for name in ("share-a", "share-b")):
+            response = tool_call("read_path", {"path": "."})
+            response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
+            return response
+        response = event(
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": f"share-{index}",
+                        "function": {"name": "subagent", "arguments": json.dumps({"prompt": name})},
+                    }
+                    for index, name in enumerate(("share-a", "share-b"))
+                ]
+            },
+            finish="tool_calls",
+        )
+        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
+        return response
+
+    with Server([route]) as server:
+        assert_token_budget_stop(
+            root, home, server, "--yolo", "--token-budget", "4", "-p", "delegate", binary=binary
+        )
+        # Each child stopped at its one-token share after its first round.
+        children = [
+            b
+            for _, b in server.requests
+            if any(has_message(b["messages"], "user", n) for n in ("share-a", "share-b"))
+        ]
+        assert_true(len(children) == 2, len(children))
+
+
 def test_subagent_auto_join_continues_turn(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
@@ -555,6 +594,62 @@ def test_parallel_subagents_auto_join(root, home, *, binary):
         assert_true(3 <= len(parent_requests) <= 4, len(parent_requests))
         for request in parent_requests:
             assert_true("subagent" in function_names(request), request)
+
+
+def test_a_batch_of_children_runs_together_and_shares_the_budget(root, home, *, binary):
+    """Children the turn waits for run side by side; under a session budget
+    each takes an equal share of what is left."""
+    children_lock = threading.Lock()
+    active = {"now": 0, "most": 0}
+
+    def route(_, body):
+        messages = body["messages"]
+        child = next(
+            (
+                m["content"]
+                for m in messages
+                if m.get("role") == "user" and m.get("content") in {"child-a", "child-b"}
+            ),
+            None,
+        )
+        if child:
+            with children_lock:
+                active["now"] += 1
+                active["most"] = max(active["most"], active["now"])
+            try:
+                time.sleep(1)
+                return event({"content": f"{child}-result"})
+            finally:
+                with children_lock:
+                    active["now"] -= 1
+        results = tool_results(messages)
+        if results:
+            shared = all("limits.cost to $0.5000, its share" in result for result in results)
+            return event({"content": "shared-ok" if shared else " | ".join(results)})
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": f"task-{index}",
+                        "function": {
+                            "name": "subagent",
+                            "arguments": json.dumps({"prompt": prompt, "limits": {"cost": 0.9}}),
+                        },
+                    }
+                    for index, prompt in enumerate(("child-a", "child-b"))
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_SESSION_BUDGET"] = "1"
+        result = run(root, env, "--yolo", "-p", "delegate twice", timeout=8, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "shared-ok", result.stdout)
+        assert_true(active["most"] == 2, active)
 
 
 def test_subagent_interrupt_reaps_child(root, home, *, binary):

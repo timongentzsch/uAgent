@@ -133,6 +133,18 @@
 
 ### Fixed
 
+- Subagents started in one batch run together. Before, the parent waited for
+  each in turn unless the model set `background`, and five researchers took
+  16 minutes instead of four. Under a session budget, which every panel thread
+  has, they share what is left equally.
+- Subagents the turn waits for are listed in the web's background work while
+  they run, and each can be stopped there. They are shown by the model they
+  run on, not by the diagnostic route string, which only a failure report
+  still carries.
+- A turn stopped for repeating a call, the same one or an equivalent rejected
+  one, answers from what it has, as a turn stopped at its step or time limit
+  does. Before, a researcher stuck retrying a capped `web_search` lost all its
+  findings.
 - A model's input modalities from the endpoint's catalogue survive starting a
   route, so a text-only model is known as one before its first image is
   rejected.

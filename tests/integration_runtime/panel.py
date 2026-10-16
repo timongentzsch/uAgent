@@ -1399,6 +1399,39 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
         assert_true(not any("Recount: still 3." in line for line in newest), newest)
 
 
+def test_a_round_does_not_close_while_a_member_is_still_answering(root, home, *, binary):
+    """A member woken while it is still answering counts as answering until its
+    next turn ends, though the chat heard its first answer already."""
+
+    def reply(member, last, _body):
+        newest = last.splitlines()[-1] if last else ""
+        if member == "Ada":
+            return "A1" if "talk now" in newest else "PASS"
+        if member == "Lin":
+            if "talk now" in last and "Ada: A1" not in last:
+                time.sleep(budget(1))
+                return "L1"
+            if "Ada: A1" in last:
+                time.sleep(budget(2))
+                return "L2"
+            return "PASS"
+        return "Closed." if "has settled" in last else "PASS"
+
+    with Server([_room(reply)]) as server:
+        env = base_env(home, server.url)
+        _team(root, env, binary)
+        server.requests.clear()
+        result = run(root, env, "panel", "-p", "talk now", binary=binary, timeout=30)
+        assert_true(result.returncode == 0, result.stderr)
+        wait_until(
+            lambda: any("The discussion has settled" in json.dumps(b) for _, b in server.requests),
+            "the round never closed",
+        )
+        moderator = [json.dumps(b["messages"]) for _, b in server.requests if not _member(b)][-1]
+        settled = moderator.index("The discussion has settled")
+        assert_true(0 <= moderator.find("Lin: L2") < settled, moderator)
+
+
 def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root, home, *, binary):
     def reply(member, last, _body):
         if "slow start" in last:

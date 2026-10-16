@@ -940,11 +940,24 @@ bool ThreadsOwe(const std::string& folder) {
 }
 
 bool ThreadsWorking(const std::string& folder) {
-  std::vector<SessionInfo> threads = OwnThreads(folder);
-  std::erase_if(threads, [](const SessionInfo& info) {
-    return !ChatMember(info.thread).empty();
-  });
-  return std::ranges::any_of(threads, WorkAhead) ||
+  const std::vector<SessionInfo> threads = OwnThreads(folder);
+  // A member counts by what its runtime does, not by the chat's own count:
+  // one woken while it was still answering starts its next turn after the
+  // answer the chat counted.
+  const auto answering = [](const SessionInfo& member) {
+    return LiveStatus(member) == "working" ||
+           std::ranges::any_of(
+               PendingMail(MailboxIdFor(member.path)), [](const Mail& mail) {
+                 return !JsonValue(mail.body, "quiet", false) &&
+                        NowMillis() - mail.created_ms < kStartingMs;
+               });
+  };
+  return std::ranges::any_of(threads,
+                             [&](const SessionInfo& info) {
+                               return ChatMember(info.thread).empty()
+                                          ? WorkAhead(info)
+                                          : answering(info);
+                             }) ||
          std::ranges::any_of(
              PendingMail(MailboxIdFor(PanelPath(folder))),
              [&](const Mail& mail) { return FromAny(mail, threads); });

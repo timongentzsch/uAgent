@@ -742,11 +742,14 @@ json Runtime::Execute(const json& command) {
   }
   // A dialog that is open, or opens meanwhile, is what there is to report.
   if (OpenDialog() && op != "tabs") return Dialog(op, command);
+  // Whatever failed meanwhile failed because the page could not answer.
   const auto reported = [&](json result) {
-    const json* open = OpenDialog();
-    return open && !result.contains("error")
-               ? json{{"ok", true}, {"dialog", *open}}
-               : result;
+    if (const json* open = OpenDialog()) {
+      result.erase("error");
+      result["ok"] = true;
+      result["dialog"] = *open;
+    }
+    return result;
   };
   if (op == "probe") return reported(Probe());
   // Whoever takes the browser after someone else starts from the page as it

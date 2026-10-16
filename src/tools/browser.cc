@@ -227,13 +227,13 @@ std::string Settle(const std::string& session_id, const ToolContext& context) {
     if (auto error = JsonValue(probe, "error", ""); !error.empty()) {
       return notes + "Waiting for the page stopped: " + error + ".\n";
     }
-    if (probe.contains("dialog")) break;
     if (const json* tab = JsonObject(probe, "switched")) {
       notes +=
           "It opened a new tab, now active: " + JsonValue(*tab, "url", "") +
           "\n";
     }
     if (const json* tabs = JsonArray(probe, "opened")) opened = *tabs;
+    if (probe.contains("dialog")) break;
     const std::string state =
         JsonValue(probe, "doc", "") + "|" + JsonValue(probe, "sig", "");
     const bool loaded = JsonValue(probe, "ready", "") == "complete" &&

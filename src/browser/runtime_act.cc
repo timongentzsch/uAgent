@@ -23,8 +23,8 @@
 namespace uagent::browser {
 namespace {
 // Where a numbered element is now, brought into view and the same over two
-// frames, since a page may animate it there; a frame is at most 50 ms, as a
-// hidden tab draws none. Nothing when it left the page or has no size;
+// frames, since a page may animate it there (a hidden tab draws no frames
+// and is not waited for). Nothing when it left the page or has no size;
 // whether it is still moving after ten frames; and what lies on top when
 // something else would take the click, so the model can deal with that.
 constexpr const char* kElementScript = R"js((async n => {
@@ -33,13 +33,13 @@ constexpr const char* kElementScript = R"js((async n => {
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
   const box = () => JSON.stringify(e.getBoundingClientRect());
   let was = box(), still = 0;
-  for (let i = 0; i < 10 && still < 2; i++) {
-    await new Promise(next => { requestAnimationFrame(next); setTimeout(next, 50); });
+  for (let i = 0; i < 10 && still < 2 && !document.hidden; i++) {
+    await new Promise(requestAnimationFrame);
     const now = box();
     still = now === was ? still + 1 : 0;
     was = now;
   }
-  if (still < 2) return {moving: true};
+  if (still < 2 && !document.hidden) return {moving: true};
   const r = e.getBoundingClientRect();
   const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
   if (!e.isConnected || r.width < 1 || r.height < 1) return null;
@@ -53,8 +53,9 @@ constexpr const char* kElementScript = R"js((async n => {
 }))js";
 
 // Whether the field typed text reaches is one the screenshots mask
-// (kSecretScript), followed into shadow roots and frames; "frame" for a
-// frame of another site, whose field cannot be told.
+// (kSecretScript), followed into shadow roots and frames: "frame" for a
+// frame of another site and "unknown" for anything but a known text field,
+// such as one inside a closed shadow root, since neither can be told.
 constexpr const char* kSecretFieldScript = R"js((() => {
   let e = document.activeElement;
   for (;;) {
@@ -67,7 +68,9 @@ constexpr const char* kSecretFieldScript = R"js((() => {
       e = inner.activeElement;
     } else break;
   }
-  return !!e && e.tagName === 'INPUT' && (e.hasAttribute('data-uagent-secret') ||
+  if (!e || !(e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' ||
+              e.isContentEditable)) return 'unknown';
+  return e.tagName === 'INPUT' && (e.hasAttribute('data-uagent-secret') ||
     e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''));
 })())js";
 
@@ -267,11 +270,6 @@ json Runtime::Act(const std::string& op, const json& command) {
           !reason.empty()) {
         return {{"error", reason}};
       }
-      if (OpenDialog()) {
-        return {{"error",
-                 "a dialog opened before the click; answer it, then "
-                 "click again"}};
-      }
       event = {{"type", type},
                {"x", x},
                {"y", y},
@@ -298,7 +296,8 @@ json Runtime::Act(const std::string& op, const json& command) {
                         : verdict == true
                             ? "this is a password field: use fill_saved, or "
                               "request_human"
-                            : "cannot tell which field has focus"}};
+                            : "cannot tell which field has focus; click the "
+                              "field, or request_human"}};
     }
     observation_.clear();
     if (JsonValue(command, "replace", false)) {

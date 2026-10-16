@@ -551,6 +551,16 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
              .contains("error"));
   CHECK(act({{"op", "observe"}}).contains("view_id"));
+  // A dialog on the press, or while the page is looked at, is reported in
+  // place of what was asked, never as a failure of it.
+  std::ofstream(profile / "dialog-on-press") << "confirm";
+  CHECK(!click().contains("error"));
+  CHECK(act({{"op", "observe"}}).contains("dialog"));
+  CHECK(!act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
+  std::ofstream(profile / "dialog-on-look") << "alert";
+  CHECK(act({{"op", "observe"}}).value("dialog", json()).value("type", "") ==
+        "alert");
+  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
   std::ofstream(profile / "password-focused").close();
   CHECK(act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
         "this is a password field: use fill_saved, or request_human");
@@ -576,6 +586,8 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(answers == std::vector<json>({{{"accept", false}},
                                       {{"accept", true}, {"promptText", "Ada"}},
                                       {{"accept", true}},
+                                      {{"accept", true}},
+                                      {{"accept", false}},
                                       {{"accept", true}}}));
   CHECK(attached == 1);
   CHECK(!typed);

@@ -101,9 +101,13 @@ while chunk := os.read(3, 4096):
             os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
             continue
         method = command["method"]
-        if method == "Input.dispatchMouseEvent" and command["params"]["type"] == "mouseReleased":
-            if opens_dialog("dialog-on-click", command):
-                continue
+        # A dialog on press, on release (a click), or while the page is looked at.
+        phase = command["params"].get("type") or command["params"].get("expression", "")[-9:]
+        marker = {"mousePressed": "dialog-on-press", "mouseReleased": "dialog-on-click"}
+        if opens_dialog(
+            marker.get(phase, "dialog-on-look" if phase == ',"",true)' else "-"), command
+        ):
+            continue
         if method == "Page.navigate" and opens_dialog("dialog-on-navigate", command):
             continue
         if method == "Page.handleJavaScriptDialog":

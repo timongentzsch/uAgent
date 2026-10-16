@@ -20,6 +20,7 @@
 #include "include/api/retry.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
+#include "include/app/thread_link.h"
 #include "include/app/tool_categories.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
@@ -618,6 +619,21 @@ void TestSharedPanelHelpers() {
   std::filesystem::remove(workspace.workspace / ".git");
   std::filesystem::create_directory(workspace.workspace / ".git");
   CHECK(InGitRepository(workspace.workspace));
+}
+
+// A panel restarts a thread at most three times in a row, however its
+// messages arrive: guidance into a running turn is free until it starts one.
+void TestThreadRestartsInARow() {
+  session::ThreadLink link(json::object(), "thread.json", "t1");
+  CHECK(link.Admit(true, true).empty());
+  CHECK(link.Admit(true, false).empty());  // steers the running turn
+  link.Restarted();                        // ... which it outlived
+  CHECK(link.Admit(true, true).empty());
+  CHECK(!link.Admit(true, true).empty());
+  CHECK(!link.Admit(true, false).empty());  // could start a fourth
+  CHECK(link.Admit(false, false).empty());  // someone else spoke
+  link.Restarted();                         // not the panel's turn
+  CHECK(link.Admit(true, true).empty());
 }
 
 void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {

@@ -208,6 +208,7 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
       task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
   ToolContext call_context = context.WithTimeout(timeout);
   call_context.call_id = call.id;
+  call_context.approved = task.approved;
   json start = ToolCallData(call, turn, step);
   start["activity"] = task.activity;
   start["view"] = ToolView(task.tool, task.args);

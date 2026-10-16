@@ -35,6 +35,9 @@ class Runtime {
   // Writes a command without waiting for its reply; its id, or -1.
   int64_t Send(const std::string& method, const json& parameters,
                const std::string& session);
+  // Why an action approved for one site may not run on the page as it is
+  // now, or null.
+  json Elsewhere(const json& command, std::string url);
   // What an operation does while the page shows a dialog.
   json Dialog(const std::string& op, const json& command);
   // The attached page's open dialog ({type, message, answer}), or null.

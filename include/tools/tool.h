@@ -122,6 +122,9 @@ struct ToolContext {
   // Delegating calls in the batch this one is part of: children started
   // together share what the session has left.
   int64_t delegations = 1;
+  // What this call's approval covered (Tool::approval_subject), taken when it
+  // was decided: what its run may hold itself to. Null without one.
+  json approved;
 
   bool Expired() const;
 

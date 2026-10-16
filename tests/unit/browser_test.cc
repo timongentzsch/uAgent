@@ -528,8 +528,9 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(!click().contains("error"));
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(3));
   const json shown = act({{"op", "observe"}});
-  CHECK(shown.value("dialog", json::object()) ==
-        json({{"type", "confirm"}, {"message", "Really confirm?"}}));
+  CHECK(
+      shown.value("dialog", json::object()) ==
+      json({{"type", "confirm"}, {"message", "Really confirm?"}, {"url", ""}}));
   CHECK(act({{"op", "back"}})
             .value("error", "")
             .starts_with("a confirm dialog is open"));
@@ -604,6 +605,12 @@ void TestBrowserOrigin() {
         "http://example.com:8080");
   CHECK(browser::Origin("https://[::1]:8443/") == "https://[::1]:8443");
   CHECK(browser::Origin("about:blank").empty());
+  // Read as a browser reads it: a backslash ends the host. What a browser
+  // might read otherwise covers nothing.
+  CHECK(browser::Origin("https://evil.example\\@good.example/") ==
+        "https://evil.example");
+  CHECK(browser::Origin("https://good%2eexample/").empty());
+  CHECK(browser::Origin("https://good.example:0443/").empty());
   CHECK(browser::Origin("file:///etc/hosts").empty());
 }
 
@@ -666,14 +673,7 @@ void TestBrowserToolSteps() {
             .has_value());
   CHECK(tool.approval_subject({{"action", "tabs"}, {"target_id", "a"}}) !=
         tool.approval_subject({{"action", "tabs"}, {"target_id", "b"}}));
-  // Approved for the site last seen, a call runs on that site only: here
-  // the tab is somewhere else, as after a batch's open or a person's visit.
-  const json elsewhere = {
-      {"action", "press"}, {"key", "Tab"}, {"view_id", "x"}};
-  tool.approval_subject(elsewhere);
-  ToolResult held = tool.run(elsewhere, {});
-  CHECK(!held.Ok() &&
-        held.output.find("where this was approved") != std::string::npos);
+
   CHECK(
       tool.approval_subject(click) ==
       tool.approval_subject(
@@ -747,6 +747,18 @@ void TestBrowserToolSteps() {
   CHECK(tool.validate({{"action", "open"},
                        {"path", (directory / "profile" / "x.html").string()}})
             .has_value());
+  // A call runs on the site its approval was for: there it runs, and once
+  // the tab is elsewhere (after a batch's open, or a person's visit) the
+  // browser refuses it.
+  const json press = {{"action", "press"}, {"key", "Tab"}};
+  ToolContext approved;
+  approved.approved = tool.approval_subject(press);
+  CHECK(approved.approved.value("origin", "") == "https://example.com");
+  CHECK(tool.run(press, approved).Ok());
+  approved.approved["origin"] = "https://other.example";
+  ToolResult held = tool.run(press, approved);
+  CHECK(!held.Ok() &&
+        held.output.find("where this was approved") != std::string::npos);
   close(owner[1]);
   service.join();
   close(owner[0]);

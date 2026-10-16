@@ -494,7 +494,8 @@ json Runtime::Call(const std::string& method, const json& parameters,
           Send("Page.handleJavaScriptDialog", {{"accept", true}}, from);
         } else {
           dialogs_[from] = {{"type", JsonValue(*params, "type", "")},
-                            {"message", JsonValue(*params, "message", "")}};
+                            {"message", JsonValue(*params, "message", "")},
+                            {"url", JsonValue(*params, "url", "")}};
         }
       }
       if (event == "Page.javascriptDialogClosed") dialogs_.erase(from);

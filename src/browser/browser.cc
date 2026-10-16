@@ -109,12 +109,27 @@ std::string Origin(const std::string& url) {
                                                             : "";
   if (scheme.empty()) return "";
   std::string host = lower.substr(scheme.size() + 3);
-  host = host.substr(0, host.find_first_of("/?#"));
+  // A backslash ends the host as a slash does, as browsers read it.
+  host = host.substr(0, host.find_first_of("/?#\\"));
   host = host.substr(
       host.rfind('@') == std::string::npos ? 0 : host.rfind('@') + 1);
-  const std::string port = scheme == "https" ? ":443" : ":80";
-  if (host.ends_with(port)) host.resize(host.size() - port.size());
-  return host.empty() ? "" : scheme + "://" + host;
+  // Only what any browser reads alike: letters, digits, dots and dashes, an
+  // IPv6 address in brackets, and a port with no leading zero.
+  const size_t bracket = host.rfind(']');
+  const size_t colon =
+      host.find(':', bracket == std::string::npos ? 0 : bracket);
+  const std::string port =
+      colon == std::string::npos ? "" : host.substr(colon + 1);
+  if (host.empty() ||
+      host.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789.-[]:") !=
+          std::string::npos ||
+      (colon != std::string::npos &&
+       (port.empty() || port[0] == '0' ||
+        port.find_first_not_of("0123456789") != std::string::npos))) {
+    return "";
+  }
+  if (port == (scheme == "https" ? "443" : "80")) host.resize(colon);
+  return scheme + "://" + host;
 }
 
 bool EnsureDataDirectory(const std::string& path) {

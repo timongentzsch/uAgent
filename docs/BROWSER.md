@@ -53,7 +53,10 @@ number, reads more of a long page or only the lines it searches for, and
 asks for a screenshot where text does not describe the page. A tab the
 action opens becomes the active tab, and the agent can open one of its own. A page that looks like a bot
 check or rate limit is flagged as a suspected block, so the agent can hand
-off or try another source.
+off or try another source. A page's alert, confirm or prompt is reported in
+place of the page until the agent answers it with Enter or Escape, and a
+password field takes no typed text: the agent uses a saved login or asks
+you.
 
 | You want to | Do this |
 | --- | --- |

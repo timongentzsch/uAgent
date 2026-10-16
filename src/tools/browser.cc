@@ -102,6 +102,17 @@ std::string BlockLine(const json& page) {
          "another source.\n";
 }
 
+// What a look says while the page shows a dialog: it is all there is to see.
+std::string DialogLine(const json& dialog) {
+  const std::string type = JsonValue(dialog, "type", "");
+  return "A " + type + " dialog is open: \"" +
+         JsonValue(dialog, "message", "") +
+         "\". press Enter accepts it, Escape dismisses it" +
+         (type == "prompt" ? "; type the answer with key Enter to give one"
+                           : "") +
+         ".";
+}
+
 // One request to the browser on behalf of this conversation.
 json Ask(const std::string& session_id, json command, const std::string& op) {
   command["op"] = op;
@@ -137,6 +148,9 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   const std::string done = lead.empty() ? "" : lead + "\n";
   json outcome = browser::Request(
       {{"op", "observe"}, {"session_id", session_id}, {"image", look}});
+  if (const json* dialog = JsonObject(outcome, "dialog")) {
+    return ToolSuccess(done + DialogLine(*dialog));
+  }
   json current = outcome.contains("error")
                      ? json::object()
                      : browser::Request(
@@ -219,6 +233,7 @@ std::string Settle(const std::string& session_id, const ToolContext& context) {
           "\n";
     }
     if (const json* tabs = JsonArray(probe, "opened")) opened = *tabs;
+    if (probe.contains("dialog")) break;
     const std::string state =
         JsonValue(probe, "doc", "") + "|" + JsonValue(probe, "sig", "");
     const bool loaded = JsonValue(probe, "ready", "") == "complete" &&
@@ -271,6 +286,9 @@ ToolResult Query(const std::string& session_id, const json& args,
   if (auto error = JsonValue(answer, "error", ""); !error.empty()) {
     return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
+  if (const json* dialog = JsonObject(answer, "dialog")) {
+    return ToolSuccess(DialogLine(*dialog));
+  }
   return action == "read" ? Reading(answer, args, "")
                           : ToolSuccess(JsonDump(answer));
 }
@@ -280,7 +298,8 @@ ToolResult Query(const std::string& session_id, const json& args,
 ToolResult Act(const std::string& session_id, const json& args,
                const std::string& action, const ToolContext& context) {
   // type may click its field first and press a key after: one call, in
-  // that order, stopping at the first that fails.
+  // that order, stopping at the first that fails or opens a dialog, which
+  // must not take what was meant for the page.
   std::vector<std::string> ops = {action};
   if (action == "type") {
     if (args.contains("element") || args.contains("x")) {
@@ -291,10 +310,10 @@ ToolResult Act(const std::string& session_id, const json& args,
   std::string done;
   bool whole = true;
   for (const std::string& op : ops) {
-    const std::string error =
-        !done.empty() && (AbortRequested() || context.Expired())
-            ? "interrupted"
-            : JsonValue(Ask(session_id, args, op), "error", "");
+    const json reply = !done.empty() && (AbortRequested() || context.Expired())
+                           ? json{{"error", "interrupted"}}
+                           : Ask(session_id, args, op);
+    const std::string error = JsonValue(reply, "error", "");
     if (!error.empty()) {
       if (done.empty()) {
         return ToolFailure(ToolErrorCode::kRemoteError, error);
@@ -304,13 +323,19 @@ ToolResult Act(const std::string& session_id, const json& args,
       break;
     }
     done += op + " done.\n";
+    if (reply.contains("dialog")) {
+      whole = false;
+      break;
+    }
   }
   done += Settle(session_id, context);
   // open may read the page it opened, once that has settled.
   if (action == "open" && whole &&
       (args.contains("find") || args.contains("offset"))) {
     json read = Ask(session_id, args, "read");
-    if (!read.contains("error")) return Reading(read, args, done);
+    if (!read.contains("error") && !read.contains("dialog")) {
+      return Reading(read, args, done);
+    }
   }
   done.pop_back();
   return Observation(session_id, done, context, /*look=*/false);
@@ -338,7 +363,9 @@ constexpr char kBrowserDescription[] =
     "it is the current one. To look at a page you wrote, open takes path "
     "instead of url: a self-contained .html or .svg file, shown without a "
     "server (file:// URLs are refused, and its relative links do not "
-    "load). A result that says SUSPECTED BLOCK means a bot "
+    "load). A page's alert, confirm or prompt dialog is reported in place "
+    "of the page; answer it with press Enter or Escape. A result that says "
+    "SUSPECTED BLOCK means a bot "
     "check or rate limit: don't hammer it. Chrome holds the user's saved "
     "logins: on a sign-in page click the field, call fill_saved to take "
     "the one Chrome offers for it, then submit what Chrome filled. Where "

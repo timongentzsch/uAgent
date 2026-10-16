@@ -22,20 +22,57 @@
 
 namespace uagent::browser {
 namespace {
-// Where a numbered element is now, brought into view first. Nothing when it
-// left the page, has no size, or lies under something else: a click there
-// would land on whatever is in its place.
-constexpr const char* kElementScript = R"js((n => {
+// Where a numbered element is now, brought into view and the same over two
+// frames, since a page may animate it there (a hidden tab draws no frames
+// and is not waited for). Nothing when it left the page or has no size;
+// whether it is still moving after ten frames; and what lies on top when
+// something else would take the click, so the model can deal with that.
+constexpr const char* kElementScript = R"js((async n => {
   const e = (window.__uagentElements || [])[n - 1];
   if (!e || !e.isConnected) return null;
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  const box = () => JSON.stringify(e.getBoundingClientRect());
+  let was = box(), still = 0;
+  for (let i = 0; i < 10 && still < 2 && !document.hidden; i++) {
+    await new Promise(requestAnimationFrame);
+    const now = box();
+    still = now === was ? still + 1 : 0;
+    was = now;
+  }
+  if (still < 2 && !document.hidden) return {moving: true};
   const r = e.getBoundingClientRect();
   const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+  if (!e.isConnected || r.width < 1 || r.height < 1) return null;
   const hit = document.elementFromPoint(x, y);
-  if (r.width < 1 || r.height < 1 || !hit ||
-      !(e.contains(hit) || hit.contains(e))) return null;
-  return {x, y};
+  if (hit && (e.contains(hit) || hit.contains(e))) return {x, y};
+  if (!hit) return null;
+  const words = (hit.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return {covered: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
+      (hit.classList[0] ? '.' + hit.classList[0] : '') +
+      (words ? ' "' + words + '"' : '')};
 }))js";
+
+// Whether the field typed text reaches is one the screenshots mask
+// (kSecretScript), followed into shadow roots and frames: "frame" for a
+// frame of another site and "unknown" for anything but a known text field,
+// such as one inside a closed shadow root, since neither can be told.
+constexpr const char* kSecretFieldScript = R"js((() => {
+  let e = document.activeElement;
+  for (;;) {
+    if (e && e.shadowRoot && e.shadowRoot.activeElement) {
+      e = e.shadowRoot.activeElement;
+    } else if (e && /^I?FRAME$/.test(e.tagName)) {
+      let inner = null;
+      try { inner = e.contentDocument; } catch (_) {}
+      if (!inner) return 'frame';
+      e = inner.activeElement;
+    } else break;
+  }
+  if (!e || !(e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' ||
+              e.isContentEditable)) return 'unknown';
+  return e.tagName === 'INPUT' && (e.hasAttribute('data-uagent-secret') ||
+    e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''));
+})())js";
 
 // types what `text` says: the name alone reaches the page's own listeners
 // and nothing else, so Enter would not send a form nor Backspace delete.
@@ -148,7 +185,9 @@ json Runtime::Act(const std::string& op, const json& command) {
         return {{"error", made ? error : "Chrome did not open a tab"}};
       }
     }
+    leaving_ = true;
     reply = Call("Page.navigate", {{"url", url}}, page_session_);
+    leaving_ = false;
     if (const json* result = JsonObject(reply, "result")) {
       if (auto failed = JsonValue(*result, "errorText", ""); !failed.empty()) {
         return {{"error", "navigation failed: " + failed}};
@@ -177,11 +216,13 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "the previous page is not HTTP(S)"}};
     }
     observation_.clear();
+    leaving_ = true;
     reply = Call(
         "Page.navigateToHistoryEntry",
         {{"entryId",
           JsonValue((*entries)[static_cast<size_t>(current - 1)], "id", 0)}},
         page_session_);
+    leaving_ = false;
   } else if (op == "click") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
@@ -195,13 +236,22 @@ json Runtime::Act(const std::string& op, const json& command) {
       json where = Call("Runtime.evaluate",
                         {{"expression", std::string(kElementScript) + "(" +
                                             std::to_string(element) + ")"},
-                         {"returnByValue", true}},
+                         {"returnByValue", true},
+                         {"awaitPromise", true}},
                         page_session_);
       const json* found = JsonObject(where, "result");
       found = found ? JsonObject(*found, "result") : nullptr;
       found = found ? JsonObject(*found, "value") : nullptr;
-      if (!found) {
-        return {{"error", "that element is gone or covered; look again"}};
+      if (!found) return {{"error", "that element is gone; look again"}};
+      if (JsonValue(*found, "moving", false)) {
+        return {{"error", "element " + std::to_string(element) +
+                              " is still moving; look again"}};
+      }
+      if (const std::string over = JsonValue(*found, "covered", "");
+          !over.empty()) {
+        return {{"error", "element " + std::to_string(element) +
+                              " is covered by " + over +
+                              "; deal with that first"}};
       }
       x = JsonValue(*found, "x", -1);
       y = JsonValue(*found, "y", -1);
@@ -212,20 +262,43 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "coordinates exceed the observed viewport"}};
     }
     observation_.clear();
-    json event = {{"type", "mousePressed"},
-                  {"x", x},
-                  {"y", y},
-                  {"button", "left"},
-                  {"clickCount", 1}};
-    json pressed = Call("Input.dispatchMouseEvent", event, page_session_);
-    if (auto reason = CdError(pressed); !reason.empty()) {
-      return {{"error", reason}};
+    // Onto the point first, as a pointer gets there: menus open on hover.
+    json event = {{"type", "mouseMoved"}, {"x", x}, {"y", y}};
+    for (const char* type : {"mousePressed", "mouseReleased"}) {
+      if (auto reason =
+              CdError(Call("Input.dispatchMouseEvent", event, page_session_));
+          !reason.empty()) {
+        return {{"error", reason}};
+      }
+      event = {{"type", type},
+               {"x", x},
+               {"y", y},
+               {"button", "left"},
+               {"clickCount", 1},
+               {"buttons", std::string_view(type) == "mousePressed" ? 1 : 0}};
     }
-    event["type"] = "mouseReleased";
     reply = Call("Input.dispatchMouseEvent", event, page_session_);
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
+    json secret =
+        Call("Runtime.evaluate",
+             {{"expression", kSecretFieldScript}, {"returnByValue", true}},
+             page_session_);
+    const json* field = JsonObject(secret, "result");
+    field = field ? JsonObject(*field, "result") : nullptr;
+    const json verdict =
+        field && field->contains("value") ? (*field)["value"] : json();
+    if (verdict != false) {
+      return {{"error", verdict == "frame"
+                            ? "the field is in another site's frame, whose "
+                              "kind cannot be told: request_human"
+                        : verdict == true
+                            ? "this is a password field: use fill_saved, or "
+                              "request_human"
+                            : "cannot tell which field has focus; click the "
+                              "field, or request_human"}};
+    }
     observation_.clear();
     if (JsonValue(command, "replace", false)) {
       // What the field holds becomes the selection, which the text replaces.
@@ -329,5 +402,37 @@ json Runtime::Act(const std::string& op, const json& command) {
   if (!error.empty()) return {{"error", error}};
   if (op == "open") moved_ = false;
   return {{"ok", true}};
+}
+
+// A dialog takes the keys a person would give it: Enter accepts, Escape
+// dismisses, and text typed before Enter answers a prompt. A look reports
+// it, since the page behind it cannot be read until it closes.
+json Runtime::Dialog(const std::string& op, const json& command) {
+  json& open = *OpenDialog();
+  const std::string type = JsonValue(open, "type", "");
+  const std::string key = JsonValue(command, "key", "");
+  if (op == "type" && type == "prompt") {
+    open["answer"] = JsonValue(command, "text", "");
+    return {{"ok", true}};
+  }
+  if (op == "press" && (key == "Enter" || key == "Escape")) {
+    json answer = {{"accept", key == "Enter"}};
+    if (key == "Enter" && open.contains("answer")) {
+      answer["promptText"] = open["answer"];
+    }
+    if (auto reason =
+            CdError(Call("Page.handleJavaScriptDialog", answer, page_session_));
+        !reason.empty()) {
+      return {{"error", reason}};
+    }
+    dialogs_.erase(page_session_);
+    return {{"ok", true}};
+  }
+  if (op != "probe" && op != "observe" && op != "read") {
+    return {{"error", "a " + type +
+                          " dialog is open: press Enter to accept "
+                          "it or Escape to dismiss it first"}};
+  }
+  return {{"ok", true}, {"dialog", open}};
 }
 }  // namespace uagent::browser

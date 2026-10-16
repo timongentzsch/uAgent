@@ -15,10 +15,8 @@
 
 #include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
-#include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
-#include "include/cli/options.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/strings.h"
@@ -63,9 +61,7 @@ void Start(std::vector<SessionInfo> members) {
   std::thread([members = std::move(members)] {
     for (const SessionInfo& member : members) {
       std::string error;
-      if (!session::Open(ExecutablePath(), member.cwd, member.path, "",
-                         Options{}, error)
-               .socket) {
+      if (!session::Wake(member.cwd, member.path, error).socket) {
         DebugLog("chat_member_start_failed", {{"error", error}});
       }
     }

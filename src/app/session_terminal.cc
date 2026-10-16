@@ -140,15 +140,12 @@ class Terminal {
         live = JsonValue(pending_, "id", "") == decision;
       }
       if (live) {
-        Send(answered.is_null()
-                 ? json{{"kind", "reply"},
-                        {"interaction_id", decision},
-                        {"text", ""},
-                        {"cancelled", true}}
-                 : json{{"kind", "reply"},
-                        {"interaction_id", decision},
-                        {"text", answered["text"]},
-                        {"attachments", answered["attachments"]}});
+        if (answered.is_null()) {
+          Reply(decision, "", {{"cancelled", true}});
+        } else {
+          Reply(decision, answered["text"],
+                {{"attachments", answered["attachments"]}});
+        }
       }
       return true;
     }
@@ -157,10 +154,7 @@ class Terminal {
       bool edited =
           raw_ ? composer_.EditTextExternally(text)
                : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
-      Send({{"kind", "reply"},
-            {"interaction_id", decision},
-            {"text", text},
-            {"cancelled", !edited}});
+      Reply(decision, text, {{"cancelled", !edited}});
       return true;
     }
     if (!decision.empty()) {
@@ -341,7 +335,7 @@ class Terminal {
         if (raw_) composer_.Clear();
         draft_.clear();
         if (!decision.empty()) {
-          Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", ""}});
+          Reply(decision, "");
         }
         if (running) {
           Send({{"kind", "interrupt"}});
@@ -378,7 +372,7 @@ class Terminal {
           text = AskAnswersFromLine(
               JsonValue(pending, "questions", json::array()), text);
         }
-        Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
+        Reply(decision, text);
       } else if (!text.empty() || !files.empty()) {
         json command = {{"kind", "submit"}, {"text", text}};
         if (!files.empty()) command["attachments"] = files;
@@ -605,6 +599,13 @@ class Terminal {
     std::lock_guard lock(mutex_);
     next_ = target;
     return Command::kLeave;
+  }
+  // Answers the decision `id`; `extra` adds fields such as "cancelled".
+  void Reply(const std::string& id, json text, json extra = json::object()) {
+    json command = {
+        {"kind", "reply"}, {"interaction_id", id}, {"text", std::move(text)}};
+    command.update(extra);
+    Send(std::move(command));
   }
   void Send(json command) {
     std::lock_guard lock(send_mutex_);

@@ -64,6 +64,7 @@ bool EnsurePrivateDirectory(const std::string& path);
 // somewhere nothing looks. Single-use names stay literal at their one site.
 inline constexpr const char* kMemoryDir = "memory";
 inline constexpr const char* kHistoryDir = "history";
+inline constexpr const char* kWorktreesDir = "worktrees";
 inline constexpr const char* kSessionsDir = "sessions";
 inline constexpr const char* kBgDir = "bg";
 inline constexpr const char* kTerminalsDir = "terminals";

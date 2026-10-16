@@ -214,6 +214,11 @@ Connection Open(const std::string& executable, const std::string& cwd,
   }
 }
 
+Connection Wake(const std::string& cwd, const std::string& path,
+                std::string& error) {
+  return Open(ExecutablePath(), cwd, path, "", Options{}, error);
+}
+
 struct Server::State {
   struct Client {
     Fd fd;

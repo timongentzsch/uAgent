@@ -21,7 +21,7 @@ std::string HistoryPath(const std::string& cwd, const std::string& name) {
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id) {
   const std::string cwd =
-      worktree ? UagentDir("worktrees") + "/" + id : project;
+      worktree ? UagentDir(kWorktreesDir) + "/" + id : project;
   return {cwd, HistoryPath(cwd, prefix + id)};
 }
 
@@ -45,7 +45,7 @@ std::string CreateWorktree(const std::string& project, const std::string& cwd) {
 }
 
 bool LaunchWorktree(const std::string& cwd) {
-  return cwd.starts_with(UagentDir("worktrees") + "/");
+  return cwd.starts_with(UagentDir(kWorktreesDir) + "/");
 }
 
 std::string RemoveWorktree(const std::string& project, const std::string& cwd) {

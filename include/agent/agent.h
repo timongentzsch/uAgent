@@ -215,6 +215,11 @@ class Agent {
                    const std::string& sender = "") {
     not_user_.push_back({text, author, mail, std::move(re), sender});
   }
+  // The same, taken as a turn: an idle session starts one on it, a working
+  // one reads it at its next step.
+  void Arrive(const std::string& text, json re = json(),
+              const std::string& author = "", const std::string& mail = "",
+              const std::string& sender = "");
   // What the message this session last took a turn on came with.
   const json& ChatRe() const { return chat_re_; }
   // The person's message, written into the conversation without a turn.
@@ -225,8 +230,7 @@ class Agent {
   // a member. And whether its last answer was only to pass or to wait.
   bool ChatParticipant() const {
     return static_cast<bool>(chat_said_) ||
-           !ChatMember(JsonValue(session_role_, "thread", json::object()))
-                .empty();
+           !ChatMember(ThreadRole(session_role_)).empty();
   }
   bool SilentTurn() const {
     return ChatParticipant() &&

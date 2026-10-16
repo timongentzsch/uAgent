@@ -137,6 +137,9 @@
 
 ### Fixed
 
+- A message with files sent while a turn runs is taken as guidance for that
+  turn, as a message without files already was. Before, it was refused as
+  busy.
 - A panel's threads start in the folder itself when it is not in a git
   repository, such as a workspace. Before, every first spawn there failed on
   the worktree and the moderator had to retry.

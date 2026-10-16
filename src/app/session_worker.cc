@@ -107,16 +107,16 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 
 class WorkerChannel final : public ApplicationChannel {
  public:
+  // Made in the session's folder, which a panel's chat is.
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool panel, json thread,
-                const std::string& cwd)
+                std::string title, bool panel, json thread)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
         panel_(panel),
-        chat_(panel                        ? cwd
+        chat_(panel                        ? CanonicalCwd()
               : ChatMember(thread).empty() ? ""
                                            : JsonValue(thread, "folder", "")) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
@@ -311,7 +311,7 @@ class WorkerChannel final : public ApplicationChannel {
     SendState();
     const auto routed_until = std::chrono::steady_clock::now() + kPanelDecision;
     while (!closed_ && !reply_ && !AbortRequested()) {
-      const bool routed = JsonValue(decision_, "route", "") == kRoutePanel;
+      const bool routed = RoutedToPanel(decision_);
       lock.unlock();
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
@@ -438,7 +438,7 @@ class WorkerChannel final : public ApplicationChannel {
   // At today's spend limit a panel keeps its mail pending and says so
   // in its state. Checked outside the lock: it reads the threads' files.
   bool HoldMail() override {
-    const std::string pause = panel_ ? PanelPause(CanonicalCwd()) : "";
+    const std::string pause = panel_ ? PanelPause(chat_) : "";
     std::lock_guard lock(mutex_);
     if (pause != paused_) {
       paused_ = pause;
@@ -694,7 +694,7 @@ class WorkerChannel final : public ApplicationChannel {
     const json* files = JsonArray(parsed.raw, "attachments");
     const bool members_only = panel_ && kind == SessionCommandKind::kSubmit &&
                               (!files || files->empty()) &&
-                              ForMembersOnly(CanonicalCwd(), parsed.text);
+                              ForMembersOnly(chat_, parsed.text);
     UniqueLock lock(mutex_);
     if (kind == SessionCommandKind::kSteer && !turn_active_) {
       kind = SessionCommandKind::kSubmit;
@@ -703,8 +703,8 @@ class WorkerChannel final : public ApplicationChannel {
     if (link_ && !parsed.text.empty() &&
         (kind == SessionCommandKind::kSubmit ||
          kind == SessionCommandKind::kSteer)) {
-      const std::string refused = link_->Admit(
-          JsonValue(parsed.raw, "origin", "") == kRoutePanel, !turn_active_);
+      const std::string refused =
+          link_->Admit(parsed.from_panel, !turn_active_);
       if (!refused.empty()) {
         SendOutcome(request, refused);
         return true;
@@ -726,8 +726,7 @@ class WorkerChannel final : public ApplicationChannel {
         ReplyLocked(parsed, error);
         break;
       case SessionCommandKind::kEscalate:
-        if (pending_.empty() || parsed.interaction_id != pending_ || reply_ ||
-            JsonValue(decision_, "route", "") != kRoutePanel) {
+        if (StaleLocked(parsed.interaction_id) || !RoutedToPanel(decision_)) {
           error = "decision is stale or not with the moderator";
         } else {
           EscalateLocked(parsed.text);
@@ -806,15 +805,20 @@ class WorkerChannel final : public ApplicationChannel {
     return true;
   }
 
+  // Whether `id` no longer names the decision waiting for an answer. The
+  // caller holds mutex_.
+  bool StaleLocked(const std::string& id) const UAGENT_REQUIRES(mutex_) {
+    return pending_.empty() || id != pending_ || reply_;
+  }
+
   // Answers the pending decision. The caller holds mutex_.
   void ReplyLocked(const SessionCommand& parsed, std::string& error)
       UAGENT_REQUIRES(mutex_) {
-    const bool from_panel = JsonValue(parsed.raw, "origin", "") == kRoutePanel;
-    if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
+    if (StaleLocked(parsed.interaction_id)) {
       error = "decision is stale or already answered";
       return;
     }
-    if (from_panel && JsonValue(decision_, "route", "") != kRoutePanel) {
+    if (parsed.from_panel && !RoutedToPanel(decision_)) {
       // Only a decision routed to the panel is its to answer.
       error = "this decision belongs to the user";
       return;
@@ -827,7 +831,7 @@ class WorkerChannel final : public ApplicationChannel {
     reply_cancelled_ = parsed.cancelled;
     // The decision log: who decided a routed decision, and why.
     const std::string reason = JsonValue(parsed.raw, "reason", "");
-    if (from_panel) {
+    if (parsed.from_panel) {
       decided_ =
           (ask ? "moderator answered" : "moderator decided " + parsed.text) +
           (reason.empty() ? "" : ": " + reason);
@@ -853,11 +857,14 @@ class WorkerChannel final : public ApplicationChannel {
     if (ResolveCommandAttachments(parsed.raw, attachments, images, error)) {
       SteeringState().Queue(
           {.text = std::string(parsed.text),
-           .request_id = parsed.client_request_id,
+           .request_id = parsed.client_request_id.empty()
+                             ? parsed.request_id
+                             : parsed.client_request_id,
            .attachments = AttachmentsToJson(attachments),
            .images = std::move(images),
            .after_turn = JsonValue(parsed.raw, "queue", false)});
     }
+    SendState();
   }
 
   // A model call takes seconds: it runs beside the command reader so stop,
@@ -882,22 +889,14 @@ class WorkerChannel final : public ApplicationChannel {
     });
   }
 
-  // A message during a turn is guidance; otherwise it takes the one-slot
-  // input queue. The caller holds mutex_.
+  // A message during a turn is guidance, as a steer is; otherwise it takes
+  // the one-slot input queue. The caller holds mutex_.
   // With `members_only` the message is written into a panel's chat for
   // the members it names: it starts no turn of the panel's own.
   void SubmitLocked(const SessionCommand& parsed, bool members_only,
                     std::string& error) UAGENT_REQUIRES(mutex_) {
-    if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/") &&
-        !parsed.has_attachments) {
-      if (SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
-        error = "guidance queue is full";
-      } else {
-        SteeringState().Queue(
-            std::string(parsed.text),
-            JsonValue(parsed.raw, "client_request_id", parsed.request_id));
-      }
-      SendState();
+    if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/")) {
+      SteerLocked(parsed, error);
       return;
     }
     // Reuse the one-slot queue while a non-turn control finishes. The
@@ -1002,7 +1001,7 @@ int WorkerMain(int argc, char** argv) {
   if (argv[3] == PanelPath(argv[2])) {
     options.session = {{"kind", kSessionKindPanel}};
   } else if (const json* role = JsonObject(launch, "session");
-             role && JsonValue(*role, "kind", "") == kSessionKindThread) {
+             role && IsThread(*role)) {
     options.session = *role;
   } else if (const json header = SessionHeader(argv[3]);
              JsonValue(header, kSessionHeaderKind, "") == kSessionKindThread) {
@@ -1014,18 +1013,16 @@ int WorkerMain(int argc, char** argv) {
   // started again, so a restart never widens it: not even a sandbox policy
   // inherited through the environment stands in for its own. Its approval
   // mode is held to Auto where the mode is resolved (PermissionControl).
-  if (JsonValue(options.session, "kind", "") == kSessionKindThread) {
+  if (options.Thread()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     options.overrides["UAGENT_SANDBOX"] = "true";
-    const double budget =
-        ThreadBudget(JsonValue(options.session, "thread", json::object()));
+    const double budget = ThreadBudget(ThreadRole(options.session));
     if (budget > 0) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }
   }
-  WorkerChannel channel(
-      argv[3], argv[4], RandomToken(16), argv[5], options.Panel(),
-      JsonValue(options.session, "thread", json::object()), argv[2]);
+  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
+                        options.Panel(), ThreadRole(options.session));
   if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);

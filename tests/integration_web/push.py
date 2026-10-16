@@ -128,6 +128,51 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
             )
 
 
+def test_web_a_message_with_files_during_a_turn_is_guidance(root, home, *, binary):
+    """Sent while a turn runs, a message with files steers it as a steer
+    would, instead of being turned away as busy."""
+    workspace = root / "files-during-turn"
+    workspace.mkdir()
+
+    def responder(handler, body):
+        if "files-during-turn" in json.dumps(body["messages"]):
+            return event({"content": "read with the file"})
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "slow chunk one "}, finish=None),
+                event({"content": "slow chunk two"}),
+            ],
+            delay=0.5,
+        )
+        return None
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            status, asset, _ = client.json(
+                f"/api/sessions/{session['id']}/attachments?name=notes.txt",
+                raw=b"attached notes",
+                headers={"Content-Type": "text/plain"},
+            )
+            assert_true(status == 200, asset)
+            client.command("submit", session, text="Slow files probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            sent = client.command(
+                "submit", session, text="files-during-turn", attachment_ids=[asset["id"]]
+            )
+            assert_true(sent["accepted"] and not sent["error"], sent)
+            done = client.until(
+                session,
+                lambda value: (
+                    not value["metadata"]["turn_active"]
+                    and "read with the file" in json.dumps(value)
+                ),
+            )
+            assert_true(not done["state"].get("error"), done["state"])
+
+
 def test_web_queue_next_runs_after_the_turn(root, home, *, binary):
     # "Queue next" never joins the running turn: it waits for the turn to end
     # and then runs as a turn of its own.

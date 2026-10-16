@@ -493,8 +493,7 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
       "threads can be started again";
   session::Connection connection =
       OwnThread(info, PanelId(folder))
-          ? session::Open(ExecutablePath(), info.cwd, info.path, "", Options{},
-                          error)
+          ? session::Wake(info.cwd, info.path, error)
           : session::Connect(info.path);
   if (!connection.socket) {
     return Unavailable(error);

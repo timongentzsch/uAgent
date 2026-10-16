@@ -27,8 +27,7 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   notice.session = session;
   // A decision routed to a thread's panel reaches a person only once
   // the panel yields it (approval.escalated).
-  const bool routed = JsonValue(JsonValue(value, "data", json::object()),
-                                "route", "") == kRoutePanel;
+  const bool routed = RoutedToPanel(JsonValue(value, "data", json::object()));
   if (type == AppType(EventId::kTurnCompleted) ||
       ((type == AppType(EventId::kApprovalRequested) ||
         type == "ask.requested") &&

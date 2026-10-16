@@ -366,9 +366,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // tool is safe in every toolset, lean included.
   tools.push_back(SessionTool([](const std::string& path) {
     std::string ignored;  // the mail is queued either way
-    session::Open(ExecutablePath(),
-                  JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
-                  "", Options{}, ignored);
+    session::Wake(JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
+                  ignored);
   }));
   if (context.options.Panel()) {
     AddPanelTools(tools, CanonicalCwd(), [app = &context] {
@@ -446,11 +445,11 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
                       const json& arguments) {
   const bool confined_thread =
-      JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
+      app->options.Thread() &&
       SandboxRuntime().mode == SandboxMode::kEnforced &&
       (tool.name == "run" || tool.name == "scratch" ||
        (tool.needs_approval && !tool.needs_approval(arguments)));
-  const json thread = JsonValue(app->options.session, "thread", json::object());
+  const json thread = ThreadRole(app->options.session);
   const bool shared_file =
       tool.name == "read_path" && !ChatMember(thread).empty() &&
       PathWithin(
@@ -896,9 +895,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (context->options.Panel()) {
     context->tool_policy.tool_allowlist.assign(std::begin(kPanelTools),
                                                std::end(kPanelTools));
-  } else if (!ChatMember(
-                  JsonValue(context->options.session, "thread", json::object()))
-                  .empty()) {
+  } else if (!ChatMember(ThreadRole(context->options.session)).empty()) {
     context->tool_policy.tool_allowlist.assign(std::begin(kMemberTools),
                                                std::end(kMemberTools));
   }
@@ -918,8 +915,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     context->chat.emplace(
         CanonicalCwd(), [agent = context->agent.get()](const std::string& note,
                                                        const json& re) {
-          agent->NotFromUser(note, "", "", re);
-          SteeringState().Queue(note, "", true);
+          agent->Arrive(note, re);
         });
     context->agent->SetRuntimeContext([folder = CanonicalCwd(),
                                        agent = context->agent.get(),

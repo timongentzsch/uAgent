@@ -1280,7 +1280,8 @@ def test_members_the_panel_adds_answer_its_kickoff_not_each_introduction(root, h
 
     def reply(member, last, body):
         if not member:
-            return "PASS" if "Kickoff" in json.dumps(body) else "Kickoff: rate the kite."
+            # Its own name in front, as models write it: still to everyone.
+            return "PASS" if "Kickoff" in json.dumps(body) else "Moderator: Kickoff: rate the kite."
         return "Rated." if "Kickoff" in last else "PASS"
 
     with Server([_room(reply)]) as server:

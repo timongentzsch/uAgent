@@ -26,6 +26,16 @@ namespace {
 // A member goes by its session's title: renaming the one renames the other.
 const std::string& Name(const SessionInfo& member) { return member.title; }
 
+// `text` without its author's own name in front: a model writes it there as
+// it reads the others' messages, and it would address the author.
+std::string WithoutOwnName(std::string text, const std::string& name) {
+  text = Trim(std::move(text));
+  if (AsciiLower(text).starts_with(AsciiLower(name) + ":")) {
+    text = Trim(text.substr(name.size() + 1));
+  }
+  return text;
+}
+
 // The moderator among the participants, under the id a saved round and
 // queued mail know it by; what a message calls it is ModeratorName.
 constexpr const char* kSelf = "coordinator";
@@ -542,9 +552,11 @@ json Chat::Said(const std::string& text) {
 void Chat::Answered(const std::string& text, const json& to) {
   // Kept with members or without: the panel's turn ends either way.
   const std::vector<SessionInfo> members = ChatMembers(folder_);
-  if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
+  const std::string name = ModeratorName(folder_);
+  const std::string said = WithoutOwnName(text, name);
+  if (Finished(kSelf, said) == Answer::kMessage) {
     posted_ = 0;
-    Deliver(kSelf, ModeratorName(folder_), Trim(text), to);
+    Deliver(kSelf, name, said, to);
   }
   Release(members);
   Save();
@@ -578,12 +590,9 @@ void Chat::Heard(Mail& mail) {
   const auto [read, first] = heard_.try_emplace(mail.id, kNothing);
   // A member that has left is not heard; its last words go with it.
   if (sender != members.end()) {
-    // Named from its header, never from what it sent: a model that writes
-    // its name before its message, as it reads the others', is named once.
+    // Named from its header, never from what it sent.
     const std::string name = Name(*sender);
-    if (AsciiLower(text).starts_with(AsciiLower(name) + ":")) {
-      text = Trim(text.substr(name.size() + 1));
-    }
+    text = WithoutOwnName(std::move(text), name);
     if (first && (Late(to) ? !text.empty() && !SilentAnswer(text)
                            : Finished(mail.from, text) == Answer::kMessage)) {
       // With what the panel's answer to it is an answer to.

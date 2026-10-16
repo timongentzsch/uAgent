@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-preact";
+import { Undo2 } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { permissionLabel, permissionLabels } from "../../../shared/display.ts";
 import type { ConfigChange, ConfigSetting } from "../../../shared/types.ts";
@@ -11,7 +11,14 @@ import {
   ValueSelect,
 } from "../../../shared/ui.tsx";
 import ModelPicker from "../../../shared/model-picker.tsx";
-import { inherited, raw, secret, shown, type SavedScope } from "./facts.ts";
+import {
+  inherited,
+  raw,
+  REDACTED,
+  secret,
+  shown,
+  type SavedScope,
+} from "./facts.ts";
 import { ProvidersField } from "./providers-field.tsx";
 
 // One setting, edited where it is listed. A switch and a choice apply as
@@ -58,11 +65,7 @@ export function SettingField({
     setting.name === "UAGENT_APPROVAL" && choice in permissionLabels
       ? permissionLabel(choice)
       : choice;
-  const placeholder = hidden
-    ? own
-      ? "Set · enter a replacement"
-      : "Not set"
-    : below;
+  const placeholder = hidden ? (own ? REDACTED : "Not set") : below;
   const set = (value: string) =>
     save(
       value ? { key: setting.name, value } : { key: setting.name, unset: true },
@@ -200,7 +203,7 @@ export function SettingField({
           )
         }
       >
-        {control}
+        {/* Putting it back stands just before what it puts back. */}
         {!setting.locked && own !== undefined && (
           <IconButton
             label={`Reset ${setting.label}`}
@@ -212,9 +215,10 @@ export function SettingField({
               }
             }}
           >
-            <RotateCcw />
+            <Undo2 />
           </IconButton>
         )}
+        {control}
       </Row>
       {setting.sensitivity === "composite-secret" && !setting.locked && (
         <ProvidersField value={own} disabled={disabled} save={set} />

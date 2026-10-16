@@ -32,7 +32,7 @@ test("a provider is added, edited and kept, and the file is shown without its ke
   const key = lab.getByLabel("lab key");
   await key.fill("sk-lab-secret");
   await key.press("Enter");
-  await expect(key).toHaveAttribute("placeholder", "Set · enter a replacement");
+  await expect(key).toHaveAttribute("placeholder", "••••••••");
   await expect(key).toHaveValue("");
 
   // Another field changes; the key that was not retyped stays.

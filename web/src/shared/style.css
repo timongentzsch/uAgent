@@ -324,7 +324,7 @@ select:disabled {
   .session-row:hover {
     background: var(--raised);
   }
-  .session-row > .session:hover {
+  .session-row > .list-row:hover {
     background: none;
   }
 }

@@ -136,8 +136,9 @@ json Subject(const json& args, Seen& seen) {
   std::lock_guard lock(seen.mutex);
   const std::string site = browser::Origin(seen.url);
   if (site.empty()) {
-    return {{"call", args},
-            {"look", seen.view_id.empty() ? RandomToken(12) : seen.view_id}};
+    return seen.view_id.empty()
+               ? json{{"call", args}, {"once", RandomToken(12)}}
+               : json{{"call", args}, {"look", seen.view_id}};
   }
   return {{"action", action}, {"origin", site}};
 }
@@ -599,9 +600,13 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     const std::string action = JsonValue(args, "action", "");
     // Held to the site it was approved for: the browser refuses it once the
     // page is elsewhere.
-    if (const std::string site = JsonValue(context.approved, "origin", "");
-        !site.empty() && action != "open") {
-      args["origin"] = site;
+    if (action != "open") {
+      for (const char* bound : {"origin", "look"}) {
+        if (const std::string held = JsonValue(context.approved, bound, "");
+            !held.empty()) {
+          args[bound] = held;
+        }
+      }
     }
     if (action == "open" && !JsonValue(args, "path", "").empty()) {
       if (const std::string error = InlinePageFile(args); !error.empty()) {
@@ -618,10 +623,17 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     }
     const Action* row = FindAction(args);
     if (!row || !row->acts) return Query(session_id, args, action, *seen);
+    // Text typed while a prompt already shows, into no element, is its
+    // staged answer; a type whose own click opened it typed nothing.
+    bool answers = false;
+    {
+      std::lock_guard lock(seen->mutex);
+      answers = action == "type" && !seen->dialog.empty() &&
+                !args.contains("element") && !args.contains("x");
+    }
     ToolResult result = Act(session_id, args, action, context, *seen);
-    // Text typed while a prompt shows is its staged answer.
-    std::lock_guard lock(seen->mutex);
-    if (action == "type" && result.Ok() && !seen->dialog.empty()) {
+    if (answers && result.Ok()) {
+      std::lock_guard lock(seen->mutex);
       seen->answer = JsonValue(args, "text", "");
     }
     return result;

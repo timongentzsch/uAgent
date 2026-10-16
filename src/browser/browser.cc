@@ -114,18 +114,25 @@ std::string Origin(const std::string& url) {
   host = host.substr(
       host.rfind('@') == std::string::npos ? 0 : host.rfind('@') + 1);
   // Only what any browser reads alike: letters, digits, dots and dashes, an
-  // IPv6 address in brackets, and a port with no leading zero.
+  // IPv6 address in brackets, and a port up to 65535 with no leading zero.
   const size_t bracket = host.rfind(']');
   const size_t colon =
       host.find(':', bracket == std::string::npos ? 0 : bracket);
+  const std::string name = host.substr(0, colon);
   const std::string port =
       colon == std::string::npos ? "" : host.substr(colon + 1);
-  if (host.empty() ||
-      host.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789.-[]:") !=
+  const bool literal = name.starts_with('[');
+  if (name.empty() ||
+      name.find_first_not_of(literal
+                                 ? "[]0123456789abcdef:."
+                                 : "abcdefghijklmnopqrstuvwxyz0123456789.-") !=
           std::string::npos ||
+      (literal && (name.size() < 3 || !name.ends_with(']') ||
+                   name.find_first_of("[]", 1) != name.size() - 1)) ||
       (colon != std::string::npos &&
-       (port.empty() || port[0] == '0' ||
-        port.find_first_not_of("0123456789") != std::string::npos))) {
+       (port.empty() || port.size() > 5 || port[0] == '0' ||
+        port.find_first_not_of("0123456789") != std::string::npos ||
+        (port.size() == 5 && port > "65535")))) {
     return "";
   }
   if (port == (scheme == "https" ? "443" : "80")) host.resize(colon);

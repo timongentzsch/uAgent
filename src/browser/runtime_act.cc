@@ -434,6 +434,14 @@ json Runtime::Act(const std::string& op, const json& command) {
 // have moved since it was approved, by itself or by a person. `url` is the
 // page's when known; else the attached tab is asked.
 json Runtime::Elsewhere(const json& command, std::string url) {
+  // On a page that is no web site, the look it was approved on is the page;
+  // a call's own earlier steps (type's click) leave no look to compare.
+  if (const std::string look = JsonValue(command, "look", "");
+      !look.empty() && !observation_.empty() && look != observation_) {
+    return {{"error",
+             "the page changed since the look this was approved on; observe "
+             "it, then act again"}};
+  }
   const std::string site = JsonValue(command, "origin", "");
   if (site.empty()) return nullptr;
   if (url.empty()) {

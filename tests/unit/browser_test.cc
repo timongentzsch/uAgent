@@ -562,6 +562,12 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(act({{"op", "observe"}}).value("dialog", json()).value("type", "") ==
         "alert");
   CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  // On a page that is no web site, a call runs on the look it was approved
+  // on, not after a newer one.
+  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  CHECK(act({{"op", "press"}, {"key", "Tab"}, {"look", "older"}})
+            .value("error", "")
+            .starts_with("the page changed since the look"));
   std::ofstream(profile / "password-focused").close();
   CHECK(act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
         "this is a password field: use fill_saved, or request_human");
@@ -611,6 +617,8 @@ void TestBrowserOrigin() {
         "https://evil.example");
   CHECK(browser::Origin("https://good%2eexample/").empty());
   CHECK(browser::Origin("https://good.example:0443/").empty());
+  CHECK(browser::Origin("https://[]/").empty());
+  CHECK(browser::Origin("https://good.example:70000/").empty());
   CHECK(browser::Origin("file:///etc/hosts").empty());
 }
 
@@ -723,6 +731,9 @@ void TestBrowserToolSteps() {
                                  {"key", "Enter"}},
                                 {});
   CHECK(stopped.output.starts_with("click done.\nA prompt dialog is open"));
+  // Nothing was typed into the prompt that type's own click opened.
+  CHECK(tool.approval_preview({{"action", "press"}, {"key", "Enter"}})
+            .find("its answer reads") == std::string::npos);
   // Approving the Enter that sends a prompt's answer shows that answer.
   CHECK(tool.run({{"action", "type"}, {"text", "final"}}, {}).Ok());
   CHECK(tool.approval_preview({{"action", "press"}, {"key", "Enter"}})

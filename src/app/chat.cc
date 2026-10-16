@@ -479,26 +479,26 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
   }
 }
 
-json Chat::Said(const std::string& text) {
-  const std::vector<SessionInfo> members = ChatMembers(folder_);
-  if (members.empty()) return json();
-  // A new round: whoever still owed an answer to the last one owes none.
+json Chat::Begin(bool answers) {
   each_ = LongSetting(Cfg("UAGENT_PANEL_CHAT_TURNS"));
   round_ = NowMillis();
   typing_.clear();
   waiting_.clear();
   seats_.clear();
   heard_.clear();
+  if (!answers) return json();
+  seats_[kSelf].turns = 1;
+  typing_.insert(kSelf);
+  return {{"round", round_}};
+}
+
+json Chat::Said(const std::string& text) {
+  const std::vector<SessionInfo> members = ChatMembers(folder_);
   // The panel answers its user's message like any other, unless it is
-  // for members alone.
+  // for members alone. Members it adds while answering take part.
   const std::set<std::string> opens = Named(folder_, members, text);
-  json re;
-  if (opens.empty() || opens.contains(kSelf)) {
-    seats_[kSelf].turns = 1;
-    typing_.insert(kSelf);
-    re = {{"round", round_}};
-    if (!opens.empty()) re["asker"] = "";
-  }
+  json re = Begin(opens.empty() || opens.contains(kSelf));
+  if (!opens.empty() && !re.is_null()) re["asker"] = "";
   Deliver("", "user", text);
   Save();
   return re;
@@ -515,6 +515,13 @@ void Chat::Answered(const std::string& text, const json& to) {
 }
 
 void Chat::Heard(Mail& mail) {
+  // A thread's report is news to discuss: what the panel makes of it
+  // begins a round, as the user's message does.
+  if (mail.type == kMailTaskCompleted) {
+    mail.body["re"] = Begin(true);
+    Save();
+    return;
+  }
   if (mail.type != kMailChat) return;
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   const auto sender = std::ranges::find_if(members, [&](const auto& member) {
@@ -522,8 +529,10 @@ void Chat::Heard(Mail& mail) {
   });
   std::string text = Trim(JsonValue(mail.body, "text", ""));
   // What it answers. One to an earlier round is read, and is nobody's turn
-  // in this one.
-  const json to = JsonValue(mail.body, "re", json::object());
+  // in this one; so is one that answers nothing in the chat, as an
+  // introduction does.
+  json to = JsonValue(mail.body, "re", json());
+  if (!to.is_object()) to = json::object();
   mail.body.erase("re");
   mail.body["text"] = "";
   // Counted once: handed over again, it leaves as it did then.

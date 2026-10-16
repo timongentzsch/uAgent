@@ -140,6 +140,11 @@
   an endpoint no provider names; it answered `unknown model` before.
 - An image the vision model fails to read is tried once per turn. Before, each
   step of the turn asked again and paid the same failure, retries included.
+- A panel's members answer from the start. The message that has the moderator
+  bring them in now begins their round. Before, nobody answered until the user
+  wrote again. A thread's report that the moderator passes on begins a round
+  too, so the members discuss it. A member's introduction is read by everyone
+  and wakes nobody.
 
 ## v1.4.0 - 2026-10-15
 

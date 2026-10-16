@@ -323,7 +323,7 @@
               "type": "string"
             }
           ],
-          "description": "turns each participant of a panel's chat may take on one message of the user's; 0 lets the members only read",
+          "description": "turns each participant of a panel's chat may take on one message of the user's or one thread report; 0 lets the members only read",
           "x-env": "UAGENT_PANEL_CHAT_TURNS"
         },
         "panel.dailySpendUsd": {

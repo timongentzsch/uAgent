@@ -105,7 +105,7 @@ session limit and the panel's daily cost limit.
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
 | subagent launches per turn | 32 | |
 | panel threads at once / reported cost per day | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
-| chat turns per participant, and messages each, for one message of the user's | 3, 2 | `UAGENT_PANEL_CHAT_TURNS` |
+| chat turns per participant, and messages each, for one message of the user's or one thread report | 3, 2 | `UAGENT_PANEL_CHAT_TURNS` |
 | members of one panel's chat | 16 | |
 | a thread's report to its panel / one chat message | 6,000 characters / 16 KiB; `history` reads the rest | |
 | idle session runtime | stops after 15 minutes; the next message starts it | |

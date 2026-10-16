@@ -386,6 +386,7 @@ class WorkerChannel final : public ApplicationChannel {
           input_->attachments.push_back(AttachmentFromJson(item));
         }
         busy_ = turn_active_ = true;
+        if (link_) link_->Restarted();
         BeginTurn();
         wake_.Wake();
       }

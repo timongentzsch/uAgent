@@ -119,12 +119,16 @@ void ThreadLink::Resend() {
 }
 
 std::string ThreadLink::Admit(bool from_panel, bool starts_turn) {
+  panel_last_ = from_panel;
   if (!from_panel) {
     streak_ = 0;
     return "";
   }
-  if (!starts_turn || ++streak_ <= kStreak) return "";
-  return "the moderator has restarted this thread " + std::to_string(kStreak) +
-         " times in a row; ask the user first";
+  if (streak_ >= kStreak) {
+    return "the moderator has restarted this thread " +
+           std::to_string(kStreak) + " times in a row; ask the user first";
+  }
+  if (starts_turn) ++streak_;
+  return "";
 }
 }  // namespace uagent::session

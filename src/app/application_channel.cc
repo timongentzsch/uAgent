@@ -71,7 +71,7 @@ int Application::RunChannel() {
     agent_.DrainBackground(&children_finished);
     if (children_finished && input->wake) {
       const std::string note =
-          "[subagent finished, not a user message] Its result is above.";
+          HarnessNote("subagent finished", "Its result is above.");
       agent_.NotFromUser(note);
       SteeringState().Queue(note, "", true);
     }

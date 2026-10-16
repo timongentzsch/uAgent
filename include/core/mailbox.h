@@ -45,6 +45,9 @@ inline constexpr size_t kMailBytes = size_t{64} * 1024;
 // A session's mailbox id: its canonical session file, hashed, so every process
 // that names the session by any spelling of its path reaches one mailbox.
 std::string MailboxIdFor(const std::string& session_path);
+// Mail of `type` from the session at `sender_path` to the mailbox `to`.
+Mail MailFrom(const std::string& sender_path, std::string to, const char* type,
+              json body);
 std::string MailboxDir(const std::string& id);
 
 // Commits `mail`, filling its id and times when empty. Refuses a full inbox,

@@ -213,7 +213,8 @@ passes them to you.
   it is while several threads work. Ask the moderator for a thread's diff.
   To take the work, have the thread commit and merge or cherry-pick that
   commit from your checkout (the worktree shares your repository). With
-  `panel.environment=local` threads work in the folder itself.
+  `panel.environment=local`, and in a folder outside git such as a
+  workspace, threads work in the folder itself.
 - **Limits.** Five threads at once (`panel.maxThreads`) and $20 of
   reported cost a day for a panel and its threads
   (`panel.dailySpendUsd`); at the limit, threads' reports wait.

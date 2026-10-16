@@ -15,10 +15,12 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/child_agent.h"
+#include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/api/retry.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
+#include "include/app/thread_link.h"
 #include "include/app/tool_categories.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
@@ -28,6 +30,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
+#include "include/core/project.h"
 #include "include/core/runtime_config.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
@@ -597,18 +600,52 @@ void TestEffectiveImageModel() {
 
 // Mail that wakes a session is its to lose until the turn it starts has the
 // text: a runtime killed between the save and that turn receives it again.
+// Helpers the panel, its chat and their threads share.
+void TestSharedPanelHelpers() {
+  CHECK(JsonStrings({{"ids", {"a", 1, "b", nullptr}}}, "ids") ==
+        std::vector<std::string>({"a", "b"}));
+  CHECK(JsonStrings({{"ids", "a"}}, "ids").empty());
+  CHECK(JsonStrings(json::array(), "ids").empty());
+  CHECK(HarnessNote("chat", "Nobody is typing now.") ==
+        "[chat, not a user message] Nobody is typing now.");
+
+  TestWorkspace workspace("shared-panel-helpers");
+  const std::filesystem::path nested = workspace.workspace / "a" / "b";
+  std::filesystem::create_directories(nested);
+  CHECK(!InGitRepository(nested));
+  // A worktree's .git is a file; a repository's, a directory.
+  std::ofstream(workspace.workspace / ".git") << "gitdir: elsewhere\n";
+  CHECK(InGitRepository(nested));
+  std::filesystem::remove(workspace.workspace / ".git");
+  std::filesystem::create_directory(workspace.workspace / ".git");
+  CHECK(InGitRepository(workspace.workspace));
+}
+
+// A panel restarts a thread at most three times in a row, however its
+// messages arrive: guidance into a running turn is free until it starts one.
+void TestThreadRestartsInARow() {
+  session::ThreadLink link(json::object(), "thread.json", "t1");
+  CHECK(link.Admit(true, true).empty());
+  CHECK(link.Admit(true, false).empty());  // steers the running turn
+  link.Restarted();                        // ... which it outlived
+  CHECK(link.Admit(true, true).empty());
+  CHECK(!link.Admit(true, true).empty());
+  CHECK(!link.Admit(true, false).empty());  // could start a fourth
+  CHECK(link.Admit(false, false).empty());  // someone else spoke
+  link.Restarted();                         // not the panel's turn
+  CHECK(link.Admit(true, true).empty());
+}
+
 void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
   const std::string path = PanelPath(folder);
   const std::string own = MailboxIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
-  Mail wake;
-  wake.sender_path = (workspace.workspace / "thread.json").string();
-  wake.from = MailboxIdFor(wake.sender_path);
-  wake.to = own;
-  wake.type = kMailTaskCompleted;
-  wake.body = {{"text", "the thread finished\n"}, {"folder", folder}};
+  const Mail wake = MailFrom(
+      (workspace.workspace / "thread.json").string(), own, kMailTaskCompleted,
+      {{"text", "the thread finished\n"}, {"folder", folder}});
+  CHECK(wake.from == MailboxIdFor(wake.sender_path));
   CHECK(SendMail(wake).empty());
 
   Api api(RuntimeConfig{});

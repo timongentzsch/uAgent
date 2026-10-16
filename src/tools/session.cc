@@ -44,11 +44,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   }
   const std::string own = OwnSessionFile();
   const std::string title = JsonValue(SessionHeader(own), "title", "");
-  Mail mail;
-  mail.from = MailboxIdFor(own);
-  mail.sender_path = own;
-  mail.to = MailboxIdFor(peer);
-  mail.type = kMailNote;
+  Mail mail = MailFrom(own, MailboxIdFor(peer), kMailNote, json::object());
   mail.hops = hops;
   // Named as lists and boards name it, so the reply can address it.
   const std::string from = HashHex(own);

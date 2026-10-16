@@ -511,7 +511,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "worktree", ReloadPolicy::kNextUserTurn,
                           Sensitivity::kPublic, "coordination",
                           "where threads run: a fresh git worktree, or the "
-                          "folder itself"),
+                          "folder itself; a folder outside git runs in place"),
             kThreadEnvironments),
         "Where threads run"),
 

@@ -27,6 +27,7 @@
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
 #include "include/core/private_store.h"
+#include "include/core/project.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -391,10 +392,16 @@ ToolResult Spawn(const std::string& folder, const json& a,
                            "UAGENT_PANEL_DAILY_SPEND_USD or wait for tomorrow");
   }
   // A member reads the folder as it is; it changes nothing, so needs no copy.
-  const std::string environment =
-      member ? "local"
-             : JsonValue(a, "environment",
-                         StringSetting(Cfg("UAGENT_PANEL_ENVIRONMENT")));
+  // Unasked, a folder outside git runs in place: it can have no worktree.
+  std::string environment = JsonValue(a, "environment", "");
+  if (member) {
+    environment = "local";
+  } else if (environment.empty()) {
+    environment = StringSetting(Cfg("UAGENT_PANEL_ENVIRONMENT"));
+    if (environment == "worktree" && !InGitRepository(folder)) {
+      environment = "local";
+    }
+  }
   const LaunchPaths launch = PlanLaunch(folder, environment == "worktree",
                                         "thread-", HashHex(MakeSessionId()));
   if (environment == "worktree") {
@@ -549,8 +556,8 @@ Tool ThreadTool(const std::string& folder,
       "for you. spawn starts one on a brief (title, objective, output, "
       "done_when, boundaries; environment worktree or local). message "
       "guides a running session in this folder, or restarts your own "
-      "thread (session_id, text; three in a row at most, then ask the "
-      "user); stop interrupts its turn; close ends its runtime; diff shows "
+      "thread (session_id, text; three restarts in a row at most, then ask "
+      "the user); stop interrupts its turn; close ends its runtime; diff shows "
       "what it changed; delete closes and removes a session, and its "
       "worktree if nothing would be lost, after the user confirms. One "
       "thread per independent part; keep dependent steps in one thread. "
@@ -892,31 +899,45 @@ std::string PanelPause(const std::string& folder) {
          "UAGENT_PANEL_DAILY_SPEND_USD; your own messages still run.";
 }
 
-bool AnswerAhead(const SessionInfo& member) {
-  const std::string status = LiveStatus(member);
-  if (status == "needs you") return false;
-  return status != "saved" ||
-         std::ranges::any_of(
-             PendingMail(MailboxIdFor(member.path)), [](const Mail& mail) {
-               return NowMillis() - mail.created_ms < kStartingMs;
-             });
+namespace {
+// Whether `member` was woken moments ago, and its runtime may still be
+// starting on it. Mail that only informs it starts nothing.
+bool JustWoken(const SessionInfo& member) {
+  const int64_t now = NowMillis();
+  return std::ranges::any_of(PendingMail(MailboxIdFor(member.path)),
+                             [&](const Mail& mail) {
+                               return !JsonValue(mail.body, "quiet", false) &&
+                                      now - mail.created_ms < kStartingMs;
+                             });
 }
 
-namespace {
+// Each takes a status LiveStatus read once: a probe opens a socket.
+bool AnswerAhead(const SessionInfo& member, const std::string& status) {
+  return status != "needs you" && (status != "saved" || JustWoken(member));
+}
+
 // One just started is idle until its brief arrives: it has work ahead as
 // long as its runtime is up and it has finished no turn.
-bool WorkAhead(const SessionInfo& info) {
-  const std::string status = LiveStatus(info);
+bool WorkAhead(const SessionInfo& info, const std::string& status) {
   return status == "working" || (status == "idle" && info.turns == 0);
 }
 
-// Whether `mail` waiting in a mailbox comes from one of `threads`.
-bool FromAny(const Mail& mail, const std::vector<SessionInfo>& threads) {
-  return std::ranges::any_of(threads, [&](const SessionInfo& info) {
-    return MailboxIdFor(info.path) == mail.from;
+// Whether mail from one of `threads` waits in the mailbox `box`.
+bool ReportsWaiting(const std::string& box,
+                    const std::vector<SessionInfo>& threads) {
+  std::set<std::string> senders;
+  for (const SessionInfo& info : threads) {
+    senders.insert(MailboxIdFor(info.path));
+  }
+  return std::ranges::any_of(PendingMail(box), [&](const Mail& mail) {
+    return senders.contains(mail.from);
   });
 }
 }  // namespace
+
+bool AnswerAhead(const SessionInfo& member) {
+  return AnswerAhead(member, LiveStatus(member));
+}
 
 bool ThreadsOwe(const std::string& folder) {
   // Looked at in the order the work moves, so nothing slips between two
@@ -924,19 +945,20 @@ bool ThreadsOwe(const std::string& folder) {
   // taken before it is acknowledged.
   const std::vector<SessionInfo> threads = OwnThreads(folder);
   const std::set<std::string> typing = ChatTyping(folder);
+  // The chat has woken the panel itself, which has not answered yet.
+  if (typing.contains(kChatPanel)) return true;
   if (std::ranges::any_of(threads, [&](const SessionInfo& info) {
-        if (WorkAhead(info)) return true;
-        // A chat member woken and not yet heard from.
-        return typing.contains(MailboxIdFor(info.path)) && AnswerAhead(info);
+        const std::string status = LiveStatus(info);
+        // A chat member woken and not yet heard from counts too.
+        return WorkAhead(info, status) ||
+               (typing.contains(MailboxIdFor(info.path)) &&
+                AnswerAhead(info, status));
       })) {
     return true;
   }
   // Mail from anyone else may never be taken, and is not waited for.
   const std::string box = MailboxIdFor(PanelPath(folder));
-  return std::ranges::any_of(
-             PendingMail(box),
-             [&](const Mail& mail) { return FromAny(mail, threads); }) ||
-         MailTaken(box);
+  return ReportsWaiting(box, threads) || MailTaken(box);
 }
 
 bool ThreadsWorking(const std::string& folder) {
@@ -944,23 +966,15 @@ bool ThreadsWorking(const std::string& folder) {
   // A member counts by what its runtime does, not by the chat's own count:
   // one woken while it was still answering starts its next turn after the
   // answer the chat counted.
-  const auto answering = [](const SessionInfo& member) {
-    return LiveStatus(member) == "working" ||
-           std::ranges::any_of(
-               PendingMail(MailboxIdFor(member.path)), [](const Mail& mail) {
-                 return !JsonValue(mail.body, "quiet", false) &&
-                        NowMillis() - mail.created_ms < kStartingMs;
-               });
-  };
   return std::ranges::any_of(threads,
-                             [&](const SessionInfo& info) {
+                             [](const SessionInfo& info) {
+                               const std::string status = LiveStatus(info);
                                return ChatMember(info.thread).empty()
-                                          ? WorkAhead(info)
-                                          : answering(info);
+                                          ? WorkAhead(info, status)
+                                          : status == "working" ||
+                                                JustWoken(info);
                              }) ||
-         std::ranges::any_of(
-             PendingMail(MailboxIdFor(PanelPath(folder))),
-             [&](const Mail& mail) { return FromAny(mail, threads); });
+         ReportsWaiting(MailboxIdFor(PanelPath(folder)), threads);
 }
 
 void AddPanelTools(std::vector<Tool>& tools, const std::string& folder,

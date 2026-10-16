@@ -109,6 +109,17 @@ bool MailFromJson(const json& value, Mail& mail) {
   return ValidId(mail.id) && !mail.type.empty() && mail.body.is_object();
 }
 
+Mail MailFrom(const std::string& sender_path, std::string to, const char* type,
+              json body) {
+  Mail mail;
+  mail.from = MailboxIdFor(sender_path);
+  mail.sender_path = sender_path;
+  mail.to = std::move(to);
+  mail.type = type;
+  mail.body = std::move(body);
+  return mail;
+}
+
 std::string MailboxIdFor(const std::string& session_path) {
   if (session_path.empty()) return "";
   std::error_code error;

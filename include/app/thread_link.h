@@ -33,16 +33,25 @@ class ThreadLink {
   // Whether a report still waits to be sent: its runtime stays for it.
   bool Owes() const { return unsent_.has_value(); }
 
-  // Why a message may not enter the thread, or empty. A panel may send
-  // kStreak in a row with nobody else speaking here, so the two can never
-  // loop on each other's reports.
-  std::string Admit(bool from_panel);
+  // Why a message may not enter the thread, or empty. A panel may start
+  // kStreak turns in a row with nobody else speaking here, so the two can
+  // never loop on each other's reports; guidance into a turn under way
+  // starts none and is not counted until it starts one (Restarted).
+  std::string Admit(bool from_panel, bool starts_turn);
+  // A turn began from guidance queued during the last one.
+  void Restarted() {
+    if (panel_last_) ++streak_;
+  }
 
  private:
+  // How the panel's notes name this thread: Thread <id> "<title>".
+  std::string Label(const std::string& title) const;
+
   static constexpr int kStreak = 3;
   json thread_;
   std::string path_, id_;
-  int streak_ = 0;  // panel messages since anyone else spoke
+  int streak_ = 0;           // turns the panel started since anyone else spoke
+  bool panel_last_ = false;  // the newest message was the panel's
   std::optional<Mail> unsent_;
 };
 }  // namespace uagent::session

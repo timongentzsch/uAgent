@@ -40,10 +40,13 @@ std::set<std::string> Addressed(const std::string& text,
 // then reads it without taking a turn.
 bool ForMembersOnly(const std::string& folder, const std::string& text);
 
-// Whether the chat woke the panel itself and has not heard its answer yet.
-bool ChatWakesPanel(const std::string& folder);
-// The mailboxes of the members woken and not yet heard from.
+// The panel among a chat's participants, as a saved round names it.
+inline constexpr const char* kChatPanel = "coordinator";
+// Who was woken and has not been heard from yet: members by mailbox, and
+// the panel itself as kChatPanel.
 std::set<std::string> ChatTyping(const std::string& folder);
+// Who is in a folder's chat, read once for one event (defined in chat.cc).
+struct ChatRoster;
 
 // A panel's chat with its members: a room where everyone hears every
 // message and decides for itself whether to answer, to pass, or to wait for
@@ -100,7 +103,9 @@ class Chat {
   // that reader by name, with who asked ("asker", empty for the user): the
   // reader's answer brings it back. Returns that for the panel, null
   // when it is not woken.
-  json Deliver(const std::string& from, const std::string& author,
+  // `opens` is whom it addresses (Named).
+  json Deliver(const ChatRoster& roster, const std::set<std::string>& opens,
+               const std::string& from, const std::string& author,
                const std::string& text, const json& to = json(),
                const std::string& source = "");
   // Whether `who` may take another turn on a message for `some` only, which
@@ -108,9 +113,9 @@ class Chat {
   bool Wakes(const std::string& who, bool some, bool one);
   // Drops whoever is no longer awaited: a member that left, or one whose
   // answer nothing can bring any more.
-  void Settle(const std::vector<SessionInfo>& members);
+  void Settle(const ChatRoster& roster);
   // With nobody typing, whoever waited longest is told so.
-  void Release(const std::vector<SessionInfo>& members);
+  void Release(const ChatRoster& roster);
   // Whether `to`, what a message answers, is of an earlier round.
   bool Late(const json& to) const {
     return to.is_object() && JsonValue(to, "round", int64_t{0}) != round_;

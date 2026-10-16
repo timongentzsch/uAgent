@@ -122,6 +122,8 @@ namespace uagent {
   X(TestRuntimeOwnershipHelpers)                  \
   X(TestPermissionAndToolCategoryPolicy)          \
   X(TestAttributedUsageAccumulator)               \
+  X(TestSharedPanelHelpers)                       \
+  X(TestThreadRestartsInARow)                     \
   X(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) \
   X(TestAgentConfigAllowlist)                     \
   X(TestEffectiveConfigReload)                    \

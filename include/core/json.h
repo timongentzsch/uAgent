@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/core/checked.h"
 #include "third_party/json.hpp"
@@ -103,6 +104,18 @@ inline const json* JsonArray(const json& object, const char* key) {
   if (!object.is_object()) return nullptr;
   auto value = object.find(key);
   return value != object.end() && value->is_array() ? &*value : nullptr;
+}
+
+// The strings of a nested array, in order; anything else in it is skipped.
+inline std::vector<std::string> JsonStrings(const json& object,
+                                            const char* key) {
+  std::vector<std::string> strings;
+  if (const json* items = JsonArray(object, key)) {
+    for (const json& item : *items) {
+      if (item.is_string()) strings.push_back(item.get<std::string>());
+    }
+  }
+  return strings;
 }
 
 // OpenAI-compatible APIs use either {"error":"..."} or

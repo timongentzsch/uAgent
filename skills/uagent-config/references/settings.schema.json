@@ -357,7 +357,7 @@
               "type": "string"
             }
           ],
-          "description": "where threads run: a fresh git worktree, or the folder itself",
+          "description": "where threads run: a fresh git worktree, or the folder itself; a folder outside git runs in place",
           "x-env": "UAGENT_PANEL_ENVIRONMENT"
         },
         "panel.maxThreads": {

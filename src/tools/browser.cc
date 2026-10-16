@@ -298,7 +298,8 @@ ToolResult Query(const std::string& session_id, const json& args,
 ToolResult Act(const std::string& session_id, const json& args,
                const std::string& action, const ToolContext& context) {
   // type may click its field first and press a key after: one call, in
-  // that order, stopping at the first that fails.
+  // that order, stopping at the first that fails or opens a dialog, which
+  // must not take what was meant for the page.
   std::vector<std::string> ops = {action};
   if (action == "type") {
     if (args.contains("element") || args.contains("x")) {
@@ -309,10 +310,10 @@ ToolResult Act(const std::string& session_id, const json& args,
   std::string done;
   bool whole = true;
   for (const std::string& op : ops) {
-    const std::string error =
-        !done.empty() && (AbortRequested() || context.Expired())
-            ? "interrupted"
-            : JsonValue(Ask(session_id, args, op), "error", "");
+    const json reply = !done.empty() && (AbortRequested() || context.Expired())
+                           ? json{{"error", "interrupted"}}
+                           : Ask(session_id, args, op);
+    const std::string error = JsonValue(reply, "error", "");
     if (!error.empty()) {
       if (done.empty()) {
         return ToolFailure(ToolErrorCode::kRemoteError, error);
@@ -322,13 +323,19 @@ ToolResult Act(const std::string& session_id, const json& args,
       break;
     }
     done += op + " done.\n";
+    if (reply.contains("dialog")) {
+      whole = false;
+      break;
+    }
   }
   done += Settle(session_id, context);
   // open may read the page it opened, once that has settled.
   if (action == "open" && whole &&
       (args.contains("find") || args.contains("offset"))) {
     json read = Ask(session_id, args, "read");
-    if (!read.contains("error")) return Reading(read, args, done);
+    if (!read.contains("error") && !read.contains("dialog")) {
+      return Reading(read, args, done);
+    }
   }
   done.pop_back();
   return Observation(session_id, done, context, /*look=*/false);

@@ -5,6 +5,7 @@
 #include <sys/types.h>
 
 #include <chrono>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -34,9 +35,10 @@ class Runtime {
   // Writes a command without waiting for its reply; its id, or -1.
   int64_t Send(const std::string& method, const json& parameters,
                const std::string& session);
-  // What an operation does while the page shows a dialog, or null when it
-  // goes on as usual.
+  // What an operation does while the page shows a dialog.
   json Dialog(const std::string& op, const json& command);
+  // The attached page's open dialog ({type, message, answer}), or null.
+  json* OpenDialog();
   bool SelectPage(std::string& error);
   bool AttachPage(std::string target, std::string& error);
   bool Agent(const json& command, std::string& error);
@@ -75,9 +77,14 @@ class Runtime {
   std::string mode_ = "idle";
   bool profile_setup_ = false;
   bool loading_ = false;
-  // The attached page's open dialog ({type, message, answer}), or null. It
-  // stops the page: nothing there is answered until it closes.
-  json dialog_;
+  // Each tab's one attachment, so a tab returned to keeps what its session
+  // saw, and the dialog each session's page shows. A dialog stops its page:
+  // nothing there is answered until it closes, and Chrome tells of it once.
+  std::map<std::string, std::string> sessions_;
+  std::map<std::string, json> dialogs_;
+  // The agent's own navigation is under way: the page's plea to stay is
+  // what the agent already chose against.
+  bool leaving_ = false;
   std::chrono::steady_clock::time_point used_ =
       std::chrono::steady_clock::now();
   // The browser changed hands and its holder has not yet opened or looked

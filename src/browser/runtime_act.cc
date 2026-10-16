@@ -22,23 +22,27 @@
 
 namespace uagent::browser {
 namespace {
-// Where a numbered element is now, brought into view and still for two
-// frames, since a page may animate it there. Nothing when it left the page
-// or has no size; what lies on top when something else would take the
-// click, so the model can deal with that first.
+// Where a numbered element is now, brought into view and the same over two
+// frames, since a page may animate it there; a frame is at most 50 ms, as a
+// hidden tab draws none. Nothing when it left the page or has no size;
+// whether it is still moving after ten frames; and what lies on top when
+// something else would take the click, so the model can deal with that.
 constexpr const char* kElementScript = R"js((async n => {
   const e = (window.__uagentElements || [])[n - 1];
   if (!e || !e.isConnected) return null;
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
-  let r = e.getBoundingClientRect(), still = 0;
+  const box = () => JSON.stringify(e.getBoundingClientRect());
+  let was = box(), still = 0;
   for (let i = 0; i < 10 && still < 2; i++) {
-    await new Promise(requestAnimationFrame);
-    const now = e.getBoundingClientRect();
-    still = now.x === r.x && now.y === r.y ? still + 1 : 0;
-    r = now;
+    await new Promise(next => { requestAnimationFrame(next); setTimeout(next, 50); });
+    const now = box();
+    still = now === was ? still + 1 : 0;
+    was = now;
   }
+  if (still < 2) return {moving: true};
+  const r = e.getBoundingClientRect();
   const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
-  if (r.width < 1 || r.height < 1) return null;
+  if (!e.isConnected || r.width < 1 || r.height < 1) return null;
   const hit = document.elementFromPoint(x, y);
   if (hit && (e.contains(hit) || hit.contains(e))) return {x, y};
   if (!hit) return null;
@@ -48,11 +52,24 @@ constexpr const char* kElementScript = R"js((async n => {
       (words ? ' "' + words + '"' : '')};
 }))js";
 
-// Whether the focused field is one the screenshots mask (kSecretScript).
-constexpr const char* kSecretFieldScript = R"js((e => !!e &&
-  e.tagName === 'INPUT' && (e.hasAttribute('data-uagent-secret') ||
-  e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''))
-)(document.activeElement))js";
+// Whether the field typed text reaches is one the screenshots mask
+// (kSecretScript), followed into shadow roots and frames; "frame" for a
+// frame of another site, whose field cannot be told.
+constexpr const char* kSecretFieldScript = R"js((() => {
+  let e = document.activeElement;
+  for (;;) {
+    if (e && e.shadowRoot && e.shadowRoot.activeElement) {
+      e = e.shadowRoot.activeElement;
+    } else if (e && /^I?FRAME$/.test(e.tagName)) {
+      let inner = null;
+      try { inner = e.contentDocument; } catch (_) {}
+      if (!inner) return 'frame';
+      e = inner.activeElement;
+    } else break;
+  }
+  return !!e && e.tagName === 'INPUT' && (e.hasAttribute('data-uagent-secret') ||
+    e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''));
+})())js";
 
 // types what `text` says: the name alone reaches the page's own listeners
 // and nothing else, so Enter would not send a form nor Backspace delete.
@@ -165,7 +182,9 @@ json Runtime::Act(const std::string& op, const json& command) {
         return {{"error", made ? error : "Chrome did not open a tab"}};
       }
     }
+    leaving_ = true;
     reply = Call("Page.navigate", {{"url", url}}, page_session_);
+    leaving_ = false;
     if (const json* result = JsonObject(reply, "result")) {
       if (auto failed = JsonValue(*result, "errorText", ""); !failed.empty()) {
         return {{"error", "navigation failed: " + failed}};
@@ -194,11 +213,13 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "the previous page is not HTTP(S)"}};
     }
     observation_.clear();
+    leaving_ = true;
     reply = Call(
         "Page.navigateToHistoryEntry",
         {{"entryId",
           JsonValue((*entries)[static_cast<size_t>(current - 1)], "id", 0)}},
         page_session_);
+    leaving_ = false;
   } else if (op == "click") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
@@ -219,6 +240,10 @@ json Runtime::Act(const std::string& op, const json& command) {
       found = found ? JsonObject(*found, "result") : nullptr;
       found = found ? JsonObject(*found, "value") : nullptr;
       if (!found) return {{"error", "that element is gone; look again"}};
+      if (JsonValue(*found, "moving", false)) {
+        return {{"error", "element " + std::to_string(element) +
+                              " is still moving; look again"}};
+      }
       if (const std::string over = JsonValue(*found, "covered", "");
           !over.empty()) {
         return {{"error", "element " + std::to_string(element) +
@@ -242,6 +267,11 @@ json Runtime::Act(const std::string& op, const json& command) {
           !reason.empty()) {
         return {{"error", reason}};
       }
+      if (OpenDialog()) {
+        return {{"error",
+                 "a dialog opened before the click; answer it, then "
+                 "click again"}};
+      }
       event = {{"type", type},
                {"x", x},
                {"y", y},
@@ -259,9 +289,16 @@ json Runtime::Act(const std::string& op, const json& command) {
              page_session_);
     const json* field = JsonObject(secret, "result");
     field = field ? JsonObject(*field, "result") : nullptr;
-    if (field && JsonValue(*field, "value", false)) {
-      return {{"error",
-               "this is a password field: use fill_saved, or request_human"}};
+    const json verdict =
+        field && field->contains("value") ? (*field)["value"] : json();
+    if (verdict != false) {
+      return {{"error", verdict == "frame"
+                            ? "the field is in another site's frame, whose "
+                              "kind cannot be told: request_human"
+                        : verdict == true
+                            ? "this is a password field: use fill_saved, or "
+                              "request_human"
+                            : "cannot tell which field has focus"}};
     }
     observation_.clear();
     if (JsonValue(command, "replace", false)) {
@@ -372,30 +409,31 @@ json Runtime::Act(const std::string& op, const json& command) {
 // dismisses, and text typed before Enter answers a prompt. A look reports
 // it, since the page behind it cannot be read until it closes.
 json Runtime::Dialog(const std::string& op, const json& command) {
-  const std::string type = JsonValue(dialog_, "type", "");
-  if (op == "probe" || op == "observe" || op == "read") {
-    return {{"ok", true}, {"dialog", dialog_}};
-  }
+  json& open = *OpenDialog();
+  const std::string type = JsonValue(open, "type", "");
+  const std::string key = JsonValue(command, "key", "");
   if (op == "type" && type == "prompt") {
-    dialog_["answer"] = JsonValue(command, "text", "");
+    open["answer"] = JsonValue(command, "text", "");
     return {{"ok", true}};
   }
-  const std::string key = JsonValue(command, "key", "");
-  if (op != "press" || (key != "Enter" && key != "Escape")) {
+  if (op == "press" && (key == "Enter" || key == "Escape")) {
+    json answer = {{"accept", key == "Enter"}};
+    if (key == "Enter" && open.contains("answer")) {
+      answer["promptText"] = open["answer"];
+    }
+    if (auto reason =
+            CdError(Call("Page.handleJavaScriptDialog", answer, page_session_));
+        !reason.empty()) {
+      return {{"error", reason}};
+    }
+    dialogs_.erase(page_session_);
+    return {{"ok", true}};
+  }
+  if (op != "probe" && op != "observe" && op != "read") {
     return {{"error", "a " + type +
                           " dialog is open: press Enter to accept "
                           "it or Escape to dismiss it first"}};
   }
-  json answer = {{"accept", key == "Enter"}};
-  if (key == "Enter" && dialog_.contains("answer")) {
-    answer["promptText"] = dialog_["answer"];
-  }
-  if (auto reason =
-          CdError(Call("Page.handleJavaScriptDialog", answer, page_session_));
-      !reason.empty()) {
-    return {{"error", reason}};
-  }
-  dialog_ = nullptr;
-  return {{"ok", true}};
+  return {{"ok", true}, {"dialog", open}};
 }
 }  // namespace uagent::browser

@@ -501,9 +501,10 @@ void TestBrowserSecretMaskAndBack() {
 }
 
 // A page's dialog holds the page until it is answered: the click that opened
-// it returns at once, a look reports it, and only Enter or Escape (with text
-// typed first for a prompt) reach it. A plea to stay on a page the agent is
-// leaving is accepted unasked. A password field takes no typed text.
+// it returns at once, a look reports it, even after a visit to another tab,
+// and only Enter or Escape (with text typed first for a prompt) reach it. A
+// plea to stay is accepted unasked only when the agent is leaving the page.
+// A password field takes no typed text, nor does another site's frame.
 void TestBrowserDialogsAndPasswordFields() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-dialogs");
@@ -532,11 +533,19 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(act({{"op", "back"}})
             .value("error", "")
             .starts_with("a confirm dialog is open"));
+  CHECK(!act({{"op", "tabs"}, {"target_id", "left-open"}}).contains("error"));
+  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  CHECK(!act({{"op", "tabs"}, {"target_id", "tab"}}).contains("error"));
+  CHECK(act({{"op", "observe"}}).contains("dialog"));
   CHECK(!act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
   CHECK(act({{"op", "observe"}}).contains("view_id"));
   std::ofstream(profile / "dialog-on-click") << "prompt";
   CHECK(!click().contains("error"));
   CHECK(!act({{"op", "type"}, {"text", "Ada"}}).contains("error"));
+  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  std::ofstream(profile / "dialog-on-click") << "beforeunload";
+  CHECK(!click().contains("error"));
+  CHECK(act({{"op", "observe"}}).contains("dialog"));
   CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
   std::ofstream(profile / "dialog-on-navigate") << "beforeunload";
   CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
@@ -545,7 +554,12 @@ void TestBrowserDialogsAndPasswordFields() {
   std::ofstream(profile / "password-focused").close();
   CHECK(act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
         "this is a password field: use fill_saved, or request_human");
+  std::ofstream(profile / "password-focused") << "frame";
+  CHECK(act({{"op", "type"}, {"text", "hunter2"}})
+            .value("error", "")
+            .starts_with("the field is in another site's frame"));
   std::vector<json> answers;
+  int attached = 0;
   bool moved = false, typed = false;
   std::ifstream log(profile / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
@@ -553,13 +567,17 @@ void TestBrowserDialogsAndPasswordFields() {
     const std::string method = command.value("method", "");
     const json params = command.value("params", json::object());
     if (method == "Page.handleJavaScriptDialog") answers.push_back(params);
+    attached += method == "Target.attachToTarget" &&
+                params.value("targetId", "") == "tab";
     moved = moved || params.value("type", "") == "mouseMoved";
     if (params.value("type", "") == "mousePressed") CHECK(moved);
     typed = typed || params.value("text", "") == "hunter2";
   }
   CHECK(answers == std::vector<json>({{{"accept", false}},
                                       {{"accept", true}, {"promptText", "Ada"}},
+                                      {{"accept", true}},
                                       {{"accept", true}}}));
+  CHECK(attached == 1);
   CHECK(!typed);
   runtime.Shutdown();
   fs::remove_all(directory);
@@ -624,7 +642,19 @@ void TestBrowserToolSteps() {
         "click done.\nA confirm dialog is open: \"Really "
         "confirm?\". press Enter accepts it, Escape dismisses "
         "it.");
-  CHECK(tool.run({{"action", "press"}, {"key", "Enter"}}, {}).Ok());
+  ToolResult answered = tool.run({{"action", "press"}, {"key", "Enter"}}, {});
+  CHECK(answered.Ok());
+  // A field whose click opens a prompt keeps what was meant for it: the call
+  // stops at the dialog, and nothing is typed or pressed into it.
+  std::ofstream(directory / "profile" / "dialog-on-click") << "prompt";
+  ToolResult stopped = tool.run({{"action", "type"},
+                                 {"element", 1},
+                                 {"view_id", view(answered.output)},
+                                 {"text", "meant for the page"},
+                                 {"key", "Enter"}},
+                                {});
+  CHECK(stopped.output.starts_with("click done.\nA prompt dialog is open"));
+  CHECK(tool.run({{"action", "press"}, {"key", "Escape"}}, {}).Ok());
   // A page that is only read: opened, then the lines asked for.
   ToolResult read = tool.run(
       {{"action", "open"}, {"url", "https://example.com/"}, {"find", "clip"}},
@@ -669,8 +699,8 @@ void TestBrowserToolSteps() {
     }
     if (params.value("type", "") == "keyDown") order.emplace_back("Enter");
   }
-  CHECK(order == std::vector<std::string>(
-                     {"click", "select", "type kestrel", "Enter", "click"}));
+  CHECK(order == std::vector<std::string>({"click", "select", "type kestrel",
+                                           "Enter", "click", "click"}));
   CHECK(written);
   fs::remove_all(directory);
 }

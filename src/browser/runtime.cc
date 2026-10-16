@@ -242,6 +242,8 @@ void Runtime::Stop(bool preserve_lease) {
   unlink(RfbPath().c_str());
   target_.clear();
   page_session_.clear();
+  sessions_.clear();
+  dialogs_.clear();
   observation_.clear();
   known_targets_.clear();
   action_target_.clear();
@@ -451,7 +453,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
   // A page held by a dialog answers nothing but the dialog's own answer.
   const bool held = !session.empty() && session == page_session_ &&
                     method != "Page.handleJavaScriptDialog";
-  if (held && !dialog_.is_null()) return {{"dialog", true}};
+  if (held && OpenDialog()) return {{"dialog", true}};
   const int64_t id = Send(method, parameters, session);
   if (id < 0) return {{"error", "Chrome control pipe is stuck or closed"}};
   for (;;) {
@@ -476,30 +478,29 @@ json Runtime::Call(const std::string& method, const json& parameters,
       }
       // Its tab was closed by hand, or Chrome replaced it: nothing is
       // attached until a page is chosen again.
-      if (event == "Target.detachedFromTarget" && params &&
-          JsonValue(*params, "sessionId", "") == page_session_) {
-        page_session_.clear();
-        dialog_ = nullptr;
+      if (event == "Target.detachedFromTarget" && params) {
+        const std::string gone = JsonValue(*params, "sessionId", "");
+        std::erase_if(sessions_,
+                      [&](const auto& tab) { return tab.second == gone; });
+        dialogs_.erase(gone);
+        if (gone == page_session_) page_session_.clear();
       }
-      if (params && JsonValue(response, "sessionId", "") == page_session_) {
-        // Leaving a page is what the agent asked for when it navigated, so
-        // the page's plea to stay is accepted at once; the reply is dropped
-        // like any other that is not waited for.
-        if (event == "Page.javascriptDialogOpening") {
-          const std::string type = JsonValue(*params, "type", "");
-          if (type == "beforeunload") {
-            Send("Page.handleJavaScriptDialog", {{"accept", true}},
-                 page_session_);
-          } else {
-            dialog_ = {{"type", type},
-                       {"message", JsonValue(*params, "message", "")}};
-          }
+      const std::string from = JsonValue(response, "sessionId", "");
+      if (params && event == "Page.javascriptDialogOpening") {
+        // The page's plea to stay while the agent leaves it is answered at
+        // once; its reply is dropped like any other not waited for.
+        if (leaving_ && from == page_session_ &&
+            JsonValue(*params, "type", "") == "beforeunload") {
+          Send("Page.handleJavaScriptDialog", {{"accept", true}}, from);
+        } else {
+          dialogs_[from] = {{"type", JsonValue(*params, "type", "")},
+                            {"message", JsonValue(*params, "message", "")}};
         }
-        if (event == "Page.javascriptDialogClosed") dialog_ = nullptr;
       }
+      if (event == "Page.javascriptDialogClosed") dialogs_.erase(from);
       // What the page owed is never coming while the dialog is open; an
       // input it cut short has still happened.
-      if (held && !dialog_.is_null()) return {{"dialog", true}};
+      if (held && OpenDialog()) return {{"dialog", true}};
       continue;
     }
     if (cdp_buffer_.size() > size_t{16} * 1024 * 1024) {
@@ -536,8 +537,21 @@ bool Runtime::SelectPage(std::string& error) {
   return AttachPage(target_, error);
 }
 
+json* Runtime::OpenDialog() {
+  auto open = dialogs_.find(page_session_);
+  return open == dialogs_.end() ? nullptr : &open->second;
+}
+
 // `target` by value: SelectPage passes target_ itself, which is replaced here.
 bool Runtime::AttachPage(std::string target, std::string& error) {
+  observation_.clear();
+  view_width_ = view_height_ = 0;
+  loading_ = false;
+  if (auto known = sessions_.find(target); known != sessions_.end()) {
+    target_ = std::move(target);
+    page_session_ = known->second;
+    return true;
+  }
   json attached =
       Call("Target.attachToTarget", {{"targetId", target}, {"flatten", true}});
   std::string attached_session;
@@ -552,7 +566,6 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
   // Adopt the target before enabling Page events, so a navigation already
   // pending in a fresh popup is reported against it and counts as loading.
   const std::string previous = std::exchange(target_, target);
-  loading_ = false;
   if (auto enabled =
           CdError(Call("Page.enable", json::object(), attached_session));
       !enabled.empty()) {
@@ -569,10 +582,7 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
     error = installed;
     return false;
   }
-  page_session_ = std::move(attached_session);
-  dialog_ = nullptr;
-  observation_.clear();
-  view_width_ = view_height_ = 0;
+  page_session_ = sessions_[target_] = std::move(attached_session);
   return true;
 }
 
@@ -730,8 +740,15 @@ json Runtime::Execute(const json& command) {
     ++generation_;
     return Status();
   }
-  if (!dialog_.is_null() && op != "tabs") return Dialog(op, command);
-  if (op == "probe") return Probe();
+  // A dialog that is open, or opens meanwhile, is what there is to report.
+  if (OpenDialog() && op != "tabs") return Dialog(op, command);
+  const auto reported = [&](json result) {
+    const json* open = OpenDialog();
+    return open && !result.contains("error")
+               ? json{{"ok", true}, {"dialog", *open}}
+               : result;
+  };
+  if (op == "probe") return reported(Probe());
   // Whoever takes the browser after someone else starts from the page as it
   // is, not as it remembers it: keys and text go nowhere before that.
   // Only a look or an open that worked counts.
@@ -744,9 +761,9 @@ json Runtime::Execute(const json& command) {
   if (op == "observe") {
     json seen = Observe(JsonValue(command, "image", true));
     if (!seen.contains("error")) moved_ = false;
-    return seen;
+    return reported(seen);
   }
-  if (op == "read") return Read(command);
+  if (op == "read") return reported(Read(command));
   if (op == "tabs") {
     json pages = PageTargets();
     if (pages.contains("error")) return pages;
@@ -783,7 +800,7 @@ json Runtime::Execute(const json& command) {
     moved_ = false;
     return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
   }
-  return Act(op, command);
+  return reported(Act(op, command));
 }
 
 }  // namespace uagent::browser

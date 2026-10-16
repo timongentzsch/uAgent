@@ -130,13 +130,15 @@ test("an element is clicked where it is now, and not when it is gone or covered"
   expect(await agent.where(99)).toBeNull();
 });
 
-test("a covered element names what covers it, and a moving one is clicked where it stops", async ({
+test("a covered element names what covers it, and a moving one is clicked where it stops or not at all", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto("about:blank");
   await page.setContent(`<button id=buy>Buy</button>
     <button id=slide style="position:relative;left:0;transition:left .1s">Slide</button>
+    <style>@keyframes spin { to { transform: translateX(200px) } }</style>
+    <button id=spin style="animation: spin 1s linear infinite">Spin</button>
     <div id=cookie-banner class="banner wide" style="position:fixed;inset:0">
       We use cookies. <button>Accept all</button></div>`);
   const agent = await control(page);
@@ -149,12 +151,17 @@ test("a covered element names what covers it, and a moving one is clicked where 
     () => (document.getElementById("slide").style.left = "300px"),
   );
   const slide = await agent.where(2);
-  expect(
-    await page.evaluate(
-      ({ x, y }) => document.elementFromPoint(x, y).id,
-      slide,
-    ),
-  ).toBe("slide");
+  // Where it stopped, not where it was on the way.
+  expect(slide).toEqual(
+    await page.evaluate(() => {
+      const r = document.getElementById("slide").getBoundingClientRect();
+      return {
+        x: Math.round(r.x + r.width / 2),
+        y: Math.round(r.y + r.height / 2),
+      };
+    }),
+  );
+  expect(await agent.where(3)).toEqual({ moving: true });
 });
 
 test("a password field is known as one, also once a reveal toggle shows it", async ({
@@ -179,6 +186,21 @@ test("a password field is known as one, also once a reveal toggle shows it", asy
     field.type = "text";
   });
   expect(await focused("pw")).toBe(true);
+  // Typed text goes where focus really is: into a shadow root, or a frame
+  // of the same site. Another site's frame cannot be told.
+  await page.setContent(`<div id=host></div>
+    <iframe id=same srcdoc="<input id=inner type=password>"></iframe>
+    <iframe id=other src="data:text/html,<input id=inner>"></iframe>`);
+  await page.evaluate(() => {
+    const root = document.getElementById("host").attachShadow({ mode: "open" });
+    root.innerHTML = "<input id=deep type=password>";
+    root.getElementById("deep").focus();
+  });
+  expect(await agent.secret()).toBe(true);
+  await page.frameLocator("#same").locator("#inner").focus();
+  expect(await agent.secret()).toBe(true);
+  await page.frameLocator("#other").locator("#inner").focus();
+  expect(await agent.secret()).toBe("frame");
 });
 
 test("reading keeps links whole and what was searched for in view", async ({

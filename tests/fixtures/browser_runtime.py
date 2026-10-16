@@ -50,17 +50,21 @@ if not controlled:
     signal.pause()
     sys.exit(0)
 
-session = "attached"
+# Each attached tab has its own session; closing the tab by hand detaches
+# them all, and those attached after are named anew.
+prefix = "attached"
+attached = set()
 measured = 0
 pending = b""
 # The reply a page's dialog holds back, as Chrome does, until it is answered.
 withheld = None
 
 
-def emit(method, **params):
-    os.write(
-        4, json.dumps({"method": method, "sessionId": session, "params": params}).encode() + b"\0"
-    )
+def emit(method, session, **params):
+    event = {"method": method, "params": params}
+    if session:
+        event["sessionId"] = session
+    os.write(4, json.dumps(event).encode() + b"\0")
 
 
 def opens_dialog(marker, opened_by):
@@ -70,8 +74,10 @@ def opens_dialog(marker, opened_by):
         return False
     kind = (profile / marker).read_text()
     (profile / marker).unlink()
-    emit("Page.javascriptDialogOpening", type=kind, message=f"Really {kind}?")
-    withheld = opened_by
+    emit(
+        "Page.javascriptDialogOpening", opened_by["sessionId"], type=kind, message=f"Really {kind}?"
+    )
+    withheld = opened_by["id"]
     return True
 
 
@@ -86,22 +92,27 @@ while chunk := os.read(3, 4096):
         # The test closes the attached tab by leaving this file.
         if (profile / "close-tab").exists():
             (profile / "close-tab").unlink()
-            event = {"method": "Target.detachedFromTarget", "params": {"sessionId": session}}
-            os.write(4, json.dumps(event).encode() + b"\0")
-            session = "reattached"
-        if command.get("sessionId", session) != session:
+            for gone in sorted(attached):
+                emit("Target.detachedFromTarget", None, sessionId=gone)
+            attached.clear()
+            prefix = "reattached"
+        if "sessionId" in command and command["sessionId"] not in attached:
             error = {"message": "Session with given id not found."}
             os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
             continue
         method = command["method"]
         if method == "Input.dispatchMouseEvent" and command["params"]["type"] == "mouseReleased":
-            if opens_dialog("dialog-on-click", command["id"]):
+            if opens_dialog("dialog-on-click", command):
                 continue
-        if method == "Page.navigate" and opens_dialog("dialog-on-navigate", command["id"]):
+        if method == "Page.navigate" and opens_dialog("dialog-on-navigate", command):
             continue
         if method == "Page.handleJavaScriptDialog":
             os.write(4, json.dumps({"id": command["id"], "result": {}}).encode() + b"\0")
-            emit("Page.javascriptDialogClosed", result=command["params"]["accept"])
+            emit(
+                "Page.javascriptDialogClosed",
+                command["sessionId"],
+                result=command["params"]["accept"],
+            )
             os.write(4, json.dumps({"id": withheld, "result": {}}).encode() + b"\0")
             continue
         if command["method"] == "Page.getNavigationHistory":
@@ -137,7 +148,10 @@ while chunk := os.read(3, 4096):
                 looked |= {"text": "Clips", "elements": '[1] text "Search" (empty)'}
                 result = {"result": {"value": looked}}
             elif "data-uagent-secret" in asked and "activeElement" in asked:
-                result = {"result": {"value": (profile / "password-focused").exists()}}
+                # True for a password field, or "frame" for another site's frame.
+                focused = profile / "password-focused"
+                value = focused.exists() and (focused.read_text() or True)
+                result = {"result": {"value": value}}
             elif "performance.timeOrigin" in asked:
                 # A page that has finished loading and stays as it is.
                 result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}
@@ -151,5 +165,6 @@ while chunk := os.read(3, 4096):
         elif command["method"] == "Target.createTarget":
             result = {"targetId": "new"}
         elif command["method"] == "Target.attachToTarget":
-            result = {"sessionId": session}
+            result = {"sessionId": f"{prefix}-{command['params']['targetId']}"}
+            attached.add(result["sessionId"])
         os.write(4, json.dumps({"id": command["id"], "result": result}).encode() + b"\0")

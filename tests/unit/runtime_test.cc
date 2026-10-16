@@ -465,6 +465,16 @@ void TestPermissionAndToolCategoryPolicy() {
   const std::string second =
       PermissionKey(tool, {{"path", "second"}}, approval_class);
   CHECK(first != second);
+  // A tool may say what an approval covers: calls that differ only in what
+  // it leaves out share one key.
+  tool.approval_subject = [](const json& arguments) {
+    return json{{"site", arguments.value("site", "")}};
+  };
+  CHECK(PermissionKey(tool, {{"site", "a"}, {"view", "1"}}, approval_class) ==
+        PermissionKey(tool, {{"site", "a"}, {"view", "2"}}, approval_class));
+  CHECK(PermissionKey(tool, {{"site", "a"}}, approval_class) !=
+        PermissionKey(tool, {{"site", "b"}}, approval_class));
+  tool.approval_subject = nullptr;
 
   // Risks name what approving risks, most serious first: a file write
   // inside the folder only makes changes; one outside says so.

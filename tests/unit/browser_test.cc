@@ -627,6 +627,29 @@ void TestBrowserToolSteps() {
   CHECK(opened.output.find("Elements:\n[1] text \"Search\" (empty)") !=
         std::string::npos);
   CHECK(opened.output.find("image saved") == std::string::npos);
+  // An approval names what an action acts on and where, and a remembered
+  // one covers that action on the site, whatever the look it came from.
+  const json click = {
+      {"action", "click"}, {"element", 1}, {"view_id", view(opened.output)}};
+  CHECK(tool.approval_preview(click) ==
+        "click [1] text \"Search\" (empty) on https://example.com/\n"
+        "Remembered, it covers any browser click on https://example.com.");
+  CHECK(tool.approval_preview({{"action", "type"},
+                               {"element", 1},
+                               {"text", "kestrel"},
+                               {"key", "Enter"}})
+            .starts_with("type \"kestrel\" into [1] text \"Search\" (empty) "
+                         "then press Enter on https://example.com/"));
+  CHECK(
+      tool.approval_subject(click) ==
+      tool.approval_subject(
+          {{"action", "click"}, {"element", 3}, {"view_id", "another-look"}}));
+  CHECK(tool.approval_subject(click) !=
+        tool.approval_subject({{"action", "type"}, {"text", "x"}}));
+  CHECK(tool.approval_subject(
+            {{"action", "open"}, {"url", "https://example.com/a?b"}}) ==
+        tool.approval_subject(
+            {{"action", "open"}, {"url", "https://example.com/c"}}));
   // A field in one call: clicked, its content replaced, the key pressed.
   ToolResult filled = tool.run({{"action", "type"},
                                 {"element", 1},

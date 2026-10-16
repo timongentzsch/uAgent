@@ -141,6 +141,13 @@
 
 ### Fixed
 
+- `browser`: "Allow for this conversation" (or always, in this repository)
+  on a browser action now covers that action on that site. Before, the
+  remembered approval named the look the action came from, so it never
+  applied again and every click asked. The approval, and the automatic
+  reviewer, see what the action acts on and where, such as
+  `click [3] button "Delete account" on https://example.com/settings`,
+  instead of `browser click`.
 - `browser`: a page's alert, confirm or prompt no longer stalls the browser.
   The action that opened it is done, a look reports the dialog in place of
   the page, and `press Enter` or `Escape` answers it (text typed first

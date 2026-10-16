@@ -103,9 +103,11 @@ class Chat {
   // that reader by name, with who asked ("asker", empty for the user): the
   // reader's answer brings it back. Returns that for the panel, null
   // when it is not woken.
-  json Deliver(const ChatRoster& roster, const std::string& from,
-               const std::string& author, const std::string& text,
-               const json& to = json(), const std::string& source = "");
+  // `opens` is whom it addresses (Named).
+  json Deliver(const ChatRoster& roster, const std::set<std::string>& opens,
+               const std::string& from, const std::string& author,
+               const std::string& text, const json& to = json(),
+               const std::string& source = "");
   // Whether `who` may take another turn on a message for `some` only, which
   // it is `one` of.
   bool Wakes(const std::string& who, bool some, bool one);

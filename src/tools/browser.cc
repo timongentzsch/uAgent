@@ -7,9 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <deque>
 #include <filesystem>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -121,12 +119,13 @@ std::string DialogLine(const json& dialog) {
 // look that numbered its rows, and a dialog it showed.
 struct Seen {
   std::mutex mutex;
-  std::string url, view_id, elements, dialog;
+  std::string url, view_id, elements, dialog, answer;
 };
 
 // What a remembered approval of a call covers: the action on the site of the
 // page last seen. A tab is approved one by one, and an action on a page that
-// is no web site (one written from a file) for the look it came from.
+// is no web site (one written from a file) for the look it came from, or for
+// itself alone when no look stands behind it.
 json Subject(const json& args, Seen& seen) {
   const std::string action = JsonValue(args, "action", "");
   if (action == "tabs") return args;
@@ -136,7 +135,10 @@ json Subject(const json& args, Seen& seen) {
   }
   std::lock_guard lock(seen.mutex);
   const std::string site = browser::Origin(seen.url);
-  if (site.empty()) return {{"call", args}, {"look", seen.view_id}};
+  if (site.empty()) {
+    return {{"call", args},
+            {"look", seen.view_id.empty() ? RandomToken(12) : seen.view_id}};
+  }
   return {{"action", action}, {"origin", site}};
 }
 
@@ -146,8 +148,12 @@ void SawDialog(Seen& seen, const json& dialog) {
   seen.url = JsonValue(dialog, "url", "");
   seen.view_id.clear();
   seen.elements.clear();
-  seen.dialog = "a " + JsonValue(dialog, "type", "") + " dialog says " +
-                JsonDump(JsonValue(dialog, "message", ""));
+  const std::string said = "a " + JsonValue(dialog, "type", "") +
+                           " dialog says " +
+                           JsonDump(JsonValue(dialog, "message", ""));
+  // An answer typed into it stays staged until the dialog changes.
+  if (said != seen.dialog) seen.answer.clear();
+  seen.dialog = said;
 }
 
 // What the person, or the reviewer, approves: the whole action, what it acts
@@ -195,7 +201,12 @@ std::string Preview(const json& args, Seen& seen) {
     said +=
         (action == "press" ? " " : " then press ") + JsonValue(args, "key", "");
   }
-  if (!seen.dialog.empty()) said += ", while " + seen.dialog;
+  if (!seen.dialog.empty()) {
+    said += ", while " + seen.dialog +
+            (seen.answer.empty() || action != "press"
+                 ? ""
+                 : " and its answer reads " + JsonDump(seen.answer));
+  }
   const std::string site = action == "tabs" ? "" : browser::Origin(seen.url);
   if (seen.url.empty()) return said + " on the current page";
   return said + " on " + seen.url +
@@ -606,8 +617,14 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       return Observation(session_id, "", context, /*look=*/true, *seen);
     }
     const Action* row = FindAction(args);
-    return !row || !row->acts ? Query(session_id, args, action, *seen)
-                              : Act(session_id, args, action, context, *seen);
+    if (!row || !row->acts) return Query(session_id, args, action, *seen);
+    ToolResult result = Act(session_id, args, action, context, *seen);
+    // Text typed while a prompt shows is its staged answer.
+    std::lock_guard lock(seen->mutex);
+    if (action == "type" && result.Ok() && !seen->dialog.empty()) {
+      seen->answer = JsonValue(args, "text", "");
+    }
+    return result;
   };
   tool.run = RefusingHidden(std::move(tool.run));
   return tool;

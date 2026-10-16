@@ -452,6 +452,11 @@ json Runtime::Elsewhere(const json& command, std::string url) {
 json Runtime::Dialog(const std::string& op, const json& command) {
   json& open = *OpenDialog();
   if (op == "type" || op == "press") {
+    if (moved_) {
+      return {{"error",
+               "another conversation used the browser since; observe before "
+               "answering its dialog"}};
+    }
     if (json refused = Elsewhere(command, JsonValue(open, "url", ""));
         !refused.is_null()) {
       return refused;
@@ -481,6 +486,8 @@ json Runtime::Dialog(const std::string& op, const json& command) {
                           " dialog is open: press Enter to accept "
                           "it or Escape to dismiss it first"}};
   }
+  // A look at the dialog is a look at the page as it is now.
+  if (op == "observe") moved_ = false;
   return {{"ok", true}, {"dialog", open}};
 }
 }  // namespace uagent::browser

@@ -723,6 +723,11 @@ void TestBrowserToolSteps() {
                                  {"key", "Enter"}},
                                 {});
   CHECK(stopped.output.starts_with("click done.\nA prompt dialog is open"));
+  // Approving the Enter that sends a prompt's answer shows that answer.
+  CHECK(tool.run({{"action", "type"}, {"text", "final"}}, {}).Ok());
+  CHECK(tool.approval_preview({{"action", "press"}, {"key", "Enter"}})
+            .find("while a prompt dialog says \"Really prompt?\" and its "
+                  "answer reads \"final\"") != std::string::npos);
   CHECK(tool.run({{"action", "press"}, {"key", "Escape"}}, {}).Ok());
   // A page that is only read: opened, then the lines asked for.
   ToolResult read = tool.run(

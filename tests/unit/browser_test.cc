@@ -6,6 +6,7 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -211,18 +212,28 @@ void TestBrowserProfiles() {
 }
 
 namespace {
-// Puts the fake X server, VNC and Chrome from tests/fixtures on `bin`.
-void InstallFakeBrowser(const std::filesystem::path& bin) {
-  namespace fs = std::filesystem;
-  fs::create_directory(bin);
-  for (const char* name : {"xauth", "Xtigervnc", "google-chrome-stable"}) {
-    const auto path = bin / name;
-    fs::copy_file(
-        fs::path(UAGENT_TEST_SOURCE_DIR) / "tests/fixtures/browser_runtime.py",
-        path);
-    fs::permissions(path, fs::perms::owner_all);
+// The fake X server, VNC and Chrome from tests/fixtures, put on `bin` and
+// found first, with the browser's data in `data` and no display of the
+// machine's own.
+struct FakeBrowser {
+  FakeBrowser(const std::filesystem::path& bin,
+              const std::filesystem::path& data)
+      : configured("UAGENT_BROWSER_DATA", data.string()),
+        search("PATH", Install(bin) + ":" + getenv("PATH")) {}
+  static std::string Install(const std::filesystem::path& bin) {
+    namespace fs = std::filesystem;
+    fs::create_directory(bin);
+    for (const char* name : {"xauth", "Xtigervnc", "google-chrome-stable"}) {
+      const auto path = bin / name;
+      fs::copy_file(fs::path(UAGENT_TEST_SOURCE_DIR) /
+                        "tests/fixtures/browser_runtime.py",
+                    path);
+      fs::permissions(path, fs::perms::owner_all);
+    }
+    return bin.string();
   }
-}
+  ScopedEnv configured, search, display{"DISPLAY"}, authority{"XAUTHORITY"};
+};
 }  // namespace
 
 void TestBrowserProfileSignIn() {
@@ -230,11 +241,7 @@ void TestBrowserProfileSignIn() {
   TestWorkspace workspace("browser-signin");
   const auto directory = fs::canonical(workspace.root) / "browser";
   const auto bin = workspace.root / "bin";
-  InstallFakeBrowser(bin);
-  ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
-  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
-  ScopedEnv display("DISPLAY");
-  ScopedEnv authority("XAUTHORITY");
+  FakeBrowser fake(bin, directory);
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   constexpr const char* kOther = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   browser::Runtime runtime;
@@ -294,12 +301,7 @@ void TestBrowserHandBackOnClose() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-handback");
   const auto bin = workspace.root / "bin";
-  InstallFakeBrowser(bin);
-  ScopedEnv configured("UAGENT_BROWSER_DATA",
-                       (fs::canonical(workspace.root) / "browser").string());
-  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
-  ScopedEnv display("DISPLAY");
-  ScopedEnv authority("XAUTHORITY");
+  FakeBrowser fake(bin, fs::canonical(workspace.root) / "browser");
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
   browser::Runtime runtime;
@@ -376,14 +378,10 @@ void TestBrowserSecretMaskAndBack() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-secrets");
   const auto bin = workspace.root / "bin";
-  InstallFakeBrowser(bin);
   // Short, so the display's socket fits an address on every platform.
   const auto directory =
       fs::canonical("/tmp") / ("uagent-browser-" + std::to_string(getpid()));
-  ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
-  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
-  ScopedEnv display("DISPLAY");
-  ScopedEnv authority("XAUTHORITY");
+  FakeBrowser fake(bin, directory);
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
   browser::Runtime runtime;
   // Whoever takes the browser looks before acting on it.
@@ -439,8 +437,7 @@ void TestBrowserSecretMaskAndBack() {
   CHECK(looked.value("image", "x").empty());
   const std::string view = looked.value("view_id", "");
   CHECK(act({{"op", "click"}, {"element", 2}, {"view_id", view}})
-            .value("error", "") ==
-        "that element is gone or covered; look again");
+            .value("error", "") == "that element is gone; look again");
   CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
              .contains("error"));
   CHECK(act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
@@ -503,19 +500,80 @@ void TestBrowserSecretMaskAndBack() {
   fs::remove_all(directory);
 }
 
+// A page's dialog holds the page until it is answered: the click that opened
+// it returns at once, a look reports it, and only Enter or Escape (with text
+// typed first for a prompt) reach it. A plea to stay on a page the agent is
+// leaving is accepted unasked. A password field takes no typed text.
+void TestBrowserDialogsAndPasswordFields() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-dialogs");
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-dialog-" + std::to_string(getpid()));
+  FakeBrowser fake(workspace.root / "bin", directory);
+  const auto profile = directory / "profile";
+  browser::Runtime runtime;
+  const auto act = [&](json command) {
+    command["session_id"] = "cccccccccccccccccccccccccccccccc";
+    return runtime.Execute(command);
+  };
+  const auto click = [&] {
+    const std::string view =
+        act({{"op", "observe"}, {"image", false}}).value("view_id", "");
+    return act({{"op", "click"}, {"element", 1}, {"view_id", view}});
+  };
+  CHECK(!act({{"op", "tabs"}}).contains("error"));
+  std::ofstream(profile / "dialog-on-click") << "confirm";
+  const auto started = std::chrono::steady_clock::now();
+  CHECK(!click().contains("error"));
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(3));
+  const json shown = act({{"op", "observe"}});
+  CHECK(shown.value("dialog", json::object()) ==
+        json({{"type", "confirm"}, {"message", "Really confirm?"}}));
+  CHECK(act({{"op", "back"}})
+            .value("error", "")
+            .starts_with("a confirm dialog is open"));
+  CHECK(!act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
+  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  std::ofstream(profile / "dialog-on-click") << "prompt";
+  CHECK(!click().contains("error"));
+  CHECK(!act({{"op", "type"}, {"text", "Ada"}}).contains("error"));
+  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  std::ofstream(profile / "dialog-on-navigate") << "beforeunload";
+  CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
+             .contains("error"));
+  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  std::ofstream(profile / "password-focused").close();
+  CHECK(act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
+        "this is a password field: use fill_saved, or request_human");
+  std::vector<json> answers;
+  bool moved = false, typed = false;
+  std::ifstream log(profile / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    const json params = command.value("params", json::object());
+    if (method == "Page.handleJavaScriptDialog") answers.push_back(params);
+    moved = moved || params.value("type", "") == "mouseMoved";
+    if (params.value("type", "") == "mousePressed") CHECK(moved);
+    typed = typed || params.value("text", "") == "hunter2";
+  }
+  CHECK(answers == std::vector<json>({{{"accept", false}},
+                                      {{"accept", true}, {"promptText", "Ada"}},
+                                      {{"accept", true}}}));
+  CHECK(!typed);
+  runtime.Shutdown();
+  fs::remove_all(directory);
+}
+
 // The tool's own part: several steps in one call, in order, and a page that
 // is only read. The service runs here, in front of the stand-in Chrome.
 void TestBrowserToolSteps() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-tool");
   const auto bin = workspace.root / "bin";
-  InstallFakeBrowser(bin);
   const auto directory = fs::canonical("/tmp") /
                          ("uagent-browser-tool-" + std::to_string(getpid()));
-  ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
-  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
-  ScopedEnv display("DISPLAY");
-  ScopedEnv authority("XAUTHORITY");
+  FakeBrowser fake(bin, directory);
   int owner[2];
   CHECK(pipe(owner) == 0);
   // Chrome must not inherit the end whose closing stops the service.
@@ -556,6 +614,17 @@ void TestBrowserToolSteps() {
                    {"key", "Enter"}},
                   {})
              .Ok());
+  // A click that opens a dialog is done, and the look after it is the
+  // dialog: the page behind it cannot be read until it is answered.
+  std::ofstream(directory / "profile" / "dialog-on-click") << "confirm";
+  ToolResult asked = tool.run(
+      {{"action", "click"}, {"element", 1}, {"view_id", view(filled.output)}},
+      {});
+  CHECK(asked.output ==
+        "click done.\nA confirm dialog is open: \"Really "
+        "confirm?\". press Enter accepts it, Escape dismisses "
+        "it.");
+  CHECK(tool.run({{"action", "press"}, {"key", "Enter"}}, {}).Ok());
   // A page that is only read: opened, then the lines asked for.
   ToolResult read = tool.run(
       {{"action", "open"}, {"url", "https://example.com/"}, {"find", "clip"}},
@@ -600,8 +669,8 @@ void TestBrowserToolSteps() {
     }
     if (params.value("type", "") == "keyDown") order.emplace_back("Enter");
   }
-  CHECK(order ==
-        std::vector<std::string>({"click", "select", "type kestrel", "Enter"}));
+  CHECK(order == std::vector<std::string>(
+                     {"click", "select", "type kestrel", "Enter", "click"}));
   CHECK(written);
   fs::remove_all(directory);
 }

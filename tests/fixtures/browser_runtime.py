@@ -53,6 +53,28 @@ if not controlled:
 session = "attached"
 measured = 0
 pending = b""
+# The reply a page's dialog holds back, as Chrome does, until it is answered.
+withheld = None
+
+
+def emit(method, **params):
+    os.write(
+        4, json.dumps({"method": method, "sessionId": session, "params": params}).encode() + b"\0"
+    )
+
+
+def opens_dialog(marker, opened_by):
+    """Whether this command opens the dialog the test asked for in `marker`."""
+    global withheld
+    if not (profile / marker).exists():
+        return False
+    kind = (profile / marker).read_text()
+    (profile / marker).unlink()
+    emit("Page.javascriptDialogOpening", type=kind, message=f"Really {kind}?")
+    withheld = opened_by
+    return True
+
+
 while chunk := os.read(3, 4096):
     pending += chunk
     while b"\0" in pending:
@@ -70,6 +92,17 @@ while chunk := os.read(3, 4096):
         if command.get("sessionId", session) != session:
             error = {"message": "Session with given id not found."}
             os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
+            continue
+        method = command["method"]
+        if method == "Input.dispatchMouseEvent" and command["params"]["type"] == "mouseReleased":
+            if opens_dialog("dialog-on-click", command["id"]):
+                continue
+        if method == "Page.navigate" and opens_dialog("dialog-on-navigate", command["id"]):
+            continue
+        if method == "Page.handleJavaScriptDialog":
+            os.write(4, json.dumps({"id": command["id"], "result": {}}).encode() + b"\0")
+            emit("Page.javascriptDialogClosed", result=command["params"]["accept"])
+            os.write(4, json.dumps({"id": withheld, "result": {}}).encode() + b"\0")
             continue
         if command["method"] == "Page.getNavigationHistory":
             result = {
@@ -103,6 +136,8 @@ while chunk := os.read(3, 4096):
                 looked = {"url": "https://example.com/", "title": "Clips", "chars": 5}
                 looked |= {"text": "Clips", "elements": '[1] text "Search" (empty)'}
                 result = {"result": {"value": looked}}
+            elif "data-uagent-secret" in asked and "activeElement" in asked:
+                result = {"result": {"value": (profile / "password-focused").exists()}}
             elif "performance.timeOrigin" in asked:
                 # A page that has finished loading and stays as it is.
                 result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}

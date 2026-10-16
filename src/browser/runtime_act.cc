@@ -22,20 +22,37 @@
 
 namespace uagent::browser {
 namespace {
-// Where a numbered element is now, brought into view first. Nothing when it
-// left the page, has no size, or lies under something else: a click there
-// would land on whatever is in its place.
-constexpr const char* kElementScript = R"js((n => {
+// Where a numbered element is now, brought into view and still for two
+// frames, since a page may animate it there. Nothing when it left the page
+// or has no size; what lies on top when something else would take the
+// click, so the model can deal with that first.
+constexpr const char* kElementScript = R"js((async n => {
   const e = (window.__uagentElements || [])[n - 1];
   if (!e || !e.isConnected) return null;
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
-  const r = e.getBoundingClientRect();
+  let r = e.getBoundingClientRect(), still = 0;
+  for (let i = 0; i < 10 && still < 2; i++) {
+    await new Promise(requestAnimationFrame);
+    const now = e.getBoundingClientRect();
+    still = now.x === r.x && now.y === r.y ? still + 1 : 0;
+    r = now;
+  }
   const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+  if (r.width < 1 || r.height < 1) return null;
   const hit = document.elementFromPoint(x, y);
-  if (r.width < 1 || r.height < 1 || !hit ||
-      !(e.contains(hit) || hit.contains(e))) return null;
-  return {x, y};
+  if (hit && (e.contains(hit) || hit.contains(e))) return {x, y};
+  if (!hit) return null;
+  const words = (hit.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return {covered: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
+      (hit.classList[0] ? '.' + hit.classList[0] : '') +
+      (words ? ' "' + words + '"' : '')};
 }))js";
+
+// Whether the focused field is one the screenshots mask (kSecretScript).
+constexpr const char* kSecretFieldScript = R"js((e => !!e &&
+  e.tagName === 'INPUT' && (e.hasAttribute('data-uagent-secret') ||
+  e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''))
+)(document.activeElement))js";
 
 // types what `text` says: the name alone reaches the page's own listeners
 // and nothing else, so Enter would not send a form nor Backspace delete.
@@ -195,13 +212,18 @@ json Runtime::Act(const std::string& op, const json& command) {
       json where = Call("Runtime.evaluate",
                         {{"expression", std::string(kElementScript) + "(" +
                                             std::to_string(element) + ")"},
-                         {"returnByValue", true}},
+                         {"returnByValue", true},
+                         {"awaitPromise", true}},
                         page_session_);
       const json* found = JsonObject(where, "result");
       found = found ? JsonObject(*found, "result") : nullptr;
       found = found ? JsonObject(*found, "value") : nullptr;
-      if (!found) {
-        return {{"error", "that element is gone or covered; look again"}};
+      if (!found) return {{"error", "that element is gone; look again"}};
+      if (const std::string over = JsonValue(*found, "covered", "");
+          !over.empty()) {
+        return {{"error", "element " + std::to_string(element) +
+                              " is covered by " + over +
+                              "; deal with that first"}};
       }
       x = JsonValue(*found, "x", -1);
       y = JsonValue(*found, "y", -1);
@@ -212,20 +234,35 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "coordinates exceed the observed viewport"}};
     }
     observation_.clear();
-    json event = {{"type", "mousePressed"},
-                  {"x", x},
-                  {"y", y},
-                  {"button", "left"},
-                  {"clickCount", 1}};
-    json pressed = Call("Input.dispatchMouseEvent", event, page_session_);
-    if (auto reason = CdError(pressed); !reason.empty()) {
-      return {{"error", reason}};
+    // Onto the point first, as a pointer gets there: menus open on hover.
+    json event = {{"type", "mouseMoved"}, {"x", x}, {"y", y}};
+    for (const char* type : {"mousePressed", "mouseReleased"}) {
+      if (auto reason =
+              CdError(Call("Input.dispatchMouseEvent", event, page_session_));
+          !reason.empty()) {
+        return {{"error", reason}};
+      }
+      event = {{"type", type},
+               {"x", x},
+               {"y", y},
+               {"button", "left"},
+               {"clickCount", 1},
+               {"buttons", std::string_view(type) == "mousePressed" ? 1 : 0}};
     }
-    event["type"] = "mouseReleased";
     reply = Call("Input.dispatchMouseEvent", event, page_session_);
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
+    json secret =
+        Call("Runtime.evaluate",
+             {{"expression", kSecretFieldScript}, {"returnByValue", true}},
+             page_session_);
+    const json* field = JsonObject(secret, "result");
+    field = field ? JsonObject(*field, "result") : nullptr;
+    if (field && JsonValue(*field, "value", false)) {
+      return {{"error",
+               "this is a password field: use fill_saved, or request_human"}};
+    }
     observation_.clear();
     if (JsonValue(command, "replace", false)) {
       // What the field holds becomes the selection, which the text replaces.
@@ -328,6 +365,37 @@ json Runtime::Act(const std::string& op, const json& command) {
   const std::string error = CdError(reply);
   if (!error.empty()) return {{"error", error}};
   if (op == "open") moved_ = false;
+  return {{"ok", true}};
+}
+
+// A dialog takes the keys a person would give it: Enter accepts, Escape
+// dismisses, and text typed before Enter answers a prompt. A look reports
+// it, since the page behind it cannot be read until it closes.
+json Runtime::Dialog(const std::string& op, const json& command) {
+  const std::string type = JsonValue(dialog_, "type", "");
+  if (op == "probe" || op == "observe" || op == "read") {
+    return {{"ok", true}, {"dialog", dialog_}};
+  }
+  if (op == "type" && type == "prompt") {
+    dialog_["answer"] = JsonValue(command, "text", "");
+    return {{"ok", true}};
+  }
+  const std::string key = JsonValue(command, "key", "");
+  if (op != "press" || (key != "Enter" && key != "Escape")) {
+    return {{"error", "a " + type +
+                          " dialog is open: press Enter to accept "
+                          "it or Escape to dismiss it first"}};
+  }
+  json answer = {{"accept", key == "Enter"}};
+  if (key == "Enter" && dialog_.contains("answer")) {
+    answer["promptText"] = dialog_["answer"];
+  }
+  if (auto reason =
+          CdError(Call("Page.handleJavaScriptDialog", answer, page_session_));
+      !reason.empty()) {
+    return {{"error", reason}};
+  }
+  dialog_ = nullptr;
   return {{"ok", true}};
 }
 }  // namespace uagent::browser

@@ -137,6 +137,19 @@
 
 ### Fixed
 
+- `browser`: a page's alert, confirm or prompt no longer stalls the browser.
+  The action that opened it is done, a look reports the dialog in place of
+  the page, and `press Enter` or `Escape` answers it (text typed first
+  answers a prompt). A page's plea to stay when the agent navigates away is
+  accepted. Before, every call waited 10 s and failed until someone closed
+  the dialog on the screen.
+- `browser`: a click points at its element before pressing, so menus that
+  open on hover open, and waits for an element that is still moving into
+  place. A click on a covered element names what covers it, such as a cookie
+  banner, instead of only saying it is covered.
+- `browser`: `type` refuses a password field, including one a reveal toggle
+  shows as text, and points to `fill_saved` or `request_human`. Before, only
+  the tool's description asked the model not to.
 - A message with files sent while a turn runs is taken as guidance for that
   turn, as a message without files already was. Before, it was refused as
   busy.

@@ -435,17 +435,25 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   return true;
 }
 
-json Runtime::Call(const std::string& method, const json& parameters,
-                   const std::string& session) {
-  if (!cdp_in_ || !cdp_out_) return {{"error", "Chrome is stopped"}};
+int64_t Runtime::Send(const std::string& method, const json& parameters,
+                      const std::string& session) {
   const int64_t id = ++next_id_;
   json command = {{"id", id}, {"method", method}, {"params", parameters}};
   if (!session.empty()) command["sessionId"] = session;
   std::string packet = JsonDump(command);
   packet.push_back('\0');
-  if (!WriteAllWithin(cdp_in_.Get(), packet, kCdpIoMs)) {
-    return {{"error", "Chrome control pipe is stuck or closed"}};
-  }
+  return WriteAllWithin(cdp_in_.Get(), packet, kCdpIoMs) ? id : -1;
+}
+
+json Runtime::Call(const std::string& method, const json& parameters,
+                   const std::string& session) {
+  if (!cdp_in_ || !cdp_out_) return {{"error", "Chrome is stopped"}};
+  // A page held by a dialog answers nothing but the dialog's own answer.
+  const bool held = !session.empty() && session == page_session_ &&
+                    method != "Page.handleJavaScriptDialog";
+  if (held && !dialog_.is_null()) return {{"dialog", true}};
+  const int64_t id = Send(method, parameters, session);
+  if (id < 0) return {{"error", "Chrome control pipe is stuck or closed"}};
   for (;;) {
     size_t end = cdp_buffer_.find('\0');
     if (end != std::string::npos) {
@@ -471,7 +479,27 @@ json Runtime::Call(const std::string& method, const json& parameters,
       if (event == "Target.detachedFromTarget" && params &&
           JsonValue(*params, "sessionId", "") == page_session_) {
         page_session_.clear();
+        dialog_ = nullptr;
       }
+      if (params && JsonValue(response, "sessionId", "") == page_session_) {
+        // Leaving a page is what the agent asked for when it navigated, so
+        // the page's plea to stay is accepted at once; the reply is dropped
+        // like any other that is not waited for.
+        if (event == "Page.javascriptDialogOpening") {
+          const std::string type = JsonValue(*params, "type", "");
+          if (type == "beforeunload") {
+            Send("Page.handleJavaScriptDialog", {{"accept", true}},
+                 page_session_);
+          } else {
+            dialog_ = {{"type", type},
+                       {"message", JsonValue(*params, "message", "")}};
+          }
+        }
+        if (event == "Page.javascriptDialogClosed") dialog_ = nullptr;
+      }
+      // What the page owed is never coming while the dialog is open; an
+      // input it cut short has still happened.
+      if (held && !dialog_.is_null()) return {{"dialog", true}};
       continue;
     }
     if (cdp_buffer_.size() > size_t{16} * 1024 * 1024) {
@@ -542,6 +570,7 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
     return false;
   }
   page_session_ = std::move(attached_session);
+  dialog_ = nullptr;
   observation_.clear();
   view_width_ = view_height_ = 0;
   return true;
@@ -701,6 +730,7 @@ json Runtime::Execute(const json& command) {
     ++generation_;
     return Status();
   }
+  if (!dialog_.is_null() && op != "tabs") return Dialog(op, command);
   if (op == "probe") return Probe();
   // Whoever takes the browser after someone else starts from the page as it
   // is, not as it remembers it: keys and text go nowhere before that.

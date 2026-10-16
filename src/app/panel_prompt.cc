@@ -66,9 +66,13 @@ struct PanelRequest {
       return !done;
     }
     if (kind != "state") return true;
+    // Looked up, never indexed: operator[] on a const json with no "state"
+    // is undefined.
+    static const json kNone = json::object();
+    const json* found = JsonObject(frame, "state");
+    const json& state = found ? *found : kNone;
     if (!submitted && !JsonValue(frame, "busy", true)) {
-      before =
-          UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+      before = UsageFromJson(JsonValue(state, "usage", json::object()));
       submitted = Send({{"kind", "submit"},
                         {"request_id", request},
                         {"text", options.prompt}});
@@ -84,7 +88,7 @@ struct PanelRequest {
     }
     // A report it has taken waits as guidance until its turn starts.
     busy = JsonValue(frame, "busy", false) || JsonValue(frame, "guidance", 0);
-    paused = frame["state"].contains("paused");
+    paused = state.contains("paused");
     // A request that met a turn a thread's report had just started was
     // taken into that turn, which ends under its own name: idle after the
     // request was accepted is its end too.
@@ -96,8 +100,8 @@ struct PanelRequest {
     }
     // A queued thread event may already have started the next turn, which
     // clears the stop record: the request's own is kept.
-    if (!completed) stop = JsonValue(frame["state"], "stop", json::object());
-    after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+    if (!completed) stop = JsonValue(state, "stop", json::object());
+    after = UsageFromJson(JsonValue(state, "usage", json::object()));
     completed = true;
     return true;
   }
@@ -129,9 +133,7 @@ void AwaitPanel(PanelRequest& panel) {
       continue;
     }
     if (!panel.submitted || !panel.completed || panel.busy ||
-        !panel.probe.empty() ||
-        (!panel.paused &&
-         (ThreadsOwe(panel.cwd) || ChatWakesPanel(panel.cwd)))) {
+        !panel.probe.empty() || (!panel.paused && ThreadsOwe(panel.cwd))) {
       continue;
     }
     panel.probe = RandomToken(16);

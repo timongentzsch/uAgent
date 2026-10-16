@@ -137,6 +137,12 @@
 
 ### Fixed
 
+- A panel's threads start in the folder itself when it is not in a git
+  repository, such as a workspace. Before, every first spawn there failed on
+  the worktree and the moderator had to retry.
+- The moderator's messages into a thread's running turn no longer count
+  toward the limit of three restarts in a row. Corrections members asked for
+  were refused while the thread was still working.
 - `web_fetch` reads PDFs: one is saved and attached to the model's next step,
   so a route that reads documents gets it whole. Before, every PDF failed and
   the model had to download and convert it itself. A 404 now says to find the

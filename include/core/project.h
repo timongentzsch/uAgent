@@ -29,6 +29,9 @@ struct ProjectInstructions {
 };
 
 std::filesystem::path ProjectRoot(const std::filesystem::path& cwd);
+// Whether `dir` is in a git repository: it or a parent has a .git, as a
+// directory or, in a worktree, as a file.
+bool InGitRepository(const std::filesystem::path& dir);
 
 // A directory contributes one file, as in Codex: AGENTS.override.md, else
 // AGENTS.md, else CLAUDE.md where UAGENT_OTHER_AGENTS names claude. Where

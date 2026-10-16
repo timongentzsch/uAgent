@@ -703,8 +703,8 @@ class WorkerChannel final : public ApplicationChannel {
     if (link_ && !parsed.text.empty() &&
         (kind == SessionCommandKind::kSubmit ||
          kind == SessionCommandKind::kSteer)) {
-      const std::string refused =
-          link_->Admit(JsonValue(parsed.raw, "origin", "") == kRoutePanel);
+      const std::string refused = link_->Admit(
+          JsonValue(parsed.raw, "origin", "") == kRoutePanel, !turn_active_);
       if (!refused.empty()) {
         SendOutcome(request, refused);
         return true;

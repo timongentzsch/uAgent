@@ -645,6 +645,64 @@ def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, bin
         assert_true("3 times in a row" in results[3], results)
 
 
+def test_guidance_into_a_working_thread_is_no_restart(root, home, *, binary):
+    """Messages into a thread's running turn steer it and start nothing, so
+    the limit on restarts in a row does not count them."""
+
+    def route(_, body):
+        if "Objective: slow work" in json.dumps(body["messages"]):
+            time.sleep(budget(3))
+            return event({"content": "slow work done"})
+        results = tool_results(body["messages"])
+        if not results:
+            return tool_call(
+                "thread",
+                {
+                    "action": "spawn",
+                    "title": "Slow",
+                    "objective": "slow work",
+                    "environment": "local",
+                },
+            )
+        if len(results) <= 4:
+            thread = json.loads(results[0])["session_id"]
+            note = f"note {len(results)}"
+            return tool_call("thread", {"action": "message", "session_id": thread, "text": note})
+        return event({"content": "messaged"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "steer it", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        results = max(
+            (tool_results(b["messages"]) for _, b in server.requests),
+            key=len,
+        )
+        assert_true(results[1:5] == ["sent"] * 4, results)
+
+
+def test_a_thread_outside_git_runs_in_place_unless_a_worktree_is_asked_for(root, home, *, binary):
+    def route(_, body):
+        if "Objective: list files" in json.dumps(body["messages"]):
+            return event({"content": "listed"})
+        results = tool_results(body["messages"])
+        spawn = {"action": "spawn", "title": "Here", "objective": "list files"}
+        if not results:
+            return tool_call("thread", spawn)
+        if len(results) == 1:
+            return tool_call("thread", {**spawn, "environment": "worktree"})
+        return event({"content": "spawned"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "list", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        results = max(
+            (tool_results(b["messages"]) for _, b in server.requests),
+            key=len,
+        )
+        assert_true(json.loads(results[0])["environment"] == "local", results)
+        assert_true("Cannot create worktree" in results[1], results)
+
+
 def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
     from integration_support import fnv1a64
     from session_support import SessionClient, runtime_directory, stop_sessions

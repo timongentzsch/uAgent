@@ -29,6 +29,11 @@ std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
   return cwd;
 }
 
+bool InGitRepository(const std::filesystem::path& dir) {
+  std::error_code ec;
+  return std::filesystem::exists(ProjectRoot(dir) / ".git", ec);
+}
+
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir) {
   for (const char* name : kInstructionNames) {
     // Claude's file speaks for a folder only where Claude is read from.

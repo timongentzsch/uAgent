@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "include/api/tool_protocol.h"
@@ -55,6 +56,12 @@ inline std::string CapResult(std::string s, int64_t cap = -1) {
 
 inline json HarnessMessage(std::string content) {
   return {{"role", "system"}, {"content", std::move(content)}};
+}
+
+// Text the harness hands a model in the user role, marked as what it is:
+// "[chat, not a user message] Nobody is typing now."
+inline std::string HarnessNote(std::string_view kind, std::string_view text) {
+  return "[" + std::string(kind) + ", not a user message] " + std::string(text);
 }
 
 // Stable tool-call identities shared by request construction and view

@@ -153,12 +153,9 @@ ToolResult MessageAgent(const ProcessSupervisor& processes,
   }
   // A parent without a session file is known to its child by its owner id.
   const std::string own = OwnSessionFile();
-  Mail mail;
-  mail.from = own.empty() ? processes.Owner() : MailboxIdFor(own);
-  mail.sender_path = own;
-  mail.to = MailboxIdFor(AgentPath(id));
-  mail.type = kMailSteer;
-  mail.body = {{"text", "[parent guidance]\n" + text}};
+  Mail mail = MailFrom(own, MailboxIdFor(AgentPath(id)), kMailSteer,
+                       {{"text", "[parent guidance]\n" + text}});
+  if (own.empty()) mail.from = processes.Owner();
   error = SendMail(std::move(mail));
   return error.empty() ? ToolSuccess("sent to agent " + id)
                        : ToolFailure(ToolErrorCode::kUnavailable, error);

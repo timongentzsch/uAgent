@@ -284,9 +284,9 @@ json Runtime::Act(const std::string& op, const json& command) {
         return named + " is still moving; look again";
       }
       if (JsonValue(*found, "transformed", false)) {
-        return {{"error", "element " + std::to_string(element) +
-                              " is in a frame drawn scaled or turned; click "
-                              "by x and y from a screenshot"}};
+        return named +
+               " is in a frame drawn scaled or turned; click by x "
+               "and y from a screenshot";
       }
       if (const std::string over = JsonValue(*found, "covered", "");
           !over.empty()) {

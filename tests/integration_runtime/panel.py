@@ -1268,6 +1268,65 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         assert_true("open your answer with" in text, text)
 
 
+def test_members_the_panel_adds_answer_its_kickoff_not_each_introduction(root, home, *, binary):
+    """The user's message that brings in the team begins the round its
+    members, added while the panel answers it, take their turns in. An
+    introduction is read by everyone and is nobody's turn."""
+
+    def reply(member, last, body):
+        if not member:
+            return "PASS" if "Kickoff" in json.dumps(body) else "Kickoff: rate the kite."
+        return "Rated." if "Kickoff" in last else "PASS"
+
+    with Server([_room(reply)]) as server:
+        env = base_env(home, server.url)
+        _team(root, env, binary)
+        wait_until(lambda: _asked(server, "Ada", "Kickoff"), "Ada was not woken")
+        wait_until(lambda: _asked(server, "Lin", "Kickoff"), "Lin was not woken")
+        # Every turn was its joining or had a message to answer: none was
+        # taken on an introduction alone.
+        heard = [_heard(b) for _, b in server.requests if _member(b)]
+        reasons = ("joined the chat", "Kickoff", "Rated.")
+        assert_true(all(any(r in h for r in reasons) for h in heard), heard)
+
+
+def test_a_threads_report_begins_a_round_the_members_discuss(root, home, *, binary):
+    """Members who used their turns on the user's message still discuss what
+    a thread reports when the panel passes it on."""
+
+    def reply(member, last, body):
+        if member:
+            return "Agreed, 3." if "3 files" in last else "PASS"
+        text = json.dumps(body)
+        if "Objective: count the files" in text:
+            return "3 files counted."
+        if "[thread event" in last:
+            return "The count is 3 files."
+        if "count the files" in last:
+            if '"Count files"' in text:
+                return "Started a count."
+            return tool_call(
+                "thread",
+                {
+                    "action": "spawn",
+                    "title": "Count files",
+                    "objective": "count the files",
+                    "environment": "local",
+                },
+            )
+        return "PASS"
+
+    with Server([_room(reply)]) as server:
+        env = base_env(home, server.url)
+        # One turn each: the user's message uses it up.
+        env["UAGENT_PANEL_CHAT_TURNS"] = "1"
+        _team(root, env, binary)
+        result = run(root, env, "panel", "-p", "count the files", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        wait_until(lambda: _asked(server, "Ada", "3 files"), "Ada never discussed the report")
+        wait_until(lambda: _asked(server, "Lin", "3 files"), "Lin never discussed the report")
+
+
 def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root, home, *, binary):
     def reply(member, last, _body):
         if "slow start" in last:

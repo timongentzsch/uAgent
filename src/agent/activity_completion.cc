@@ -175,8 +175,9 @@ std::vector<std::string> TakeCompleted(
           std::move(output),
           collected.artifact ? collected.artifact->path : job.log);
       if (failed) {
-        output = ChildAgentFailureReport(
-            job.display_label, ChildAgentFailureStage::kExecution, output);
+        output =
+            ChildAgentFailureReport(JsonValue(job.metadata, "route", ""),
+                                    ChildAgentFailureStage::kExecution, output);
         output += ChildAgentConstraintNotes(job.completion_notes);
       } else {
         output = ChildAgentAnswer(std::move(output), job.completion_notes);

@@ -520,16 +520,6 @@ function SidebarView({
               )}
             </Button>
           </h2>
-          {seats.length > 0 && (
-            <div class="place-seats" role="group" aria-label="Members">
-              {seats.slice(0, SEATS_SHOWN).map((item) => (
-                <MemberAvatar key={item.id} item={item} />
-              ))}
-              {seats.length > SEATS_SHOWN && (
-                <span class="place-count">+{seats.length - SEATS_SHOWN}</span>
-              )}
-            </div>
-          )}
           <IconButton
             label={`New conversation in ${name}`}
             disabled={!online}
@@ -545,6 +535,16 @@ function SidebarView({
               space,
               all.filter((item) => folderOf(item) === cwd).length,
             )}
+          {seats.length > 0 && (
+            <div class="place-seats" role="group" aria-label="Members">
+              {seats.slice(0, SEATS_SHOWN).map((item) => (
+                <MemberAvatar key={item.id} item={item} />
+              ))}
+              {seats.length > SEATS_SHOWN && (
+                <span class="place-count">+{seats.length - SEATS_SHOWN}</span>
+              )}
+            </div>
+          )}
         </div>
         {!folded && (
           <div class="place-body">

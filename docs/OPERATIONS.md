@@ -105,7 +105,7 @@ session limit and the panel's daily cost limit.
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
 | subagent launches per turn | 32 | |
 | panel threads at once / reported cost per day | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
-| chat turns per participant, and messages each, for one message of the user's | 3, 2 | `UAGENT_PANEL_CHAT_TURNS` |
+| chat turns per participant, and messages each, for one message of the user's or one thread report | 3, 2 | `UAGENT_PANEL_CHAT_TURNS` |
 | members of one panel's chat | 16 | |
 | a thread's report to its panel / one chat message | 6,000 characters / 16 KiB; `history` reads the rest | |
 | idle session runtime | stops after 15 minutes; the next message starts it | |
@@ -145,7 +145,9 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   that the corresponding limit cannot be enforced.
 - The session token budget survives resume.
 - A delegated child receives only its parent's remaining session
-  allowance. While a session budget is set, children run one at a time.
+  allowance; the children of one batch run together and share it equally.
+  While a session budget is set, no child starts while a background one
+  runs.
   Child usage is charged to the parent by delta, so follow-ups do not reset
   accounting.
 - Before a response reports usage, context size is estimated as serialized

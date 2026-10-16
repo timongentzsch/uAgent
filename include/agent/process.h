@@ -179,6 +179,8 @@ class ProcessSupervisor {
   // is consumed exactly once. Removal and retention share the same lock.
   std::optional<BgJob> Take(int64_t id, bool retain = false);
   std::vector<BgJob> Snapshot() const;
+  // What runs now: the background jobs and those a tool call waits on.
+  std::vector<BgJob> Running() const;
   std::vector<BgJob> TakeAllForShutdown();
 
   uint64_t Generation() const;

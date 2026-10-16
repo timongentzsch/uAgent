@@ -502,8 +502,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         registry::Int("panel.chatTurns", "UAGENT_PANEL_CHAT_TURNS", {}, 3, 0,
                       64, ReloadPolicy::kNextUserTurn, "coordination",
                       "turns each participant of a panel's chat may "
-                      "take on one message of the user's; 0 lets the "
-                      "members only read"),
+                      "take on one message of the user's or one thread "
+                      "report; 0 lets the members only read"),
         "Chat turns each"),
     registry::Named(
         registry::Choice(

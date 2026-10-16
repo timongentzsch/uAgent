@@ -119,6 +119,9 @@ struct ToolContext {
   // The tools the calling session has enabled, by name: what it may hand on
   // to a child.
   std::vector<std::string> enabled_tools;
+  // Delegating calls in the batch this one is part of: children started
+  // together share what the session has left.
+  int64_t delegations = 1;
 
   bool Expired() const;
 

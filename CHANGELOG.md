@@ -102,6 +102,10 @@
 
 ### Changed
 
+- Web: a workspace's member avatars sit on a line of their own under its name,
+  which keeps the row's width; hovering one marks its circle, not a square
+  behind it. The sidebar's search button sits beside New. A tool call's input
+  wraps instead of scrolling sideways, and its parts stand apart.
 - One `Endpoint` (address, key, wire API, window, declared features, options)
   and one `Route` (an endpoint, a model, an effort) replace `ModelRoute`,
   `NamedProvider`, `SideRoute`, `ProviderTemplate` and the protocol enum.
@@ -141,6 +145,18 @@
   request as well as its latest message. A panel thread's research fetches were
   refused because the reviewer saw only the panel's latest note, not the
   thread's brief.
+- Subagents started in one batch run together. Before, the parent waited for
+  each in turn unless the model set `background`, and five researchers took
+  16 minutes instead of four. Under a session budget, which every panel thread
+  has, they share what is left equally.
+- Subagents the turn waits for are listed in the web's background work while
+  they run, and each can be stopped there. They are shown by the model they
+  run on, not by the diagnostic route string, which only a failure report
+  still carries.
+- A turn stopped for repeating a call, the same one or an equivalent rejected
+  one, answers from what it has, as a turn stopped at its step or time limit
+  does. Before, a researcher stuck retrying a capped `web_search` lost all its
+  findings.
 - A model's input modalities from the endpoint's catalogue survive starting a
   route, so a text-only model is known as one before its first image is
   rejected.
@@ -148,6 +164,11 @@
   an endpoint no provider names; it answered `unknown model` before.
 - An image the vision model fails to read is tried once per turn. Before, each
   step of the turn asked again and paid the same failure, retries included.
+- A panel's members answer from the start. The message that has the moderator
+  bring them in now begins their round. Before, nobody answered until the user
+  wrote again. A thread's report that the moderator passes on begins a round
+  too, so the members discuss it. A member's introduction is read by everyone
+  and wakes nobody.
 
 ## v1.4.0 - 2026-10-15
 

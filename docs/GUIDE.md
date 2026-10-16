@@ -238,8 +238,9 @@ panel's conversation is a chat.
   message addresses nobody.
 - **A message for everyone** starts with no name; members also answer one
   another.
-- **Limits.** For each message of yours, every participant may take three
-  turns (`panel.chatTurns`) and post two messages; a chat has at most
+- **Limits.** For each message of yours, and each thread report the
+  moderator passes on, every participant may take three turns
+  (`panel.chatTurns`) and post two messages; a chat has at most
   16 members.
 - **Who said what.** Each message is shown under its author's name; in the
   web, a message's menu shows the prompt its author was given.

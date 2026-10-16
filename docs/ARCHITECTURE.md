@@ -158,8 +158,9 @@ participants, with no part of its own beyond its tools.
   name. It starts a turn there only when it wakes the panel like any
   other participant.
 - Two limits keep an exchange from running on by itself, both counted from
-  one message of the user's: `UAGENT_PANEL_CHAT_TURNS` turns per
-  participant, and two messages each. The panel cannot message a
+  one message of the user's or one thread's report: `UAGENT_PANEL_CHAT_TURNS`
+  turns per participant, and two messages each. A member's introduction
+  is read by everyone and is nobody's turn. The panel cannot message a
   member past the chat. Members spend from the same daily limit as threads.
   An answer that arrives after the user has written again belongs to the
   round before: it is read by everyone and is nobody's turn in the new one.

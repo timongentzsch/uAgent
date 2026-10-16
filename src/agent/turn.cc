@@ -434,9 +434,10 @@ void Agent::Turn(const std::string& user_input, json user_content,
   FinishTurn(state, loop.step);
 }
 
-// A turn stopped by its step, tool-call or time limit has done work nobody
-// has been told about. One more round, told that nothing further will run,
-// turns it into the answer; the stop still names the limit.
+// A turn stopped by its step, tool-call or time limit, or for repeating a
+// call, has done work nobody has been told about. One more round, told that
+// nothing further will run, turns it into the answer; the stop still names the
+// limit.
 void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
   if (state.stop.reason == TurnStopReason::kNone &&
       state.limits.max_steps > 0 && loop.step >= state.limits.max_steps) {
@@ -448,6 +449,7 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
   }
   if ((state.stop.reason != TurnStopReason::kMaxSteps &&
        state.stop.reason != TurnStopReason::kMaxToolCalls &&
+       state.stop.reason != TurnStopReason::kRepeatedCalls &&
        state.stop.reason != TurnStopReason::kTurnDeadline) ||
       SteeringState().Requested() || ShutdownRequested()) {
     return;

@@ -44,6 +44,7 @@ constexpr Action kActions[] = {
     {"fill_saved", true, "Taking a saved login in", "Took a saved login in"},
     {"scroll", true, "Scrolling", "Scrolled"},
     {"back", true, "Going back in", "Went back in"},
+    {"upload", true, "Uploading in", "Uploaded in"},
     {"request_human", false, "Asking you to use", "Asked you to use"},
     {"release", false, "Releasing", "Released"}};
 
@@ -140,7 +141,10 @@ json Subject(const json& args, Seen& seen) {
                ? json{{"call", args}, {"once", RandomToken(12)}}
                : json{{"call", args}, {"look", seen.view_id}};
   }
-  return {{"action", action}, {"origin", site}};
+  // An upload is approved for its file, never for any file.
+  json subject = {{"action", action}, {"origin", site}};
+  if (action == "upload") subject["path"] = JsonValue(args, "path", "");
+  return subject;
 }
 
 // The look a dialog stands in for: its page, with no rows to act on.
@@ -188,7 +192,9 @@ std::string Preview(const json& args, Seen& seen) {
              std::to_string(JsonValue(args, "y", 0)) + ")";
   }
   std::string said =
-      action == "type"
+      action == "upload"
+          ? "upload " + JsonValue(args, "path", "") + " into " + target
+      : action == "type"
           ? "type " + JsonDump(JsonValue(args, "text", "")) +
                 (JsonValue(args, "replace", false)
                      ? " in place of what it holds"
@@ -352,6 +358,12 @@ std::string Settle(const std::string& session_id, const ToolContext& context) {
           "\n";
     }
     if (const json* tabs = JsonArray(probe, "opened")) opened = *tabs;
+    for (const json& file : JsonValue(probe, "downloads", json::array())) {
+      const std::string name = JsonValue(file, "name", "");
+      notes += JsonValue(file, "state", "") == "completed"
+                   ? "Downloaded " + name + " to downloads/" + name + ".\n"
+                   : "The download of " + name + " did not finish.\n";
+    }
     if (probe.contains("dialog")) break;
     const std::string state =
         JsonValue(probe, "doc", "") + "|" + JsonValue(probe, "sig", "");
@@ -452,6 +464,11 @@ ToolResult Act(const std::string& session_id, const json& args,
       break;
     }
     done += op + " done.\n";
+    if (reply.contains("chooser")) {
+      done +=
+          "It opened a file chooser, held back: upload with this element and "
+          "a path gives it a file.\n";
+    }
     if (reply.contains("dialog")) {
       whole = false;
       break;
@@ -492,7 +509,10 @@ constexpr char kBrowserDescription[] =
     "it is the current one. To look at a page you wrote, open takes path "
     "instead of url: a self-contained .html or .svg file, shown without a "
     "server (file:// URLs are refused, and its relative links do not "
-    "load). A page's alert, confirm or prompt dialog is reported in place "
+    "load). upload with element, view_id and path gives a file of this "
+    "conversation's folder to a file field, or to the chooser the element "
+    "opens; what a page downloads lands in its downloads folder. A page's "
+    "alert, confirm or prompt dialog is reported in place "
     "of the page; answer it with press Enter or Escape. A result that says "
     "SUSPECTED BLOCK means a bot "
     "check or rate limit: don't hammer it. Chrome holds the user's saved "
@@ -560,11 +580,21 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   // open takes one address, a URL or a file, never the profile this browser
   // itself runs on.
   tool.validate = [](const json& args) -> std::optional<ToolArgumentIssue> {
-    if (JsonValue(args, "action", "") == "open" &&
-        JsonValue(args, "url", "").empty() ==
-            JsonValue(args, "path", "").empty()) {
+    const std::string action = JsonValue(args, "action", "");
+    if (action == "open" && JsonValue(args, "url", "").empty() ==
+                                JsonValue(args, "path", "").empty()) {
       return ArgumentIssue("browser.open", "open takes either url or path",
                            "url");
+    }
+    // A page is sent only a file of this conversation's folder.
+    if (action == "upload" &&
+        (JsonValue(args, "element", 0) < 1 ||
+         !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
+                     CanonicalCwd()))) {
+      return ArgumentIssue("browser.upload",
+                           "upload takes an element and the path of a file in "
+                           "this conversation's folder",
+                           "path");
     }
     return RefuseHidden(args);
   };
@@ -607,6 +637,19 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
           args[bound] = held;
         }
       }
+    }
+    // What an action downloads lands in its conversation's folder.
+    args["downloads"] =
+        (std::filesystem::path(CanonicalCwd()) / "downloads").string();
+    if (action == "upload") {
+      const std::filesystem::path file =
+          CanonicalAccessPath(JsonValue(args, "path", ""));
+      std::error_code missing;
+      if (!std::filesystem::is_regular_file(file, missing)) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "upload takes a file that exists");
+      }
+      args["file"] = file.string();
     }
     if (action == "open" && !JsonValue(args, "path", "").empty()) {
       if (const std::string error = InlinePageFile(args); !error.empty()) {

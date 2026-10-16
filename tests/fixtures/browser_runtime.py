@@ -101,6 +101,26 @@ while chunk := os.read(3, 4096):
             os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
             continue
         method = command["method"]
+        if command["params"].get("type") == "mouseReleased":
+            # A click may open a file chooser, held back, or start a download.
+            if (profile / "chooser-on-click").exists():
+                emit(
+                    "Page.fileChooserOpened",
+                    command.get("sessionId"),
+                    frameId="tab",
+                    mode="selectSingle",
+                    backendNodeId=7,
+                )
+            if (profile / "download-on-click").exists():
+                (profile / "download-on-click").unlink()
+                emit(
+                    "Browser.downloadWillBegin",
+                    None,
+                    guid="g1",
+                    url="https://example.com/report.pdf",
+                    suggestedFilename="report.pdf",
+                )
+                emit("Browser.downloadProgress", None, guid="g1", state="completed")
         # A dialog on press, on release (a click), or while the page is looked at.
         phase = command["params"].get("type") or command["params"].get("expression", "")[-9:]
         marker = {"mousePressed": "dialog-on-press", "mouseReleased": "dialog-on-click"}
@@ -161,6 +181,10 @@ while chunk := os.read(3, 4096):
                 result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}
             else:
                 result = {"result": {"objectId": "field"}}
+        elif command["method"] == "Runtime.callFunctionOn" and "'file'" in str(
+            command["params"].get("functionDeclaration")
+        ):
+            result = {"result": {"value": (profile / "file-input").exists()}}
         elif command["method"] == "Runtime.callFunctionOn":
             # The field grows with every look once the test says a login is saved.
             if (profile / "saved-login-here").exists():

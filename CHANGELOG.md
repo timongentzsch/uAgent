@@ -84,6 +84,11 @@
 
 ### Added
 
+- `browser`: `upload` gives a file of the conversation's folder to a file
+  field, or to the chooser a button opens. A click that opens a file
+  chooser no longer shows a window on the browser's screen that the agent
+  cannot answer; it says to use `upload`. What a page downloads lands in the
+  conversation's `downloads` folder, and the action says so when it ends.
 - A provider entry named like a well-known endpoint states only what
   differs: `"openrouter": {"options": {"provider": "…"}}` needs no address or
   key. `supports` lists the features of any other endpoint, and `options` the

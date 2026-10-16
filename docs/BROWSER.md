@@ -56,7 +56,8 @@ check or rate limit is flagged as a suspected block, so the agent can hand
 off or try another source. A page's alert, confirm or prompt is reported in
 place of the page until the agent answers it with Enter or Escape, and a
 password field takes no typed text: the agent uses a saved login or asks
-you.
+you. The agent uploads files of the conversation's folder, never others,
+and what a page downloads lands in that folder's `downloads`.
 
 | You want to | Do this |
 | --- | --- |

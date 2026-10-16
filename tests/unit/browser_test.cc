@@ -602,6 +602,77 @@ void TestBrowserDialogsAndPasswordFields() {
   fs::remove_all(directory);
 }
 
+// A file field takes a file; a button's chooser is held back and its field
+// takes it; a click that opens a chooser says so; what a page downloads lands
+// in the folder the action names and is told when it ends.
+void TestBrowserUploadsAndDownloads() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-files");
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-files-" + std::to_string(getpid()));
+  FakeBrowser fake(workspace.root / "bin", directory);
+  const auto profile = directory / "profile";
+  browser::Runtime runtime;
+  const auto act = [&](json command) {
+    command["session_id"] = "cccccccccccccccccccccccccccccccc";
+    return runtime.Execute(command);
+  };
+  const auto view = [&] {
+    return act({{"op", "observe"}, {"image", false}}).value("view_id", "");
+  };
+  CHECK(!act({{"op", "tabs"}}).contains("error"));
+  std::ofstream(profile / "file-input").close();
+  CHECK(!act({{"op", "upload"},
+              {"element", 1},
+              {"view_id", view()},
+              {"file", "/work/report.pdf"}})
+             .contains("error"));
+  fs::remove(profile / "file-input");
+  std::ofstream(profile / "chooser-on-click").close();
+  CHECK(!act({{"op", "upload"},
+              {"element", 1},
+              {"view_id", view()},
+              {"file", "/work/photo.png"}})
+             .contains("error"));
+  CHECK(act({{"op", "click"}, {"element", 1}, {"view_id", view()}})
+            .value("chooser", false));
+  fs::remove(profile / "chooser-on-click");
+  CHECK(act({{"op", "upload"},
+             {"element", 1},
+             {"view_id", view()},
+             {"file", "/work/photo.png"}})
+            .value("error", "")
+            .starts_with("element 1 opened no file chooser"));
+  std::ofstream(profile / "download-on-click").close();
+  CHECK(!act({{"op", "click"},
+              {"element", 1},
+              {"view_id", view()},
+              {"downloads", "/work/downloads"}})
+             .contains("error"));
+  CHECK(act({{"op", "probe"}}).value("downloads", json()) ==
+        json::array({{{"name", "report.pdf"}, {"state", "completed"}}}));
+  std::vector<json> files;
+  std::string into;
+  std::ifstream log(profile / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    const json params = command.value("params", json::object());
+    if (method == "DOM.setFileInputFiles") files.push_back(params);
+    if (method == "Browser.setDownloadBehavior") {
+      into = params.value("downloadPath", "");
+    }
+  }
+  CHECK(files.size() == 2);
+  CHECK(files[0]["files"] == json::array({"/work/report.pdf"}) &&
+        files[0].contains("objectId"));
+  CHECK(files[1]["files"] == json::array({"/work/photo.png"}) &&
+        files[1].value("backendNodeId", 0) == 7);
+  CHECK(into == "/work/downloads");
+  runtime.Shutdown();
+  fs::remove_all(directory);
+}
+
 // The site an approval covers: scheme and host as a browser compares them.
 void TestBrowserOrigin() {
   CHECK(browser::Origin("https://Example.COM/a?b#c") == "https://example.com");
@@ -763,6 +834,19 @@ void TestBrowserToolSteps() {
   CHECK(tool.validate({{"action", "open"},
                        {"path", (directory / "profile" / "x.html").string()}})
             .has_value());
+  // What a click downloads is told, in the conversation's folder; only a
+  // file of that folder is uploaded.
+  std::ofstream(directory / "profile" / "download-on-click").close();
+  ToolResult again =
+      tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
+  ToolResult fetched = tool.run(
+      {{"action", "click"}, {"element", 1}, {"view_id", view(again.output)}},
+      {});
+  CHECK(fetched.output.find("Downloaded report.pdf to downloads/report.pdf.") !=
+        std::string::npos);
+  CHECK(tool.validate(
+                {{"action", "upload"}, {"element", 1}, {"path", "/etc/hosts"}})
+            .has_value());
   // A call runs on the site its approval was for: there it runs, and once
   // the tab is elsewhere (after a batch's open, or a person's visit) the
   // browser refuses it.
@@ -796,8 +880,9 @@ void TestBrowserToolSteps() {
     }
     if (params.value("type", "") == "keyDown") order.emplace_back("Enter");
   }
-  CHECK(order == std::vector<std::string>({"click", "select", "type kestrel",
-                                           "Enter", "click", "click"}));
+  CHECK(order ==
+        std::vector<std::string>({"click", "select", "type kestrel", "Enter",
+                                  "click", "click", "click"}));
   CHECK(written);
   fs::remove_all(directory);
 }

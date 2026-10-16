@@ -229,6 +229,18 @@ json Runtime::Probe() {
   result["ok"] = true;
   result["loading"] = loading_;
   result["opened"] = std::move(opened);
+  // Downloads that ended are told once; one still going keeps the page busy.
+  json ended = json::array();
+  for (auto it = downloads_.begin(); it != downloads_.end();) {
+    if (JsonValue(*it, "state", "") == "inProgress") {
+      result["loading"] = true;
+      ++it;
+    } else {
+      ended.push_back(*it);
+      it = downloads_.erase(it);
+    }
+  }
+  if (!ended.empty()) result["downloads"] = std::move(ended);
   if (!switched.is_null()) result["switched"] = std::move(switched);
   return result;
 }

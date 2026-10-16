@@ -13,6 +13,7 @@ namespace uagent {
   X(TestBrowserSecretMaskAndBack)        \
   X(TestBrowserDialogsAndPasswordFields) \
   X(TestBrowserOrigin)                   \
+  X(TestBrowserUploadsAndDownloads)      \
   X(TestBrowserToolSteps)
 #else
 #define UAGENT_BROWSER_TESTS(X)

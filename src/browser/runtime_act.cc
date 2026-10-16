@@ -197,6 +197,34 @@ json Runtime::Act(const std::string& op, const json& command) {
       return refused;
     }
   }
+  // What the action downloads lands in its conversation's folder.
+  if (const std::string into = JsonValue(command, "downloads", "");
+      !into.empty() && into != download_path_ &&
+      CdError(Call("Browser.setDownloadBehavior", {{"behavior", "allow"},
+                                                   {"downloadPath", into},
+                                                   {"eventsEnabled", true}}))
+          .empty()) {
+    download_path_ = into;
+  }
+  // A click may open a file chooser: held back, it never shows a window the
+  // agent cannot answer, and upload fills its field instead.
+  struct Release {
+    Runtime* runtime;
+    ~Release() {
+      if (runtime) {
+        runtime->Call("Page.setInterceptFileChooserDialog",
+                      {{"enabled", false}}, runtime->page_session_);
+      }
+    }
+  } release{nullptr};
+  if (op == "click") {
+    chooser_ = 0;
+    if (CdError(Call("Page.setInterceptFileChooserDialog", {{"enabled", true}},
+                     page_session_))
+            .empty()) {
+      release.runtime = this;
+    }
+  }
   json reply;
   if (op == "open") {
     std::string url = JsonValue(command, "url", "");
@@ -452,12 +480,60 @@ json Runtime::Act(const std::string& op, const json& command) {
                   {"deltaX", 0},
                   {"deltaY", delta}},
                  page_session_);
+  } else if (op == "upload") {
+    const int element = JsonValue(command, "element", 0);
+    const std::string file = JsonValue(command, "file", "");
+    if (element < 1 || file.empty()) {
+      return {{"error", "upload takes an element and a path"}};
+    }
+    if (observation_.empty() ||
+        observation_ != JsonValue(command, "view_id", "")) {
+      return {{"error", "upload needs view_id from the latest observe"}};
+    }
+    // A file field takes the file itself; anything else is clicked, and the
+    // file field whose chooser that opens takes it.
+    json held = Call("Runtime.evaluate",
+                     {{"expression", "(window.__uagentElements || [])[" +
+                                         std::to_string(element - 1) + "]"}},
+                     page_session_);
+    const json* found = JsonObject(held, "result");
+    found = found ? JsonObject(*found, "result") : nullptr;
+    const std::string id = found ? JsonValue(*found, "objectId", "") : "";
+    if (id.empty()) return {{"error", "that element is gone; look again"}};
+    json files = {{"files", json::array({file})}, {"objectId", id}};
+    json kind = Call("Runtime.callFunctionOn",
+                     {{"objectId", id},
+                      {"functionDeclaration",
+                       "function(){return this.tagName==='INPUT'&&"
+                       "this.type==='file'}"},
+                      {"returnByValue", true}},
+                     page_session_);
+    const json* field = JsonObject(kind, "result");
+    field = field ? JsonObject(*field, "result") : nullptr;
+    if (!field || !JsonValue(*field, "value", false)) {
+      if (json clicked = Act("click", command); clicked.contains("error")) {
+        return clicked;
+      }
+      for (int waited = 0; !chooser_ && waited < 2000; waited += 100) {
+        poll(nullptr, 0, 100);
+        Call("Runtime.evaluate", {{"expression", "0"}}, page_session_);
+      }
+      if (!chooser_) {
+        return {{"error", "element " + std::to_string(element) +
+                              " opened no file chooser; upload into the "
+                              "file field itself"}};
+      }
+      files = {{"files", json::array({file})}, {"backendNodeId", chooser_}};
+    }
+    observation_.clear();
+    reply = Call("DOM.setFileInputFiles", files, page_session_);
   } else {
     return {{"error", "unsupported browser action"}};
   }
   const std::string error = CdError(reply);
   if (!error.empty()) return {{"error", error}};
   if (op == "open") moved_ = false;
+  if (op == "click" && chooser_) return {{"ok", true}, {"chooser", true}};
   return {{"ok", true}};
 }
 

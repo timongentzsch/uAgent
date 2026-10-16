@@ -88,6 +88,12 @@ class Runtime {
   // The agent's own navigation is under way: the page's plea to stay is
   // what the agent already chose against.
   bool leaving_ = false;
+  // The file field whose chooser a click opened while choosers were held
+  // back, and the downloads Chrome told of, by id, until a probe reports
+  // them finished; with the folder they go to.
+  int64_t chooser_ = 0;
+  json downloads_ = json::object();
+  std::string download_path_;
   std::chrono::steady_clock::time_point used_ =
       std::chrono::steady_clock::now();
   // The browser changed hands and its holder has not yet opened or looked

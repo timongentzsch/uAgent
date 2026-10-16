@@ -499,6 +499,21 @@ json Runtime::Call(const std::string& method, const json& parameters,
         }
       }
       if (event == "Page.javascriptDialogClosed") dialogs_.erase(from);
+      if (params && event == "Page.fileChooserOpened" &&
+          from == page_session_) {
+        chooser_ = JsonValue(*params, "backendNodeId", int64_t{0});
+      }
+      if (params && event == "Browser.downloadWillBegin") {
+        downloads_[JsonValue(*params, "guid", "")] = {
+            {"name", JsonValue(*params, "suggestedFilename", "")},
+            {"state", "inProgress"}};
+      }
+      if (params && event == "Browser.downloadProgress") {
+        const std::string guid = JsonValue(*params, "guid", "");
+        if (downloads_.contains(guid)) {
+          downloads_[guid]["state"] = JsonValue(*params, "state", "");
+        }
+      }
       // What the page owed is never coming while the dialog is open; an
       // input it cut short has still happened.
       if (held && OpenDialog()) return {{"dialog", true}};

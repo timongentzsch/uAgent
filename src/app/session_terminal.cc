@@ -601,7 +601,8 @@ class Terminal {
     return Command::kLeave;
   }
   // Answers the decision `id`; `extra` adds fields such as "cancelled".
-  void Reply(const std::string& id, json text, json extra = json::object()) {
+  void Reply(const std::string& id, json text,
+             const json& extra = json::object()) {
     json command = {
         {"kind", "reply"}, {"interaction_id", id}, {"text", std::move(text)}};
     command.update(extra);

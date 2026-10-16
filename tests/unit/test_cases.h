@@ -12,6 +12,7 @@ namespace uagent {
   X(TestBrowserHandBackOnClose)          \
   X(TestBrowserSecretMaskAndBack)        \
   X(TestBrowserDialogsAndPasswordFields) \
+  X(TestBrowserOrigin)                   \
   X(TestBrowserToolSteps)
 #else
 #define UAGENT_BROWSER_TESTS(X)

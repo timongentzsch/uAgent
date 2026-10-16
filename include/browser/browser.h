@@ -43,6 +43,10 @@ std::string DataDirectory();
 void SetDataDirectory(std::string path);
 std::string SocketPath();
 std::string RfbPath();
+// The site of an HTTP(S) address, as scheme://host[:port]: lower case, with
+// no user part and no default port. Empty for any other address. What a
+// remembered approval of a browser action covers.
+std::string Origin(const std::string& url);
 bool EnsureDataDirectory(const std::string& path);
 
 struct ServiceProcess {

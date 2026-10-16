@@ -158,10 +158,21 @@ json Runtime::Act(const std::string& op, const json& command) {
   // can tell which tab the action itself opened.
   known_targets_.clear();
   action_target_ = target_;
+  std::string here;
   if (json pages = PageTargets(); pages.is_array()) {
     for (const auto& page : pages) {
       known_targets_.insert(JsonValue(page, "id", ""));
+      if (JsonValue(page, "id", "") == target_)
+        here = JsonValue(page, "url", "");
     }
+  }
+  // An action approved for one site is done on that site only: the page
+  // may have moved since it was approved, by itself or by a person.
+  if (const std::string site = JsonValue(command, "origin", "");
+      !site.empty() && op != "open" && Origin(here) != site) {
+    return {{"error", "the page is on " + here + " now, not on " + site +
+                          " where this was approved; observe it, then act "
+                          "again"}};
   }
   json reply;
   if (op == "open") {

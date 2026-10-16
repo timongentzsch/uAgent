@@ -595,6 +595,18 @@ void TestBrowserDialogsAndPasswordFields() {
   fs::remove_all(directory);
 }
 
+// The site an approval covers: scheme and host as a browser compares them.
+void TestBrowserOrigin() {
+  CHECK(browser::Origin("https://Example.COM/a?b#c") == "https://example.com");
+  CHECK(browser::Origin("https://user:pw@example.com:443/") ==
+        "https://example.com");
+  CHECK(browser::Origin("http://example.com:8080?x") ==
+        "http://example.com:8080");
+  CHECK(browser::Origin("https://[::1]:8443/") == "https://[::1]:8443");
+  CHECK(browser::Origin("about:blank").empty());
+  CHECK(browser::Origin("file:///etc/hosts").empty());
+}
+
 // The tool's own part: several steps in one call, in order, and a page that
 // is only read. The service runs here, in front of the stand-in Chrome.
 void TestBrowserToolSteps() {
@@ -636,10 +648,32 @@ void TestBrowserToolSteps() {
         "Remembered, it covers any browser click on https://example.com.");
   CHECK(tool.approval_preview({{"action", "type"},
                                {"element", 1},
+                               {"view_id", view(opened.output)},
                                {"text", "kestrel"},
-                               {"key", "Enter"}})
-            .starts_with("type \"kestrel\" into [1] text \"Search\" (empty) "
-                         "then press Enter on https://example.com/"));
+                               {"key", "Enter"}}) ==
+        "type \"kestrel\" into [1] text \"Search\" (empty) then press Enter "
+        "on https://example.com/\nRemembered, it covers any browser type on "
+        "https://example.com.");
+  // A row of another look is not named as this page's.
+  CHECK(tool.approval_preview(
+                {{"action", "click"}, {"element", 1}, {"view_id", "older"}})
+            .starts_with("click element [1] of a look that is not the latest"));
+  // open takes one address; a tab is approved one by one.
+  CHECK(tool.validate({{"action", "open"}}).has_value());
+  CHECK(tool.validate({{"action", "open"},
+                       {"url", "https://example.com/"},
+                       {"path", "page.html"}})
+            .has_value());
+  CHECK(tool.approval_subject({{"action", "tabs"}, {"target_id", "a"}}) !=
+        tool.approval_subject({{"action", "tabs"}, {"target_id", "b"}}));
+  // Approved for the site last seen, a call runs on that site only: here
+  // the tab is somewhere else, as after a batch's open or a person's visit.
+  const json elsewhere = {
+      {"action", "press"}, {"key", "Tab"}, {"view_id", "x"}};
+  tool.approval_subject(elsewhere);
+  ToolResult held = tool.run(elsewhere, {});
+  CHECK(!held.Ok() &&
+        held.output.find("where this was approved") != std::string::npos);
   CHECK(
       tool.approval_subject(click) ==
       tool.approval_subject(

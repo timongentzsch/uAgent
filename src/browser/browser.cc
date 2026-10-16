@@ -30,6 +30,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/strings.h"
 #include "include/transport/session.h"
 
 namespace uagent::browser {
@@ -99,6 +100,21 @@ std::string SocketPath() {
 std::string RfbPath() {
   auto base = DataDirectory();
   return base.empty() ? "" : base + "/display.sock";
+}
+
+std::string Origin(const std::string& url) {
+  const std::string lower = AsciiLower(url);
+  const std::string scheme = lower.starts_with("https://")  ? "https"
+                             : lower.starts_with("http://") ? "http"
+                                                            : "";
+  if (scheme.empty()) return "";
+  std::string host = lower.substr(scheme.size() + 3);
+  host = host.substr(0, host.find_first_of("/?#"));
+  host = host.substr(
+      host.rfind('@') == std::string::npos ? 0 : host.rfind('@') + 1);
+  const std::string port = scheme == "https" ? ":443" : ":80";
+  if (host.ends_with(port)) host.resize(host.size() - port.size());
+  return host.empty() ? "" : scheme + "://" + host;
 }
 
 bool EnsureDataDirectory(const std::string& path) {

@@ -8,6 +8,9 @@ import type {
 // choices are made in the conversation.
 export type SavedScope = Exclude<ConfigScope, "conversation">;
 
+// How a saved secret shows in its empty field: there, and never read back.
+export const REDACTED = "••••••••";
+
 export const secret = (setting: ConfigSetting) =>
   setting.sensitivity !== "public";
 

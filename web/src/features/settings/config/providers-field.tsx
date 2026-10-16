@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { JSONValue } from "../../../shared/types.ts";
 import { Button, Input, Row, ValueSelect } from "../../../shared/ui.tsx";
+import { REDACTED } from "./facts.ts";
 
 // What the host shows in place of a key it holds, and takes back as "keep".
 const HIDDEN = "<redacted>";
@@ -112,9 +113,7 @@ export function ProvidersField({
               <Input
                 {...field(provider, "api_key", "key")}
                 type={key.startsWith("$") ? "text" : "password"}
-                placeholder={
-                  key === HIDDEN ? "Set · enter a replacement" : "Not set"
-                }
+                placeholder={key === HIDDEN ? REDACTED : "Not set"}
                 key={key}
                 defaultValue={key === HIDDEN ? "" : key}
               />

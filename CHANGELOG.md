@@ -102,6 +102,10 @@
 
 ### Changed
 
+- Web: a setting's reset sits just before the control it resets and shows an
+  undo arrow instead of one that read as refresh. A saved secret shows as
+  dots in its empty field instead of "Set · enter a replacement". A panel's
+  board row shades once on hover, as a sidebar row does, not twice.
 - Web: a workspace's member avatars sit on a line of their own under its name,
   which keeps the row's width; hovering one marks its circle, not a square
   behind it. The sidebar's search button sits beside New. A tool call's input

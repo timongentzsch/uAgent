@@ -496,6 +496,35 @@ def has_message(messages, role, content):
     )
 
 
+def user_texts(messages):
+    """Every user-role message content, as text, in order."""
+    return [str(m.get("content", "")) for m in messages if m.get("role") == "user"]
+
+
+def user_prompt(messages, prompts):
+    """The first user message whose content is one of `prompts`, or None:
+    which child of a batch a request belongs to."""
+    return next((text for text in user_texts(messages) if text in prompts), None)
+
+
+class Concurrency:
+    """Counts what runs at once inside `with`; `most` is the peak."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.now = 0
+        self.most = 0
+
+    def __enter__(self):
+        with self._lock:
+            self.now += 1
+            self.most = max(self.most, self.now)
+
+    def __exit__(self, *_):
+        with self._lock:
+            self.now -= 1
+
+
 def tool_calls(calls, usage=None):
     return event(
         {

@@ -10,6 +10,7 @@ import time
 
 from integration_support import (
     OPENROUTER_SUPPORTS,
+    Concurrency,
     Server,
     assert_token_budget_stop,
     assert_true,
@@ -23,7 +24,10 @@ from integration_support import (
     run_dialog,
     saved_json_files,
     tool_call,
+    tool_calls,
     tool_results,
+    user_prompt,
+    user_texts,
     wait_for_processes_stopped,
     wait_until,
     write_http_response,
@@ -33,6 +37,37 @@ from integration_support import (
 
 def child_sessions(home):
     return saved_json_files(home / ".uagent" / "history", "*/agent-*.json")
+
+
+STARTED = "[started] subagent id "
+
+
+def launched(texts):
+    """Whether a background child was launched, by its receipt."""
+    return any(STARTED in text for text in texts)
+
+
+def wait_round():
+    """The parent's round that waits for every child it started."""
+    return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+
+
+def collaborator(text):
+    """The child id a resume note names."""
+    match = re.search(r"\[collaborator (agent-[^;\]]+)", text)
+    assert_true(match is not None, text)
+    return match.group(1)
+
+
+def subagent_batch(prompts, usage=None, **arguments):
+    """One parent round that starts a child per prompt, in one batch."""
+    return tool_calls(
+        [
+            (f"task-{index}", "subagent", {"prompt": prompt, **arguments})
+            for index, prompt in enumerate(prompts)
+        ],
+        usage,
+    )
 
 
 def test_subagent_usage_counts_toward_parent_token_budget(root, home, *, binary):
@@ -65,7 +100,7 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home, *,
                 usage={"prompt_tokens": 1, "completion_tokens": 4},
             )
         results = tool_results(messages)
-        if any("[started] subagent id " in result for result in results):
+        if launched(results):
             assert_true(child_requested.wait(budget(2)), "child request did not arrive")
             time.sleep(0.3)
             return event({"content": "parent-answer"})
@@ -94,13 +129,12 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home, *,
 def test_subagent_inherits_only_remaining_session_token_budget(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
+        spent = {"prompt_tokens": 1, "completion_tokens": 3}
         if has_message(messages, "user", "child-remainder"):
-            response = tool_call("read_path", {"path": "."})
-            response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
-            return response
-        response = tool_call("subagent", {"prompt": "child-remainder", "background": False})
-        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
-        return response
+            return tool_call("read_path", {"path": "."}, usage=spent)
+        return tool_call(
+            "subagent", {"prompt": "child-remainder", "background": False}, usage=spent
+        )
 
     with Server([route]) as server:
         assert_token_budget_stop(
@@ -117,25 +151,10 @@ def test_a_batch_never_hands_a_child_an_unlimited_token_share(root, home, *, bin
 
     def route(_, body):
         messages = body["messages"]
-        if any(has_message(messages, "user", name) for name in ("share-a", "share-b")):
-            response = tool_call("read_path", {"path": "."})
-            response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
-            return response
-        response = event(
-            {
-                "tool_calls": [
-                    {
-                        "index": index,
-                        "id": f"share-{index}",
-                        "function": {"name": "subagent", "arguments": json.dumps({"prompt": name})},
-                    }
-                    for index, name in enumerate(("share-a", "share-b"))
-                ]
-            },
-            finish="tool_calls",
-        )
-        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
-        return response
+        spent = {"prompt_tokens": 1, "completion_tokens": 3}
+        if user_prompt(messages, ("share-a", "share-b")):
+            return tool_call("read_path", {"path": "."}, usage=spent)
+        return subagent_batch(("share-a", "share-b"), usage=spent)
 
     with Server([route]) as server:
         assert_token_budget_stop(
@@ -143,9 +162,7 @@ def test_a_batch_never_hands_a_child_an_unlimited_token_share(root, home, *, bin
         )
         # Each child stopped at its one-token share after its first round.
         children = [
-            b
-            for _, b in server.requests
-            if any(has_message(b["messages"], "user", n) for n in ("share-a", "share-b"))
+            b for _, b in server.requests if user_prompt(b["messages"], ("share-a", "share-b"))
         ]
         assert_true(len(children) == 2, len(children))
 
@@ -162,8 +179,8 @@ def test_subagent_auto_join_continues_turn(root, home, *, binary):
         )
         if has_result:
             return event({"content": "late-task-ok"})
-        if any("[started] subagent id " in str(message.get("content", "")) for message in messages):
-            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        if launched(str(message.get("content", "")) for message in messages):
+            return wait_round()
         return tool_call("subagent", {"prompt": "child", "background": True})
 
     with Server([route]) as server:
@@ -190,7 +207,7 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home, *, bi
             return event({"content": "foreground-child-result"})
         results = tool_results(messages)
         if any("foreground-child-result" in result for result in results):
-            direct = all("[started] subagent id " not in result for result in results)
+            direct = not launched(results)
             return event({"content": "foreground-task-ok" if direct else "foreground-task-bad"})
         return tool_call("subagent", {"prompt": "child", "background": False})
 
@@ -208,12 +225,7 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home, *, bi
         }
         assert_true(child_models == {"parent-model"}, child_models)
         parent_requests = [
-            body
-            for _, body in server.requests
-            if any(
-                message.get("role") == "user" and message.get("content") == "delegate"
-                for message in body["messages"]
-            )
+            body for _, body in server.requests if has_message(body["messages"], "user", "delegate")
         ]
         assert_true(len(parent_requests) == 2, len(parent_requests))
 
@@ -259,13 +271,11 @@ def test_lean_subagent_does_not_clone_parent_mcp_fleet(root, home, *, binary):
 def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
-        child_prompts = [
-            message.get("content") for message in messages if message.get("role") == "user"
-        ]
-        if child_prompts and str(child_prompts[-1]).endswith("directive kept?"):
+        child_prompts = user_texts(messages)
+        if child_prompts and child_prompts[-1].endswith("directive kept?"):
             kept = child_prompts[-1].startswith("[collaborator directive]\nalways mention beta")
             return event({"content": "directive-kept" if kept else "directive-lost"})
-        if any(str(prompt).endswith("remember alpha") for prompt in child_prompts):
+        if any(prompt.endswith("remember alpha") for prompt in child_prompts):
             initial_directive = any(
                 prompt == "[collaborator directive]\nalways mention beta\n\nremember alpha"
                 for prompt in child_prompts
@@ -288,13 +298,11 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
         if "directive-kept" in results:
             return event({"content": "followup-ok"})
         if "alpha-from-history-with-directive" in results:
-            match = re.search(r"\[collaborator (agent-[^;\]]+)", results)
-            assert_true(match is not None, results)
             return tool_call(
                 "subagent",
                 {
                     "operation": "followup",
-                    "agent_id": match.group(1),
+                    "agent_id": collaborator(results),
                     # An empty value is one that was not given.
                     "prompt": "directive kept?",
                     "directive": "",
@@ -302,13 +310,11 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
                 },
             )
         if "stored alpha" in results:
-            match = re.search(r"\[collaborator (agent-[^;\]]+)", results)
-            assert_true(match is not None, results)
             return tool_call(
                 "subagent",
                 {
                     "operation": "followup",
-                    "agent_id": match.group(1),
+                    "agent_id": collaborator(results),
                     "prompt": "what did I ask you to remember?",
                     "background": False,
                 },
@@ -345,9 +351,7 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
 
     def route(_, body):
         messages = body["messages"]
-        users = [
-            str(message.get("content", "")) for message in messages if message.get("role") == "user"
-        ]
+        users = user_texts(messages)
         panel = next(
             (
                 index
@@ -372,16 +376,14 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
 
         if parent_prompt == "spawn panel":
             if results:
-                match = re.search(r"\[collaborator (agent-[^;\]]+)", results[-1])
-                assert_true(match is not None, results[-1])
-                collaborator_id["value"] = match.group(1)
+                collaborator_id["value"] = collaborator(results[-1])
                 return event({"content": "spawned"})
             return tool_call("subagent", {"prompt": "seed child", "background": False})
         if parent_prompt == "queue panel":
             if results and "heard" in results[-1]:
                 return event({"content": "queued"})
             if results:
-                return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+                return wait_round()
             return tool_call(
                 "subagent",
                 {
@@ -444,9 +446,7 @@ def test_message_reaches_running_child(root, home, *, binary):
 
     def route(_, body):
         messages = body["messages"]
-        users = [
-            str(message.get("content", "")) for message in messages if message.get("role") == "user"
-        ]
+        users = user_texts(messages)
         if "wait-for-guidance" in users:
             if any("[parent guidance]" in user for user in users):
                 return event({"content": "guidance-received"})
@@ -459,13 +459,15 @@ def test_message_reaches_running_child(root, home, *, binary):
         if "guidance-received" in combined:
             return event({"content": "live-message-ok"})
         if "sent to agent" in combined:
-            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
-        if "[started] subagent id" in combined:
-            match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
-            assert_true(match is not None, combined)
+            return wait_round()
+        if STARTED in combined:
             return tool_call(
                 "subagent",
-                {"operation": "message", "agent_id": match.group(1), "prompt": "say banana"},
+                {
+                    "operation": "message",
+                    "agent_id": collaborator(combined),
+                    "prompt": "say banana",
+                },
             )
         return tool_call("subagent", {"prompt": "wait-for-guidance", "background": True})
 
@@ -497,9 +499,7 @@ def test_agents_command_lists_a_running_child(root, home, *, binary):
 
     def route(_, body):
         messages = body["messages"]
-        users = [
-            str(message.get("content", "")) for message in messages if message.get("role") == "user"
-        ]
+        users = user_texts(messages)
         if "stay-busy" in users:
             # Bounded: the panel quits long before this, and a child that
             # outlived the dialog would keep the test's process group alive.
@@ -507,7 +507,7 @@ def test_agents_command_lists_a_running_child(root, home, *, binary):
                 return event({"content": "child-done"})
             return tool_call("run", {"command": "sleep 1"})
         combined = "\n".join(str(message.get("content", "")) for message in messages)
-        if "[started] subagent id" in combined:
+        if STARTED in combined:
             return event({"content": "delegated"})
         return tool_call("subagent", {"prompt": "stay-busy", "background": True})
 
@@ -529,67 +529,31 @@ def test_agents_command_lists_a_running_child(root, home, *, binary):
 
 
 def test_parallel_subagents_auto_join(root, home, *, binary):
-    children_lock = threading.Lock()
-    active_children = 0
-    max_active_children = 0
+    running = Concurrency()
 
     def route(_, body):
-        nonlocal active_children, max_active_children
         messages = body["messages"]
-        child = next(
-            (
-                message.get("content")
-                for message in messages
-                if message.get("role") == "user"
-                and message.get("content") in {"child-a", "child-b"}
-            ),
-            None,
-        )
-        if child:
-            with children_lock:
-                active_children += 1
-                max_active_children = max(max_active_children, active_children)
-            try:
+        if child := user_prompt(messages, ("child-a", "child-b")):
+            with running:
                 time.sleep(1)
                 return event({"content": f"{child}-result"})
-            finally:
-                with children_lock:
-                    active_children -= 1
         combined = "\n".join(str(message.get("content", "")) for message in messages)
         if "child-a-result" in combined and "child-b-result" in combined:
             return event({"content": "parallel-task-ok"})
-        if "[started] subagent id " in combined:
-            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
-        return event(
-            {
-                "tool_calls": [
-                    {
-                        "index": index,
-                        "id": f"task-{index}",
-                        "function": {
-                            "name": "subagent",
-                            "arguments": json.dumps({"prompt": child_prompt, "background": True}),
-                        },
-                    }
-                    for index, child_prompt in enumerate(("child-a", "child-b"))
-                ]
-            },
-            finish="tool_calls",
-        )
+        if STARTED in combined:
+            return wait_round()
+        return subagent_batch(("child-a", "child-b"), background=True)
 
     with Server([route]) as server:
         env = base_env(home, server.url)
         result = run(root, env, "--yolo", "-p", "delegate twice", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "parallel-task-ok", result.stdout)
-        assert_true(max_active_children == 2, max_active_children)
+        assert_true(running.most == 2, running.most)
         parent_requests = [
             body
             for _, body in server.requests
-            if any(
-                message.get("role") == "user" and message.get("content") == "delegate twice"
-                for message in body["messages"]
-            )
+            if has_message(body["messages"], "user", "delegate twice")
         ]
         assert_true(3 <= len(parent_requests) <= 4, len(parent_requests))
         for request in parent_requests:
@@ -599,49 +563,19 @@ def test_parallel_subagents_auto_join(root, home, *, binary):
 def test_a_batch_of_children_runs_together_and_shares_the_budget(root, home, *, binary):
     """Children the turn waits for run side by side; under a session budget
     each takes an equal share of what is left."""
-    children_lock = threading.Lock()
-    active = {"now": 0, "most": 0}
+    running = Concurrency()
 
     def route(_, body):
         messages = body["messages"]
-        child = next(
-            (
-                m["content"]
-                for m in messages
-                if m.get("role") == "user" and m.get("content") in {"child-a", "child-b"}
-            ),
-            None,
-        )
-        if child:
-            with children_lock:
-                active["now"] += 1
-                active["most"] = max(active["most"], active["now"])
-            try:
+        if child := user_prompt(messages, ("child-a", "child-b")):
+            with running:
                 time.sleep(1)
                 return event({"content": f"{child}-result"})
-            finally:
-                with children_lock:
-                    active["now"] -= 1
         results = tool_results(messages)
         if results:
             shared = all("limits.cost to $0.5000, its share" in result for result in results)
             return event({"content": "shared-ok" if shared else " | ".join(results)})
-        return event(
-            {
-                "tool_calls": [
-                    {
-                        "index": index,
-                        "id": f"task-{index}",
-                        "function": {
-                            "name": "subagent",
-                            "arguments": json.dumps({"prompt": prompt, "limits": {"cost": 0.9}}),
-                        },
-                    }
-                    for index, prompt in enumerate(("child-a", "child-b"))
-                ]
-            },
-            finish="tool_calls",
-        )
+        return subagent_batch(("child-a", "child-b"), limits={"cost": 0.9})
 
     with Server([route]) as server:
         env = base_env(home, server.url)
@@ -649,41 +583,21 @@ def test_a_batch_of_children_runs_together_and_shares_the_budget(root, home, *, 
         result = run(root, env, "--yolo", "-p", "delegate twice", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "shared-ok", result.stdout)
-        assert_true(active["most"] == 2, active)
+        assert_true(running.most == 2, running.most)
 
 
 def test_subagent_interrupt_reaps_child(root, home, *, binary):
     """A soft interrupt during the tool batch must not orphan delegation."""
-    batch = event(
-        {
-            "tool_calls": [
-                {
-                    "index": 0,
-                    "id": "call-task",
-                    "function": {
-                        "name": "subagent",
-                        "arguments": json.dumps({"prompt": "slow-child", "background": True}),
-                    },
-                },
-                {
-                    "index": 1,
-                    "id": "call-run",
-                    "function": {
-                        "name": "run",
-                        "arguments": json.dumps({"command": "sleep 5"}),
-                    },
-                },
-            ]
-        },
-        finish="tool_calls",
+    batch = tool_calls(
+        [
+            ("call-task", "subagent", {"prompt": "slow-child", "background": True}),
+            ("call-run", "run", {"command": "sleep 5"}),
+        ]
     )
 
     def route(_, body):
         messages = body["messages"]
-        if any(
-            message.get("role") == "user" and message.get("content") == "slow-child"
-            for message in messages
-        ):
+        if has_message(messages, "user", "slow-child"):
             time.sleep(5)
             return event({"content": "too-late"})
         if any(message.get("role") == "tool" for message in messages):
@@ -720,7 +634,7 @@ def test_subagent_interrupt_reaps_child(root, home, *, binary):
                 if (
                     event_data.get("event") == "tool_result"
                     and data.get("name") == "subagent"
-                    and str(data.get("result", "")).startswith("[started] subagent id ")
+                    and str(data.get("result", "")).startswith(STARTED)
                 ):
                     child_pids.update(descendant_pids(process.pid))
                     return True
@@ -762,11 +676,7 @@ def test_subagent_uses_selected_model_route(root, home, *, binary):
     child = Server([child_action, child_reply])
 
     def delegate(_, body):
-        runtime = "\n".join(
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "user"
-        )
+        runtime = "\n".join(user_texts(body["messages"]))
         assert_true("[delegation: parent=" in runtime, runtime)
         return tool_call(
             "subagent",
@@ -785,7 +695,7 @@ def test_subagent_uses_selected_model_route(root, home, *, binary):
     parent = Server(
         [
             delegate,
-            lambda *_: tool_call("activity", {"operation": "wait", "wait_ms": 30000}),
+            lambda *_: wait_round(),
             finish,
         ]
     )
@@ -847,8 +757,8 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
             )
             valid = valid and "child-secret-do-not-print" not in report and len(report) < 4000
             return event({"content": "child-diagnostic-ok" if valid else report})
-        if any("[started] subagent id " in result for result in results):
-            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        if launched(results):
+            return wait_round()
         return tool_call(
             "subagent",
             {
@@ -924,21 +834,8 @@ def test_subagent_reports_the_limit_that_stopped_the_child(root, home, *, binary
                 return event({"content": "child-findings-so-far"})
             # Two calls in one round against a ceiling of one: the child
             # refuses the batch and stops on max_tool_calls.
-            return event(
-                {
-                    "tool_calls": [
-                        {
-                            "index": i,
-                            "id": f"child-call-{i}",
-                            "function": {
-                                "name": "run",
-                                "arguments": json.dumps({"command": "echo child-work"}),
-                            },
-                        }
-                        for i in range(2)
-                    ]
-                },
-                finish="tool_calls",
+            return tool_calls(
+                [(f"child-call-{i}", "run", {"command": "echo child-work"}) for i in range(2)]
             )
         results = tool_results(messages)
         if results:
@@ -1034,8 +931,8 @@ def test_a_background_child_keeps_its_own_time_limit(root, home, *, binary):
         if report:
             assert_true("child stopped: turn_deadline" in report, report)
             return event({"content": "time-limit-ok"})
-        if any("[started] subagent id " in result for result in results):
-            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        if launched(results):
+            return wait_round()
         return tool_call(
             "subagent", {"prompt": "child", "background": True, "limits": {"seconds": 1}}
         )
@@ -1055,24 +952,21 @@ def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
     they spent still reaches the parent."""
     pids = [root / "command.pid", root / "grandchild-command.pid"]
 
-    def spent(response):
-        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 4}
-        return response
+    spent = {"prompt_tokens": 1, "completion_tokens": 4}
 
     def sleeper(pid_file):
         command = f"echo $$ > {shlex.quote(str(pid_file))}; sleep 60"
-        return spent(tool_call("run", {"command": command}))
+        return tool_call("run", {"command": command}, usage=spent)
 
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "grandchild"):
             return sleeper(pids[1])
         if has_message(messages, "user", "child"):
-            if any("[started] subagent id " in result for result in tool_results(messages)):
+            if launched(tool_results(messages)):
                 return sleeper(pids[0])
-            return spent(
-                tool_call("subagent", {"prompt": "grandchild", "mode": "full", "background": True})
-            )
+            grandchild = {"prompt": "grandchild", "mode": "full", "background": True}
+            return tool_call("subagent", grandchild, usage=spent)
         results = tool_results(messages)
         if any("stopped" in result for result in results[1:]):
             return event({"content": "child-stopped"})
@@ -1109,7 +1003,7 @@ def test_a_follow_up_reports_only_what_it_spent(root, home, *, binary):
         if "second-run" in results:
             return event({"content": "both-ran"})
         if "first-run" in results:
-            agent = re.search(r"\[collaborator (agent-[^;\]]+)", results).group(1)
+            agent = collaborator(results)
             again = {"operation": "followup", "agent_id": agent, "prompt": "again"}
             return tool_call("subagent", again | {"background": False})
         return tool_call("subagent", {"prompt": "child", "background": False})
@@ -1167,11 +1061,11 @@ def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):
             )
             assert_true("clamped limits.seconds to 2" in report, report)
             return event({"content": "clamp-reported-ok"})
-        if any("[started] subagent id " in result for result in results):
-            receipt = next(result for result in results if "[started] subagent id " in result)
+        if launched(results):
+            receipt = next(result for result in results if STARTED in result)
             assert_true("clamped limits.seconds to 2" in receipt, receipt)
             assert_true("produced no result envelope" not in receipt, receipt)
-            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+            return wait_round()
         return tool_call(
             "subagent",
             {"prompt": "child", "background": True, "limits": {"seconds": 600}},

@@ -1,5 +1,6 @@
 import json
 import pathlib
+import re
 import subprocess
 import threading
 import time
@@ -10,6 +11,7 @@ from integration_support import (
     base_env,
     budget,
     event,
+    fnv1a64,
     function_names,
     run,
     run_dialog,
@@ -22,6 +24,24 @@ from integration_support import (
     wait_until,
     write_session,
 )
+from session_support import SessionClient, runtime_directory, stop_sessions
+
+
+def _spawn(title, objective, *, environment="local"):
+    """A thread spawn's arguments; `environment=None` leaves it to the setting."""
+    spawn = {"action": "spawn", "title": title, "objective": objective}
+    return spawn | ({"environment": environment} if environment else {})
+
+
+def _panel_path(home, root):
+    """Where the panel of `root` keeps its session."""
+    return home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+
+
+def _socket(home, session):
+    """The runtime socket of the saved session at `session`."""
+    return runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
+
 
 PANEL_TOOLS = {
     "read_path",
@@ -209,12 +229,7 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
         if not tool_results(body["messages"]):
             return tool_call(
                 "thread",
-                {
-                    "action": "spawn",
-                    "title": "Count files",
-                    "objective": "count the files",
-                    "environment": "local",
-                },
+                _spawn("Count files", "count the files"),
             )
         return event({"content": "spawned-ok"})
 
@@ -242,9 +257,7 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true(heard.wait(budget(10)), [json.dumps(b)[-300:] for _, b in server.requests])
         latency = reported["heard"] - reported["finished"]
         assert_true(latency < budget(5), f"panel heard back after {latency:.1f}s")
-        threads = [path for path in session_files(home) if path.name.startswith("thread-")]
-        assert_true(len(threads) == 1, threads)
-        header = json.loads(threads[0].read_text(encoding="utf-8").splitlines()[0])
+        header = json.loads(_thread_session(home).read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["kind"] == "thread", header)
         link = header["thread"]
         assert_true(link["folder"] == str(root.resolve()), link)
@@ -270,12 +283,7 @@ def test_a_headless_panel_waits_for_a_slow_thread(root, home, *, binary):
         if not tool_results(body["messages"]):
             return tool_call(
                 "thread",
-                {
-                    "action": "spawn",
-                    "title": "Slow one",
-                    "objective": "take your time",
-                    "environment": "local",
-                },
+                _spawn("Slow one", "take your time"),
             )
         return event({"content": "spawned-ok"})
 
@@ -306,12 +314,7 @@ def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
             return event({"content": "spawned-ok"})
         return tool_call(
             "thread",
-            {
-                "action": "spawn",
-                "title": "Count files",
-                "objective": "count the files",
-                "environment": "local",
-            },
+            _spawn("Count files", "count the files"),
         )
 
     with Server([route]) as server:
@@ -346,28 +349,13 @@ def test_a_message_starts_a_thread_that_stopped_for_being_idle(root, home, *, bi
 
 
 def society(root, home, binary, *, stopped):
-    from session_support import runtime_directory
 
     heard = threading.Event()
     seen = {"events": []}
     client = {}
 
-    def spawn(index, name):
-        return {
-            "index": index,
-            "id": f"spawn-{name}",
-            "function": {
-                "name": "thread",
-                "arguments": json.dumps(
-                    {
-                        "action": "spawn",
-                        "title": name.capitalize(),
-                        "objective": f"{name}-task",
-                        "environment": "local",
-                    }
-                ),
-            },
-        }
+    def spawn(name):
+        return (f"spawn-{name}", "thread", _spawn(name.capitalize(), f"{name}-task"))
 
     def message(peer, text):
         return tool_call("session", {"operation": "message", "session_id": peer, "prompt": text})
@@ -432,7 +420,7 @@ def society(root, home, binary, *, stopped):
             ]
             return event({"content": "noted-event"})
         if not tool_results(body["messages"]):
-            return event({"tool_calls": [spawn(0, "alpha"), spawn(1, "beta")]}, finish="tool_calls")
+            return tool_calls([spawn("alpha"), spawn("beta")])
         return event({"content": "spawned-ok"})
 
     with Server([route]) as server:
@@ -466,16 +454,13 @@ def society(root, home, binary, *, stopped):
         wait_until(lambda: seen["events"], "the panel heard no thread event", timeout=10)
         assert_true("Its answer" in str(seen["events"][0]), seen["events"][0])
         # And its row is recorded as mail, so no client shows it as the person's.
-        saved = next((home / ".uagent" / "history").glob("*/coordinator.json")).read_text()
+        saved = _coordinator(home).read_text()
         assert_true('"origin":"mail"' in saved.replace(" ", ""), saved[-600:])
 
 
 def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
-    from integration_support import fnv1a64
 
-    panel = fnv1a64(
-        str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
-    )
+    panel = fnv1a64(str(_panel_path(home, root)))
     write_session(
         home,
         "thread-spent",
@@ -493,7 +478,7 @@ def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
         [
             tool_call(
                 "thread",
-                {"action": "spawn", "title": "More", "objective": "more", "environment": "local"},
+                _spawn("More", "more"),
             ),
             event({"content": "refused-ok"}),
         ]
@@ -507,11 +492,8 @@ def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
 
 
 def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root, home, *, binary):
-    from integration_support import fnv1a64
 
-    panel = fnv1a64(
-        str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
-    )
+    panel = fnv1a64(str(_panel_path(home, root)))
     conversation = [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}]
     write_session(
         home,
@@ -564,7 +546,6 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
 def test_a_thread_is_never_above_auto(root, home, *, binary):
     """A thread reviews unless told to ask: no command, flag or default puts
     it above that, in this run or the next."""
-    from integration_support import fnv1a64
 
     thread = write_session(
         home,
@@ -612,12 +593,8 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
 
 
 def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):
-    from integration_support import fnv1a64
-    from session_support import SessionClient, runtime_directory
 
-    panel = fnv1a64(
-        str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
-    )
+    panel = fnv1a64(str(_panel_path(home, root)))
     thread = write_session(
         home,
         "thread-busy",
@@ -632,11 +609,10 @@ def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, bin
         },
     )
     message = {"action": "message", "session_id": fnv1a64(str(thread)), "text": "again"}
-    socket = runtime_directory(home) / f"{fnv1a64(str(thread))}.sock"
 
     def idle():
         try:
-            client = SessionClient(socket)
+            client = SessionClient(_socket(home, thread))
         except OSError:
             return True
         client.close()
@@ -672,12 +648,7 @@ def test_guidance_into_a_working_thread_is_no_restart(root, home, *, binary):
         if not results:
             return tool_call(
                 "thread",
-                {
-                    "action": "spawn",
-                    "title": "Slow",
-                    "objective": "slow work",
-                    "environment": "local",
-                },
+                _spawn("Slow", "slow work"),
             )
         if len(results) <= 4:
             thread = json.loads(results[0])["session_id"]
@@ -700,7 +671,7 @@ def test_a_thread_outside_git_runs_in_place_unless_a_worktree_is_asked_for(root,
         if "Objective: list files" in json.dumps(body["messages"]):
             return event({"content": "listed"})
         results = tool_results(body["messages"])
-        spawn = {"action": "spawn", "title": "Here", "objective": "list files"}
+        spawn = _spawn("Here", "list files", environment=None)
         if not results:
             return tool_call("thread", spawn)
         if len(results) == 1:
@@ -719,10 +690,8 @@ def test_a_thread_outside_git_runs_in_place_unless_a_worktree_is_asked_for(root,
 
 
 def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
-    from integration_support import fnv1a64
-    from session_support import SessionClient, runtime_directory, stop_sessions
 
-    path = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    path = _panel_path(home, root)
     write_session(
         home,
         "thread-spent",
@@ -742,7 +711,7 @@ def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
         # Your own messages still run at the limit.
         result = run(root, env, "panel", "-p", "status?", binary=binary)
         assert_true(result.stdout.strip() == "asked-ok", result.stdout + result.stderr)
-        client = SessionClient(runtime_directory(home) / f"{fnv1a64(str(path))}.sock")
+        client = SessionClient(_socket(home, path))
         try:
             client.send("steer", text="[thread event, not a user message] Thread x finished.")
             # Events batch for up to 20 seconds before the limit is checked.
@@ -758,7 +727,6 @@ def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
 
 
 def test_panel_caps_working_threads_in_worktrees(root, home, *, binary):
-    import subprocess
 
     for command in (
         ["git", "init", "-q"],
@@ -791,12 +759,12 @@ def test_panel_caps_working_threads_in_worktrees(root, home, *, binary):
                     (
                         "call-1",
                         "thread",
-                        {"action": "spawn", "title": "First", "objective": "first"},
+                        _spawn("First", "first", environment=None),
                     ),
                     (
                         "call-2",
                         "thread",
-                        {"action": "spawn", "title": "Second", "objective": "second"},
+                        _spawn("Second", "second", environment=None),
                     ),
                 ]
             )
@@ -848,7 +816,7 @@ def test_panel_closes_an_idle_thread(root, home, *, binary):
         if not results:
             return tool_call(
                 "thread",
-                {"action": "spawn", "title": "Idle", "objective": "idle", "environment": "local"},
+                _spawn("Idle", "idle"),
             )
         return event({"content": "spawned-ok"})
 
@@ -860,13 +828,12 @@ def test_panel_closes_an_idle_thread(root, home, *, binary):
         # "closed" is only reported once the runtime no longer answers; the
         # session itself stays.
         assert_true(closed["result"] == "closed", closed)
-        thread = [path for path in session_files(home) if path.name.startswith("thread-")]
-        assert_true(len(thread) == 1, thread)
+        _thread_session(home)
 
 
 def test_panel_deletes_only_with_the_user(root, home, *, binary):
     victim = write_session(home, "keep-me", [{"role": "system", "content": "sys"}], cwd=root)
-    session_id = __import__("integration_support").fnv1a64(str(victim))
+    session_id = fnv1a64(str(victim))
     with Server(
         [
             tool_call("thread", {"action": "delete", "session_id": session_id}),
@@ -881,8 +848,16 @@ def test_panel_deletes_only_with_the_user(root, home, *, binary):
         assert_true(victim.exists(), "deleted without the user")
 
 
+def _threads(home):
+    return [path for path in session_files(home) if path.name.startswith("thread-")]
+
+
+def _coordinator(home):
+    return next(path for path in session_files(home) if path.name == "coordinator.json")
+
+
 def _thread_session(home):
-    threads = [path for path in session_files(home) if path.name.startswith("thread-")]
+    threads = _threads(home)
     assert_true(len(threads) == 1, threads)
     return threads[0]
 
@@ -890,7 +865,6 @@ def _thread_session(home):
 def _spawn_then(decide):
     """A router: the panel spawns one local thread that writes a file,
     and answers the routed approval with `decide(thread_id, interaction_id)`."""
-    import re
 
     state = {"asked": threading.Event(), "done": threading.Event()}
 
@@ -911,12 +885,7 @@ def _spawn_then(decide):
         if not results:
             return tool_call(
                 "thread",
-                {
-                    "action": "spawn",
-                    "title": "Write",
-                    "objective": "write out.txt",
-                    "environment": "local",
-                },
+                _spawn("Write", "write out.txt"),
             )
         return event({"content": "spawned-ok"})
 
@@ -947,12 +916,7 @@ def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, 
             return event({"content": "panel-ack"})
         return tool_call(
             "thread",
-            {
-                "action": "spawn",
-                "title": "Write",
-                "objective": "write and run",
-                "environment": "local",
-            },
+            _spawn("Write", "write and run"),
         )
 
     with Server([route]) as server:
@@ -994,7 +958,6 @@ def test_panel_approves_what_auto_could_not(root, home, *, binary):
 
 
 def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
-    from session_support import SessionClient, runtime_directory
 
     route, state = _spawn_then(
         lambda thread, interaction: {
@@ -1012,10 +975,7 @@ def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(state["asked"].wait(budget(20)), "approval never reached the panel")
         thread = _thread_session(home)
-        socket = (
-            runtime_directory(home)
-            / f"{__import__('integration_support').fnv1a64(str(thread))}.sock"
-        )
+        socket = _socket(home, thread)
         client = SessionClient(socket)
         try:
             yielded = client.until(
@@ -1034,7 +994,6 @@ def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
 
 
 def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
-    from session_support import SessionClient, runtime_directory
 
     def route(_, body):
         text = json.dumps(body["messages"])
@@ -1046,7 +1005,7 @@ def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
         if not tool_results(body["messages"]):
             return tool_call(
                 "thread",
-                {"action": "spawn", "title": "Run", "objective": "run it", "environment": "local"},
+                _spawn("Run", "run it"),
             )
         return event({"content": "spawned-ok"})
 
@@ -1055,8 +1014,7 @@ def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
         result = run(root, env, "panel", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         thread = _thread_session(home)
-        fnv = __import__("integration_support").fnv1a64
-        client = SessionClient(runtime_directory(home) / f"{fnv(str(thread))}.sock")
+        client = SessionClient(_socket(home, thread))
         try:
             waiting = client.until(
                 lambda frame: frame.get("kind") == "state" and frame.get("pending")
@@ -1070,7 +1028,6 @@ def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
 
 
 def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, binary):
-    import re
 
     instructions = home / ".uagent" / "PANEL.md"
     instructions.parent.mkdir(parents=True, exist_ok=True)
@@ -1109,7 +1066,7 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
         assert_true("## goals\\nship v1" in context and "## board" in context, context[-800:])
         # Rebuilt per request, never stored: rewriting stored history would
         # move display rows and spoil the provider's cached prefix.
-        stored = next(p for p in session_files(home) if p.name == "coordinator.json")
+        stored = _coordinator(home)
         assert_true("## board" not in stored.read_text(), "panel context was stored")
         # The typed text is stored as typed; only the request carries stamps.
         stored_messages = json.loads(stored.read_text().split("\n", 1)[1])["messages"]
@@ -1130,14 +1087,12 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
 
 
 def test_only_checkpoints_carry_the_view(root, home, *, binary):
-    from integration_support import fnv1a64
-    from session_support import SessionClient, runtime_directory, stop_sessions
 
-    path = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    path = _panel_path(home, root)
     with Server([event({"content": "first"}), event({"content": "second"})]) as server:
         result = run(root, base_env(home, server.url), "panel", "-p", "hi", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        client = SessionClient(runtime_directory(home) / f"{fnv1a64(str(path))}.sock")
+        client = SessionClient(_socket(home, path))
         try:
             sent = client.send("submit", text="again")
             client.until(
@@ -1224,6 +1179,16 @@ def _room(reply):
     return route
 
 
+def _newest(text):
+    """The last line of `text`, or nothing."""
+    return text.splitlines()[-1] if text else ""
+
+
+def _moderator_saw(server):
+    """The newest conversation that was no member's."""
+    return [json.dumps(b["messages"]) for _, b in server.requests if not _member(b)][-1]
+
+
 def _asked(server, name, text):
     return [b for _, b in server.requests if _member(b) == name and text in _heard(b)]
 
@@ -1232,7 +1197,7 @@ def _team(root, env, binary):
     result = run(root, env, "panel", "-p", "bring in the team", binary=binary)
     assert_true(result.returncode == 0, result.stderr)
     # Both joined: a test about the chat is not one about starting runtimes.
-    joined = [path for path in session_files(env["HOME"]) if path.name.startswith("thread-")]
+    joined = _threads(env["HOME"])
     assert_true(len(joined) == 2, f"members did not start: {result.stdout!r}")
 
 
@@ -1263,9 +1228,7 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         _team(root, env, binary)
         # A member is called what its session is.
         members = [
-            json.loads(path.read_text(encoding="utf-8").splitlines()[0])
-            for path in session_files(home)
-            if path.name.startswith("thread-")
+            json.loads(path.read_text(encoding="utf-8").splitlines()[0]) for path in _threads(home)
         ]
         assert_true(
             sorted(m["title"] for m in members if "member" in m["thread"]) == ["Ada", "Lin"],
@@ -1341,7 +1304,7 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         server.requests.clear()
         result = run(root, env, "panel", "-p", "nudge Lin", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        text = json.dumps([b for _, b in server.requests if not _member(b)][-1]["messages"])
+        text = _moderator_saw(server)
         assert_true("lin, only you" in text and "Just me, then." in text, text)
         assert_true("open your answer with" in text, text)
 
@@ -1386,12 +1349,7 @@ def test_a_threads_report_begins_a_round_the_members_discuss(root, home, *, bina
                 return "Started a count."
             return tool_call(
                 "thread",
-                {
-                    "action": "spawn",
-                    "title": "Count files",
-                    "objective": "count the files",
-                    "environment": "local",
-                },
+                _spawn("Count files", "count the files"),
             )
         return "PASS"
 
@@ -1411,14 +1369,8 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
     discussed, then the moderator closes the round once. A report after that
     reaches the moderator alone: the chat waits for the user."""
 
-    def spawn(title, objective):
-        return tool_call(
-            "thread",
-            {"action": "spawn", "title": title, "objective": objective, "environment": "local"},
-        )
-
     def reply(member, last, body):
-        newest = last.splitlines()[-1] if last else ""
+        newest = _newest(last)
         if member:
             if "count the files" in newest:
                 return "Counting matters."
@@ -1437,13 +1389,13 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
             return (
                 "Closed: 3 files."
                 if '"Recount files"' in text
-                else spawn("Recount files", "recount")
+                else tool_call("thread", _spawn("Recount files", "recount"))
             )
         if "count the files" in last:
             return (
                 "Started a count."
                 if '"Count files"' in text
-                else spawn("Count files", "count the files")
+                else tool_call("thread", _spawn("Count files", "count the files"))
             )
         return "PASS"
 
@@ -1478,7 +1430,7 @@ def test_a_round_does_not_close_while_a_member_is_still_answering(root, home, *,
     next turn ends, though the chat heard its first answer already."""
 
     def reply(member, last, _body):
-        newest = last.splitlines()[-1] if last else ""
+        newest = _newest(last)
         if member == "Ada":
             return "A1" if "talk now" in newest else "PASS"
         if member == "Lin":
@@ -1501,7 +1453,7 @@ def test_a_round_does_not_close_while_a_member_is_still_answering(root, home, *,
             lambda: any("The discussion has settled" in json.dumps(b) for _, b in server.requests),
             "the round never closed",
         )
-        moderator = [json.dumps(b["messages"]) for _, b in server.requests if not _member(b)][-1]
+        moderator = _moderator_saw(server)
         settled = moderator.index("The discussion has settled")
         assert_true(0 <= moderator.find("Lin: L2") < settled, moderator)
 
@@ -1603,7 +1555,7 @@ def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *
         env = base_env(home, server.url)
         _team(root, env, binary)
         # Where the web keeps the files a person uploads to the panel.
-        panel = next(path for path in session_files(home) if path.name == "coordinator.json")
+        panel = _coordinator(home)
         shared = pathlib.Path(str(panel) + ".assets")
         shared.mkdir()
         (shared / "plan.txt").write_text("ship on friday\n", encoding="utf-8")
@@ -1630,7 +1582,7 @@ def test_an_answer_to_an_earlier_message_is_read_and_is_no_turn_of_the_next(root
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
         _team(root, env, binary)
-        panel = next(path for path in session_files(home) if path.name == "coordinator.json")
+        panel = _coordinator(home)
         first = subprocess.Popen(
             [str(binary), "panel", "-p", "slow first"],
             cwd=root,
@@ -1673,7 +1625,7 @@ def test_a_chat_round_outlives_the_panels_runtime(root, home, *, binary):
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
         _team(root, env, binary)
-        panel = next(path for path in session_files(home) if path.name == "coordinator.json")
+        panel = _coordinator(home)
         server.requests.clear()
         asking = subprocess.Popen(
             [str(binary), "panel", "-p", "slow one"],

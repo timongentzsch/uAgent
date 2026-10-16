@@ -29,7 +29,7 @@ const std::string& Name(const SessionInfo& member) { return member.title; }
 // `text` without its author's own name in front: a model writes it there as
 // it reads the others' messages, and it would address the author.
 std::string WithoutOwnName(std::string text, const std::string& name) {
-  text = Trim(std::move(text));
+  text = Trim(text);
   if (AsciiLower(text).starts_with(AsciiLower(name) + ":")) {
     text = Trim(text.substr(name.size() + 1));
   }

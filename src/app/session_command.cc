@@ -77,7 +77,6 @@ bool ParseSessionCommand(const json& command, const std::string& session_id,
   parsed.title = JsonValue(command, "title", "");
   parsed.operation = JsonValue(command, "operation", "");
   parsed.cancelled = JsonValue(command, "cancelled", false);
-  parsed.has_attachments = command.contains("attachments");
   parsed.from_panel = JsonValue(command, "origin", "") == kRoutePanel;
   parsed.raw = command;
   out = std::move(parsed);

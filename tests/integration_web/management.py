@@ -11,6 +11,9 @@ from integration_support import (
     save_settings,
     session_files,
     tool_call,
+    tool_calls,
+    tool_results,
+    user_texts,
     wait_until,
 )
 from web_support import web_host
@@ -541,30 +544,17 @@ def test_web_lists_the_children_a_turn_waits_on_and_stops_one(root, home, *, bin
     release = threading.Event()
 
     def answer(_, body):
-        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
+        users = user_texts(body["messages"])
         for name, seen in started.items():
             if f"WAITED_CHILD_{name}" in users:
                 seen.set()
                 assert release.wait(timeout=budget(20))
                 return event({"content": f"Child {name} result"})
-        results = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        results = tool_results(body["messages"])
         if results:
             return event({"content": "Parent saw: " + " | ".join(results)})
-        return event(
-            {
-                "tool_calls": [
-                    {
-                        "index": index,
-                        "id": f"waited-{name}",
-                        "function": {
-                            "name": "subagent",
-                            "arguments": json.dumps({"prompt": f"WAITED_CHILD_{name}"}),
-                        },
-                    }
-                    for index, name in enumerate(("A", "B"))
-                ]
-            },
-            finish="tool_calls",
+        return tool_calls(
+            [(f"waited-{name}", "subagent", {"prompt": f"WAITED_CHILD_{name}"}) for name in "AB"]
         )
 
     with Server([answer]) as provider:

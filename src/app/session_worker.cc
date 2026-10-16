@@ -1003,11 +1003,9 @@ int WorkerMain(int argc, char** argv) {
   } else if (const json* role = JsonObject(launch, "session");
              role && IsThread(*role)) {
     options.session = *role;
-  } else if (const json header = SessionHeader(argv[3]);
-             JsonValue(header, kSessionHeaderKind, "") == kSessionKindThread) {
-    options.session = {
-        {"kind", kSessionKindThread},
-        {"thread", JsonValue(header, kSessionHeaderThread, json::object())}};
+  } else if (const json header = SessionHeader(argv[3]); IsThread(header)) {
+    options.session = {{"kind", kSessionKindThread},
+                       {"thread", ThreadRole(header)}};
   }
   // A thread runs sandboxed and within its budget however its runtime is
   // started again, so a restart never widens it: not even a sandbox policy

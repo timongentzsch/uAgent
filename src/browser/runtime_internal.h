@@ -27,9 +27,11 @@ constexpr const char* kHumanControls =
 // whenever the page rewrites the style or drops the tag. Each write is
 // guarded, since the observer sees its own writes too. Installed on each
 // new document and run once more before a capture, for a page that loaded
-// before the attach, which also looks again into open shadow roots made since.
-// Not covered: closed shadow roots, and frames of other sites, which run out
-// of process and would need Target.setAutoAttach to reach.
+// before the attach; that run looks again into open shadow roots and frames
+// of the site made since, since attaching a root is no mutation to observe.
+// The rerun is a property the page cannot replace. Not covered: closed
+// shadow roots, and frames of other sites, which run out of process and
+// would need Target.setAutoAttach to reach.
 constexpr const char* kSecretScript =
     "(()=>{if(window.__uagentSecret)return window.__uagentSecret();"
     "const T='data-uagent-secret',P='-webkit-text-security';"
@@ -47,14 +49,17 @@ constexpr const char* kSecretScript =
     "r.attributeName===T&&r.oldValue!==null);"
     "else r.addedNodes.forEach(scan)}});"
     "const roots=new WeakSet();"
-    "const watch=r=>{if(roots.has(r))return;roots.add(r);o.observe(r,all);"
+    "const watch=r=>{if(!roots.has(r)){roots.add(r);o.observe(r,all)}"
     "scan(r)};"
-    "const into=n=>{tag(n);if(n.shadowRoot)watch(n.shadowRoot)};"
+    "const into=n=>{tag(n);if(n.shadowRoot)watch(n.shadowRoot);"
+    "if(/^I?FRAME$/.test(n.tagName))"
+    "try{n.contentWindow.__uagentSecret()}catch(_){}};"
     "const scan=n=>{if(n.nodeType===1)into(n);else if(n.nodeType!==11)return;"
     "n.querySelectorAll('*').forEach(into)};"
     "o.observe(document,all);"
-    "window.__uagentSecret=()=>{if(document.documentElement)"
-    "scan(document.documentElement)};window.__uagentSecret()})()";
+    "Object.defineProperty(window,'__uagentSecret',{value:()=>{"
+    "if(document.documentElement)scan(document.documentElement)}});"
+    "window.__uagentSecret()})()";
 
 constexpr const char* kLeasedElsewhere =
     "another conversation is using the browser; it is free again when that "

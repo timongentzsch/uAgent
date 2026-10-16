@@ -31,7 +31,14 @@ constexpr const char* kElementScript = R"js((async n => {
   const e = (window.__uagentElements || [])[n - 1];
   if (!e || !e.isConnected) return null;
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
-  const box = () => JSON.stringify(e.getBoundingClientRect());
+  // Its box, and the box of each frame it sits in, any of which may move.
+  const box = () => {
+    let at = JSON.stringify(e.getBoundingClientRect());
+    for (let w = e.ownerDocument.defaultView; w.frameElement; w = w.parent) {
+      at += JSON.stringify(w.frameElement.getBoundingClientRect());
+    }
+    return at;
+  };
   let was = box(), still = 0;
   for (let i = 0; i < 10 && still < 2 && !document.hidden; i++) {
     await new Promise(requestAnimationFrame);
@@ -62,9 +69,13 @@ constexpr const char* kElementScript = R"js((async n => {
     }
     const frame = root.defaultView && root.defaultView.frameElement;
     if (!frame) break;
+    // A frame drawn at another size (scaled, turned) maps no point simply.
     const f = frame.getBoundingClientRect();
-    x += f.x + frame.clientLeft;
-    y += f.y + frame.clientTop;
+    if (Math.abs(f.width - frame.offsetWidth) > 1 ||
+        Math.abs(f.height - frame.offsetHeight) > 1) return {transformed: true};
+    const pad = getComputedStyle(frame);
+    x += f.x + frame.clientLeft + parseFloat(pad.paddingLeft);
+    y += f.y + frame.clientTop + parseFloat(pad.paddingTop);
     target = frame;
   }
   return {x: Math.round(x), y: Math.round(y)};
@@ -271,6 +282,11 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (!found) return "that element is gone; look again";
       if (JsonValue(*found, "moving", false)) {
         return named + " is still moving; look again";
+      }
+      if (JsonValue(*found, "transformed", false)) {
+        return {{"error", "element " + std::to_string(element) +
+                              " is in a frame drawn scaled or turned; click "
+                              "by x and y from a screenshot"}};
       }
       if (const std::string over = JsonValue(*found, "covered", "");
           !over.empty()) {

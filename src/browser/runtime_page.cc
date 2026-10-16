@@ -76,20 +76,23 @@ std::string PageScript() {
         '[role=button],[role=link],[role=tab],[role=menuitem],' +
         '[role=checkbox],[role=radio],[role=option],[role=switch],' +
         '[contenteditable=true]';
-    // Document order, each open shadow root and same-site frame in place.
+    // Document order, each open shadow root and shown frame of the site in
+    // place.
     const walk = function* (root) {
-      for (const n of root.querySelectorAll('*')) {
+      const nodes = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      for (let n = nodes.nextNode(); n; n = nodes.nextNode()) {
         if (n.matches(actable)) yield n;
         if (n.shadowRoot) yield* walk(n.shadowRoot);
         if (n.tagName === 'IFRAME' || n.tagName === 'FRAME') {
           let inner = null;
           try { inner = n.contentDocument; } catch (_) {}
-          if (inner) yield* walk(inner);
+          const box = n.getBoundingClientRect();
+          if (inner && box.width >= 1 && box.height >= 1 &&
+              getComputedStyle(n).visibility !== 'hidden') yield* walk(inner);
         }
       }
     };
     for (const n of walk(document)) {
-      if (kept.length >= 100) break;
       const r = n.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
       const style = n.ownerDocument.defaultView.getComputedStyle(n);
@@ -116,10 +119,11 @@ std::string PageScript() {
                ? ' (required)' : '') +
           (expanded === 'true' ? ' (expanded)'
                : expanded === 'false' ? ' (collapsed)' : '') +
-          (n.disabled || n.getAttribute('aria-disabled') === 'true'
+          (n.matches(':disabled') || n.getAttribute('aria-disabled') === 'true'
                ? ' (disabled)' : '');
       kept.push(n);
       rows.push('[' + kept.length + '] ' + kind + ' "' + name + '"' + state);
+      if (kept.length >= 100) break;
     }
     return {...page, text: t.slice(0, )js") +
          chars +
@@ -271,11 +275,14 @@ json Runtime::Observe(bool image) {
   if (zoom <= 0) zoom = 1;
   std::string picture;
   if (image) {
-    if (auto masked =
-            CdError(Call("Runtime.evaluate", {{"expression", kSecretScript}},
-                         page_session_));
-        !masked.empty()) {
-      return {{"error", masked}};
+    // No picture unless the mask is known to be in place.
+    json masked = Call("Runtime.evaluate", {{"expression", kSecretScript}},
+                       page_session_);
+    const json* ran = JsonObject(masked, "result");
+    if (!CdError(masked).empty() || !ran || ran->contains("exceptionDetails")) {
+      return {{"error", CdError(masked).empty()
+                            ? "the page kept password fields from being masked"
+                            : CdError(masked)}};
     }
     json shot = Call("Page.captureScreenshot",
                      {{"format", "jpeg"},

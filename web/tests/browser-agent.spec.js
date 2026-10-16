@@ -257,6 +257,40 @@ test("a look reaches into open shadow roots and frames of the site, and says how
   ).toBe("inner");
 });
 
+test("a frame's border, padding and size count where a click lands", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("about:blank");
+  await page.setContent(`
+    <fieldset disabled><input aria-label="Locked"></fieldset>
+    <iframe hidden srcdoc="<button>Hidden</button>"></iframe>
+    <iframe id=padded style="position:absolute;left:100px;top:100px;width:200px;height:120px;border:7px solid;padding:13px"
+      srcdoc="<button id=inner style='margin:0'>Padded</button>"></iframe>
+    <iframe id=scaled style="position:absolute;left:400px;top:100px;width:200px;height:120px;border:0;transform:scale(2);transform-origin:0 0"
+      srcdoc="<button>Scaled</button>"></iframe>`);
+  await page.frameLocator("#padded").locator("#inner").waitFor();
+  const agent = await control(page);
+  const seen = await agent.look();
+  expect(seen.elements.split("\n")).toEqual([
+    '[1] text "Locked" (empty) (disabled)',
+    '[2] button "Padded"',
+    '[3] button "Scaled"',
+  ]);
+  const padded = await agent.where(2);
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const frame = document.getElementById("padded");
+      const box = frame.getBoundingClientRect();
+      return frame.contentDocument.elementFromPoint(
+        x - box.x - 20,
+        y - box.y - 20,
+      ).id;
+    }, padded),
+  ).toBe("inner");
+  expect(await agent.where(3)).toEqual({ transformed: true });
+});
+
 test("a password field is masked in an open shadow root too", async ({
   page,
 }) => {
@@ -267,8 +301,27 @@ test("a password field is masked in an open shadow root too", async ({
     const root = document.getElementById("host").attachShadow({ mode: "open" });
     root.innerHTML = "<input id=pw type=password>";
   });
-  // A look again before a picture finds roots made since.
+  // A look again before a picture finds roots made since, also inside a
+  // root it knew.
   await page.evaluate(secretScript);
+  await page.evaluate(() => {
+    const outer = document.getElementById("host").shadowRoot;
+    const inner = document.createElement("span");
+    outer.append(inner);
+    inner.attachShadow({ mode: "open" }).innerHTML =
+      "<input id=late type=password>";
+  });
+  await page.evaluate(secretScript);
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(
+        document
+          .getElementById("host")
+          .shadowRoot.querySelector("span")
+          .shadowRoot.getElementById("late"),
+      ).getPropertyValue("-webkit-text-security"),
+    ),
+  ).toBe("disc");
   expect(
     await page.evaluate(() =>
       getComputedStyle(

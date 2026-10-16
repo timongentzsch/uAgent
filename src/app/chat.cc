@@ -363,11 +363,12 @@ bool Chat::Wakes(const std::string& who, bool some, bool one) {
   return true;
 }
 
-json Chat::Deliver(const ChatRoster& roster, const std::string& from,
-                   const std::string& author, const std::string& text,
-                   const json& to, const std::string& source) {
+json Chat::Deliver(const ChatRoster& roster, const std::set<std::string>& opens,
+                   const std::string& from, const std::string& author,
+                   const std::string& text, const json& to,
+                   const std::string& source) {
+  Settle(roster);
   // Whom it is for: those it opens with, else whoever asked its author.
-  const std::set<std::string> opens = Named(folder_, roster, text);
   const std::string asker = JsonValue(to, "asker", "");
   const bool answers = opens.empty() && to.is_object() && to.contains("asker");
   std::set<std::string> some = opens;
@@ -452,6 +453,7 @@ void Chat::Settle(const ChatRoster& roster) {
 }
 
 void Chat::Release(const ChatRoster& roster) {
+  Settle(roster);
   const std::string note = HarnessNote("chat", "Nobody is typing now.");
   // The first waiter that can still be woken; one that cannot is passed
   // over, so nobody waits behind it.
@@ -517,7 +519,7 @@ json Chat::Said(const std::string& text) {
   const std::set<std::string> opens = Named(folder_, roster, text);
   json re = Begin(opens.empty() || opens.contains(kSelf));
   if (!re.is_null()) re["asker"] = "";
-  Deliver(roster, "", "user", text);
+  Deliver(roster, opens, "", "user", text);
   Save();
   return re;
 }
@@ -525,11 +527,11 @@ json Chat::Said(const std::string& text) {
 void Chat::Answered(const std::string& text, const json& to) {
   // Kept with members or without: the panel's turn ends either way.
   const ChatRoster roster = LoadRoster(folder_);
-  Settle(roster);
   const std::string said = WithoutOwnName(text, roster.moderator);
   if (Finished(kSelf, said) == Answer::kMessage) {
     posted_ = 0;
-    Deliver(roster, kSelf, roster.moderator, said, to);
+    Deliver(roster, Named(folder_, roster, said), kSelf, roster.moderator, said,
+            to);
   }
   Release(roster);
   Save();
@@ -548,7 +550,6 @@ void Chat::Heard(Mail& mail) {
   }
   if (mail.type != kMailChat) return;
   const ChatRoster roster = LoadRoster(folder_);
-  Settle(roster);
   const SessionInfo* sender = roster.Find(mail.from);
   std::string text = Trim(JsonValue(mail.body, "text", ""));
   // What it answers. One to an earlier round is read, and is nobody's turn
@@ -568,7 +569,8 @@ void Chat::Heard(Mail& mail) {
     if (first && (Late(to) ? !text.empty() && !SilentAnswer(text)
                            : Finished(mail.from, text) == Answer::kMessage)) {
       // With what the panel's answer to it is an answer to.
-      const json woke = Deliver(roster, mail.from, name, text, to, mail.id);
+      const json woke = Deliver(roster, Named(folder_, roster, text), mail.from,
+                                name, text, to, mail.id);
       read->second = woke.is_null() ? kQuiet : kWaking;
       if (!woke.is_null()) mail.body["re"] = woke;
     }

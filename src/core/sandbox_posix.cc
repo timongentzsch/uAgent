@@ -324,9 +324,16 @@ SandboxStatus InheritedStatus(const std::string& text) {
   status.level = SandboxSupported();
   status.reason = JsonValue(from, "reason", "");
   status.policy.allow_network = JsonValue(from, "network", false);
-  status.policy.writable_roots = JsonStrings(from, "roots");
-  status.policy.denied_writes = JsonStrings(from, "denied");
-  status.policy.withheld = JsonStrings(from, "withheld");
+  auto paths = [&](const char* key) {
+    std::vector<std::string> out;
+    for (const json& path : JsonValue(from, key, json::array())) {
+      if (path.is_string()) out.push_back(path.get<std::string>());
+    }
+    return out;
+  };
+  status.policy.writable_roots = paths("roots");
+  status.policy.denied_writes = paths("denied");
+  status.policy.withheld = paths("withheld");
   return status;
 }
 

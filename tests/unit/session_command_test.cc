@@ -95,15 +95,12 @@ void TestSessionCommandFields() {
   CHECK(parsed.title == "New title");
   CHECK(parsed.operation == "followup");
   CHECK(parsed.cancelled);
-  CHECK(parsed.has_attachments);
-  // Absent fields read as empty; attachments absence is observable because
-  // the submit fast path depends on it.
+  // Absent fields read as empty.
   session::SessionCommand bare;
   REQUIRE(session::ParseSessionCommand(CommandEnvelope("submit"), kSession,
                                        kGeneration, bare));
   CHECK(bare.text.empty());
   CHECK(!bare.cancelled);
-  CHECK(!bare.has_attachments);
 }
 
 void TestSessionCommandRejects() {

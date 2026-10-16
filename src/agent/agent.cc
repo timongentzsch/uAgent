@@ -64,6 +64,12 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
   Reset();
 }
 
+void Agent::Arrive(const std::string& text, json re, const std::string& author,
+                   const std::string& mail, const std::string& sender) {
+  NotFromUser(text, author, mail, std::move(re), sender);
+  SteeringState().Queue(text, "", true);
+}
+
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
 json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
@@ -372,19 +378,18 @@ bool Agent::Save(const std::string& path, std::string& error) const {
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
   // header would silently reassign the rest of the save.
-  record.metadata = {
-      .cwd = CanonicalCwd(),
-      .model = api_.model,
-      .session_id = session_id_,
-      .turns = UserTurns(),
-      .title = Utf8Prefix(FirstUserText(), kUserTitleBytes),
-      .custom_title = custom_title_,
-      .parent_session_id = parent_session_id_,
-      .forked_at_turn = forked_at_turn_,
-      .forked_at_time = forked_at_time_,
-      .delegation = OwnDelegation(),
-      .kind = JsonValue(session_role_, "kind", ""),
-      .thread = JsonValue(session_role_, "thread", json::object())};
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = api_.model,
+                     .session_id = session_id_,
+                     .turns = UserTurns(),
+                     .title = Utf8Prefix(FirstUserText(), kUserTitleBytes),
+                     .custom_title = custom_title_,
+                     .parent_session_id = parent_session_id_,
+                     .forked_at_turn = forked_at_turn_,
+                     .forked_at_time = forked_at_time_,
+                     .delegation = OwnDelegation(),
+                     .kind = JsonValue(session_role_, "kind", ""),
+                     .thread = ThreadRole(session_role_)};
   record.state = {
       .context_tokens = ContextUsed(),
       .context_window = api_.ctx_window,

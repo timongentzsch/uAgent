@@ -33,8 +33,7 @@ json PermissionControl(AppContext& context, const json& request) {
   const std::string key = "UAGENT_APPROVAL";
   // A thread works unattended for its panel: it reviews (Auto) unless
   // told to ask, and nothing puts it above that.
-  const bool thread =
-      JsonValue(context.options.session, "kind", "") == kSessionKindThread;
+  const bool thread = context.options.Thread();
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
     ApprovalMode chosen = ApprovalMode::kAsk;

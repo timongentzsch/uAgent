@@ -13,7 +13,6 @@
 #include "include/core/debug.h"
 #include "include/core/mailbox.h"
 #include "include/core/signals.h"
-#include "include/core/steering.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -25,7 +24,7 @@ std::string Stem(const std::string& path) {
 }
 
 std::string Folder(const json& header) {
-  return JsonValue(JsonValue(header, "thread", json::object()), "folder", "");
+  return JsonValue(ThreadRole(header), "folder", "");
 }
 
 std::string ParentSession(const json& delegation) {
@@ -98,17 +97,15 @@ bool Agent::DeliverMail(bool hold) {
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    const bool quiet = JsonValue(mail.body, "quiet", false);
-    NotFromUser(text, JsonValue(mail.body, "author", ""), mail.id,
-                quiet ? std::nullopt
-                      : std::optional(JsonValue(mail.body, "re", json())),
-                JsonValue(mail.body, "sender", ""));
-    if (quiet) {
+    const std::string author = JsonValue(mail.body, "author", "");
+    const std::string sender = JsonValue(mail.body, "sender", "");
+    if (JsonValue(mail.body, "quiet", false)) {
       // Read, not answered: it joins the conversation where it stands.
-      PushUserInput(text, false, json(), "");
+      NotFromUser(text, author, mail.id, std::nullopt, sender);
+      Say(text, "");
     } else {
       // Mail wakes its recipient: an idle one starts a turn on it.
-      SteeringState().Queue(text, "", true);
+      Arrive(text, JsonValue(mail.body, "re", json()), author, mail.id, sender);
     }
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"type", mail.type},

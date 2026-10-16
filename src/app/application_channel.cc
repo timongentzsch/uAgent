@@ -14,7 +14,6 @@
 #include "include/core/limits.h"
 #include "include/core/mailbox.h"
 #include "include/core/signals.h"
-#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/mcp/register.h"
@@ -70,10 +69,7 @@ int Application::RunChannel() {
     bool children_finished = false;
     agent_.DrainBackground(&children_finished);
     if (children_finished && input->wake) {
-      const std::string note =
-          HarnessNote("subagent finished", "Its result is above.");
-      agent_.NotFromUser(note);
-      SteeringState().Queue(note, "", true);
+      agent_.Arrive(HarnessNote("subagent finished", "Its result is above."));
     }
     agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
@@ -117,7 +113,7 @@ void Application::PublishChannelState(bool checkpoint) {
     state["http"] = agent_.HttpExchanges();
     // A thread's last answer whole, for the report to its panel: the
     // view holds a long one's opening only. Well inside what one mail holds.
-    if (JsonValue(context_.options.session, "kind", "") == kSessionKindThread) {
+    if (context_.options.Thread()) {
       constexpr size_t kAnswerBytes = kMailBytes / 4;
       std::string answer = agent_.LastText();
       if (answer.size() > kAnswerBytes) {

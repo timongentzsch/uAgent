@@ -43,6 +43,7 @@ struct Options {
   bool Panel() const {
     return JsonValue(session, "kind", "") == kSessionKindPanel;
   }
+  bool Thread() const { return IsThread(session); }
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.
   // Setting names to values, as RuntimeConfig::Values spells it.

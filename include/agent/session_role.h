@@ -16,6 +16,17 @@ inline constexpr const char* kSessionKindThread = "thread";
 // A thread's decision with this route is its panel's to answer.
 inline constexpr const char* kRoutePanel = "panel";
 
+// Whether a session's options or header name it a thread of a panel.
+inline bool IsThread(const json& session) {
+  return JsonValue(session, "kind", "") == kSessionKindThread;
+}
+
+// A thread's link to its panel (its folder, ceiling, chat membership) from a
+// session's options or header; empty for any other session.
+inline json ThreadRole(const json& session) {
+  return JsonValue(session, "thread", json::object());
+}
+
 // Who a thread is in its panel's chat (name, persona, skills), from its
 // `thread` role; empty for a thread that works a brief.
 inline json ChatMember(const json& thread) {
@@ -30,10 +41,15 @@ inline bool SilentAnswer(std::string_view text) {
   return std::ranges::find(kSilentAnswers, text) != std::end(kSilentAnswers);
 }
 
+// A pending decision or approval the thread's panel decides first.
+inline bool RoutedToPanel(const json& pending) {
+  return JsonValue(pending, "route", "") == kRoutePanel;
+}
+
 // A pending decision or approval that waits on a person rather than on the
 // thread's panel.
 inline bool WaitsOnPerson(const json& pending) {
-  return pending.is_object() && JsonValue(pending, "route", "") != kRoutePanel;
+  return pending.is_object() && !RoutedToPanel(pending);
 }
 
 // How a session stands to someone looking from outside, from what its

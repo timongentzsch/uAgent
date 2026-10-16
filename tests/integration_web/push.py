@@ -128,6 +128,51 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
             )
 
 
+def test_web_a_message_with_files_during_a_turn_is_guidance(root, home, *, binary):
+    """Sent while a turn runs, a message with files steers it as a steer
+    would, instead of being turned away as busy."""
+    workspace = root / "files-steer"
+    workspace.mkdir()
+    sent_mid_turn = threading.Event()
+    guided = []
+
+    def responder(_, body):
+        content = json.dumps(body["messages"])
+        if "files-guidance" in content:
+            guided.append(content)
+            return event({"content": "read with the file"})
+        # The turn holds until the message is in, so it lands mid-turn.
+        sent_mid_turn.wait(timeout=budget(10))
+        return event({"content": "first answer"})
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            status, asset, _ = client.json(
+                f"/api/sessions/{session['id']}/attachments?name=notes.txt",
+                raw=b"attached notes",
+                headers={"Content-Type": "text/plain"},
+            )
+            assert_true(status == 200, asset)
+            client.command("submit", session, text="Slow files probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            sent = client.command(
+                "submit", session, text="files-guidance", attachment_ids=[asset["id"]]
+            )
+            sent_mid_turn.set()
+            assert_true(sent["accepted"] and not sent["error"], sent)
+            done = client.until(
+                session,
+                lambda value: (
+                    not value["metadata"]["turn_active"]
+                    and "read with the file" in json.dumps(value)
+                ),
+            )
+            assert_true(not done["state"].get("error"), done["state"])
+            assert_true(guided and "notes.txt" in guided[-1], guided)
+
+
 def test_web_queue_next_runs_after_the_turn(root, home, *, binary):
     # "Queue next" never joins the running turn: it waits for the turn to end
     # and then runs as a turn of its own.

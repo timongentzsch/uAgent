@@ -44,8 +44,7 @@ bool Deliver(const Mail& mail, std::function<void()> unreachable) {
   // its panel runs.
   std::thread([folder, refused, unreachable = std::move(unreachable)] {
     std::string error;
-    if (!Open(ExecutablePath(), folder, PanelPath(folder), "", Options{}, error)
-             .socket) {
+    if (!Wake(folder, PanelPath(folder), error).socket) {
       DebugLog("panel_start_failed", {{"error", error}});
       unreachable();
     } else if (!refused.empty()) {

@@ -679,7 +679,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 
 std::string Agent::PromptBase() const {
   const bool panel = JsonValue(session_role_, "kind", "") == kSessionKindPanel;
-  json member = ChatMember(JsonValue(session_role_, "thread", json::object()));
+  json member = ChatMember(ThreadRole(session_role_));
   // It is called what its session is: renamed, it reads its new name.
   if (!member.empty()) member["name"] = session_title_;
   return ApplyPromptOverlay(!member.empty() ? MemberPromptBase(member)

@@ -46,6 +46,10 @@ Options OptionsFromLaunch(const json& launch);
 Connection Open(const std::string& executable, const std::string& cwd,
                 const std::string& path, const std::string& title,
                 const Options& options, std::string& error);
+// Starts the saved session at `path` as it is, from this binary, or
+// connects to the runtime it already has.
+Connection Wake(const std::string& cwd, const std::string& path,
+                std::string& error);
 // One poll thread owns all sockets. Publishing never blocks the model thread.
 class Server {
  public:

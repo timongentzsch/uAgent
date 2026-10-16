@@ -27,10 +27,11 @@ constexpr const char* kHumanControls =
 // whenever the page rewrites the style or drops the tag. Each write is
 // guarded, since the observer sees its own writes too. Installed on each
 // new document and run once more before a capture, for a page that loaded
-// before the attach. Not covered: shadow roots and cross-site iframes, which
-// run out of process and would need Target.setAutoAttach to reach.
+// before the attach, which also looks again into open shadow roots made since.
+// Not covered: closed shadow roots, and frames of other sites, which run out
+// of process and would need Target.setAutoAttach to reach.
 constexpr const char* kSecretScript =
-    "(()=>{if(window.__uagentSecret)return;window.__uagentSecret=1;"
+    "(()=>{if(window.__uagentSecret)return window.__uagentSecret();"
     "const T='data-uagent-secret',P='-webkit-text-security';"
     "const tag=(n,was)=>{if(n.tagName!=='INPUT')return;"
     "if(!n.hasAttribute(T)&&(was||n.type==='password'||"
@@ -38,15 +39,22 @@ constexpr const char* kSecretScript =
     "n.setAttribute(T,'');"
     "if(n.hasAttribute(T)&&n.style.getPropertyValue(P)!=='disc')"
     "n.style.setProperty(P,'disc','important')};"
-    "const scan=n=>{if(n.nodeType!==1)return;tag(n);"
-    "n.querySelectorAll('input').forEach(i=>tag(i))};"
-    "new MutationObserver(m=>{for(const r of m){if(r.type==='attributes')"
+    "const all={subtree:true,childList:true,attributes:true,"
+    "attributeOldValue:true,attributeFilter:['type','autocomplete','style',T]};"
+    "const o=new MutationObserver(m=>{for(const r of m){"
+    "if(r.type==='attributes')"
     "tag(r.target,r.attributeName==='type'?r.oldValue==='password':"
     "r.attributeName===T&&r.oldValue!==null);"
-    "else r.addedNodes.forEach(scan)}}).observe(document,{subtree:true,"
-    "childList:true,attributes:true,attributeOldValue:true,"
-    "attributeFilter:['type','autocomplete','style',T]});"
-    "if(document.documentElement)scan(document.documentElement)})()";
+    "else r.addedNodes.forEach(scan)}});"
+    "const roots=new WeakSet();"
+    "const watch=r=>{if(roots.has(r))return;roots.add(r);o.observe(r,all);"
+    "scan(r)};"
+    "const into=n=>{tag(n);if(n.shadowRoot)watch(n.shadowRoot)};"
+    "const scan=n=>{if(n.nodeType===1)into(n);else if(n.nodeType!==11)return;"
+    "n.querySelectorAll('*').forEach(into)};"
+    "o.observe(document,all);"
+    "window.__uagentSecret=()=>{if(document.documentElement)"
+    "scan(document.documentElement)};window.__uagentSecret()})()";
 
 constexpr const char* kLeasedElsewhere =
     "another conversation is using the browser; it is free again when that "

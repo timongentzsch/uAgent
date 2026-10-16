@@ -41,15 +41,33 @@ constexpr const char* kElementScript = R"js((async n => {
   }
   if (still < 2 && !document.hidden) return {moving: true};
   const r = e.getBoundingClientRect();
-  const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
   if (!e.isConnected || r.width < 1 || r.height < 1) return null;
-  const hit = document.elementFromPoint(x, y);
-  if (hit && (e.contains(hit) || hit.contains(e))) return {x, y};
-  if (!hit) return null;
-  const words = (hit.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-  return {covered: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
-      (hit.classList[0] ? '.' + hit.classList[0] : '') +
-      (words ? ' "' + words + '"' : '')};
+  // Its own root says what lies on top of it there; then the shadow host or
+  // frame it sits in must be on top in its root, the frame moving the point
+  // by where it is, up to the page itself.
+  let x = r.x + r.width / 2, y = r.y + r.height / 2, target = e;
+  for (;;) {
+    const root = target.getRootNode();
+    const hit = root.elementFromPoint(x, y);
+    if (!hit) return null;
+    if (!(target.contains(hit) || hit.contains(target))) {
+      const words = (hit.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      return {covered: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
+          (hit.classList[0] ? '.' + hit.classList[0] : '') +
+          (words ? ' "' + words + '"' : '')};
+    }
+    if (root.host) {
+      target = root.host;
+      continue;
+    }
+    const frame = root.defaultView && root.defaultView.frameElement;
+    if (!frame) break;
+    const f = frame.getBoundingClientRect();
+    x += f.x + frame.clientLeft;
+    y += f.y + frame.clientTop;
+    target = frame;
+  }
+  return {x: Math.round(x), y: Math.round(y)};
 }))js";
 
 // Whether the field typed text reaches is one the screenshots mask

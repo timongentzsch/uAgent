@@ -129,7 +129,9 @@ void AwaitPanel(PanelRequest& panel) {
       continue;
     }
     if (!panel.submitted || !panel.completed || panel.busy ||
-        !panel.probe.empty() || (!panel.paused && ThreadsOwe(panel.cwd))) {
+        !panel.probe.empty() ||
+        (!panel.paused &&
+         (ThreadsOwe(panel.cwd) || ChatWakesPanel(panel.cwd)))) {
       continue;
     }
     panel.probe = RandomToken(16);

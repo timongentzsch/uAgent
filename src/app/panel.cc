@@ -902,6 +902,22 @@ bool AnswerAhead(const SessionInfo& member) {
              });
 }
 
+namespace {
+// One just started is idle until its brief arrives: it has work ahead as
+// long as its runtime is up and it has finished no turn.
+bool WorkAhead(const SessionInfo& info) {
+  const std::string status = LiveStatus(info);
+  return status == "working" || (status == "idle" && info.turns == 0);
+}
+
+// Whether `mail` waiting in a mailbox comes from one of `threads`.
+bool FromAny(const Mail& mail, const std::vector<SessionInfo>& threads) {
+  return std::ranges::any_of(threads, [&](const SessionInfo& info) {
+    return MailboxIdFor(info.path) == mail.from;
+  });
+}
+}  // namespace
+
 bool ThreadsOwe(const std::string& folder) {
   // Looked at in the order the work moves, so nothing slips between two
   // looks: a thread mails its report before it shows idle, and the mail is
@@ -909,12 +925,7 @@ bool ThreadsOwe(const std::string& folder) {
   const std::vector<SessionInfo> threads = OwnThreads(folder);
   const std::set<std::string> typing = ChatTyping(folder);
   if (std::ranges::any_of(threads, [&](const SessionInfo& info) {
-        // One just started is idle until its brief arrives: it has work ahead
-        // as long as its runtime is up and it has finished no turn.
-        const std::string status = LiveStatus(info);
-        if (status == "working" || (status == "idle" && info.turns == 0)) {
-          return true;
-        }
+        if (WorkAhead(info)) return true;
         // A chat member woken and not yet heard from.
         return typing.contains(MailboxIdFor(info.path)) && AnswerAhead(info);
       })) {
@@ -922,15 +933,34 @@ bool ThreadsOwe(const std::string& folder) {
   }
   // Mail from anyone else may never be taken, and is not waited for.
   const std::string box = MailboxIdFor(PanelPath(folder));
-  return std::ranges::any_of(PendingMail(box),
-                             [&](const Mail& mail) {
-                               return std::ranges::any_of(
-                                   threads, [&](const SessionInfo& info) {
-                                     return MailboxIdFor(info.path) ==
-                                            mail.from;
-                                   });
-                             }) ||
+  return std::ranges::any_of(
+             PendingMail(box),
+             [&](const Mail& mail) { return FromAny(mail, threads); }) ||
          MailTaken(box);
+}
+
+bool ThreadsWorking(const std::string& folder) {
+  const std::vector<SessionInfo> threads = OwnThreads(folder);
+  // A member counts by what its runtime does, not by the chat's own count:
+  // one woken while it was still answering starts its next turn after the
+  // answer the chat counted.
+  const auto answering = [](const SessionInfo& member) {
+    return LiveStatus(member) == "working" ||
+           std::ranges::any_of(
+               PendingMail(MailboxIdFor(member.path)), [](const Mail& mail) {
+                 return !JsonValue(mail.body, "quiet", false) &&
+                        NowMillis() - mail.created_ms < kStartingMs;
+               });
+  };
+  return std::ranges::any_of(threads,
+                             [&](const SessionInfo& info) {
+                               return ChatMember(info.thread).empty()
+                                          ? WorkAhead(info)
+                                          : answering(info);
+                             }) ||
+         std::ranges::any_of(
+             PendingMail(MailboxIdFor(PanelPath(folder))),
+             [&](const Mail& mail) { return FromAny(mail, threads); });
 }
 
 void AddPanelTools(std::vector<Tool>& tools, const std::string& folder,

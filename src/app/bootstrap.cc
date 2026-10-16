@@ -908,11 +908,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       &context->runtime.adaptive_system);
   context->agent->SetSessionRole(context->options.session);
   if (context->options.Panel()) {
-    context->chat.emplace(CanonicalCwd(), [agent = context->agent.get()](
-                                              const std::string& note) {
-      agent->NotFromUser(note);
-      SteeringState().Queue(note, "", true);
-    });
+    context->chat.emplace(
+        CanonicalCwd(), [agent = context->agent.get()](const std::string& note,
+                                                       const json& re) {
+          agent->NotFromUser(note, "", "", re);
+          SteeringState().Queue(note, "", true);
+        });
     context->agent->SetRuntimeContext([folder = CanonicalCwd(),
                                        agent = context->agent.get(),
                                        chat = &*context->chat] {

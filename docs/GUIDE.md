@@ -238,9 +238,14 @@ panel's conversation is a chat.
   message addresses nobody.
 - **A message for everyone** starts with no name; members also answer one
   another.
+- **A closing answer.** When the discussion settles and the panel's threads
+  are done, the moderator closes it for you: what was decided and what is
+  still open. Its answers to you, the closing one included, wake no member.
+  After the close, thread reports reach the moderator alone until you write
+  again.
 - **Limits.** For each message of yours, and each thread report the
-  moderator passes on, every participant may take three turns
-  (`panel.chatTurns`) and post two messages; a chat has at most
+  moderator passes on before the close, every participant may take three
+  turns (`panel.chatTurns`) and post two messages; a chat has at most
   16 members.
 - **Who said what.** Each message is shown under its author's name; in the
   web, a message's menu shows the prompt its author was given.

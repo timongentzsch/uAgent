@@ -59,8 +59,14 @@ inline constexpr const char* kPanelTools[] = {
 inline constexpr const char* kMemberTools[] = {"read_path", "grep", "skill",
                                                "web_search", "web_fetch"};
 
-// Whether a thread this folder's panel started is working a turn now.
+// Whether anything the panel waits for is still ahead: a thread working or
+// not begun, a chat member woken and not heard from, or mail from a thread
+// not yet read or acknowledged. What a headless panel run waits for.
 bool ThreadsOwe(const std::string& folder);
+// Whether anything the chat would still hear from is under way: a thread
+// working or not begun, a member answering or just woken, or a report or
+// message waiting unread.
+bool ThreadsWorking(const std::string& folder);
 // Whether something can still bring the answer of a chat member that was
 // woken: a runtime that does not wait on a person, or a wake-up sent moments
 // ago that is starting one.

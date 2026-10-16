@@ -242,6 +242,9 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   }
   Emit(std::move(call_event));
   if (valid) {
+    if (required != ApprovalClass::kNone && tool->approval_subject) {
+      task.approved = tool->approval_subject(arguments);
+    }
     const std::string refused = required == ApprovalClass::kNone
                                     ? ""
                                     : approve_(*tool, arguments, turn_id_);

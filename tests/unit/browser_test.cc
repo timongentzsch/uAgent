@@ -528,8 +528,9 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(!click().contains("error"));
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(3));
   const json shown = act({{"op", "observe"}});
-  CHECK(shown.value("dialog", json::object()) ==
-        json({{"type", "confirm"}, {"message", "Really confirm?"}}));
+  CHECK(
+      shown.value("dialog", json::object()) ==
+      json({{"type", "confirm"}, {"message", "Really confirm?"}, {"url", ""}}));
   CHECK(act({{"op", "back"}})
             .value("error", "")
             .starts_with("a confirm dialog is open"));
@@ -561,6 +562,12 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(act({{"op", "observe"}}).value("dialog", json()).value("type", "") ==
         "alert");
   CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  // On a page that is no web site, a call runs on the look it was approved
+  // on, not after a newer one.
+  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  CHECK(act({{"op", "press"}, {"key", "Tab"}, {"look", "older"}})
+            .value("error", "")
+            .starts_with("the page changed since the look"));
   std::ofstream(profile / "password-focused").close();
   CHECK(act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
         "this is a password field: use fill_saved, or request_human");
@@ -595,6 +602,26 @@ void TestBrowserDialogsAndPasswordFields() {
   fs::remove_all(directory);
 }
 
+// The site an approval covers: scheme and host as a browser compares them.
+void TestBrowserOrigin() {
+  CHECK(browser::Origin("https://Example.COM/a?b#c") == "https://example.com");
+  CHECK(browser::Origin("https://user:pw@example.com:443/") ==
+        "https://example.com");
+  CHECK(browser::Origin("http://example.com:8080?x") ==
+        "http://example.com:8080");
+  CHECK(browser::Origin("https://[::1]:8443/") == "https://[::1]:8443");
+  CHECK(browser::Origin("about:blank").empty());
+  // Read as a browser reads it: a backslash ends the host. What a browser
+  // might read otherwise covers nothing.
+  CHECK(browser::Origin("https://evil.example\\@good.example/") ==
+        "https://evil.example");
+  CHECK(browser::Origin("https://good%2eexample/").empty());
+  CHECK(browser::Origin("https://good.example:0443/").empty());
+  CHECK(browser::Origin("https://[]/").empty());
+  CHECK(browser::Origin("https://good.example:70000/").empty());
+  CHECK(browser::Origin("file:///etc/hosts").empty());
+}
+
 // The tool's own part: several steps in one call, in order, and a page that
 // is only read. The service runs here, in front of the stand-in Chrome.
 void TestBrowserToolSteps() {
@@ -627,6 +654,44 @@ void TestBrowserToolSteps() {
   CHECK(opened.output.find("Elements:\n[1] text \"Search\" (empty)") !=
         std::string::npos);
   CHECK(opened.output.find("image saved") == std::string::npos);
+  // An approval names what an action acts on and where, and a remembered
+  // one covers that action on the site, whatever the look it came from.
+  const json click = {
+      {"action", "click"}, {"element", 1}, {"view_id", view(opened.output)}};
+  CHECK(tool.approval_preview(click) ==
+        "click [1] text \"Search\" (empty) on https://example.com/\n"
+        "Remembered, it covers any browser click on https://example.com.");
+  CHECK(tool.approval_preview({{"action", "type"},
+                               {"element", 1},
+                               {"view_id", view(opened.output)},
+                               {"text", "kestrel"},
+                               {"key", "Enter"}}) ==
+        "type \"kestrel\" into [1] text \"Search\" (empty) then press Enter "
+        "on https://example.com/\nRemembered, it covers any browser type on "
+        "https://example.com.");
+  // A row of another look is not named as this page's.
+  CHECK(tool.approval_preview(
+                {{"action", "click"}, {"element", 1}, {"view_id", "older"}})
+            .starts_with("click element [1] of a look that is not the latest"));
+  // open takes one address; a tab is approved one by one.
+  CHECK(tool.validate({{"action", "open"}}).has_value());
+  CHECK(tool.validate({{"action", "open"},
+                       {"url", "https://example.com/"},
+                       {"path", "page.html"}})
+            .has_value());
+  CHECK(tool.approval_subject({{"action", "tabs"}, {"target_id", "a"}}) !=
+        tool.approval_subject({{"action", "tabs"}, {"target_id", "b"}}));
+
+  CHECK(
+      tool.approval_subject(click) ==
+      tool.approval_subject(
+          {{"action", "click"}, {"element", 3}, {"view_id", "another-look"}}));
+  CHECK(tool.approval_subject(click) !=
+        tool.approval_subject({{"action", "type"}, {"text", "x"}}));
+  CHECK(tool.approval_subject(
+            {{"action", "open"}, {"url", "https://example.com/a?b"}}) ==
+        tool.approval_subject(
+            {{"action", "open"}, {"url", "https://example.com/c"}}));
   // A field in one call: clicked, its content replaced, the key pressed.
   ToolResult filled = tool.run({{"action", "type"},
                                 {"element", 1},
@@ -666,6 +731,14 @@ void TestBrowserToolSteps() {
                                  {"key", "Enter"}},
                                 {});
   CHECK(stopped.output.starts_with("click done.\nA prompt dialog is open"));
+  // Nothing was typed into the prompt that type's own click opened.
+  CHECK(tool.approval_preview({{"action", "press"}, {"key", "Enter"}})
+            .find("its answer reads") == std::string::npos);
+  // Approving the Enter that sends a prompt's answer shows that answer.
+  CHECK(tool.run({{"action", "type"}, {"text", "final"}}, {}).Ok());
+  CHECK(tool.approval_preview({{"action", "press"}, {"key", "Enter"}})
+            .find("while a prompt dialog says \"Really prompt?\" and its "
+                  "answer reads \"final\"") != std::string::npos);
   CHECK(tool.run({{"action", "press"}, {"key", "Escape"}}, {}).Ok());
   // A page that is only read: opened, then the lines asked for.
   ToolResult read = tool.run(
@@ -690,6 +763,18 @@ void TestBrowserToolSteps() {
   CHECK(tool.validate({{"action", "open"},
                        {"path", (directory / "profile" / "x.html").string()}})
             .has_value());
+  // A call runs on the site its approval was for: there it runs, and once
+  // the tab is elsewhere (after a batch's open, or a person's visit) the
+  // browser refuses it.
+  const json press = {{"action", "press"}, {"key", "Tab"}};
+  ToolContext approved;
+  approved.approved = tool.approval_subject(press);
+  CHECK(approved.approved.value("origin", "") == "https://example.com");
+  CHECK(tool.run(press, approved).Ok());
+  approved.approved["origin"] = "https://other.example";
+  ToolResult held = tool.run(press, approved);
+  CHECK(!held.Ok() &&
+        held.output.find("where this was approved") != std::string::npos);
   close(owner[1]);
   service.join();
   close(owner[0]);

@@ -122,6 +122,9 @@ struct ToolContext {
   // Delegating calls in the batch this one is part of: children started
   // together share what the session has left.
   int64_t delegations = 1;
+  // What this call's approval covered (Tool::approval_subject), taken when it
+  // was decided: what its run may hold itself to. Null without one.
+  json approved;
 
   bool Expired() const;
 
@@ -168,6 +171,9 @@ struct Tool {
   // Full, possibly multi-line text shown only when asking a person to approve
   // this call. `summary` stays a one-liner for labels, traces and evidence.
   using Preview = std::function<std::string(const json&)>;
+  // What a remembered approval of a call covers: calls with the same
+  // subject need no new one. Unset means its exact arguments.
+  using Subject = std::function<json(const json&)>;
   // How a call's input reads to a person, as ToolView parts. Unset means the
   // generic view: short strings and scalars as fields, long text as code.
   using Present = std::function<json(const json&)>;
@@ -200,6 +206,7 @@ struct Tool {
   Approval needs_approval;   // dynamic policy (e.g. external read)
   Classify approval_class;   // escalates specific arguments
   Preview approval_preview;  // long-form text for the approval prompt
+  Subject approval_subject;  // what a remembered approval covers
   // Why this call needs a person, when the reason is not the default one of
   // reaching µAgent's own configuration. Shown in the approval headline.
   std::string mandatory_reason;

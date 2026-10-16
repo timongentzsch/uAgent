@@ -30,6 +30,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/strings.h"
 #include "include/transport/session.h"
 
 namespace uagent::browser {
@@ -99,6 +100,43 @@ std::string SocketPath() {
 std::string RfbPath() {
   auto base = DataDirectory();
   return base.empty() ? "" : base + "/display.sock";
+}
+
+std::string Origin(const std::string& url) {
+  const std::string lower = AsciiLower(url);
+  const std::string scheme = lower.starts_with("https://")  ? "https"
+                             : lower.starts_with("http://") ? "http"
+                                                            : "";
+  if (scheme.empty()) return "";
+  std::string host = lower.substr(scheme.size() + 3);
+  // A backslash ends the host as a slash does, as browsers read it.
+  host = host.substr(0, host.find_first_of("/?#\\"));
+  host = host.substr(
+      host.rfind('@') == std::string::npos ? 0 : host.rfind('@') + 1);
+  // Only what any browser reads alike: letters, digits, dots and dashes, an
+  // IPv6 address in brackets, and a port up to 65535 with no leading zero.
+  const size_t bracket = host.rfind(']');
+  const size_t colon =
+      host.find(':', bracket == std::string::npos ? 0 : bracket);
+  const std::string name = host.substr(0, colon);
+  const std::string port =
+      colon == std::string::npos ? "" : host.substr(colon + 1);
+  const bool literal = name.starts_with('[');
+  if (name.empty() ||
+      name.find_first_not_of(literal
+                                 ? "[]0123456789abcdef:."
+                                 : "abcdefghijklmnopqrstuvwxyz0123456789.-") !=
+          std::string::npos ||
+      (literal && (name.size() < 3 || !name.ends_with(']') ||
+                   name.find_first_of("[]", 1) != name.size() - 1)) ||
+      (colon != std::string::npos &&
+       (port.empty() || port.size() > 5 || port[0] == '0' ||
+        port.find_first_not_of("0123456789") != std::string::npos ||
+        (port.size() == 5 && port > "65535")))) {
+    return "";
+  }
+  if (port == (scheme == "https" ? "443" : "80")) host.resize(colon);
+  return scheme + "://" + host;
 }
 
 bool EnsureDataDirectory(const std::string& path) {

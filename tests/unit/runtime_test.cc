@@ -15,6 +15,7 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/child_agent.h"
+#include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/api/retry.h"
@@ -465,6 +466,37 @@ void TestPermissionAndToolCategoryPolicy() {
   const std::string second =
       PermissionKey(tool, {{"path", "second"}}, approval_class);
   CHECK(first != second);
+  // A tool may say what an approval covers: calls that differ only in what
+  // it leaves out share one key.
+  tool.approval_subject = [](const json& arguments) {
+    return json{{"site", arguments.value("site", "")}};
+  };
+  CHECK(PermissionKey(tool, {{"site", "a"}, {"view", "1"}}, approval_class) ==
+        PermissionKey(tool, {{"site", "a"}, {"view", "2"}}, approval_class));
+  CHECK(PermissionKey(tool, {{"site", "a"}}, approval_class) !=
+        PermissionKey(tool, {{"site", "b"}}, approval_class));
+  tool.approval_subject = nullptr;
+  // What a call's approval covered reaches its own run.
+  {
+    Tool held;
+    held.name = "held";
+    held.parameters = {{"type", "object"}};
+    json reached;
+    held.run = [&](const json&, const ToolContext& context) {
+      reached = context.approved;
+      return ToolSuccess("ran");
+    };
+    CallTask task;
+    task.tool = &held;
+    task.args = json::object();
+    task.approved = {{"origin", "https://example.com"}};
+    ToolCall call;
+    call.id = "held-1";
+    call.name = "held";
+    call.args = "{}";
+    ExecuteCall(task, call, 1, 1, ToolContext{}, 30);
+    CHECK(reached == task.approved);
+  }
 
   // Risks name what approving risks, most serious first: a file write
   // inside the folder only makes changes; one outside says so.

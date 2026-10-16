@@ -35,6 +35,8 @@ struct CallTask {
   ApprovalClass required = ApprovalClass::kNone;
   // Whether its own check wanted approval then (a path outside the folder).
   bool outside = false;
+  // What its approval covered, as the tool said then.
+  json approved;
   ToolResult result;
   std::optional<ToolArgumentIssue> issue;
   std::string trace_status;

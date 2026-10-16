@@ -8,6 +8,8 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -113,6 +115,107 @@ std::string DialogLine(const json& dialog) {
          ".";
 }
 
+// What this conversation last saw of the browser: the page's address, the
+// look that numbered its rows, and a dialog it showed.
+struct Seen {
+  std::mutex mutex;
+  std::string url, view_id, elements, dialog, answer;
+};
+
+// What a remembered approval of a call covers: the action on the site of the
+// page last seen. A tab is approved one by one, and an action on a page that
+// is no web site (one written from a file) for the look it came from, or for
+// itself alone when no look stands behind it.
+json Subject(const json& args, Seen& seen) {
+  const std::string action = JsonValue(args, "action", "");
+  if (action == "tabs") return args;
+  if (action == "open") {
+    const std::string site = browser::Origin(JsonValue(args, "url", ""));
+    return site.empty() ? args : json{{"action", action}, {"origin", site}};
+  }
+  std::lock_guard lock(seen.mutex);
+  const std::string site = browser::Origin(seen.url);
+  if (site.empty()) {
+    return seen.view_id.empty()
+               ? json{{"call", args}, {"once", RandomToken(12)}}
+               : json{{"call", args}, {"look", seen.view_id}};
+  }
+  return {{"action", action}, {"origin", site}};
+}
+
+// The look a dialog stands in for: its page, with no rows to act on.
+void SawDialog(Seen& seen, const json& dialog) {
+  std::lock_guard lock(seen.mutex);
+  seen.url = JsonValue(dialog, "url", "");
+  seen.view_id.clear();
+  seen.elements.clear();
+  const std::string said = "a " + JsonValue(dialog, "type", "") +
+                           " dialog says " +
+                           JsonDump(JsonValue(dialog, "message", ""));
+  // An answer typed into it stays staged until the dialog changes.
+  if (said != seen.dialog) seen.answer.clear();
+  seen.dialog = said;
+}
+
+// What the person, or the reviewer, approves: the whole action, what it acts
+// on and where.
+std::string Preview(const json& args, Seen& seen) {
+  const std::string action = JsonValue(args, "action", "");
+  if (action == "open") {
+    const std::string url = JsonValue(args, "url", "");
+    const std::string site = browser::Origin(url);
+    return url.empty()    ? "open the page file " + JsonValue(args, "path", "")
+           : site.empty() ? "open " + url
+                          : "open " + url +
+                                "\nRemembered, it covers opening any address "
+                                "on " +
+                                site + ", wherever it then leads.";
+  }
+  std::lock_guard lock(seen.mutex);
+  std::string target;
+  if (const int element = JsonValue(args, "element", 0); element > 0) {
+    // A row of the look the call names, never one of another page.
+    const std::string number = "[" + std::to_string(element) + "]";
+    const size_t row = JsonValue(args, "view_id", "") == seen.view_id
+                           ? ("\n" + seen.elements).find("\n" + number + " ")
+                           : std::string::npos;
+    target =
+        row == std::string::npos
+            ? "element " + number + " of a look that is not the latest"
+            : seen.elements.substr(row, seen.elements.find('\n', row) - row);
+  } else if (args.contains("x")) {
+    target = "at (" + std::to_string(JsonValue(args, "x", 0)) + ", " +
+             std::to_string(JsonValue(args, "y", 0)) + ")";
+  }
+  std::string said =
+      action == "type"
+          ? "type " + JsonDump(JsonValue(args, "text", "")) +
+                (JsonValue(args, "replace", false)
+                     ? " in place of what it holds"
+                     : "") +
+                (target.empty() ? " into the focused field" : " into " + target)
+      : action == "tabs"
+          ? (JsonValue(args, "close", false) ? "close" : "switch to") +
+                std::string(" tab ") + JsonValue(args, "target_id", "")
+          : action + (target.empty() ? "" : " " + target);
+  if (args.contains("key")) {
+    said +=
+        (action == "press" ? " " : " then press ") + JsonValue(args, "key", "");
+  }
+  if (!seen.dialog.empty()) {
+    said += ", while " + seen.dialog +
+            (seen.answer.empty() || action != "press"
+                 ? ""
+                 : " and its answer reads " + JsonDump(seen.answer));
+  }
+  const std::string site = action == "tabs" ? "" : browser::Origin(seen.url);
+  if (seen.url.empty()) return said + " on the current page";
+  return said + " on " + seen.url +
+         (site.empty() ? ""
+                       : "\nRemembered, it covers any browser " + action +
+                             " on " + site + ".");
+}
+
 // One request to the browser on behalf of this conversation.
 json Ask(const std::string& session_id, json command, const std::string& op) {
   command["op"] = op;
@@ -122,8 +225,16 @@ json Ask(const std::string& session_id, json command, const std::string& op) {
 
 // What read answers: the text asked for, and the links that go with it.
 // `done` states what happened before, as in Observation.
-ToolResult Reading(const json& read, const json& args,
-                   const std::string& done) {
+ToolResult Reading(const json& read, const json& args, const std::string& done,
+                   Seen& seen) {
+  {
+    // A read numbers nothing: rows of an earlier look are not this page's.
+    std::lock_guard lock(seen.mutex);
+    seen.url = JsonValue(read, "url", "");
+    seen.view_id.clear();
+    seen.elements.clear();
+    seen.dialog.clear();
+  }
   const int offset = std::max(JsonValue(args, "offset", 0), 0);
   const std::string text = JsonValue(read, "text", "");
   const std::string links = JsonValue(read, "links", "");
@@ -144,11 +255,12 @@ ToolResult Reading(const json& read, const json& args,
 // and bot-wall evidence; with `look`, the screenshot too. `lead` states what
 // already happened, so a failed look never hides a done action.
 ToolResult Observation(const std::string& session_id, const std::string& lead,
-                       const ToolContext& context, bool look) {
+                       const ToolContext& context, bool look, Seen& seen) {
   const std::string done = lead.empty() ? "" : lead + "\n";
   json outcome = browser::Request(
       {{"op", "observe"}, {"session_id", session_id}, {"image", look}});
   if (const json* dialog = JsonObject(outcome, "dialog")) {
+    SawDialog(seen, *dialog);
     return ToolSuccess(done + DialogLine(*dialog));
   }
   json current = outcome.contains("error")
@@ -188,6 +300,13 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   const std::string text = JsonValue(*page, "text", "");
   const int64_t chars = JsonValue(*page, "chars", int64_t{0});
   const std::string elements = JsonValue(*page, "elements", "");
+  {
+    std::lock_guard lock(seen.mutex);
+    seen.url = JsonValue(*page, "url", "");
+    seen.view_id = JsonValue(outcome, "view_id", "");
+    seen.elements = elements;
+    seen.dialog.clear();
+  }
   const std::string more =
       chars > browser::kPageTextChars
           ? " (the first " + std::to_string(browser::kPageTextChars) + " of " +
@@ -280,23 +399,33 @@ std::string InlinePageFile(json& args) {
 
 // The actions that only ask the browser something.
 ToolResult Query(const std::string& session_id, const json& args,
-                 const std::string& action) {
+                 const std::string& action, Seen& seen) {
   json answer =
       Ask(session_id, args, action == "status" ? "agent_status" : action);
   if (auto error = JsonValue(answer, "error", ""); !error.empty()) {
     return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
   if (const json* dialog = JsonObject(answer, "dialog")) {
+    SawDialog(seen, *dialog);
     return ToolSuccess(DialogLine(*dialog));
   }
-  return action == "read" ? Reading(answer, args, "")
+  // Another tab is another page: nothing seen of the last one holds.
+  if (action == "tabs" && !JsonValue(args, "target_id", "").empty()) {
+    std::lock_guard lock(seen.mutex);
+    seen.url.clear();
+    seen.view_id.clear();
+    seen.elements.clear();
+    seen.dialog.clear();
+  }
+  return action == "read" ? Reading(answer, args, "", seen)
                           : ToolSuccess(JsonDump(answer));
 }
 
 // The actions that change the page: do them, wait for the page to settle, and
 // return it.
 ToolResult Act(const std::string& session_id, const json& args,
-               const std::string& action, const ToolContext& context) {
+               const std::string& action, const ToolContext& context,
+               Seen& seen) {
   // type may click its field first and press a key after: one call, in
   // that order, stopping at the first that fails or opens a dialog, which
   // must not take what was meant for the page.
@@ -334,11 +463,11 @@ ToolResult Act(const std::string& session_id, const json& args,
       (args.contains("find") || args.contains("offset"))) {
     json read = Ask(session_id, args, "read");
     if (!read.contains("error") && !read.contains("dialog")) {
-      return Reading(read, args, done);
+      return Reading(read, args, done, seen);
     }
   }
   done.pop_back();
-  return Observation(session_id, done, context, /*look=*/false);
+  return Observation(session_id, done, context, /*look=*/false, seen);
 }
 
 constexpr char kBrowserDescription[] =
@@ -421,8 +550,24 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
             !JsonValue(args, "target_id", "").empty());
   };
   tool.needs_approval = tool.mutates;
-  // open may name a file: never the profile this browser itself runs on.
-  tool.validate = RefuseHidden;
+  auto seen = std::make_shared<Seen>();
+  tool.approval_subject = [seen](const json& args) {
+    return Subject(args, *seen);
+  };
+  tool.approval_preview = [seen](const json& args) {
+    return Preview(args, *seen);
+  };
+  // open takes one address, a URL or a file, never the profile this browser
+  // itself runs on.
+  tool.validate = [](const json& args) -> std::optional<ToolArgumentIssue> {
+    if (JsonValue(args, "action", "") == "open" &&
+        JsonValue(args, "url", "").empty() ==
+            JsonValue(args, "path", "").empty()) {
+      return ArgumentIssue("browser.open", "open takes either url or path",
+                           "url");
+    }
+    return RefuseHidden(args);
+  };
   tool.capabilities = Capability(ToolCapability::kInspect) |
                       Capability(ToolCapability::kMutate) |
                       Capability(ToolCapability::kExternal);
@@ -449,10 +594,20 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   // Text is counted in characters and results in bytes; a page in a script
   // of several bytes a character still arrives whole, with its elements.
   tool.result_chars = 4 * browser::kPageTextChars + 12288;
-  tool.run = [session_id = std::move(session_id), ask = std::move(ask)](
+  tool.run = [session_id = std::move(session_id), ask = std::move(ask), seen](
                  const json& given, const ToolContext& context) {
     json args = given;
     const std::string action = JsonValue(args, "action", "");
+    // Held to the site it was approved for: the browser refuses it once the
+    // page is elsewhere.
+    if (action != "open") {
+      for (const char* bound : {"origin", "look"}) {
+        if (const std::string held = JsonValue(context.approved, bound, "");
+            !held.empty()) {
+          args[bound] = held;
+        }
+      }
+    }
     if (action == "open" && !JsonValue(args, "path", "").empty()) {
       if (const std::string error = InlinePageFile(args); !error.empty()) {
         return ToolFailure(ToolErrorCode::kInvalidArguments, error);
@@ -464,11 +619,24 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
                       ask);
     }
     if (action == "observe") {
-      return Observation(session_id, "", context, /*look=*/true);
+      return Observation(session_id, "", context, /*look=*/true, *seen);
     }
     const Action* row = FindAction(args);
-    return !row || !row->acts ? Query(session_id, args, action)
-                              : Act(session_id, args, action, context);
+    if (!row || !row->acts) return Query(session_id, args, action, *seen);
+    // Text typed while a prompt already shows, into no element, is its
+    // staged answer; a type whose own click opened it typed nothing.
+    bool answers = false;
+    {
+      std::lock_guard lock(seen->mutex);
+      answers = action == "type" && !seen->dialog.empty() &&
+                !args.contains("element") && !args.contains("x");
+    }
+    ToolResult result = Act(session_id, args, action, context, *seen);
+    if (answers && result.Ok()) {
+      std::lock_guard lock(seen->mutex);
+      seen->answer = JsonValue(args, "text", "");
+    }
+    return result;
   };
   tool.run = RefusingHidden(std::move(tool.run));
   return tool;

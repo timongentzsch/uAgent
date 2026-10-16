@@ -163,6 +163,11 @@ json Runtime::Act(const std::string& op, const json& command) {
       known_targets_.insert(JsonValue(page, "id", ""));
     }
   }
+  if (op != "open") {
+    if (json refused = Elsewhere(command, ""); !refused.is_null()) {
+      return refused;
+    }
+  }
   json reply;
   if (op == "open") {
     std::string url = JsonValue(command, "url", "");
@@ -231,8 +236,11 @@ json Runtime::Act(const std::string& op, const json& command) {
                             ? "observe the current tab before clicking"
                             : "click needs view_id from the latest observe"}};
     }
-    int x, y;
-    if (const int element = JsonValue(command, "element", 0); element > 0) {
+    int x = -1, y = -1;
+    const int element = JsonValue(command, "element", 0);
+    const std::string named = "element " + std::to_string(element);
+    // Where the element is now, or why it cannot be clicked there.
+    const auto locate = [&]() -> std::string {
       json where = Call("Runtime.evaluate",
                         {{"expression", std::string(kElementScript) + "(" +
                                             std::to_string(element) + ")"},
@@ -242,19 +250,22 @@ json Runtime::Act(const std::string& op, const json& command) {
       const json* found = JsonObject(where, "result");
       found = found ? JsonObject(*found, "result") : nullptr;
       found = found ? JsonObject(*found, "value") : nullptr;
-      if (!found) return {{"error", "that element is gone; look again"}};
+      if (!found) return "that element is gone; look again";
       if (JsonValue(*found, "moving", false)) {
-        return {{"error", "element " + std::to_string(element) +
-                              " is still moving; look again"}};
+        return named + " is still moving; look again";
       }
       if (const std::string over = JsonValue(*found, "covered", "");
           !over.empty()) {
-        return {{"error", "element " + std::to_string(element) +
-                              " is covered by " + over +
-                              "; deal with that first"}};
+        return named + " is covered by " + over + "; deal with that first";
       }
       x = JsonValue(*found, "x", -1);
       y = JsonValue(*found, "y", -1);
+      return "";
+    };
+    if (element > 0) {
+      if (const std::string why = locate(); !why.empty()) {
+        return {{"error", why}};
+      }
     } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
       return {{"error", "click requires an element, or x and y"}};
     }
@@ -262,21 +273,33 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "coordinates exceed the observed viewport"}};
     }
     observation_.clear();
-    // Onto the point first, as a pointer gets there: menus open on hover.
-    json event = {{"type", "mouseMoved"}, {"x", x}, {"y", y}};
-    for (const char* type : {"mousePressed", "mouseReleased"}) {
-      if (auto reason =
-              CdError(Call("Input.dispatchMouseEvent", event, page_session_));
-          !reason.empty()) {
-        return {{"error", reason}};
-      }
-      event = {{"type", type},
-               {"x", x},
-               {"y", y},
-               {"button", "left"},
-               {"clickCount", 1},
-               {"buttons", std::string_view(type) == "mousePressed" ? 1 : 0}};
+    // Onto the point first, as a pointer gets there: menus open on hover,
+    // and what opens may cover the element, so it is found again after.
+    if (auto reason = CdError(Call("Input.dispatchMouseEvent",
+                                   {{"type", "mouseMoved"}, {"x", x}, {"y", y}},
+                                   page_session_));
+        !reason.empty()) {
+      return {{"error", reason}};
     }
+    if (element > 0) {
+      const int was_x = x, was_y = y;
+      if (const std::string why = locate(); !why.empty()) {
+        return {{"error", why}};
+      }
+      if (x != was_x || y != was_y) {
+        return {{"error", named + " moved when the pointer reached it; look "
+                                  "again"}};
+      }
+    }
+    json event = {{"type", "mousePressed"}, {"x", x},          {"y", y},
+                  {"button", "left"},       {"clickCount", 1}, {"buttons", 1}};
+    if (auto reason =
+            CdError(Call("Input.dispatchMouseEvent", event, page_session_));
+        !reason.empty()) {
+      return {{"error", reason}};
+    }
+    event["type"] = "mouseReleased";
+    event["buttons"] = 0;
     reply = Call("Input.dispatchMouseEvent", event, page_session_);
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
@@ -407,8 +430,46 @@ json Runtime::Act(const std::string& op, const json& command) {
 // A dialog takes the keys a person would give it: Enter accepts, Escape
 // dismisses, and text typed before Enter answers a prompt. A look reports
 // it, since the page behind it cannot be read until it closes.
+// An action approved for one site is done on that site only: the page may
+// have moved since it was approved, by itself or by a person. `url` is the
+// page's when known; else the attached tab is asked.
+json Runtime::Elsewhere(const json& command, std::string url) {
+  // On a page that is no web site, the look it was approved on is the page;
+  // a call's own earlier steps (type's click) leave no look to compare.
+  if (const std::string look = JsonValue(command, "look", "");
+      !look.empty() && !observation_.empty() && look != observation_) {
+    return {{"error",
+             "the page changed since the look this was approved on; observe "
+             "it, then act again"}};
+  }
+  const std::string site = JsonValue(command, "origin", "");
+  if (site.empty()) return nullptr;
+  if (url.empty()) {
+    json info = Call("Target.getTargetInfo", {{"targetId", target_}});
+    const json* result = JsonObject(info, "result");
+    result = result ? JsonObject(*result, "targetInfo") : nullptr;
+    url = result ? JsonValue(*result, "url", "") : "";
+  }
+  if (Origin(url) == site) return nullptr;
+  return {{"error", "the page is on " + url.substr(0, url.find_first_of("?#")) +
+                        " now, not on " + site +
+                        " where this was approved; observe it, then act "
+                        "again"}};
+}
+
 json Runtime::Dialog(const std::string& op, const json& command) {
   json& open = *OpenDialog();
+  if (op == "type" || op == "press") {
+    if (moved_) {
+      return {{"error",
+               "another conversation used the browser since; observe before "
+               "answering its dialog"}};
+    }
+    if (json refused = Elsewhere(command, JsonValue(open, "url", ""));
+        !refused.is_null()) {
+      return refused;
+    }
+  }
   const std::string type = JsonValue(open, "type", "");
   const std::string key = JsonValue(command, "key", "");
   if (op == "type" && type == "prompt") {
@@ -433,6 +494,8 @@ json Runtime::Dialog(const std::string& op, const json& command) {
                           " dialog is open: press Enter to accept "
                           "it or Escape to dismiss it first"}};
   }
+  // A look at the dialog is a look at the page as it is now.
+  if (op == "observe") moved_ = false;
   return {{"ok", true}, {"dialog", open}};
 }
 }  // namespace uagent::browser

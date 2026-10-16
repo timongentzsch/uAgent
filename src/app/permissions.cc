@@ -98,8 +98,10 @@ std::string PermissionKey(const Tool& tool, const json& arguments,
   if (!tool.output_schema.is_null()) {
     policy["output_schema"] = tool.output_schema;
   }
-  return HashHex(
-      JsonDump({{"policy", std::move(policy)}, {"arguments", arguments}}));
+  return HashHex(JsonDump(
+      {{"policy", std::move(policy)},
+       {"arguments", tool.approval_subject ? tool.approval_subject(arguments)
+                                           : arguments}}));
 }
 
 json ApprovalRisks(const Tool& tool, const json& arguments,

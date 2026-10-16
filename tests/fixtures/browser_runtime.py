@@ -166,6 +166,8 @@ while chunk := os.read(3, 4096):
             if (profile / "saved-login-here").exists():
                 measured += 1
             result = {"result": {"value": measured}}
+        elif command["method"] == "Target.getTargetInfo":
+            result = {"targetInfo": {"targetId": "tab", "url": "https://example.com/"}}
         elif command["method"] == "Target.createTarget":
             result = {"targetId": "new"}
         elif command["method"] == "Target.attachToTarget":

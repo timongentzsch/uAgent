@@ -25,6 +25,15 @@ const pageScript = [
   .map((piece) => piece[1])
   .join(pageTextChars);
 const elementScript = script("kElementScript");
+// The mask is one C++ string of adjacent literals.
+const secretScript = readFileSync(
+  new URL("../../src/browser/runtime_internal.h", import.meta.url),
+  "utf8",
+)
+  .match(/kSecretScript =\s*((?:"(?:\\.|[^"\\])*"\s*)+);/)[1]
+  .match(/"((?:\\.|[^"\\])*)"/g)
+  .map((literal) => JSON.parse(literal))
+  .join("");
 const secretFieldScript = script("kSecretFieldScript");
 const keys = Object.fromEntries(
   [
@@ -95,7 +104,8 @@ test("a look numbers what can be acted on and never shows a field's value", asyn
     '[3] checkbox "Remember me" (checked)',
     '[4] select "Region" (South)',
     '[5] button "Go"',
-    '[6] link "Help"',
+    '[6] button "Off" (disabled)',
+    '[7] link "Help"',
   ]);
   expect(seen.title).toBe("Sign in");
   expect(JSON.stringify(seen)).not.toMatch(/hunter2|Ada Lovelace/);
@@ -201,6 +211,124 @@ test("a password field is known as one, also once a reveal toggle shows it", asy
   expect(await agent.secret()).toBe(true);
   await page.frameLocator("#other").locator("#inner").focus();
   expect(await agent.secret()).toBe("frame");
+});
+
+test("a look reaches into open shadow roots and frames of the site, and says how a control stands", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("about:blank");
+  await page.setContent(`<div id=host></div>
+    <button aria-expanded=false>Menu</button>
+    <label>Email <input required></label>
+    <iframe id=frame style="position:absolute;left:300px;top:200px;width:300px;height:200px;border:0"
+      srcdoc="<button id=inner>Inside</button>"></iframe>`);
+  await page.frameLocator("#frame").locator("#inner").waitFor();
+  await page.evaluate(() => {
+    const root = document.getElementById("host").attachShadow({ mode: "open" });
+    root.innerHTML = "<button id=deep>Deep</button>";
+  });
+  const agent = await control(page);
+  const seen = await agent.look();
+  expect(seen.elements.split("\n")).toEqual([
+    '[1] button "Deep"',
+    '[2] button "Menu" (collapsed)',
+    '[3] text "Email" (empty) (required)',
+    '[4] button "Inside"',
+  ]);
+  // A click lands on the element itself, through its shadow root or frame.
+  const deep = await agent.where(1);
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y).shadowRoot.elementFromPoint(x, y).id,
+      deep,
+    ),
+  ).toBe("deep");
+  const inside = await agent.where(4);
+  expect(inside.x).toBeGreaterThan(300);
+  expect(inside.y).toBeGreaterThan(200);
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const frame = document.elementFromPoint(x, y);
+      const box = frame.getBoundingClientRect();
+      return frame.contentDocument.elementFromPoint(x - box.x, y - box.y).id;
+    }, inside),
+  ).toBe("inner");
+});
+
+test("a frame's border, padding and size count where a click lands", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("about:blank");
+  await page.setContent(`
+    <fieldset disabled><input aria-label="Locked"></fieldset>
+    <iframe hidden srcdoc="<button>Hidden</button>"></iframe>
+    <iframe id=padded style="position:absolute;left:100px;top:100px;width:200px;height:120px;border:7px solid;padding:13px"
+      srcdoc="<button id=inner style='margin:0'>Padded</button>"></iframe>
+    <iframe id=scaled style="position:absolute;left:400px;top:100px;width:200px;height:120px;border:0;transform:scale(2);transform-origin:0 0"
+      srcdoc="<button>Scaled</button>"></iframe>`);
+  await page.frameLocator("#padded").locator("#inner").waitFor();
+  const agent = await control(page);
+  const seen = await agent.look();
+  expect(seen.elements.split("\n")).toEqual([
+    '[1] text "Locked" (empty) (disabled)',
+    '[2] button "Padded"',
+    '[3] button "Scaled"',
+  ]);
+  const padded = await agent.where(2);
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const frame = document.getElementById("padded");
+      const box = frame.getBoundingClientRect();
+      return frame.contentDocument.elementFromPoint(
+        x - box.x - 20,
+        y - box.y - 20,
+      ).id;
+    }, padded),
+  ).toBe("inner");
+  expect(await agent.where(3)).toEqual({ transformed: true });
+});
+
+test("a password field is masked in an open shadow root too", async ({
+  page,
+}) => {
+  await page.goto("about:blank");
+  await page.setContent(`<div id=host></div>`);
+  await page.evaluate(secretScript);
+  await page.evaluate(() => {
+    const root = document.getElementById("host").attachShadow({ mode: "open" });
+    root.innerHTML = "<input id=pw type=password>";
+  });
+  // A look again before a picture finds roots made since, also inside a
+  // root it knew.
+  await page.evaluate(secretScript);
+  await page.evaluate(() => {
+    const outer = document.getElementById("host").shadowRoot;
+    const inner = document.createElement("span");
+    outer.append(inner);
+    inner.attachShadow({ mode: "open" }).innerHTML =
+      "<input id=late type=password>";
+  });
+  await page.evaluate(secretScript);
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(
+        document
+          .getElementById("host")
+          .shadowRoot.querySelector("span")
+          .shadowRoot.getElementById("late"),
+      ).getPropertyValue("-webkit-text-security"),
+    ),
+  ).toBe("disc");
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(
+        document.getElementById("host").shadowRoot.getElementById("pw"),
+      ).getPropertyValue("-webkit-text-security"),
+    ),
+  ).toBe("disc");
 });
 
 test("reading keeps links whole and what was searched for in view", async ({

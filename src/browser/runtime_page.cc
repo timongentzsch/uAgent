@@ -27,8 +27,9 @@ constexpr const char* kProbeScript =
 // decides.
 //
 // A look also gets what can be acted on, numbered and kept on the page so a
-// click can name one by its number. A field says whether it holds text,
-// never what.
+// click can name one by its number: in the document, its open shadow roots
+// and the frames of its own site. A field says whether it holds text, never
+// what; a control says when it is disabled, required, expanded or not.
 //
 // Reading gets text from `offset`, or with `find` the lines that contain it
 // (from match `offset` on) and the links that do.
@@ -70,15 +71,31 @@ std::string PageScript() {
   if (acting) {
     const kept = window.__uagentElements = [];
     const rows = [];
-    for (const n of document.querySelectorAll(
-             'a[href],button,select,textarea,summary,input:not([type=hidden]),' +
-             '[role=button],[role=link],[role=tab],[role=menuitem],' +
-             '[role=checkbox],[role=radio],[role=option],[role=switch],' +
-             '[contenteditable=true]')) {
-      if (kept.length >= 100) break;
+    const actable =
+        'a[href],button,select,textarea,summary,input:not([type=hidden]),' +
+        '[role=button],[role=link],[role=tab],[role=menuitem],' +
+        '[role=checkbox],[role=radio],[role=option],[role=switch],' +
+        '[contenteditable=true]';
+    // Document order, each open shadow root and shown frame of the site in
+    // place.
+    const walk = function* (root) {
+      const nodes = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      for (let n = nodes.nextNode(); n; n = nodes.nextNode()) {
+        if (n.matches(actable)) yield n;
+        if (n.shadowRoot) yield* walk(n.shadowRoot);
+        if (n.tagName === 'IFRAME' || n.tagName === 'FRAME') {
+          let inner = null;
+          try { inner = n.contentDocument; } catch (_) {}
+          const box = n.getBoundingClientRect();
+          if (inner && box.width >= 1 && box.height >= 1 &&
+              getComputedStyle(n).visibility !== 'hidden') yield* walk(inner);
+        }
+      }
+    };
+    for (const n of walk(document)) {
       const r = n.getBoundingClientRect();
-      if (r.width < 1 || r.height < 1 || n.disabled) continue;
-      const style = getComputedStyle(n);
+      if (r.width < 1 || r.height < 1) continue;
+      const style = n.ownerDocument.defaultView.getComputedStyle(n);
       if (style.visibility === 'hidden' || style.display === 'none') continue;
       const tag = n.tagName.toLowerCase();
       const kind = n.getAttribute('role') ||
@@ -89,16 +106,24 @@ std::string PageScript() {
           (tag !== 'select' && n.innerText) || n.placeholder || n.title ||
           n.alt || n.name ||
           ((n.type === 'submit' || n.type === 'button') && n.value)).slice(0, 80);
+      const expanded = n.getAttribute('aria-expanded');
       const state =
-          n.type === 'checkbox' || n.type === 'radio'
+          (n.type === 'checkbox' || n.type === 'radio'
               ? (n.checked ? ' (checked)' : '')
               : tag === 'select'
                     ? ' (' + plain(n.selectedOptions[0] &&
                                    n.selectedOptions[0].text).slice(0, 40) + ')'
                     : tag === 'input' || tag === 'textarea'
-                          ? (n.value ? ' (filled)' : ' (empty)') : '';
+                          ? (n.value ? ' (filled)' : ' (empty)') : '') +
+          (n.required || n.getAttribute('aria-required') === 'true'
+               ? ' (required)' : '') +
+          (expanded === 'true' ? ' (expanded)'
+               : expanded === 'false' ? ' (collapsed)' : '') +
+          (n.matches(':disabled') || n.getAttribute('aria-disabled') === 'true'
+               ? ' (disabled)' : '');
       kept.push(n);
       rows.push('[' + kept.length + '] ' + kind + ' "' + name + '"' + state);
+      if (kept.length >= 100) break;
     }
     return {...page, text: t.slice(0, )js") +
          chars +
@@ -250,11 +275,14 @@ json Runtime::Observe(bool image) {
   if (zoom <= 0) zoom = 1;
   std::string picture;
   if (image) {
-    if (auto masked =
-            CdError(Call("Runtime.evaluate", {{"expression", kSecretScript}},
-                         page_session_));
-        !masked.empty()) {
-      return {{"error", masked}};
+    // No picture unless the mask is known to be in place.
+    json masked = Call("Runtime.evaluate", {{"expression", kSecretScript}},
+                       page_session_);
+    const json* ran = JsonObject(masked, "result");
+    if (!CdError(masked).empty() || !ran || ran->contains("exceptionDetails")) {
+      return {{"error", CdError(masked).empty()
+                            ? "the page kept password fields from being masked"
+                            : CdError(masked)}};
     }
     json shot = Call("Page.captureScreenshot",
                      {{"format", "jpeg"},

@@ -102,6 +102,11 @@
 
 ### Changed
 
+- `browser`: a look lists what can be acted on inside open shadow roots and
+  frames of the page's own site too, and a click lands there. A control
+  says when it is disabled (listed now, not left out), required, expanded
+  or collapsed. Password fields in open shadow roots are masked in
+  screenshots as well.
 - Web: a setting's reset sits just before the control it resets and shows an
   undo arrow instead of one that read as refresh. A saved secret shows as
   dots in its empty field instead of "Set · enter a replacement". A panel's

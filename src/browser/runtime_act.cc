@@ -31,7 +31,14 @@ constexpr const char* kElementScript = R"js((async n => {
   const e = (window.__uagentElements || [])[n - 1];
   if (!e || !e.isConnected) return null;
   e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
-  const box = () => JSON.stringify(e.getBoundingClientRect());
+  // Its box, and the box of each frame it sits in, any of which may move.
+  const box = () => {
+    let at = JSON.stringify(e.getBoundingClientRect());
+    for (let w = e.ownerDocument.defaultView; w.frameElement; w = w.parent) {
+      at += JSON.stringify(w.frameElement.getBoundingClientRect());
+    }
+    return at;
+  };
   let was = box(), still = 0;
   for (let i = 0; i < 10 && still < 2 && !document.hidden; i++) {
     await new Promise(requestAnimationFrame);
@@ -41,15 +48,37 @@ constexpr const char* kElementScript = R"js((async n => {
   }
   if (still < 2 && !document.hidden) return {moving: true};
   const r = e.getBoundingClientRect();
-  const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
   if (!e.isConnected || r.width < 1 || r.height < 1) return null;
-  const hit = document.elementFromPoint(x, y);
-  if (hit && (e.contains(hit) || hit.contains(e))) return {x, y};
-  if (!hit) return null;
-  const words = (hit.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-  return {covered: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
-      (hit.classList[0] ? '.' + hit.classList[0] : '') +
-      (words ? ' "' + words + '"' : '')};
+  // Its own root says what lies on top of it there; then the shadow host or
+  // frame it sits in must be on top in its root, the frame moving the point
+  // by where it is, up to the page itself.
+  let x = r.x + r.width / 2, y = r.y + r.height / 2, target = e;
+  for (;;) {
+    const root = target.getRootNode();
+    const hit = root.elementFromPoint(x, y);
+    if (!hit) return null;
+    if (!(target.contains(hit) || hit.contains(target))) {
+      const words = (hit.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      return {covered: hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
+          (hit.classList[0] ? '.' + hit.classList[0] : '') +
+          (words ? ' "' + words + '"' : '')};
+    }
+    if (root.host) {
+      target = root.host;
+      continue;
+    }
+    const frame = root.defaultView && root.defaultView.frameElement;
+    if (!frame) break;
+    // A frame drawn at another size (scaled, turned) maps no point simply.
+    const f = frame.getBoundingClientRect();
+    if (Math.abs(f.width - frame.offsetWidth) > 1 ||
+        Math.abs(f.height - frame.offsetHeight) > 1) return {transformed: true};
+    const pad = getComputedStyle(frame);
+    x += f.x + frame.clientLeft + parseFloat(pad.paddingLeft);
+    y += f.y + frame.clientTop + parseFloat(pad.paddingTop);
+    target = frame;
+  }
+  return {x: Math.round(x), y: Math.round(y)};
 }))js";
 
 // Whether the field typed text reaches is one the screenshots mask
@@ -253,6 +282,11 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (!found) return "that element is gone; look again";
       if (JsonValue(*found, "moving", false)) {
         return named + " is still moving; look again";
+      }
+      if (JsonValue(*found, "transformed", false)) {
+        return named +
+               " is in a frame drawn scaled or turned; click by x "
+               "and y from a screenshot";
       }
       if (const std::string over = JsonValue(*found, "covered", "");
           !over.empty()) {

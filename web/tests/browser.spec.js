@@ -47,6 +47,58 @@ test("browser panel fits the viewport on a desktop", async ({
   ).toBeLessThanOrEqual(1440);
 });
 
+test("clipboard card keeps native editing shortcuts local", async ({
+  page,
+  session,
+}) => {
+  const { serveFramebuffer } = await import("./rfb-fixture.js");
+  const remote = await serveFramebuffer(page);
+  await browserStatus(page, {
+    mode: "human",
+    running: true,
+    controller: true,
+    leased: true,
+  });
+  await page.goto(`/#session=${session.id}`);
+  await remote.prepare();
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      value: { readText: () => Promise.reject(new Error("denied")) },
+    }),
+  );
+  await page.getByRole("button", { name: "Open browser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+  await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Paste" }).click();
+  const field = dialog.getByLabel(/Paste here/);
+  await field.fill("local text");
+  // Native editing must work even when clipboard API access is denied.
+  for (const key of ["a", "c", "x", "v", "z"]) {
+    expect(
+      await field.evaluate((node, key) => {
+        const apple = /Mac|iPhone|iPad/.test(navigator.platform);
+        return node.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key,
+            bubbles: true,
+            cancelable: true,
+            metaKey: apple,
+            ctrlKey: !apple,
+          }),
+        );
+      }, key),
+    ).toBe(true);
+  }
+  await field.press("ControlOrMeta+a");
+  expect(
+    await field.evaluate((node) =>
+      node.value.slice(node.selectionStart, node.selectionEnd),
+    ),
+  ).toBe("local text");
+  await dialog.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => remote.clipboard.client).toBe("local text");
+});
+
 test.describe("phone browser sheet", () => {
   test.use({
     viewport: { width: 390, height: 844 },

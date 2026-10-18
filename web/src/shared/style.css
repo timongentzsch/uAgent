@@ -948,6 +948,11 @@ dialog.sidebar:not([open]) {
   transform-origin: top left;
   outline-offset: -2px;
 }
+/* Field width belongs to its responsive wrapper. Native horizontal resizing
+   writes a fixed inline width that breaks subsequent layout/zoom changes. */
+.text-control > textarea {
+  resize: vertical;
+}
 .file-button {
   position: relative;
   display: inline-flex;

@@ -106,10 +106,6 @@ body {
   border: 1px solid var(--line);
 }
 
-.showcase textarea {
-  resize: vertical;
-}
-
 .showcase-banner {
   border: 1px solid var(--line);
 }

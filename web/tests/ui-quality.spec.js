@@ -593,3 +593,38 @@ test("phone header keeps its buttons in place from loading to ready", async ({
     release();
   }
 });
+
+test("user message metadata stays in the upper right on multiline bubbles", async ({
+  page,
+  session,
+  command,
+}) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await page.goto(`/#session=${session.id}`);
+  const text =
+    "Add a panel of four political experts as chat members, let them discuss, and rate the performance of Angela Merkel. Give me a detailed report.";
+  await page.getByLabel("Message or guidance").fill(text);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  const bubble = page
+    .locator(".message.user")
+    .filter({ hasText: text })
+    .first();
+  await expect(bubble).toBeVisible();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await bubble.scrollIntoViewIfNeeded();
+    const box = await bubble.boundingBox();
+    const header = await bubble.locator("header").boundingBox();
+    const menu = await bubble.locator("header .action-menu").boundingBox();
+    const time = await bubble.locator("header time").boundingBox();
+    expect(header.y - box.y).toBeLessThan(10);
+    expect(box.x + box.width - menu.x - menu.width).toBeLessThan(20);
+    expect(time.y + time.height / 2).toBeLessThan(header.y + header.height);
+    expect(time.x + time.width).toBeLessThanOrEqual(menu.x);
+  }
+});

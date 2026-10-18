@@ -359,3 +359,35 @@ for (const width of [1440, 900, 390]) {
     ]);
   });
 }
+
+test("shared textarea keeps its width after native resizing and zoom", async ({
+  page,
+}) => {
+  await page.goto(SHOWCASE_URL);
+  const field = page.locator(".showcase textarea");
+  for (const zoom of [50, 100, 200]) {
+    await page.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+    await field.scrollIntoViewIfNeeded();
+    const box = await field.boundingBox();
+    // A diagonal drag must resize height only; inline pixel widths would
+    // detach every shared textarea from its responsive container.
+    await page.mouse.move(box.x + box.width - 4, box.y + box.height - 4);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height + 25, {
+      steps: 5,
+    });
+    await page.mouse.up();
+    await expect
+      .poll(() =>
+        field.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const wrapper = node.parentElement.getBoundingClientRect();
+          return Math.max(
+            Math.abs(box.width - wrapper.width),
+            Math.abs(box.height - wrapper.height),
+          );
+        }),
+      )
+      .toBeLessThan(1);
+  }
+});

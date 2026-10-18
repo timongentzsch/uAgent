@@ -50,7 +50,7 @@ export const keysOf = (id: ShortcutId) =>
     .map((key) => NAMES[key] || key);
 
 // Someone typing: `?` is text there, not a shortcut.
-const typing = (target: EventTarget | null) =>
+export const isTextEntry = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.isContentEditable ||
     target.matches("input, textarea, select, [role=textbox]"));
@@ -83,7 +83,7 @@ export function useShortcuts(
           "global" in item &&
           latest.current[item.id] &&
           matches(item.keys, event) &&
-          !(item.keys === "?" && typing(event.target)),
+          !(item.keys === "?" && isTextEntry(event.target)),
       );
       if (!shortcut) return;
       event.preventDefault();

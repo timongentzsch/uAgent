@@ -11,6 +11,7 @@ import { api, command, routes } from "../../state/api.ts";
 import { sessionById } from "../../state/attention.ts";
 import { coarsePointer } from "../../shared/layout.ts";
 import RFB from "@novnc/novnc";
+import { isTextEntry } from "../../shared/shortcuts.ts";
 import {
   Button,
   IconButton,
@@ -427,6 +428,10 @@ export default function BrowserPanel({
     const element = screen.current;
     if (!element || !driving) return;
     const handle = (event: KeyboardEvent) => {
+      // Local overlay fields keep native editing. Only the hidden remote
+      // keyboard input participates in forwarding shortcuts to Chrome.
+      if (isTextEntry(event.target) && event.target !== keyboard.current)
+        return;
       if (APPLE && event.key === "Meta") {
         event.stopPropagation();
         return;

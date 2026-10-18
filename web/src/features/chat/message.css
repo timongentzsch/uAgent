@@ -14,16 +14,10 @@
      double up between header variants. */
   margin: 0;
 }
-/* Drawn in the other palette (see style.css), on one line: the prompt,
-   then status, time and menu. Inheritance still flows through the
-   display: contents header. */
+/* User bubbles inherit the opposite palette from style.css. */
 .message.user {
   background: var(--bg);
   color: var(--text);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: var(--gap);
 }
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
@@ -37,21 +31,7 @@
   min-height: var(--control);
   font-size: var(--font-micro);
 }
-.message.user > header {
-  display: contents;
-}
-.message.user > header > * {
-  order: 1;
-}
-.message.user > header + * {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.message.user > header + * ~ * {
-  order: 2;
-  flex-basis: 100%;
-}
-/* A reply's time and menu float right of its first line, which wraps
+/* Message time and menu float at the upper right of the first line, which wraps
    around them. Row-height controls for a mouse; touch keeps the larger
    coarse target. */
 @media (pointer: fine) {
@@ -59,10 +39,10 @@
     --control: var(--row-height);
   }
 }
-.message.response {
+.message:is(.user, .response) {
   display: flow-root;
 }
-.message.response > header {
+.message:is(.user, .response) > header {
   float: right;
   min-height: var(--row-height);
   margin-left: var(--space-2);

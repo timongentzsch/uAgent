@@ -5,6 +5,8 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
+import tempfile
 import time
 
 from integration_support import (
@@ -1206,7 +1208,7 @@ def test_edit_recovery_survives_reads_and_tracks_revision(root, home, *, binary)
 
 def test_isolated_browser_verification_helper(root, home, *, binary):
     """Installed runtime only; each check owns its browser and truthful report."""
-    del home, binary  # This exercises the shipped Node adapter directly.
+    del home  # The sandbox probe below uses a home outside Chrome temp storage.
 
     node = shutil.which("node")
     if not node:
@@ -1261,3 +1263,44 @@ def test_isolated_browser_verification_helper(root, home, *, binary):
     assert_true(result.returncode == 1, result)
     report = json.loads(pathlib.Path(json.loads(result.stdout)["report"]).read_text())
     assert_true(report["status"] == "timed_out", report)
+
+    # Exercise the actual supervised/sandboxed run path too. Chrome on macOS
+    # uses the OS user temp directory even when a fixture overrides TMPDIR;
+    # placing the test HOME under that root correctly withholds it from writes.
+    # Use the normal production layout: HOME outside browser temp storage.
+    modules = workspace / "node_modules"
+    modules.mkdir()
+    (modules / "playwright").symlink_to(
+        pathlib.Path(json.loads(probe.stdout)["module"]).parent, target_is_directory=True
+    )
+    with tempfile.TemporaryDirectory(prefix=".uagent-browser-test-", dir=pathlib.Path.home()) as td:
+        with Server(
+            [
+                tool_call(
+                    "run",
+                    {
+                        "command": f"{shlex.quote(node)} {shlex.quote(str(helper))} pass.mjs brief-e2e",
+                        "yield_ms": 0,
+                        "intent": "verify",
+                    },
+                ),
+                event({"content": "done"}),
+            ]
+        ) as server:
+            env = base_env(pathlib.Path(td), server.url)
+            if sys.platform == "darwin":
+                env["TMPDIR"] = subprocess.check_output(
+                    ["getconf", "DARWIN_USER_TEMP_DIR"], text=True
+                ).strip()
+            result = run(
+                workspace, env, "--yolo", "-p", "Run the check.", binary=binary, timeout=30
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            outputs = tool_results(server.requests[-1][1]["messages"])
+            assert_true(
+                any(
+                    '"status":"passed"' in output and not output.startswith("error:")
+                    for output in outputs
+                ),
+                outputs,
+            )

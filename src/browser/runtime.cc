@@ -61,6 +61,7 @@ pid_t Launch(const std::vector<std::string>& arguments,
   }
   values.insert(values.end(), environment.begin(), environment.end());
   std::vector<char*> envp;
+  envp.reserve(values.size() + 1);
   for (auto& value : values) envp.push_back(value.data());
   envp.push_back(nullptr);
   const int status =

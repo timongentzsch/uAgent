@@ -22,6 +22,7 @@ import type {
   Snapshot,
   Draft,
   SessionStatus,
+  UserBlock,
 } from "../../shared/types.ts";
 import type { TargetedKeyboardEvent } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -50,6 +51,7 @@ import {
 const decisionPanel = () => import("../../shared/decision.tsx");
 import { maxRecalledPromptSessions, stopGuardMs } from "../../shared/limits.ts";
 import { permissionLabel, permissionLabels } from "../../shared/display.ts";
+import GuidanceQueue from "./guidance-queue.tsx";
 import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
@@ -66,6 +68,9 @@ function typingLabel(names: string[]) {
 
 export default function Composer({
   session,
+  queued = [],
+  recall,
+  insert,
   commands,
   snapshot,
   draft,
@@ -81,6 +86,9 @@ export default function Composer({
   members = NO_MEMBERS,
 }: {
   session: Session;
+  queued?: UserBlock[];
+  recall?: (block: UserBlock) => Promise<void>;
+  insert?: (block: UserBlock) => Promise<void>;
   commands: SlashCommand[];
   snapshot?: Snapshot;
   draft: Draft;
@@ -308,6 +316,13 @@ export default function Composer({
           />
         )
       )}
+      <GuidanceQueue
+        items={queued}
+        online={online}
+        held={!!pending}
+        recall={recall}
+        insert={insert}
+      />
       {/* The state above the input: counts live on ActivityButton below it. */}
       <div class="activities">
         <div class="status-line">
@@ -649,7 +664,7 @@ export default function Composer({
             online={online}
           />
           <SessionSummary state={state} open={showStatistics} />
-          {!!session.guidance && (
+          {!!session.guidance && !queued.length && (
             <span class="muted" role="status">
               {session.guidance} guidance queued
             </span>

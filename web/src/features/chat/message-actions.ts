@@ -22,7 +22,8 @@ export interface MessageActions {
   inspect?: (id: string) => void;
   statistics?: (block: PresentedBlock) => void;
   activity?: (target: ActivityTarget) => void;
-  recall?: (block: UserBlock) => void;
+  recall?: (block: UserBlock) => Promise<void>;
+  insert?: (block: UserBlock) => Promise<void>;
   // Sends a message that failed again.
   retry?: (block: UserBlock) => void;
   // Continues a stopped turn.

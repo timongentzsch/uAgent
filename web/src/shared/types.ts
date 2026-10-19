@@ -868,6 +868,7 @@ export interface CommandResults {
   submit: never;
   steer: never;
   recall: never;
+  insert: never;
   reply: never;
   interrupt: never;
   permissions: Permissions;

@@ -167,3 +167,67 @@
     --input-max-height: calc(var(--viewport-height) * 0.2);
   }
 }
+
+/* A bounded tray in the composer keeps pending input above the keyboard,
+   independent of transcript scrolling. Text and actions have their own rows. */
+.guidance-queue {
+  border: 1px solid var(--field-border);
+  background: var(--raised);
+  margin-bottom: var(--space-2);
+  min-width: 0;
+}
+.queue-heading {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-small);
+  border-bottom: 1px solid var(--field-border);
+}
+.queue-items {
+  max-height: min(calc(var(--viewport-height) * 0.25), var(--pane));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.queue-item {
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+.queue-item + .queue-item {
+  border-top: 1px solid var(--field-border);
+}
+.queue-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.queue-files {
+  margin: var(--space-1) 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-small);
+}
+.queue-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.queue-controls > div {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+@media (max-width: 600px) {
+  .queue-controls button {
+    min-height: var(--touch);
+    padding-inline: var(--space-3);
+  }
+  .composer-metrics {
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+  }
+  .composer-metrics > .metrics {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+}

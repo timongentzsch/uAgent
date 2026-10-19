@@ -29,6 +29,7 @@ enum class SessionCommandKind {
   kReply,
   kSteer,
   kRecall,
+  kInsert,
   kRename,
   kRefresh,
   kPermissions,

@@ -46,6 +46,7 @@ void TestSessionCommandKinds() {
       {"reply", session::SessionCommandKind::kReply},
       {"steer", session::SessionCommandKind::kSteer},
       {"recall", session::SessionCommandKind::kRecall},
+      {"insert", session::SessionCommandKind::kInsert},
       {"rename", session::SessionCommandKind::kRename},
       {"refresh", session::SessionCommandKind::kRefresh},
       {"permissions", session::SessionCommandKind::kPermissions},
@@ -212,7 +213,7 @@ void TestHostCommandKinds() {
             ? 1
             : 0;
   }
-  CHECK(forwarded == 19);
+  CHECK(forwarded == 20);
   for (auto local : {session::SessionCommandKind::kClose,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,

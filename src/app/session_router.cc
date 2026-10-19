@@ -399,7 +399,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     if (result.error.empty()) {
       result.worker_request = HashHex(device) + HashHex(request_id);
-      command["client_request_id"] = kind == SessionCommandKind::kRecall
+      command["client_request_id"] = (kind == SessionCommandKind::kRecall ||
+                                      kind == SessionCommandKind::kInsert)
                                          ? JsonValue(command, "target_id", "")
                                          : request_id;
       lock.unlock();

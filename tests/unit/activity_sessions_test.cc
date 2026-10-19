@@ -211,6 +211,25 @@ void TestSignalAndFileWatch() {
     CHECK(SteeringState().QueuedCount() == 1 && !SteeringYieldRequested());
     next = SteeringState().TakeNextAutoStart();
     CHECK(next && next->text == "next");
+    // Insert promotes the same payload, preserving identity, files and the
+    // other after-turn entry. A stale click cannot interrupt another step.
+    SteeringState().Queue(
+        {.text = "held", .request_id = "held-id", .after_turn = true});
+    SteeringState().Queue({.text = "insert",
+                           .request_id = "insert-id",
+                           .attachments = json::array({"file"}),
+                           .after_turn = true});
+    CHECK(!SteeringState().InsertNow("missing"));
+    CHECK(!SteeringState().Requested());
+    CHECK(SteeringState().InsertNow("insert-id"));
+    CHECK(SteeringState().Requested());
+    now = SteeringState().TakeMessages();
+    CHECK(now.size() == 1 && now[0].request_id == "insert-id" &&
+          now[0].attachments == json::array({"file"}) && !now[0].after_turn);
+    CHECK(SteeringState().Take());
+    CHECK(!SteeringState().InsertNow("insert-id"));
+    CHECK(!SteeringState().Requested());
+    CHECK(SteeringState().Recall("held-id"));
     close(watched_fd);
     unlink(watched_path);
   }

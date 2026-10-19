@@ -736,11 +736,21 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kSteer:
         SteerLocked(parsed, error);
         break;
+      case SessionCommandKind::kInsert:
+        if (!SteeringState().InsertNow(parsed.client_request_id)) {
+          error = "already delivered";
+        } else {
+          wake_.Wake();
+          SendState();
+        }
+        break;
       case SessionCommandKind::kRecall:
         // Pre-delivery only: the queue owns recallability, the turn owns
         // delivery. No match means the turn already took it.
         if (!SteeringState().Recall(parsed.client_request_id)) {
           error = "already delivered";
+        } else {
+          SendState();
         }
         break;
       case SessionCommandKind::kRename:

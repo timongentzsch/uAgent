@@ -158,6 +158,11 @@ def answer(handler, body):
             call_id="browser-write",
         )
     content = "# Verified response\n\nA **streamed** answer with a table.\n\n| Check | Result |\n| --- | --- |\n| Native worker | Ready |\n\nInline $x^2 + y^2 = z^2$ and \\(a+b\\).\n\n$$\\int_0^1 x \\, dx = \\frac{1}{2}$$\n\n```python\nprint('hello')\n```\n\nPrices $5 and $10. `<script>bad()</script>`\n\n![blocked](https://example.com/tracker.png)\n\n[unsafe](javascript:alert(1))\n"
+    if "Queue controls probe" in prompt:
+        write_sse_sequence(
+            handler, [event({"content": "Waiting for guidance. "}, finish=None)] * 200, delay=0.1
+        )
+        return None
     if "Long continuity probe" in prompt:
         content = (
             "Stable opening paragraph for selection and node identity.\n\n"

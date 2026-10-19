@@ -119,6 +119,19 @@ bool Steering::Recall(const std::string& request_id) {
   return false;
 }
 
+bool Steering::InsertNow(const std::string& request_id) {
+  if (request_id.empty()) return false;
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    auto entry = std::ranges::find(queued_, request_id, &Message::request_id);
+    if (entry == queued_.end()) return false;
+    entry->after_turn = false;
+    Request();
+  }
+  NotifySteeringWake();
+  return true;
+}
+
 void Steering::Request() {
   requested_ = true;
   RequestAbort();

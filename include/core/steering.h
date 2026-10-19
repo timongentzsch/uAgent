@@ -3,7 +3,8 @@
 #ifndef UAGENT_INCLUDE_CORE_STEERING_H_
 #define UAGENT_INCLUDE_CORE_STEERING_H_
 // In the persistent composer, Enter queues guidance for the active turn and a
-// bare Escape is the only input that requests a foreground abort.
+// bare Escape requests a foreground abort; explicit Insert now applies queued
+// input by interrupting the current step.
 
 #include <atomic>
 #include <deque>
@@ -47,6 +48,9 @@ class Steering {
   // Drop one queued entry by client request id. True when an entry was
   // still queued; consumed steering is never resurrected.
   bool Recall(const std::string& request_id);
+  // Promote an existing entry and interrupt the foreground step atomically.
+  // If delivery won the race, nothing is interrupted or enqueued again.
+  bool InsertNow(const std::string& request_id);
   // Everything the running turn applies now: all but after-turn messages.
   std::vector<Message> TakeMessages();
   // The oldest message that may start a turn, leaving every other queued

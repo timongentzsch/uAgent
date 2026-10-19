@@ -227,9 +227,11 @@ class SessionHost {
     Conversation conversation;
     TranscriptView view{conversation};
   };
-  // One immutable saved transcript; readers can finish after it is replaced.
+  // Up to three immutable transcripts, most recently used first. The 32 MiB
+  // serialized-file budget permits one oversized entry, as before; it is not
+  // a process-memory bound. Readers can finish after an entry is evicted.
   // Loading and rendering never hold the cache or host mutex.
-  std::shared_ptr<const SavedHistory> history_
+  std::vector<std::shared_ptr<const SavedHistory>> history_
       UAGENT_GUARDED_BY(history_mutex_);
   std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
   std::chrono::steady_clock::time_point scanned_

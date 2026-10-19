@@ -92,10 +92,12 @@ json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
 }
 
 void Agent::PublishSideContext() {
-  auto context = std::make_shared<SessionRecord>(Snapshot());
+  auto checkpoint = std::make_shared<SideCheckpoint>();
+  checkpoint->record = Snapshot();
+  checkpoint->archive = conversation_.SharedArchive();
+  SessionRecord* context = &checkpoint->record;
   context->state.messages = conversation_.Messages();
   context->state.message_kinds = conversation_.Kinds();
-  context->state.archive = conversation_.Archive();
   json& selection =
       context->state.display["facts"]["session-settings"]["tools"];
   selection = tool_selection_.Save();
@@ -106,18 +108,19 @@ void Agent::PublishSideContext() {
     chosen["UAGENT_MODEL"] = ChosenSelection(api_, providers);
   }
   std::lock_guard lock(side_mutex_);
-  side_context_ = std::move(context);
+  side_context_ = std::move(checkpoint);
 }
 
 json Agent::SideConversation(const std::string& source,
                              const std::string& question) const {
-  std::shared_ptr<const SessionRecord> context;
+  std::shared_ptr<const SideCheckpoint> context;
   {
     std::lock_guard lock(side_mutex_);
     context = side_context_;
   }
   if (!context) return {{"error", "nothing to ask about yet"}};
-  SessionRecord snapshot = *context;
+  SessionRecord snapshot = context->record;
+  snapshot.state.archive = *context->archive;
   // Permissions can change while the parent turn is running. Capture the
   // current mode rather than reviving the checkpoint's older setting.
   snapshot.state

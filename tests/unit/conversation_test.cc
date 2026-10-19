@@ -28,6 +28,79 @@
 
 namespace uagent {
 
+void TestSharedArchiveSnapshots() {
+  Conversation conversation;
+  const json baseline = json::array({{{"role", "system"}, {"content", "sys"}}});
+  conversation.Reset(baseline, {MessageKind::kSystem});
+  auto empty = conversation.SharedArchive();
+  CHECK(empty == conversation.SharedArchive());
+  CHECK(conversation.ArchiveRange("first", 0, conversation.Size(), 1, 4096));
+  auto first = conversation.SharedArchive();
+  CHECK(first == conversation.SharedArchive());
+  CHECK(empty->empty());
+  CHECK((*first)[0]["reason"] == "first");
+  // An overflowing append evicts old segments without changing old readers.
+  CHECK(conversation.ArchiveRange(
+      "second", 0, conversation.Size(), 2,
+      static_cast<int64_t>(JsonDump(*first).size()) + 32));
+  auto second = conversation.SharedArchive();
+  CHECK(second != first);
+  CHECK(second->size() == 1);
+  CHECK((*second)[0]["reason"] == "second");
+  CHECK((*first)[0]["reason"] == "first");
+  CHECK(!conversation.ArchiveRange("too large", 0, conversation.Size(), 3, 1));
+  CHECK(second == conversation.SharedArchive());
+  conversation.Reset(baseline, {MessageKind::kSystem});
+  CHECK(conversation.SharedArchive()->empty());
+  CHECK((*second)[0]["reason"] == "second");
+  CHECK(conversation.Restore(baseline, {MessageKind::kSystem}, *first, 0, {}));
+  auto restored = conversation.SharedArchive();
+  CHECK(*restored == *first);
+  CHECK(!conversation.Restore(json::array(), {}, json::array(), 0, {}));
+  CHECK(restored == conversation.SharedArchive());
+}
+
+void TestSideArchiveForks() {
+  TestWorkspace workspace("side-archive");
+  const std::string source = (workspace.workspace / "parent.json").string();
+  SessionRecord record;
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = "test",
+                     .session_id = "parent",
+                     .turns = 1,
+                     .title = "parent"};
+  record.state.messages =
+      json::array({{{"role", "system"}, {"content", "sys"}},
+                   {{"role", "user"}, {"content", "question"}}});
+  record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser};
+  record.state.archive =
+      json::array({{{"reason", "proof"}, {"text", "archived"}}});
+  REQUIRE(SessionStore::Save(source, record).Ok());
+  Api api(RuntimeConfig{});
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  Agent agent(api, tools, processes, usage, {});
+  std::string error;
+  REQUIRE(agent.Load(source, CanonicalCwd(), error));
+  auto side = std::async(std::launch::async, [&] {
+    return agent.SideConversation(source, "side question");
+  });
+  for (int index = 0; index < 16; ++index) agent.PublishSideContext();
+  const json result = side.get();
+  REQUIRE(!result.contains("error"));
+  const auto child = SessionStore::Inspect(result.value("path", ""));
+  REQUIRE(child.record.has_value());
+  CHECK(child.record->state.archive == record.state.archive);
+  agent.Reset();
+  const json reset = agent.SideConversation(source, "after reset");
+  REQUIRE(!reset.contains("error"));
+  const auto fresh = SessionStore::Inspect(reset.value("path", ""));
+  REQUIRE(fresh.record.has_value());
+  CHECK(fresh.record->state.archive.empty());
+  CHECK(child.record->state.archive == record.state.archive);
+}
+
 void TestConversation() {
   Conversation attachments;
   attachments.Push(

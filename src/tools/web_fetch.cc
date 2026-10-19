@@ -316,6 +316,7 @@ Tool WebFetchTool(Api& api) {
   t.output_view = "markdown";
   t.header = Verbs("Fetching", "Fetched");
   t.intent = "research";
+  t.dedupe_output = true;
   return t;
 }
 

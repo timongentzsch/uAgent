@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,8 @@ class Conversation {
  public:
   const json& Messages() const { return messages_; }
   const json& Archive() const { return archive_; }
+  // Captured on the conversation thread; readers keep an immutable revision.
+  std::shared_ptr<const json> SharedArchive();
   // The archive as JSON text, joined from each segment's serialization kept
   // since it was archived: a save never re-dumps the archive.
   std::string ArchiveText() const;
@@ -140,6 +143,7 @@ class Conversation {
   uint64_t next_display_id_ = 1;
   size_t display_bytes_ = 0;
   json archive_ = json::array();
+  std::shared_ptr<const json> shared_archive_;
   std::vector<std::string> archive_texts_;  // archive_, one text per segment
   int64_t archive_bytes_ = 0;
   int64_t dropped_segments_ = 0;

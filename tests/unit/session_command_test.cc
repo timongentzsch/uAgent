@@ -432,6 +432,26 @@ void TestSavedHistoryInvalidation() {
   REQUIRE(snapshot.status == 200);
   CHECK(snapshot.value["state"]["view"]["blocks"][0]["text"] == "old");
   CHECK(host.Snapshot(id, {}).value == snapshot.value);
+  // Alternating saved sessions retain their own transcript and details.
+  for (int index = 0; index < 3; ++index) {
+    SessionRecord other = record;
+    other.metadata.session_id = "other-" + std::to_string(index);
+    other.state.messages[1]["content"] = other.metadata.session_id;
+    REQUIRE(SessionStore::Save(
+                folder + "/" + other.metadata.session_id + ".json", other)
+                .Ok());
+  }
+  host.RefreshCatalogue(true);
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int index = 0; index < 3; ++index) {
+      const std::string name = "other-" + std::to_string(index);
+      const auto other =
+          host.Snapshot(HashHex(folder + "/" + name + ".json"), {});
+      REQUIRE(other.status == 200);
+      CHECK(other.value["state"]["view"]["blocks"][0]["text"] == name);
+    }
+    CHECK(host.Snapshot(id, {}).value["state"] == snapshot.value["state"]);
+  }
   // Equal-length replacement still invalidates through the file identity.
   record.state.messages[1]["content"] = "new";
   REQUIRE(SessionStore::Save(path, record).Ok());

@@ -536,7 +536,11 @@ class Agent {
   // thread never reads the live route or conversation.
   SessionRecord Snapshot() const;
   mutable std::mutex side_mutex_;
-  std::shared_ptr<const SessionRecord> side_context_
+  struct SideCheckpoint {
+    SessionRecord record;
+    std::shared_ptr<const json> archive;
+  };
+  std::shared_ptr<const SideCheckpoint> side_context_
       UAGENT_GUARDED_BY(side_mutex_);
   bool generate_titles_ = false;
   std::mutex title_mutex_;

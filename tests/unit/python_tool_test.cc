@@ -12,6 +12,7 @@
 #include <system_error>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
@@ -177,12 +178,31 @@ void TestPythonTool() {
   CHECK(plain(SessionTool().parameters));
 
   CHECK(
-      ToolRunScratch(supervisor, root, "other.rb").output.find(".py or .sh") !=
+      ToolRunScratch(supervisor, root, "other.rb").output.find(".js or .mjs") !=
       std::string::npos);
   CHECK(ToolRunScratch(supervisor, root, "../escape.py").error ==
         ToolErrorCode::kInvalidArguments);
 
-  setenv("PATH", root.c_str(), 1);  // no uv
+  if (ExecutableOnPath("node")) {
+    write("argv.mjs",
+          "await Promise.resolve(); console.log(process.argv[2]);\n");
+    CHECK(ToolRunScratch(supervisor, root, "argv.mjs", json::array({"a b; c"}))
+              .output == "a b; c\n");
+    write("fail.js", "process.exit(7);\n");
+    CHECK(ToolRunScratch(supervisor, root, "fail.js").error ==
+          ToolErrorCode::kProcessFailed);
+  }
+  CHECK(ToolRunScratch(supervisor, root, "../escape.mjs").error ==
+        ToolErrorCode::kInvalidArguments);
+  CHECK(ToolWriteFile((root / "outside.mjs").string(), "throw 1;").Ok());
+  fs::create_symlink(root / "outside.mjs", scratch / "escape.mjs");
+  CHECK(ToolRunScratch(supervisor, root, "escape.mjs").error ==
+        ToolErrorCode::kInvalidArguments);
+
+  setenv("PATH", root.c_str(), 1);  // no uv or node
+  write("missing-node.mjs", "console.log('must not run');\n");
+  CHECK(ToolRunScratch(supervisor, root, "missing-node.mjs").error ==
+        ToolErrorCode::kUnavailable);
   write("dependency.py",
         "# /// script\n# dependencies = [\"numpy\"]\n# ///\nprint('x')\n");
   result = ToolRunScratch(supervisor, root, "dependency.py");

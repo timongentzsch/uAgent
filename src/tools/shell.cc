@@ -67,11 +67,11 @@ void ConfigureShellSpawn(posix_spawnattr_t& attributes,
 // The shell that `bash` means on this host. Only needed under a sandbox
 // wrapper: there the spawn resolves the wrapper, so a missing shell surfaces
 // as the wrapper's own failure rather than as an errno the retry below could
-// read. Resolving in the parent keeps the same three candidates in the same
+// read. Resolving in the parent keeps the same Bash candidates in the same
 // order.
 std::string ResolveShellExecutable(const std::string& shell) {
   if (shell != "bash") return shell;
-  for (const char* candidate : {"/bin/bash", "/bin/sh"}) {
+  for (const char* candidate : {"/bin/bash"}) {
     if (access(candidate, X_OK) == 0) return candidate;
   }
   return shell;
@@ -105,10 +105,10 @@ int SpawnShellWithFallback(const std::vector<std::string>& program,
   };
   int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
   // `bash` is the documented default, so fall back to the usual absolute
-  // paths before giving up on a PATH that does not have it.
+  // path before giving up on a PATH that does not have it. Do not silently
+  // downgrade to sh: its pipelines may mask failures.
   const bool fallback = wrapper.empty() && shell == "bash";
   if (error != 0 && fallback) error = spawn("/bin/bash");
-  if (error != 0 && fallback) error = spawn("/bin/sh");
   posix_spawnattr_destroy(&attributes);
   return error;
 }
@@ -394,8 +394,12 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   const std::vector<std::string> program =
-      spec.argv.empty() ? std::vector<std::string>{shell, "-c", cmd}
-                        : spec.argv;
+      spec.argv.empty()
+          ? (std::filesystem::path(shell).filename() == "bash" ||
+                     std::filesystem::path(shell).filename() == "zsh"
+                 ? std::vector<std::string>{shell, "-o", "pipefail", "-c", cmd}
+                 : std::vector<std::string>{shell, "-c", cmd})
+          : spec.argv;
   int spawn_error =
       tty ? SpawnPtyShell(program, wrapper, child_environment.Data(), pid,
                           master_fd)
@@ -688,8 +692,11 @@ std::optional<std::filesystem::path> ScratchScriptPath(
                          ? relative_path.substr(kScratchPrefix.size())
                          : relative_path);
   if (relative_path.empty() || requested.is_absolute() ||
-      (requested.extension() != ".sh" && requested.extension() != ".py")) {
-    error = "path must be a relative .py or .sh file under .uagent/scratch";
+      (requested.extension() != ".sh" && requested.extension() != ".py" &&
+       requested.extension() != ".js" && requested.extension() != ".mjs")) {
+    error =
+        "path must be a relative .py, .sh, .js or .mjs file under "
+        ".uagent/scratch";
     return std::nullopt;
   }
   for (const fs::path& component : requested) {
@@ -754,6 +761,12 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   std::string command;
   if (shell_script) {
     command = "sh " + ShellQuote(script->string()) + argv;
+  } else if (script->extension() == ".js" || script->extension() == ".mjs") {
+    if (!ExecutableOnPath("node")) {
+      return ToolFailure(ToolErrorCode::kUnavailable,
+                         "JavaScript scratch scripts require node on PATH");
+    }
+    command = "node " + ShellQuote(script->string()) + argv;
   } else {
     const std::string source = ReadFile(*script, kEditFileBytes).value_or("");
     const bool uv = ExecutableOnPath("uv");

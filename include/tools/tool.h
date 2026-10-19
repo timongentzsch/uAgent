@@ -98,6 +98,9 @@ struct ToolResult {
   // model-facing: links to work the call started and files it shared.
   json parts = nullptr;
   std::optional<FileEffect> effect;
+  // Opaque identity of a failed exact edit: target, original revision and old
+  // text. Reads cannot erase this identity; different revisions do not collide.
+  std::string recovery_key;
   bool no_change = false;  // activity poll found nothing new
   bool activity_terminal = false;
 

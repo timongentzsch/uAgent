@@ -2,6 +2,7 @@ import json
 import os
 import pathlib
 import shlex
+import shutil
 import signal
 import subprocess
 import time
@@ -9,6 +10,7 @@ import time
 from integration_support import (
     SMALL_PNG,
     Server,
+    Skipped,
     assert_true,
     base_env,
     captured_log_path,
@@ -1144,3 +1146,118 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)
+
+
+def test_edit_recovery_survives_reads_and_tracks_revision(root, home, *, binary):
+    workspace = root / "edit-recovery"
+    workspace.mkdir()
+    target = workspace / "sample.txt"
+    target.write_text("actual file content\n")
+    responses = []
+    for i in range(3):
+        responses += [
+            tool_call(
+                "edit_file",
+                {
+                    "path": "sample.txt",
+                    "edits": [{"old": "missing text", "new": f"replacement {i}"}],
+                },
+                call_id=f"edit-{i}",
+            ),
+            tool_call("read_path", {"path": "sample.txt"}, call_id=f"read-{i}"),
+        ]
+    responses += [
+        tool_call(
+            "edit_file",
+            {
+                "path": "sample.txt",
+                "edits": [{"old": "actual file content", "new": "new revision"}],
+            },
+            call_id="progress",
+        ),
+        tool_call(
+            "edit_file",
+            {"path": "sample.txt", "edits": [{"old": "missing text", "new": "replacement"}]},
+            call_id="new-revision",
+        ),
+        event({"content": "done"}),
+    ]
+    with Server(responses) as server:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "Edit and verify the file.",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        # Notes last one request only; count their delivery across requests.
+        advised = [
+            body
+            for _, body in server.requests
+            if any(
+                "[edit recovery advisory]" in str(m.get("content", "")) for m in body["messages"]
+            )
+        ]
+        assert_true(len(advised) == 1, len(advised))
+        assert_true(target.read_text() == "new revision\n", target.read_text())
+
+
+def test_isolated_browser_verification_helper(root, home, *, binary):
+    """Installed runtime only; each check owns its browser and truthful report."""
+    del home, binary  # This exercises the shipped Node adapter directly.
+
+    node = shutil.which("node")
+    if not node:
+        raise Skipped("node is not installed")
+    helper = pathlib.Path(__file__).resolve().parents[1] / "skills/browser-use/scripts/verify.mjs"
+    probe = subprocess.run([node, str(helper), "--discover"], capture_output=True, text=True)
+    if probe.returncode:
+        raise Skipped("installed Playwright/Chromium runtime unavailable")
+    workspace = root / "browser-verification"
+    workspace.mkdir()
+    (workspace / "page.html").write_text("<!doctype html><h1>Hello</h1>")
+    (workspace / "pass.mjs").write_text("""export default async ({page, target, check}) => {
+      await page.goto(target('page.html'));
+      check('heading', await page.locator('h1').textContent() === 'Hello');
+      check('private', await page.evaluate(() => !localStorage.getItem('prior')));
+      await page.evaluate(() => localStorage.setItem('prior', 'yes'));
+    };""")
+    (workspace / "fail.mjs").write_text(
+        "export default async ({check}) => check('expected failure', false);"
+    )
+    (workspace / "throw.mjs").write_text(
+        "export default async () => { throw new Error('expected exception'); };"
+    )
+    (workspace / "hang.mjs").write_text(
+        "export default async () => { setInterval(() => {}, 1000); await new Promise(() => {}); };"
+    )
+    for entry, expected in [
+        ("pass", "passed"),
+        ("pass", "passed"),
+        ("fail", "failed"),
+        ("throw", "failed"),
+    ]:
+        result = subprocess.run(
+            [node, str(helper), entry + ".mjs", "brief-v2"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert_true(result.returncode == (0 if expected == "passed" else 1), result)
+        summary = json.loads(result.stdout)
+        report = json.loads(pathlib.Path(summary["report"]).read_text())
+        assert_true(report["status"] == expected, report)
+        assert_true(report["brief"] == "brief-v2", report)
+    result = subprocess.run(
+        [node, str(helper), "hang.mjs", "brief-v3", "2000"],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert_true(result.returncode == 1, result)
+    report = json.loads(pathlib.Path(json.loads(result.stdout)["report"]).read_text())
+    assert_true(report["status"] == "timed_out", report)

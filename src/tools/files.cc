@@ -338,23 +338,36 @@ std::string FileLineEnding(const std::string& text, bool crlf,
 
 std::string EditRecoveryHint(const std::string& data,
                              const std::string& old_text) {
-  std::istringstream input(old_text);
+  size_t match = 0;
+  std::istringstream search(old_text);
   std::string line;
-  while (std::getline(input, line)) {
+  while (std::getline(search, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (Trim(line).size() < 4) continue;
-    size_t match = data.find(line);
-    if (match == std::string::npos) continue;
-    size_t begin = match == 0 ? 0 : data.rfind('\n', match - 1) + 1;
-    size_t end = data.find('\n', match);
-    if (end == std::string::npos) end = data.size();
-    int64_t number =
-        1 + std::count(data.begin(),
-                       data.begin() + static_cast<std::ptrdiff_t>(begin), '\n');
-    return "; nearby current line " + std::to_string(number) + ": " +
-           Utf8Prefix(data.substr(begin, end - begin), 200);
+    size_t found = data.find(line);
+    if (found != std::string::npos) {
+      match = found;
+      break;
+    }
   }
-  return "; reread the current file before retrying";
+  size_t begin = match == 0 ? 0 : data.rfind('\n', match - 1) + 1;
+  // Include two preceding lines, then at most five numbered lines / 1200 chars.
+  for (int i = 0; i < 2 && begin > 0; ++i) {
+    begin = begin <= 1 ? 0 : data.rfind('\n', begin - 2) + 1;
+  }
+  int64_t number =
+      1 + std::count(data.begin(),
+                     data.begin() + static_cast<std::ptrdiff_t>(begin), '\n');
+  std::string out =
+      "; current file context (revision " + HashHex(data) + "):\n";
+  for (int i = 0; i < 5 && begin < data.size(); ++i) {
+    size_t end = data.find('\n', begin);
+    if (end == std::string::npos) end = data.size();
+    out += std::to_string(number++) + ": " +
+           Utf8Prefix(data.substr(begin, end - begin), 220) + "\n";
+    begin = end + 1;
+  }
+  return out;
 }
 
 bool EditedSize(size_t current, size_t old_size, size_t new_size, int64_t count,
@@ -435,6 +448,7 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "at least one edit is required");
   }
+  const std::string original = data;
   for (size_t i = 0; i < edits.size(); ++i) {
     const FileEdit& edit = edits[i];
     if (edit.old_text.empty()) {
@@ -455,10 +469,15 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
         ++run.already_applied;
         continue;
       }
-      return ToolFailure(ToolErrorCode::kNotFound,
-                         "edit " + std::to_string(i + 1) +
-                             " `old` not found in " + path +
-                             EditRecoveryHint(data, old_eff));
+      ToolResult failure = ToolFailure(
+          ToolErrorCode::kNotFound,
+          "edit " + std::to_string(i + 1) + " `old` not found in " + path +
+              "; applied=false (no edits in this batch were written)" +
+              EditRecoveryHint(original, old_eff));
+      failure.recovery_key =
+          HashHex("edit_file\n" + CanonicalAccessPath(path).string() + "\n" +
+                  HashHex(original) + "\n" + old_eff);
+      return failure;
     }
     if (!edit.replace_all && count > 1) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,

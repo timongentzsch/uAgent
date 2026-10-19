@@ -244,8 +244,7 @@ void TestFileTools() {
   ToolResult anchored_miss =
       ToolEditFile(file.string(), {{"three\nmissing", "replacement", false}});
   CHECK(!anchored_miss.Ok());
-  CHECK(anchored_miss.output.find("nearby current line 2: three") !=
-        std::string::npos);
+  CHECK(anchored_miss.output.find("2: three") != std::string::npos);
   ToolResult empty_edit = ToolEditFile(file.string(), std::vector<FileEdit>{});
   CHECK(!empty_edit.Ok());
   CHECK(empty_edit.error == ToolErrorCode::kInvalidArguments);
@@ -313,6 +312,21 @@ void TestFileTools() {
                                       {"missing", "never written", false}})
             .output.find("edit 2 `old` not found") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
+  ToolResult rolled_back = ToolEditFile(
+      batch.string(), {{"same", "changed", true}, {"missing", "never", false}});
+  CHECK(rolled_back.output.find("applied=false") != std::string::npos);
+  CHECK(rolled_back.output.find("1: same same") != std::string::npos);
+  CHECK(rolled_back.output.find("1: changed changed") == std::string::npos);
+  CHECK(!rolled_back.recovery_key.empty());
+  CHECK(rolled_back.recovery_key ==
+        ToolEditFile(batch.string(),
+                     {{"missing", "different replacement", false}})
+            .recovery_key);
+  CHECK(ToolWriteFile(batch.string(), "new revision\n").Ok());
+  CHECK(
+      rolled_back.recovery_key !=
+      ToolEditFile(batch.string(), {{"missing", "never", false}}).recovery_key);
+  CHECK(ToolWriteFile(batch.string(), "same same\n").Ok());
   ToolResult repeated =
       ToolEditFile(batch.string(), {{"same", "changed", true}});
   CHECK(repeated.display.find("(+2 -2)") != std::string::npos);

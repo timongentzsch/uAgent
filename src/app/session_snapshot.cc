@@ -81,8 +81,9 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
                   [&](const auto& entry) { return entry->path == path; });
     history_.insert(history_.begin(), history);
     int64_t bytes = 0;
-    for (const auto& entry : history_)
+    for (const auto& entry : history_) {
       bytes += std::max(int64_t{0}, entry->stamp.size);
+    }
     constexpr int64_t kHistoryFileBytes = int64_t{32} * 1024 * 1024;
     while (history_.size() > 1 &&
            (history_.size() > 3 || bytes > kHistoryFileBytes)) {

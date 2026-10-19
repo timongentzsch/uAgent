@@ -724,8 +724,9 @@ bool Conversation::AddArchiveSegment(json segment, int64_t archive_cap) {
 }
 
 std::shared_ptr<const json> Conversation::SharedArchive() {
-  if (!shared_archive_)
+  if (!shared_archive_) {
     shared_archive_ = std::make_shared<const json>(archive_);
+  }
   return shared_archive_;
 }
 

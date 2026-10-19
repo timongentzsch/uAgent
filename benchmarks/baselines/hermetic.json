@@ -79,7 +79,7 @@
       "max_estimated_context_bytes": 13422,
       "cumulative_estimated_context_bytes": 37659,
       "tool_result_chars": 759,
-      "initial_schema_bytes": 8808
+      "initial_schema_bytes": 9298
     },
     "panel_status/control": {
       "score": 5,
@@ -92,7 +92,7 @@
       "max_estimated_context_bytes": 11859,
       "cumulative_estimated_context_bytes": 23173,
       "tool_result_chars": 264,
-      "initial_schema_bytes": 8808
+      "initial_schema_bytes": 9298
     },
     "cumulative_context/control": {
       "score": 8,

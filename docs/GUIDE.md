@@ -175,8 +175,9 @@ four risk questions (irreversible, beyond your request, sends data off the
 machine, touches credentials) reaches its risk bar, refuses when P(deny)
 reaches the deny bar, and otherwise asks you, showing the risks it saw with
 their probabilities and the bar that decided. With nobody to ask, a call it
-cannot decide is denied. An identical call it allowed is not reviewed again in
-the conversation. The bars are data of the model's endpoint, found with
+cannot decide is denied. Automatic decisions are checked again on later calls,
+so a later user restriction takes effect. The bars are data of the model's
+endpoint, found with
 `tests/reviewer_eval`; `approval.allowAbove`, `approval.denyAbove` and
 `approval.vetoAbove` override them, and `approval.reviewerModel`
 (`[endpoint/]model`) chooses another decision model. Requests ask for

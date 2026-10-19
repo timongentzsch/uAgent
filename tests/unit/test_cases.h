@@ -110,6 +110,7 @@ namespace uagent {
   X(TestThreadWorktreesGoOnlyWhenNothingIsLost)   \
   X(TestPanelCountsItsOwnSpend)                   \
   X(TestChildSessionsStayOutOfTheCatalogue)       \
+  X(TestAChatSettlesAfterMemberIdle)              \
   X(TestAChatCountsAMailOnce)                     \
   X(TestAChatMessageIsForThoseItOpensWith)        \
   X(TestMailbox)                                  \

@@ -172,7 +172,7 @@ std::string SendMail(Mail mail) {
   // is for what sessions write to each other.
   // A chat's messages are bounded by its own cap on turns.
   const bool event = mail.type == kMailTaskCompleted || mail.type == kMailAsk ||
-                     mail.type == kMailChat;
+                     mail.type == kMailChat || mail.type == kMailChatIdle;
   if (!event && OverRate(mail.from)) {
     return "not sent: at most " + std::to_string(kMailSenderPerMinute) +
            " messages a minute; wait before sending more";

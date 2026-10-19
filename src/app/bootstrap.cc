@@ -642,8 +642,6 @@ Agent::Approver MakeApprover(AppContext* app) {
               ReviewAutomatically(app, tool, raw_payload, turn, review)) {
         automatic = true;
         verdict = std::move(*decided);
-        // An identical call is not reviewed twice in a session.
-        if (verdict.granted) app->session_approvals.insert(key);
       }
     }
     if (!automatic) {

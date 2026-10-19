@@ -364,22 +364,37 @@ def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
     assert_true(private.exists() and open_.exists(), (private, open_))
 
 
-def test_auto_permission_reviewer_session_memory(root, home, *, binary):
-    # An identical call allowed automatically is not reviewed again.
+def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *, binary):
     target = root / "twice.txt"
+    seen = []
 
-    def reviewer(handler, _):
-        write_json_response(handler, decision_answers(0.9))
+    def reviewer(handler, body):
+        seen.append(body["state"]["user_request"])
+        answer = decision_answers(0.9) if len(seen) == 1 else decision_answers(0.0, 0.99)
+        write_json_response(handler, answer)
 
-    _, _, requests = auto_review_run(
-        root,
-        home,
-        binary,
-        [write_call(target, "again", "first"), write_call(target, "again", "second")],
-        reviewer,
-    )
-    assert_true(len(requests) == 1, requests)
-    assert_true(target.read_text() == "again", target)
+    def repeat(_, body):
+        assert_true("stop writing" in json.dumps(body["messages"]), body)
+        target.write_text("preserve this later change")
+        return write_call(target, "again", "second")
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("automatic permission review refused" in result, result)
+        return event({"content": "restriction respected"})
+
+    with Server([reviewer]) as permission_server:
+        with Server(
+            [write_call(target, "again", "first"), event({"content": "written"}), repeat, finish]
+        ) as model_server:
+            env = provider_env(
+                home, model_server.url, decision_providers(permission_server.url), model="test"
+            )
+            env["UAGENT_APPROVAL"] = "auto"
+            result = run_dialog(root, env, "write twice.txt\nstop writing\n/q\n", binary=binary)
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true(len(seen) == 2 and seen[1].startswith("stop writing"), seen)
+    assert_true(target.read_text() == "preserve this later change", target.read_text())
 
 
 def test_auto_permission_never_reviews_outside_the_folder(root, home, *, binary):

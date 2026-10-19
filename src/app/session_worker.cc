@@ -363,7 +363,8 @@ class WorkerChannel final : public ApplicationChannel {
     }
     ready_ = true;
     busy_ = input_.has_value();
-    if (!busy_ && turn_active_ && link_) {
+    const bool finished_turn = !busy_ && turn_active_;
+    if (finished_turn && link_) {
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
                               "reason", "completed"),
                     JsonValue(state_, "title", title_),
@@ -392,6 +393,10 @@ class WorkerChannel final : public ApplicationChannel {
       }
     }
     SendState(true);
+    // The answer must precede idle, but the chat may consume it while our
+    // last published status still says working. Reconcile after idle is
+    // visible, and only if no queued turn has already started.
+    if (finished_turn && !busy_ && link_) link_->Idle();
   }
   void CompleteControl(const std::string& request,
                        const json& result) override {

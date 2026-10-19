@@ -1416,6 +1416,36 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
 }
 
+// An idle notification retries a close deferred until the sender stopped
+// working. It carries no chat message and closes the round only once.
+void TestAChatSettlesAfterMemberIdle() {
+  TestWorkspace workspace("chat-idle-close");
+  const std::string folder = workspace.workspace.string();
+  CHECK(WritePanelFile(folder, ".chat",
+                       {{"round", 42},
+                        {"each", 3},
+                        {"posted", 2},
+                        {"closed", false},
+                        {"typing", json::array()},
+                        {"waiting", json::array()}})
+            .empty());
+  int closes = 0;
+  Chat chat(folder, [&](const std::string& note, const json& re) {
+    ++closes;
+    CHECK(note.find("The discussion has settled") != std::string::npos);
+    CHECK(JsonValue(re, "round", 0) == 42);
+  });
+  Mail idle;
+  idle.type = kMailChatIdle;
+  idle.body = {{"text", "never rendered"}};
+  chat.Heard(idle);
+  CHECK(closes == 1);
+  CHECK(JsonValue(idle.body, "text", "missing").empty());
+  CHECK(JsonValue(ReadPanelFile(folder, ".chat"), "closed", false));
+  chat.Heard(idle);
+  CHECK(closes == 1);
+}
+
 // The chat saves its round before its panel's session records the
 // mail. A runtime that dies between the two is handed the mail again, and
 // the message it carries is still one message.

@@ -106,6 +106,10 @@
 
 ### Added
 
+- Panel chat rechecks a deferred round close when a member publishes idle,
+  so a final report read before that state change cannot strand the round.
+  The idle notification adds no chat text or model turn.
+
 - `browser`: `upload` gives a file of the conversation's folder to a file
   field, or to the chooser a button opens. A click that opens a file
   chooser no longer shows a window on the browser's screen that the agent
@@ -113,8 +117,7 @@
   conversation's `downloads` folder, and the action says so when it ends.
 - Auto approval shows what made it ask: the risks the decision model saw, with
   their probabilities, and the bar that decided, in the terminal and the web.
-  An identical call it allowed is not reviewed again in the conversation, and
-  an error from the decision endpoint (no credit, a refused key, an action too
+  An error from the decision endpoint (no credit, a refused key, an action too
   large) is said in words. `tests/reviewer_eval/` holds the labelled calls and
   a script that finds a model's bars against a real key.
 - A provider entry named like a well-known endpoint states only what

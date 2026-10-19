@@ -314,7 +314,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await model.click();
   await picker
     .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption("mock/model-b");
+    .fill("model-b");
+  await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(picker).toHaveCount(0);
   await expect(model).toContainText("mock/model-b");
@@ -821,7 +822,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     exact: true,
   });
   await expect(picker.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  await expect(picker.locator(".field-row > .field")).toHaveCount(2);
+  await expect(picker.locator(".field-row > .field")).toHaveCount(1);
   await expect(
     picker.getByRole("button", { name: "Apply", exact: true }),
   ).toBeDisabled();
@@ -835,7 +836,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     await expect(picker.getByRole("status")).toHaveAccessibleName(
       "Loading models…",
     );
-    await expect(picker.locator(".placeholder select")).toHaveCount(3);
+    await expect(picker.locator(".placeholder select")).toHaveCount(1);
   }
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "light";

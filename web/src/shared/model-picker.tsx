@@ -1,10 +1,11 @@
-import type { SessionRef, State, Model } from "./types.ts";
+import type { SessionRef, State } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useAction } from "./use-action.ts";
 import { useResource } from "./use-resource.ts";
 import { command } from "../state/api.ts";
-import { Field, Select, LoadError, Row, Switch } from "./ui.tsx";
-import { ModelLoading, ModelActions } from "./loading.tsx";
+import { Field, Select, LoadError } from "./ui.tsx";
+import { SearchSelect } from "./search-select.tsx";
+import { ModelLoading, ModelActions, ModelDefaults } from "./loading.tsx";
 
 export default function ModelPicker({
   session,
@@ -71,17 +72,10 @@ export default function ModelPicker({
   );
   useEffect(() => {
     if (catalog)
-      form.current?.querySelector("select")?.focus({ preventScroll: true });
+      form.current?.querySelector("input")?.focus({ preventScroll: true });
   }, [catalog]);
-  if (!catalog && !loadError) return <ModelLoading close={close} />;
-  const providers = new Map<string, Model[]>();
-  for (const item of catalog?.models || []) {
-    const provider = item.label.includes("/")
-      ? item.label.split("/")[0]
-      : "Models";
-    if (!providers.has(provider)) providers.set(provider, []);
-    providers.get(provider)!.push(item);
-  }
+  if (!catalog && !loadError)
+    return <ModelLoading close={close} defaults={!save} />;
   const selected = catalog?.models.find((item) => item.value === model);
   const efforts = [
     ...new Set([
@@ -99,36 +93,31 @@ export default function ModelPicker({
         <LoadError error={loadError} retry={retry} />
       ) : (
         <>
-          <Field label="Model">
-            <Select
-              aria-label="Model"
-              value={model}
-              disabled={action.busy}
-              onChange={(event) => {
-                setModel(event.currentTarget.value);
-                setEffort("default");
-              }}
-            >
-              {model && !selected && <option value={model}>{model}</option>}
-              {[...providers].map(([provider, models]) => (
-                <optgroup key={provider} label={provider}>
-                  {models.map((item) => (
-                    <option value={item.value} key={item.value}>
-                      {[
-                        item.label,
-                        item.name && item.name !== item.label ? item.name : "",
-                        item.efforts?.length
-                          ? `supports ${item.efforts.join(",")}`
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </Select>
-          </Field>
+          <SearchSelect
+            label="Model"
+            value={model}
+            disabled={action.busy}
+            options={[
+              ...(model && !selected ? [{ value: model, label: model }] : []),
+              ...catalog.models.map((item) => ({
+                value: item.value,
+                label: item.label,
+                detail: [
+                  item.value !== item.label ? item.value : "",
+                  item.name && item.name !== item.label ? item.name : "",
+                  item.efforts?.length
+                    ? `Supports ${item.efforts.join(", ")}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              })),
+            ]}
+            change={(value) => {
+              setModel(value);
+              setEffort("default");
+            }}
+          />
           <div class="field-row">
             <Field label="Effort">
               <Select
@@ -144,17 +133,11 @@ export default function ModelPicker({
             </Field>
           </div>
           {!save && (
-            <Row
-              label="Also use for new conversations"
-              detail="Otherwise only this conversation changes."
-            >
-              <Switch
-                label="Also use for new conversations"
-                checked={forAll}
-                disabled={action.busy}
-                onChange={setForAll}
-              />
-            </Row>
+            <ModelDefaults
+              checked={forAll}
+              disabled={action.busy}
+              change={setForAll}
+            />
           )}
           {loadError && <LoadError error={loadError} retry={retry} />}
           {action.error && <LoadError error={action.error} />}

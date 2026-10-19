@@ -391,3 +391,18 @@ test("shared textarea keeps its width after native resizing and zoom", async ({
       .toBeLessThan(1);
   }
 });
+
+test("expanded events draw one vertical guide", async ({ page }) => {
+  await page.goto(SHOWCASE_URL);
+  const event = page.locator(".event-row").filter({ hasText: "Event row" });
+  await event.locator("summary").click();
+  await expect(event.locator(".event-body")).toBeVisible();
+  await expect(event.locator(".disclosure-body")).toHaveCSS(
+    "border-left-width",
+    "1px",
+  );
+  await expect(event.locator(".event-body")).toHaveCSS(
+    "border-left-width",
+    "0px",
+  );
+});

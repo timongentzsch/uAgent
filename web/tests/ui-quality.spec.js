@@ -628,3 +628,86 @@ test("user message metadata stays in the upper right on multiline bubbles", asyn
     expect(time.x + time.width).toBeLessThanOrEqual(menu.x);
   }
 });
+
+for (const width of [390, 1706]) {
+  test(`question previews fit their cards at ${width}px`, async ({
+    page,
+    session,
+    request,
+  }, testInfo) => {
+    const snapshot = await (
+      await request.get(`/api/sessions/${session.id}`)
+    ).json();
+    snapshot.pending = {
+      id: "preview-fit",
+      kind: "ask",
+      prompt: "Which install is the kernel question about?",
+      questions: [
+        {
+          header: "Which machine",
+          question:
+            "Which install is the kernel question about? (The v4.0.5 update is x86; the Mac lane had no new release.)",
+          options: [
+            {
+              label: "Apple Silicon Mac (M1 Pro)",
+              preview:
+                "uname -r  ->  linux-asahi 7.1.x\npacman -Q linux-aurora linux-asahi-edge",
+            },
+            {
+              label: "x86 PC / laptop on Omarchy 4.x",
+              preview:
+                "uname -r  ->  7.2.x-...-sep-ARCH\nomarchy-version -> 4.0.x",
+            },
+            { label: "Both / I have two machines" },
+          ],
+        },
+        {
+          header: "Risk posture",
+          question: "How much risk?",
+          options: [{ label: "Stable" }],
+        },
+      ],
+    };
+    await page.route(`**/api/sessions/${session.id}`, (route) =>
+      route.fulfill({ json: snapshot }),
+    );
+    await page.setViewportSize({ width, height: 1100 });
+    await page.goto(`/#session=${session.id}`);
+    const ask = page.getByRole("region", { name: "Pending decision" });
+    await expect(ask.locator(".ask-preview")).toHaveCount(2);
+    for (const zoom of [1, 2]) {
+      await page.evaluate((zoom) => {
+        document.documentElement.style.setProperty("--zoom", String(zoom));
+        dispatchEvent(new Event("uagent:zoom"));
+      }, zoom);
+      await expect
+        .poll(() =>
+          ask
+            .locator(".ask-questions")
+            .evaluate((node) => node.scrollWidth - node.clientWidth),
+        )
+        .toBeLessThanOrEqual(1);
+      for (const preview of await ask.locator(".ask-preview").all()) {
+        const metrics = await preview.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const parent = node.closest(".ask-option").getBoundingClientRect();
+          return {
+            inside:
+              box.left >= parent.left &&
+              box.right <= parent.right + 1 &&
+              box.bottom <= parent.bottom + 1,
+            overflow: node.scrollWidth - node.clientWidth,
+          };
+        });
+        expect(metrics.inside).toBe(true);
+        expect(metrics.overflow).toBeLessThanOrEqual(1);
+      }
+      await testInfo.attach(`questions-${width}-${zoom}`, {
+        body: await ask.screenshot({
+          path: testInfo.outputPath(`questions-${width}-${zoom}.png`),
+        }),
+        contentType: "image/png",
+      });
+    }
+  });
+}

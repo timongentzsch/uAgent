@@ -191,7 +191,8 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await model.click();
-  await page.getByLabel("Model", { exact: true }).selectOption("mock/model-b");
+  await page.getByLabel("Model", { exact: true }).fill("model-b");
+  await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText(/mock\/model-b/);
   const secondHash = await page.evaluate(() => location.hash);

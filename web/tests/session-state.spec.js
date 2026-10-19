@@ -684,7 +684,8 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   });
   await childModel
     .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption({ value: "mock/main" });
+    .fill("mock/main");
+  await childModel.getByRole("option").filter({ hasText: "mock/main" }).click();
   await childModel.getByRole("button", { name: "Apply", exact: true }).click();
   const followUpRequest = page.waitForRequest((request) => {
     if (!request.url().endsWith("/api/command") || request.method() !== "POST")

@@ -350,9 +350,45 @@ def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
                 ),
             )
             assert_true(
-                {"state", "decide", "history"} <= offered[0] and "thread" not in offered[0], offered
+                {"state", "decide", "history", "artifact"} <= offered[0]
+                and "thread" not in offered[0],
+                offered,
             )
             assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)
+
+
+def test_web_moderator_can_share_an_artifact(root, home, *, binary):
+    report = b"<html><body>MODERATOR-REPORT</body></html>"
+    (root / "report.html").write_bytes(report)
+    with Server(
+        [tool_call("artifact", {"path": "report.html"}), event({"content": "REPORT-SHARED"})]
+    ) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            panel = client.command("create", cwd=str(root), panel=True)["session"]
+            panel = client.command("activate", panel)["session"]
+            client.until(panel, lambda value: value["metadata"]["status"] == "idle")
+            client.command("submit", panel, text="Share the completed report")
+            value = client.until(
+                panel,
+                lambda value: (
+                    "REPORT-SHARED" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            names = {tool["function"]["name"] for tool in provider.requests[0][1].get("tools", [])}
+            assert_true("artifact" in names, names)
+            assert_true(not {"run", "write_file", "scratch"} & names, names)
+            files = [
+                part
+                for block in value["state"]["view"]["blocks"]
+                for part in block.get("parts") or []
+                if part["kind"] == "file"
+            ]
+            assert_true([file["name"] for file in files] == ["report.html"], files)
+            url = f"/api/sessions/{panel['id']}/assets/{files[0]['id']}?download=1"
+            status, body, headers = client.request(url)
+            assert_true(status == 200 and body == report, (status, body))
+            assert_true('filename="report.html"' in headers.get("Content-Disposition", ""), headers)
 
 
 def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary):

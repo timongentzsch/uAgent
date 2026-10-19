@@ -55,6 +55,7 @@ PANEL_TOOLS = {
     "ask",
     "state",
     "browser",
+    "artifact",
 }
 
 

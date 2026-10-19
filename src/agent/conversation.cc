@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -166,6 +167,7 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   display_bytes_ = 0;
   ResetHistory(std::move(baseline), std::move(kinds));
   archive_ = json::array();
+  shared_archive_.reset();
   archive_texts_.clear();
   archive_bytes_ = 0;
   dropped_segments_ = 0;
@@ -215,6 +217,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
   archive_ = std::move(archive);
+  shared_archive_.reset();
   archive_texts_.clear();
   archive_bytes_ = 0;
   for (const json& segment : archive_) {
@@ -714,9 +717,16 @@ bool Conversation::AddArchiveSegment(json segment, int64_t archive_cap) {
       archive_texts_.begin(),
       archive_texts_.begin() + static_cast<std::ptrdiff_t>(expired));
   archive_.push_back(std::move(segment));
+  shared_archive_.reset();
   archive_texts_.push_back(std::move(text));
   archive_bytes_ += bytes;
   return true;
+}
+
+std::shared_ptr<const json> Conversation::SharedArchive() {
+  if (!shared_archive_)
+    shared_archive_ = std::make_shared<const json>(archive_);
+  return shared_archive_;
 }
 
 std::string Conversation::ArchiveText() const {

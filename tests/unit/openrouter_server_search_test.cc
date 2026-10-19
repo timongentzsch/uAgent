@@ -296,6 +296,7 @@ void TestOpenRouterServerSearch() {
 
   Tool fetch_tool = WebFetchTool(api);
   CHECK(!fetch_tool.mutating);
+  CHECK(fetch_tool.dedupe_output);
   CHECK(fetch_tool.needs_approval && fetch_tool.needs_approval(json::object()));
   ToolContext fetch_context;
   CHECK(fetch_tool.run({{"url", "file:///etc/passwd"}}, fetch_context).error ==

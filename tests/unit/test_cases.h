@@ -142,6 +142,8 @@ namespace uagent {
   X(TestSafeJsonValues)                           \
   X(TestProjectInstructionDiscovery)              \
   X(TestMcpContractHelpers)                       \
+  X(TestSideArchiveForks)                         \
+  X(TestSharedArchiveSnapshots)                   \
   X(TestConversation)                             \
   X(TestForkAtTurnAndLineage)                     \
   X(TestForkAtMessageAndShare)                    \

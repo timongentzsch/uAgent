@@ -54,9 +54,15 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
       std::filesystem::symlink_status(path, error));
   {
     std::lock_guard lock(history_mutex_);
-    if (regular && history_ && history_->path == path &&
-        history_->stamp == stamp) {
-      return history_;
+    for (auto entry = history_.begin(); entry != history_.end(); ++entry) {
+      if ((*entry)->path != path) continue;
+      auto cached = *entry;
+      history_.erase(entry);
+      if (regular && cached->stamp == stamp) {
+        history_.insert(history_.begin(), cached);
+        return cached;
+      }
+      break;
     }
   }
   auto history = std::make_shared<SavedHistory>();
@@ -71,7 +77,18 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
   }
   if (regular && loaded.record && SnapshotFile(path) == stamp) {
     std::lock_guard lock(history_mutex_);
-    history_ = history;
+    std::erase_if(history_,
+                  [&](const auto& entry) { return entry->path == path; });
+    history_.insert(history_.begin(), history);
+    int64_t bytes = 0;
+    for (const auto& entry : history_)
+      bytes += std::max(int64_t{0}, entry->stamp.size);
+    constexpr int64_t kHistoryFileBytes = int64_t{32} * 1024 * 1024;
+    while (history_.size() > 1 &&
+           (history_.size() > 3 || bytes > kHistoryFileBytes)) {
+      bytes -= std::max(int64_t{0}, history_.back()->stamp.size);
+      history_.pop_back();
+    }
   }
   return history;
 }

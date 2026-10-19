@@ -1,0 +1,11 @@
+.context-compact {
+  display: none;
+}
+@media (max-width: 600px) {
+  .context-full {
+    display: none;
+  }
+  .context-compact {
+    display: inline;
+  }
+}

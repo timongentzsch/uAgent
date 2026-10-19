@@ -331,9 +331,9 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         element.style.setProperty("--safe-bottom-resting", "34px"),
       );
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
-    // Status line above and totals below the input: two slim rows.
+    // Status above the input; activity and totals have separate rows below.
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
-      180,
+      200,
     );
     const draft = "Keep my draft and focus as the keyboard moves";
     await input(prompt, draft, 16);
@@ -505,4 +505,85 @@ test("a long agent state truncates instead of wrapping the phone status line", a
     page.getByRole("button", { name: "Activity", exact: true }),
   ).toBeVisible();
   await fits();
+});
+
+test.describe("composer footer", () => {
+  test.use({ hasTouch: true });
+  for (const width of [320, 390, 1280]) {
+    test(`activity and totals remain readable (${width})`, async ({
+      page,
+      session,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.emulateMedia({ colorScheme: "dark" });
+      await page.route(`**/api/sessions/${session.id}`, async (route) => {
+        const response = await route.fetch();
+        const snapshot = await response.json();
+        snapshot.state = {
+          ...snapshot.state,
+          context_tokens: 4600,
+          context_window: 1300000,
+          statistics: { ...snapshot.state?.statistics, recorded_turns: 12345 },
+          usage: {
+            ...snapshot.state?.usage,
+            cost_reported: true,
+            cost: 1234.56,
+          },
+          activities: [
+            { id: 12, kind: "agent", status: "running", label: "Research" },
+            { id: 13, kind: "command", status: "running", label: "Build" },
+          ],
+        };
+        await route.fulfill({ response, json: snapshot });
+      });
+      await page.goto(`/#session=${session.id}`);
+      const footer = page.locator(".composer-metrics");
+      const context = footer.getByRole("button", {
+        name: "Raw context",
+        exact: true,
+      });
+      await expect(context).toBeEnabled();
+      await expect(
+        footer.getByRole("button", { name: "Activity", exact: true }),
+      ).toContainText("1 agent · 1 command");
+      await expect(
+        context.locator(width < 600 ? ".context-compact" : ".context-full"),
+      ).toBeVisible();
+      if (width < 600)
+        await expect(context.locator(".context-compact")).toHaveText(
+          "Context 99% left",
+        );
+      const geometry = await footer.evaluate((node) => {
+        const rect = (target) => {
+          const { x, y, width, height, bottom, right } =
+            target.getBoundingClientRect();
+          return { x, y, width, height, bottom, right };
+        };
+        return {
+          frame: rect(node),
+          activity: rect(node.querySelector(".sheet-control")),
+          metrics: rect(node.querySelector(".metrics")),
+          buttons: [...node.querySelectorAll("button")].map((button) => ({
+            ...rect(button),
+            clipped: button.scrollWidth > button.clientWidth + 1,
+          })),
+        };
+      });
+      if (width < 600)
+        expect(geometry.metrics.y).toBeGreaterThanOrEqual(
+          geometry.activity.bottom,
+        );
+      for (const button of geometry.buttons) {
+        expect(button.x).toBeGreaterThanOrEqual(geometry.frame.x - 1);
+        expect(button.right).toBeLessThanOrEqual(geometry.frame.right + 1);
+        expect(button.clipped).toBe(false);
+        expect(button.height).toBeGreaterThanOrEqual(32);
+      }
+      await page.screenshot({ path: testInfo.outputPath("footer.png") });
+      await footer.getByRole("button", { name: "Activity", exact: true }).tap();
+      await expect(
+        page.getByRole("dialog", { name: "Activity", exact: true }),
+      ).toBeVisible();
+    });
+  }
 });

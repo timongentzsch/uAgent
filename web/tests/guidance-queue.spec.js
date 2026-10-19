@@ -11,6 +11,7 @@ test.beforeEach(({ command, session }) =>
 
 async function start(page, session) {
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Queue controls probe");
   await page.getByRole("button", { name: "Send", exact: true }).click();

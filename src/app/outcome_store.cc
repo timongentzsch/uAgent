@@ -30,21 +30,28 @@ json OutcomeStore::SendCommand(const std::shared_ptr<HostSession>& session,
                                const std::string& client_request,
                                bool& dispatched) {
   dispatched = false;
+  std::shared_ptr<json> receipt;
   {
     std::lock_guard lock(mutex_);
-    if (outcomes_.size() >= kMaxOutcomes) {
-      auto completed = std::find_if(
-          outcomes_.begin(), outcomes_.end(), [](const auto& entry) {
-            return !JsonValue(entry.second, "pending", false);
-          });
-      if (completed == outcomes_.end()) {
-        return {{"request_id", client_request},
-                {"accepted", false},
-                {"error", "too many unacknowledged worker commands"}};
+    if (auto found = outcomes_.find(worker_request); found != outcomes_.end()) {
+      receipt = found->second;
+    } else {
+      if (outcomes_.size() >= kMaxOutcomes) {
+        auto completed = std::find_if(
+            outcomes_.begin(), outcomes_.end(), [](const auto& entry) {
+              return !JsonValue(*entry.second, "pending", false);
+            });
+        if (completed == outcomes_.end()) {
+          return {{"request_id", client_request},
+                  {"accepted", false},
+                  {"error", "too many unacknowledged worker commands"}};
+        }
+        outcomes_.erase(completed);
       }
-      outcomes_.erase(completed);
+      receipt = std::make_shared<json>();
+      outcomes_[worker_request] = receipt;
     }
-    outcomes_[worker_request] = {
+    *receipt = {
         {"request_id", client_request}, {"accepted", true}, {"pending", true}};
     session->awaiting.push_back(worker_request);
   }
@@ -52,17 +59,16 @@ json OutcomeStore::SendCommand(const std::shared_ptr<HostSession>& session,
   if (!session->Send(std::move(command))) {
     std::lock_guard lock(mutex_);
     std::erase(session->awaiting, worker_request);
-    return outcomes_[worker_request] = {{"request_id", client_request},
-                                        {"accepted", false},
-                                        {"error", "worker is disconnected"}};
+    return *receipt = {{"request_id", client_request},
+                       {"accepted", false},
+                       {"error", "worker is disconnected"}};
   }
   dispatched = true;
   UniqueLock lock(mutex_);
   changed_.wait_for(lock, kOutcomeWait, [&]() UAGENT_REQUIRES(mutex_) {
-    return !JsonValue(outcomes_.at(worker_request), "pending", false) ||
-           session->exited;
+    return !JsonValue(*receipt, "pending", false) || session->exited;
   });
-  return outcomes_.at(worker_request);
+  return *receipt;
 }
 
 json OutcomeStore::CommandOutcome(const std::string& worker_request,
@@ -71,7 +77,7 @@ json OutcomeStore::CommandOutcome(const std::string& worker_request,
   auto found = outcomes_.find(worker_request);
   return found == outcomes_.end()
              ? json{{"request_id", client_request}, {"unknown", true}}
-             : found->second;
+             : *found->second;
 }
 
 size_t OutcomeStore::PendingCommands(const HostSession& session) const {
@@ -84,13 +90,14 @@ bool OutcomeStore::ResolveOutcome(HostSession& session, json& frame) {
   std::lock_guard lock(mutex_);
   auto found = outcomes_.find(worker_request);
   if (found == outcomes_.end()) return false;
-  const std::string client_request = JsonValue(found->second, "request_id", "");
+  const std::string client_request =
+      JsonValue(*found->second, "request_id", "");
   frame["request_id"] = client_request;
-  found->second = {{"request_id", client_request},
-                   {"accepted", JsonValue(frame, "accepted", false)},
-                   {"pending", JsonValue(frame, "pending", false)},
-                   {"error", JsonValue(frame, "error", "")},
-                   {"result", JsonValue(frame, "result", json::object())}};
+  *found->second = {{"request_id", client_request},
+                    {"accepted", JsonValue(frame, "accepted", false)},
+                    {"pending", JsonValue(frame, "pending", false)},
+                    {"error", JsonValue(frame, "error", "")},
+                    {"result", JsonValue(frame, "result", json::object())}};
   if (!JsonValue(frame, "pending", false)) {
     std::erase(session.awaiting, worker_request);
   }
@@ -103,11 +110,12 @@ void OutcomeStore::FailPending(HostSession& session) {
   for (const std::string& worker_request : session.awaiting) {
     auto found = outcomes_.find(worker_request);
     if (found == outcomes_.end()) continue;
-    found->second = {{"request_id", JsonValue(found->second, "request_id", "")},
-                     {"accepted", false},
-                     {"error",
-                      "worker closed before acknowledgement; inspect history "
-                      "before retrying"}};
+    *found->second = {
+        {"request_id", JsonValue(*found->second, "request_id", "")},
+        {"accepted", false},
+        {"error",
+         "worker closed before acknowledgement; inspect history "
+         "before retrying"}};
   }
   session.awaiting.clear();
   changed_.notify_all();

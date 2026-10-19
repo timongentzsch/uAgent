@@ -181,8 +181,8 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         Api side(api.config);
         side.base_url = active.base_url;
         side.api_key = active.api_key;
-        JsonResponse response =
-            side.Post("/chat/completions", body, timeout, kSideAttempts);
+        JsonResponse response = side.Post("/chat/completions", body, timeout,
+                                          kSideAttempts, context.deadline);
         DebugLog("side_response",
                  {{"kind", "web_search"},
                   {"duration_ms", ElapsedMs(started)},
@@ -217,6 +217,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
               {{"model_calls", 1},
                {"model_ms", ElapsedMs(started)},
                {"usage_samples", response.body.contains("usage") ? 1 : 0}});
+        }
+        if (context.Expired()) {
+          return ToolTimedOut("error: search deadline reached");
         }
         if (!result.text.empty()) {
           std::string evidence = CitationEvidence(result.annotations);

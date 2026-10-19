@@ -7,16 +7,24 @@
 
 #include "include/app/session_command.h"
 
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <future>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
+#include "include/app/schedule.h"
 #include "include/app/session_host.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -37,6 +45,125 @@ static json CommandEnvelope(const std::string& kind) {
           {"generation", kGeneration},
           {"kind", kind},
           {"request_id", kRequest}};
+}
+
+// A completed receipt may leave the bounded lookup cache before the sender
+// wakes; the sender must still receive its exact acknowledgement.
+void TestOutcomeStoreReceiptLifetime() {
+  for (int round = 0; round < 32; ++round) {
+    session::OutcomeStore store;
+    auto live = std::make_shared<session::HostSession>();
+    auto disconnected = std::make_shared<session::HostSession>();
+    int sockets[2];
+    REQUIRE(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+    live->socket = Fd(sockets[0]);
+    Fd peer(sockets[1]);
+    auto pending = std::async(std::launch::async, [&] {
+      bool dispatched = false;
+      return store.SendCommand(live, {{"kind", "refresh"}}, "000target",
+                               "client", dispatched);
+    });
+    char buffer[4096];
+    CHECK(read(peer.Get(), buffer, sizeof buffer) > 0);
+    auto retry = std::async(std::launch::async, [&] {
+      bool dispatched = false;
+      return store.SendCommand(live, {{"kind", "refresh"}}, "000target",
+                               "client", dispatched);
+    });
+    CHECK(read(peer.Get(), buffer, sizeof buffer) > 0);
+    for (int index = 0; index < 511; ++index) {
+      bool dispatched = false;
+      store.SendCommand(disconnected, {}, "seed" + std::to_string(index),
+                        "seed", dispatched);
+    }
+    json completed = {{"request_id", "000target"},
+                      {"accepted", true},
+                      {"result", {{"value", 42}}}};
+    CHECK(store.ResolveOutcome(*live, completed));
+    bool dispatched = false;
+    store.SendCommand(disconnected, {}, "zznew", "new", dispatched);
+    CHECK(JsonValue(store.CommandOutcome("000target", "client"), "unknown",
+                    false));
+    const json receipt = pending.get();
+    CHECK(JsonValue(receipt, "accepted", false));
+    CHECK(receipt["request_id"] == "client");
+    CHECK(receipt["result"]["value"] == 42);
+    CHECK(retry.get() == receipt);
+  }
+}
+
+void TestScheduledPreparationDoesNotBlockHost() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("scheduled-preparation");
+  fs::create_directory(workspace.root / "bin");
+  const auto git = workspace.root / "bin/git";
+  const auto entered = workspace.root / "entered";
+  const auto release = workspace.root / "release";
+  ScopedEnv path("PATH",
+                 (workspace.root / "bin").string() + ":" + getenv("PATH"));
+  CreatePrivateDirectories(UagentDir("scheduled"));
+  // A stop that lands during either successful or failed Git preparation
+  // wins over launch and over the preparation error.
+  for (int status : {0, 1}) {
+    fs::remove(entered);
+    fs::remove(release);
+    {
+      std::ofstream script(git);
+      script << "#!/bin/sh\ntouch '" << entered.string()
+             << "'\nfor i in $(seq 1 1000); do\n[ -f '" << release.string()
+             << "' ] && exit " << status << "\nsleep 0.01\ndone\nexit 1\n";
+    }
+    fs::permissions(git, fs::perms::owner_all);
+    const json run = {
+        {"id", "run"},
+        {"task_id", "task"},
+        {"status", "queued"},
+        {"cwd", (workspace.root / "worktree").string()},
+        {"session_path", (workspace.root / "scheduled.json").string()},
+        {"definition",
+         {{"environment", "worktree"}, {"cwd", workspace.workspace.string()}}}};
+    const json store = {
+        {"v", 1}, {"tasks", json::array()}, {"runs", json::array({run})}};
+    std::string error;
+    REQUIRE(
+        AtomicWriteFile(SchedulePath(), JsonDump(store), 0600, false, error));
+    session::SessionHost host("test", 4096, {},
+                              (workspace.root / "host").string());
+    bool recovered = false;
+    auto preparing = std::async(std::launch::async,
+                                [&] { return host.RunSchedules(recovered); });
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(BudgetMs(5000));
+    while (!fs::exists(entered) &&
+           std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(fs::exists(entered));
+    auto catalogue =
+        std::async(std::launch::async, [&] { return host.Catalogue(); });
+    CHECK(catalogue.wait_for(std::chrono::milliseconds(BudgetMs(250))) ==
+          std::future_status::ready);
+    CHECK(!ScheduleControl({{"action", "stop"}, {"key", "run"}})
+               .contains("error"));
+    {
+      std::ofstream done(release);
+    }
+    CHECK(catalogue.get()["sessions"].empty());
+    (void)preparing.get();
+    const json after = ReadSchedules();
+    CHECK(after["runs"][0]["status"] == "interrupted");
+    CHECK(!fs::exists(JsonValue(run, "session_path", "")));
+    CHECK(host.Catalogue()["sessions"].empty());
+    // The same rule holds if stop wins the store lock immediately before a
+    // terminal update, after the supervisor already read its prior state.
+    json stopping = after;
+    stopping["runs"][0]["status"] = "stopping";
+    CHECK(AtomicWriteFile(SchedulePath(), JsonDump(stopping), 0600, false,
+                          error));
+    CHECK(!UpdateScheduledRun("run", status == 0 ? "completed" : "failed")
+               .contains("error"));
+    CHECK(ReadSchedules()["runs"][0]["status"] == "interrupted");
+  }
 }
 
 void TestSessionCommandKinds() {

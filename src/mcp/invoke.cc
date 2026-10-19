@@ -2,6 +2,7 @@
 
 #include "include/mcp/invoke.h"
 
+#include <algorithm>
 #include <string>
 
 #include "include/core/json.h"
@@ -25,10 +26,11 @@ ToolResult McpInvokeRemote(McpServer& server, const std::string& remote_name,
   json response;
   if (RunCancellable([&] {
         json params = {{"name", remote_name}, {"arguments", arguments}};
-        auto deadline = DeadlineAfter(context.RemainingSeconds(timeout));
+        auto deadline = std::min(
+            context.deadline, DeadlineAfter(context.RemainingSeconds(timeout)));
         for (int round = 0; round < 8; ++round) {
           response = McpRpc(server, "tools/call", params,
-                            SecondsUntil(deadline), true);
+                            SecondsUntil(deadline), true, deadline);
           const json* result = JsonObject(response, "result");
           if (!result ||
               JsonValue(*result, "resultType", "") != "input_required" ||

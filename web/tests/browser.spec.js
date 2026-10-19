@@ -578,3 +578,66 @@ for (const width of [320, 1280]) {
     });
   });
 }
+
+for (const owner of ["0", "1"]) {
+  test(`browser handoff takes over its conversation's waiting instance ${owner}`, async ({
+    page,
+    session,
+  }) => {
+    const commands = [];
+    const other = "ffffffffffffffff";
+    await page.route(`**/api/sessions/${session.id}`, async (route) => {
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      snapshot.pending = { id: "browser-owner-probe", kind: "browser" };
+      await route.fulfill({ response, json: snapshot });
+    });
+    await page.route("**/api/browser/status*", (route) => {
+      const instance =
+        new URL(route.request().url()).searchParams.get("instance") || "0";
+      return route.fulfill({
+        json: {
+          ok: true,
+          running: false,
+          mode: "agent",
+          waiting: true,
+          leased: false,
+          instance_id: instance,
+          session_id: instance === owner ? session.id : other,
+          parallel_capacity: 2,
+          ...profiles,
+          instances: ["0", "1"].map((id) => ({
+            instance_id: id,
+            mode: "agent",
+            waiting: true,
+            session_id: id === owner ? session.id : other,
+            isolated: id !== "0",
+          })),
+          queue: [],
+        },
+      });
+    });
+    await page.route("**/api/command", (route) => {
+      const body = route.request().postDataJSON();
+      if (body.kind !== "browser") return route.continue();
+      commands.push(body);
+      return route.fulfill({
+        json: { accepted: true, pending: false, result: { ok: true } },
+      });
+    });
+    await page.goto(`/#session=${session.id}`);
+    await page
+      .locator(".composer")
+      .getByRole("button", { name: "Open browser", exact: true })
+      .click();
+    await expect.poll(() => commands.length).toBe(1);
+    expect(commands[0]).toMatchObject({
+      action: "takeover",
+      instance_id: owner,
+      session_id: session.id,
+    });
+    await expect(
+      page.getByRole("dialog", { name: "Browser", exact: true }),
+    ).toBeVisible();
+  });
+}

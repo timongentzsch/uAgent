@@ -1,3 +1,4 @@
+import { tabStorage } from "../../shared/storage.ts";
 import { manage } from "../../state/api.ts";
 import {
   defaultScheduleSeconds,
@@ -78,7 +79,7 @@ export default function Scheduled({
   refresh: () => Promise<void>;
 }) {
   const [task, setTask] = useState<ScheduledTask | null>(() =>
-    readStored(sessionStorage, storage, null),
+    readStored(tabStorage, storage, null),
   );
   const prefs = useContext(TimePrefsContext);
   // A run's moment by the viewer's time preferences, in its task's zone.
@@ -112,10 +113,10 @@ export default function Scheduled({
   // biome-ignore lint/correctness/useExhaustiveDependencies: saves when the draft changes, not when the host's copy does
   useEffect(() => {
     if (task) {
-      writeStored(sessionStorage, storage, task);
+      writeStored(tabStorage, storage, task);
       if (dirty)
-        writeStored(sessionStorage, `${storage}-${task.id || "new"}`, task);
-    } else sessionStorage.removeItem(storage);
+        writeStored(tabStorage, `${storage}-${task.id || "new"}`, task);
+    } else tabStorage.removeItem(storage);
   }, [task]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: previews when the schedule's value changes, not on edits to other fields
   useEffect(() => {
@@ -143,7 +144,7 @@ export default function Scheduled({
     setTask(
       value
         ? readStored<ScheduledTask>(
-            sessionStorage,
+            tabStorage,
             `${storage}-${value.id || "new"}`,
             value,
           )
@@ -152,7 +153,7 @@ export default function Scheduled({
     setError(null);
   }
   function discard() {
-    sessionStorage.removeItem(`${storage}-${task?.id || "new"}`);
+    tabStorage.removeItem(`${storage}-${task?.id || "new"}`);
     setTask(current || null);
   }
   const edit = (value: Partial<ScheduledTask>) =>
@@ -171,7 +172,7 @@ export default function Scheduled({
         ...(action === "save" && task ? { task } : {}),
       });
       if (result.item) {
-        sessionStorage.removeItem(`${storage}-${task?.id || "new"}`);
+        tabStorage.removeItem(`${storage}-${task?.id || "new"}`);
         setTask(result.item);
       }
       if (action === "forget") {

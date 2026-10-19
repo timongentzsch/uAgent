@@ -613,6 +613,42 @@ void TestEditJournal() {
   CHECK(reopened.Revert(3, "")["restored"].size() == 1);
   CHECK(ReadFile(file, 64) == "one\n");
   CHECK(reopened.LastTurn() == 0);
+
+  // All three file tools report the original mode. A delete at the end of
+  // the turn must not lose it, including when undo happens after a reopen.
+  for (const mode_t mode : {mode_t{0600}, mode_t{0700}}) {
+    const std::string target =
+        (workspace.workspace / ("mode-" + std::to_string(mode))).string();
+    write(target, "before\n");
+    REQUIRE(chmod(target.c_str(), mode) == 0);
+    const int64_t turn = mode;
+    for (const ToolResult& change :
+         {ToolEditFile(target, {{"before", "edited", false}}),
+          ToolWriteFileWithDisplay(target, "replaced\n", true),
+          ToolDeleteFileWithDisplay(target)}) {
+      REQUIRE(change.Ok() && change.effect.has_value());
+      CHECK(change.effect->before_mode == mode);
+      journal.Record(turn, *change.effect);
+    }
+    journal.Files(turn);
+    reopened.Open(directory);
+    CHECK(reopened.Revert(turn, "")["restored"].size() == 1);
+    CHECK(ReadFile(target, 64) == "before\n");
+    struct stat info{};
+    REQUIRE(stat(target.c_str(), &info) == 0);
+    CHECK((info.st_mode & 07777) == mode);
+  }
+
+  // Older journals have no mode. Keep existing permissions when possible;
+  // recreate a missing file privately instead of broadening access.
+  const std::string legacy = (workspace.workspace / "legacy.txt").string();
+  journal.Record(99, {legacy, true, "private\n", ""});
+  journal.Files(99);
+  reopened.Open(directory);
+  CHECK(reopened.Revert(99, "")["restored"].size() == 1);
+  struct stat info{};
+  REQUIRE(stat(legacy.c_str(), &info) == 0);
+  CHECK((info.st_mode & 07777) == kPrivateFileMode);
 }
 
 void TestTerminalSafety() {

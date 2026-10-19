@@ -363,12 +363,21 @@ export default function BrowserPanel({
       tookOver.current ||
       !status.waiting ||
       status.leased ||
+      (sessionId && status.session_id !== sessionId) ||
       (status.instance_id || "0") !== instance
     )
       return;
     tookOver.current = true;
     void control("takeover");
-  }, [handoff, status.waiting, status.leased]);
+  }, [
+    handoff,
+    sessionId,
+    instance,
+    status.waiting,
+    status.leased,
+    status.instance_id,
+    status.session_id,
+  ]);
 
   const key = (keysym: number) => {
     const rfb = viewer.current;

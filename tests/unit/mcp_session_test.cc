@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <memory>
 #include <string>
 #include <utility>
@@ -176,6 +177,34 @@ void TestMcpContractHelpers() {
   CHECK(std::string(cancellation,
                     static_cast<size_t>(std::max(ssize_t{0}, received)))
             .find("notifications/cancelled") != std::string::npos);
+
+  // A server that stopped reading stdin must not turn either the request
+  // send or the best-effort cancellation notification into a ten-second wait.
+  auto blocked_send = [](bool request) {
+    int input[2], output[2];
+    CHECK(pipe(input) == 0);
+    CHECK(pipe(output) == 0);
+    Fd input_reader(input[0]), output_writer(output[1]);
+    McpServer stalled;
+    stalled.alive = true;
+    stalled.in.Reset(input[1]);
+    stalled.out.Reset(output[0]);
+    CHECK(fcntl(stalled.in.Get(), F_SETFL, O_NONBLOCK) == 0);
+    char fill[4096]{};
+    while (write(stalled.in.Get(), fill, sizeof fill) > 0) {
+    }
+    CHECK(errno == EAGAIN || errno == EWOULDBLOCK);
+    auto started = std::chrono::steady_clock::now();
+    json reply = request
+                     ? McpRpc(stalled, "tools/call", json::object(), 1, false)
+                     : McpAwait(stalled, 1, 0, false);
+    CHECK(reply.contains("error"));
+    CHECK(!stalled.alive);
+    CHECK(std::chrono::steady_clock::now() - started <
+          std::chrono::milliseconds(BudgetMs(request ? 2500 : 500)));
+  };
+  blocked_send(true);
+  blocked_send(false);
 
   namespace fs = std::filesystem;
   fs::path image_home =

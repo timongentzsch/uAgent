@@ -8,6 +8,7 @@ from integration_support import (
     Server,
     assert_true,
     base_env,
+    budget,
     event,
     function_names,
     provider_env,
@@ -298,6 +299,97 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
                 ),
                 model_server.requests,
             )
+
+
+def test_web_search_retries_respect_turn_deadline(root, home, *, binary):
+    def busy(handler, _):
+        data = json.dumps({"error": {"message": "fixture busy"}}).encode()
+        handler.send_response(503)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.send_header("Retry-After", "60")
+        handler.end_headers()
+        handler.wfile.write(data)
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("fixture busy" in result, result)
+        return event({"content": "search-budget-ok"})
+
+    with Server([busy]) as search_server:
+        with Server(
+            [tool_call("web_search", {"queries": ["deadline probe"]}), finish]
+        ) as model_server:
+            env = base_env(home, model_server.url)
+            env.update(
+                {
+                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
+                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
+                    "UAGENT_PROVIDERS": json.dumps(
+                        {
+                            "search": {
+                                "base_url": search_server.url,
+                                "api_key": "search-key",
+                                "supports": OPENROUTER_SUPPORTS,
+                            }
+                        }
+                    ),
+                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
+                    "UAGENT_MAX_TURN_SECONDS": str(int(budget(2))),
+                }
+            )
+            started = time.monotonic()
+            result = run(root, env, "--yolo", "-p", "search", timeout=8, binary=binary)
+            assert_true(result.returncode == 0, (result.stdout, result.stderr))
+            assert_true(result.stdout.strip() == "search-budget-ok", result.stdout)
+            assert_true(len(search_server.requests) == 1, search_server.requests)
+            assert_true(time.monotonic() - started < budget(6), result.stderr)
+
+
+def test_web_search_slow_response_respects_turn_deadline(root, home, *, binary):
+    def retry(handler, _):
+        write_json_response(handler, {"error": {"message": "retry once"}}, status=503)
+
+    def busy(handler, _):
+        time.sleep(budget(8))
+        try:
+            write_json_response(handler, {"choices": []})
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("timeout" in result.lower() or "deadline" in result.lower(), result)
+        return event({"content": "search-budget-ok"})
+
+    with Server([retry, busy], repeat_last=True) as search_server:
+        with Server(
+            [tool_call("web_search", {"queries": ["deadline probe"]}), finish]
+        ) as model_server:
+            env = base_env(home, model_server.url)
+            env.update(
+                {
+                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
+                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
+                    "UAGENT_PROVIDERS": json.dumps(
+                        {
+                            "search": {
+                                "base_url": search_server.url,
+                                "api_key": "search-key",
+                                "supports": OPENROUTER_SUPPORTS,
+                            }
+                        }
+                    ),
+                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
+                    "UAGENT_MAX_TURN_SECONDS": str(int(budget(4))),
+                }
+            )
+            started = time.monotonic()
+            result = run(root, env, "--yolo", "-p", "search", timeout=8, binary=binary)
+            assert_true(result.returncode == 0, (result.stdout, result.stderr))
+            assert_true(result.stdout.strip() == "search-budget-ok", result.stdout)
+            assert_true(len(search_server.requests) == 2, search_server.requests)
+            assert_true(time.monotonic() - started < budget(6), result.stderr)
 
 
 def test_openrouter_reasoning_details_survive_tool_step(root, home, *, binary):

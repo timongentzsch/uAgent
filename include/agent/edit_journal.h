@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,7 @@ class EditJournal {
   struct Entry {
     std::string path, after_hash;
     bool existed = false, undoable = false;
+    std::optional<uint32_t> before_mode = std::nullopt;
   };
   std::string Blob(int64_t turn, const std::string& path) const;
   void Save() const;

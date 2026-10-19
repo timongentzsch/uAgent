@@ -567,7 +567,7 @@ function App() {
       if (existing?.id) {
         const snapshot = await load(existing.id);
         await command("submit", snapshot.metadata, { text: argument });
-        return;
+        return true;
       }
       const firstRequest = requestId();
       setSides((current) => ({

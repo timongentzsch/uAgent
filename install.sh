@@ -4,10 +4,15 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 build=${UAGENT_BUILD_DIR:-"$root/build/release"}
 prefix=${UAGENT_PREFIX:-"$HOME/.local"}
 build_jobs=${UAGENT_BUILD_JOBS:-${CMAKE_BUILD_PARALLEL_LEVEL:-4}}
-# The web UI is built from source when Node is present; without it the build
-# is CLI-only (CMake says so).
-if [ ! -f "$root/web/dist/.assets" ] && command -v npm >/dev/null 2>&1; then
-  npm ci --prefix "$root/web" && npm run build --prefix "$root/web"
+# Reuse a built UI only while its source inputs match. Without npm, CMake
+# can still embed a supplied bundle or build the CLI-only configuration.
+if command -v npm >/dev/null 2>&1 &&
+   ! node "$root/web/scripts/build-state.js" check; then
+  if ! node "$root/web/scripts/build-state.js" check-dependencies; then
+    npm ci --prefix "$root/web"
+    node "$root/web/scripts/build-state.js" record-dependencies
+  fi
+  npm run build --prefix "$root/web"
 fi
 if [ ! -f "$build/CMakeCache.txt" ]; then
   cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF

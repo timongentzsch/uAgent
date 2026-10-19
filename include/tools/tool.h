@@ -77,6 +77,9 @@ struct FileEffect {
   bool existed = false;
   std::optional<std::string> before;
   std::string after_hash;
+  // Kept before the first change, so undo can recreate a deleted file with
+  // its original permissions. Unset for new files or older journal entries.
+  std::optional<uint32_t> before_mode = std::nullopt;
 };
 
 struct ToolResult {

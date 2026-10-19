@@ -474,8 +474,7 @@ std::string SettingsPath() {
 SavedSettings ReadSettings(const std::string& folder) {
   SavedSettings saved;
   json document = ReadDocument(saved.stamp);
-  if (const int format = JsonValue(document, "format", 0);
-      format == 1 || format == 2) {
+  if (Upgrade(document)) {
     saved.error = UpgradeSaved();
     document = ReadDocument(saved.stamp);
   }

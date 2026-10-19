@@ -1197,7 +1197,7 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     save_settings(
         home,
         OPENROUTER_API_KEY="context-secret-sentinel",
-        UAGENT_PERMISSION_URL="https://user:pass@review.example/v1",
+        UAGENT_BASE_URL="https://user:pass@review.example/v1",
     )
     skill = workspace / ".uagent" / "skills" / "context-demo"
     skill.mkdir(parents=True)

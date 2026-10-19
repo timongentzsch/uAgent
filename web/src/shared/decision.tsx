@@ -170,6 +170,9 @@ export default function Decision({
               )}
             </>
           )}
+          {approval?.review && (
+            <p class="decision-note">{cleanText(approval.review)}</p>
+          )}
           <p>{cleanText(pending.prompt)}</p>
         </div>
       )}

@@ -113,8 +113,18 @@ void ThreadLink::Report(const std::string& reason, const std::string& title,
   if (!Deliver(report, [] {})) unsent_ = std::move(report);
 }
 
+void ThreadLink::Idle() {
+  if (ChatMember(thread_).empty()) return;
+  Mail idle = Event(JsonValue(thread_, "folder", ""), path_, kMailChatIdle, "");
+  unsent_idle_.reset();
+  if (!Deliver(idle, [] {})) unsent_idle_ = std::move(idle);
+}
+
 void ThreadLink::Resend() {
   if (unsent_ && Deliver(*unsent_, [] {})) unsent_.reset();
+  if (!unsent_ && unsent_idle_ && Deliver(*unsent_idle_, [] {})) {
+    unsent_idle_.reset();
+  }
 }
 
 std::string ThreadLink::Admit(bool from_panel, bool starts_turn) {

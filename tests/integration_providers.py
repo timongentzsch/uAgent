@@ -88,62 +88,183 @@ def test_streamed_search_citations(root, home, *, binary):
         assert_true("legacy snippet" in result.stdout, result.stdout)
 
 
+# Auto approval asks a decision model, and what it cannot decide goes to a person.
+DECISION_BARS = {"judge-model": {"allow": 0.6, "deny": 0.95, "veto": 0.7}}
+
+
+def decision_providers(url, supports=("decisions",), **options):
+    """A provider that declares decision models, served by a mock at `url`."""
+    return {
+        "judge": {
+            "base_url": url,
+            "api_key": "review-key",
+            "supports": list(supports),
+            "options": {
+                "decisions_url": url + "/decisions",
+                "decisions_model": "judge-model",
+                "decision_bars": DECISION_BARS,
+                **options,
+            },
+        }
+    }
+
+
+def decision_answers(allow, deny=0.0, **reasons):
+    names = ["destructive", "beyond_request", "sends_data_off_machine", "touches_secrets"]
+    answers = {
+        "permission": {
+            "type": "choice",
+            "choice": "allow" if allow >= deny else "deny",
+            "confidence": max(allow, deny),
+            "probabilities": {"allow": allow, "ask": 1 - allow - deny, "deny": deny},
+        }
+    }
+    for name in names:
+        answers[name] = {"type": "noul", "noul": reasons.get(name, 0.0)}
+    return {"answers": answers, "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001}}
+
+
+def auto_review_run(
+    root, home, binary, calls, reviewer, *, finish=None, environment=None, **provider
+):
+    """Runs one headless turn in Auto mode whose tool calls the mock reviewer
+    judges; returns the envelope, the model's last view of a tool result and
+    the reviewer's requests."""
+    seen = {}
+
+    def last(_, body):
+        seen["tool"] = tool_results(body["messages"])[-1]
+        return event({"content": "auto-review-done"})
+
+    with Server([reviewer]) as permission_server:
+        with Server([*calls, finish or last]) as model_server:
+            env = provider_env(
+                home,
+                model_server.url,
+                decision_providers(permission_server.url, **provider),
+                model="test",
+            )
+            env["UAGENT_APPROVAL"] = "auto"
+            env.update(environment or {})
+            result = run(root, env, "--json", "-p", "go", binary=binary)
+            envelope = json.loads(result.stdout)
+            assert_true(result.returncode == 0, (result.stderr, envelope))
+            assert_true(envelope["answer"] == "auto-review-done", envelope)
+            return envelope, seen.get("tool", ""), list(permission_server.requests)
+
+
+def write_call(path, content="x", call_id="call-1"):
+    return tool_call("write_file", {"path": str(path), "content": content}, call_id=call_id)
+
+
 def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
     target = root / "reviewed.txt"
 
     def reviewer(handler, body):
-        assert_true(body["model"] == "~typesafe/jev-latest", body)
+        assert_true(body["model"] == "judge-model", body)
         assert_true(body["state"]["tool"] == "write_file", body)
+        assert_true(body["state"]["user_request"] == "go", body)
+        assert_true(
+            set(body["questions"])
+            == {
+                "permission",
+                "destructive",
+                "beyond_request",
+                "sends_data_off_machine",
+                "touches_secrets",
+            },
+            body,
+        )
         assert_true(
             set(body["questions"]["permission"]["criteria"]) == {"allow", "ask", "deny"}, body
         )
+        # This endpoint declares neither provider preferences nor sessions.
+        assert_true("provider" not in body and "session_id" not in body, body)
+        write_json_response(handler, decision_answers(0.9, 0.0, destructive=0.1))
+
+    envelope, tool, requests = auto_review_run(
+        root, home, binary, [write_call(target, "approved")], reviewer
+    )
+    assert_true("wrote" in tool, tool)
+    assert_true(target.read_text() == "approved", target)
+    assert_true(len(requests) == 1, requests)
+    assert_true(requests[0][0]["Authorization"] == "Bearer review-key", requests[0][0])
+    assert_true(envelope["usage"]["input"] >= 7, envelope)
+    assert_true(envelope["usage"]["cost_reported"], envelope)
+    assert_true(any("permission_review" in route for route in envelope["routes"]), envelope)
+
+
+def test_auto_permission_reviewer_bars(root, home, *, binary):
+    target = root / "bars.txt"
+
+    # A risk reason at its bar forces the question, however sure the allow is;
+    # with nobody to ask, the call is refused and the model is told why.
+    def sure_but_risky(handler, _):
+        write_json_response(handler, decision_answers(0.99, 0.0, sends_data_off_machine=0.7))
+
+    def unsure(handler, _):
+        write_json_response(handler, decision_answers(0.59))
+
+    for reviewer in (sure_but_risky, unsure):
+        _, tool, _ = auto_review_run(root, home, binary, [write_call(target)], reviewer)
+        assert_true("could not decide" in tool and "user denied" not in tool, tool)
+        assert_true(not target.exists(), target)
+
+    # The deny bar refuses outright, and says the review did.
+    def denies(handler, _):
+        write_json_response(handler, decision_answers(0.0, 0.95))
+
+    _, tool, _ = auto_review_run(root, home, binary, [write_call(target)], denies)
+    assert_true("refused this action" in tool, tool)
+    assert_true(not target.exists(), target)
+
+    # The bars are data of the endpoint: the same 0.9 that the ordinary bars
+    # allow asks under a row that wants 0.99.
+    def fairly_sure(handler, _):
+        write_json_response(handler, decision_answers(0.9))
+
+    def sure(handler, _):
+        write_json_response(handler, decision_answers(0.99))
+
+    strict = {"judge-model": {"allow": 0.99, "deny": 0.95, "veto": 0.7}}
+    _, tool, _ = auto_review_run(
+        root, home, binary, [write_call(target)], fairly_sure, decision_bars=strict
+    )
+    assert_true("could not decide" in tool and not target.exists(), tool)
+    auto_review_run(root, home, binary, [write_call(target)], sure, decision_bars=strict)
+    assert_true(target.read_text() == "x", target)
+
+
+def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
+    # What the person is asked comes with the reasons that made it a question,
+    # by probability, and the bar they fell on.
+    def reviewer(handler, _):
         write_json_response(
             handler,
-            {
-                "answers": {
-                    "permission": {
-                        "type": "choice",
-                        "choice": "allow",
-                        "probabilities": {"allow": 0.9, "ask": 0.1, "deny": 0.0},
-                    }
-                },
-                "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001},
-            },
+            decision_answers(0.99, 0.0, sends_data_off_machine=0.7, beyond_request=0.55),
         )
 
-    def finish(_, body):
-        assert_true("wrote" in tool_results(body["messages"])[-1], body)
-        return event({"content": "auto-review-ok"})
-
     with Server([reviewer]) as permission_server:
-        with Server(
-            [
-                tool_call(
-                    "write_file",
-                    {"path": str(target), "content": "approved"},
-                ),
-                finish,
-            ]
-        ) as model_server:
-            env = base_env(home, model_server.url)
-            env.update(
-                {
-                    "OPENROUTER_API_KEY": "review-key",
-                    "UAGENT_APPROVAL": "auto",
-                    "UAGENT_PERMISSION_URL": permission_server.url,
-                }
+        with Server([write_call(root / "card.txt"), event({"content": "card-ok"})]) as model:
+            env = provider_env(
+                home, model.url, decision_providers(permission_server.url), model="test"
             )
-            result = run(root, env, "--json", "-p", "write it", binary=binary)
-            envelope = json.loads(result.stdout)
-            assert_true(result.returncode == 0, (result.stderr, envelope))
-            assert_true(envelope["answer"] == "auto-review-ok", envelope)
-            assert_true(target.read_text() == "approved", target)
-            assert_true(envelope["usage"]["input"] >= 7, envelope)
-            assert_true(envelope["usage"]["cost_reported"], envelope)
-            assert_true(
-                any("permission_review" in route for route in envelope["routes"]),
-                envelope,
+            env["UAGENT_APPROVAL"] = "auto"
+            code, output = run_pty(
+                root,
+                env,
+                [(b"go\n", b"approval needed:"), (b"n\n", b"card-ok"), (b"/q\n", None)],
+                args=("--plain",),
+                startup_marker=b"",
+                binary=binary,
             )
+    assert_true(code == 0, output[-2000:])
+    for text in (
+        b"Risk: makes changes - beyond what you asked 55% - sends data off this machine 70%",
+        b"Auto review sends data off this machine 70% reaches the 70% that asks",
+    ):
+        assert_true(text in output, output[-2000:])
+    assert_true(not (root / "card.txt").exists(), output[-2000:])
 
 
 def test_auto_permission_reviewer_judges_against_the_first_request_too(root, home, *, binary):
@@ -154,19 +275,7 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
 
     def reviewer(handler, body):
         seen.append(body["state"]["user_request"])
-        write_json_response(
-            handler,
-            {
-                "answers": {
-                    "permission": {
-                        "type": "choice",
-                        "choice": "allow",
-                        "probabilities": {"allow": 0.9, "ask": 0.1, "deny": 0.0},
-                    }
-                },
-                "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001},
-            },
-        )
+        write_json_response(handler, decision_answers(0.99))
 
     with Server([reviewer]) as permission_server:
         with Server(
@@ -176,14 +285,10 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
                 event({"content": "written"}),
             ]
         ) as model_server:
-            env = base_env(home, model_server.url)
-            env.update(
-                {
-                    "OPENROUTER_API_KEY": "review-key",
-                    "UAGENT_APPROVAL": "auto",
-                    "UAGENT_PERMISSION_URL": permission_server.url,
-                }
+            env = provider_env(
+                home, model_server.url, decision_providers(permission_server.url), model="test"
             )
+            env["UAGENT_APPROVAL"] = "auto"
             result = run_dialog(
                 root, env, "write reviewed.txt\nalso keep it short\n/q\n", binary=binary
             )
@@ -196,25 +301,148 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
             )
 
 
-def test_auto_permission_reviewer_failure_denies_headless(root, home, *, binary):
+def test_auto_permission_reviewer_errors_in_words(root, home, *, binary):
+    target = root / "must-not-exist.txt"
+    for status, message, words in [
+        (402, "insufficient credits", "has no credit"),
+        (401, "bad key", "API key was refused"),
+        (413, "too big", "too large"),
+        (404, "No endpoints found matching your data policy", "data policy"),
+    ]:
+
+        def failing(handler, _, status=status, message=message):
+            write_json_response(
+                handler, {"error": {"code": status, "message": message}}, status=status
+            )
+
+        _, tool, requests = auto_review_run(root, home, binary, [write_call(target)], failing)
+        assert_true(words in tool, (status, tool))
+        assert_true(len(requests) == 1, (status, requests))
+        assert_true(not target.exists(), target)
+
+
+def test_auto_permission_reviewer_needs_an_address(root, home, *, binary):
+    target = root / "no-address.txt"
+
+    def never(*_):
+        raise AssertionError("no address, no request")
+
+    _, tool, requests = auto_review_run(
+        root, home, binary, [write_call(target)], never, decisions_url="decide"
+    )
+    assert_true("not an address" in tool and requests == [], (tool, requests))
+    assert_true(not target.exists(), target)
+
+
+def test_auto_permission_reviewer_privacy_and_session(root, home, *, binary):
+    private = root / "private.txt"
+    open_ = root / "open.txt"
+    declared = ("decisions", "provider_routing", "session_passthrough")
+
+    def reviewer(handler, body):
+        assert_true(body["provider"] == {"zdr": True, "data_collection": "deny"}, body)
+        # A hash of the session, never its id.
+        assert_true(len(body["session_id"]) == 16, body)
+        write_json_response(handler, decision_answers(0.9))
+
+    auto_review_run(root, home, binary, [write_call(private)], reviewer, supports=declared)
+
+    # The endpoint's option turns the retention filter off; the session hash stays.
+    def unfiltered(handler, body):
+        assert_true("provider" not in body and len(body["session_id"]) == 16, body)
+        write_json_response(handler, decision_answers(0.9))
+
+    auto_review_run(
+        root,
+        home,
+        binary,
+        [write_call(open_)],
+        unfiltered,
+        supports=declared,
+        decisions_private=False,
+    )
+    assert_true(private.exists() and open_.exists(), (private, open_))
+
+
+def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *, binary):
+    target = root / "twice.txt"
+    seen = []
+
+    def reviewer(handler, body):
+        seen.append(body["state"]["user_request"])
+        answer = decision_answers(0.9) if len(seen) == 1 else decision_answers(0.0, 0.99)
+        write_json_response(handler, answer)
+
+    def repeat(_, body):
+        assert_true("stop writing" in json.dumps(body["messages"]), body)
+        target.write_text("preserve this later change")
+        return write_call(target, "again", "second")
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("automatic permission review refused" in result, result)
+        return event({"content": "restriction respected"})
+
+    with Server([reviewer]) as permission_server:
+        with Server(
+            [write_call(target, "again", "first"), event({"content": "written"}), repeat, finish]
+        ) as model_server:
+            env = provider_env(
+                home, model_server.url, decision_providers(permission_server.url), model="test"
+            )
+            env["UAGENT_APPROVAL"] = "auto"
+            result = run_dialog(root, env, "write twice.txt\nstop writing\n/q\n", binary=binary)
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true(len(seen) == 2 and seen[1].startswith("stop writing"), seen)
+    assert_true(target.read_text() == "preserve this later change", target.read_text())
+
+
+def test_auto_permission_never_reviews_outside_the_folder(root, home, *, binary):
+    outside = root.parent / (root.name + "-outside.txt")
+
+    def must_not_be_asked(*_):
+        raise AssertionError("the reviewer was asked about a path outside the folder")
+
+    _, tool, requests = auto_review_run(
+        root, home, binary, [write_call(outside)], must_not_be_asked
+    )
+    assert_true(requests == [], requests)
+    assert_true(not outside.exists(), outside)
+    assert_true("denied" in tool, tool)
+
+
+def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *, binary):
+    def must_not_be_asked(*_):
+        raise AssertionError("the reviewer was asked about a command with no sandbox")
+
+    for name, arguments in [
+        ("run", {"command": "echo hi"}),
+        ("scratch", {"path": "t.py", "code": "print(1)"}),
+    ]:
+        _, tool, requests = auto_review_run(
+            root,
+            home,
+            binary,
+            [tool_call(name, arguments)],
+            must_not_be_asked,
+            environment={"UAGENT_SANDBOX": "off"},
+        )
+        assert_true(requests == [], (name, requests))
+        assert_true("denied" in tool, (name, tool))
+
+
+def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
     target = root / "must-not-exist.txt"
 
     def finish(_, body):
         # The model hears who refused, and that it was not the user.
         refused = tool_results(body["messages"])[-1]
         assert_true("automatic permission review" in refused, refused)
+        assert_true("serves decision models" in refused, refused)
         assert_true("user denied" not in refused, refused)
         return event({"content": "review-failed-closed"})
 
-    with Server(
-        [
-            tool_call(
-                "write_file",
-                {"path": str(target), "content": "not approved"},
-            ),
-            finish,
-        ]
-    ) as model_server:
+    with Server([write_call(target, "not approved"), finish]) as model_server:
         env = base_env(home, model_server.url)
         env.pop("OPENROUTER_API_KEY", None)
         env["UAGENT_APPROVAL"] = "auto"

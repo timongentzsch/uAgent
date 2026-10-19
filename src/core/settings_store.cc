@@ -401,16 +401,24 @@ void UpgradeEndpoints(json& scope) {
 // as this one; false when it is not one.
 bool Upgrade(json& document) {
   bool upgraded = UpgradeNames(document);
-  if (JsonValue(document, "format", 0) != 2 || !JsonObject(document, "all") ||
-      !JsonObject(document, "projects")) {
-    return upgraded;
+  if (JsonValue(document, "format", 0) == 2 && JsonObject(document, "all") &&
+      JsonObject(document, "projects")) {
+    UpgradeEndpoints(document["all"]);
+    for (auto& [folder, scope] : document["projects"].items()) {
+      UpgradeEndpoints(scope);
+    }
+    document["format"] = kFormat;
+    upgraded = true;
   }
-  UpgradeEndpoints(document["all"]);
-  for (auto& [folder, scope] : document["projects"].items()) {
-    UpgradeEndpoints(scope);
+  // Earlier format-3 builds also held this retired setting. The decision
+  // address now belongs to the endpoint that serves it.
+  if (Valid(document)) {
+    upgraded |= document["all"].erase("approval.reviewerUrl") != 0;
+    for (auto& [folder, scope] : document["projects"].items()) {
+      upgraded |= scope.erase("approval.reviewerUrl") != 0;
+    }
   }
-  document["format"] = kFormat;
-  return true;
+  return upgraded;
 }
 
 // The schema beside the document, kept current with this build.
@@ -466,8 +474,7 @@ std::string SettingsPath() {
 SavedSettings ReadSettings(const std::string& folder) {
   SavedSettings saved;
   json document = ReadDocument(saved.stamp);
-  if (const int format = JsonValue(document, "format", 0);
-      format == 1 || format == 2) {
+  if (Upgrade(document)) {
     saved.error = UpgradeSaved();
     document = ReadDocument(saved.stamp);
   }

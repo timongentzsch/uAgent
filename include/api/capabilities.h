@@ -38,7 +38,8 @@ enum class RejectedCapability : uint8_t {
 enum class Feature : uint8_t {
   kHostedSearch,         // the route's own web search (Responses, Anthropic)
   kSearchPlugin,         // a search tool the endpoint runs for web_search
-  kProviderRouting,      // options.provider pins an upstream
+  kProviderRouting,      // options.provider pins an upstream; requests may
+                         // carry provider preferences (privacy, price)
   kSessionPassthrough,   // the request carries the session id
   kRawVendorIds,         // `vendor/model` ids are served without an alias
   kModelVariants,        // an id may end in a routing suffix (`:nitro`)
@@ -50,6 +51,7 @@ enum class Feature : uint8_t {
   kSearchSources,        // Responses can return the full source list
   kReasoningSummary,     // Responses can summarize reasoning
   kInlineUsage,          // usage arrives without asking for it in the stream
+  kDecisions,            // options.decisions_url serves decision models
   kCount,
 };
 

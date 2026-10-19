@@ -32,6 +32,22 @@ struct KnownEndpoint {
   const char* options;
 };
 
+// The decision models the endpoint serves: the address, the model used when
+// none is chosen, and for each model the probabilities that decide a review
+// (see tests/reviewer_eval, which finds them): allow needs P(allow) at least
+// `allow`, deny needs P(deny) at least `deny`, and any reason question at or
+// above `veto` asks instead of allowing. A model with no row here gets the
+// strict bars of permissions.cc.
+constexpr char kOpenRouterOptions[] = R"({
+  "pdf_engine": "cloudflare-ai",
+  "decisions_url": "https://openrouter.ai/api/alpha/decisions",
+  "decisions_model": "~typesafe/jev-latest",
+  "decision_bars": {
+    "~typesafe/jev-latest": {"allow": 0.85, "deny": 0.95, "veto": 0.9},
+    "openai/gpt-6-luna-decisions": {"allow": 0.85, "deny": 0.9, "veto": 0.9}
+  }
+})";
+
 constexpr KnownEndpoint kKnownEndpoints[] = {
     {"openrouter", "https://openrouter.ai/api/v1", "openrouter.ai",
      "OPENROUTER_API_KEY",
@@ -39,8 +55,9 @@ constexpr KnownEndpoint kKnownEndpoints[] = {
                  Feature::kSessionPassthrough, Feature::kRawVendorIds,
                  Feature::kModelVariants, Feature::kReasoningObject,
                  Feature::kReasoningReplayText, Feature::kPromptCacheControl,
-                 Feature::kPdfParser, Feature::kInlineUsage}),
-     R"({"pdf_engine":"cloudflare-ai"})"},
+                 Feature::kPdfParser, Feature::kInlineUsage,
+                 Feature::kDecisions}),
+     kOpenRouterOptions},
     {"openai", "https://api.openai.com/v1", "api.openai.com", "",
      FeaturesOf({Feature::kMaxCompletionTokens, Feature::kSearchSources,
                  Feature::kReasoningSummary}),

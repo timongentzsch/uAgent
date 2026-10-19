@@ -1380,6 +1380,15 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
                 return "Agreed, 3."
             return "PASS"
         text = json.dumps(body)
+        # Member mail may reach the moderator before its first model call.
+        # Handle the pending user request, not only the newest observation.
+        pending = _heard(body)
+        spawned = {
+            json.loads(call["function"]["arguments"]).get("title")
+            for message in body["messages"]
+            for call in message.get("tool_calls", [])
+            if call["function"]["name"] == "thread"
+        }
         if "Objective: count the files" in text:
             time.sleep(budget(2))
             return "3 files counted."
@@ -1390,13 +1399,13 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
         if "has settled" in last:
             return (
                 "Closed: 3 files."
-                if '"Recount files"' in text
+                if "Recount files" in spawned
                 else tool_call("thread", _spawn("Recount files", "recount"))
             )
-        if "count the files" in last:
+        if "count the files" in pending:
             return (
                 "Started a count."
-                if '"Count files"' in text
+                if "Count files" in spawned
                 else tool_call("thread", _spawn("Count files", "count the files"))
             )
         return "PASS"
@@ -1408,7 +1417,7 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
         result = run(root, env, "panel", "-p", "count the files", binary=binary, timeout=30)
         assert_true(result.returncode == 0, result.stderr)
         wait_until(
-            lambda: any("Recount: still 3." in json.dumps(b) for _, b in server.requests),
+            lambda: "Recount: still 3." in _panel_path(home, root).read_text(encoding="utf-8"),
             "the recount was never reported",
         )
         assert_true(

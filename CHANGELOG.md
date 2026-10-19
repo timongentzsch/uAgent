@@ -82,13 +82,44 @@
 - **`sandbox.enabled` is now `sandbox.level`.** A saved `false` becomes `off`
   and `true` `default` when the settings are next saved; nothing to do.
 
+- **Auto approval asks a decision model, or asks you.** It no longer falls to
+  OpenRouter by name: an endpoint that declares `decisions` serves it
+  (OpenRouter does, with `OPENROUTER_API_KEY`), and without one every call goes
+  to you. A call that leaves the sandbox (`sandbox: false`, a path outside the
+  folder), any `run` or `scratch` call while the sandbox is off or not
+  enforced, and a call that always asks are never sent to the model. It allows only when
+  P(allow) reaches the model's allow bar and none of four risk questions
+  (irreversible, beyond your request, sends data off the machine, touches
+  credentials) reaches its risk bar, so some calls it allowed before now ask.
+  `approval.reviewerUrl` (`UAGENT_PERMISSION_URL`) is gone, and a saved one is
+  dropped when the settings file is rewritten (to use another server, declare
+  `decisions` on a provider with `options.decisions_url`).
+  `approval.reviewerModel` is empty by default (the endpoint's own decision
+  model, `~typesafe/jev-latest` on OpenRouter) and takes `[endpoint/]model`.
+  `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove`
+  (`UAGENT_PERMISSION_ALLOW_ABOVE`, `_DENY_ABOVE`, `_VETO_ABOVE`) override
+  the model's bars. Requests carry `provider: {zdr: true, data_collection:
+  "deny"}` where the endpoint declares `provider_routing`, which a model with
+  no such provider (`openai/gpt-6-luna-decisions` today) answers with a 404
+  naming the data policy: set `decisions_private: false` in the endpoint's
+  `options` to accept that model's retention.
+
 ### Added
+
+- Panel chat rechecks a deferred round close when a member publishes idle,
+  so a final report read before that state change cannot strand the round.
+  The idle notification adds no chat text or model turn.
 
 - `browser`: `upload` gives a file of the conversation's folder to a file
   field, or to the chooser a button opens. A click that opens a file
   chooser no longer shows a window on the browser's screen that the agent
   cannot answer; it says to use `upload`. What a page downloads lands in the
   conversation's `downloads` folder, and the action says so when it ends.
+- Auto approval shows what made it ask: the risks the decision model saw, with
+  their probabilities, and the bar that decided, in the terminal and the web.
+  An error from the decision endpoint (no credit, a refused key, an action too
+  large) is said in words. `tests/reviewer_eval/` holds the labelled calls and
+  a script that finds a model's bars against a real key.
 - A provider entry named like a well-known endpoint states only what
   differs: `"openrouter": {"options": {"provider": "…"}}` needs no address or
   key. `supports` lists the features of any other endpoint, and `options` the

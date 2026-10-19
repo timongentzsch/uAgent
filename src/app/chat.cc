@@ -538,6 +538,15 @@ void Chat::Answered(const std::string& text, const json& to) {
 }
 
 void Chat::Heard(Mail& mail) {
+  if (mail.type == kMailChatIdle) {
+    // A report can be read before its sender publishes idle. That last
+    // state transition is another chance to close, without another answer
+    // or a user turn, and duplicate notifications remain harmless.
+    mail.body["text"] = "";
+    Release(LoadRoster(folder_));
+    Save();
+    return;
+  }
   // A thread's report is news to discuss: what the panel makes of it
   // begins a round, as the user's message does.
   if (mail.type == kMailTaskCompleted) {

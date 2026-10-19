@@ -58,7 +58,8 @@ or `:free`) is part of the name: `openrouter/vendor/model:nitro:high`.
 - Web search uses the conversation's route when it has hosted search, else the
   first configured endpoint that declares a search plugin (OpenRouter does),
   with the model `webSearch.model` names; with no such endpoint it is off. The
-  `auto` approval reviewer needs an OpenRouter key.
+  `auto` approval reviewer needs an endpoint that declares `decisions`
+  (OpenRouter does); with none, Auto mode asks you.
 
 To keep a key between shells, save it once instead of exporting it:
 
@@ -114,8 +115,13 @@ speaks OpenRouter's dialect lists what it does in `supports`, from
 `hosted_search`, `search_plugin`, `provider_routing`, `session_passthrough`,
 `raw_vendor_ids`, `model_variants`, `reasoning_object`, `reasoning_replay_text`,
 `prompt_cache_control`, `pdf_parser`, `max_completion_tokens`,
-`search_sources`, `reasoning_summary` and `inline_usage`; `hosted_tools:
-["web_search"]` is `hosted_search` for a route that runs its own search.
+`search_sources`, `reasoning_summary`, `inline_usage` and `decisions`;
+`hosted_tools: ["web_search"]` is `hosted_search` for a route that runs its own
+search. `decisions` marks an endpoint that serves decision models for Auto
+approval: its `options` give the address (`decisions_url`), the model used by
+default (`decisions_model`), each model's bars (`decision_bars`, see
+[Approvals](#approvals-and-the-sandbox)) and, when it also declares `provider_routing`,
+`decisions_private: false` to stop asking for providers that retain nothing.
 A start that must read the endpoint's `/models` for a default model or the
 window keeps the answer for a day under `~/.uagent/models/`; delete the file
 to ask again.
@@ -148,7 +154,8 @@ Two separate things keep a turn in bounds.
   change to a file, each command, each use of the network and each read
   outside the folder: `y` once, `s` for this conversation, `a` always in this
   repository, `n` no. Any other answer denies the call and is given to the
-  model as guidance. `/permissions auto` lets a reviewer model decide and
+  model as guidance. `/permissions auto` lets a decision model decide the
+  calls the sandbox contains, and asks you about the rest (see below), and
   `/permissions yolo` (or `--yolo`) asks nobody. A few actions always ask,
   such as changing µAgent's own settings.
 - **The sandbox** decides what a command can touch: it writes only inside
@@ -156,6 +163,27 @@ Two separate things keep a turn in bounds.
   unless you change its level (`sandbox.level`: `strict`, `default`,
   `relaxed` or `off`). A command that fails on a path outside the folder is
   the sandbox working.
+
+**Auto approval** asks a *decision model* (a model that answers questions with
+probabilities; OpenRouter serves `~typesafe/jev-latest` and
+`openai/gpt-6-luna-decisions`) about each call the sandbox contains. It never
+judges a command that runs outside the sandbox (or any command while the
+sandbox is off or not enforced), a path outside the folder or anything else
+that always asks: those go to you. It sends your last message and
+the action. It allows when P(allow) reaches the model's allow bar and none of
+four risk questions (irreversible, beyond your request, sends data off the
+machine, touches credentials) reaches its risk bar, refuses when P(deny)
+reaches the deny bar, and otherwise asks you, showing the risks it saw with
+their probabilities and the bar that decided. With nobody to ask, a call it
+cannot decide is denied. Automatic decisions are checked again on later calls,
+so a later user restriction takes effect. The bars are data of the model's
+endpoint, found with
+`tests/reviewer_eval`; `approval.allowAbove`, `approval.denyAbove` and
+`approval.vetoAbove` override them, and `approval.reviewerModel`
+(`[endpoint/]model`) chooses another decision model. Requests ask for
+providers that keep no data (`decisions_private`) and carry a hash of the
+conversation, never its id. With no endpoint that declares `decisions`, Auto
+mode says so and asks.
 
 `/changes` lists the files the last turn changed and `/undo` puts them back
 (in the web, Undo under the turn); changes a shell command made are not

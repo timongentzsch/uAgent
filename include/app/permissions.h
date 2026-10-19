@@ -10,6 +10,7 @@
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"
+#include "include/providers/providers.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -18,6 +19,9 @@ struct RuntimeConfig;
 
 std::string PermissionKey(const Tool& tool, const json& arguments,
                           ApprovalClass required);
+
+// Whether the call names a path outside the folder `root`.
+bool PathOutsideFolder(const json& arguments, const std::string& root);
 
 // What approving this call risks, for the headline of its approval: runs,
 // writes, network, outside (the folder `root`). [{id, label}], most serious
@@ -36,17 +40,46 @@ json PermissionRulesControl(const json& request);
 
 enum class AutoPermissionDecision { kAllow, kAsk, kDeny };
 
+// The probabilities that decide a review: allow needs P(allow) of at least
+// `allow` and every reason question below `veto`; deny needs P(deny) of at
+// least `deny`; anything else asks.
+struct ReviewBars {
+  double allow, deny, veto;
+};
+
 struct AutoPermissionReview {
   AutoPermissionDecision decision = AutoPermissionDecision::kAsk;
   json probabilities = json::object();
+  // The likely reasons for caution, [{id, label}] (the label carries the
+  // probability), and in words which bar decided.
+  json reasons = json::array();
+  std::string note;
   std::string error;
 };
 
-AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,
-                                      UsageAccumulator& usage, int64_t turn,
-                                      const Tool& tool,
-                                      const std::string& preview,
-                                      const std::string& user_request);
+// The questions every review asks, as tests/reviewer_eval/questions.json.
+const json& ReviewQuestions();
+
+// The bars for `model` at `endpoint`: its row of `decision_bars`, else the
+// strict ones, then the settings that name a bar.
+ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model,
+                         const RuntimeConfig& config);
+
+// The verdict the answers of a decisions request give under `bars`.
+AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars);
+
+struct ReviewedCall {
+  const Tool& tool;
+  std::string preview, user_request, session_id;
+  int64_t turn = 0;
+};
+
+// Asks the decision model `route` names; with no endpoint serving one the
+// review says so and asks.
+AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
+                                      const RuntimeConfig& config,
+                                      UsageAccumulator& usage,
+                                      const ReviewedCall& call);
 
 }  // namespace uagent
 

@@ -1,4 +1,5 @@
 import type { State } from "./types.ts";
+import "./session-summary.css";
 import { cost, count } from "./quantities.ts";
 import { contextSummary } from "../state/context-summary.ts";
 import { Button, DataText } from "./ui.tsx";
@@ -14,19 +15,32 @@ export function ContextSummary({
 }) {
   const title = `Estimated context: ${state?.context_tokens?.toLocaleString() ?? "—"}${state?.context_window ? ` / ${state.context_window.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate`;
   const summary = contextSummary(state?.context_tokens, state?.context_window);
+  const label = (
+    <>
+      <span class="context-full">
+        <DataText>{summary}</DataText>
+      </span>
+      <span class="context-compact">
+        <DataText>
+          {contextSummary(state?.context_tokens, state?.context_window, true)}
+        </DataText>
+      </span>
+    </>
+  );
   return open ? (
     <Button
       variant="quiet"
+      class="context-summary"
       aria-label="Raw context"
       title={`${title} · View raw context`}
       disabled={!online}
       onClick={open}
     >
-      <DataText>{summary}</DataText>
+      {label}
     </Button>
   ) : (
-    <span title={title} aria-label="Estimated context">
-      <DataText>{summary}</DataText>
+    <span class="context-summary" title={title} aria-label="Estimated context">
+      {label}
     </span>
   );
 }

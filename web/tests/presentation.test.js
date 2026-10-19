@@ -187,6 +187,10 @@ test("context headroom matches CLI rounding and handles unknown and exceeded lim
   assert.equal(contextSummary(0, 1000), "est. ctx 0/1k · 100% left");
   assert.equal(contextSummary(2000, 1000), "est. ctx 2k/1k · 0% left");
   assert.equal(contextSummary(undefined, 1000), "est. ctx —");
+  assert.equal(contextSummary(4600, 1300000, true), "Context 99% left");
+  assert.equal(contextSummary(20469, 0, true), "Context 20.5k tokens");
+  assert.equal(contextSummary(2000, 1000, true), "Context 0% left");
+  assert.equal(contextSummary(undefined, 1000, true), "Context —");
 });
 
 test("readable bodies decode text and nested JSON without losing lexical facts", () => {

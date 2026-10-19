@@ -127,8 +127,8 @@
     inset: calc(-1 * var(--space-6)) 0 calc(-1 * var(--space-2));
   }
 }
-/* Under the input: background work left, never shrinking; context and
-   session totals right, truncating first on a narrow line. */
+/* Under the input: background work left and context/totals right.
+   Phones give activity its own row so neither competes for space. */
 .composer-metrics {
   display: flex;
   justify-content: space-between;
@@ -222,12 +222,26 @@
     padding-inline: var(--space-3);
   }
   .composer-metrics {
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+  .composer-metrics > .sheet-control {
+    min-width: 0;
+  }
+  .composer-metrics .activity-button {
+    max-width: 100%;
   }
   .composer-metrics > .metrics {
     flex-wrap: wrap;
-    justify-content: flex-end;
-    margin-left: auto;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+  }
+  .composer-metrics > .metrics > button {
+    flex: none;
+    max-width: 100%;
+    overflow: visible;
+    white-space: normal;
+    text-align: left;
   }
 }

@@ -674,7 +674,7 @@ function App() {
         })),
       });
       patchOutgoing(request_id, {
-        status: result.pending ? "Awaiting confirmation" : queued || "Sent",
+        status: queued || (result.pending ? "Awaiting confirmation" : "Sent"),
       });
     } catch (error) {
       const issue = failure(error);
@@ -776,23 +776,52 @@ function App() {
             report(error);
             return;
           }
+          // Delivery won the race: returning it would duplicate the input.
+          setOutgoing((items) =>
+            items.filter((item) => item.request_id !== target),
+          );
+          return;
         }
       }
       setOutgoing((items) =>
         items.filter((item) => item.request_id !== target),
       );
-      if (text)
-        updateDraft(id, (draft) => ({
-          ...draft,
-          text: draft.text ? `${draft.text}\n${text}` : text,
-        }));
+      updateDraft(id, (draft) => ({
+        ...draft,
+        text: text
+          ? draft.text
+            ? `${draft.text}\n${text}`
+            : text
+          : draft.text,
+        files: [
+          ...draft.files,
+          ...(block.files || []).filter(
+            (file) => !draft.files.some((current) => current.id === file.id),
+          ),
+        ],
+      }));
     },
     [updateDraft],
+  );
+  const insertGuidance = useCallback(
+    async (block: UserBlock) => {
+      const { online, act, report } = latest.current;
+      if (!online || !block.request_id || !queuedGuidance(block)) return;
+      try {
+        await act("insert", { target_id: block.request_id });
+        // Keep the tray until the transcript acknowledges actual delivery.
+        patchOutgoing(block.request_id, { status: "Guidance queued" });
+      } catch (error) {
+        if (!/already delivered/i.test(failure(error).message)) report(error);
+      }
+    },
+    [patchOutgoing],
   );
   const messageActions = useMemo(
     () => ({
       report,
       recall: recallGuidance,
+      insert: insertGuidance,
       retry: retrySend,
       resume,
       branch: branchFrom,
@@ -815,7 +844,15 @@ function App() {
           unit: block.kind === "turn_summary" ? "Turn" : "Message",
         }),
     }),
-    [report, recallGuidance, retrySend, resume, branchFrom, selected],
+    [
+      report,
+      recallGuidance,
+      insertGuidance,
+      retrySend,
+      resume,
+      branchFrom,
+      selected,
+    ],
   );
   const chatActions = useMemo(
     () =>

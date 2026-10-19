@@ -276,3 +276,59 @@ def test_web_recall_queued_guidance(root, home, *, binary):
                 },
             )
             assert_true(status == 409 and "already delivered" in result.get("error", ""), result)
+
+
+def test_web_insert_queued_guidance(root, home, *, binary):
+    workspace = root / "insert-steer"
+    workspace.mkdir()
+    release = threading.Event()
+    started = threading.Event()
+    finished = threading.Event()
+
+    def responder(_handler, body):
+        if "insert-me" in json.dumps(body["messages"]):
+            return event({"content": "inserted-ok"})
+        started.set()
+        release.wait(timeout=budget(15))
+        finished.set()
+        return event({"content": "original-finished"})
+
+    try:
+        with Server([responder]) as provider:
+            with web_host(binary, root, home, provider.url) as (client, code, _, _):
+                client.pair(code)
+                session = client.create(workspace)
+                client.command("submit", session, text="Insert probe")
+                assert_true(started.wait(timeout=budget(5)), "provider did not start")
+                client.command("steer", session, text="insert-me", queue=True)
+                target = f"{client.sequence:032x}"
+                outcome = client.command("insert", session, target_id=target)
+                assert_true(outcome.get("accepted"), outcome)
+                done = client.until(
+                    session,
+                    lambda value: (
+                        not value["metadata"]["turn_active"] and "inserted-ok" in json.dumps(value)
+                    ),
+                )
+                assert_true(not finished.is_set(), "insert waited for original model call")
+                users = [b for b in done["state"]["view"]["blocks"] if b.get("kind") == "user"]
+                assert_true(sum(b.get("request_id") == target for b in users) == 1, users)
+                assert_true(done["state"]["stop"]["reason"] == "completed", done)
+                # A stale insert must not start or interrupt another turn.
+                status, result, _ = client.json(
+                    "/api/command",
+                    {
+                        "v": 2,
+                        "kind": "insert",
+                        "request_id": f"{client.sequence + 100:032x}",
+                        "session_id": session["id"],
+                        "generation": session["generation"],
+                        "target_id": target,
+                    },
+                )
+                assert_true(
+                    status == 409 and "already delivered" in result.get("error", ""), result
+                )
+                release.set()
+    finally:
+        release.set()

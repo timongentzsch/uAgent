@@ -9,7 +9,9 @@ import type {
   Session,
   Snapshot,
   View,
+  UserBlock,
 } from "../shared/types.ts";
+import { queuedGuidance } from "../shared/message-view.ts";
 import { useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
@@ -123,9 +125,20 @@ export default function ChatPage({
   const { setFollowing } = useConversation();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
-  const blocks = useMemo(
+  const allBlocks = useMemo(
     () => transcriptBlocks(view, outgoing, selected),
     [view, outgoing, selected],
+  );
+  const queued = allBlocks.filter(
+    (block): block is UserBlock =>
+      block.kind === "user" && queuedGuidance(block),
+  );
+  const blocks = useMemo(
+    () =>
+      allBlocks.filter(
+        (block) => block.kind !== "user" || !queuedGuidance(block),
+      ),
+    [allBlocks],
   );
   // Session-scoped surfaces: switching conversations resumes the saved
   // scroll position (or pins a fresh one); the hook owns this, so there
@@ -182,7 +195,11 @@ export default function ChatPage({
   // composer drawn from a sample (see <Placeholder>).
   const composerFor = (item: Session) => (
     <Composer
+      key={item.id}
       session={item}
+      queued={queued}
+      recall={actions.recall}
+      insert={actions.insert}
       commands={catalogue.commands || []}
       snapshot={snapshot}
       draft={draft}

@@ -84,11 +84,11 @@ void Master::Command(const Request& request, Response& response) {
     requests_.erase(*completed);
     request_order_.erase(completed);
   }
-  // Recall targets a queued steer by its own id, never the envelope id:
+  // Queue actions target a steer by its own id, never the envelope id:
   // request ids are single-use receipts and reuse is rejected above.
   std::string target = JsonValue(command, "target_id", "");
-  if (kind == "recall" && !OpaqueId(target)) {
-    Error(response, "recall needs a queued guidance id", 409);
+  if ((kind == "recall" || kind == "insert") && !OpaqueId(target)) {
+    Error(response, "command needs a queued guidance id", 409);
     return;
   }
   json outcome = {{"request_id", request_id}, {"accepted", true}};

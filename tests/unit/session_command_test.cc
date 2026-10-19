@@ -46,6 +46,7 @@ void TestSessionCommandKinds() {
       {"reply", session::SessionCommandKind::kReply},
       {"steer", session::SessionCommandKind::kSteer},
       {"recall", session::SessionCommandKind::kRecall},
+      {"insert", session::SessionCommandKind::kInsert},
       {"rename", session::SessionCommandKind::kRename},
       {"refresh", session::SessionCommandKind::kRefresh},
       {"permissions", session::SessionCommandKind::kPermissions},

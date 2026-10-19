@@ -133,12 +133,17 @@ test("a message queued during a turn runs after it", async ({
   ).toBeEnabled();
   await queue.click();
   await expect(
+    page.getByRole("region", { name: "Queued messages" }),
+  ).toContainText("Queued follow-up");
+  await expect(
     page.locator(".message.user", { hasText: "Queued follow-up" }),
-  ).toContainText("Queued for after this turn");
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /^Turn statistics: / }),
   ).toHaveCount(2, { timeout: 30000 });
-  await expect(page.getByText("Queued for after this turn")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Queued messages" }),
+  ).toHaveCount(0);
 });
 
 test("a stopped turn ends with Continue", async ({ page, session }) => {

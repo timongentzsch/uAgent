@@ -1,5 +1,6 @@
+import { tabStorage } from "../shared/storage.ts";
 // Where each transcript was left: following its end, or a message (and the
-// paragraph inside it) with its offset. Kept per tab in sessionStorage.
+// paragraph inside it) with its offset. Kept in browser storage for this tab.
 import { maxTranscriptBookmarks } from "../shared/limits.ts";
 
 export type Bookmark = {
@@ -14,7 +15,7 @@ const SAVE_MS = 500;
 export const bookmarks = new Map<string, Bookmark>();
 try {
   for (const [key, value] of Object.entries(
-    JSON.parse(sessionStorage.getItem(BOOKMARKS_KEY) || "{}"),
+    JSON.parse(tabStorage.getItem(BOOKMARKS_KEY) || "{}"),
   ).slice(-maxTranscriptBookmarks)) {
     if (typeof (value as Bookmark)?.follow === "boolean")
       bookmarks.set(key, value as Bookmark);
@@ -30,7 +31,7 @@ function saveBookmarks() {
   clearTimeout(saving);
   saving = undefined;
   try {
-    sessionStorage.setItem(
+    tabStorage.setItem(
       BOOKMARKS_KEY,
       JSON.stringify(Object.fromEntries(bookmarks)),
     );

@@ -119,6 +119,7 @@ struct ScheduledCommand {
 };
 
 struct ScheduleTick {
+  std::vector<json> prepare;
   std::vector<ScheduledCommand> commands;
   std::vector<std::shared_ptr<HostSession>> activate;
 };
@@ -210,6 +211,8 @@ class SessionHost {
   ReplayLog replay_;
   AssetStore assets_;
   mutable std::mutex mutex_;
+  // One scheduler owns preparation, including its intervals outside mutex_.
+  std::mutex schedule_mutex_;
   std::condition_variable changed_;
   std::atomic<bool> stopping_{false};
   std::map<std::string, std::shared_ptr<HostSession>> sessions_

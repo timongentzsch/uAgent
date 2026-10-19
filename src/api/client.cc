@@ -305,11 +305,21 @@ CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
 // outcome is mapped afterwards.
 CURLcode RunTransfer(CURLM* multi, CURL* handle, curl_slist* headers,
                      SizedBuffer& out, int64_t timeout_s, bool abortable,
-                     int64_t& status) {
+                     int64_t& status,
+                     std::chrono::steady_clock::time_point deadline =
+                         std::chrono::steady_clock::time_point::max()) {
   curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
   curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, &SizedBuffer::Write);
   curl_easy_setopt(handle, CURLOPT_WRITEDATA, &out);
   curl_easy_setopt(handle, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
+  if (deadline != std::chrono::steady_clock::time_point::max()) {
+    int64_t remaining_ms = PollTimeoutMs(deadline);
+    if (remaining_ms <= 0) return CURLE_OPERATION_TIMEDOUT;
+    if (timeout_s > 0 && timeout_s <= remaining_ms / 1000) {
+      remaining_ms = std::min(remaining_ms, timeout_s * 1000);
+    }
+    curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, CurlTimeout(remaining_ms));
+  }
   curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING,
                    "");  // 531 KB -> 63 KB on /models
   CURLcode rc = abortable ? PerformWithAbortWake(multi, handle)
@@ -472,19 +482,28 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
 }
 
 JsonResponse Api::Post(const std::string& path, const json& body,
-                       int64_t timeout_s, int attempts) {
+                       int64_t timeout_s, int attempts,
+                       std::chrono::steady_clock::time_point deadline) {
   std::string payload = JsonDump(body);
-  // timeout_s caps one attempt, as UAGENT_REQUEST_TIMEOUT does for the
-  // conversation: a side request that timed out is exactly the case a retry
-  // exists for, so the budget cannot also be the whole call's.
+  // Keep the per-attempt timeout distinct from the caller's absolute deadline:
+  // recovery may use remaining time without extending the complete operation.
   JsonResponse response;
   for (int attempt = 1; attempt <= attempts; ++attempt) {
-    response = Fetch(path, &payload, timeout_s, /*abortable=*/true);
+    if (std::chrono::steady_clock::now() >= deadline) {
+      response.error = "request deadline exhausted before retry";
+      return response;
+    }
+    response = Fetch(path, &payload, timeout_s, /*abortable=*/true, deadline);
     if (attempt == attempts || AbortRequested() || !SafeToRetry(response)) {
       return response;
     }
     std::chrono::milliseconds delay =
         RetryDelay(attempt, JitterSeed(), response.retry_after_s);
+    if (deadline != std::chrono::steady_clock::time_point::max() &&
+        delay >= std::chrono::ceil<std::chrono::milliseconds>(
+                     deadline - std::chrono::steady_clock::now())) {
+      return response;
+    }
     DebugLog("side_retry", {{"path", path},
                             {"attempt", attempt},
                             {"max_attempts", attempts},
@@ -714,7 +733,8 @@ bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
 }
 
 JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
-                        int64_t timeout_s, bool abortable) {
+                        int64_t timeout_s, bool abortable,
+                        std::chrono::steady_clock::time_point deadline) {
   JsonResponse result;
   CURL* h = Prepare(base_url + path);
   if (!h) {
@@ -737,7 +757,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
   }
   if (abortable) SetAbortable(h);
   CURLcode rc = RunTransfer(multi_, h, headers.Get(), out, timeout_s, abortable,
-                            result.http_status);
+                            result.http_status, deadline);
   result.retry_after_s = CurlRetryAfterSeconds(h);
   if (out.exceeded) {
     result.error = "response exceeds configured byte limit";

@@ -80,7 +80,7 @@ bool McpFetchToolDefinitions(McpServer& s,
       return false;
     }
     json params = cursor.empty() ? json::object() : json{{"cursor", cursor}};
-    json resp = McpRpc(s, "tools/list", params, remaining);
+    json resp = McpRpc(s, "tools/list", params, remaining, false, deadline);
     if (!McpConsumeToolPage(s, resp, listed, cursor)) return false;
   } while (!cursor.empty());
   return true;

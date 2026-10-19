@@ -2,11 +2,17 @@ import { readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { buildState } from "./build-state.js";
 
 const root = resolve(import.meta.dirname, "..");
 const current = resolve(root, "dist");
 const next = resolve(root, "dist.next");
 const previous = resolve(root, "dist.previous");
+const inputs = JSON.parse(
+  await readFile(resolve(root, "node_modules/.uagent-build-inputs.json")),
+);
+if (inputs.source !== (await buildState(root)).source)
+  throw new Error("Frontend inputs changed during the build; run it again.");
 
 async function files(directory) {
   const result = [];
@@ -36,6 +42,7 @@ for (const asset of assets) {
   gzipped[asset] = createHash("sha256").update(bytes).digest("hex");
 }
 await writeFile(resolve(next, ".gzip-manifest.json"), JSON.stringify(gzipped));
+await writeFile(resolve(next, ".build-inputs.json"), JSON.stringify(inputs));
 
 await rm(previous, { recursive: true, force: true });
 try {

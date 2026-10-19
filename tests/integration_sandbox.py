@@ -1113,7 +1113,10 @@ def test_mcp_trust_prompt_names_servers_that_run_unconfined(root, home, *, binar
         _, output = run_pty(
             ws,
             base_env(home, server.url),
-            [(b"", b"outside the sandbox: loose"), b"n\n", b"/q\n"],
+            [b"n\n", b"/q\n"],
+            # Trust may be painted alongside the first composer. Waiting for
+            # it as a later response can miss a prompt already in the buffer.
+            startup_marker=b"outside the sandbox: loose",
             timeout=30,
             binary=binary,
         )

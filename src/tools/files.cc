@@ -32,6 +32,12 @@ namespace uagent {
 
 namespace {
 
+std::optional<uint32_t> FilePermissions(const std::string& path) {
+  struct stat info{};
+  if (stat(path.c_str(), &info) != 0) return std::nullopt;
+  return info.st_mode & 07777;
+}
+
 struct EditDisplay {
   std::string body;
   int64_t added = 0;
@@ -516,6 +522,7 @@ ToolResult ToolEditFile(const std::string& path,
   }
 
   const size_t original_size = data.size();
+  const auto original_mode = FilePermissions(path);
   std::string original = data;
   EditRun run;
   if (auto refusal = ApplyEdits(data, path, edits, run)) {
@@ -539,7 +546,7 @@ ToolResult ToolEditFile(const std::string& path,
                   std::to_string(data.size()) + " bytes)");
   result.display = DiffReceipt("Edited", path, run.display);
   result.effect = FileEffect{CanonicalAccessPath(path).string(), true,
-                             std::move(original), HashHex(data)};
+                             std::move(original), HashHex(data), original_mode};
   return result;
 }
 
@@ -631,7 +638,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
     return std::move(*invalid);
   }
   FileEffect effect{CanonicalAccessPath(path).string(), true,
-                    DiffableContents(path), ""};
+                    DiffableContents(path), "", FilePermissions(path)};
   // The path policy above already rejected a missing or non-regular target, so
   // remove() reporting nothing removed means it vanished in between.
   std::error_code ec;
@@ -661,6 +668,7 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   }
   std::error_code ec;
   bool existed = std::filesystem::is_regular_file(path, ec);
+  const auto original_mode = existed ? FilePermissions(path) : std::nullopt;
   std::optional<std::string> previous;
   if (existed) {
     previous = DiffableContents(path);
@@ -670,9 +678,9 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   ToolResult result =
       ToolAtomicWrite(path, content, kSharedFileMode, true, overwrite);
   if (!result.Ok()) return result;
-  result.effect =
-      FileEffect{CanonicalAccessPath(path).string(), existed,
-                 existed ? previous : std::nullopt, HashHex(content)};
+  result.effect = FileEffect{CanonicalAccessPath(path).string(), existed,
+                             existed ? previous : std::nullopt,
+                             HashHex(content), original_mode};
   if (!previous) return result;
   result.display = WholeFileDiffDisplay(path, *previous, content, existed);
   return result;

@@ -1,3 +1,4 @@
+import { tabStorage } from "../../shared/storage.ts";
 import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
@@ -98,10 +99,8 @@ export default function Library({
     generation.current++;
     setError(null);
     setLoading(false);
-    const key = sessionStorage.getItem(`${storage}-last`);
-    const saved = key
-      ? readStored<Draft | null>(sessionStorage, key, null)
-      : null;
+    const key = tabStorage.getItem(`${storage}-last`);
+    const saved = key ? readStored<Draft | null>(tabStorage, key, null) : null;
     setItem(saved?.item || null);
     setContent(saved?.content || "");
     setName(saved?.name || "");
@@ -113,12 +112,12 @@ export default function Library({
   useLayoutEffect(() => {
     if (!item || !dirty) return;
     const key = `${storage}-${item.key || "new"}`;
-    writeStored(sessionStorage, key, { item, content, name, scope: newScope });
-    sessionStorage.setItem(`${storage}-last`, key);
+    writeStored(tabStorage, key, { item, content, name, scope: newScope });
+    tabStorage.setItem(`${storage}-last`, key);
   }, [item, content, name, newScope]);
   function clearDraft() {
-    sessionStorage.removeItem(`${storage}-${item?.key || "new"}`);
-    sessionStorage.removeItem(`${storage}-last`);
+    tabStorage.removeItem(`${storage}-${item?.key || "new"}`);
+    tabStorage.removeItem(`${storage}-last`);
   }
   useEffect(
     () => () => {
@@ -135,7 +134,7 @@ export default function Library({
       if (generation.current !== current || !result.item) return;
       if (result.item.error) throw new Error(result.item.error);
       const saved = readStored<Draft | null>(
-        sessionStorage,
+        tabStorage,
         `${storage}-${entry.key}`,
         null,
       );

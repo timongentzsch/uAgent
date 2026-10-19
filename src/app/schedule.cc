@@ -462,7 +462,9 @@ json UpdateScheduledRun(const std::string& id, const std::string& status,
             (prior == "stopping" && ScheduledRunActive(status))) {
           continue;
         }
-        run["status"] = status;
+        // Once the user requests stop, a concurrent terminal result cannot
+        // revive the run or relabel it as a preparation/execution failure.
+        run["status"] = prior == "stopping" ? "interrupted" : status;
         run["updated"] = NowSeconds();
         if (!error.empty()) run["error"] = error;
       }

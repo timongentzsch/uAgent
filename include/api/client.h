@@ -77,10 +77,13 @@ class Api : public ApiSettings {
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
                   size_t estimated_bytes = 0);
-  // timeout_s bounds one attempt; attempts>1 adds the same bounded backoff
+  // timeout_s bounds one attempt; deadline bounds the complete operation.
+  // attempts>1 adds the same bounded backoff
   // the conversation gets, for transport failures and transient statuses.
   JsonResponse Post(const std::string& path, const json& body,
-                    int64_t timeout_s = 120, int attempts = 1);
+                    int64_t timeout_s = 120, int attempts = 1,
+                    std::chrono::steady_clock::time_point deadline =
+                        std::chrono::steady_clock::time_point::max());
   JsonResponse Get(const std::string& path, bool abortable = false,
                    int64_t timeout_s = 15);
   // A direct GET of an absolute public URL: no credentials or environment
@@ -95,7 +98,9 @@ class Api : public ApiSettings {
                          HttpExchange* exchange, json response_context);
   bool WaitForRetry(std::chrono::milliseconds delay) const;
   JsonResponse Fetch(const std::string& path, const std::string* payload,
-                     int64_t timeout_s, bool abortable);
+                     int64_t timeout_s, bool abortable,
+                     std::chrono::steady_clock::time_point deadline =
+                         std::chrono::steady_clock::time_point::max());
   static void SetAbortable(CURL* handle, StreamCtx* context = nullptr);
   CURL* Prepare(const std::string& url);
 

@@ -23,6 +23,16 @@
 #include "include/tools/files.h"
 
 namespace uagent::session {
+namespace {
+const json* FindRun(const json& store, const std::string& id) {
+  if (const json* runs = JsonArray(store, "runs")) {
+    for (const json& run : *runs) {
+      if (JsonValue(run, "id", "") == id) return &run;
+    }
+  }
+  return nullptr;
+}
+}  // namespace
 std::chrono::steady_clock::time_point SessionHost::NextScheduleDeadline()
     const {
   auto deadline =
@@ -51,13 +61,6 @@ std::shared_ptr<HostSession> SessionHost::StartScheduledRun(const json& run) {
   const json& definition = run["definition"];
   const std::string cwd = JsonValue(run, "cwd", "");
   const std::string id = JsonValue(run, "id", "");
-  if (JsonValue(definition, "environment", "local") == "worktree") {
-    if (auto failed = CreateWorktree(JsonValue(definition, "cwd", ""), cwd);
-        !failed.empty()) {
-      RecordRun({id, "failed", failed});
-      return {};
-    }
-  }
   std::string error;
   auto session = CreateSession(cwd, JsonValue(run, "session_path", ""),
                                JsonValue(run, "title", "Scheduled run"), error);
@@ -185,9 +188,7 @@ ScheduleTick SessionHost::TickSchedules() {
     const json claimed = ClaimScheduledRuns(now, slots);
     if (const json* claimed_runs = JsonArray(claimed, "runs")) {
       for (const json& run : *claimed_runs) {
-        if (auto session = StartScheduledRun(run)) {
-          tick.activate.push_back(std::move(session));
-        }
+        tick.prepare.push_back(run);
       }
     }
   }
@@ -195,11 +196,13 @@ ScheduleTick SessionHost::TickSchedules() {
 }
 
 HostWaitState SessionHost::RunSchedules(bool& recovered) {
+  std::lock_guard schedule_lock(schedule_mutex_);
   HostWaitState wait;
   ScheduleTick tick;
   std::vector<std::string> projects;
   {
     UniqueLock lock(mutex_);
+    if (stopping_) return wait;
     std::vector<std::shared_ptr<HostSession>> recovery;
     if (!recovered) recovered = RecoverSchedules(recovery);
     // External writers (CLI schedule save/run) change the store under us:
@@ -212,6 +215,41 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
           false);
     }
     if (recovered) tick = TickSchedules();
+    // Claims reserve at most two execution slots. The scheduler prepares one
+    // worktree at a time; Git never holds up unrelated host requests/events.
+    for (const json& run : tick.prepare) {
+      const json& definition = run["definition"];
+      const std::string id = JsonValue(run, "id", "");
+      mutex_.unlock();
+      const json before = ReadSchedules();
+      const json* queued = FindRun(before, id);
+      const bool starting =
+          queued && JsonValue(*queued, "status", "") == "starting";
+      const std::string failure =
+          starting &&
+                  JsonValue(definition, "environment", "local") == "worktree"
+              ? CreateWorktree(JsonValue(definition, "cwd", ""),
+                               JsonValue(run, "cwd", ""))
+              : "";
+      const json current = starting ? ReadSchedules() : before;
+      mutex_.lock();
+      if (stopping_) return wait;
+      const json* latest = FindRun(current, id);
+      // Stop/forget may land while Git runs. A stopped preparation must never
+      // launch a runtime or overwrite the interruption with a preparation
+      // error.
+      if (!latest || JsonValue(*latest, "status", "") != "starting") {
+        if (latest && JsonValue(*latest, "status", "") == "stopping") {
+          RecordRun({id, "interrupted", "Stopped before the session started."});
+        }
+        continue;
+      }
+      if (!failure.empty()) {
+        RecordRun({id, "failed", failure});
+      } else if (auto session = StartScheduledRun(run)) {
+        tick.activate.push_back(std::move(session));
+      }
+    }
     auto activate = [&](const std::shared_ptr<HostSession>& session,
                         bool create,
                         const std::string& failed) UAGENT_REQUIRES(mutex_) {

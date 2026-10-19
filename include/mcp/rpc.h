@@ -20,7 +20,9 @@ json McpRequestMeta();
 
 // write a full message; drains the server's stdout while blocked so a chatty
 // server can never deadlock a large write (both pipes full = classic hang)
-bool McpWrite(McpServer& s, const std::string& data);
+bool McpWrite(McpServer& s, const std::string& data,
+              std::chrono::steady_clock::time_point deadline =
+                  std::chrono::steady_clock::now() + std::chrono::seconds(10));
 
 // read one newline-terminated message; cancellable waits also stop on Ctrl+C
 bool McpReadLine(McpServer& s, std::string& line,
@@ -29,7 +31,9 @@ bool McpReadLine(McpServer& s, std::string& line,
 
 // id >= 0: request · id < 0: notification
 bool McpSend(McpServer& s, int64_t id, const std::string& method,
-             const json& params);
+             const json& params,
+             std::chrono::steady_clock::time_point deadline =
+                 std::chrono::steady_clock::now() + std::chrono::seconds(10));
 
 bool McpHandleMessage(McpServer& s, const json& message);
 
@@ -55,10 +59,14 @@ bool McpResponseMatches(const json& message, int64_t id);
 // target reply are handled before returning pending.
 McpResponseState McpTryResponse(McpServer& s, int64_t id, json& response);
 
-json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable);
+json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable,
+              std::chrono::steady_clock::time_point deadline =
+                  std::chrono::steady_clock::time_point::max());
 
 json McpRpc(McpServer& s, const std::string& method, const json& params,
-            int64_t timeout_s, bool cancellable = false);
+            int64_t timeout_s, bool cancellable = false,
+            std::chrono::steady_clock::time_point deadline =
+                std::chrono::steady_clock::time_point::max());
 
 bool McpValidateDiscovery(const json& discovery, std::string& error);
 

@@ -26,22 +26,32 @@ json McpRequestMeta() {
        {{"roots", json::object()}}}};
 }
 
-bool McpWrite(McpServer& s, const std::string& data) {
+bool McpWrite(McpServer& s, const std::string& data,
+              std::chrono::steady_clock::time_point deadline) {
   if (!s.alive) return false;
   size_t off = 0;
+  auto cancelled = [&] {
+    if (off > 0) s.Shutdown();
+    return false;
+  };
   while (off < data.size()) {
-    if (AbortRequested()) return false;  // user hit Ctrl+C mid-call
+    if (AbortRequested()) return cancelled();
+    if (std::chrono::steady_clock::now() >= deadline) {
+      // A partial JSON-RPC line cannot be followed by another request.
+      s.Shutdown();
+      return false;
+    }
     struct pollfd p[3] = {{s.in.Get(), POLLOUT, 0},
                           {s.out.Get(), POLLIN, 0},
                           {AbortWakeFd(), POLLIN, 0}};
-    int pr = poll(p, 3, 10000);
+    int pr = poll(p, 3, std::min(10000, PollTimeoutMs(deadline)));
     if (pr < 0 && errno == EINTR) continue;
     if (pr <= 0) {
       s.Shutdown();
       return false;
     }  // wedged server: kill it now
     if (p[2].revents & POLLIN) {
-      if (AbortRequested()) return false;
+      if (AbortRequested()) return cancelled();
       NormalizeAbortWake();
       continue;
     }
@@ -69,10 +79,10 @@ bool McpReadLine(McpServer& s, std::string& line,
                  std::chrono::steady_clock::time_point deadline,
                  bool cancellable) {
   for (;;) {
-    if (McpTakeLine(s, line)) return true;
-    if (!s.alive) return false;
     if (cancellable && AbortRequested()) return false;
     if (std::chrono::steady_clock::now() >= deadline) return false;
+    if (McpTakeLine(s, line)) return true;
+    if (!s.alive) return false;
     struct pollfd p[2] = {{s.out.Get(), POLLIN, 0},
                           {cancellable ? AbortWakeFd() : -1, POLLIN, 0}};
     int pr = poll(p, 2, PollTimeoutMs(deadline));
@@ -93,12 +103,13 @@ bool McpReadLine(McpServer& s, std::string& line,
 }
 
 bool McpSend(McpServer& s, int64_t id, const std::string& method,
-             const json& params) {
+             const json& params,
+             std::chrono::steady_clock::time_point deadline) {
   json m = {{"jsonrpc", "2.0"}, {"method", method}};
   if (id >= 0) m["id"] = id;
   if (!params.is_null()) m["params"] = params;
   if (id >= 0) EnsureObject(m, "params")["_meta"] = McpRequestMeta();
-  return McpWrite(s, JsonDump(m) + "\n");
+  return McpWrite(s, JsonDump(m) + "\n", deadline);
 }
 
 bool McpHandleMessage(McpServer& s, const json& message) {
@@ -188,8 +199,10 @@ McpResponseState McpTryResponse(McpServer& s, int64_t id, json& response) {
   return s.alive ? McpResponseState::kPending : McpResponseState::kClosed;
 }
 
-json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable) {
-  auto deadline = DeadlineAfter(timeout_s);
+namespace {
+json McpAwaitUntil(McpServer& s, int64_t id, int64_t timeout_s,
+                   bool cancellable,
+                   std::chrono::steady_clock::time_point deadline) {
   std::string line;
   while (McpReadLine(s, line, deadline, cancellable)) {
     json m = json::parse(line, nullptr, false);
@@ -200,23 +213,38 @@ json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable) {
   if (!s.alive) return McpErrorReply("server exited" + McpStderrHint(s.name));
   bool cancelled = cancellable && AbortRequested();
   if (cancelled) ClearAbort();
+  // Notify a responsive server, but never add the normal write timeout after
+  // the request's budget is already exhausted.
   McpSend(s, -1, "notifications/cancelled",
           {{"requestId", id},
-           {"reason", cancelled ? "user cancelled" : "request timed out"}});
+           {"reason", cancelled ? "user cancelled" : "request timed out"}},
+          std::chrono::steady_clock::now() + std::chrono::milliseconds(50));
   if (cancelled) {
     RequestAbort();
     return McpErrorReply("cancelled");
   }
   return McpErrorReply("no response after " + std::to_string(timeout_s) + "s");
 }
+}  // namespace
+
+json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable,
+              std::chrono::steady_clock::time_point deadline) {
+  return McpAwaitUntil(s, id, timeout_s, cancellable,
+                       std::min(deadline, DeadlineAfter(timeout_s)));
+}
 
 json McpRpc(McpServer& s, const std::string& method, const json& params,
-            int64_t timeout_s, bool cancellable) {
+            int64_t timeout_s, bool cancellable,
+            std::chrono::steady_clock::time_point deadline) {
   int64_t id = s.next_id++;
-  if (!McpSend(s, id, method, params)) {
+  deadline = std::min(deadline, DeadlineAfter(timeout_s));
+  if (!McpSend(s, id, method, params, deadline)) {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return McpErrorReply("request deadline exhausted while sending");
+    }
     return McpErrorReply("server not responding" + McpStderrHint(s.name));
   }
-  return McpAwait(s, id, timeout_s, cancellable);
+  return McpAwaitUntil(s, id, timeout_s, cancellable, deadline);
 }
 
 bool McpValidateDiscovery(const json& discovery, std::string& error) {

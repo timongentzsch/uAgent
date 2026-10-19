@@ -1,4 +1,4 @@
-import { storage } from "../shared/storage.ts";
+import { storage, tabStorage } from "../shared/storage.ts";
 import type {
   JSONValue,
   Snapshot,
@@ -121,7 +121,7 @@ export function useHost(
     () => new Set(readStored<string[]>(storage, "uagent-unread", [])),
   );
   const [outgoing, setOutgoing] = useState(() =>
-    readStored<Outgoing[]>(sessionStorage, "uagent-outgoing", []),
+    readStored<Outgoing[]>(tabStorage, "uagent-outgoing", []),
   );
   const [following, setFollowing] = useState(true);
   const stream = useRef<EventSource | undefined>(undefined);
@@ -759,7 +759,7 @@ export function useHost(
     writeStored(storage, "uagent-unread", [...unread]);
   }, [unread]);
   useEffect(() => {
-    writeStored(sessionStorage, "uagent-outgoing", outgoing);
+    writeStored(tabStorage, "uagent-outgoing", outgoing);
   }, [outgoing]);
   useEffect(() => {
     writeStored(

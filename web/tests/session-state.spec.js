@@ -774,3 +774,35 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(receipt).toBeVisible();
   await expect(receipt).toHaveCount(1);
 });
+
+test("denied browser storage keeps the conversation usable in memory", async ({
+  page,
+  session,
+  command,
+}) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await page.addInitScript(() => {
+    for (const name of ["localStorage", "sessionStorage"])
+      Object.defineProperty(globalThis, name, {
+        get() {
+          throw new DOMException("Storage access denied", "SecurityError");
+        },
+      });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("A draft kept in memory");
+  await expect(prompt).toHaveValue("A draft kept in memory");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".transcript")).toContainText(
+    "A draft kept in memory",
+  );
+  await expect(page.locator(".transcript")).toContainText("Verified response");
+  await expect(prompt).toHaveValue("");
+});

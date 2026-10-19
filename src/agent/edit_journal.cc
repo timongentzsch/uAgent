@@ -51,10 +51,13 @@ void EditJournal::Open(std::string directory) {
     int64_t number = 0;
     if (!ParseInt64(turn.c_str(), number) || !entries.is_array()) continue;
     for (const json& entry : entries) {
-      turns_[number].push_back({JsonValue(entry, "path", ""),
-                                JsonValue(entry, "after_hash", ""),
-                                JsonValue(entry, "existed", false),
-                                JsonValue(entry, "undoable", false)});
+      const int mode = JsonValue(entry, "before_mode", -1);
+      turns_[number].push_back(
+          {JsonValue(entry, "path", ""), JsonValue(entry, "after_hash", ""),
+           JsonValue(entry, "existed", false),
+           JsonValue(entry, "undoable", false),
+           mode >= 0 && mode <= 07777 ? std::optional<uint32_t>(mode)
+                                      : std::nullopt});
     }
   }
   std::error_code ec;
@@ -82,7 +85,8 @@ void EditJournal::Record(int64_t turn, const FileEffect& effect) {
   Entry entry{effect.path, effect.after_hash, effect.existed,
               (!effect.existed || effect.before) &&
                   before.size() <= kUndoFileBytes &&
-                  stored_bytes_ + before.size() <= kUndoSessionBytes};
+                  stored_bytes_ + before.size() <= kUndoSessionBytes,
+              effect.before_mode};
   if (entry.undoable && entry.existed) {
     std::string error;
     CreatePrivateDirectories(directory_);
@@ -144,7 +148,10 @@ json EditJournal::Revert(int64_t turn, const std::string& path) {
       std::string before;
       ToolResult write =
           ReadRegularFile(Blob(turn, entry.path), kUndoFileBytes, before, error)
-              ? ToolAtomicWrite(entry.path, before, kSharedFileMode, true)
+              ? ToolAtomicWrite(entry.path, before,
+                                static_cast<mode_t>(entry.before_mode.value_or(
+                                    kPrivateFileMode)),
+                                true)
               : ToolFailure(ToolErrorCode::kNotFound, error);
       if (!write.Ok()) reason = write.output;
     }
@@ -171,6 +178,7 @@ void EditJournal::Save() const {
                       {"after_hash", entry.after_hash},
                       {"existed", entry.existed},
                       {"undoable", entry.undoable}});
+      if (entry.before_mode) rows.back()["before_mode"] = *entry.before_mode;
     }
   }
   std::string error;

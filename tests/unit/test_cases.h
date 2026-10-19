@@ -72,6 +72,8 @@ namespace uagent {
   X(TestSessionCommandKinds)                      \
   X(TestSessionCommandFields)                     \
   X(TestSessionCommandRejects)                    \
+  X(TestOutcomeStoreReceiptLifetime)              \
+  X(TestScheduledPreparationDoesNotBlockHost)     \
   X(TestReceiptLog)                               \
   X(TestReplayLogReadsInBatches)                  \
   X(TestReceiptLogBackpressure)                   \

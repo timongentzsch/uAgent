@@ -212,6 +212,11 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   json start = ToolCallData(call, turn, step);
   start["activity"] = task.activity;
   start["view"] = ToolView(task.tool, task.args);
+  call_context.progress = [start](const std::string& label) {
+    json update = start;
+    update["activity"]["status_label"] = label;
+    Emit(Event{EventId::kToolStarted, std::move(update)});
+  };
   Emit(Event{EventId::kToolStarted, std::move(start)});
   // Decided again now that the calls before it in the batch have run: one of
   // them can have made its path a link to something only a person may touch.

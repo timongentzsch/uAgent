@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <mutex>
 #include <set>
 #include <string>
 #include <utility>
@@ -32,7 +33,8 @@ namespace uagent::browser {
 namespace {
 constexpr size_t kProfilesBytes = size_t{64} * 1024;
 pid_t Launch(const std::vector<std::string>& arguments,
-             posix_spawn_file_actions_t* actions = nullptr) {
+             posix_spawn_file_actions_t* actions = nullptr,
+             const std::vector<std::string>& environment = {}) {
   std::vector<char*> argv;
   argv.reserve(arguments.size() + 1);
   for (const auto& argument : arguments) {
@@ -45,8 +47,24 @@ pid_t Launch(const std::vector<std::string>& arguments,
   posix_spawnattr_setflags(&group, POSIX_SPAWN_SETPGROUP);
   posix_spawnattr_setpgroup(&group, 0);
   pid_t pid = -1;
-  const int status = posix_spawnp(&pid, argv[0], actions, &group, argv.data(),
-                                  ProcessEnvironment());
+  std::vector<std::string> values;
+  for (char** at = ProcessEnvironment(); *at; ++at) {
+    std::string value(*at);
+    bool replaced = false;
+    for (const auto& setting : environment) {
+      if (value.starts_with(setting.substr(0, setting.find('=') + 1))) {
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) values.push_back(std::move(value));
+  }
+  values.insert(values.end(), environment.begin(), environment.end());
+  std::vector<char*> envp;
+  for (auto& value : values) envp.push_back(value.data());
+  envp.push_back(nullptr);
+  const int status =
+      posix_spawnp(&pid, argv[0], actions, &group, argv.data(), envp.data());
   posix_spawnattr_destroy(&group);
   return status == 0 ? pid : -1;
 }
@@ -116,6 +134,8 @@ std::string ProfileName(std::string name) {
   return name;
 }
 
+std::string Runtime::RfbSocket() const { return directory_ + "/display.sock"; }
+
 Runtime::~Runtime() { Stop(); }
 void Runtime::Shutdown() { Stop(); }
 
@@ -155,9 +175,11 @@ json Runtime::Targets() {
   return infos ? *infos : json::array();
 }
 
-Runtime::Runtime() {
+Runtime::Runtime(std::string directory, uint64_t incarnation)
+    : directory_(directory.empty() ? DataDirectory() : std::move(directory)) {
+  display_ = generation_ = incarnation;
   std::string bytes, error;
-  const std::string profiles_path = DataDirectory() + "/profiles.json";
+  const std::string profiles_path = directory_ + "/profiles.json";
   struct stat info{};
   if (lstat(profiles_path.c_str(), &info) == 0) {
     if (!ReadRegularFile(profiles_path, kProfilesBytes, bytes, error)) {
@@ -193,7 +215,7 @@ Runtime::Runtime() {
     profile_error_ = "cannot inspect Chrome profiles";
   }
   {
-    const json saved = ReadJsonFile(DataDirectory() + "/handover.json", 4096);
+    const json saved = ReadJsonFile(directory_ + "/handover.json", 4096);
     std::string session = JsonValue(saved, "session_id", "");
     std::string interaction = JsonValue(saved, "interaction_id", "");
     if (session::OpaqueId(session) && session::OpaqueId(interaction)) {
@@ -212,18 +234,18 @@ bool Runtime::SaveProfiles() const {
   std::string bytes =
       JsonDump({{"selected", selected_profile_}, {"profiles", entries}});
   return bytes.size() <= kProfilesBytes &&
-         ToolWritePrivateFile(DataDirectory() + "/profiles.json", bytes).Ok();
+         ToolWritePrivateFile(directory_ + "/profiles.json", bytes).Ok();
 }
 
 std::string Runtime::ProfilePath() const {
-  std::string base = DataDirectory();
+  std::string base = directory_;
   return selected_profile_ == "default"
              ? base + "/profile"
              : base + "/profiles/" + selected_profile_;
 }
 
 bool Runtime::SaveHandover() const {
-  std::string path = DataDirectory() + "/handover.json";
+  std::string path = directory_ + "/handover.json";
   if (interaction_.empty()) return unlink(path.c_str()) == 0 || errno == ENOENT;
   return ToolWritePrivateFile(path,
                               JsonDump({{"session_id", agent_session_},
@@ -239,7 +261,7 @@ void Runtime::Stop(bool preserve_lease) {
   Terminate(chrome_pid_);
   Terminate(vnc_pid_);
   profile_lock_.Reset();
-  unlink(RfbPath().c_str());
+  unlink(RfbSocket().c_str());
   target_.clear();
   page_session_.clear();
   sessions_.clear();
@@ -261,13 +283,16 @@ void Runtime::Stop(bool preserve_lease) {
 }
 
 bool Runtime::Start(std::string& error, bool profile_setup) {
+  // Display allocation and binding must be one operation across workers.
+  static std::mutex launch_mutex;
+  std::lock_guard launch_lock(launch_mutex);
   if (!profile_error_.empty()) {
     error = profile_error_;
     return false;
   }
   if (Alive(chrome_pid_) && Alive(vnc_pid_)) return true;
   Stop(true);
-  std::string base = DataDirectory();
+  std::string base = directory_;
   std::string profile = ProfilePath();
   if (!EnsureDataDirectory(profile)) {
     error = "cannot create persistent Chrome profile";
@@ -304,9 +329,9 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     return false;
   }
   chmod(authority.c_str(), kPrivateFileMode);
-  setenv("DISPLAY", display.c_str(), 1);
-  setenv("XAUTHORITY", authority.c_str(), 1);
-  unlink(RfbPath().c_str());
+  const std::vector<std::string> environment = {
+      "DISPLAY=" + display, "XAUTHORITY=" + authority, "HOME=" + directory_};
+  unlink(RfbSocket().c_str());
   vnc_pid_ = Launch({"Xtigervnc",
                      display,
                      "-geometry",
@@ -316,7 +341,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
                      "-auth",
                      authority,
                      "-rfbunixpath",
-                     RfbPath(),
+                     RfbSocket(),
                      "-rfbunixmode",
                      "0600",
                      "-rfbport",
@@ -335,11 +360,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     return false;
   }
   for (int waited = 0;
-       waited < kRfbSocketWaitMs && access(RfbPath().c_str(), F_OK);
+       waited < kRfbSocketWaitMs && access(RfbSocket().c_str(), F_OK);
        waited += kPollTickMs) {
     poll(nullptr, 0, kPollTickMs);
   }
-  if (access(RfbPath().c_str(), F_OK)) {
+  if (access(RfbSocket().c_str(), F_OK)) {
     error = "Xtigervnc did not create its Unix display socket";
     Stop(true);
     return false;
@@ -365,7 +390,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       // models (most of a 258 MB profile), and a bounded page cache.
       "--disable-component-update", no_downloads, "--disk-cache-size=67108864"};
   if (profile_setup) {
-    chrome_pid_ = Launch(chrome);
+    chrome_pid_ = Launch(chrome, nullptr, environment);
     if (chrome_pid_ < 0) {
       error = "cannot launch Google Chrome Stable";
       Stop(true);
@@ -415,7 +440,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
                                    O_WRONLY, 0);
   // Chrome's sandbox stays enabled. This is a private profile.
   chrome.emplace_back("--remote-debugging-pipe");
-  chrome_pid_ = Launch(chrome, &actions);
+  chrome_pid_ = Launch(chrome, &actions, environment);
   posix_spawn_file_actions_destroy(&actions);
   chrome_read.Reset();
   chrome_write.Reset();
@@ -720,6 +745,7 @@ json Runtime::Execute(const json& command) {
   const std::string op = JsonValue(command, "op", "");
   if (op == "ping") return {{"ok", true}};
   if (op == "status") return Status();
+  if (op == "snapshot") return Status(false);
   // Watching is not use: only actions keep an idle Chrome running.
   if (op != "agent_status" && op != "viewer") {
     used_ = std::chrono::steady_clock::now();

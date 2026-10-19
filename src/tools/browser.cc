@@ -65,12 +65,74 @@ constexpr int kQuietProbes = 2;
 // handed back.
 constexpr int kHandbackWaitMs = 5000;
 
-ToolResult Handover(const std::string& session_id, const std::string& reason,
+// A grant fences every operation, including probes and human handback.
+struct BrowserAccess {
+  std::string session_id, lease;
+  json Request(json command, int timeout = browser::kRequestDefaultMs) const {
+    command["session_id"] = session_id;
+    if (!lease.empty()) command["lease"] = lease;
+    return browser::Request(command, timeout);
+  }
+};
+
+ToolResult Acquire(const std::string& session_id, const json& args,
+                   const ToolContext& context, BrowserAccess& access) {
+  const std::string request = RandomToken(16);
+  if (request.empty())
+    return ToolFailure(ToolErrorCode::kInternal,
+                       "cannot create browser request");
+  struct Pending {
+    std::string session, request;
+    ~Pending() {
+      browser::Request({{"op", "cancel_acquire"},
+                        {"session_id", session},
+                        {"request_id", request}},
+                       browser::kProbeMs);
+    }
+  } pending{session_id, request};
+  const auto deadline =
+      std::min(context.deadline,
+               std::chrono::steady_clock::now() + std::chrono::minutes(5));
+  std::string waiting;
+  for (;;) {
+    if (AbortRequested())
+      return ToolCancelled("Stopped waiting for the browser");
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return ToolTimedOut(
+          "Timed out waiting for the browser; no page action was performed");
+    }
+    json answer = browser::Request(
+        {{"op", "acquire"},
+         {"session_id", session_id},
+         {"request_id", request},
+         {"browser", JsonValue(args, "browser", "auto")},
+         {"allow_human", JsonValue(args, "action", "") == "request_human"}},
+        browser::kProbeMs);
+    if (const auto error = JsonValue(answer, "error", ""); !error.empty()) {
+      return ToolFailure(ToolErrorCode::kRemoteError, error);
+    }
+    if (answer.value("acquired", false)) {
+      access = {session_id, JsonValue(answer, "lease", "")};
+      if (context.progress && !waiting.empty())
+        context.progress("Using browser");
+      return ToolSuccess("");
+    }
+    const int position = JsonValue(answer, "position", 0);
+    const std::string label =
+        JsonValue(answer, "reason", "Waiting for browser") +
+        (position > 0 ? " · position " + std::to_string(position) : "");
+    if (context.progress && label != waiting) context.progress(label);
+    waiting = label;
+    poll(nullptr, 0, kProbeIntervalMs);
+  }
+}
+
+ToolResult Handover(const BrowserAccess& access, const std::string& reason,
                     const BrowserAsk& ask) {
   std::string interaction = RandomToken(16);
-  json outcome = browser::Request({{"op", "request_human"},
-                                   {"session_id", session_id},
-                                   {"interaction_id", interaction}});
+  json outcome = access.Request({{"op", "request_human"},
+                                 {"session_id", access.session_id},
+                                 {"interaction_id", interaction}});
   if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
     return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
@@ -78,15 +140,15 @@ ToolResult Handover(const std::string& session_id, const std::string& reason,
   std::string answer = ask(interaction, reason, &eof);
   json status;
   for (int waited = 0; waited < kHandbackWaitMs; waited += kPollTickMs) {
-    status = browser::Request({{"op", "status"}});
+    status = access.Request({{"op", "status"}});
     if (JsonValue(status, "mode", "") != "human") break;
     poll(nullptr, 0, kPollTickMs);
   }
   if (eof || answer != "done" || JsonValue(status, "mode", "") != "agent" ||
-      JsonValue(status, "session_id", "") != session_id) {
-    browser::Request({{"op", "cancel_handover"},
-                      {"session_id", session_id},
-                      {"interaction_id", interaction}});
+      JsonValue(status, "session_id", "") != access.session_id) {
+    access.Request({{"op", "cancel_handover"},
+                    {"session_id", access.session_id},
+                    {"interaction_id", interaction}});
     return ToolFailure(ToolErrorCode::kRemoteError,
                        "browser handover remains paused or was cancelled");
   }
@@ -223,10 +285,10 @@ std::string Preview(const json& args, Seen& seen) {
 }
 
 // One request to the browser on behalf of this conversation.
-json Ask(const std::string& session_id, json command, const std::string& op) {
+json Ask(const BrowserAccess& access, json command, const std::string& op) {
   command["op"] = op;
-  command["session_id"] = session_id;
-  return browser::Request(command, browser::kActionMs);
+  command["session_id"] = access.session_id;
+  return access.Request(command, browser::kActionMs);
 }
 
 // What read answers: the text asked for, and the links that go with it.
@@ -260,25 +322,26 @@ ToolResult Reading(const json& read, const json& args, const std::string& done,
 // The current tab as text: what can be acted on, numbered, the page's text
 // and bot-wall evidence; with `look`, the screenshot too. `lead` states what
 // already happened, so a failed look never hides a done action.
-ToolResult Observation(const std::string& session_id, const std::string& lead,
+ToolResult Observation(const BrowserAccess& access, const std::string& lead,
                        const ToolContext& context, bool look, Seen& seen) {
   const std::string done = lead.empty() ? "" : lead + "\n";
-  json outcome = browser::Request(
-      {{"op", "observe"}, {"session_id", session_id}, {"image", look}});
+  json outcome = access.Request(
+      {{"op", "observe"}, {"session_id", access.session_id}, {"image", look}});
   if (const json* dialog = JsonObject(outcome, "dialog")) {
     SawDialog(seen, *dialog);
     return ToolSuccess(done + DialogLine(*dialog));
   }
   json current = outcome.contains("error")
                      ? json::object()
-                     : browser::Request(
-                           {{"op", "agent_status"}, {"session_id", session_id}},
-                           browser::kProbeMs);
+                     : access.Request({{"op", "agent_status"},
+                                       {"session_id", access.session_id}},
+                                      browser::kProbeMs);
   std::string failed = JsonValue(outcome, "error", "");
-  if (failed.empty() && (!current.value("ok", false) ||
-                         JsonValue(current, "generation", uint64_t{0}) !=
-                             JsonValue(outcome, "generation", uint64_t{0}) ||
-                         JsonValue(current, "session_id", "") != session_id)) {
+  if (failed.empty() &&
+      (!current.value("ok", false) ||
+       JsonValue(current, "generation", uint64_t{0}) !=
+           JsonValue(outcome, "generation", uint64_t{0}) ||
+       JsonValue(current, "session_id", "") != access.session_id)) {
     failed = "browser control changed; observe again";
   }
   if (failed.empty() && look && JsonValue(outcome, "image", "").empty()) {
@@ -340,15 +403,15 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
 // document and content on two probes in a row. Each probe is a short request,
 // so the human's viewer and takeover are never blocked behind the wait.
 // Returns what the wait learned about tabs and time, as lines for the model.
-std::string Settle(const std::string& session_id, const ToolContext& context) {
+std::string Settle(const BrowserAccess& access, const ToolContext& context) {
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(kSettleMs);
   std::string previous, notes;
   int quiet = 0;
   json opened = json::array();
   for (;;) {
-    json probe =
-        browser::Request({{"op", "probe"}, {"session_id", session_id}}, 5000);
+    json probe = access.Request(
+        {{"op", "probe"}, {"session_id", access.session_id}}, 5000);
     if (auto error = JsonValue(probe, "error", ""); !error.empty()) {
       return notes + "Waiting for the page stopped: " + error + ".\n";
     }
@@ -410,10 +473,9 @@ std::string InlinePageFile(json& args) {
 }
 
 // The actions that only ask the browser something.
-ToolResult Query(const std::string& session_id, const json& args,
+ToolResult Query(const BrowserAccess& access, const json& args,
                  const std::string& action, Seen& seen) {
-  json answer =
-      Ask(session_id, args, action == "status" ? "agent_status" : action);
+  json answer = Ask(access, args, action == "status" ? "agent_status" : action);
   if (auto error = JsonValue(answer, "error", ""); !error.empty()) {
     return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
@@ -435,7 +497,7 @@ ToolResult Query(const std::string& session_id, const json& args,
 
 // The actions that change the page: do them, wait for the page to settle, and
 // return it.
-ToolResult Act(const std::string& session_id, const json& args,
+ToolResult Act(const BrowserAccess& access, const json& args,
                const std::string& action, const ToolContext& context,
                Seen& seen) {
   // type may click its field first and press a key after: one call, in
@@ -453,7 +515,7 @@ ToolResult Act(const std::string& session_id, const json& args,
   for (const std::string& op : ops) {
     const json reply = !done.empty() && (AbortRequested() || context.Expired())
                            ? json{{"error", "interrupted"}}
-                           : Ask(session_id, args, op);
+                           : Ask(access, args, op);
     const std::string error = JsonValue(reply, "error", "");
     if (!error.empty()) {
       if (done.empty()) {
@@ -474,22 +536,28 @@ ToolResult Act(const std::string& session_id, const json& args,
       break;
     }
   }
-  done += Settle(session_id, context);
+  done += Settle(access, context);
   // open may read the page it opened, once that has settled.
   if (action == "open" && whole &&
       (args.contains("find") || args.contains("offset"))) {
-    json read = Ask(session_id, args, "read");
+    json read = Ask(access, args, "read");
     if (!read.contains("error") && !read.contains("dialog")) {
       return Reading(read, args, done, seen);
     }
   }
   done.pop_back();
-  return Observation(session_id, done, context, /*look=*/false, seen);
+  return Observation(access, done, context, /*look=*/false, seen);
 }
 
 constexpr char kBrowserDescription[] =
     "Use the shared persistent Google Chrome that the web host runs; the "
-    "user sees and can drive the same browser. open, click, type (into the "
+    "user sees and can drive the same browser. Access queues automatically "
+    "until the previous conversation releases it or ends its turn. release "
+    "when finished browsing so other threads can continue. Parallel research "
+    "uses isolated signed-out browsers when enabled by the user; "
+    "browser=shared requests the persistent signed-in browser. Release any "
+    "current research browser before switching to shared. open, click, type "
+    "(into the "
     "focused field), press, scroll and back wait for the page to settle "
     "and return it as text: its numbered elements, its text and a view_id. "
     "click takes element (a number from a result) and that result's "
@@ -532,6 +600,7 @@ json BrowserParameters() {
   return {{"type", "object"},
           {"properties",
            {{"action", {{"type", "string"}, {"enum", std::move(names)}}},
+            {"browser", {{"type", "string"}, {"enum", {"auto", "shared"}}}},
             {"url", {{"type", "string"}}},
             {"path", {{"type", "string"}}},
             {"target_id", {{"type", "string"}}},
@@ -658,16 +727,25 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         return ToolFailure(ToolErrorCode::kInvalidArguments, error);
       }
     }
+    // Checking status and releasing never wait for a browser or start Chrome.
+    if (action == "status" || action == "release") {
+      return Query(BrowserAccess{session_id, ""}, args, action, *seen);
+    }
+    BrowserAccess access;
+    ToolResult admission = Acquire(session_id, args, context, access);
+    if (!admission.Ok()) return admission;
+    if (AbortRequested() || context.Expired())
+      return ToolCancelled("Browser action interrupted before execution");
     if (action == "request_human") {
-      return Handover(session_id,
+      return Handover(access,
                       JsonValue(args, "reason", "Please finish in the browser"),
                       ask);
     }
     if (action == "observe") {
-      return Observation(session_id, "", context, /*look=*/true, *seen);
+      return Observation(access, "", context, /*look=*/true, *seen);
     }
     const Action* row = FindAction(args);
-    if (!row || !row->acts) return Query(session_id, args, action, *seen);
+    if (!row || !row->acts) return Query(access, args, action, *seen);
     // Text typed while a prompt already shows, into no element, is its
     // staged answer; a type whose own click opened it typed nothing.
     bool answers = false;
@@ -676,7 +754,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       answers = action == "type" && !seen->dialog.empty() &&
                 !args.contains("element") && !args.contains("x");
     }
-    ToolResult result = Act(session_id, args, action, context, *seen);
+    ToolResult result = Act(access, args, action, context, *seen);
     if (answers && result.Ok()) {
       std::lock_guard lock(seen->mutex);
       seen->answer = JsonValue(args, "text", "");

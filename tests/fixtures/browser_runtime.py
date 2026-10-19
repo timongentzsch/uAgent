@@ -8,6 +8,7 @@ import signal
 import socket
 import struct
 import sys
+import time
 from pathlib import Path
 
 name = Path(sys.argv[0]).name
@@ -37,7 +38,17 @@ if name == "Xtigervnc":
 profile = Path(next(arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--user-data-dir=")))
 controlled = "--remote-debugging-pipe" in sys.argv
 with (profile / "launches.jsonl").open("a") as log:
-    log.write(json.dumps({"controlled": controlled, "arguments": sys.argv[1:]}) + "\n")
+    log.write(
+        json.dumps(
+            {
+                "controlled": controlled,
+                "arguments": sys.argv[1:],
+                "display": os.getenv("DISPLAY"),
+                "authority": os.getenv("XAUTHORITY"),
+            }
+        )
+        + "\n"
+    )
 
 
 def flush_profile(_signal, _frame):
@@ -102,6 +113,11 @@ while chunk := os.read(3, 4096):
             os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
             continue
         method = command["method"]
+        if method == "Page.navigate" and (profile / "pause-navigation").exists():
+            (profile / "navigation-paused").touch()
+            deadline = time.monotonic() + 5
+            while (profile / "pause-navigation").exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
         if command["params"].get("type") == "mouseReleased":
             # A click may open a file chooser, held back, or start a download.
             if (profile / "chooser-on-click").exists():

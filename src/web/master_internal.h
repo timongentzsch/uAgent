@@ -12,6 +12,7 @@
 
 #include <httplib.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -111,7 +112,7 @@ class Master {
   std::atomic<bool> reexec_{false};
   std::unique_ptr<PushSender> push_;
   browser::ServiceProcess browser_process_;
-  std::atomic<bool> viewer_active_{false};
+  std::array<std::atomic<bool>, 5> viewer_active_{};
 };
 
 }  // namespace uagent::web::master

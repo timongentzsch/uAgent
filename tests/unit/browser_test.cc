@@ -9,14 +9,17 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "include/browser/broker.h"
 #include "include/browser/runtime.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
+#include "include/core/signals.h"
 #include "include/tools/browser.h"
 #include "include/transport/session.h"
 #include "include/web/rfb_filter.h"
@@ -236,6 +239,187 @@ struct FakeBrowser {
 };
 }  // namespace
 
+// Scheduling is independent of page execution: FIFO admission, explicit
+// cancellation, fencing and expiry can be exercised without starting Chrome.
+void TestBrowserScheduling() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-queue");
+  const auto directory = fs::canonical(workspace.root) / "browser";
+  CHECK(browser::EnsureDataDirectory(directory.string()));
+  auto now = std::chrono::steady_clock::now();
+  browser::Broker broker(directory.string(), [&] { return now; });
+  const auto acquire = [&](const std::string& id,
+                           const std::string& request = "1111111111111111") {
+    return broker.Execute(
+        {{"op", "acquire"}, {"session_id", id}, {"request_id", request}});
+  };
+  constexpr const char* a = "aaaaaaaaaaaaaaaa";
+  constexpr const char* b = "bbbbbbbbbbbbbbbb";
+  constexpr const char* c = "cccccccccccccccc";
+  constexpr const char* d = "dddddddddddddddd";
+  auto first = acquire(a);
+  CHECK(first.value("acquired", false));
+  CHECK(first.value("instance_id", "") == "0");
+  CHECK(acquire(b).value("position", 0) == 1);
+  CHECK(acquire(c).value("position", 0) == 2);
+  CHECK(acquire(d).value("position", 0) == 3);
+  CHECK(broker.Execute({{"op", "status"}})["queue"].size() == 3);
+  // No Chrome, no ownership error just to check whether the browser is busy.
+  CHECK(!broker.Execute({{"op", "agent_status"}, {"session_id", b}})
+             .contains("error"));
+  CHECK(broker
+            .Execute({{"op", "acquire"},
+                      {"session_id", "bad/id"},
+                      {"request_id", "1111111111111111"}})
+            .contains("error"));
+  CHECK(broker.Execute({{"op", "status"}, {"instance_id", "../"}})
+            .contains("error"));
+  broker.Execute({{"op", "cancel_acquire"},
+                  {"session_id", b},
+                  {"request_id", "1111111111111111"}});
+  CHECK(acquire(c).value("position", 0) == 1);
+  broker.Execute({{"op", "release"}, {"session_id", a}});
+  // A newcomer cannot jump the existing queue, even before its head polls.
+  CHECK(!acquire(b).value("acquired", false));
+  auto second = acquire(c);
+  CHECK(second.value("acquired", false));
+  CHECK(second["lease"] != first["lease"]);
+  CHECK(broker
+            .Execute({{"op", "open"},
+                      {"session_id", a},
+                      {"lease", first["lease"]},
+                      {"url", "https://example.com/"}})
+            .contains("error"));
+  // Releasing a former owner cannot release somebody else's browser.
+  broker.Execute({{"op", "release"}, {"session_id", a}});
+  CHECK(broker.Execute({{"op", "status"}}).value("session_id", "") == c);
+  broker.Execute({{"op", "release"}, {"session_id", c}});
+  broker.Execute({{"op", "cancel_acquire"},
+                  {"session_id", b},
+                  {"request_id", "1111111111111111"}});
+  // A disconnected head expires. A polling waiter behind it stays queued.
+  now += std::chrono::seconds(14);
+  CHECK(!acquire(b).value("acquired", false));
+  now += std::chrono::seconds(2);
+  CHECK(acquire(b).value("acquired", false));
+  // A forgotten owner cannot reserve the browser forever.
+  now += std::chrono::minutes(3);
+  CHECK(acquire(a).value("acquired", false));
+  broker.Execute({{"op", "release"}, {"session_id", a}});
+  // A published runtime disappearing releases its grant immediately.
+  CreatePrivateDirectories(RuntimeDir());
+  FileLease running;
+  std::string error;
+  CHECK(running.Acquire(session::SocketPathForId(a) + ".lock", error, true));
+  CHECK(acquire(a).value("acquired", false));
+  CHECK(!acquire(b).value("acquired", false));
+  running.Reset();
+  CHECK(acquire(b).value("acquired", false));
+  broker.Shutdown();
+  CHECK(acquire(c).contains("error"));
+}
+
+void TestBrowserParallelScheduling() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-parallel");
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-bp-" + std::to_string(getpid()));
+  FakeBrowser fake(workspace.root / "bin", directory);
+  CHECK(browser::EnsureDataDirectory(directory.string()));
+  browser::Broker broker(directory.string());
+  CHECK(broker.Execute({{"op", "configure"}, {"parallel_capacity", 5}})
+            .contains("error"));
+  CHECK(!broker.Execute({{"op", "configure"}, {"parallel_capacity", 2}})
+             .contains("error"));
+  const auto acquire = [&](const char* id, const char* kind = "auto") {
+    return broker.Execute({{"op", "acquire"},
+                           {"session_id", id},
+                           {"request_id", "1111111111111111"},
+                           {"browser", kind}});
+  };
+  constexpr const char* a = "aaaaaaaaaaaaaaaa";
+  constexpr const char* b = "bbbbbbbbbbbbbbbb";
+  constexpr const char* c = "cccccccccccccccc";
+  auto one = acquire(a), two = acquire(b);
+  CHECK(one.value("instance_id", "") == "1");
+  CHECK(two.value("instance_id", "") == "2");
+  CHECK(!acquire(c).value("acquired", false));
+  auto shared = acquire("dddddddddddddddd", "shared");
+  CHECK(shared.value("instance_id", "") == "0");
+  const auto open = [&](const char* id, const json& grant) {
+    return broker.Execute({{"op", "open"},
+                           {"session_id", id},
+                           {"lease", grant["lease"]},
+                           {"url", "https://example.com/"}});
+  };
+  auto left = std::async(std::launch::async, [&] { return open(a, one); });
+  auto right = std::async(std::launch::async, [&] { return open(b, two); });
+  CHECK(!left.get().contains("error"));
+  CHECK(!right.get().contains("error"));
+  CHECK(fs::exists(directory / "p1/profile/cdp.jsonl"));
+  CHECK(fs::exists(directory / "p2/profile/cdp.jsonl"));
+  // A slow page must not queue viewer heartbeat threads behind its runtime
+  // lock, or prevent another research instance from progressing.
+  std::ofstream(directory / "p1/profile/pause-navigation").close();
+  auto paused = std::async(std::launch::async, [&] { return open(a, one); });
+  for (int wait = 0;
+       wait < 100 && !fs::exists(directory / "p1/profile/navigation-paused");
+       ++wait)
+    poll(nullptr, 0, 10);
+  CHECK(fs::exists(directory / "p1/profile/navigation-paused"));
+  for (int heartbeat = 0; heartbeat < 20; ++heartbeat) {
+    auto viewer = broker.Execute({{"op", "viewer"}, {"instance_id", "1"}});
+    CHECK(viewer.value("ok", false));
+    CHECK(!viewer.value("controller", true));
+  }
+  CHECK(!open(b, two).contains("error"));
+  CHECK(paused.wait_for(std::chrono::milliseconds(0)) !=
+        std::future_status::ready);
+  fs::remove(directory / "p1/profile/pause-navigation");
+  CHECK(!paused.get().contains("error"));
+  // Human control of one instance neither claims nor blocks the other.
+  constexpr const char* device = "eeeeeeeeeeeeeeee";
+  auto taken = broker.Execute(
+      {{"op", "takeover"}, {"device", device}, {"instance_id", "1"}});
+  CHECK(taken.value("mode", "") == "human");
+  CHECK(
+      broker
+          .Execute({{"op", "viewer"}, {"device", device}, {"instance_id", "1"}})
+          .value("controller", false));
+  CHECK(!open(b, two).contains("error"));
+  // A turn ending during human control defers release until handback.
+  broker.Execute({{"op", "release"}, {"session_id", a}});
+  CHECK(!acquire(c).value("acquired", false));
+  CHECK(!broker
+             .Execute({{"op", "done"},
+                       {"device", device},
+                       {"instance_id", "1"},
+                       {"interaction_id", ""}})
+             .contains("error"));
+  auto next = acquire(c);
+  CHECK(next.value("acquired", false));
+  CHECK(next.value("instance_id", "") == "1");
+  std::ofstream(directory / "p1/profile/private-cookie") << "previous owner";
+  CHECK(!open(c, next).contains("error"));
+  CHECK(!fs::exists(directory / "p1/profile/private-cookie"));
+  CHECK(broker
+            .Execute({{"op", "click"},
+                      {"session_id", c},
+                      {"lease", one["lease"]},
+                      {"element", 1},
+                      {"view_id", "old"}})
+            .contains("error"));
+  // Capacity survives service restart; isolated browsing never touches the
+  // shared persistent profile.
+  CHECK(!fs::exists(directory / "profile"));
+  broker.Shutdown();
+  browser::Broker restored(directory.string());
+  CHECK(restored.Execute({{"op", "status"}}).value("parallel_capacity", 0) ==
+        2);
+  restored.Shutdown();
+  fs::remove_all(directory);
+}
+
 void TestBrowserProfileSignIn() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-signin");
@@ -257,8 +441,13 @@ void TestBrowserProfileSignIn() {
   if (took_display) {
     fs::remove("/tmp/.X99-lock");
   }
-  const char* shown = getenv("DISPLAY");
-  CHECK(shown && std::string(shown) != ":99");
+  // Each Chrome gets its own display environment; the broker's process
+  // environment stays untouched when another worker starts.
+  CHECK(getenv("DISPLAY") == nullptr);
+  std::ifstream launches(directory / "profile" / "launches.jsonl");
+  std::string launch;
+  CHECK(static_cast<bool>(std::getline(launches, launch)));
+  CHECK(json::parse(launch).value("display", "") != ":99");
   CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kOther}})
             .contains("error"));
   const auto setup =
@@ -711,6 +900,84 @@ void TestBrowserOrigin() {
 
 // The tool's own part: several steps in one call, in order, and a page that
 // is only read. The service runs here, in front of the stand-in Chrome.
+void TestBrowserToolQueue() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-tool-queue");
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-bq-" + std::to_string(getpid()));
+  FakeBrowser fake(workspace.root / "bin", directory);
+  int owner[2];
+  CHECK(pipe(owner) == 0);
+  CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
+  std::thread service([&] { browser::ServiceMain(owner[0]); });
+  for (int wait = 0; wait < 500 && !fs::exists(browser::SocketPath()); ++wait)
+    poll(nullptr, 0, 10);
+  constexpr const char* a = "aaaaaaaaaaaaaaaa";
+  constexpr const char* b = "bbbbbbbbbbbbbbbb";
+  const auto acquire = [&] {
+    return browser::Request({{"op", "acquire"},
+                             {"session_id", a},
+                             {"request_id", "1111111111111111"}});
+  };
+  CHECK(acquire().value("acquired", false));
+  const Tool tool = BrowserTool(b, [](const std::string&, const std::string&,
+                                      bool*) { return std::string(); });
+  ToolContext timed(std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds(100));
+  CHECK(!tool.run({{"action", "open"}, {"url", "https://example.com/"}}, timed)
+             .Ok());
+  CHECK(browser::Request({{"op", "status"}})["queue"].empty());
+  CHECK(!fs::exists(directory / "profile"));
+  std::atomic<bool> abort{false};
+  auto cancelled = std::async(std::launch::async, [&] {
+    LocalAbort local(abort);
+    return tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
+  });
+  for (int wait = 0; wait < 100; ++wait) {
+    if (!browser::Request({{"op", "status"}})["queue"].empty()) break;
+    poll(nullptr, 0, 10);
+  }
+  CHECK(!browser::Request({{"op", "status"}})["queue"].empty());
+  abort = true;
+  CHECK(!cancelled.get().Ok());
+  CHECK(browser::Request({{"op", "status"}})["queue"].empty());
+  CHECK(!fs::exists(directory / "profile"));
+  // The tool waits below the model loop: one call eventually performs one
+  // navigation, with an observable queued state and no retry by the model.
+  ToolContext context(std::chrono::steady_clock::now() +
+                      std::chrono::seconds(10));
+  std::vector<std::string> labels;
+  context.progress = [&](const std::string& label) { labels.push_back(label); };
+  auto pending = std::async(std::launch::async, [&] {
+    return tool.run({{"action", "open"}, {"url", "https://example.com/"}},
+                    context);
+  });
+  for (int wait = 0; wait < 100; ++wait) {
+    if (!browser::Request({{"op", "status"}})["queue"].empty()) break;
+    poll(nullptr, 0, 10);
+  }
+  CHECK(!browser::Request({{"op", "status"}})["queue"].empty());
+  CHECK(pending.wait_for(std::chrono::milliseconds(0)) !=
+        std::future_status::ready);
+  CHECK(!browser::Request({{"op", "release"}, {"session_id", a}})
+             .contains("error"));
+  CHECK(pending.get().Ok());
+  CHECK(labels.size() >= 2);
+  CHECK(labels.front().starts_with("Waiting for browser"));
+  CHECK(labels.back() == "Using browser");
+  int navigations = 0;
+  std::ifstream log(directory / "profile/cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    if (json::parse(line).value("method", "") == "Page.navigate") ++navigations;
+  }
+  CHECK(navigations == 1);
+  CHECK(browser::Request({{"op", "status"}})["queue"].empty());
+  close(owner[1]);
+  service.join();
+  close(owner[0]);
+  fs::remove_all(directory);
+}
+
 void TestBrowserToolSteps() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-tool");

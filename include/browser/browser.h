@@ -42,7 +42,7 @@ std::string DataDirectory();
 // else reads UAGENT_BROWSER_DATA from the environment.
 void SetDataDirectory(std::string path);
 std::string SocketPath();
-std::string RfbPath();
+std::string RfbPath(const std::string& instance = "0");
 // The site of an HTTP(S) address, as scheme://host[:port]: lower case, with
 // no user part and no default port. Empty for any other address. What a
 // remembered approval of a browser action covers.

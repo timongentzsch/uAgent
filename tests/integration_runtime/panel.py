@@ -54,6 +54,7 @@ PANEL_TOOLS = {
     "decide",
     "ask",
     "state",
+    "browser",
 }
 
 

@@ -129,7 +129,7 @@ void Master::Command(const Request& request, Response& response) {
     const std::string action = JsonValue(command, "action", "");
     if (action != "takeover" && action != "done" && action != "stop" &&
         action != "create_profile" && action != "select_profile" &&
-        action != "setup_profile") {
+        action != "setup_profile" && action != "configure") {
       error = "unsupported browser control";
     } else {
       lock.unlock();
@@ -222,13 +222,16 @@ json Master::BrowserControl(const json& command, const std::string& device,
                             const std::string& request_id, std::string& error) {
   const std::string action = JsonValue(command, "action", "");
   const std::string interaction = JsonValue(command, "interaction_id", "");
-  json result =
-      browser::Request({{"op", action == "done" ? "prepare_done" : action},
-                        {"device", device},
-                        {"interaction_id", interaction},
-                        {"name", JsonValue(command, "name", "")},
-                        {"profile_id", JsonValue(command, "profile_id", "")}},
-                       browser::kActionMs);
+  const std::string instance = JsonValue(command, "instance_id", "0");
+  json result = browser::Request(
+      {{"op", action == "done" ? "prepare_done" : action},
+       {"device", device},
+       {"instance_id", instance},
+       {"parallel_capacity", JsonValue(command, "parallel_capacity", -1)},
+       {"interaction_id", interaction},
+       {"name", JsonValue(command, "name", "")},
+       {"profile_id", JsonValue(command, "profile_id", "")}},
+      browser::kActionMs);
   error = JsonValue(result, "error", "");
   if (!error.empty() || action != "done") return result;
   const std::string session_id = JsonValue(result, "session_id", "");
@@ -248,11 +251,14 @@ json Master::BrowserControl(const json& command, const std::string& device,
     if (!error.empty()) return result;
     if (executed.wake) host_wake_.Wake();
   }
-  result = browser::Request(
-      {{"op", "done"}, {"device", device}, {"interaction_id", interaction}});
+  result = browser::Request({{"op", "done"},
+                             {"device", device},
+                             {"instance_id", instance},
+                             {"interaction_id", interaction}});
   error = JsonValue(result, "error", "");
   if (error == "browser service timed out or disconnected") {
-    json current = browser::Request({{"op", "status"}}, browser::kProbeMs);
+    json current = browser::Request(
+        {{"op", "status"}, {"instance_id", instance}}, browser::kProbeMs);
     if (current.value("ok", false) &&
         JsonValue(current, "mode", "") != "human" &&
         JsonValue(current, "interaction_id", "").empty() &&

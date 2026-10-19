@@ -67,9 +67,9 @@ and what a page downloads lands in that folder's `downloads`.
 | Answer the agent's request | **Open browser** on its card opens the viewer already in your control; **Done** returns you to the chat |
 | Free Chrome's memory | **Stop browser** in the status menu, shown while Chrome runs unused |
 
-- The host serves the screen to one viewer at a time.
-- While you drive, agent actions fail at once and tell the agent to call
-  `request_human`.
+- The host serves one viewer per browser instance at a time.
+- While you drive, the owning agent waits for handback before its next
+  action. Other browser instances can keep working.
 - The agent calls `request_human` for a login Chrome has not saved, MFA, a
   captcha or bot check, or a payment confirmation. The conversation shows its
   reason. Only the device that took control can finish it, and closing the
@@ -79,10 +79,44 @@ and what a page downloads lands in that folder's `downloads`.
   control back like **Done**.
 - One conversation uses the browser at a time. It is free again when that
   conversation's turn ends, or after three minutes without a browser action.
-  When a turn ends, only the tab the agent was on stays open.
+  Competing calls wait in a bounded FIFO queue below the model loop, with
+  their position shown in the live activity label and the browser status menu.
+  Cancellation removes the waiting call without performing its action. The
+  agent can call `release` sooner when finished browsing; a dead session's
+  published runtime lease also frees its browser.
+  When a shared-browser turn ends, only the tab the agent was on stays open.
 - Chrome stops after 15 minutes without browser work, unless you control it
   or the agent waits for you, and starts again on the next action. Watching
   alone does not keep it running.
+
+## Parallel research
+
+In the browser status menu, **Browser scheduling** selects the shared browser
+(default) or 1, 2 or 4 isolated research browsers. This preference is saved in
+the browser data directory's `scheduler.json`. Parallel research is opt-in;
+start with two and measure the host's memory and CPU before increasing it.
+
+New agent calls use the isolated pool when enabled. Each slot owns a separate
+Chrome process, profile, display, control channel and viewer socket. A
+conversation keeps its slot across related browser calls until release or turn
+completion. Its profile is reset before another conversation receives that slot:
+cookies, logins and page state are not shared between research conversations.
+Turning parallel mode down lets existing holders finish; new calls use the
+remaining capacity. Turning it off moves waiting work to the shared queue.
+
+`browser=shared` explicitly selects the persistent signed-in browser for a
+conversation that has not acquired a slot yet. Release a research slot first
+before requesting shared access. All callers, including the panel moderator and
+its threads, use the same broker. A moderator should release its browser before
+waiting on a thread that needs it.
+
+**Viewing** switches between instances and names their owning conversation.
+Takeover, Done, profile controls and clipboard input apply only to that instance.
+A turn ending while a human holds its browser defers release until handback.
+Queue waits are bounded by the tool deadline and a five-minute admission limit;
+an abandoned queue entry expires after 15 seconds without a poll. Actions carry
+a lease token, so a request from an earlier owner cannot reach a reassigned
+browser. Queue polling never holds a page-operation lock.
 
 ## Profiles and saved logins
 

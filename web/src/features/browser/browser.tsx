@@ -43,7 +43,18 @@ const X11_KEYSYM = Object.freeze({
   v: 0x76,
 });
 
+interface BrowserInstance {
+  instance_id: string;
+  session_id?: string;
+  mode?: "idle" | "agent" | "human";
+  waiting?: boolean;
+  isolated?: boolean;
+}
 interface BrowserStatus {
+  instance_id?: string;
+  parallel_capacity?: number;
+  instances?: BrowserInstance[];
+  queue?: { session_id: string; shared: boolean }[];
   ok?: boolean;
   running?: boolean;
   mode?: "idle" | "agent" | "human";
@@ -83,6 +94,7 @@ const SPECIAL_KEYS: Record<string, [string, number]> = {
 // The remote display for one Chrome launch. Control changes only toggle
 // input on the same connection; a new display remounts this.
 function Screen({
+  instance,
   viewer,
   screen,
   readOnly,
@@ -91,6 +103,7 @@ function Screen({
   setConnection,
   children,
 }: {
+  instance: string;
   viewer: RefObject<RFB | null>;
   screen: RefObject<HTMLDivElement | null>;
   readOnly: boolean;
@@ -114,7 +127,7 @@ function Screen({
       attempted = true;
       const rfb = new RFB(
         target.current,
-        `${scheme}//${location.host}${routes.browserViewer}`,
+        `${scheme}//${location.host}${routes.browserViewer}${instance === "0" ? "" : `?instance=${instance}`}`,
       );
       let denied = false;
       rfb.viewOnly = viewOnly.current;
@@ -146,7 +159,7 @@ function Screen({
       viewer.current?.disconnect();
       viewer.current = null;
     };
-  }, [report, viewer, setConnection]);
+  }, [instance, report, viewer, setConnection]);
   useEffect(() => {
     if (viewer.current) viewer.current.viewOnly = readOnly;
   }, [readOnly, viewer]);
@@ -182,13 +195,16 @@ export default function BrowserPanel({
   report,
   close,
   handoff = false,
+  sessionId,
 }: {
   sessions: Session[];
   report: Report;
   close: () => void;
   // Opened from the agent's request: take control at once, close on Done.
   handoff?: boolean;
+  sessionId?: string;
 }) {
+  const [instance, setInstance] = useState("0");
   const [status, setStatus] = useState<BrowserStatus>({});
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState<ConnectionPhase>("connecting");
@@ -210,6 +226,17 @@ export default function BrowserPanel({
   const inFlight = useRef<Promise<void> | null>(null);
   const tookOver = useRef(false);
 
+  useEffect(() => {
+    if (!handoff || tookOver.current) return;
+    const owner = status.instances?.find(
+      (item) => item.waiting && (!sessionId || item.session_id === sessionId),
+    );
+    if (owner && owner.instance_id !== instance) {
+      setStatus({});
+      setInstance(owner.instance_id);
+    }
+  }, [handoff, sessionId, status.instances, instance]);
+
   const driving = !!status.controller;
   const otherDevice = status.mode === "human" && !!status.leased && !driving;
   const viewing = !!status.running && !otherDevice;
@@ -224,9 +251,13 @@ export default function BrowserPanel({
       while (inFlight.current) await inFlight.current;
       const { signal } = lifetime.current;
       if (signal.aborted) return;
-      const request = api<BrowserStatus>(routes.browserStatus, undefined, {
-        signal,
-      })
+      const request = api<BrowserStatus>(
+        `${routes.browserStatus}${instance === "0" ? "" : `?instance=${instance}`}`,
+        undefined,
+        {
+          signal,
+        },
+      )
         .then((value) => {
           if (!signal.aborted) setStatus(value);
         })
@@ -239,7 +270,7 @@ export default function BrowserPanel({
       inFlight.current = request;
       return request;
     },
-    [report],
+    [instance, report],
   );
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -280,12 +311,18 @@ export default function BrowserPanel({
       | "stop"
       | "create_profile"
       | "select_profile"
-      | "setup_profile",
-    fields: { name?: string; profile_id?: string } = {},
+      | "setup_profile"
+      | "configure",
+    fields: {
+      name?: string;
+      profile_id?: string;
+      parallel_capacity?: number;
+    } = {},
   ) => {
     const session = sessionById(sessions, status.session_id);
     return command("browser", session, {
       action,
+      instance_id: instance,
       interaction_id: status.interaction_id || "",
       ...fields,
     });
@@ -321,7 +358,13 @@ export default function BrowserPanel({
   // tap, once.
   // biome-ignore lint/correctness/useExhaustiveDependencies: takes over once (tookOver), whichever render's control runs
   useEffect(() => {
-    if (!handoff || tookOver.current || !status.waiting || status.leased)
+    if (
+      !handoff ||
+      tookOver.current ||
+      !status.waiting ||
+      status.leased ||
+      (status.instance_id || "0") !== instance
+    )
       return;
     tookOver.current = true;
     void control("takeover");
@@ -549,6 +592,69 @@ export default function BrowserPanel({
             {status.title || status.url}
           </small>
         )}
+        <label>
+          Browser scheduling
+          <Select
+            aria-label="Browser scheduling"
+            value={status.parallel_capacity || 0}
+            disabled={busy}
+            onChange={(event) =>
+              void run(() =>
+                send("configure", {
+                  parallel_capacity: Number(event.currentTarget.value),
+                }),
+              )
+            }
+          >
+            <option value={0}>Shared browser · queue threads</option>
+            <option value={1}>1 isolated research browser</option>
+            <option value={2}>2 parallel research browsers</option>
+            <option value={4}>4 parallel research browsers</option>
+          </Select>
+        </label>
+        <small class="muted">
+          Research browsers start signed out. Use the shared browser for saved
+          logins.
+        </small>
+        {(status.instances?.length || 0) > 1 && (
+          <label>
+            Viewing
+            <Select
+              aria-label="Browser instance"
+              value={instance}
+              disabled={busy || driving}
+              onChange={(event) => {
+                setStatus({});
+                setInstance(event.currentTarget.value);
+              }}
+            >
+              {status.instances?.map((item) => (
+                <option key={item.instance_id} value={item.instance_id}>
+                  {item.instance_id === "0"
+                    ? "Shared browser"
+                    : `Research ${item.instance_id}`}
+                  {item.session_id &&
+                    ` · ${sessionById(sessions, item.session_id)?.title || "Conversation"}`}
+                  {item.mode === "human" && " · Human control"}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+        {!!status.queue?.length && (
+          <div role="status" class="browser-waiting">
+            <strong>Waiting for browser</strong>
+            <ol>
+              {status.queue.map((item, index) => (
+                <li key={`${item.session_id}-${index}`}>
+                  {sessionById(sessions, item.session_id)?.title ||
+                    "Conversation"}
+                  {item.shared ? " · Shared" : " · Research"}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
         <Select
           aria-label="Chrome profile"
           value={status.profile_id || "default"}
@@ -716,7 +822,8 @@ export default function BrowserPanel({
       screen={
         viewing ? (
           <Screen
-            key={status.display}
+            key={`${instance}-${status.display}`}
+            instance={instance}
             viewer={viewer}
             screen={screen}
             readOnly={!driving}

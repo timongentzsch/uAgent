@@ -497,3 +497,84 @@ test("desktop Copy and Paste carry text between Chrome and the device", async ({
     "from chrome",
   );
 });
+
+for (const width of [320, 1280]) {
+  test(`browser scheduling and waiting threads fit at ${width}px`, async ({
+    page,
+    session,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    let capacity = 0;
+    const commands = [];
+    await page.route("**/api/browser/status*", (route) => {
+      const instance =
+        new URL(route.request().url()).searchParams.get("instance") || "0";
+      return route.fulfill({
+        json: {
+          ok: true,
+          running: false,
+          mode: "idle",
+          instance_id: instance,
+          ...profiles,
+          parallel_capacity: capacity,
+          instances: [
+            { instance_id: "0", mode: "idle" },
+            ...(capacity
+              ? [
+                  {
+                    instance_id: "1",
+                    mode: "agent",
+                    session_id: session.id,
+                    isolated: true,
+                  },
+                  { instance_id: "2", mode: "idle", isolated: true },
+                ]
+              : []),
+          ],
+          queue: [{ session_id: session.id, shared: capacity === 0 }],
+        },
+      });
+    });
+    await page.route("**/api/command", (route) => {
+      const command = route.request().postDataJSON();
+      commands.push(command);
+      if (command.action === "configure") capacity = command.parallel_capacity;
+      return route.fulfill({
+        json: { accepted: true, pending: false, result: { ok: true } },
+      });
+    });
+    const dialog = await openBrowser(page, session);
+    await dialog
+      .getByRole("button", { name: /Browser status and profiles/ })
+      .click();
+    await expect(
+      dialog.getByText("Waiting for browser", { exact: true }),
+    ).toBeVisible();
+    await dialog
+      .getByLabel("Browser scheduling", { exact: true })
+      .selectOption("2");
+    await expect(
+      dialog.getByLabel("Browser instance", { exact: true }),
+    ).toBeVisible();
+    await dialog
+      .getByLabel("Browser instance", { exact: true })
+      .selectOption("1");
+    await expect(
+      dialog.getByLabel("Browser instance", { exact: true }),
+    ).toHaveValue("1");
+    await expect(
+      dialog.getByText(/Research browsers start signed out/),
+    ).toBeVisible();
+    expect(commands[0]).toMatchObject({
+      action: "configure",
+      parallel_capacity: 2,
+      instance_id: "0",
+    });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: testInfo.outputPath("browser-scheduling.png"),
+    });
+  });
+}

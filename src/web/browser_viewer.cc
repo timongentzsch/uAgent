@@ -27,7 +27,9 @@ namespace {
 // How often the relay re-reads the lease; input follows control within this.
 constexpr int kLeaseCheckMs = 250;
 
-Fd ConnectRfb() { return ConnectUnix(browser::RfbPath()); }
+Fd ConnectRfb(const std::string& instance) {
+  return ConnectUnix(browser::RfbPath(instance));
+}
 
 // The display this device views and whether it drives it, or nullopt once
 // the browser stops.
@@ -36,9 +38,11 @@ struct Lease {
   uint64_t generation = 0;
   bool controller = false;
 };
-std::optional<Lease> ReadLease(const std::string& device) {
-  json status = browser::Request({{"op", "viewer"}, {"device", device}},
-                                 browser::kProbeMs);
+std::optional<Lease> ReadLease(const std::string& device,
+                               const std::string& instance) {
+  json status = browser::Request(
+      {{"op", "viewer"}, {"device", device}, {"instance_id", instance}},
+      browser::kProbeMs);
   if (!status.value("ok", false)) return std::nullopt;
   return Lease{JsonValue(status, "display", uint64_t{0}),
                JsonValue(status, "generation", uint64_t{0}),
@@ -48,14 +52,15 @@ std::optional<Lease> ReadLease(const std::string& device) {
 }  // namespace
 
 ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
-                                 const std::string& device) {
-  const std::optional<Lease> initial = ReadLease(device);
+                                 const std::string& device,
+                                 const std::string& instance) {
+  const std::optional<Lease> initial = ReadLease(device, instance);
   if (!initial) {
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
     return {};
   }
   const uint64_t display = initial->display;
-  Fd rfb = ConnectRfb();
+  Fd rfb = ConnectRfb(instance);
   if (!rfb) {
     socket.close(httplib::ws::CloseStatus::GoingAway);
     return {};
@@ -83,7 +88,7 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
       if (std::chrono::steady_clock::now() >= next_check) {
         // A new display (Chrome restarted) needs a fresh RFB session; a
         // control change only gates input on this one.
-        auto lease = ReadLease(device);
+        auto lease = ReadLease(device, instance);
         if (!lease || lease->display != display) break;
         {
           std::lock_guard lock(input);

@@ -19,7 +19,7 @@ namespace uagent::browser {
 // is serialized, so a human takeover cannot race an agent input command.
 class Runtime {
  public:
-  Runtime();
+  explicit Runtime(std::string directory = {}, uint64_t incarnation = 0);
   ~Runtime();
   json Execute(const json& command);
   void Shutdown();
@@ -65,6 +65,9 @@ class Runtime {
     std::string id;
     std::string name;
   };
+
+  std::string directory_;
+  std::string RfbSocket() const;
 
   pid_t vnc_pid_ = -1;
   pid_t chrome_pid_ = -1;

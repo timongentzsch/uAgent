@@ -310,6 +310,7 @@ if(UAGENT_WEB)
   # leave the browser unreferenced and the linker drops it.
   if(UAGENT_BROWSER)
     target_sources(uagent_tools PRIVATE src/browser/browser.cc
+                                        src/browser/broker.cc
                                         src/browser/runtime.cc
                                         src/browser/runtime_act.cc
                                         src/browser/runtime_control.cc

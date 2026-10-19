@@ -48,11 +48,11 @@ void RecordPanelCost(const std::string& folder, double cost);
 // turns and its threads', has reached the daily limit.
 std::string PanelPause(const std::string& folder);
 
-// Everything a panel may use: it reads and delegates, never writes or
-// runs, whatever the capability setting allows.
+// The moderator reads, browses and delegates. It cannot edit workspace files
+// or run commands, whatever the capability setting allows.
 inline constexpr const char* kPanelTools[] = {
-    "read_path", "grep",   "memory", "skill", "uagent",
-    "history",   "thread", "decide", "state", "ask"};
+    "read_path", "grep",   "memory", "skill", "uagent", "history",
+    "thread",    "decide", "state",  "ask",   "browser"};
 
 // Everything a member of the panel's chat may use: it reads and
 // searches to check what it says, and changes nothing.

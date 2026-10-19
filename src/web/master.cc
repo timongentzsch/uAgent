@@ -304,7 +304,11 @@ bool Master::Initialize(std::string& error) {
   if (!browser::DataDirectory().empty()) {
     server_.Get("/api/browser/status",
                 [this](const Request& request, Response& response) {
-                  json status = browser::Request({{"op", "status"}});
+                  json status = browser::Request(
+                      {{"op", "status"},
+                       {"instance_id", request.has_param("instance")
+                                           ? request.get_param_value("instance")
+                                           : "0"}});
                   std::lock_guard lock(mutex_);
                   status["controller"] =
                       JsonValue(status, "viewer", "") == DeviceId(request);
@@ -324,18 +328,27 @@ bool Master::Initialize(std::string& error) {
               device = DeviceId(request);
             }
           }
-          if (device.empty() || viewer_active_.exchange(true)) {
+          const std::string instance = request.has_param("instance")
+                                           ? request.get_param_value("instance")
+                                           : "0";
+          if (instance.size() != 1 || instance[0] < '0' || instance[0] > '4') {
             socket.close(httplib::ws::CloseStatus::PolicyViolation);
             return;
           }
-          if (auto viewed = RelayBrowserViewer(socket, device);
+          auto& active = viewer_active_[static_cast<size_t>(instance[0] - '0')];
+          if (device.empty() || active.exchange(true)) {
+            socket.close(httplib::ws::CloseStatus::PolicyViolation);
+            return;
+          }
+          if (auto viewed = RelayBrowserViewer(socket, device, instance);
               viewed.display) {
             browser::Request({{"op", "viewer_disconnected"},
+                              {"instance_id", instance},
                               {"device", device},
                               {"display", viewed.display},
                               {"generation", viewed.generation}});
           }
-          viewer_active_ = false;
+          active = false;
         });
   }
   server_.Get(

@@ -78,9 +78,10 @@ struct BrowserAccess {
 ToolResult Acquire(const std::string& session_id, const json& args,
                    const ToolContext& context, BrowserAccess& access) {
   const std::string request = RandomToken(16);
-  if (request.empty())
+  if (request.empty()) {
     return ToolFailure(ToolErrorCode::kInternal,
                        "cannot create browser request");
+  }
   struct Pending {
     std::string session, request;
     ~Pending() {
@@ -95,8 +96,9 @@ ToolResult Acquire(const std::string& session_id, const json& args,
                std::chrono::steady_clock::now() + std::chrono::minutes(5));
   std::string waiting;
   for (;;) {
-    if (AbortRequested())
+    if (AbortRequested()) {
       return ToolCancelled("Stopped waiting for the browser");
+    }
     if (std::chrono::steady_clock::now() >= deadline) {
       return ToolTimedOut(
           "Timed out waiting for the browser; no page action was performed");
@@ -113,15 +115,18 @@ ToolResult Acquire(const std::string& session_id, const json& args,
     }
     if (answer.value("acquired", false)) {
       access = {session_id, JsonValue(answer, "lease", "")};
-      if (context.progress && !waiting.empty())
+      if (context.progress && !waiting.empty()) {
         context.progress("Using browser");
+      }
       return ToolSuccess("");
     }
     const int position = JsonValue(answer, "position", 0);
     const std::string label =
         JsonValue(answer, "reason", "Waiting for browser") +
         (position > 0 ? " · position " + std::to_string(position) : "");
-    if (context.progress && label != waiting) context.progress(label);
+    if (context.progress && label != waiting) {
+      context.progress(label);
+    }
     waiting = label;
     poll(nullptr, 0, kProbeIntervalMs);
   }
@@ -733,9 +738,12 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     }
     BrowserAccess access;
     ToolResult admission = Acquire(session_id, args, context, access);
-    if (!admission.Ok()) return admission;
-    if (AbortRequested() || context.Expired())
+    if (!admission.Ok()) {
+      return admission;
+    }
+    if (AbortRequested() || context.Expired()) {
       return ToolCancelled("Browser action interrupted before execution");
+    }
     if (action == "request_human") {
       return Handover(access,
                       JsonValue(args, "reason", "Please finish in the browser"),

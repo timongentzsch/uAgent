@@ -89,24 +89,30 @@ struct Broker::State {
     for (auto& ptr : slots) {
       Slot& slot = *ptr;
       if (slot.owner.empty() || slot.busy ||
-          JsonValue(slot.status, "mode", "") == "human")
+          JsonValue(slot.status, "mode", "") == "human") {
         continue;
+      }
       if ((slot.live && !Live(slot.owner)) ||
-          current - slot.used >= kOwnerQuiet)
+          current - slot.used >= kOwnerQuiet) {
         Clear(slot);
+      }
     }
   }
   int Owned(const std::string& session) const UAGENT_REQUIRES(mutex) {
     if (!session.empty()) {
       for (size_t i = 0; i < slots.size(); ++i) {
-        if (slots[i]->owner == session) return static_cast<int>(i);
+        if (slots[i]->owner == session) {
+          return static_cast<int>(i);
+        }
       }
     }
     return -1;
   }
   int Instance(const json& command) const {
     const std::string id = JsonValue(command, "instance_id", "0");
-    if (id.size() != 1 || id[0] < '0' || id[0] > '0' + kMaxResearch) return -1;
+    if (id.size() != 1 || id[0] < '0' || id[0] > '0' + kMaxResearch) {
+      return -1;
+    }
     return id[0] - '0';
   }
   json Summary(int index) const UAGENT_REQUIRES(mutex) {
@@ -157,8 +163,12 @@ json Broker::Execute(const json& command) {
   int index = -1;
   {
     std::lock_guard lock(s.mutex);
-    if (s.stopping) return {{"error", "browser service is stopping"}};
-    if (op == "ping") return {{"ok", true}};
+    if (s.stopping) {
+      return {{"error", "browser service is stopping"}};
+    }
+    if (op == "ping") {
+      return {{"ok", true}};
+    }
     s.Prune();
     index = s.Owned(session);
     if (op == "configure") {
@@ -172,8 +182,11 @@ json Broker::Execute(const json& command) {
         return {{"error", "cannot save browser scheduling settings"}};
       }
       s.capacity = capacity;
-      if (capacity == 0)
-        for (auto& waiter : s.waiting) waiter.shared = true;
+      if (capacity == 0) {
+        for (auto& waiter : s.waiting) {
+          waiter.shared = true;
+        }
+      }
       return s.Status(s.Instance(command) < 0 ? 0 : s.Instance(command));
     }
     if (op == "acquire" || op == "cancel_acquire") {
@@ -231,11 +244,13 @@ json Broker::Execute(const json& command) {
              i <= (found->shared ? 0 : s.capacity); ++i) {
           auto& slot = *s.slots[static_cast<size_t>(i)];
           if (!slot.owner.empty() || slot.busy ||
-              JsonValue(slot.status, "mode", "") == "human")
+              JsonValue(slot.status, "mode", "") == "human") {
             continue;
+          }
           slot.token = RandomToken(16);
-          if (slot.token.empty())
+          if (slot.token.empty()) {
             return {{"error", "cannot create browser lease"}};
+          }
           slot.owner = session;
           slot.live = Live(session);
           slot.used = s.now();
@@ -257,19 +272,26 @@ json Broker::Execute(const json& command) {
       std::erase_if(s.waiting, [&](const State::Waiter& w) {
         return w.session == session;
       });
-      if (index < 0) return {{"ok", true}};
+      if (index < 0) {
+        return {{"ok", true}};
+      }
     }
     if (op == "status" || op == "agent_status" || op == "viewer") {
-      if (index < 0) index = s.Instance(command);
-      if (index < 0) return {{"error", "unknown browser instance"}};
+      if (index < 0) {
+        index = s.Instance(command);
+      }
+      if (index < 0) {
+        return {{"error", "unknown browser instance"}};
+      }
       if (op == "viewer") {
         // Viewer heartbeats must not occupy service threads behind a slow
         // page operation. During a control transition, gate input closed
         // until the new snapshot has been published.
         const auto& slot = *s.slots[static_cast<size_t>(index)];
         json result = s.Summary(index);
-        if (!JsonValue(result, "running", false))
+        if (!JsonValue(result, "running", false)) {
           return {{"error", "the browser is not running"}};
+        }
         result["controller"] =
             !slot.busy && JsonValue(result, "mode", "") == "human" &&
             JsonValue(result, "viewer", "") == JsonValue(command, "device", "");
@@ -277,10 +299,15 @@ json Broker::Execute(const json& command) {
       }
       return s.Status(index);
     }
-    if (index < 0 && !session.empty())
+    if (index < 0 && !session.empty()) {
       return {{"error", "acquire the browser before using it"}};
-    if (index < 0) index = s.Instance(command);
-    if (index < 0) return {{"error", "unknown browser instance"}};
+    }
+    if (index < 0) {
+      index = s.Instance(command);
+    }
+    if (index < 0) {
+      return {{"error", "unknown browser instance"}};
+    }
   }
   auto& slot = *s.slots[static_cast<size_t>(index)];
   std::lock_guard runtime_lock(slot.mutex);
@@ -288,7 +315,9 @@ json Broker::Execute(const json& command) {
   uint64_t incarnation = 0;
   {
     std::lock_guard lock(s.mutex);
-    if (s.stopping) return {{"error", "browser service is stopping"}};
+    if (s.stopping) {
+      return {{"error", "browser service is stopping"}};
+    }
     if (!session.empty() && (slot.owner != session ||
                              ((op != "release" || command.contains("lease")) &&
                               JsonValue(command, "lease", "") != slot.token))) {
@@ -318,8 +347,9 @@ json Broker::Execute(const json& command) {
     slot.runtime = std::make_unique<Runtime>(slot.directory, incarnation);
     slot.runtime_token = token;
   }
-  if (!previous.empty())
+  if (!previous.empty()) {
     slot.runtime->Execute({{"op", "release"}, {"session_id", previous}});
+  }
   json result = slot.runtime->Execute(command);
   json snapshot =
       slot.runtime->Execute({{"op", op == "viewer" ? "snapshot" : "status"}});
@@ -349,8 +379,9 @@ json Broker::Execute(const json& command) {
     if (release ||
         (op == "release" && JsonValue(slot.status, "mode", "") != "human") ||
         (op == "stop" && !result.contains("error"))) {
-      if (op == "release")
+      if (op == "release") {
         result = {{"ok", true}, {"instance_id", std::to_string(index)}};
+      }
       s.Clear(slot);
     }
     result["instance_id"] = std::to_string(index);
@@ -361,7 +392,9 @@ json Broker::Execute(const json& command) {
 void Broker::Maintain() {
   for (auto& slot : state_->slots) {
     std::unique_lock lock(slot->mutex, std::try_to_lock);
-    if (!lock) continue;
+    if (!lock) {
+      continue;
+    }
     slot->runtime->StopIfIdle(std::chrono::minutes(kIdleMinutes));
     json snapshot = slot->runtime->Execute({{"op", "snapshot"}});
     std::lock_guard state_lock(state_->mutex);

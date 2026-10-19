@@ -253,19 +253,19 @@ void TestBrowserScheduling() {
     return broker.Execute(
         {{"op", "acquire"}, {"session_id", id}, {"request_id", request}});
   };
-  constexpr const char* a = "aaaaaaaaaaaaaaaa";
-  constexpr const char* b = "bbbbbbbbbbbbbbbb";
-  constexpr const char* c = "cccccccccccccccc";
-  constexpr const char* d = "dddddddddddddddd";
-  auto first = acquire(a);
+  constexpr const char* kSessionA = "aaaaaaaaaaaaaaaa";
+  constexpr const char* kSessionB = "bbbbbbbbbbbbbbbb";
+  constexpr const char* kSessionC = "cccccccccccccccc";
+  constexpr const char* kSessionD = "dddddddddddddddd";
+  auto first = acquire(kSessionA);
   CHECK(first.value("acquired", false));
   CHECK(first.value("instance_id", "") == "0");
-  CHECK(acquire(b).value("position", 0) == 1);
-  CHECK(acquire(c).value("position", 0) == 2);
-  CHECK(acquire(d).value("position", 0) == 3);
+  CHECK(acquire(kSessionB).value("position", 0) == 1);
+  CHECK(acquire(kSessionC).value("position", 0) == 2);
+  CHECK(acquire(kSessionD).value("position", 0) == 3);
   CHECK(broker.Execute({{"op", "status"}})["queue"].size() == 3);
   // No Chrome, no ownership error just to check whether the browser is busy.
-  CHECK(!broker.Execute({{"op", "agent_status"}, {"session_id", b}})
+  CHECK(!broker.Execute({{"op", "agent_status"}, {"session_id", kSessionB}})
              .contains("error"));
   CHECK(broker
             .Execute({{"op", "acquire"},
@@ -275,48 +275,50 @@ void TestBrowserScheduling() {
   CHECK(broker.Execute({{"op", "status"}, {"instance_id", "../"}})
             .contains("error"));
   broker.Execute({{"op", "cancel_acquire"},
-                  {"session_id", b},
+                  {"session_id", kSessionB},
                   {"request_id", "1111111111111111"}});
-  CHECK(acquire(c).value("position", 0) == 1);
-  broker.Execute({{"op", "release"}, {"session_id", a}});
+  CHECK(acquire(kSessionC).value("position", 0) == 1);
+  broker.Execute({{"op", "release"}, {"session_id", kSessionA}});
   // A newcomer cannot jump the existing queue, even before its head polls.
-  CHECK(!acquire(b).value("acquired", false));
-  auto second = acquire(c);
+  CHECK(!acquire(kSessionB).value("acquired", false));
+  auto second = acquire(kSessionC);
   CHECK(second.value("acquired", false));
   CHECK(second["lease"] != first["lease"]);
   CHECK(broker
             .Execute({{"op", "open"},
-                      {"session_id", a},
+                      {"session_id", kSessionA},
                       {"lease", first["lease"]},
                       {"url", "https://example.com/"}})
             .contains("error"));
   // Releasing a former owner cannot release somebody else's browser.
-  broker.Execute({{"op", "release"}, {"session_id", a}});
-  CHECK(broker.Execute({{"op", "status"}}).value("session_id", "") == c);
-  broker.Execute({{"op", "release"}, {"session_id", c}});
+  broker.Execute({{"op", "release"}, {"session_id", kSessionA}});
+  CHECK(broker.Execute({{"op", "status"}}).value("session_id", "") ==
+        kSessionC);
+  broker.Execute({{"op", "release"}, {"session_id", kSessionC}});
   broker.Execute({{"op", "cancel_acquire"},
-                  {"session_id", b},
+                  {"session_id", kSessionB},
                   {"request_id", "1111111111111111"}});
   // A disconnected head expires. A polling waiter behind it stays queued.
   now += std::chrono::seconds(14);
-  CHECK(!acquire(b).value("acquired", false));
+  CHECK(!acquire(kSessionB).value("acquired", false));
   now += std::chrono::seconds(2);
-  CHECK(acquire(b).value("acquired", false));
+  CHECK(acquire(kSessionB).value("acquired", false));
   // A forgotten owner cannot reserve the browser forever.
   now += std::chrono::minutes(3);
-  CHECK(acquire(a).value("acquired", false));
-  broker.Execute({{"op", "release"}, {"session_id", a}});
+  CHECK(acquire(kSessionA).value("acquired", false));
+  broker.Execute({{"op", "release"}, {"session_id", kSessionA}});
   // A published runtime disappearing releases its grant immediately.
   CreatePrivateDirectories(RuntimeDir());
   FileLease running;
   std::string error;
-  CHECK(running.Acquire(session::SocketPathForId(a) + ".lock", error, true));
-  CHECK(acquire(a).value("acquired", false));
-  CHECK(!acquire(b).value("acquired", false));
+  CHECK(running.Acquire(session::SocketPathForId(kSessionA) + ".lock", error,
+                        true));
+  CHECK(acquire(kSessionA).value("acquired", false));
+  CHECK(!acquire(kSessionB).value("acquired", false));
   running.Reset();
-  CHECK(acquire(b).value("acquired", false));
+  CHECK(acquire(kSessionB).value("acquired", false));
   broker.Shutdown();
-  CHECK(acquire(c).contains("error"));
+  CHECK(acquire(kSessionC).contains("error"));
 }
 
 void TestBrowserParallelScheduling() {
@@ -337,13 +339,13 @@ void TestBrowserParallelScheduling() {
                            {"request_id", "1111111111111111"},
                            {"browser", kind}});
   };
-  constexpr const char* a = "aaaaaaaaaaaaaaaa";
-  constexpr const char* b = "bbbbbbbbbbbbbbbb";
-  constexpr const char* c = "cccccccccccccccc";
-  auto one = acquire(a), two = acquire(b);
+  constexpr const char* kSessionA = "aaaaaaaaaaaaaaaa";
+  constexpr const char* kSessionB = "bbbbbbbbbbbbbbbb";
+  constexpr const char* kSessionC = "cccccccccccccccc";
+  auto one = acquire(kSessionA), two = acquire(kSessionB);
   CHECK(one.value("instance_id", "") == "1");
   CHECK(two.value("instance_id", "") == "2");
-  CHECK(!acquire(c).value("acquired", false));
+  CHECK(!acquire(kSessionC).value("acquired", false));
   auto shared = acquire("dddddddddddddddd", "shared");
   CHECK(shared.value("instance_id", "") == "0");
   const auto open = [&](const char* id, const json& grant) {
@@ -352,8 +354,10 @@ void TestBrowserParallelScheduling() {
                            {"lease", grant["lease"]},
                            {"url", "https://example.com/"}});
   };
-  auto left = std::async(std::launch::async, [&] { return open(a, one); });
-  auto right = std::async(std::launch::async, [&] { return open(b, two); });
+  auto left =
+      std::async(std::launch::async, [&] { return open(kSessionA, one); });
+  auto right =
+      std::async(std::launch::async, [&] { return open(kSessionB, two); });
   CHECK(!left.get().contains("error"));
   CHECK(!right.get().contains("error"));
   CHECK(fs::exists(directory / "p1/profile/cdp.jsonl"));
@@ -361,50 +365,52 @@ void TestBrowserParallelScheduling() {
   // A slow page must not queue viewer heartbeat threads behind its runtime
   // lock, or prevent another research instance from progressing.
   std::ofstream(directory / "p1/profile/pause-navigation").close();
-  auto paused = std::async(std::launch::async, [&] { return open(a, one); });
+  auto paused =
+      std::async(std::launch::async, [&] { return open(kSessionA, one); });
   for (int wait = 0;
        wait < 100 && !fs::exists(directory / "p1/profile/navigation-paused");
-       ++wait)
+       ++wait) {
     poll(nullptr, 0, 10);
+  }
   CHECK(fs::exists(directory / "p1/profile/navigation-paused"));
   for (int heartbeat = 0; heartbeat < 20; ++heartbeat) {
     auto viewer = broker.Execute({{"op", "viewer"}, {"instance_id", "1"}});
     CHECK(viewer.value("ok", false));
     CHECK(!viewer.value("controller", true));
   }
-  CHECK(!open(b, two).contains("error"));
+  CHECK(!open(kSessionB, two).contains("error"));
   CHECK(paused.wait_for(std::chrono::milliseconds(0)) !=
         std::future_status::ready);
   fs::remove(directory / "p1/profile/pause-navigation");
   CHECK(!paused.get().contains("error"));
   // Human control of one instance neither claims nor blocks the other.
-  constexpr const char* device = "eeeeeeeeeeeeeeee";
+  constexpr const char* kDevice = "eeeeeeeeeeeeeeee";
   auto taken = broker.Execute(
-      {{"op", "takeover"}, {"device", device}, {"instance_id", "1"}});
+      {{"op", "takeover"}, {"device", kDevice}, {"instance_id", "1"}});
   CHECK(taken.value("mode", "") == "human");
-  CHECK(
-      broker
-          .Execute({{"op", "viewer"}, {"device", device}, {"instance_id", "1"}})
-          .value("controller", false));
-  CHECK(!open(b, two).contains("error"));
+  CHECK(broker
+            .Execute(
+                {{"op", "viewer"}, {"device", kDevice}, {"instance_id", "1"}})
+            .value("controller", false));
+  CHECK(!open(kSessionB, two).contains("error"));
   // A turn ending during human control defers release until handback.
-  broker.Execute({{"op", "release"}, {"session_id", a}});
-  CHECK(!acquire(c).value("acquired", false));
+  broker.Execute({{"op", "release"}, {"session_id", kSessionA}});
+  CHECK(!acquire(kSessionC).value("acquired", false));
   CHECK(!broker
              .Execute({{"op", "done"},
-                       {"device", device},
+                       {"device", kDevice},
                        {"instance_id", "1"},
                        {"interaction_id", ""}})
              .contains("error"));
-  auto next = acquire(c);
+  auto next = acquire(kSessionC);
   CHECK(next.value("acquired", false));
   CHECK(next.value("instance_id", "") == "1");
   std::ofstream(directory / "p1/profile/private-cookie") << "previous owner";
-  CHECK(!open(c, next).contains("error"));
+  CHECK(!open(kSessionC, next).contains("error"));
   CHECK(!fs::exists(directory / "p1/profile/private-cookie"));
   CHECK(broker
             .Execute({{"op", "click"},
-                      {"session_id", c},
+                      {"session_id", kSessionC},
                       {"lease", one["lease"]},
                       {"element", 1},
                       {"view_id", "old"}})
@@ -910,18 +916,21 @@ void TestBrowserToolQueue() {
   CHECK(pipe(owner) == 0);
   CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
   std::thread service([&] { browser::ServiceMain(owner[0]); });
-  for (int wait = 0; wait < 500 && !fs::exists(browser::SocketPath()); ++wait)
+  for (int wait = 0; wait < 500 && !fs::exists(browser::SocketPath()); ++wait) {
     poll(nullptr, 0, 10);
-  constexpr const char* a = "aaaaaaaaaaaaaaaa";
-  constexpr const char* b = "bbbbbbbbbbbbbbbb";
+  }
+  constexpr const char* kSessionA = "aaaaaaaaaaaaaaaa";
+  constexpr const char* kSessionB = "bbbbbbbbbbbbbbbb";
   const auto acquire = [&] {
     return browser::Request({{"op", "acquire"},
-                             {"session_id", a},
+                             {"session_id", kSessionA},
                              {"request_id", "1111111111111111"}});
   };
   CHECK(acquire().value("acquired", false));
-  const Tool tool = BrowserTool(b, [](const std::string&, const std::string&,
-                                      bool*) { return std::string(); });
+  const Tool tool =
+      BrowserTool(kSessionB, [](const std::string&, const std::string&, bool*) {
+        return std::string();
+      });
   ToolContext timed(std::chrono::steady_clock::now() +
                     std::chrono::milliseconds(100));
   CHECK(!tool.run({{"action", "open"}, {"url", "https://example.com/"}}, timed)
@@ -934,7 +943,9 @@ void TestBrowserToolQueue() {
     return tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   });
   for (int wait = 0; wait < 100; ++wait) {
-    if (!browser::Request({{"op", "status"}})["queue"].empty()) break;
+    if (!browser::Request({{"op", "status"}})["queue"].empty()) {
+      break;
+    }
     poll(nullptr, 0, 10);
   }
   CHECK(!browser::Request({{"op", "status"}})["queue"].empty());
@@ -953,13 +964,15 @@ void TestBrowserToolQueue() {
                     context);
   });
   for (int wait = 0; wait < 100; ++wait) {
-    if (!browser::Request({{"op", "status"}})["queue"].empty()) break;
+    if (!browser::Request({{"op", "status"}})["queue"].empty()) {
+      break;
+    }
     poll(nullptr, 0, 10);
   }
   CHECK(!browser::Request({{"op", "status"}})["queue"].empty());
   CHECK(pending.wait_for(std::chrono::milliseconds(0)) !=
         std::future_status::ready);
-  CHECK(!browser::Request({{"op", "release"}, {"session_id", a}})
+  CHECK(!browser::Request({{"op", "release"}, {"session_id", kSessionA}})
              .contains("error"));
   CHECK(pending.get().Ok());
   CHECK(labels.size() >= 2);
@@ -968,7 +981,9 @@ void TestBrowserToolQueue() {
   int navigations = 0;
   std::ifstream log(directory / "profile/cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
-    if (json::parse(line).value("method", "") == "Page.navigate") ++navigations;
+    if (json::parse(line).value("method", "") == "Page.navigate") {
+      ++navigations;
+    }
   }
   CHECK(navigations == 1);
   CHECK(browser::Request({{"op", "status"}})["queue"].empty());

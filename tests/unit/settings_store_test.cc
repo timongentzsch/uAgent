@@ -219,6 +219,23 @@ void TestSettingsStore() {
     CHECK(ReadSettings("").all.at("UAGENT_PANEL_CHAT_TURNS") == "2");
   }
 
+  // The retired reviewer address also disappears from existing format-3
+  // settings without disturbing the rest of either scope.
+  {
+    TestWorkspace earlier("settings-store-review-address");
+    Put(SettingsPath(),
+        R"({"format":3,"all":{"approval.reviewerUrl":"https://old.test/alpha",)"
+        R"("model":"keep"},"projects":{"/p":{"approval.reviewerUrl":)"
+        R"("https://project.test/alpha","limits.maxSteps":7}}})");
+    const SavedSettings read = ReadSettings("/p");
+    CHECK(read.error.empty() && read.warning.empty());
+    CHECK(read.all.at("UAGENT_MODEL") == "keep");
+    CHECK(read.project.at("UAGENT_MAX_STEPS") == "7");
+    const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
+    CHECK(!now["all"].contains("approval.reviewerUrl"));
+    CHECK(!now["projects"]["/p"].contains("approval.reviewerUrl"));
+  }
+
   // Format 2 kept OpenRouter's settings beside the others. They move into
   // that endpoint, a provider's protocol becomes its features, and the routing
   // variant joins the model id before its effort.
@@ -226,6 +243,7 @@ void TestSettingsStore() {
     TestWorkspace endpoints("settings-store-endpoints");
     Put(SettingsPath(),
         R"({"format": 2, "all": {"openrouter.provider": "streamlake",)"
+        R"( "approval.reviewerUrl": "https://x.test/alpha",)"
         R"( "openrouter.variant": "nitro", "model": "vendor/m:high",)"
         R"( "pdf.engine": "mistral-ocr", "webSearch.backend": "openrouter",)"
         R"( "providers": {"gateway": {"base_url": "https://gw.test/v1",)"
@@ -240,6 +258,7 @@ void TestSettingsStore() {
     const json& held = now["all"];
     CHECK(held["model"] == "vendor/m:nitro:high");
     CHECK(held["webSearch.backend"] == "auto");
+    CHECK(!held.contains("approval.reviewerUrl"));
     CHECK(!held.contains("openrouter.provider") &&
           !held.contains("openrouter.variant") && !held.contains("pdf.engine"));
     const json& openrouter = held["providers"]["openrouter"];

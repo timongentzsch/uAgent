@@ -64,8 +64,10 @@ export const test = base.extend({
   paired: [true, { option: true }],
   // A host whose conversations start with no model chosen.
   noModel: [false, { option: true }],
+  // A host in Auto approval whose decision model is wary of sending data.
+  autoReview: [false, { option: true }],
   page: failOnPageErrors,
-  host: async ({ noModel }, use, testInfo) => {
+  host: async ({ noModel, autoReview }, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [
       "../tests/web_host.py",
@@ -79,6 +81,7 @@ export const test = base.extend({
       "--fixture",
       path,
       ...(noModel ? ["--no-model"] : []),
+      ...(autoReview ? ["--auto-review"] : []),
     ]);
     const exited = once(child, "exit");
     let output = "",

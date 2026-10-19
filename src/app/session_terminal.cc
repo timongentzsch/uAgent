@@ -166,6 +166,10 @@ class Terminal {
                    JsonValue(risk, "label", std::string());
         }
         if (!risks.empty()) description = AsciiGlyphs(risks) + "\n";
+        if (const std::string review = JsonValue(*approval, "review", "");
+            !review.empty()) {
+          description += review + "\n";
+        }
         description += JsonValue(*approval, "mandatory_reason", "") + "\n" +
                        JsonValue(*approval, "preview", "") + "\n";
       }

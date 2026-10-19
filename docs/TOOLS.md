@@ -60,7 +60,7 @@ workspace follow the approval mode:
 | To | Use |
 | --- | --- |
 | approve each call yourself (the default) | `/permissions ask` |
-| let a reviewer model decide | `/permissions auto`; needs `OPENROUTER_API_KEY`, and `UAGENT_PERMISSION_MODEL` and `UAGENT_PERMISSION_URL` choose the reviewer |
+| let a decision model decide | `/permissions auto`; needs an endpoint that declares `decisions` (OpenRouter, with `OPENROUTER_API_KEY`); `UAGENT_PERMISSION_MODEL` chooses the model |
 | run them unasked, commands still sandboxed | `/permissions yolo`, `/yolo` or `--yolo` |
 | save a mode as the default | `UAGENT_APPROVAL` |
 | list or remove remembered approvals | `/permissions rules`, `/permissions forget N\|all` |

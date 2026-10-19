@@ -166,7 +166,12 @@ constexpr FieldBinding<double> kDoubleOptions[] = {
 constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_APPROVAL"), &RuntimeConfig::approval},
     {&Cfg("UAGENT_PERMISSION_MODEL"), &RuntimeConfig::permission_model},
-    {&Cfg("UAGENT_PERMISSION_URL"), &RuntimeConfig::permission_url},
+    {&Cfg("UAGENT_PERMISSION_ALLOW_ABOVE"),
+     &RuntimeConfig::permission_allow_above},
+    {&Cfg("UAGENT_PERMISSION_DENY_ABOVE"),
+     &RuntimeConfig::permission_deny_above},
+    {&Cfg("UAGENT_PERMISSION_VETO_ABOVE"),
+     &RuntimeConfig::permission_veto_above},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
     {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},

@@ -17,6 +17,7 @@ from integration_support import (
     event,
     save_settings,
     tool_call,
+    write_json_response,
     write_sse_sequence,
 )
 from web_support import web_host
@@ -26,13 +27,31 @@ parser.add_argument("--binary", type=pathlib.Path, required=True)
 parser.add_argument("--port", type=int, default=8765)
 parser.add_argument("--fixture", type=pathlib.Path, required=True)
 parser.add_argument("--no-model", action="store_true")
+# Approval is Auto and a decision model on the mock provider is sure but
+# worried about where the data goes.
+parser.add_argument("--auto-review", action="store_true")
 args = parser.parse_args()
 stop = threading.Event()
 signal.signal(signal.SIGINT, lambda *_: stop.set())
 signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
 
+def decide(handler):
+    """The decisions endpoint: allow is likely, sending data away is too."""
+    noul = {"destructive": 0.0, "beyond_request": 0.0, "touches_secrets": 0.0}
+    noul["sends_data_off_machine"] = 0.78
+    answers = {name: {"type": "noul", "noul": probability} for name, probability in noul.items()}
+    answers["permission"] = {
+        "type": "choice",
+        "choice": "allow",
+        "probabilities": {"allow": 0.99, "ask": 0.01, "deny": 0.0},
+    }
+    write_json_response(handler, {"answers": answers, "usage": {"input_tokens": 9, "cost": 0.0001}})
+
+
 def answer(handler, body):
+    if "questions" in body:
+        return decide(handler)
     texts = [
         message.get("content", "") for message in body["messages"] if message.get("role") == "user"
     ]
@@ -244,6 +263,13 @@ with (
             "models": {"main": {"id": "model-a", "effort": "high"}},
         }
     }
+    if args.auto_review:
+        providers["mock"]["supports"] = [*OPENROUTER_SUPPORTS, "decisions"]
+        providers["mock"]["options"] = {
+            "decisions_url": provider.url + "/decisions",
+            "decisions_model": "mock-judge",
+            "decision_bars": {"mock-judge": {"allow": 0.6, "deny": 0.95, "veto": 0.7}},
+        }
     # Saved, not exported: what the environment sets cannot be edited in
     # Settings, and the providers are edited there.
     save_settings(home, UAGENT_PROVIDERS=json.dumps(providers))
@@ -255,6 +281,7 @@ with (
         args.port,
         extra_env={
             "UAGENT_MODEL": None if args.no_model else "mock/main:high",
+            **({"UAGENT_APPROVAL": "auto"} if args.auto_review else {}),
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.
             **(

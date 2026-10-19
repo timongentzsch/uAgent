@@ -244,8 +244,8 @@ void TestStrictBooleanSettings() {
   CHECK(RuntimeConfig::FromValues({}).memory_enabled);
   // An empty value means "use the default" from a file and the environment
   // alike, and struct defaults are the registry's.
-  CHECK(RuntimeConfig::FromValues({{"UAGENT_PERMISSION_URL", ""}})
-            .permission_url == "https://openrouter.ai/api/alpha");
+  CHECK(RuntimeConfig::FromValues({{"UAGENT_PERMISSION_ALLOW_ABOVE", ""}})
+            .permission_allow_above.empty());
 }
 
 void TestSelfDescriptionSchemas() {

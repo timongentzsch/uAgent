@@ -142,6 +142,51 @@ RouteResolution ResolveImageRoute(const Api& api,
   return resolved;
 }
 
+RouteResolution ResolveReviewRoute(const Api& api,
+                                   const std::vector<Endpoint>& providers,
+                                   const std::string& setting) {
+  auto serves = [](const Endpoint& endpoint) {
+    return endpoint.features.Has(Feature::kDecisions) &&
+           !endpoint.Option("decisions_url").empty() &&
+           !endpoint.api_key.empty() && endpoint.api_key != kPlaceholderApiKey;
+  };
+  const Endpoint* chosen = nullptr;
+  std::string model = setting;
+  const size_t slash = setting.find('/');
+  if (const Endpoint* named =
+          slash == std::string::npos
+              ? nullptr
+              : FindEndpoint(providers, setting.substr(0, slash));
+      named && serves(*named)) {
+    chosen = named;
+    model = setting.substr(slash + 1);
+  } else if (serves(api)) {
+    chosen = &api;
+  } else {
+    for (const Endpoint& provider : providers) {
+      if (serves(provider)) {
+        chosen = &provider;
+        break;
+      }
+    }
+  }
+  RouteResolution resolved;
+  if (!chosen) {
+    resolved.none =
+        "no configured endpoint serves decision models (OpenRouter does, "
+        "with OPENROUTER_API_KEY set)";
+    return resolved;
+  }
+  static_cast<Endpoint&>(resolved.route) = *chosen;
+  if (model.empty()) model = chosen->Option("decisions_model");
+  if (model.empty()) {
+    resolved.none =
+        "the endpoint names no decision model; set approval.reviewerModel";
+  }
+  resolved.route.model = resolved.selection = model;
+  return resolved;
+}
+
 std::string ComposeSelection(const std::string& scope, const std::string& model,
                              const std::string& effort) {
   std::string selection = scope.empty() ? "" : scope + "/";

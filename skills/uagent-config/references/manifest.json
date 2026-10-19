@@ -2,8 +2,8 @@
   "commands": 41,
   "flags": 25,
   "prompt_digest": "6c436223795aea4a",
-  "schema_digest": "c08a43eaad6969f3",
-  "settings": 67,
+  "schema_digest": "644b35d1676ffba9",
+  "settings": 69,
   "tools_digest": "98cf0ddd1759d42d",
   "version": "1.4.0"
 }

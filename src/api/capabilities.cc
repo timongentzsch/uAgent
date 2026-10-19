@@ -16,7 +16,7 @@ constexpr const char* kFeatureNames[] = {
     "session_passthrough", "raw_vendor_ids",        "model_variants",
     "reasoning_object",    "reasoning_replay_text", "prompt_cache_control",
     "pdf_parser",          "max_completion_tokens", "search_sources",
-    "reasoning_summary",   "inline_usage"};
+    "reasoning_summary",   "inline_usage",          "decisions"};
 static_assert(std::size(kFeatureNames) == static_cast<size_t>(Feature::kCount));
 }  // namespace
 

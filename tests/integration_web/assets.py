@@ -338,6 +338,7 @@ def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
             panel = client.command("create", cwd=str(root), panel=True)["session"]
             panel = client.command("activate", panel)["session"]
             client.until(panel, lambda value: value["metadata"]["status"] == "idle")
+            client.command("tools", panel, operation="set", name="thread", active=False)
             side_id = client.command("side", panel, operation="create")["result"]["id"]
             side = client.command("activate", {"id": side_id, "generation": ""})["session"]
             client.until(side, lambda value: value["metadata"]["status"] == "idle")
@@ -348,7 +349,9 @@ def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
                     "SIDE-PANEL-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
                 ),
             )
-            assert_true({"state", "thread", "decide", "history"} <= offered[0], offered)
+            assert_true(
+                {"state", "decide", "history"} <= offered[0] and "thread" not in offered[0], offered
+            )
             assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)
 
 

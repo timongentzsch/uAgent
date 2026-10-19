@@ -379,7 +379,10 @@ std::vector<Tool> BuildTools(AppContext& context,
           JsonValue(loaded.record->state.display, "facts", json::object()),
           "side-origin", json::object());
       if (const json* names = JsonArray(origin, "tools")) {
-        side_panel_tools = std::ranges::find(*names, "thread") != names->end();
+        side_panel_tools = std::ranges::any_of(*names, [](const json& name) {
+          return name == "thread" || name == "history" || name == "decide" ||
+                 name == "state";
+        });
       }
     }
   }

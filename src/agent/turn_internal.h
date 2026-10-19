@@ -244,6 +244,7 @@ struct Agent::StepState {
   // advisories already sent about them.
   struct Recovery {
     std::unordered_map<std::string, int64_t> rejection_rounds;
+    std::unordered_map<std::string, int64_t> edit_failures;
     std::string last_call;
     std::string last_single_tool;
     int64_t same_tool_rounds = 0;
@@ -253,6 +254,7 @@ struct Agent::StepState {
   Recovery recovery;
   std::unordered_map<std::string, int64_t> tool_counts;
   int64_t step = 0;
+  int64_t acceptance_revision = 1;
   int64_t provider_continuations = 0;
   bool context_overflow_recovery_attempted = false;
   bool detached_records_available = false;

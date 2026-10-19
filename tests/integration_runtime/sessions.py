@@ -302,6 +302,14 @@ def test_input_steering_yields_activity_wait(root, home, *, binary):
         assert_true(code == 0, output)
         assert_true(b"steering-wait-ok" in output, output)
         assert_true(b"steering-wait-bad" not in output, output)
+        assert_true(
+            any(
+                "[acceptance update revision 2]" in str(message.get("content", ""))
+                for _, body in server.requests
+                for message in body["messages"]
+            ),
+            server.requests,
+        )
         # Same wall-clock claim as the run_pty deadline above it, so the same
         # scaling: an instrumented build is slower without being wrong.
         assert_true(elapsed < budget(8), elapsed)

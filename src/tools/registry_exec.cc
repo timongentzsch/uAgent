@@ -26,7 +26,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
                     "yield_ms":{"type":"integer","minimum":0},
                     "max_output_chars":{"type":"integer",
-                      "description":"lower per-call returned-output cap"},
+                      "description":"returned-output cap; prefer this over piping through tail/head"},
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
                     "required":["command"]})json");
@@ -43,7 +43,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
           "run",
           "Execute a command in cwd; omit cd. tty=true enables "
           "interactive stdin; detach persists a terminal beyond this "
-          "session.",
+          "session. Bash/zsh pipelines propagate failures (pipefail); nested "
+          "scripts must also return a failing exit status for failed checks.",
           std::move(run_schema),
           [&supervisor](const json& a, const ToolContext& context) {
             const bool detach = JsonValue(a, "detach", false);
@@ -125,13 +126,9 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     return parts;
   };
 
-  // ToolRunScratch runs a .py under uv when it is there and falls back to
-  // python3 otherwise, so a host with neither can only ever answer this tool
-  // with an error. An 800-byte schema that cannot succeed is worse than an
-  // absent one, so the tool is omitted on that host. A .sh needs
-  // only sh, but gating the whole tool on the interpreter its Python half
-  // needs keeps one condition instead of two.
-  if (ExecutableOnPath("uv") || ExecutableOnPath("python3")) {
+  // Offer only installed runtimes; each extension checks its interpreter.
+  if (ExecutableOnPath("uv") || ExecutableOnPath("python3") ||
+      ExecutableOnPath("node") || ExecutableOnPath("sh")) {
     json scratch_schema = json::parse(
         R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
@@ -150,7 +147,9 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "scratch",
             "Run a one-off script under .uagent/scratch, never requested "
             "project code: a .py with a PEP 723 `# /// script` header runs "
-            "under isolated uv, a .sh under sh. Give code to write the script "
+            "under isolated uv, a .sh under sh, .js/.mjs under installed node. "
+            "Use the browser-use skill helper for isolated headless checks. "
+            "Give code to write the script "
             "and run it in this call; without code the file at path runs "
             "again, with new args, instead of a long pipeline resent through "
             "run.",

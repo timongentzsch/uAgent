@@ -131,8 +131,13 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
   std::vector<Steering::Message> queued = SteeringState().TakeMessages();
   if (queued.empty()) return false;
   SteeringState().Take();
+  bool acceptance_changed = false;
   for (auto& message : queued) {
     std::string& input = message.text;
+    // Mail and chat observations use the same queue, but do not revise the
+    // person's acceptance criteria merely by arriving.
+    acceptance_changed |=
+        std::ranges::find(not_user_, input, &Arriving::text) == not_user_.end();
     for (std::string& skill : ExplicitSkillContext(input)) {
       PushSkillContext(std::move(skill));
     }
@@ -155,6 +160,14 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
     PushUserInput(std::move(input), false, json(), message.request_id);
   }
   loop.recovery = {};
+  if (acceptance_changed) {
+    ++loop.acceptance_revision;
+    PushStepNote(loop, "[acceptance update revision " +
+                           std::to_string(loop.acceptance_revision) +
+                           "] Reconcile current acceptance criteria. Earlier "
+                           "verification covers prior requirements; rerun "
+                           "affected checks before claiming completion.");
+  }
   DebugLog("steering_applied",
            {{"turn", turn_id_}, {"messages", queued.size()}});
   return true;

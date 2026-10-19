@@ -406,6 +406,22 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, model_results[index], task.result, task.duration_ms);
     if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
+    if (!task.result.recovery_key.empty()) {
+      auto& failures = loop.recovery.edit_failures;
+      if (!failures.contains(task.result.recovery_key) &&
+          failures.size() >= 32) {
+        failures.erase(failures.begin());
+      }
+      if (++failures[task.result.recovery_key] == 2) {
+        PushStepNote(
+            loop,
+            "[edit recovery advisory] The same exact search failed again on "
+            "the same file revision, even if reads succeeded between attempts. "
+            "No edits from the failed batch were written. Rebuild the edit "
+            "from current numbered context; do not repeat the failed old "
+            "text.");
+      }
+    }
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

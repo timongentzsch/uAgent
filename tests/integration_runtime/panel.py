@@ -1411,6 +1411,14 @@ def test_a_round_closes_once_its_work_is_done_and_then_waits_for_the_user(root, 
             lambda: any("Recount: still 3." in json.dumps(b) for _, b in server.requests),
             "the recount was never reported",
         )
+        assert_true(
+            not any(
+                "[acceptance update revision" in str(message.get("content", ""))
+                for _, body in server.requests
+                for message in body["messages"]
+            ),
+            "thread reports must not revise user acceptance criteria",
+        )
         time.sleep(budget(1))
         moderator = [
             json.dumps(b["messages"])

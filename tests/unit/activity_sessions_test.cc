@@ -496,6 +496,39 @@ void TestActivityStateGraph() {
 }
 
 void TestActivitySessions() {
+  // Preserve producer failures through output filters in both pipes and PTYs.
+  ProcessSupervisor pipeline;
+  for (bool tty : {false, true}) {
+    ShellCommandResult failed = RunShellCommand(
+        pipeline, {},
+        {.command = "sh -c 'echo failed; exit 7' | tail -n 1", .tty = tty});
+    CHECK(failed.result.error == ToolErrorCode::kProcessFailed);
+    CHECK(failed.result.output.find("exit code 7") != std::string::npos);
+    CHECK(failed.wait_status.has_value());
+  }
+  // An explicitly requested POSIX shell retains its own semantics.
+  CHECK(RunShellCommand(pipeline, {},
+                        {.command = "false | cat", .shell = "/bin/sh"})
+            .result.Ok());
+  CHECK(RunShellCommand(pipeline, {}, {.command = "printf 'FAIL (expected)'"})
+            .result.Ok());
+  CHECK(RunShellCommand(pipeline, {}, {.command = "false | cat; test $? -ne 0"})
+            .result.Ok());
+  ShellCommandResult background =
+      RunShellCommand(pipeline, {},
+                      {.command = "sleep 0.1; sh -c 'exit 7' | cat",
+                       .background = true,
+                       .immediate = true});
+  CHECK(background.result.Ok());
+  const auto pipeline_jobs = pipeline.Snapshot();
+  CHECK(!pipeline_jobs.empty());
+  if (!pipeline_jobs.empty()) {
+    ToolResult completed =
+        ToolActivityWait(pipeline, {ActivityId(pipeline_jobs.back())}, "all",
+                         BudgetMs(2000), {});
+    CHECK(completed.output.find("exit code 7") != std::string::npos);
+  }
+
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
   ProcessSupervisor automatic_yield;

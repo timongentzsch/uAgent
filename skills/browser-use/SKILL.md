@@ -125,3 +125,34 @@ a one-time install, recommend it, and — once they agree — run
 `npm install -g @playwright/cli@latest` yourself through `run`, then continue.
 No sudo; npm's own prefix is correct. If the CLI then reports a missing
 browser, follow the install command it prints rather than guessing one.
+
+## Isolated checks for a project you are building
+
+For repeatable project tests, use the adjacent `scripts/verify.mjs` helper with
+`run`. It discovers installed workspace/global Playwright and Chromium without
+downloading anything. `node <skill-directory>/scripts/verify.mjs --discover`
+reports the runtime once. Each run owns a fresh headless browser and closes it;
+it never attaches to the user's signed-in Chrome.
+
+Keep temporary checks in `.uagent/scratch/*.mjs` (also supported by `scratch`),
+and permanent tests in the project's test directory. A check module exports:
+
+```js
+export default async ({ page, target, check, scratch }) => {
+  await page.goto(target('site/index.html')); // absolute file URL
+  check('heading', await page.locator('h1').count() === 1);
+  await page.setViewportSize({ width: 380, height: 800 });
+  check('mobile fits', await page.evaluate(() =>
+    document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: `${scratch}/mobile.png` });
+};
+```
+
+Run `node <skill-directory>/scripts/verify.mjs .uagent/scratch/check.mjs brief-v2`.
+The default deadline is 60 seconds; an optional final argument overrides it in
+milliseconds (up to 600000). A failed assertion, exception or timeout exits nonzero. The JSON report and
+screenshots live in a unique scratch directory; `brief-v2` identifies the current
+acceptance revision. Do not reuse a prior brief's report after requirements
+change. Use `run.max_output_chars` to limit output; piping tests to `tail` can
+hide failure under other shells. Nested shell scripts must return nonzero when
+their checks fail. Read screenshots with `read_path` before judging appearance.

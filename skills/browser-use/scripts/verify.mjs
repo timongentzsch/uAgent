@@ -99,6 +99,15 @@ export async function verify(entry, brief = "", timeoutMs = 60000) {
     browser = await chromium.launch({
       executablePath: runtime.executablePath,
       headless: true,
+      // Chrome also writes crash reports, MIME state and caches outside its
+      // profile. Keep these in this job, inside the existing writable scope.
+      env: {
+        ...process.env,
+        HOME: scratch,
+        XDG_CONFIG_HOME: join(scratch, "config"),
+        XDG_CACHE_HOME: join(scratch, "cache"),
+        XDG_DATA_HOME: join(scratch, "data"),
+      },
       timeout: Math.min(15000, timeoutMs),
     });
     if (timedOut) {

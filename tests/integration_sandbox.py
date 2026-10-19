@@ -14,6 +14,7 @@ import json
 import os
 import pathlib
 import shlex
+import shutil
 import socket
 import sys
 
@@ -37,6 +38,51 @@ def workspace(root):
     path = root / "ws"
     path.mkdir(exist_ok=True)
     return path
+
+
+def test_sandbox_keeps_spawning_after_binary_replacement(root, home, *, binary):
+    if not sys.platform.startswith("linux"):
+        raise Skipped("Linux sandbox trampoline uses /proc/self/exe")
+    if not sandbox_enforced(root, home, binary=binary):
+        raise Skipped("host does not enforce the OS sandbox")
+    installed = root / "installed-agent"
+    replacement = root / "replacement-agent"
+    shutil.copy2(binary, installed)
+    shutil.copy2(binary, replacement)
+    outside = root / "outside-after-upgrade"
+
+    def upgrade(_, _body):
+        # The running inode survives, but readlink(/proc/self/exe) now names
+        # a deleted path. Commands must still use that same sandbox image.
+        os.replace(replacement, installed)
+        return tool_call(
+            "run",
+            {"command": f"printf ok > shell-ran; printf denied > {shlex.quote(str(outside))}"},
+        )
+
+    with Server(
+        [
+            upgrade,
+            tool_call(
+                "scratch",
+                {"path": "upgrade.py", "code": "open('scratch-ran', 'w').write('ok')"},
+            ),
+            event({"content": "done"}),
+        ]
+    ) as server:
+        result = run(
+            workspace(root),
+            sandbox_env(home, server.url),
+            "--yolo",
+            "-p",
+            "check upgrade",
+            timeout=30,
+            binary=str(installed),
+        )
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true((workspace(root) / "shell-ran").exists(), result.stdout)
+    assert_true((workspace(root) / "scratch-ran").exists(), result.stdout)
+    assert_true(not outside.exists(), "sandbox was bypassed after replacement")
 
 
 def sandbox_env(home, url, **overrides):

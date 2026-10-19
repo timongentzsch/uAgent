@@ -68,6 +68,41 @@ def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
             )
 
 
+def test_panel_moderator_can_use_the_shared_browser(root, home, *, binary):
+    offered = []
+
+    def answer(_, body):
+        offered.extend(tool["function"]["name"] for tool in body.get("tools", []))
+        return tool_call("browser", {"action": "status"})
+
+    with (
+        tempfile.TemporaryDirectory(prefix="ua-panel-b-", dir=os.path.realpath("/tmp")) as data,
+        Server([answer, event({"content": "moderator-browser-ok"})]) as provider,
+        web_host(binary, root, home, provider.url, extra_env={"UAGENT_BROWSER_DATA": data}) as (
+            web,
+            code,
+            _,
+            _,
+        ),
+    ):
+        web.pair(code)
+        project = root / "moderator"
+        project.mkdir()
+        session = web.command("create", cwd=str(project), panel=True)["session"]
+        session = web.command("activate", session)["session"]
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        web.command("submit", session, text="Check browser availability directly")
+        web.until(session, lambda value: "moderator-browser-ok" in json.dumps(value))
+        assert_true("browser" in offered, offered)
+        assert_true("run" not in offered and "write_file" not in offered, offered)
+        result = next(m for m in provider.requests[-1][1]["messages"] if m.get("role") == "tool")
+        assert_true('"parallel_capacity":0' in result["content"].replace(" ", ""), result)
+        configured = web.command("browser", action="configure", parallel_capacity=2)["result"]
+        assert_true(configured["parallel_capacity"] == 2, configured)
+        assert_true(len(configured["instances"]) == 3, configured)
+        assert_true(web.json("/api/browser/status?instance=2")[1]["instance_id"] == "2", configured)
+
+
 def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
     from integration_support import SMALL_PNG
 

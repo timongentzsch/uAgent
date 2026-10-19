@@ -203,6 +203,7 @@ export default function Modals({
             report={report}
             close={close}
             handoff={modal.handoff}
+            sessionId={session?.id}
           />
         </Modal>
       )}

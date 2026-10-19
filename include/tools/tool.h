@@ -125,6 +125,8 @@ struct ToolContext {
   // What this call's approval covered (Tool::approval_subject), taken when it
   // was decided: what its run may hold itself to. Null without one.
   json approved;
+  // Updates the running call label without adding transcript messages.
+  std::function<void(const std::string&)> progress;
 
   bool Expired() const;
 

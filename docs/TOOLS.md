@@ -42,7 +42,7 @@ or `subagent` tool.
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [INSTRUCTIONS.md](INSTRUCTIONS.md) |
-| `browser` | drive the shared Chrome of the web host | top-level sessions (web, terminal, headless, a panel's threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; one conversation at a time; see [BROWSER.md](BROWSER.md) |
+| `browser` | drive the shared Chrome of the web host | top-level sessions (web, terminal, headless, panel moderators and threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; queued shared access or opt-in isolated parallel research; see [BROWSER.md](BROWSER.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 
 Independent calls to parallel-safe tools run up to four at a time; results

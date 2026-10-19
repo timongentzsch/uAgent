@@ -38,18 +38,12 @@ namespace uagent {
 namespace {
 
 #if defined(__linux__)
-// The running image's own path. Falls back to argv[0] only if /proc is not
-// mounted; the caller treats an empty answer as a refusal rather than as "no
-// wrapper needed", because a spawn that silently skipped confinement is the
-// one outcome the sandbox exists to rule out.
+// Re-exec the running inode, including after an upgrade unlinks its original
+// path. Resolving the link would instead return a nonexistent "(deleted)"
+// filename, or start a newer image with a different sandbox protocol.
 std::string SelfExecutablePath() {
-  std::string path(4096, '\0');
-  const ssize_t length = readlink("/proc/self/exe", path.data(), path.size());
-  if (length <= 0 || static_cast<size_t>(length) >= path.size()) {
-    return ExecutablePath();
-  }
-  path.resize(static_cast<size_t>(length));
-  return path;
+  return access("/proc/self/exe", X_OK) == 0 ? "/proc/self/exe"
+                                             : ExecutablePath();
 }
 #endif
 

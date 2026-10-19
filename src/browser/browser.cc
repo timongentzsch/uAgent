@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/browser/runtime.h"
+#include "include/browser/broker.h"
 #include "include/core/config_registry.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -97,8 +97,10 @@ std::string SocketPath() {
   auto base = DataDirectory();
   return base.empty() ? "" : base + "/service.sock";
 }
-std::string RfbPath() {
+std::string RfbPath(const std::string& instance) {
+  if (instance.size() != 1 || instance[0] < '0' || instance[0] > '4') return "";
   auto base = DataDirectory();
+  if (instance != "0") base += "/p" + instance;
   return base.empty() ? "" : base + "/display.sock";
 }
 
@@ -259,11 +261,12 @@ int ServiceMain(int owner_fd) {
   }
   Fd listener = ListenUnix(path, session::kSocketBacklog);
   if (!listener) return 2;
-  auto runtime = std::make_shared<Runtime>();
-  auto mutex = std::make_shared<std::mutex>();
+  auto runtime = std::make_shared<Broker>(DataDirectory());
   auto active = std::make_shared<std::atomic<int>>(0);
   // An idle Chrome is checked once a minute.
   constexpr int kOwnerPollMs = 60000;
+  auto maintenance = std::chrono::steady_clock::now() +
+                     std::chrono::milliseconds(kOwnerPollMs);
   for (;;) {
     pollfd wait[] = {{owner_fd, POLLIN | POLLHUP, 0},
                      {listener.Get(), POLLIN, 0}};
@@ -274,9 +277,10 @@ int ServiceMain(int owner_fd) {
     }
     if (wait[0].revents) break;
     // A request in progress is work; skip the check rather than wait on it.
-    if (mutex->try_lock()) {
-      runtime->StopIfIdle(std::chrono::minutes(kIdleMinutes));
-      mutex->unlock();
+    if (std::chrono::steady_clock::now() >= maintenance) {
+      runtime->Maintain();
+      maintenance = std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds(kOwnerPollMs);
     }
     if (!(wait[1].revents & POLLIN)) continue;
     Fd client(accept(listener.Get(), nullptr, nullptr));
@@ -285,23 +289,17 @@ int ServiceMain(int owner_fd) {
       --*active;
       continue;
     }
-    std::thread([runtime, mutex, active, client = std::move(client)]() mutable {
+    std::thread([runtime, active, client = std::move(client)]() mutable {
       json request;
       if (Packet(client.Get(), request, false, kActionMs)) {
         json answer;
-        {
-          std::lock_guard lock(*mutex);
-          answer = runtime->Execute(request);
-        }
+        answer = runtime->Execute(request);
         Packet(client.Get(), answer, true, kActionMs);
       }
       --*active;
     }).detach();
   }
-  {
-    std::lock_guard lock(*mutex);
-    runtime->Shutdown();
-  }
+  runtime->Shutdown();
   unlink(path.c_str());
   return 0;
 }

@@ -68,7 +68,8 @@ void TestPythonTool() {
 
   ToolResult result = ToolRunScratch(supervisor, root, "math.py");
   CHECK(result.error == ToolErrorCode::kNotFound);
-  CHECK(result.output.find("write it first with write_file") !=
+  CHECK(result.output.find("this call supplied no code") != std::string::npos);
+  CHECK(result.output.find("Pass code with path to scratch") !=
         std::string::npos);
 
   write("math.py",

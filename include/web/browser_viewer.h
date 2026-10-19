@@ -16,6 +16,7 @@ struct ViewerSession {
 // Relays one paired device's viewer to the browser display. Input reaches
 // Chrome only while that device controls the browser.
 ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
-                                 const std::string& device);
+                                 const std::string& device,
+                                 const std::string& instance = "0");
 }  // namespace uagent::web
 #endif

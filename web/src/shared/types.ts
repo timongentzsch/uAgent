@@ -922,6 +922,8 @@ export interface CommandFields {
   text?: string;
   interaction_id?: string;
   profile_id?: string;
+  instance_id?: string;
+  parallel_capacity?: number;
   category_id?: string;
   attachment_ids?: (string | { id: string; name: string })[];
   activity_id?: number;

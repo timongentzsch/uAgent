@@ -134,8 +134,9 @@ constexpr uint32_t kKeyEscape = 0xFF1B, kKeyDown = 0xFF54, kKeyTab = 0xFF09;
 // the wait in milliseconds that follows it. Chrome's own lists (the saved
 // logins it offers) take keys from there only, never from the debugging
 // channel, which reaches the page alone.
-bool PressOnDisplay(std::initializer_list<std::pair<uint32_t, int>> keys) {
-  Fd rfb = ConnectUnix(RfbPath());
+bool PressOnDisplay(const std::string& socket,
+                    std::initializer_list<std::pair<uint32_t, int>> keys) {
+  Fd rfb = ConnectUnix(socket);
   if (!rfb) return false;
   std::string bytes;
   const auto take = [&](size_t count) {
@@ -440,10 +441,10 @@ json Runtime::Act(const std::string& op, const json& command) {
     };
     const int before = id.empty() ? -1 : length();
     observation_.clear();
-    if (!PressOnDisplay({{kKeyEscape, 300},
-                         {kKeyDown, 1000},
-                         {kKeyDown, 200},
-                         {kKeyTab, 300}})) {
+    if (!PressOnDisplay(RfbSocket(), {{kKeyEscape, 300},
+                                      {kKeyDown, 1000},
+                                      {kKeyDown, 200},
+                                      {kKeyTab, 300}})) {
       return {{"error", "cannot reach the browser's display"}};
     }
     if (before >= 0 && length() == before) {

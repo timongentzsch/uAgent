@@ -35,7 +35,8 @@ json Request(const json&, int) {
 }  // namespace browser
 
 namespace web {
-ViewerSession RelayBrowserViewer(httplib::ws::WebSocket&, const std::string&) {
+ViewerSession RelayBrowserViewer(httplib::ws::WebSocket&, const std::string&,
+                                 const std::string&) {
   return {};
 }
 }  // namespace web

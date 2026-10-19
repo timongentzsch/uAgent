@@ -439,13 +439,14 @@ std::string InvalidSessionTitleMessage() {
 
 json SessionStore::Fork(const std::string& source, const std::string& title,
                         bool source_owned, int64_t fork_turn,
-                        const std::string& message_id) {
+                        const std::string& message_id,
+                        const SessionRecord* snapshot) {
   FileLease writer;
   std::string error;
   if (!source_owned && !writer.Acquire(SessionLockPath(source), error)) {
     return {{"error", error}};
   }
-  auto loaded = Inspect(source);
+  auto loaded = snapshot ? SessionLoadResult{{}, *snapshot} : Inspect(source);
   if (!loaded.record) return {{"error", loaded.status.message}};
   if (!title.empty() && !ValidSessionTitle(title)) {
     return {{"error", "invalid fork name"}};

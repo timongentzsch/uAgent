@@ -25,6 +25,7 @@
 #include "include/agent/edit_journal.h"
 #include "include/agent/process.h"
 #include "include/agent/session_role.h"
+#include "include/agent/session_store.h"
 #include "include/agent/trace.h"
 #include "include/api/client.h"
 #include "include/core/json.h"
@@ -117,12 +118,11 @@ class Agent {
   // or {error}. Bumps ViewEpoch: holders of the old view must replace it.
   json RewindBefore(int64_t turn, const std::string& message_id);
   uint64_t ViewEpoch() const { return view_epoch_; }
-  // /btw: one tool-less model call over the conversation as of the last
-  // request or turn end, never recorded. Safe beside a running turn.
-  json SideQuestion(const std::string& question) const;
-  // Snapshot the conversation (and the tools last offered, when given) for
-  // SideQuestion; called by the turn thread only.
-  void PublishSideContext(const json* tools = nullptr);
+  // /btw forks a resumable side conversation from a checkpoint captured on
+  // the turn thread; safe beside a running turn.
+  json SideConversation(const std::string& source,
+                        const std::string& question) const;
+  void PublishSideContext();
   // Snapshots a file a tool added to context where the user's clients can
   // show it, returning its asset ({id, name, mime, bytes}) or null. Set by a
   // session with an asset store; without one, tool files stay model-only.
@@ -534,13 +534,9 @@ class Agent {
   KeepFile keep_tool_file_;
   // What a side question needs, captured on the turn thread so the side
   // thread never reads the live route or conversation.
-  struct SideContext {
-    std::shared_ptr<const json> messages, tools;
-    ApiSettings api;
-    std::string session_id;
-  };
+  SessionRecord Snapshot() const;
   mutable std::mutex side_mutex_;
-  std::shared_ptr<const SideContext> side_context_
+  std::shared_ptr<const SessionRecord> side_context_
       UAGENT_GUARDED_BY(side_mutex_);
   bool generate_titles_ = false;
   std::mutex title_mutex_;

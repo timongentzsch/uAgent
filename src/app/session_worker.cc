@@ -649,8 +649,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::thread side_thread_;
   std::atomic<bool> side_busy_{false};
   std::atomic<bool> side_cancel_{false};
-  // Cancels a running side question and waits for its thread; the request
-  // notices within one poll slice.
+  // Finish side-fork creation before its application and snapshot go away.
   void StopSideQuestion() {
     side_cancel_ = true;
     if (side_thread_.joinable()) side_thread_.join();
@@ -878,8 +877,8 @@ class WorkerChannel final : public ApplicationChannel {
     SendState();
   }
 
-  // A model call takes seconds: it runs beside the command reader so stop,
-  // interrupt and replies are never queued behind it.
+  // Copying a fork and its assets can take seconds: keep the command reader
+  // free for stop, interrupt and replies.
   void StartSideQuestion(const std::string& request, const json& raw) {
     std::lock_guard control(control_mutex_);
     if (!activity_control_ || side_busy_) {

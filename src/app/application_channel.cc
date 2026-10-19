@@ -50,11 +50,15 @@ int Application::RunChannel() {
       return PermissionControl(context_, request);
     }
     if (JsonValue(request, "kind", "") == "side") {
-      json answer = agent_.SideQuestion(JsonValue(request, "text", ""));
-      if (const json* usage = JsonObject(answer, "usage")) {
-        runtime_.side_usage.Add(*usage);
+      if (JsonValue(request, "operation", "") != "create") {
+        return json{{"error",
+                     "Update or reload your client to start a "
+                     "tool-capable side conversation."}};
       }
-      return answer;
+      json side = agent_.SideConversation(session_file_,
+                                          JsonValue(request, "text", ""));
+      side["side_question"] = JsonValue(request, "text", "");
+      return side;
     }
     return ActivityControl(runtime_.processes, request);
   });

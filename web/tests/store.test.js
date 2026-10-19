@@ -18,6 +18,27 @@ import {
   safeURL,
 } from "../src/shared/markdown.ts";
 
+test("a watched side view streams beside the selected view and unpins on close", async () => {
+  const { snapshotStore } = await import("../src/state/snapshot-store.ts");
+  const { retainedViews } = await import("../src/state/store.ts");
+  const store = snapshotStore();
+  const first = store.watch("side"),
+    second = store.watch("side");
+  assert.equal(store.watches("side"), true);
+  first();
+  assert.equal(store.watches("side"), true);
+  const views = Object.fromEntries(
+    ["side", "main", "w1", "w2", "w3", "w4", "w5"].map((id) => [
+      id,
+      { cursor: 0 },
+    ]),
+  );
+  assert.ok(retainedViews(views, "main", store.watching()).side);
+  second();
+  assert.equal(store.watches("side"), false);
+  assert.equal(retainedViews(views, "main", store.watching()).side, undefined);
+});
+
 test("rendering escapes HTML and never loads remote images", async () => {
   const html = await renderMarkdown(
     "<img src=x onerror=alert(1)>\n\n![private](https://tracker.example/a)\n\n[bad](javascript:alert(1))",

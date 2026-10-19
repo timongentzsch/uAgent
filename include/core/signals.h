@@ -52,9 +52,9 @@ extern SignalFlag g_agent_pids[kBgMax];
 // concurrently, so writers serialise here; the handler only ever reads.
 void TrackPid(SignalFlag* slots, int count, pid_t pid, bool add);
 
-// A request running beside the main turn (a /btw side question) must neither
-// see nor clear the turn's abort: while a LocalAbort is alive, its thread
-// cancels through its own flag and leaves the shared abort state alone.
+// A request running beside the main turn (such as title generation) must
+// neither see nor clear the turn's abort: while a LocalAbort is alive, its
+// thread cancels through its own flag and leaves the shared abort state alone.
 extern thread_local std::atomic<bool>* g_local_abort;
 class LocalAbort {
  public:

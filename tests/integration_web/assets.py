@@ -241,46 +241,118 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             assert_true(len(snapshots) == 2, snapshots)
 
 
-def test_web_side_question_answers_beside_a_running_turn(root, home, *, binary):
+def test_web_side_conversation_uses_tools_and_keeps_followups(root, home, *, binary):
     started = threading.Event()
     release = threading.Event()
+    offered = []
 
     def responder(_, body):
-        last = str(body["messages"][-1].get("content", ""))
-        if "Side question" in last:
-            # Same conversation prefix, no new tools offered beyond the turn's.
-            return event({"content": "SIDE-ANSWER"})
-        if any(message.get("role") == "tool" for message in body["messages"]):
-            return event({"content": "MAIN-DONE"})
-        started.set()
-        release.wait(timeout=budget(10))
-        return tool_call("run", {"command": "true"}, call_id="main-run")
+        messages = body["messages"]
+        last = str(messages[-1].get("content", ""))
+        if "Long parent task" == last:
+            started.set()
+            release.wait(timeout=budget(15))
+            return event({"content": "PARENT-DONE"})
+        offered.append({tool["function"]["name"] for tool in body.get("tools", [])})
+        if "Side followup" == last:
+            assert_true(any("SIDE-TOOL-DONE" in str(m.get("content")) for m in messages), messages)
+            return event({"content": "SIDE-FOLLOWUP-DONE"})
+        if messages[-1]["role"] == "tool":
+            assert_true("side-proof" in last, last)
+            return event({"content": "SIDE-TOOL-DONE"})
+        return tool_call("read_path", {"path": "side-proof.txt"}, call_id="side-read")
+
+    (root / "side-proof.txt").write_text("side-proof")
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            parent = client.create(root)
+            client.command("tools", parent, operation="set", name="run", active=False)
+            client.command("submit", parent, text="Long parent task")
+            assert_true(started.wait(timeout=budget(5)), "parent did not start")
+            try:
+                client.command("permissions", parent, mode="yolo")
+                fork = client.command("side", parent, operation="create")
+                # Side creation is local and finishes without a model request.
+                assert_true(not fork.get("pending"), fork)
+                side = {"id": fork["result"]["id"], "generation": ""}
+                side = client.command("activate", side)["session"]
+                client.until(side, lambda value: value["metadata"]["status"] == "idle")
+                assert_true(
+                    client.command("permissions", side)["result"]["effective"] == "yolo", side
+                )
+                client.command("submit", side, text="Read side-proof.txt")
+                value = client.until(
+                    side,
+                    lambda value: (
+                        "SIDE-TOOL-DONE" in json.dumps(value)
+                        and not value["metadata"]["turn_active"]
+                    ),
+                )
+                assert_true(
+                    "read_path" in offered[0] and all("run" not in tools for tools in offered),
+                    offered,
+                )
+                client.command("submit", side, text="Side followup")
+                client.until(
+                    side,
+                    lambda value: (
+                        "SIDE-FOLLOWUP-DONE" in json.dumps(value)
+                        and not value["metadata"]["turn_active"]
+                    ),
+                )
+                assert_true(
+                    client.snapshot(parent)["metadata"]["turn_active"], "side interrupted parent"
+                )
+            finally:
+                release.set()
+            value = client.until(
+                parent,
+                lambda value: (
+                    "PARENT-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            transcript = json.dumps(value["state"]["view"])
+            assert_true(
+                "SIDE-TOOL-DONE" not in transcript and "Side followup" not in transcript, transcript
+            )
+
+
+def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
+    offered = []
+
+    def responder(_, body):
+        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        offered.append(names)
+        if body["messages"][-1]["role"] == "tool":
+            assert_true(
+                not str(body["messages"][-1].get("content", "")).startswith("error:"),
+                body["messages"][-1],
+            )
+            return event({"content": "SIDE-PANEL-DONE"})
+        return tool_call("state", {"action": "show"}, call_id="side-panel-state")
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
-            session = client.create(root)
-            client.command("permissions", session, mode="yolo")
-            client.command("submit", session, text="Long main task")
-            assert_true(started.wait(timeout=budget(5)), "main turn never started")
-            try:
-                side = client.command("side", session, text="what are we doing?")
-                answer = side.get("result", {}).get("answer")
-                if side.get("pending"):
-                    status, receipt, _ = client.json("/api/receipts/" + side["request_id"])
-                    answer = receipt.get("result", {}).get("answer")
-                assert_true(answer == "SIDE-ANSWER", side)
-            finally:
-                release.set()
-            value = client.until(
-                session,
+            panel = client.command("create", cwd=str(root), panel=True)["session"]
+            panel = client.command("activate", panel)["session"]
+            client.until(panel, lambda value: value["metadata"]["status"] == "idle")
+            client.command("tools", panel, operation="set", name="thread", active=False)
+            side_id = client.command("side", panel, operation="create")["result"]["id"]
+            side = client.command("activate", {"id": side_id, "generation": ""})["session"]
+            client.until(side, lambda value: value["metadata"]["status"] == "idle")
+            client.command("submit", side, text="Check the panel state")
+            client.until(
+                side,
                 lambda value: (
-                    "MAIN-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
+                    "SIDE-PANEL-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
                 ),
             )
-            transcript = json.dumps(value["state"]["view"])
-            assert_true("SIDE-ANSWER" not in transcript, transcript)
-            assert_true("what are we doing" not in transcript, transcript)
+            assert_true(
+                {"state", "decide", "history"} <= offered[0] and "thread" not in offered[0], offered
+            )
+            assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)
 
 
 def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary):

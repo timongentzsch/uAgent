@@ -18,6 +18,7 @@
 #include "include/api/exchange.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -90,61 +91,47 @@ json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
   return {{"prompt", prompt}};
 }
 
-void Agent::PublishSideContext(const json* tools) {
-  std::shared_ptr<const SideContext> prior;
-  {
-    std::lock_guard lock(side_mutex_);
-    prior = side_context_;
+void Agent::PublishSideContext() {
+  auto context = std::make_shared<SessionRecord>(Snapshot());
+  context->state.messages = conversation_.Messages();
+  context->state.message_kinds = conversation_.Kinds();
+  context->state.archive = conversation_.Archive();
+  json& selection =
+      context->state.display["facts"]["session-settings"]["tools"];
+  selection = tool_selection_.Save();
+  selection["only"] = EnabledTools();
+  json& chosen = context->state.display["facts"]["session-settings"]["chosen"];
+  const auto providers = SessionProviderCatalog().providers;
+  if (!providers.empty()) {
+    chosen["UAGENT_MODEL"] = ChosenSelection(api_, providers);
   }
-  auto share = [](const json& value, const std::shared_ptr<const json>& saved) {
-    return saved && *saved == value ? saved
-                                    : std::make_shared<const json>(value);
-  };
-  auto context = std::make_shared<SideContext>();
-  context->messages = std::make_shared<const json>(conversation_.Messages());
-  context->api = api_;
-  context->session_id = session_id_;
-  context->tools = tools
-                       ? share(*tools, prior ? prior->tools : nullptr)
-                       : (prior ? prior->tools
-                                : std::make_shared<const json>(json::array()));
   std::lock_guard lock(side_mutex_);
   side_context_ = std::move(context);
 }
 
-json Agent::SideQuestion(const std::string& question) const {
-  std::shared_ptr<const SideContext> context;
+json Agent::SideConversation(const std::string& source,
+                             const std::string& question) const {
+  std::shared_ptr<const SessionRecord> context;
   {
     std::lock_guard lock(side_mutex_);
     context = side_context_;
   }
   if (!context) return {{"error", "nothing to ask about yet"}};
-  // Same prefix and tools as the last request, so the prompt cache serves it;
-  // attachments are prepared per request, so a side question reads text only.
-  json messages = json::array();
-  for (json message : *context->messages) {
-    if (JsonArray(message, "content")) {
-      message["content"] = ContentText(message, "");
-    }
-    messages.push_back(std::move(message));
-  }
-  messages.push_back(
-      {{"role", "user"},
-       {"content",
-        "Side question. Answer briefly from this conversation only; do not "
-        "call tools. Neither this question nor your answer is added to the "
-        "conversation.\n\n" +
-            question}});
-  Api side(context->api);
-  QuietEvents quiet;
-  ChatResult result =
-      side.Chat(messages, *context->tools, 0, context->session_id);
-  if (!result.error.empty()) return {{"error", result.error}};
-  std::string answer = result.content;
-  if (!result.tool_calls.empty()) {
-    answer += "\n\n(The model tried to use tools; nothing was run.)";
-  }
-  return {{"answer", std::move(answer)}, {"usage", result.usage}};
+  SessionRecord snapshot = *context;
+  // Permissions can change while the parent turn is running. Capture the
+  // current mode rather than reviving the checkpoint's older setting.
+  snapshot.state
+      .display["facts"]["session-settings"]["chosen"]["UAGENT_APPROVAL"] =
+      ApprovalModeName(CurrentApprovalMode());
+  snapshot.state.display["facts"]["side-origin"] = {
+      {"parent", HashHex(source)},
+      {"tools",
+       snapshot.state.display["facts"]["session-settings"]["tools"]["only"]}};
+  const std::string title =
+      question.empty()
+          ? "Side conversation"
+          : Utf8Prefix("Btw: " + FirstLine(Trim(question)), kUserTitleBytes);
+  return SessionStore::Fork(source, title, true, 0, "", &snapshot);
 }
 
 void Agent::StartTitle(const std::string& user_input) {
@@ -244,7 +231,6 @@ void Agent::Reset() {
   if (adaptive_system_) adaptive_system_->Reset();
   last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
-  PublishSideContext();
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
   SyncApiSessionUsage();
@@ -261,6 +247,7 @@ void Agent::Reset() {
   custom_title_ = false;
   session_id_ = MakeSessionId();
   ++revision_;
+  PublishSideContext();
 }
 
 json Agent::LatestToolTrace() const {
@@ -299,6 +286,7 @@ void Agent::SessionSettings(const json& settings) {
   if (settings == SessionSettings()) return;
   conversation_.RecordDisplay("session-settings", settings);
   ++revision_;
+  PublishSideContext();
 }
 json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }
 
@@ -319,6 +307,7 @@ json Agent::ConfigureTools(const json& request) {
   if (tool_selection_.Save() != before) {
     InvalidateToolSchemas(true);
     ++revision_;
+    PublishSideContext();
   }
   return ToolCatalogue();
 }
@@ -326,6 +315,7 @@ json Agent::ConfigureTools(const json& request) {
 void Agent::RestoreToolSelection(const json& settings) {
   tool_selection_.Restore(settings);
   InvalidateToolSchemas(true);
+  PublishSideContext();
 }
 json Agent::HttpExchanges() const {
   return JsonValue(
@@ -359,21 +349,7 @@ json Agent::Revert(int64_t turn, const std::string& path) {
   return result;
 }
 
-bool Agent::Save(const std::string& path, std::string& error) const {
-  CreatePrivateDirectories(std::filesystem::path(path).parent_path());
-  if (!writer_.Acquire(SessionLockPath(path), error, true)) {
-    return false;
-  }
-  // Mail whose text has not reached the conversation is not in this save.
-  const auto arriving = [this](const std::string& id) {
-    return std::ranges::find(not_user_, id, &Arriving::mail) != not_user_.end();
-  };
-  json delivered = json::array();
-  for (const json& id : delivered_mail_) {
-    if (!id.is_string() || !arriving(id.get<std::string>())) {
-      delivered.push_back(id);
-    }
-  }
+SessionRecord Agent::Snapshot() const {
   SessionRecord record;
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
@@ -402,7 +378,27 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
       .display = conversation_.DisplayMetadata(),
-      .delivered_mail = std::move(delivered)};
+      .delivered_mail = json::array()};
+  return record;
+}
+
+bool Agent::Save(const std::string& path, std::string& error) const {
+  CreatePrivateDirectories(std::filesystem::path(path).parent_path());
+  if (!writer_.Acquire(SessionLockPath(path), error, true)) {
+    return false;
+  }
+  // Mail whose text has not reached the conversation is not in this save.
+  const auto arriving = [this](const std::string& id) {
+    return std::ranges::find(not_user_, id, &Arriving::mail) != not_user_.end();
+  };
+  json delivered = json::array();
+  for (const json& id : delivered_mail_) {
+    if (!id.is_string() || !arriving(id.get<std::string>())) {
+      delivered.push_back(id);
+    }
+  }
+  SessionRecord record = Snapshot();
+  record.state.delivered_mail = std::move(delivered);
   SessionStoreStatus status = SessionStore::Save(path, record, &conversation_);
   if (!status.Ok()) {
     error = std::move(status.message);
@@ -436,7 +432,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
-  PublishSideContext();
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   delivered_mail_ = std::move(record.state.delivered_mail);
   if (adaptive_system_) {
@@ -478,6 +473,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   logged_schemas_.clear();
   turn_search_trace_.Reset();
   ++revision_;
+  PublishSideContext();
   return true;
 }
 

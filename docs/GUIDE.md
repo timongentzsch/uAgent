@@ -174,8 +174,17 @@ running and stops by itself after 15 minutes with nothing to do.
 | start over in the same folder | `/reset` |
 | branch a conversation | `/fork`, or `/fork @3` at your third message |
 | edit an earlier message | `/rewind N` forks before it |
-| ask something without adding it to the conversation | `/btw QUESTION` |
+| start or continue a side conversation with the same tools | `/btw QUESTION` |
 | make room in a long conversation | `/compact` |
+
+`/btw` copies the conversation's current checkpoint into a separate, saved
+conversation. In the web app its card stays beside the input: follow up there
+or use `/btw` again, and open it as a full conversation when needed. In a
+terminal it opens that separate conversation. It keeps the parent's model,
+approval setting and enabled tools, including a moderator's panel tools.
+Messages stay out of the parent transcript; tool actions use the same workspace
+and can change files or external state. Closing the card hides it; the saved
+conversation remains available in the conversation list.
 
 [Persistence](PERSISTENCE.md) says where conversations are kept and for how
 long.

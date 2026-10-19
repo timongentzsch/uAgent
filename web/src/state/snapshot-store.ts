@@ -9,8 +9,19 @@ export type Snapshots = Record<string, Snapshot>;
 export function snapshotStore() {
   let value: Snapshots = {};
   const listeners = new Set<() => void>();
+  const watched = new Map<string, number>();
   return {
     get: () => value,
+    watching: () => [...watched.keys()],
+    watches: (id: string) => watched.has(id),
+    watch(id: string) {
+      watched.set(id, (watched.get(id) || 0) + 1);
+      return () => {
+        const count = (watched.get(id) || 1) - 1;
+        if (count) watched.set(id, count);
+        else watched.delete(id);
+      };
+    },
     set(next: Snapshots | ((prior: Snapshots) => Snapshots)) {
       const resolved = typeof next === "function" ? next(value) : next;
       if (resolved === value) return;

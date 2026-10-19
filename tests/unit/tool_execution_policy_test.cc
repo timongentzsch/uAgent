@@ -246,6 +246,25 @@ void TestToolExecutionPolicy() {
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "bounded");
 
+  // A side conversation inherits an explicit ceiling, including an empty
+  // one. Resetting its presentation profile cannot turn on a parent's tools.
+  ToolSelection side_selection;
+  side_selection.Restore({{"profile", "default"}, {"only", {"bounded"}}});
+  CHECK(side_selection.Enabled(bounded_tool));
+  CHECK(!side_selection.Enabled(unbounded));
+  CHECK(!side_selection.Configure(
+      {{"operation", "set"}, {"name", "unbounded"}, {"active", true}}, policies,
+      selection_error));
+  CHECK(side_selection.Configure({{"operation", "reset"}}, policies,
+                                 selection_error));
+  CHECK(!side_selection.Enabled(unbounded));
+  ToolSelection side_restored;
+  side_restored.Restore(side_selection.Save());
+  CHECK(side_restored.Enabled(bounded_tool));
+  CHECK(!side_restored.Enabled(unbounded));
+  side_restored.Restore({{"only", json::array()}});
+  CHECK(!side_restored.Enabled(bounded_tool));
+
   Tool inspect = unbounded;
   inspect.name = "inspect";
   inspect.capabilities = Capability(ToolCapability::kInspect);

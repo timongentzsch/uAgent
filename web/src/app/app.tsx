@@ -1,4 +1,5 @@
 import { storage } from "../shared/storage.ts";
+import { readStored, writeStored } from "../state/store.ts";
 import { idlePreloadMs } from "../shared/limits.ts";
 import type {
   JSONValue,
@@ -138,14 +139,26 @@ function App() {
   const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
-  const [side, setSide] = useState<{
-    question: string;
-    answer?: string;
-  } | null>(null);
+  const [sides, setSides] = useState<
+    Record<
+      string,
+      {
+        question: string;
+        id?: string;
+        firstRequest: string;
+      }
+    >
+  >(() => readStored(storage, "uagent-side-conversations", {}));
+  useEffect(() => {
+    writeStored(
+      storage,
+      "uagent-side-conversations",
+      Object.fromEntries(Object.entries(sides).filter(([, side]) => side.id)),
+    );
+  }, [sides]);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
-  const closeSide = useCallback(() => setSide(null), []);
   const open = useCallback((value: AppModal) => {
     setDrawer(false);
     setModal(value);
@@ -201,6 +214,16 @@ function App() {
     correlate,
     reset,
   } = useHost(onResult, page === "chat");
+  const side = sides[selected] || null;
+  const closeSide = useCallback(
+    () =>
+      setSides((current) => {
+        const next = { ...current };
+        delete next[selected];
+        return next;
+      }),
+    [selected],
+  );
   useEffect(() => {
     if (authenticated !== true || !online) return;
     let active = true;
@@ -537,22 +560,56 @@ function App() {
       await forkAndOpen(session, { argument }, true);
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
-      // The card shows the question; the composer is free again at once.
-      setSide({ question: argument });
-      act("side", { text: argument }).then(
-        (result) => {
-          if (!result.pending)
-            setSide((current) =>
-              current?.question === argument
-                ? { question: argument, answer: result.result.answer }
-                : current,
-            );
-        },
-        (failure) => {
-          setSide(null);
-          report(failure);
-        },
-      );
+      const parent = session!;
+      const existing = sides[parent.id];
+      if (existing && !existing.id)
+        throw new Error("The side conversation is starting.");
+      if (existing?.id) {
+        const snapshot = await load(existing.id);
+        await command("submit", snapshot.metadata, { text: argument });
+        return;
+      }
+      const firstRequest = requestId();
+      setSides((current) => ({
+        ...current,
+        [parent.id]: { question: argument, firstRequest },
+      }));
+      // The side owns an ordinary runtime: tool dispatch, approvals and
+      // follow-ups have one implementation, separate from the parent turn.
+      void (async () => {
+        const result = await command("side", parent, {
+          operation: "create",
+          text: argument,
+        });
+        if (result.pending || !result.result.id)
+          throw new Error(
+            "The side conversation could not be started. Refresh to inspect it.",
+          );
+        const id = result.result.id;
+        await refresh();
+        await command("activate", { id, generation: "" });
+        const snapshot = await load(id);
+        setSides((current) =>
+          current[parent.id]?.firstRequest === firstRequest
+            ? {
+                ...current,
+                [parent.id]: { question: argument, id, firstRequest },
+              }
+            : current,
+        );
+        await command("submit", snapshot.metadata, {
+          text: argument,
+          request_id: firstRequest,
+        });
+      })().catch((failure) => {
+        setSides((current) => {
+          if (current[parent.id]?.firstRequest !== firstRequest) return current;
+          const next = { ...current };
+          delete next[parent.id];
+          return next;
+        });
+        report(failure);
+      });
     } else if (name === "/share") {
       setNotice(await shareTranscript(session!));
     } else if (name === "/instructions" && !argument) {
@@ -878,6 +935,7 @@ function App() {
       const registration = await navigator.serviceWorker?.getRegistration();
       await (await registration?.pushManager?.getSubscription())?.unsubscribe();
       await command("logout");
+      setSides({});
       reset();
       setModal(null);
     } catch (failure) {

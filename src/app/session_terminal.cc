@@ -446,6 +446,10 @@ class Terminal {
   }
   // What the next session's composer starts with.
   const std::string& Carry() const { return carry_; }
+  const std::string& SideQuestion() const { return side_question_; }
+  void Ask(const std::string& text) {
+    Send({{"kind", "submit"}, {"text", text}});
+  }
 
  private:
   // What a line did: nothing here (it goes on as the reply or to the
@@ -545,7 +549,7 @@ class Terminal {
       }
       case SlashCommandId::kBtw:
         if (argument.empty()) return Command::kPass;
-        Send({{"kind", "side"}, {"text", argument}});
+        Send({{"kind", "side"}, {"operation", "create"}, {"text", argument}});
         return Command::kDone;
       case SlashCommandId::kVerbosity: {
         if (argument.empty()) {
@@ -619,6 +623,7 @@ class Terminal {
       own_requests_.insert(command["request_id"]);
       if (JsonValue(command, "kind", "") == "submit" ||
           JsonValue(command, "kind", "") == "fork" ||
+          JsonValue(command, "kind", "") == "side" ||
           JsonValue(command, "kind", "") == "share") {
         if (raw_ && JsonValue(command, "kind", "") == "submit" &&
             !JsonValue(command, "text", "").starts_with('/')) {
@@ -771,6 +776,7 @@ class Terminal {
           JsonValue(result, "rewound", false)) {
         std::lock_guard lock(mutex_);
         next_ = JsonValue(result, "path", "");
+        side_question_ = JsonValue(result, "side_question", "");
         if (rewinding_) carry_ = JsonValue(result, "prompt", "");
         navigate_ = true;
         wake_.Wake();
@@ -842,7 +848,7 @@ class Terminal {
       failed_{false};
   std::atomic<bool> navigate_{false};
   std::atomic<bool> rewinding_{false};
-  std::string carry_;
+  std::string carry_, side_question_;
   std::atomic<const DetailPolicy*> detail_;
   const bool pinned_;
   bool redrawn_;
@@ -881,7 +887,7 @@ int TerminalMain(Options options) {
     auto sessions = ListSessions();
     if (!sessions.empty()) path = sessions.front().path;
   }
-  std::string draft, folder = CanonicalCwd();
+  std::string draft, side_question, folder = CanonicalCwd();
   const bool pinned =
       options.overrides.contains(std::string(kVerbositySetting));
   const DetailPolicy* detail = &ConfiguredDetail(options.overrides);
@@ -916,8 +922,10 @@ int TerminalMain(Options options) {
     }
     Terminal terminal(std::move(connection), path, *detail, pinned, redrawn,
                       keys, draft);
+    if (!side_question.empty()) terminal.Ask(side_question);
     int result = terminal.Run(options.attach_paths);
     draft = terminal.Carry();
+    side_question = terminal.SideQuestion();
     detail = &terminal.Detail();
     // The same session again is a redraw at another level.
     redrawn = terminal.Next() == path;

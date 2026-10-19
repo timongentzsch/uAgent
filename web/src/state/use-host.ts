@@ -264,6 +264,7 @@ export function useHost(
               [id]: value,
             },
             selection.current,
+            snapshots.watching(),
           );
           snapshots.set({ ...live.current });
           return value;
@@ -467,7 +468,7 @@ export function useHost(
         };
         live.current[id] = keepOlderPages(current, projected);
         // Decisions and canonical phase changes flush without text batching.
-        if (id === selection.current)
+        if (id === selection.current || snapshots.watches(id))
           snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
         patchSession(id, () => metadata);
         break;
@@ -701,11 +702,15 @@ export function useHost(
     document.addEventListener("visibilitychange", recover);
     let frame = 0;
     flush.current = (id?: string) => {
-      if (id && id !== selection.current) return;
+      if (id && id !== selection.current && !snapshots.watches(id)) return;
       if (document.visibilityState !== "visible" || frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        live.current = retainedViews(live.current, selection.current);
+        live.current = retainedViews(
+          live.current,
+          selection.current,
+          snapshots.watching(),
+        );
         snapshots.set({ ...live.current });
       });
     };

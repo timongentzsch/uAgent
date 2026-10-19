@@ -253,6 +253,7 @@ class ToolSelection {
 
  private:
   std::string profile_ = "default";
+  std::optional<std::unordered_set<std::string>> only_;
   std::unordered_map<std::string, bool> overrides_;
 };
 

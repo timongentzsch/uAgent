@@ -369,7 +369,21 @@ std::vector<Tool> BuildTools(AppContext& context,
     session::Wake(JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
                   ignored);
   }));
-  if (context.options.Panel()) {
+  // A side fork keeps a moderator's folder tools without becoming another
+  // panel. Its saved tool ceiling still decides which of them are offered.
+  bool side_panel_tools = false;
+  if (!context.options.Panel() && !session_path.empty()) {
+    const auto loaded = SessionStore::Inspect(session_path);
+    if (loaded.record) {
+      const json origin = JsonValue(
+          JsonValue(loaded.record->state.display, "facts", json::object()),
+          "side-origin", json::object());
+      if (const json* names = JsonArray(origin, "tools")) {
+        side_panel_tools = std::ranges::find(*names, "thread") != names->end();
+      }
+    }
+  }
+  if (context.options.Panel() || side_panel_tools) {
     AddPanelTools(tools, CanonicalCwd(), [app = &context] {
       return ChosenSelection(app->runtime.api, app->provider.providers);
     });

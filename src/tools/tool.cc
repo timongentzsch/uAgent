@@ -190,6 +190,7 @@ bool ProfileEnabled(std::string_view profile, const Tool& tool) {
 }  // namespace
 
 bool ToolSelection::Enabled(const Tool& tool) const {
+  if (only_ && !only_->contains(tool.name)) return false;
   auto override = overrides_.find(tool.name);
   return override == overrides_.end() ? ProfileEnabled(profile_, tool)
                                       : override->second;
@@ -218,7 +219,7 @@ bool ToolSelection::Configure(const json& request,
   if (operation == "set") {
     const std::string name = JsonValue(request, "name", "");
     const Tool* tool = FindTool(tools, name);
-    if (!tool) {
+    if (!tool || (only_ && !only_->contains(name))) {
       error = "unknown or unavailable tool";
       return false;
     }
@@ -240,6 +241,13 @@ bool ToolSelection::Configure(const json& request,
 }
 
 void ToolSelection::Restore(const json& value) {
+  only_.reset();
+  if (const json* only = JsonArray(value, "only")) {
+    only_.emplace();
+    for (const json& name : *only) {
+      if (name.is_string()) only_->insert(name.get<std::string>());
+    }
+  }
   profile_ = JsonValue(value, "profile", "default");
   if (!ValidProfile(profile_)) profile_ = "default";
   overrides_.clear();
@@ -256,7 +264,13 @@ void ToolSelection::Restore(const json& value) {
 json ToolSelection::Save() const {
   json overrides = json::object();
   for (const auto& [name, active] : overrides_) overrides[name] = active;
-  return {{"profile", profile_}, {"overrides", std::move(overrides)}};
+  json result = {{"profile", profile_}, {"overrides", std::move(overrides)}};
+  if (only_) {
+    std::vector<std::string> names(only_->begin(), only_->end());
+    std::ranges::sort(names);
+    result["only"] = std::move(names);
+  }
+  return result;
 }
 
 json ToolSelection::Catalogue(const std::vector<Tool>& tools) const {
@@ -280,7 +294,7 @@ json ToolSelection::Catalogue(const std::vector<Tool>& tools) const {
          {"category", ToolCategory(tool)},
          {"provider", tool.provider.empty() ? "builtin" : tool.provider},
          {"active", active},
-         {"available", true},
+         {"available", !only_ || only_->contains(tool.name)},
          {"schema_bytes", bytes}});
   }
   return {

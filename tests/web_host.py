@@ -157,6 +157,19 @@ def answer(handler, body):
             {"path": "browser-proof.txt", "content": "approved from browser"},
             call_id="browser-write",
         )
+    if prompt == "Side tool probe":
+        if not any(message.get("tool_call_id") == "btw-write" for message in body["messages"]):
+            return tool_call(
+                "write_file",
+                {"path": "btw-proof.txt", "content": "side proof"},
+                call_id="btw-write",
+            )
+        return event({"content": "SIDE-TOOL-COMPLETE"})
+    if prompt == "Side followup probe":
+        assert any(
+            "SIDE-TOOL-COMPLETE" in str(message.get("content", "")) for message in body["messages"]
+        ), "side history was lost"
+        return event({"content": "SIDE-FOLLOWUP-COMPLETE"})
     content = "# Verified response\n\nA **streamed** answer with a table.\n\n| Check | Result |\n| --- | --- |\n| Native worker | Ready |\n\nInline $x^2 + y^2 = z^2$ and \\(a+b\\).\n\n$$\\int_0^1 x \\, dx = \\frac{1}{2}$$\n\n```python\nprint('hello')\n```\n\nPrices $5 and $10. `<script>bad()</script>`\n\n![blocked](https://example.com/tracker.png)\n\n[unsafe](javascript:alert(1))\n"
     if "Queue controls probe" in prompt:
         write_sse_sequence(

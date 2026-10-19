@@ -1473,6 +1473,40 @@ def test_cli_permissions_config_http_and_fork(root, home, *, binary):
         )
 
 
+def test_cli_btw_opens_tool_capable_conversation_with_followups(root, home, *, binary):
+    (root / "btw-cli.txt").write_text("CLI-SIDE-PROOF")
+
+    def answer(_, body):
+        messages = body["messages"]
+        last = messages[-1]
+        if last.get("content") == "CLI parent":
+            return event({"content": "CLI-PARENT-DONE"})
+        if last.get("content") == "CLI side followup":
+            assert_true(any(m.get("content") == "CLI-SIDE-DONE" for m in messages), messages)
+            return event({"content": "CLI-FOLLOWUP-DONE"})
+        if last["role"] == "tool":
+            assert_true("CLI-SIDE-PROOF" in str(last.get("content")), last)
+            return event({"content": "CLI-SIDE-DONE"})
+        return tool_call("read_path", {"path": "btw-cli.txt"}, call_id="cli-side-read")
+
+    with Server([answer]) as server:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "CLI parent\n/btw CLI side question\nCLI side followup\n/q\n",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("CLI-FOLLOWUP-DONE" in result.stdout, result.stdout)
+        files = session_files(home)
+        original = next(path for path in files if not path.name.startswith("fork-"))
+        side = next(path for path in files if path.name.startswith("fork-"))
+        assert_true("CLI-SIDE-DONE" not in original.read_text(), original)
+        assert_true(
+            "CLI-SIDE-DONE" in side.read_text() and "CLI side followup" in side.read_text(), side
+        )
+
+
 def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
     def answer(_, body):
         messages = body["messages"]

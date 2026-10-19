@@ -116,7 +116,7 @@ export default function ChatPage({
   submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
-  side: { question: string; answer?: string } | null;
+  side: { question: string; id?: string; firstRequest: string } | null;
   closeSide: () => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
@@ -263,8 +263,9 @@ export default function ChatPage({
         <Deferred
           load={sideAnswer}
           fallback={null}
-          question={side.question}
-          answer={side.answer}
+          key={side.firstRequest}
+          side={side}
+          choose={choose}
           close={closeSide}
         />
       )}

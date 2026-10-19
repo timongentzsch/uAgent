@@ -858,7 +858,7 @@ export interface CommandResults {
   // A panel rewinds itself in place (`rewound`) instead of forking.
   fork: { id: string; prompt?: string; rewound?: boolean };
   share: { path: string };
-  side: { answer: string };
+  side: { id: string };
   create: never;
   activate: never;
   close: never;

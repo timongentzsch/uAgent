@@ -252,12 +252,14 @@ export function isIncoming(event: HostEvent) {
 export function retainedViews(
   views: Record<string, Snapshot>,
   selected: string,
+  watched: string[] = [],
 ): Record<string, Snapshot> {
+  const pinned = new Set([selected, ...watched]);
   const recent = Object.entries(views)
-    .filter(([id]) => id !== selected)
+    .filter(([id]) => !pinned.has(id))
     .slice(-retainedBackgroundViews);
   return Object.fromEntries([
     ...recent,
-    ...(views[selected] ? [[selected, views[selected]]] : []),
+    ...Object.entries(views).filter(([id]) => pinned.has(id)),
   ]);
 }

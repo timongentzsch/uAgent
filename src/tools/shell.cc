@@ -723,7 +723,8 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
         ToolErrorCode::kNotFound,
         "no script at .uagent/scratch/" +
             fs::relative(*script, ScratchDir(workspace), ec).generic_string() +
-            "; write it first with write_file");
+            "; this call supplied no code. Pass code with path to scratch "
+            "to create and run it, or write the file first with write_file");
   }
   // The scratch directory is private to the agent: keep it out of git.
   const fs::path ignore = script->parent_path() / ".gitignore";

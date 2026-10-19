@@ -110,12 +110,21 @@ def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
 def test_web_restarts_conversations_and_itself(root, home, *, binary):
     project = root / "restarts"
     project.mkdir()
+    active = threading.Event()
+    finish = threading.Event()
 
     def slow(_, _body):
         time.sleep(1.5)
         return event({"content": "Slow answer"})
 
-    with Server([lambda _, _body: event({"content": "Remembered answer"}), slow]) as provider:
+    def through_restart(_, _body):
+        active.set()
+        finish.wait(budget(20))
+        return event({"content": "Survived host restart"})
+
+    with Server(
+        [lambda _, _body: event({"content": "Remembered answer"}), slow, through_restart]
+    ) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, process, _):
             client.pair(code)
             session = client.create(project)
@@ -173,6 +182,10 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             assert_true("Slow answer" in json.dumps(value), value)
 
             # The host re-execs in place: same process, new epoch, same pairing.
+            session = value["metadata"]
+            generation = value["metadata"]["generation"]
+            client.command("submit", session, text="Continue through the host restart")
+            assert_true(active.wait(budget(10)), "turn did not start")
             discovery = home / ".uagent/web/discovery.json"
             epoch = json.loads(discovery.read_text())["epoch"]
             client.command("restart_host")
@@ -186,7 +199,18 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
 
             wait_until(restarted, "web host did not come back", timeout=20)
             assert_true(process.poll() is None, "host exited instead of re-exec")
-            client.until(session, lambda value: bool(value["metadata"].get("generation")))
+            try:
+                client.until(
+                    session,
+                    lambda value: (
+                        value["metadata"].get("generation") == generation
+                        and value["metadata"]["turn_active"]
+                    ),
+                )
+            finally:
+                finish.set()
+            value = client.until(session, lambda value: not value["metadata"]["turn_active"])
+            assert_true("Survived host restart" in json.dumps(value), value)
 
 
 def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):

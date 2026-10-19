@@ -1408,8 +1408,17 @@ dialog section {
 .placeholder {
   display: contents;
 }
+.placeholder .text-control {
+  background: var(--placeholder);
+  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
+    alternate;
+}
+.placeholder ::placeholder {
+  color: transparent;
+}
 .placeholder :is(input, textarea, select) {
   color: transparent;
+  background: transparent;
 }
 
 @media (pointer: coarse) {

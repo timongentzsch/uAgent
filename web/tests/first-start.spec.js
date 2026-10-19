@@ -19,7 +19,8 @@ test("a conversation with no model starts at the picker", async ({
   await expect(picker).toBeVisible();
   await picker
     .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption({ value: "mock/model-b" });
+    .fill("model-b");
+  await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(picker).toHaveCount(0);
   await expect(

@@ -284,7 +284,8 @@ test("library drafts, shared controls and scheduled results", async ({
   await page.getByLabel("Environment", { exact: true }).selectOption("local");
   await page.getByLabel("Approval", { exact: true }).selectOption("yolo");
   await page.getByRole("button", { name: "Task model", exact: true }).click();
-  await page.getByLabel("Model", { exact: true }).selectOption("mock/model-b");
+  await page.getByLabel("Model", { exact: true }).fill("model-b");
+  await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
   await page.getByLabel("Effort", { exact: true }).selectOption("high");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(

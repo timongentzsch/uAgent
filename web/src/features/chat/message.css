@@ -306,7 +306,6 @@
 }
 .event-body {
   padding: var(--gap) var(--pad);
-  border-left: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
 /* A message from another session keeps its lines. */

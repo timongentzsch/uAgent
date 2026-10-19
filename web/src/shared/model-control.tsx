@@ -35,7 +35,7 @@ export default function ModelControl(
           load={modelPicker}
           {...props}
           close={close}
-          fallback={<ModelLoading close={close} />}
+          fallback={<ModelLoading close={close} defaults={!props.save} />}
         />
       )}
     </SheetButton>

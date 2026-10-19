@@ -48,7 +48,8 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await model.click();
   await page
     .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption("mock/model-b");
+    .fill("model-b");
+  await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
   await page.getByLabel("Effort", { exact: true }).selectOption("high");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
     "mock/model-b",

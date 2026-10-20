@@ -235,6 +235,9 @@ struct Tool {
   bool command_policy = false;    // receives the approved-command allowlist
   bool delegates = false;         // contributes delegation runtime context
   bool memory_store = false;      // retained only when memory is enabled
+  // Asked before every request: false withholds the tool and its prompt line
+  // while it cannot run, e.g. on the route in use. Unset means always.
+  std::function<bool()> available;
   int64_t blocking_wait_default_ms =
       -1;  // >=0: wait_ms is intentional blocking
   enum class Visibility {

@@ -24,8 +24,14 @@ struct WebSearchResult {
   bool truncated = false;
 };
 
+// What to set when search is offered somewhere but cannot run on this route.
+inline constexpr char kWebSearchNoModel[] =
+    "web_search has no model to run on: set webSearch.model "
+    "(UAGENT_WEB_SEARCH_MODEL)";
+
 // Whether the conversation's endpoint or a configured one declares search; the
-// tool is offered then, and a call says what is missing.
+// tool is registered then, and offered while a search can run on the route in
+// use: its own hosted search, or one SelectWebSearchRoute finds.
 bool OffersWebSearch(const Api& api, const std::vector<Endpoint>& providers);
 // The route a search runs on, with the effort `webSearch.model` names; nothing
 // when search is off or no endpoint can run it.

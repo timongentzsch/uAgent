@@ -1808,19 +1808,18 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
             assert_true(len(search_server.requests) == 1, search_server.requests)
 
         # The endpoint's model names are not the conversation's to lend: with
-        # none named for it, the call says what to set.
-        def says_what_to_set(_, body):
-            result = tool_results(body["messages"])[-1]
-            assert_true("webSearch.model" in result, result)
-            return event({"content": "told"})
-
-        with Server(
-            [tool_call("web_search", {"queries": ["current fact"]}), says_what_to_set]
-        ) as plain:
+        # none named for it, no search can run, so the model is not offered
+        # it and the person is told once what to set.
+        with Server([event({"content": "first"}), event({"content": "second"})]) as plain:
             env = base_env(home, plain.url)
             env["UAGENT_PROVIDERS"] = json.dumps(providers)
-            result = run(root, env, "--yolo", "-p", "search", binary=binary)
-            assert_true(result.stdout.strip() == "told", result.stdout + result.stderr)
+            result = run_dialog(root, env, "one\ntwo\n/q\n", "--yolo", binary=binary)
+            assert_true(result.returncode == 0, result.stdout + result.stderr)
+            for _, body in plain.requests:
+                assert_true("web_search" not in function_names(body), body)
+                assert_true("web_search directly" not in json.dumps(body), body)
+            said = (result.stdout + result.stderr).count("set webSearch.model")
+            assert_true(said == 1, result.stdout + result.stderr)
             assert_true(len(search_server.requests) == 1, search_server.requests)
 
     # No endpoint offers search: the tool is off.

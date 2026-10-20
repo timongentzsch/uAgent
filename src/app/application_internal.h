@@ -58,6 +58,8 @@ class Application {
   json used_before_;
   // The settings problem last reported, so that one is said once.
   std::string config_problem_;
+  // Whether search was last found unable to run for want of a model.
+  bool search_unnamed_ = false;
   // A delegated child's time ran out while work it had started was running.
   bool out_of_time_ = false;
   bool turn_active_ = false;

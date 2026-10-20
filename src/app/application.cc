@@ -26,6 +26,8 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
+#include "include/tools/tool.h"
+#include "include/tools/web_search.h"
 #include "include/ui/sessions.h"
 #include "src/app/application_internal.h"
 
@@ -126,6 +128,19 @@ void Application::RunTurns(const std::string& input, json content,
                            const json& images) {
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
+  // Search an endpoint offers but no model is named for is withheld from the
+  // model, so the person hears why once, when the route stops running it;
+  // not when they turned the tool off themselves.
+  const Tool* search = FindTool(context_.tools, "web_search");
+  const std::vector<std::string> enabled = agent_.EnabledTools();
+  const bool unnamed =
+      search && search->available &&
+      std::ranges::find(enabled, search->name) != enabled.end() &&
+      api_.config.web_search_model.empty() && !search->available();
+  if (unnamed && !search_unnamed_) {
+    Emit(NoticeEvent(PresentationStatus::kWarned, kWebSearchNoModel));
+  }
+  search_unnamed_ = unnamed;
   PermissionControl(context_, json::object());
   struct TurnGuard {
     bool& flag_;

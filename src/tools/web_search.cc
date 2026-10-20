@@ -137,13 +137,11 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           "queries":{"type":"array","items":{"type":"string","minLength":1},
             "minItems":1,"maxItems":3}},
           "required":["queries"]})json"),
-      [&api, &usage, providers = std::move(providers)](
-          const json& a, const ToolContext& context) -> ToolResult {
+      [&api, &usage, providers](const json& a,
+                                const ToolContext& context) -> ToolResult {
         const std::optional<Route> found = SelectWebSearchRoute(api, providers);
         if (!found) {
-          return ToolFailure(ToolErrorCode::kUnavailable,
-                             "web_search has no model to run on: set "
-                             "webSearch.model (UAGENT_WEB_SEARCH_MODEL)");
+          return ToolFailure(ToolErrorCode::kUnavailable, kWebSearchNoModel);
         }
         const Route& active = *found;
         std::vector<std::string> queries;
@@ -266,6 +264,12 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   // to cover the retries or it would cancel the call mid-recovery.
   t.timeout_s = kWebSearchTimeoutSeconds * kSideAttempts;
   t.max_calls_per_turn = kWebSearchCalls;
+  // Offered while a search can run on the route in use, which a model switch
+  // changes; hosted search drops the function from the request itself.
+  t.available = [&api, providers = std::move(providers)] {
+    return api.NativeHostedTool(HostedTool::kWebSearch) ||
+           SelectWebSearchRoute(api, providers).has_value();
+  };
   return t;
 }
 

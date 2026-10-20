@@ -394,6 +394,7 @@ const json& ToolSchemaCache::Get(
   for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
     const Tool& tool = tools[i];
     if (selection && !selection->Enabled(tool)) continue;
+    if (tool.available && !tool.available()) continue;
     if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
         !detached_seen_) {
       continue;

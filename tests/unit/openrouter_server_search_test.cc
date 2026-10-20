@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/prompt.h"
 #include "include/agent/trace.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
@@ -225,6 +226,18 @@ void TestOpenRouterServerSearch() {
   unnamed_api.api_key = "inference-key";
   unnamed_api.model = "conversation-model";
   CHECK(!SelectWebSearchRoute(unnamed_api, {seeker}).has_value());
+  // So the tool and its prompt line are withheld there, and offered again on
+  // a route that can search.
+  UsageAccumulator unnamed_usage;
+  const std::vector<Tool> unnamed_tools = {
+      WebSearchTool(unnamed_api, unnamed_usage, {seeker})};
+  ToolSchemaCache offered;
+  const json unnamed_schemas = ToolSchemas(unnamed_tools);
+  CHECK(offered.Get(unnamed_tools, unnamed_schemas, {}).empty());
+  CHECK(CapabilityPrompt(unnamed_tools).empty());
+  unnamed_api.features = FeaturesOf({Feature::kSearchPlugin});
+  CHECK(offered.Get(unnamed_tools, unnamed_schemas, {}).size() == 1);
+  CHECK(!CapabilityPrompt(unnamed_tools).empty());
   unsetenv("UAGENT_PROVIDERS");
   // Without any configured search route, an OpenRouter conversation route is
   // the search route; one that declares no search leaves it unavailable.

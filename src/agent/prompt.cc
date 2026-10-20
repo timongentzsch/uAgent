@@ -189,7 +189,8 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
   };
   auto offered = [&](const char* name) {
     const Tool* tool = FindTool(tools, name);
-    return tool && (!selection || selection->Enabled(*tool));
+    return tool && (!tool->available || tool->available()) &&
+           (!selection || selection->Enabled(*tool));
   };
   if (offered("activity")) {
     add("Inspect activity output for progress; wait only when the next step "

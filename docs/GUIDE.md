@@ -58,7 +58,8 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
   `image.model`.
 - Web search uses the conversation's route when it has hosted search, else
   the first endpoint that declares a search plugin (OpenRouter does), with
-  the model `webSearch.model` names. With neither, it is off.
+  the model `webSearch.model` names. With neither, it is off, and when only
+  that model is missing you are told once to set it.
 - The `auto` approval reviewer needs an endpoint that declares `decisions`
   (OpenRouter does). With none, Auto mode asks you.
 

@@ -35,7 +35,7 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
-| `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a route or configured endpoint that declares `search_plugin` |
+| `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
 | `thread`, `decide`, `state`, `history` | the panel's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's panel, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-panel) |
 | `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a panel and its threads are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
@@ -163,8 +163,10 @@ are refused and proxy variables are ignored.
 (OpenRouter does) on a route of its own: the conversation's when it declares
 one, else the first configured endpoint that does, with the model
 `UAGENT_WEB_SEARCH_MODEL` names. A route with hosted search of its own uses
-that instead. A call without a search model says so; with no such endpoint
-the tool is not offered. `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
+that instead. The tool is offered only while one of these can run on the
+route in use, so switching models can add or withdraw it; when an endpoint
+offers search but no model is named for it, you are told once what to set.
+`UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
 `browser` drives the web host's shared Chrome; [BROWSER.md](BROWSER.md)
 covers setup, saved logins and taking over. Its `open` with `path` shows a

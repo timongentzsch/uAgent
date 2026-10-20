@@ -150,10 +150,10 @@ void BenchmarkActivity(bool labels) {
             << " ms\n";
 }
 
-// One 100 KB answer folded into a held view the way worker, host and
+// A 1 MB reasoning stream folded into a held view the way worker, host and
 // terminal each do it: one delta per 12 ms batch of a fast model (64 bytes).
 void BenchmarkStreamedAnswer() {
-  constexpr size_t kAnswerBytes = KiB(100);
+  constexpr size_t kAnswerBytes = MiB(1);
   constexpr size_t kBatchBytes = 64;
   const std::string chunk(kBatchBytes, 'x');
   const std::string delta_type(AppType(EventId::kAnswerDelta));
@@ -161,7 +161,7 @@ void BenchmarkStreamedAnswer() {
   ApplySessionEvent(state, std::string(AppType(EventId::kResponseStarted)),
                     {{"response_id", "r"}});
   size_t offset = 0;
-  Report("100 KB answer, 12 ms batches", kAnswerBytes / kBatchBytes,
+  Report("1 MB answer, 12 ms batches", kAnswerBytes / kBatchBytes,
          Measure(kAnswerBytes / kBatchBytes, [&] {
            json patch;
            ApplySessionEvent(
@@ -173,13 +173,13 @@ void BenchmarkStreamedAnswer() {
          }));
 }
 
-// 100 MB of command output through the bounded buffer a running command
-// keeps, in the 8 KiB reads the process reader makes.
+// 1 GB of command output (a long build or test log) through the bounded
+// buffer a running command keeps, in the 8 KiB reads the process reader makes.
 void BenchmarkCommandOutput() {
-  constexpr size_t kOutputBytes = MiB(100);
+  constexpr size_t kOutputBytes = MiB(1024);
   const std::string read(KiB(8), 'x');
   HeadTailBuffer buffer;
-  Report("100 MB command output", kOutputBytes / read.size(),
+  Report("1 GB command output", kOutputBytes / read.size(),
          Measure(kOutputBytes / read.size(), [&] {
            buffer.Push(read);
            return size_t{1};

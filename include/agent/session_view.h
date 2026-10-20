@@ -46,7 +46,10 @@ std::string StripModelHints(std::string text);
 // bounded view).
 const json* MergeDisplayBlock(json& view, const json& block);
 // Upserts a checkpoint's blocks and bounds the view once, not per block.
-void MergeDisplayBlocks(json& view, const json& blocks);
+// Returns how many of the oldest rows went; `changed`, when given, receives
+// the rows that are new or different, in view order.
+size_t MergeDisplayBlocks(json& view, const json& blocks,
+                          json* changed = nullptr);
 // The one reducer of a session's view: every holder of a view (worker, host,
 // terminal) folds events through it. False means the event is live-only.
 // `patch`, when given, receives the {kind:"block"} frame that brings another

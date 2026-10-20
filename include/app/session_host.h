@@ -263,7 +263,7 @@ class SessionHost {
   // False when the frame changed nothing a browser shows.
   bool ApplyRuntimeFrame(HostSession& session, json& frame);
   // The parts of a runtime frame that change a session.
-  static void ApplyStateFrame(HostSession& session, json& frame);
+  void ApplyStateFrame(HostSession& session, json& frame);
   static void RecordRunEvent(HostSession& session, const std::string& type,
                              json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.

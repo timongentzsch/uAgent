@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <iterator>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -152,8 +153,9 @@ std::string_view BlockId(const json& block) {
   return id ? std::string_view(*id) : std::string_view();
 }
 
-// Upserts one block without bounding the view; returns the row's index.
-size_t UpsertBlock(json& blocks, const json& block) {
+// Upserts one block without bounding the view; returns the row's index and
+// sets `changed`, when given, to whether the row is new or different.
+size_t UpsertBlock(json& blocks, const json& block, bool* changed = nullptr) {
   const std::string_view id = BlockId(block);
   auto found =
       std::find_if(blocks.begin(), blocks.end(),
@@ -171,6 +173,7 @@ size_t UpsertBlock(json& blocks, const json& block) {
       });
     }
     found = blocks.insert(found, block);
+    if (changed) *changed = true;
   } else {
     // One row per id, whichever side of it arrives: a tool call's fields and
     // its result's fill one row. A retained row has finished streaming, and
@@ -195,6 +198,7 @@ size_t UpsertBlock(json& blocks, const json& block) {
         }
       }
     }
+    if (changed) *changed = merged != *found;
     *found = std::move(merged);
   }
   return static_cast<size_t>(found - blocks.begin());
@@ -231,11 +235,23 @@ const json* MergeDisplayBlock(json& view, const json& block) {
   return kept >= dropped ? &blocks[kept - dropped] : nullptr;
 }
 
-void MergeDisplayBlocks(json& view, const json& blocks) {
+size_t MergeDisplayBlocks(json& view, const json& blocks, json* changed) {
   json& held = view["blocks"];
   if (!held.is_array()) held = json::array();
-  for (const json& block : blocks) UpsertBlock(held, block);
-  BoundView(view);
+  std::set<std::string_view> ids;
+  for (const json& block : blocks) {
+    bool row_changed = false;
+    UpsertBlock(held, block, changed ? &row_changed : nullptr);
+    if (row_changed) ids.insert(BlockId(block));
+  }
+  const size_t dropped = BoundView(view);
+  if (changed) {
+    *changed = json::array();
+    for (const json& row : held) {
+      if (ids.contains(BlockId(row))) changed->push_back(row);
+    }
+  }
+  return dropped;
 }
 
 namespace {

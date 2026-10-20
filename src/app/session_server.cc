@@ -40,6 +40,12 @@ Fd Socket(const std::string& path, bool listen) {
   if (socket) fcntl(socket.Get(), F_SETFL, O_NONBLOCK);
   return socket;
 }
+// What a client gets instead of frames it missed: a cue to refresh.
+json GapFrame(const std::string& id, const std::string& generation) {
+  json gap = {{"kind", "gap"}};
+  StampFrame(gap, id, generation);
+  return gap;
+}
 }  // namespace
 std::string SocketPath(const std::string& path) {
   return SocketPathForId(HashHex(path));
@@ -250,8 +256,8 @@ struct Server::State {
     for (;;) {
       if (stopped &&
           drain_deadline == std::chrono::steady_clock::time_point::max()) {
-        drain_deadline =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+        drain_deadline = std::chrono::steady_clock::now() +
+                         std::chrono::milliseconds(kServerDrainMs);
       }
       std::vector<pollfd> watches{{listener.Get(), POLLIN, 0},
                                   {wake.read.Get(), POLLIN, 0}};
@@ -303,11 +309,9 @@ struct Server::State {
             replay_bytes = 0;
             replay_gap = true;
             // Refresh at the authoritative channel; no file tailing.
-            command({{"v", kProtocol},
-                     {"session_id", id},
-                     {"generation", generation},
-                     {"kind", "refresh"},
-                     {"request_id", RandomToken(16)}});
+            json refresh = ControlFrame("refresh");
+            StampFrame(refresh, id, generation);
+            command(refresh);
           }
         }
         for (auto& client : clients) client.output += line;
@@ -373,11 +377,7 @@ struct Server::State {
                         JsonDump(hello) + '\n'};
           if (!snapshot.is_null()) client.output += JsonDump(snapshot) + '\n';
           if (replay_gap) {
-            client.output += JsonDump({{"v", kProtocol},
-                                       {"kind", "gap"},
-                                       {"session_id", id},
-                                       {"generation", generation}}) +
-                             '\n';
+            client.output += JsonDump(GapFrame(id, generation)) + '\n';
           }
           for (const auto& event : replay) client.output += event;
           clients.push_back(std::move(client));
@@ -423,21 +423,15 @@ void Server::Publish(json frame) {
   std::lock_guard lock(state_->mutex);
   size_t bytes = JsonEstimatedBytes(frame);
   if (bytes > kFrameBytes) {
-    frame = {{"v", kProtocol},
-             {"kind", "gap"},
-             {"session_id", state_->id},
-             {"generation", state_->generation},
-             {"reason", "frame exceeds transport limit"}};
+    frame = GapFrame(state_->id, state_->generation);
+    frame["reason"] = "frame exceeds transport limit";
     bytes = JsonEstimatedBytes(frame);
   }
   // Backpressure must never pause tools or inference. A gap asks consumers to
   // refresh rather than silently pretending that dropped events were delivered.
   if (state_->pending_bytes + bytes > kQueueBytes) {
     state_->pending.clear();
-    state_->pending.push_back({{"v", kProtocol},
-                               {"kind", "gap"},
-                               {"session_id", state_->id},
-                               {"generation", state_->generation}});
+    state_->pending.push_back(GapFrame(state_->id, state_->generation));
     state_->pending_bytes = 256;
   }
   state_->pending_bytes += bytes;

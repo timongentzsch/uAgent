@@ -28,6 +28,13 @@ inline constexpr std::chrono::milliseconds kInputEscapeDelay{100};
 
 bool ShouldRememberInput(std::string_view input);
 
+// The byte a terminal sends for Ctrl and a letter: Ctrl('B') is 0x02.
+constexpr unsigned char Ctrl(char letter) {
+  return static_cast<unsigned char>(letter & 0x1f);
+}
+// What Backspace sends; some terminals send Ctrl('H') instead.
+inline constexpr unsigned char kBackspaceKey = 0x7f;
+
 enum class TerminalInputTokenKind { kText, kSequence, kPaste, kEscape };
 
 struct TerminalInputToken {

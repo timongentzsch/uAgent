@@ -16,6 +16,11 @@ namespace uagent {
 // treats all of those as "nothing there".
 json ReadJsonFile(const std::string& path, size_t byte_limit);
 
+// One page, from `offset`, of a body kept whole outside the transcript: a
+// retained artifact, or a diff kept with a session's edits. Any other path
+// answers an error.
+json ReadPrivateArtifact(const std::string& path, size_t offset);
+
 // A small owner-only JSON document guarded across worker processes. Callers
 // validate their own schema; this class owns only locking, parsing and atomic
 // replacement.

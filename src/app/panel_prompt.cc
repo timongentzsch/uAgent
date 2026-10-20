@@ -33,7 +33,7 @@ struct PanelRequest {
   const Connection& connection;
   const std::string path;
   const std::string cwd;
-  const std::string request = RandomToken(16);
+  const std::string request = NewRequestId();
   bool submitted = false, rejected = false, completed = false, busy = true;
   bool accepted = false, paused = false, done = false;
   std::string probe;  // the request that asks the panel how it stands
@@ -44,7 +44,7 @@ struct PanelRequest {
 
   bool Send(json command) const {
     StampFrame(command, HashHex(path), connection.generation);
-    command["request_id"] = command.value("request_id", RandomToken(16));
+    command["request_id"] = command.value("request_id", NewRequestId());
     return WriteFrame(connection.socket.Get(), command);
   }
 
@@ -136,7 +136,7 @@ void AwaitPanel(PanelRequest& panel) {
         !panel.probe.empty() || (!panel.paused && ThreadsOwe(panel.cwd))) {
       continue;
     }
-    panel.probe = RandomToken(16);
+    panel.probe = NewRequestId();
     open = panel.Send({{"kind", "refresh"}, {"request_id", panel.probe}});
   }
 }

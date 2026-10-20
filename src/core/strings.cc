@@ -159,14 +159,9 @@ struct Glyph {
 // width; invalid or incomplete UTF-8 degrades to one column per byte.
 Glyph NextGlyph(const std::string& s, size_t offset, std::mbstate_t& state,
                 bool skip_ansi) {
-  if (skip_ansi && s[offset] == '\x1b' && offset + 1 < s.size() &&
-      s[offset + 1] == '[') {
-    size_t end = offset + 2;
-    while (end < s.size()) {
-      unsigned char value = static_cast<unsigned char>(s[end++]);
-      if (value >= 0x40 && value <= 0x7e) break;
-    }
-    return {end - offset, 0};
+  if (const size_t span =
+          skip_ansi ? CsiSpan(std::string_view(s).substr(offset)) : 0) {
+    return {span, 0};
   }
   wchar_t wide = 0;
   size_t consumed =
@@ -181,6 +176,18 @@ Glyph NextGlyph(const std::string& s, size_t offset, std::mbstate_t& state,
 }
 
 }  // namespace
+
+size_t CsiSpan(std::string_view text) {
+  if (!text.starts_with("\033[")) return 0;
+  size_t end = 2;
+  while (end < text.size() && Byte(text[end]) >= 0x20 &&
+         Byte(text[end]) <= 0x3f) {
+    ++end;
+  }
+  return end < text.size() && Byte(text[end]) >= 0x40 && Byte(text[end]) <= 0x7e
+             ? end + 1
+             : 0;
+}
 
 size_t DisplayWidth(const std::string& s) {
   std::mbstate_t state{};

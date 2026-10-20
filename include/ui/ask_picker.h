@@ -15,8 +15,9 @@ class LiveRegion;
 // by path, escape cancels. Returns the reply fields {text, attachments}, or
 // null when cancelled or when `live` says the decision was answered
 // elsewhere. It draws in `region`, in the composer's place; input is read
-// from stdin.
-json PickAskAnswers(const json& questions, LiveRegion& region,
+// from stdin. `wake` turns readable when `live` may have changed or the
+// terminal was resized; between keys and wakes the picker sleeps.
+json PickAskAnswers(const json& questions, LiveRegion& region, int wake,
                     const std::function<bool()>& live);
 
 // The same answers from one typed line, for a terminal without raw input:

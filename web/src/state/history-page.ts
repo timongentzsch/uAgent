@@ -1,4 +1,5 @@
 import type { View } from "../shared/types.ts";
+import { maxHistoryBlocks } from "../shared/limits.ts";
 
 // Both the main transcript and subagent threads retain the same bounded
 // window. The current page wins when a server page overlaps it because it
@@ -10,6 +11,6 @@ export function prependHistoryPage(older: View, current: View): View {
     blocks: [
       ...older.blocks.filter((block) => !seen.has(block.id)),
       ...current.blocks,
-    ].slice(0, 256),
+    ].slice(0, maxHistoryBlocks),
   };
 }

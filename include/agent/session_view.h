@@ -45,6 +45,11 @@ std::string StripModelHints(std::string text);
 // Upserts one block by id and returns it (nullptr once evicted from the
 // bounded view).
 const json* MergeDisplayBlock(json& view, const json& block);
+// Upserts a checkpoint's blocks and bounds the view once, not per block.
+// Returns how many of the oldest rows went; `changed`, when given, receives
+// the rows that are new or different, in view order.
+size_t MergeDisplayBlocks(json& view, const json& blocks,
+                          json* changed = nullptr);
 // The one reducer of a session's view: every holder of a view (worker, host,
 // terminal) folds events through it. False means the event is live-only.
 // `patch`, when given, receives the {kind:"block"} frame that brings another
@@ -56,7 +61,11 @@ json ConversationDetail(const Conversation& conversation, const std::string& id,
 // Exact retained tool arguments/result, independent of presentation previews.
 json ConversationExchange(const Conversation& conversation,
                           const std::string& id, size_t offset = 0);
-json ReadPrivateArtifact(const std::string& path, size_t offset);
+// One page of a long text from `offset`, cut at UTF-8 boundaries, with where
+// the next starts and whether there is more.
+json PageText(const std::string& text, size_t offset);
 json FindHttpExchange(const json& value, const std::string& id);
+// The HTTP exchanges of the latest model request, from the display facts.
+json LatestHttp(const json& facts);
 }  // namespace uagent
 #endif  // UAGENT_INCLUDE_AGENT_SESSION_VIEW_H_

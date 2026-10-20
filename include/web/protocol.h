@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "include/app/asset_store.h"
 #include "include/app/session.h"
 namespace uagent::web {
 using session::kCommandBytes;

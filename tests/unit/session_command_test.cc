@@ -26,6 +26,7 @@
 #include "include/app/commands.h"
 #include "include/app/schedule.h"
 #include "include/app/session_host.h"
+#include "include/app/transient_batcher.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -261,6 +262,10 @@ void TestReplayLogReadsInBatches() {
   CHECK(!first.reset);
   CHECK(first.events.size() > 1 && first.events.size() < 10);
   CHECK(first.events.front().sequence == 1);
+  // Kept as the event stream sends it, so no reader formats it again.
+  CHECK(first.events.front().frame->starts_with(
+      "id: e:1\nevent: update\ndata: {"));
+  CHECK(first.events.front().frame->ends_with("}\n\n"));
   uint64_t next = first.events.back().sequence;
   size_t seen = first.events.size();
   while (next < log.Cursor()) {
@@ -273,6 +278,36 @@ void TestReplayLogReadsInBatches() {
   CHECK(seen == 10);
   // A watermark holds back what was published after the reader connected.
   CHECK(log.Read(0, true, 3, 1 << 20).events.size() == 3);
+}
+
+// Streamed text and usage are held back between their first frames of a
+// turn; any other event sends what is held, in order, before itself.
+void TestTransientBatcherHoldsStreamedText() {
+  std::vector<AppEvent> sent;
+  session::TransientBatcher batcher(
+      [&](const AppEvent& event) { sent.push_back(event); });
+  const std::string delta(AppType(EventId::kAnswerDelta));
+  const std::string usage(AppType(EventId::kUsageUpdated));
+  auto sent_text = [&] {
+    std::string text;
+    for (const AppEvent& event : sent) {
+      if (event.type == delta) text += JsonValue(event.data, "text", "");
+    }
+    return text;
+  };
+  batcher.Push({0, "", std::string(AppType(EventId::kTurnStarted))});
+  for (const char* text : {"a", "b", "c"}) {
+    batcher.Push({0, "", delta, {{"response_id", "r"}, {"text", text}}});
+  }
+  CHECK(sent_text().starts_with("a"));
+  batcher.Push({0, "", usage, {{"usage", 1}}});
+  batcher.Push({0, "", usage, {{"usage", 2}}});
+  CHECK(sent.back().type == usage && sent.back().data["usage"] == 1);
+  batcher.Push({0, "", std::string(AppType(EventId::kTurnCompleted))});
+  CHECK(sent_text() == "abc");
+  REQUIRE(sent.size() >= 2);
+  CHECK(sent[sent.size() - 2].data["usage"] == 2);
+  CHECK(sent.back().type == AppType(EventId::kTurnCompleted));
 }
 
 void TestReceiptLog() {

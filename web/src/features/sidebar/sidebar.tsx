@@ -1,5 +1,6 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Component, type ComponentChildren } from "preact";
+import { useMemo } from "preact/hooks";
 import type { Session, Space, AppModal } from "../../shared/types.ts";
 import {
   Check,
@@ -25,12 +26,12 @@ import {
   IconButton,
   Placeholder,
   EmptyState,
+  propsChanged,
 } from "../../shared/ui.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
-import { folderOf } from "../../shared/display.ts";
+import { capitalize, folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
-import { levelLabel } from "../../shared/verbosity.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { MemberAvatar } from "../../shared/member-card.tsx";
@@ -151,7 +152,7 @@ export function ConversationMenu({
         Export transcript
       </MenuItem>
       {detail && detail.levels.length > 0 && (
-        <MenuSub label="Detail" value={levelLabel(detail.level)}>
+        <MenuSub label="Detail" value={capitalize(detail.level)}>
           {detail.levels.map((level) => (
             <MenuItem
               key={level}
@@ -160,7 +161,7 @@ export function ConversationMenu({
               disabled={detail.disabled}
               onClick={() => detail.change(level)}
             >
-              {levelLabel(level)}
+              {capitalize(level)}
               {level === detail.level && <Check />}
             </MenuItem>
           ))}
@@ -369,15 +370,10 @@ function SessionRowView({
   );
 }
 
-const changed = (prior: object, next: object) =>
-  Object.entries(next).some(
-    ([key, value]) => (prior as Record<string, unknown>)[key] !== value,
-  );
-
 // A patch to one session keeps the others' objects, so only its row renders.
 class SessionRow extends Component<SessionRowProps> {
   shouldComponentUpdate(next: SessionRowProps) {
-    return changed(this.props, next);
+    return propsChanged(this.props, next);
   }
   render(props: SessionRowProps) {
     return <SessionRowView {...props} />;
@@ -437,6 +433,19 @@ function SidebarView({
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
+  // Grouped again only when the list, the places or the search change, not
+  // for a selection, an unread mark or a fold.
+  const places = useMemo(
+    () => placesByKind(all, drawing ? [] : spaces, query),
+    [all, drawing, spaces, query],
+  );
+  // How many conversations each place holds, whatever the search shows.
+  const counts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of all)
+      counts.set(folderOf(item), (counts.get(folderOf(item)) || 0) + 1);
+    return counts;
+  }, [all]);
   const row = (item: Session) => (
     <SessionRow
       key={item.id}
@@ -530,11 +539,7 @@ function SidebarView({
           >
             <Plus />
           </IconButton>
-          {space &&
-            spaceMenu(
-              space,
-              all.filter((item) => folderOf(item) === cwd).length,
-            )}
+          {space && spaceMenu(space, counts.get(cwd) || 0)}
           {seats.length > 0 && (
             <div class="place-seats" role="group" aria-label="Members">
               {seats.slice(0, SEATS_SHOWN).map((item) => (
@@ -562,14 +567,12 @@ function SidebarView({
       </section>
     );
   };
-  const list = placesByKind(all, drawing ? [] : spaces, query).map(
-    ([kind, shown]) => (
-      <div key={kind} class="list-group" role="group" aria-label={kind}>
-        <p class="list-kind">{kind}</p>
-        {shown.map(place)}
-      </div>
-    ),
-  );
+  const list = places.map(([kind, shown]) => (
+    <div key={kind} class="list-group" role="group" aria-label={kind}>
+      <p class="list-kind">{kind}</p>
+      {shown.map(place)}
+    </div>
+  ));
   return (
     <>
       <div class="sidebar-head">
@@ -692,7 +695,7 @@ function SidebarView({
 // its props changes, which the shell keeps stable.
 export default class Sidebar extends Component<SidebarProps> {
   shouldComponentUpdate(next: SidebarProps) {
-    return changed(this.props, next);
+    return propsChanged(this.props, next);
   }
   render(props: SidebarProps) {
     return <SidebarView {...props} />;

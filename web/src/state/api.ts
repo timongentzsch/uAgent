@@ -20,6 +20,7 @@ export const routes = {
   browserViewer: "/api/browser/viewer",
   command: "/api/command",
   pushSubscriptions: "/api/push/subscriptions",
+  sessions: "/api/sessions",
   refreshedSessions: "/api/sessions?refresh=1",
   events: (cursor: string) => `/api/events?cursor=${cursor}`,
   receipt: (requestId: string) => `/api/receipts/${requestId}`,

@@ -22,7 +22,7 @@ const configuration = () => import("./configuration.tsx");
 
 // The shell: which scope is open, the list of scopes, and its page.
 export default function Settings(props: SettingsProps) {
-  const { session, selected, online, catalogue, snapshots } = props;
+  const { session, online, catalogue, mcp: servers } = props;
   // Null until a scope is picked: a phone shows the list first, and a
   // picked scope is a layer the back gesture returns from.
   const [picked, setPicked] = useState<Scope | null>(
@@ -39,14 +39,18 @@ export default function Settings(props: SettingsProps) {
   const [, title, , describe] = SCOPES.find(([id]) => id === current)!;
   const folder = session?.cwd?.split("/").pop();
   const drilled = phone && picked !== null;
-  const state = snapshots[selected]?.state;
   const instructions = (label: string, detail: string) => (
     <Group>
       <Row label={label} detail={detail} onClick={props.instructions} />
     </Group>
   );
   const mcp = (scope: "global" | "project") => (
-    <McpServers scope={scope} session={session} state={state} online={online} />
+    <McpServers
+      scope={scope}
+      session={session}
+      servers={servers}
+      online={online}
+    />
   );
   const pages: Record<Scope, preact.ComponentChildren> = {
     user: (

@@ -24,6 +24,7 @@ import { ChevronDown, Keyboard } from "lucide-preact";
 import BrowserTouch from "./touch.tsx";
 import { hideTouchCursor, sendPointer } from "./rfb.ts";
 import { BrowserFrame, BrowserTools } from "./frame.tsx";
+import { useLatest } from "../../shared/use-latest.ts";
 
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
 const CLIPBOARD_PASTE_DELAY_MS = 150;
@@ -113,8 +114,7 @@ function Screen({
   children: ComponentChildren;
 }) {
   const target = useRef<HTMLDivElement>(null);
-  const viewOnly = useRef(readOnly);
-  viewOnly.current = readOnly;
+  const viewOnly = useLatest(readOnly);
   useEffect(() => {
     if (!target.current) return;
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
@@ -470,8 +470,7 @@ export default function BrowserPanel({
       );
     }
   };
-  const actions = useRef({ copy, paste, chord });
-  actions.current = { copy, paste, chord };
+  const actions = useLatest({ copy, paste, chord });
 
   // Desktop shortcuts inside the viewer: paste carries this device's
   // clipboard to Chrome first, copy brings Chrome's clipboard back, and on

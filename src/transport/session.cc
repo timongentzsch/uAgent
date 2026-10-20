@@ -53,29 +53,29 @@ bool WriteFrame(int fd, std::string line) {
   line += '\n';
   auto deadline = std::chrono::steady_clock::now() + kConnectTimeout;
   size_t offset = 0;
+  // The socket is non-blocking: write at once, and wait only while it is
+  // full.
   while (offset < line.size()) {
-    if (std::chrono::steady_clock::now() >= deadline) {
+    ssize_t count = write(fd, line.data() + offset, line.size() - offset);
+    if (count > 0) {
+      offset += static_cast<size_t>(count);
+      continue;
+    }
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count == 0 || errno != EAGAIN ||
+        std::chrono::steady_clock::now() >= deadline) {
       return false;
     }
     pollfd wait{fd, POLLOUT, 0};
     int ready = poll(&wait, 1, static_cast<int>(kConnectPollInterval.count()));
-    if (ready < 0 && errno == EINTR) {
-      continue;
-    }
-    if (ready < 0 || (wait.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+    if (ready < 0 && errno != EINTR) {
       return false;
     }
-    if (ready == 0) {
-      continue;
-    }
-    ssize_t count = write(fd, line.data() + offset, line.size() - offset);
-    if (count < 0 && (errno == EINTR || errno == EAGAIN)) {
-      continue;
-    }
-    if (count <= 0) {
+    if (ready > 0 && (wait.revents & (POLLERR | POLLHUP | POLLNVAL))) {
       return false;
     }
-    offset += static_cast<size_t>(count);
   }
   return true;
 }
@@ -85,7 +85,7 @@ bool FrameBuffer::Feed(std::string_view bytes,
   pending_.append(bytes);
   size_t begin = 0;
   for (;;) {
-    const size_t end = pending_.find('\n', begin);
+    const size_t end = pending_.find('\n', std::max(begin, scanned_));
     if (end == std::string::npos) break;
     if (end - begin > limit_) return false;
     json frame = json::parse(
@@ -98,6 +98,7 @@ bool FrameBuffer::Feed(std::string_view bytes,
     begin = end + 1;
   }
   pending_.erase(0, begin);
+  scanned_ = pending_.size();
   return pending_.size() <= limit_;
 }
 

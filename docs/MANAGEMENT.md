@@ -1,8 +1,8 @@
 # Memory, skills and scheduled tasks
 
-Memories, skills and scheduled tasks are managed the same way from three
-places: the web UI (Library and Scheduled), the terminal (`/memory`,
-`/skills`, `/schedule`) and scripts (`uagent --control`).
+Manage memories, skills and scheduled tasks from the web UI (Library and
+Scheduled), the terminal (`/memory`, `/skills`, `/schedule`) or a script
+(`uagent --control`).
 
 | To | Terminal |
 | --- | --- |
@@ -17,7 +17,7 @@ places: the web UI (Library and Scheduled), the terminal (`/memory`,
 | run, pause or resume a task | `/schedule run ID`, `/schedule pause ID`, `/schedule resume ID` |
 
 A key is `global/NAME` (every project) or `project/NAME` (this project).
-Text after the key is taken as the content; `@FILE` reads it from a file.
+Text after the key is the content; `@FILE` reads it from a file.
 
 ## Library
 
@@ -36,13 +36,13 @@ found.
 - µAgent's own memories and skills are editable. Bundled skills are
   read-only, and so is what Codex and Claude keep, which is listed only when
   `UAGENT_OTHER_AGENTS` names them. Copy one into a new entry to change it.
-- Skill status is available, overridden, disabled or invalid. Required tools
-  and supporting files are listed without executing anything.
+- A skill is available, overridden, disabled or invalid. Its required tools
+  and supporting files are listed without running anything.
 - Disabling a skill adds it to `UAGENT_SKILL_EXCLUDE` as saved for all
   conversations; a project's own exclusion can still apply. Deleting a skill
   removes its `SKILL.md` and keeps supporting files.
-- Saved changes apply to new sessions. They do not rewrite a running agent's
-  startup context.
+- Saved changes apply to new sessions, not to a running agent's startup
+  context.
 
 **Import** (in the web UI, the Library's Import button; in the terminal,
 `/skills import` and `/memory import`) lists the skills under
@@ -56,7 +56,7 @@ too; condensing it takes a model, so invoke `$import`.
 
 In the web UI, **Edit** opens an item's source; drafts survive navigation in
 the current tab, and a stale revision cannot overwrite a newer file.
-**Refresh** picks up changes made by an external editor.
+**Refresh** picks up changes made in another editor.
 
 From a script:
 
@@ -74,31 +74,31 @@ uagent --control '{"kind":"skills","action":"list","cwd":"/absolute/project"}'
 | `enable`, `disable` | skills | `key` |
 | `list`, `run` | import | `only` (`skill` or `memory`); `run` takes the `key` or `name` of a listed item, or `all` |
 
-Writes require the `revision` returned by `get`. New items use a
-`global/NAME` or `project/NAME` key with an empty revision; an existing skill
+Writes require the `revision` that `get` returns. A new item takes a
+`global/NAME` or `project/NAME` key and an empty revision; an existing skill
 is named by the `key` that `list` returns. The terminal commands fill in the
-current revision themselves, and a JSON argument (`/memory {...}`) sends a
-raw control request.
+revision themselves, and a JSON argument (`/memory {...}`) sends a raw
+control request.
 
 ## Scheduled tasks
 
 A scheduled task is a prompt that runs by itself: once at a future time, at
 a fixed interval between one minute and one year, or on selected weekdays at
 `HH:MM` in an installed IANA timezone. Create and edit tasks in the web UI's
-Scheduled view, or with the `save` request below.
+Scheduled view or with the `save` request below.
 
-Tasks run only while `uagent --web` is running on the host; no browser needs
-to stay open. Previews use the same calculation as execution. A repeated
-local time runs at its first occurrence; a nonexistent daylight-saving time
-is skipped.
+Tasks run only while `uagent --web` runs on the host; no browser needs to
+stay open. Previews use the same calculation as execution. A repeated local
+time runs at its first occurrence; a nonexistent daylight-saving time is
+skipped.
 
 Each run is an ordinary session, started from a frozen copy of the task:
 
 - `model`: the task's model; blank uses the project default.
 - `permissions`: the approval mode, `ask` (the default), `auto` or `yolo`.
-  When a run needs a decision, open it in the web UI or terminal to answer.
-- `environment`: `worktree` (the default) runs in a Git worktree created
-  detached from committed `HEAD`; `local` runs in the project directory.
+  When a run needs a decision, open it in the web UI or terminal.
+- `environment`: `worktree` (the default) runs in a git worktree detached
+  at the committed `HEAD`; `local` runs in the project directory.
 
 Worktrees and conversations are kept for review, including after the task is
 deleted; remove a reviewed worktree with `git worktree remove`.
@@ -109,13 +109,13 @@ deleted; remove a reviewed worktree with `git worktree remove`.
 - A task never overlaps itself; an occurrence during an active run is recorded
   as skipped. At most two scheduled runs execute at once; interactive sessions
   do not use these slots.
-- Occurrences more than 60 seconds late are recorded as missed; there is no
-  catch-up burst.
+- An occurrence more than 60 seconds late is recorded as missed; missed
+  runs are not caught up.
 - After a web host restart, runs whose runtime survived reconnect. A claimed
   run whose runtime is gone becomes interrupted and is never resubmitted
   automatically; unclaimed queued runs may still start.
 - Up to 64 tasks and 128 run records are kept; the oldest finished records
-  are pruned first.
+  go first.
 
 From a script, `save` creates a task (empty `revision`) or updates one
 (`key` and the `revision` that `get` returns):
@@ -140,6 +140,5 @@ Unix `after` and returns when it would run.
 
 The other actions take the task's `key`: `list` (none), `get`, `run`, and
 `pause`, `resume` and `forget` with its `revision`; `stop` takes the run ID
-as `key`. In the terminal, `/schedule run ID`, `/schedule pause ID`,
-`/schedule resume ID`, `/schedule forget ID` and `/schedule stop RUN_ID` do
-the same without JSON; the IDs are in `/schedule`.
+as `key`. In the terminal, `/schedule run|pause|resume|forget ID` and
+`/schedule stop RUN_ID` do the same without JSON; `/schedule` lists the IDs.

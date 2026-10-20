@@ -2,13 +2,12 @@
 
 #include "include/agent/session_view.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <iterator>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -20,6 +19,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 
@@ -68,17 +68,6 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
     }
   }
   return entries;
-}
-
-json TextPage(const std::string& text, size_t offset) {
-  offset = std::min(offset, text.size());
-  const size_t end =
-      Utf8BoundaryBefore(text, std::min(text.size(), offset + KiB(16)));
-  offset = Utf8BoundaryAfter(text, offset);
-  return {{"text", text.substr(offset, end >= offset ? end - offset : 0)},
-          {"next", end},
-          {"bytes", text.size()},
-          {"more", end < text.size()}};
 }
 
 std::string Text(const json& message) {
@@ -146,13 +135,19 @@ std::string DisplayText(const json& message) {
 }
 }  // namespace
 
-const json* MergeDisplayBlock(json& view, const json& block) {
-  json& blocks = view["blocks"];
-  if (!blocks.is_array()) blocks = json::array();
-  const std::string id = JsonValue(block, "id", "");
-  auto found = std::find_if(
-      blocks.begin(), blocks.end(),
-      [&](const json& item) { return JsonValue(item, "id", "") == id; });
+namespace {
+std::string_view BlockId(const json& block) {
+  const std::string* id = JsonStringRef(block, "id");
+  return id ? std::string_view(*id) : std::string_view();
+}
+
+// Upserts one block without bounding the view; returns the row's index and
+// sets `changed`, when given, to whether the row is new or different.
+size_t UpsertBlock(json& blocks, const json& block, bool* changed = nullptr) {
+  const std::string_view id = BlockId(block);
+  auto found =
+      std::find_if(blocks.begin(), blocks.end(),
+                   [&](const json& item) { return BlockId(item) == id; });
   if (found == blocks.end()) {
     // Retained rows carry their sequence: insert in position so a late
     // arrival (replay, pre-facts emit) can never strand older content
@@ -166,6 +161,7 @@ const json* MergeDisplayBlock(json& view, const json& block) {
       });
     }
     found = blocks.insert(found, block);
+    if (changed) *changed = true;
   } else {
     // One row per id, whichever side of it arrives: a tool call's fields and
     // its result's fill one row. A retained row has finished streaming, and
@@ -190,9 +186,16 @@ const json* MergeDisplayBlock(json& view, const json& block) {
         }
       }
     }
+    if (changed) *changed = merged != *found;
     *found = std::move(merged);
   }
-  const size_t kept = static_cast<size_t>(found - blocks.begin());
+  return static_cast<size_t>(found - blocks.begin());
+}
+
+// Drops the oldest rows past the view's bounds, in one walk of the view;
+// returns how many went.
+size_t BoundView(json& view) {
+  json& blocks = view["blocks"];
   size_t bytes = JsonEstimatedBytes(blocks);
   size_t dropped = 0;
   while (dropped < blocks.size() &&
@@ -208,16 +211,43 @@ const json* MergeDisplayBlock(json& view, const json& block) {
   if (!blocks.empty()) {
     view["before"] = JsonValue(blocks.front(), "sequence", uint64_t{0});
   }
+  return dropped;
+}
+}  // namespace
+
+const json* MergeDisplayBlock(json& view, const json& block) {
+  json& blocks = view["blocks"];
+  if (!blocks.is_array()) blocks = json::array();
+  const size_t kept = UpsertBlock(blocks, block);
+  const size_t dropped = BoundView(view);
   return kept >= dropped ? &blocks[kept - dropped] : nullptr;
+}
+
+size_t MergeDisplayBlocks(json& view, const json& blocks, json* changed) {
+  json& held = view["blocks"];
+  if (!held.is_array()) held = json::array();
+  std::set<std::string_view> ids;
+  for (const json& block : blocks) {
+    bool row_changed = false;
+    UpsertBlock(held, block, changed ? &row_changed : nullptr);
+    if (row_changed) ids.insert(BlockId(block));
+  }
+  const size_t dropped = BoundView(view);
+  if (changed) {
+    *changed = json::array();
+    for (const json& row : held) {
+      if (ids.contains(BlockId(row))) changed->push_back(row);
+    }
+  }
+  return dropped;
 }
 
 namespace {
 json* FindBlock(json& state, const std::string& id) {
   json& blocks = state["view"]["blocks"];
   if (id.empty() || !blocks.is_array()) return nullptr;
-  auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {
-    return JsonValue(block, "id", "") == id;
-  });
+  auto found = std::find_if(blocks.begin(), blocks.end(),
+                            [&](json& block) { return BlockId(block) == id; });
   return found == blocks.end() ? nullptr : &*found;
 }
 
@@ -304,15 +334,17 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     }
     const char* field = answer ? "text" : "reasoning";
     const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
-    const std::string current = JsonValue(*found, field, "");
-    const std::string delta = JsonValue(data, "text", "");
-    std::string added = delta;
+    const std::string* sent = JsonStringRef(data, "text");
+    const std::string_view delta = sent ? *sent : std::string_view();
     if (!answer && JsonValue(data, "reset", false)) {
       (*found)[field] = delta;
       (*found)[bytes] = delta.size();
       changed(found);
       return true;
     }
+    const std::string* held = JsonStringRef(*found, field);
+    const std::string_view current = held ? *held : std::string_view();
+    std::string_view added = delta;
     if (data.contains("offset")) {
       const size_t offset = JsonValue(data, "offset", size_t{0});
       // A checkpoint may already contain this delta. Only append the
@@ -320,18 +352,21 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
       // conflicting revision waits for the next complete block.
       if (offset > current.size()) return true;
       const size_t overlap = std::min(delta.size(), current.size() - offset);
-      if (current.compare(offset, overlap, delta, 0, overlap) != 0) {
+      if (current.compare(offset, overlap, delta.substr(0, overlap)) != 0) {
         return true;
       }
       added = delta.substr(overlap);
     }
     if (added.empty()) return true;
-    (*found)[field] = current + added;
-    (*found)[bytes] = current.size() + added.size();
+    // Appended in place: a long answer is never copied per delta.
+    json& stored = (*found)[field];
+    if (!stored.is_string()) stored = "";
+    std::string& text = stored.get_ref<std::string&>();
+    text += added;
+    (*found)[bytes] = text.size();
     if (patch) {
-      *patch = {{"kind", "block"},
-                {"id", response_id},
-                {"append", {{field, std::move(added)}}}};
+      *patch = {
+          {"kind", "block"}, {"id", response_id}, {"append", {{field, added}}}};
     }
   } else if (type == AppType(EventId::kResponseFinished)) {
     if (json* found = FindBlock(state, JsonValue(data, "response_id", ""))) {
@@ -679,7 +714,7 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
       }
     }
   }
-  return TextPage(text, offset);
+  return PageText(text, offset);
 }
 
 json FindHttpExchange(const json& value, const std::string& id) {
@@ -699,40 +734,20 @@ json FindHttpExchange(const json& value, const std::string& id) {
   return nullptr;
 }
 
-json ReadPrivateArtifact(const std::string& path, size_t offset) {
-  const std::filesystem::path file_path(path);
-  if (path.empty()) return {{"error", "retained body unavailable"}};
-  // Either a retained artifact, or a diff kept with a session's edits.
-  auto base = CanonicalAccessPath(file_path.parent_path());
-  const bool diff =
-      file_path.filename().string().starts_with("diff-") &&
-      base.string().ends_with(std::string(".json") + kSessionEditsSuffix) &&
-      PathWithin(base, CanonicalAccessPath(UagentDir(kHistoryDir)));
-  if (!diff && base != CanonicalAccessPath(UagentDir(kArtifactsDir))) {
-    return {{"error", "retained body unavailable"}};
-  }
-  size_t size = 0;
-  Fd file =
-      OpenOwnedRegular((base / file_path.filename()).string(), SIZE_MAX, &size);
-  if (!file) return {{"error", "retained body unavailable"}};
-  offset = std::min(offset, size);
-  constexpr size_t kPage = size_t{16} * 1024;
-  // Look ahead so the page boundary can be checked against the next byte.
-  std::string text(std::min(size - offset, kPage + 4), '\0');
-  ssize_t bytes;
-  do {
-    bytes =
-        pread(file.Get(), text.data(), text.size(), static_cast<off_t>(offset));
-  } while (bytes < 0 && errno == EINTR);
-  if (bytes < 0) return {{"error", "retained body read failed"}};
-  text.resize(static_cast<size_t>(bytes));
-  // JSON pages split only at UTF-8 boundaries, never inside a code point.
-  const size_t start = Utf8BoundaryAfter(text, 0);
-  const size_t end = Utf8BoundaryBefore(text, std::min(kPage, text.size()));
-  return {{"text", text.substr(start, end - start)},
-          {"next", offset + end},
-          {"bytes", size},
-          {"more", offset + end < size}};
+json LatestHttp(const json& facts) {
+  const json* latest = JsonObject(facts, "http-latest");
+  return latest ? JsonValue(*latest, "http", json::array()) : json::array();
+}
+
+json PageText(const std::string& text, size_t offset) {
+  offset = std::min(offset, text.size());
+  const size_t end =
+      Utf8BoundaryBefore(text, std::min(text.size(), offset + kTextPageBytes));
+  offset = Utf8BoundaryAfter(text, offset);
+  return {{"text", text.substr(offset, end >= offset ? end - offset : 0)},
+          {"next", end},
+          {"bytes", text.size()},
+          {"more", end < text.size()}};
 }
 
 json TranscriptView::Exchange(const std::string& id, size_t offset) const {
@@ -759,7 +774,7 @@ json TranscriptView::Exchange(const std::string& id, size_t offset) const {
       }
     }
   }
-  return TextPage(JsonDump(exchange), offset);
+  return PageText(JsonDump(exchange), offset);
 }
 json ConversationView(const Conversation& conversation, uint64_t before) {
   return TranscriptView(conversation).Page(before);

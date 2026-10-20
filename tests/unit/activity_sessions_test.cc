@@ -323,6 +323,16 @@ void TestActivityBufferAndAdmission() {
   CHECK(buffer.Snapshot().find("6 bytes omitted") != std::string::npos);
   CHECK(!buffer.Drain().empty());
   CHECK(buffer.Drain().empty());
+  // Byte by byte past twice its tail, the buffer keeps and counts what one
+  // trimmed on every push would: the tail is compacted only now and then.
+  HeadTailBuffer amortised(10);
+  std::string pushed;
+  for (char letter = 'a'; letter <= 'z'; ++letter) {
+    amortised.Push(std::string(1, letter));
+    pushed += letter;
+    CHECK(amortised.Snapshot() == HeadTail(pushed, 10));
+  }
+  CHECK(amortised.Snapshot().find("16 bytes omitted") != std::string::npos);
 
   // The status row asks for one line and must not pay for the megabyte behind
   // it, so the tail is read where it lands rather than through Snapshot().

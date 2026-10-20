@@ -139,8 +139,8 @@ bool SessionHost::PublishMetadata(const std::string& id, HostSession& session) {
 
 bool SessionHost::RefreshCatalogue(bool force) {
   std::lock_guard scan(scan_mutex_);
-  if (!force &&
-      std::chrono::steady_clock::now() - scanned_ < std::chrono::seconds(1)) {
+  if (!force && std::chrono::steady_clock::now() - scanned_ <
+                    std::chrono::seconds(kCatalogueRescanSeconds)) {
     rescan_ = true;
     return false;
   }
@@ -182,9 +182,11 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.model = item.model;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
-    const FileStamp stamp = SnapshotFile(item.path);
+    // The catalogue stated the file already; its time is the one it read.
     session.updated =
-        stamp.modified_seconds * 1000 + stamp.modified_nanoseconds / 1000000;
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::file_clock::to_sys(item.mtime).time_since_epoch())
+            .count();
     if (session.status == SessionStatus::kDraft) {
       session.status = SessionStatus::kSaved;
     }
@@ -218,22 +220,32 @@ std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
     const {
   std::lock_guard scan(scan_mutex_);
   if (!rescan_) return std::nullopt;
-  return scanned_ + std::chrono::seconds(1);
+  return scanned_ + std::chrono::seconds(kCatalogueRescanSeconds);
 }
 
 void SessionHost::RefreshPresence() {
   RefreshCatalogue();
+  // The runtimes' sockets, listed once: the cost of a pass is the runtimes
+  // that run, not a stat for every conversation there is.
+  std::set<std::string> sockets;
+  std::error_code ec;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(RuntimeDir(), ec)) {
+    sockets.insert(entry.path().filename().string());
+  }
   UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> candidates;
   for (const auto& [id, session] : sessions_) {
     if ((session->pid <= 0 || session->exited) && !session->closing &&
         session->status != SessionStatus::kUpdating &&
-        session->status != SessionStatus::kDeleting) {
+        session->status != SessionStatus::kDeleting &&
+        sockets.contains(std::filesystem::path(SocketPath(session->path))
+                             .filename()
+                             .string())) {
       candidates.push_back(session);
     }
   }
   for (const auto& session : candidates) {
-    if (!PathExists(SocketPath(session->path))) continue;
     std::string error;
     ActivateLocked(session, error, lock, false);
   }
@@ -313,17 +325,24 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"updated", session.updated}};
 }
 
-json SessionHost::LiveSnapshot(const HostSession& session) const {
+json SessionHost::SnapshotBody(const HostSession& session, json state) const {
   return {{"v", kProtocol},
           {"epoch", epoch_},
           {"cursor", replay_.Cursor()},
           {"metadata", Metadata(session)},
-          {"state", session.state},
-          {"pending", session.pending},
-          {"live_truncated", session.live_truncated}};
+          {"state", std::move(state)},
+          {"pending", session.pending}};
+}
+
+json SessionHost::LiveSnapshot(const HostSession& session) const {
+  json body = SnapshotBody(session, session.state);
+  body["live_truncated"] = session.live_truncated;
+  return body;
 }
 
 json SessionHost::Catalogue() const {
+  // Read from disk, so outside the lock.
+  json spaces = Spaces();
   std::lock_guard lock(mutex_);
   json sessions = json::array();
   for (const auto& [id, session] : sessions_) {
@@ -331,6 +350,7 @@ json SessionHost::Catalogue() const {
   }
   return {{"cursor", replay_.Cursor()},
           {"sessions", std::move(sessions)},
+          {"spaces", std::move(spaces)},
           {"scheduled", scheduled_view_}};
 }
 

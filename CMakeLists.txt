@@ -227,6 +227,8 @@ add_library(
   src/app/application_channel.cc
   src/app/application_headless.cc
   src/app/bootstrap.cc
+  src/app/bootstrap_tools.cc
+  src/app/approvals.cc
   src/app/commands.cc
   src/app/commands_control.cc
   src/app/commands_model.cc
@@ -243,6 +245,8 @@ add_library(
   src/app/thread_link.cc
   src/app/uagent_tool.cc
   src/app/panel.cc
+  src/app/panel_history.cc
+  src/app/panel_threads.cc
   src/app/chat.cc
   src/cli/options.cc
   src/cli/reference.cc
@@ -260,8 +264,12 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
+  src/app/transient_batcher.cc
   src/app/panel_prompt.cc
   src/app/session_terminal.cc
+  src/app/session_terminal_commands.cc
+  src/app/session_terminal_link.cc
+  src/app/session_terminal_screen.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
   src/ui/ask_picker.cc
@@ -272,6 +280,8 @@ add_library(
   src/ui/live_region.cc
   src/ui/editor.cc
   src/ui/markdown.cc
+  src/ui/markdown_math.cc
+  src/ui/markdown_table.cc
   src/ui/presentation.cc)
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 

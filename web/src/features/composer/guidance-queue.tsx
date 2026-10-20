@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { UserBlock } from "../../shared/types.ts";
-import { QUEUED_NEXT } from "../../shared/message-view.ts";
+import { outgoingStatus } from "../../shared/message-view.ts";
 import { Button } from "../../shared/ui.tsx";
 import { plural } from "../../shared/quantities.ts";
 
@@ -52,7 +52,7 @@ export default function GuidanceQueue({
             )}
             <div class="queue-controls">
               <small class="muted">
-                {item.status === QUEUED_NEXT
+                {item.status === outgoingStatus.next
                   ? "After this turn"
                   : "Next checkpoint"}
               </small>

@@ -5,296 +5,239 @@
 ### Upgrade notes
 
 - **No model is chosen for you.** The built-in default model
-  (`~deepseek/deepseek-flash-latest`) is gone, and so is taking the first model
-  an endpoint lists. With no model set, the terminal and the web open the model
-  picker on the first start and save the choice for new conversations, as
-  `/model NAME --default` does; `-p` and
-  `--json` exit with `no model set` and up to ten of the endpoint's models.
-  Set `model` (`UAGENT_MODEL`) to keep scripted runs working.
-- **The title model is the conversation's.** `title.model` is empty by default,
-  which names a conversation with the model it runs on; `off` still keeps the
-  first message. Set it to keep a cheaper model for titles.
-- **Images go to a vision model of the same endpoint.** When the conversation's
-  model cannot read images and `image.model` is empty, the first model of the
-  endpoint's catalogue that accepts images describes them; if there is none,
-  the warning says to set `image.model`.
-- **Web search needs its model named off the conversation's endpoint.** A
-  conversation on OpenRouter searches with its own model. A conversation on
-  another endpoint searches through the first configured OpenRouter endpoint
-  only when `webSearch.model` names the model; a call without it says so, and
-  with no such endpoint `web_search` is not offered. `webSearch.backend` is
-  `auto` or `off`; a stored `openrouter` reads as `auto`.
-- **OpenRouter's settings are options of its endpoint.** `openrouter.provider`
-  (`UAGENT_OPENROUTER_PROVIDER`), `openrouter.variant`
-  (`UAGENT_OPENROUTER_VARIANT`) and `pdf.engine` (`UAGENT_PDF_ENGINE`) are
-  gone, and the environment variables are no longer read. The settings file is
-  now format 3 and is rewritten the first time it is read: the provider and the
-  PDF engine become `providers.openrouter.options.provider` and
-  `…options.pdf_engine`, and `webSearch.backend: openrouter` becomes `auto`. A
-  provider that had `"protocol": "openrouter"` (below) gets the same two as its
-  own options, with `cloudflare-ai` where no engine was set. A value that
-  refers to a variable (`$NAME`) cannot move and stays, reported as a setting
-  that no longer exists. In `UAGENT_PROVIDERS` set in the
-  environment, write the `options` yourself. `pdf_engine` is still
-  `cloudflare-ai` unless you set it.
-- **A routing variant is part of the model id.** `/variant` and the web's
-  Variant field are gone, and `[provider/]model[:variant][:effort]` is
-  `[provider/]model[:effort]`: write `openrouter/vendor/model:nitro:high`, and
-  the endpoint receives `vendor/model:nitro` (OpenRouter takes `:nitro`,
-  `:floor`, `:exacto` and `:free` as part of the id). Migration appends a
-  saved `openrouter.variant` to the saved `model` of its scope, before its
-  effort, or to the model an alias in that scope names; with no `model` in
-  that scope it is dropped, and with a `model` that refers to a variable it
-  stays, reported.
-- **A provider's `protocol` is replaced by `supports`.** `"protocol":
-  "openrouter"` becomes the list of features an OpenRouter-compatible gateway
-  has (`search_plugin`, `provider_routing`, `session_passthrough`,
+  (`~deepseek/deepseek-flash-latest`) and the fallback to an endpoint's first
+  model are gone. With no model set, the terminal and the web open the model
+  picker on the first start and save the choice for new conversations, while
+  `-p` and `--json` exit with `no model set` and up to ten of the endpoint's
+  models; set `model` (`UAGENT_MODEL`) to keep scripted runs working.
+- **Background work runs on the conversation's model.** The title, memory
+  extraction and subagents use it unless their setting or the call names
+  another, and say so when there is none; `title.model` is now empty by
+  default (`off` still keeps the first message). With `image.model` empty,
+  images the model cannot read go to the first model of the same endpoint
+  that accepts them, and the warning says to set `image.model` when none does.
+- **Web search off the conversation's endpoint needs `webSearch.model`.** A
+  conversation on an endpoint with a search plugin, such as OpenRouter,
+  searches with its own model; elsewhere `web_search` goes through the first
+  configured endpoint that declares `search_plugin`, only when
+  `webSearch.model` names the model, and is not offered without such an
+  endpoint. `webSearch.backend` is `auto` or `off`; a saved `openrouter`
+  reads as `auto`.
+- **The settings file is format 3, and OpenRouter's settings are options of
+  its endpoint.** `openrouter.provider`, `openrouter.variant` and `pdf.engine`
+  are gone, and `UAGENT_OPENROUTER_PROVIDER`, `UAGENT_OPENROUTER_VARIANT` and
+  `UAGENT_PDF_ENGINE` are no longer read. The file is rewritten the first time
+  it is read: they become `providers.openrouter.options.provider` and
+  `…options.pdf_engine` (still `cloudflare-ai` by default), a saved variant
+  joins the model id, and `webSearch.backend: openrouter` becomes `auto`. A
+  value that refers to a variable (`$NAME`) cannot move and is reported as a
+  setting that no longer exists; in `UAGENT_PROVIDERS` set in the environment,
+  write `options` and `supports` yourself.
+- **A provider's `protocol` is replaced by `supports`.** On rewrite,
+  `"protocol": "openrouter"` becomes the features of an OpenRouter-compatible
+  gateway (`search_plugin`, `provider_routing`, `session_passthrough`,
   `raw_vendor_ids`, `reasoning_object`, `reasoning_replay_text`,
-  `prompt_cache_control`, `pdf_parser`, `model_variants`, `inline_usage`) when
-  the settings file is rewritten; `"protocol": "anthropic"` did nothing and
-  goes, and a provider whose protocol was not recognised is no longer skipped. In
-  `UAGENT_PROVIDERS` set in the environment, write `supports` yourself.
+  `prompt_cache_control`, `pdf_parser`, `model_variants`, `inline_usage`) and
+  the two options above, and `"protocol": "anthropic"`, which did nothing, is
+  dropped. A provider with an unrecognised protocol is no longer skipped, and
   `hosted_tools: ["web_search"]` is unchanged.
-- **An address declares what it is.** `UAGENT_BASE_URL` (or a provider) at
-  `openrouter.ai` now has OpenRouter's dialect without a `protocol`, and one
-  at `api.openai.com` OpenAI's, as the other way of reaching them always had.
+- **A routing variant is part of the model id.** `/variant`, the web's
+  Variant field and the `[:variant]` slot of the model name are gone: write `openrouter/vendor/model:nitro:high`, and the endpoint receives
+  `vendor/model:nitro`. Migration appends a saved `openrouter.variant` to the
+  `model` of its scope (or to the model its alias names), drops it where that
+  scope has no `model`, and reports it where `model` refers to a variable.
+- **An address declares what it is.** `UAGENT_BASE_URL` or a provider at
+  `openrouter.ai` gets OpenRouter's dialect, and one at `api.openai.com`
+  OpenAI's, without a `protocol`.
 - **Every request to OpenRouter asks for prompt caching.** The top-level
-  `cache_control` went only to `anthropic/…` models; it now goes with every
-  model on an endpoint that declares `prompt_cache_control`, which OpenRouter
-  does. Providers that cache take it; by OpenRouter's routing rules, the
-  others receive the request and ignore the parameter.
-- **The model catalogues kept under `~/.uagent/models/` are fetched again once.**
-  Their key no longer names a protocol.
-- **Commands and file tools no longer see your saved logins.** The sandbox now
-  hides `~/.uagent/config` (settings and API keys), `~/.aws`,
-  `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`, `~/.netrc` and
-  `~/.docker/config.json`, in addition to the browser profile. A command that
-  needs one fails to read it; `sandbox.reveal` (`UAGENT_SANDBOX_REVEAL`) lifts
-  a default, `sandbox.hide` (`UAGENT_SANDBOX_HIDE`) adds your own. `~/.ssh` and
-  the GitHub CLI login stay readable.
-- **MCP servers now run under the sandbox.** They can write the workspace and
-  the usual roots, the package caches among them (so `npx` and `uvx` servers
-  start as before), not the rest of your files, and cannot read the hidden
-  stores. Commands and servers may now also write `~/.npm`. A server that needs more takes `sandbox.write`, or
-  `"sandbox": false` in its `.mcp.json` entry, which the trust prompt names.
-- **`UAGENT_SANDBOX` takes a level**: `strict`, `default`, `relaxed` or `off`.
-  `0` and `false` still mean `off`, `1` and `true` `default`.
-- **`sandbox.enabled` is now `sandbox.level`.** A saved `false` becomes `off`
-  and `true` `default` when the settings are next saved; nothing to do.
-
-- **Auto approval asks a decision model, or asks you.** It no longer falls to
-  OpenRouter by name: an endpoint that declares `decisions` serves it
-  (OpenRouter does, with `OPENROUTER_API_KEY`), and without one every call goes
-  to you. A call that leaves the sandbox (`sandbox: false`, a path outside the
-  folder), any `run` or `scratch` call while the sandbox is off or not
-  enforced, and a call that always asks are never sent to the model. It allows only when
-  P(allow) reaches the model's allow bar and none of four risk questions
-  (irreversible, beyond your request, sends data off the machine, touches
-  credentials) reaches its risk bar, so some calls it allowed before now ask.
-  `approval.reviewerUrl` (`UAGENT_PERMISSION_URL`) is gone, and a saved one is
-  dropped when the settings file is rewritten (to use another server, declare
-  `decisions` on a provider with `options.decisions_url`).
-  `approval.reviewerModel` is empty by default (the endpoint's own decision
-  model, `~typesafe/jev-latest` on OpenRouter) and takes `[endpoint/]model`.
-  `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove`
-  (`UAGENT_PERMISSION_ALLOW_ABOVE`, `_DENY_ABOVE`, `_VETO_ABOVE`) override
-  the model's bars. Requests carry `provider: {zdr: true, data_collection:
-  "deny"}` where the endpoint declares `provider_routing`, which a model with
-  no such provider (`openai/gpt-6-luna-decisions` today) answers with a 404
-  naming the data policy: set `decisions_private: false` in the endpoint's
-  `options` to accept that model's retention.
+  `cache_control` now goes with every model on an endpoint that declares
+  `prompt_cache_control`, not only with `anthropic/…` models; providers that
+  do not cache ignore it.
+- **The model catalogues under `~/.uagent/models/` are fetched again once**,
+  because their key no longer names a protocol.
+- **Commands, MCP servers and file tools no longer see your saved logins.**
+  Besides the browser profile, they now hide `~/.uagent/config` (settings and
+  API keys), `~/.aws`, `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`,
+  `~/.netrc` and `~/.docker/config.json`; `~/.ssh` and the GitHub CLI login
+  stay readable. `sandbox.reveal` (`UAGENT_SANDBOX_REVEAL`) lifts a default
+  and `sandbox.hide` (`UAGENT_SANDBOX_HIDE`) adds your own.
+- **MCP servers run under the sandbox.** They can write the workspace and the
+  usual roots, the package caches included, so `npx` and `uvx` servers start
+  as before (`~/.npm` is now writable for commands too). A server that needs
+  more takes `sandbox.write`, or `"sandbox": false` in its `.mcp.json` entry,
+  which the trust prompt names.
+- **`sandbox.enabled` is now `sandbox.level`** (`UAGENT_SANDBOX`): `strict`,
+  `default`, `relaxed` or `off`. A saved `false` becomes `off` and `true`
+  `default` when the settings are next saved, and `UAGENT_SANDBOX` still takes
+  `0`, `false`, `1` and `true`.
+- **Auto approval asks a decision model, or asks you.** An endpoint that
+  declares `decisions` serves it (OpenRouter does), and without one every call
+  goes to you. Calls that leave the sandbox, `run` and `scratch` while the
+  sandbox is off or not enforced, and calls that always ask never reach the
+  model; it allows only when P(allow) reaches the model's allow bar and none
+  of four risk questions reaches its risk bar, so some calls it allowed before
+  now ask.
+- **Auto approval's settings changed.** `approval.reviewerUrl`
+  (`UAGENT_PERMISSION_URL`) is gone and dropped on rewrite; declare
+  `decisions` on a provider with `options.decisions_url` to use another
+  server. `approval.reviewerModel` takes `[endpoint/]model` and is empty by
+  default (the endpoint's own decision model, `~typesafe/jev-latest` on
+  OpenRouter), and `approval.allowAbove`, `approval.denyAbove` and
+  `approval.vetoAbove` override the model's bars.
+- **Decision requests ask for providers that retain nothing.** Where the
+  endpoint declares `provider_routing` they carry `provider: {zdr: true,
+  data_collection: "deny"}`, which a model with no such provider
+  (`openai/gpt-6-luna-decisions` today) answers with a 404 naming the data
+  policy; `decisions_private: false` in the endpoint's `options` accepts that
+  model's retention.
 
 ### Added
 
-- Web: **Files** in a conversation's header browses its folder beside the
-  chat, read only: a file list with search across the folder, code with line
-  numbers and highlighting, rendered markdown with its images, and images at
-  full size. On a small screen it is a sheet.
+- Web: **Files** in a conversation's header shows its folder beside the chat,
+  or as a sheet on a small screen, read only: search across the folder, code
+  with line numbers and highlighting, rendered markdown with its images, and
+  images at full size.
 - Web: the sidebar, a panel's board, Files and its file list resize by
-  dragging their edge or with the arrow keys; each device keeps the widths.
-
-- Panel chat rechecks a deferred round close when a member publishes idle,
-  so a final report read before that state change cannot strand the round.
-  The idle notification adds no chat text or model turn.
-
+  dragging their edge or with the arrow keys; each device keeps its widths.
 - `browser`: `upload` gives a file of the conversation's folder to a file
-  field, or to the chooser a button opens. A click that opens a file
-  chooser no longer shows a window on the browser's screen that the agent
-  cannot answer; it says to use `upload`. What a page downloads lands in the
-  conversation's `downloads` folder, and the action says so when it ends.
-- Auto approval shows what made it ask: the risks the decision model saw, with
-  their probabilities, and the bar that decided, in the terminal and the web.
-  An error from the decision endpoint (no credit, a refused key, an action too
-  large) is said in words. `tests/reviewer_eval/` holds the labelled calls and
-  a script that finds a model's bars against a real key.
-- A provider entry named like a well-known endpoint states only what
-  differs: `"openrouter": {"options": {"provider": "…"}}` needs no address or
-  key. `supports` lists the features of any other endpoint, and `options` the
-  extras they read.
-- The sandbox level: `strict` also denies the network, `relaxed` also makes
+  field, or to the chooser a button opens, and a click that opens a chooser
+  says to use it. What a page downloads lands in the conversation's
+  `downloads` folder, and the action says so.
+- Auto approval shows why it asked: the risks the decision model saw, their
+  probabilities and the bar that decided, and an endpoint error (no credit, a
+  refused key, an action too large) in words. `tests/reviewer_eval/` holds
+  labelled calls and a script that finds a model's bars with a real key.
+- A provider named like a well-known endpoint states only what differs
+  (`"openrouter": {"options": {"provider": "…"}}` needs no address or key);
+  any other endpoint lists its features in `supports` and their extras in
+  `options`.
+- Sandbox levels: `strict` also denies the network, and `relaxed` also makes
   your home folder writable except `~/.uagent` and the hidden stores (on
-  Linux a new file made directly in the home folder is not writable). An
-  explicit `sandbox.network` or `sandbox.write` still wins over the level.
-- On Linux, `.mcp.json` and a repository's `.git/config` and `.git/hooks` are
-  put back when a sandboxed command ends if it changed them, and the model and
-  you are told (macOS denies the write, as before).
-- `sandbox.hideEnv` (`UAGENT_SANDBOX_HIDE_ENV`, comma-separated) adds
-  environment variable names that commands, MCP servers and delegated agents
-  never inherit, next to `shell.envAllow` on the allow side. A name listed
-  here stays hidden even when `shell.envAllow` names it.
+  Linux, not for a new file made directly in the home folder). An explicit
+  `sandbox.network` or `sandbox.write` still wins over the level.
+- On Linux, a sandboxed command's changes to `.mcp.json` or a repository's
+  `.git/config` and `.git/hooks` are put back when it ends, and the model and
+  you are told; macOS denies the write, as before.
+- `sandbox.hideEnv` (`UAGENT_SANDBOX_HIDE_ENV`, comma-separated) names
+  environment variables that commands, MCP servers and delegated agents never
+  inherit, even when `shell.envAllow` names them.
 
 ### Changed
 
-- `browser`: a look lists what can be acted on inside open shadow roots and
-  frames of the page's own site too, and a click lands there. A control
-  says when it is disabled (listed now, not left out), required, expanded
-  or collapsed. Password fields in open shadow roots are masked in
-  screenshots as well.
-- Web: a setting's reset sits just before the control it resets and shows an
-  undo arrow instead of one that read as refresh. A saved secret shows as
-  dots in its empty field instead of "Set · enter a replacement". A panel's
-  board row shades once on hover, as a sidebar row does, not twice.
-- Web: a workspace's member avatars sit on a line of their own under its name,
-  which keeps the row's width; hovering one marks its circle, not a square
-  behind it. The sidebar's search button sits beside New. A tool call's input
-  wraps instead of scrolling sideways, and its parts stand apart.
-- One `Endpoint` (address, key, wire API, window, declared features, options)
-  and one `Route` (an endpoint, a model, an effort) replace `ModelRoute`,
-  `NamedProvider`, `SideRoute`, `ProviderTemplate` and the protocol enum.
-  Request fields the OpenRouter protocol decided (the PDF plugin, the provider
-  pin, session passthrough, the reasoning object, prompt caching, the usage
-  option) follow the features an endpoint declares. The well-known endpoints
-  (OpenRouter, and OpenAI by its address) are one table; an endpoint is
-  available when its key variable is set.
-- The `capabilities` in the start diagnostics and the routes `uagent` inspects
-  list `features` in place of `protocol` and the dialect flags.
-- A child process receives its parent's endpoint features and options as
-  `UAGENT_INTERNAL_FEATURES` and `UAGENT_INTERNAL_ENDPOINT_OPTIONS`; the
-  internal protocol and hosted-tools variables are gone.
-
-- Names, limits and paths that several files spelled (the markers the
-  transcript reads out of tool results, directory and sidecar names, polling
-  and timeout values, compaction budgets, schema limits, z-index and animation
-  tokens) are each defined once, with tests where one file writes what another
-  reads. Behaviour is unchanged, except that web push and model requests now
-  refuse the same address ranges: push adds `192.88.99.0/24` and the IPv6
-  tunnel prefixes, model requests the documentation prefix `2001:db8::/32`.
-- The title, memory extraction and subagents take their setting, else the
-  conversation's route, and say so when there is no model; images take their
-  setting, else the conversation's route, else a model of the same endpoint
-  that accepts them.
-- The file tools refuse the whole hidden set, not only the browser profile.
-- SECURITY.md describes the sandbox by level, and the stale pointer to the
-  web's old **New conversation** is **New → Workspace…**.
+- `browser`: a look also lists what can be acted on in open shadow roots and
+  same-site frames, and a click lands there. A control says when it is
+  disabled (listed now, not left out), required, expanded or collapsed, and
+  password fields in shadow roots are masked in screenshots too.
+- Web: a setting's reset sits just before its control as an undo arrow, a
+  saved secret shows as dots in its empty field, and a board row shades once
+  on hover.
+- Web: a workspace's member avatars sit on their own line under its name and
+  mark only their circle on hover, the sidebar's search button sits beside
+  New, and a tool call's input wraps instead of scrolling sideways.
+- Request fields that the OpenRouter protocol used to decide (the PDF plugin,
+  the provider pin, session passthrough, the reasoning object, prompt
+  caching, the usage option) follow the features an endpoint declares, and a
+  well-known endpoint (OpenRouter, OpenAI) is available when its key variable
+  is set. Start diagnostics, the routes `uagent` inspects and a child
+  process's environment (`UAGENT_INTERNAL_FEATURES`,
+  `UAGENT_INTERNAL_ENDPOINT_OPTIONS`) carry `features` in place of `protocol`.
+- Web push and model requests refuse the same address ranges: push adds
+  `192.88.99.0/24` and the IPv6 tunnel prefixes, model requests
+  `2001:db8::/32`. Names and limits that several files spelled are now each
+  defined once.
+- Long answers, large command output and busy event streams cost less:
+  streamed text is appended in place, command output is trimmed in bulk, a
+  checkpoint reaches browsers as the rows it changed (about a quarter of the
+  bytes late in a long conversation), and an attached file is encoded once
+  per turn. The web host holds its lock only to look up devices, and its
+  worker pool grows with open event streams and viewers, so they no longer
+  use up the workers that answer requests.
+- The terminal draws a fast stream at most once a frame (16 ms), repaints
+  once per wake, and lays out the composer again only when the draft, the
+  menu or the width changes, so an `@path` draft no longer lists its
+  directory on every repaint. Its question picker and a detaching terminal
+  sleep until something happens instead of polling.
+- With reduced motion the terminal's spinner holds still and the working row
+  redraws once a second, for the elapsed time, instead of ten times.
+- SECURITY.md describes the sandbox by level.
 
 ### Fixed
 
-- `browser` in the Docker image works again with current Chrome. The
-  managed policy's `DeveloperToolsAvailability` made Chrome 155 refuse every
-  action of the browser service with `Not allowed`, so the agent fell back to
-  `web_fetch`. The policy now blocks DevTools by its `devtools://` pages,
-  which still stops F12 and the inspector. A native Linux host with the
-  policy installed needs it installed again; `install.sh` prints the command.
+- `browser` in the Docker image works with current Chrome again. The managed
+  policy made Chrome 155 refuse every action with `Not allowed`; it now blocks
+  DevTools by its `devtools://` pages, and a native Linux host with the policy
+  installed must install it again (`install.sh` prints the command).
 - `run` no longer refuses a command that starts with `python`, `python3`,
-  `pip` or `pip3`. The check matched only the first word, so it refused the
-  test command a person gave (`python3 -m unittest ...`) while the same
-  command after `cd x &&` ran, and every refusal cost a round. Using `scratch`
-  for one-off computation stays the prompt's advice.
-- `browser`: `type` sets a list (`<select>`) to the option it names, and a
-  date, time or color field to its value, such as `2027-03-12` or `19:30`.
-  Before, typing into a date or time field reported `type done` while the
-  field stayed empty, and a list refused with "cannot tell which field has
-  focus", so a model stepped segments with arrow keys until it gave up: an
-  order form went from 0 of 11 checks in 26–64 calls to 11 of 11 in 14. A
-  value the field does not take is refused with the form it takes.
-- `browser`: several actions from one look work. An element number of an
-  earlier look at the same page still names what that look numbered, so a
-  form can be filled in one step. Before, every action after the first was
-  refused for an outdated `view_id`, and the model fell back to one field
-  per step. A point (`x`, `y`) and a scroll still need the latest look.
-- `browser`: a batch of more than eight actions on one look works. Looks
-  were kept by age, and each action's result adds one, so the ninth action
-  of a form filled from one look was refused for an outdated `view_id`.
-  Looks are now kept by use.
-- `browser`: "Allow for this conversation" (or always, in this repository)
-  on a browser action now covers that action on that site. Before, the
-  remembered approval named the look the action came from, so it never
-  applied again and every click asked. The approval, and the automatic
-  reviewer, see what the action acts on and where, such as
-  `click [3] button "Delete account" on https://example.com/settings`,
-  instead of `browser click`.
+  `pip` or `pip3`, such as a test command a person gave.
+- `browser`: `type` sets a list (`<select>`) to the option it names and a
+  date, time or color field to its value, such as `2027-03-12` or `19:30`,
+  and refuses a value the field does not take with the form it takes. Before,
+  such fields stayed empty or were refused, and an order form passed 0 of 11
+  checks in 26 to 64 calls where it now passes 11 of 11 in 14.
+- `browser`: several actions from one look work, however many: an element
+  number from an earlier look at the same page still names what that look
+  numbered. Before, every action after the first, and any after the eighth
+  in a batch, was refused for an outdated `view_id`; a point (`x`, `y`) and a
+  scroll still need the latest look.
+- `browser`: "Allow for this conversation" (or always, in this repository) on
+  a browser action covers that action on that site, where it used to ask
+  again on every click. The approval and the automatic reviewer see the
+  target, such as `click [3] button "Delete account" on
+  https://example.com/settings`, instead of `browser click`.
 - `browser`: a page's alert, confirm or prompt no longer stalls the browser.
-  The action that opened it is done, a look reports the dialog in place of
-  the page, and `press Enter` or `Escape` answers it (text typed first
-  answers a prompt). A page's plea to stay when the agent navigates away is
-  accepted. Before, every call waited 10 s and failed until someone closed
-  the dialog on the screen.
-- `browser`: a click points at its element before pressing, so menus that
-  open on hover open, and waits for an element that is still moving into
-  place. A click on a covered element names what covers it, such as a cookie
-  banner, instead of only saying it is covered.
+  A look reports the dialog, `press Enter` or `Escape` answers it (text typed
+  first answers a prompt), and a page's plea to stay is accepted on
+  navigation.
+- `browser`: a click points at its element first, so menus that open on hover
+  open, waits for an element still moving into place, and names what covers
+  a covered element, such as a cookie banner.
 - `browser`: `type` refuses a password field, including one a reveal toggle
-  shows as text, and points to `fill_saved` or `request_human`. Before, only
-  the tool's description asked the model not to.
+  shows as text, and points to `fill_saved` or `request_human`.
 - The Docker image carries the bundled skills (`uagent-config`,
-  `browser-use`, `fusion`, `import`) and the documentation. It copied only
-  the binary, so a session in the appliance had no skills to offer.
+  `browser-use`, `fusion`, `import`) and the documentation; it had only the
+  binary.
 - A message with files sent while a turn runs is taken as guidance for that
-  turn, as a message without files already was. Before, it was refused as
-  busy.
+  turn instead of being refused as busy.
 - A panel's threads start in the folder itself when it is not in a git
-  repository, such as a workspace. Before, every first spawn there failed on
-  the worktree and the moderator had to retry.
+  repository, such as a workspace, instead of failing on the worktree.
 - The moderator's messages into a thread's running turn no longer count
-  toward the limit of three restarts in a row. Corrections members asked for
-  were refused while the thread was still working.
-- `web_fetch` reads PDFs: one is saved and attached to the model's next step,
-  so a route that reads documents gets it whole. Before, every PDF failed and
-  the model had to download and convert it itself. A 404 now says to find the
-  page with `web_search` rather than guess its address.
+  toward the limit of three restarts in a row.
+- A panel's members answer from the start: the message that has the
+  moderator bring them in begins their round, as does a thread report the
+  moderator passes on. A member's introduction is read by everyone and wakes
+  nobody.
+- A panel's discussion ends with the moderator's answer for the user once the
+  chat falls silent and the threads are done; it wakes no member, and later
+  thread reports reach the moderator alone. A member going idle rechecks a
+  close that was waiting on it, so the round cannot be stranded.
+- `web_fetch` reads PDFs: one is saved and attached to the model's next step.
+  A 404 says to find the page with `web_search` rather than guess its address.
 - The automatic permission review judges a call against the session's first
-  request as well as its latest message. A panel thread's research fetches were
-  refused because the reviewer saw only the panel's latest note, not the
-  thread's brief.
-- `read_path` and `grep` read what uAgent wrote for the model, such as
-  command output spilled to `~/.uagent/artifacts`, without asking. The
-  result said to read that file, but outside the folder the read needed an
-  approval, which a thread with nobody to ask was refused, while a command
-  could read the same file freely. Writing there still asks.
-- Subagents started in one batch run together. Before, the parent waited for
-  each in turn unless the model set `background`, and five researchers took
-  16 minutes instead of four. Under a session budget, which every panel thread
-  has, they share what is left equally.
-- Subagents the turn waits for are listed in the web's background work while
-  they run, and each can be stopped there. They are shown by the model they
-  run on, not by the diagnostic route string, which only a failure report
-  still carries.
-- A turn stopped for repeating a call, the same one or an equivalent rejected
-  one, answers from what it has, as a turn stopped at its step or time limit
-  does. Before, a researcher stuck retrying a capped `web_search` lost all its
-  findings.
-- A debug trace records a `repeated_call` fault only for a call that
-  repeats the one before. Every call used to log strike 1, so a trace read
-  as if the agent repeated itself on every step; the guard's advice and stop
-  count the same as before.
+  request as well as its latest message, so a panel thread's research is
+  judged by its brief.
+- `read_path` and `grep` read what µAgent wrote for the model, such as
+  command output spilled to `~/.uagent/artifacts`, without asking; writing
+  there still asks.
+- Subagents started in one batch run together; before, five researchers took
+  16 minutes instead of four. Under a session budget, which every panel
+  thread has, they share what is left equally.
+- Subagents the turn waits for are listed, by model, in the web's background
+  work while they run, and each can be stopped there.
+- A turn stopped for repeating a call answers from what it has, as a turn
+  stopped at its step or time limit does.
+- A debug trace records a `repeated_call` fault only for an actual repeat;
+  every call used to log strike 1.
 - A model's input modalities from the endpoint's catalogue survive starting a
   route, so a text-only model is known as one before its first image is
   rejected.
-- The web's model picker takes a model the endpoint's own catalogue lists on
-  an endpoint no provider names; it answered `unknown model` before.
-- An image the vision model fails to read is tried once per turn. Before, each
-  step of the turn asked again and paid the same failure, retries included.
-- A panel's members answer from the start. The message that has the moderator
-  bring them in now begins their round. Before, nobody answered until the user
-  wrote again. A thread's report that the moderator passes on begins a round
-  too, so the members discuss it. A member's introduction is read by everyone
-  and wakes nobody.
-- A panel's discussion ends with the moderator's answer for the user. When
-  the chat falls silent and the panel's threads are done, the moderator closes
-  the round: what was decided and what is open. Its answers to the user wake
-  no member, so members no longer answer a question that was meant for the
-  user. After the close, thread reports reach the moderator alone, so the
-  panel stops instead of discussing each follow-up thread.
+- The web's model picker takes a model the endpoint's catalogue lists on an
+  endpoint no provider names, where it answered `unknown model`.
+- An image the vision model fails to read is tried once per turn, not at
+  every step.
+- The raw detail of a running tool call is paged like any long text.
+- The terminal streams styled text for about the bytes plain text costs.
+  Each repaint used to replay every style of the paragraph, up to six times
+  the bytes per token for a reply with many inline code spans.
 
 ## v1.4.0 - 2026-10-15
 

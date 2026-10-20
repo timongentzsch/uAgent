@@ -880,8 +880,9 @@ json Agent::PanelRequest(json messages) const {
       std::string stamp =
           ArrivalStamp(conversation_.Arrival(ids[index]), seconds);
       if (stamp.empty()) continue;
-      if (previous && seconds - previous >= 3600) {
-        stamp = "\u2014 " + std::to_string((seconds - previous) / 3600) +
+      if (previous && seconds - previous >= kSecondsPerHour) {
+        stamp = "\u2014 " +
+                std::to_string((seconds - previous) / kSecondsPerHour) +
                 " h since the last message \u2014\n" + stamp;
       }
       previous = seconds;

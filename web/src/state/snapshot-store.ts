@@ -1,5 +1,6 @@
-import { useLayoutEffect, useReducer, useRef } from "preact/hooks";
+import { useLayoutEffect, useReducer } from "preact/hooks";
 import type { Snapshot } from "../shared/types.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 export type Snapshots = Record<string, Snapshot>;
 
@@ -44,8 +45,7 @@ export function useSnapshots<T>(
 ): T {
   const [, changed] = useReducer((count: number) => count + 1, 0);
   const value = select(store.get());
-  const latest = useRef({ select, value });
-  latest.current = { select, value };
+  const latest = useLatest({ select, value });
   useLayoutEffect(() => {
     const check = () => {
       const { select, value } = latest.current;

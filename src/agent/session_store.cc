@@ -347,7 +347,6 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
 
 std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
-  constexpr size_t kCatalogueLimit = 4096;
   const std::string current = CanonicalCwd();
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
   std::vector<fs::path> directories{base};
@@ -356,7 +355,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
     directories.push_back(base / WorkspaceId(current));
   } else {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
-      if (directories.size() >= kCatalogueLimit) break;
+      if (directories.size() >= kMaxCatalogueEntries) break;
       if (fs::is_directory(entry.symlink_status(ec))) {
         directories.push_back(entry.path());
       }
@@ -373,7 +372,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   for (const fs::path& directory : directories) {
     if (!fs::is_directory(fs::symlink_status(directory, ec))) continue;
     for (const auto& entry : fs::directory_iterator(directory, ec)) {
-      if (out.size() >= kCatalogueLimit) break;
+      if (out.size() >= kMaxCatalogueEntries) break;
       if (entry.path().extension() != ".json" ||
           !fs::is_regular_file(entry.symlink_status(ec))) {
         continue;

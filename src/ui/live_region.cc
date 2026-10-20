@@ -19,23 +19,28 @@
 namespace uagent {
 namespace {
 
-// Every SGR `text` wrote, in order: replayed after a reset they restore the
-// styling it left set, so a row drawn on its own keeps the bold or colour an
-// earlier row opened, whatever the codes (38;5;n included).
-std::string ActiveSgr(std::string_view text) {
-  std::string replay;
+// `replay` followed by the SGRs `text` wrote: replayed after a reset they
+// restore the styling it left set, so a row drawn on its own keeps the bold or
+// colour an earlier row opened, whatever the codes (38;5;n included). An SGR
+// sets the same attributes wherever it stands, so only its last occurrence
+// counts, and a reset leaves nothing to restore: the replay stays as long as
+// the distinct styles in use, not as the text.
+std::string ActiveSgr(std::string_view text, std::string replay = {}) {
   for (size_t at = text.find("\033["); at != std::string_view::npos;
        at = text.find("\033[", at + 1)) {
-    const size_t end = text.find_first_not_of("0123456789;:", at + 2);
-    if (end != std::string_view::npos && text[end] == 'm') {
-      replay += text.substr(at, end + 1 - at);
+    const size_t span = CsiSpan(text.substr(at));
+    if (!span || text[at + span - 1] != 'm') continue;
+    const std::string_view sgr = text.substr(at, span);
+    if (sgr == "\033[m" || sgr == "\033[0m") {
+      replay.clear();
+      continue;
     }
+    if (const size_t seen = replay.find(sgr); seen != std::string::npos) {
+      replay.erase(seen, sgr.size());
+    }
+    replay += sgr;
   }
   return replay;
-}
-
-std::string Up(size_t rows) {
-  return rows ? "\033[" + std::to_string(rows) + "A" : std::string();
 }
 
 size_t ScreenRows() {
@@ -50,12 +55,10 @@ size_t ScreenRows() {
 std::string StylingOnly(std::string_view row) {
   std::string kept;
   for (size_t at = 0; at < row.size();) {
-    if (row.substr(at, 2) == "\033[") {
-      const size_t end = row.find_first_not_of("0123456789;?", at + 2);
-      if (end != std::string_view::npos && row[end] != 'm') {
-        at = end + 1;
-        continue;
-      }
+    if (const size_t span = CsiSpan(row.substr(at));
+        span && row[at + span - 1] != 'm') {
+      at += span;
+      continue;
     }
     kept += row[at++];
   }
@@ -74,7 +77,7 @@ std::vector<std::string> Rows(std::string_view text, size_t width,
     for (std::string& row :
          WrapLines(std::string(text.substr(from, end - from)), width)) {
       std::string drawn = sgr + StylingOnly(row);
-      sgr = ActiveSgr(drawn);
+      sgr = ActiveSgr(row, std::move(sgr));
       if (drawn.find('\033') != std::string::npos) drawn += RST();
       rows.push_back(std::move(drawn));
       if (raw) raw->push_back(std::move(row));
@@ -94,21 +97,25 @@ void LiveRegion::Commit(std::string text) {
       text.compare(0, tail_.size(), tail_) == 0 && text[tail_.size()] == '\n') {
     adopted_ = drawn_tail_rows_;
     emitted_ = 0;
+    emitted_sgr_.clear();
     text.erase(0, tail_.size() + 1);
     if (text.empty()) return;
   } else if (emitted_ > 0) {
     if (text.compare(0, emitted_, tail_, 0, emitted_) == 0) {
-      text = ActiveSgr(std::string_view(text).substr(0, emitted_)) +
-             text.substr(emitted_);
+      text = emitted_sgr_ + text.substr(emitted_);
     }
     emitted_ = 0;
+    emitted_sgr_.clear();
   }
   if (text.back() != '\n') text += '\n';
   committed_ += text;
 }
 
 void LiveRegion::SetTail(std::string text) {
-  if (text.compare(0, emitted_, tail_, 0, emitted_) != 0) emitted_ = 0;
+  if (text.compare(0, emitted_, tail_, 0, emitted_) != 0) {
+    emitted_ = 0;
+    emitted_sgr_.clear();
+  }
   tail_ = std::move(text);
 }
 
@@ -128,7 +135,7 @@ std::string LiveRegion::ToTop(size_t width) const {
   for (size_t row = 0; row < cursor_row_ && row < drawn_.size(); ++row) {
     up += std::max<size_t>(1, DisplayRows(drawn_[row], width));
   }
-  return "\r" + Up(up);
+  return "\r" + CursorUp(up);
 }
 
 void LiveRegion::Flush() {
@@ -151,14 +158,14 @@ void LiveRegion::Flush() {
   // repainted where no erase can reach it.
   std::vector<std::string> raw;
   std::vector<std::string> tail =
-      Rows(std::string_view(tail_).substr(emitted_), width,
-           ActiveSgr(std::string_view(tail_).substr(0, emitted_)), &raw);
+      Rows(std::string_view(tail_).substr(emitted_), width, emitted_sgr_, &raw);
   const size_t room = std::max<size_t>(
       1, ScreenRows() - std::min(ScreenRows(), frame.size() + 1));
   const size_t spilled = tail.size() > room ? tail.size() - room : 0;
   for (size_t row = 0; row < spilled; ++row) {
     committed_ += tail[row] + "\n";
     emitted_ += raw[row].size();
+    emitted_sgr_ = ActiveSgr(raw[row], std::move(emitted_sgr_));
   }
   tail.erase(tail.begin(), tail.begin() + static_cast<ptrdiff_t>(spilled));
   const size_t tail_rows = tail.size();
@@ -172,9 +179,9 @@ void LiveRegion::Flush() {
     if (drawn_.empty()) {
       out += "\r";
     } else if (adopted_ > 0 && !resized) {
-      out += "\r" + Up(cursor_row_ - adopted_) + "\033[J";
+      out += "\r" + CursorUp(cursor_row_ - adopted_) + kEraseBelow;
     } else {
-      out += ToTop(width) + "\033[J";
+      out += ToTop(width) + kEraseBelow;
     }
     adopted_ = 0;
     out += committed_;
@@ -187,25 +194,24 @@ void LiveRegion::Flush() {
   }
   size_t at = cursor_row_;
   auto move_to = [&](size_t row) {
-    if (row < at) out += "\r" + Up(at - row);
+    if (row < at) out += "\r" + CursorUp(at - row);
     for (; at < row; ++at) out += "\r\n";
     at = row;
   };
   for (size_t row = 0; row < frame.size(); ++row) {
     if (row < drawn_.size() && frame[row] == drawn_[row]) continue;
     move_to(row);
-    out += "\r\033[2K" + frame[row];
+    out += std::string("\r") + kEraseLine + frame[row];
   }
   if (drawn_.size() > frame.size()) {
     move_to(frame.size() - 1);
-    out += "\r\n\033[J";
+    out += std::string("\r\n") + kEraseBelow;
     at = frame.size();
   }
   move_to(caret_row);
   out += "\r";
-  if (caret_column) out += "\033[" + std::to_string(caret_column) + "C";
-  // Synchronized output: a terminal that knows it shows the frame whole.
-  output_.Write("\033[?2026h" + out + "\033[?2026l");
+  out += CursorRight(caret_column);
+  output_.Write(kSyncBegin + out + kSyncEnd);
   drawn_tail_ = tail_;
   drawn_tail_rows_ = tail_rows;
   drawn_ = std::move(frame);
@@ -216,7 +222,7 @@ void LiveRegion::Flush() {
 void LiveRegion::Clear() {
   adopted_ = 0;
   if (drawn_.empty()) return;
-  output_.Write("\033[?2026h" + ToTop(TerminalWidth()) + "\033[J\033[?2026l");
+  output_.Write(kSyncBegin + ToTop(TerminalWidth()) + kEraseBelow + kSyncEnd);
   drawn_.clear();
   cursor_row_ = cursor_column_ = 0;
 }

@@ -3,210 +3,23 @@
 #include "include/ui/markdown.h"
 
 #include <algorithm>
-#include <cctype>
-#include <chrono>
-#include <cstdio>
-#include <cstring>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 #include "include/core/env.h"
-#include "include/core/math.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/interactive.h"
+#include "src/ui/markdown_internal.h"
 
 namespace uagent {
-namespace {
-
-constexpr size_t kFlushBytes = 256;
-constexpr auto kFlushInterval = std::chrono::milliseconds(16);
-
-// Each accumulator holds model-supplied text that only ends when the model
-// says so. Past these bounds the stream degrades to plain output rather than
-// growing: the line stops being measured, the math span replays as literal
-// text, the table renders the rows it has.
-constexpr size_t kMdLineBytes = size_t{1} << 20;
-constexpr size_t kMdMathBytes = size_t{64} * 1024;
-constexpr size_t kMdTableRows = 2000;
-
-const char* MathOpen(int math) {
-  switch (math) {
-    case 1:
-      return "$";
-    case 2:
-      return "$$";
-    case 3:
-      return "\\(";
-    default:
-      return "\\[";
-  }
-}
-
-bool Escaped(const std::string& text, size_t position) {
-  size_t slashes = 0;
-  while (position > slashes && text[position - slashes - 1] == '\\') {
-    ++slashes;
-  }
-  return slashes % 2;
-}
 
 bool MarkdownEscapable(char value) {
   constexpr std::string_view kEscapable = R"(\`*_${}[]()#+-.!|>$)";
   return kEscapable.find(value) != std::string_view::npos;
 }
-
-bool PlausibleInlineMath(std::string_view text) {
-  if (text.empty() || text.find("**") != std::string_view::npos ||
-      text.find('`') != std::string_view::npos) {
-    return false;
-  }
-  if (!isdigit(static_cast<unsigned char>(text.front()))) return true;
-  size_t token = 0;
-  while (token < text.size() &&
-         (isdigit(static_cast<unsigned char>(text[token])) ||
-          text[token] == '.' || text[token] == ',')) {
-    ++token;
-  }
-  if (token == text.size() ||
-      !isspace(static_cast<unsigned char>(text[token]))) {
-    return true;
-  }
-  return text.find_first_of("=+-*/^_\\<>", token) != std::string_view::npos;
-}
-
-size_t MathSpan(const std::string& text, size_t position) {
-  if (Escaped(text, position)) return std::string::npos;
-  std::string_view close;
-  size_t begin = position;
-  if (text.compare(position, 2, "$$") == 0) {
-    close = "$$";
-    begin += 2;
-  } else if (text[position] == '$' && position + 1 < text.size() &&
-             !isspace(static_cast<unsigned char>(text[position + 1]))) {
-    close = "$";
-    ++begin;
-  } else if (text.compare(position, 2, "\\(") == 0) {
-    close = "\\)";
-    begin += 2;
-  } else if (text.compare(position, 2, "\\[") == 0) {
-    close = "\\]";
-    begin += 2;
-  } else {
-    return std::string::npos;
-  }
-  for (size_t end = begin; (end = text.find(close, end)) != std::string::npos;
-       ++end) {
-    if (Escaped(text, end)) continue;
-    if (close == "$" && !PlausibleInlineMath(std::string_view(text).substr(
-                            begin, end - begin))) {
-      return std::string::npos;
-    }
-    return end + close.size();
-  }
-  return std::string::npos;
-}
-
-std::string PrettyMath(const std::string& text) {
-  // Transliteration produces the same Unicode the fallback would have to undo,
-  // so a terminal that cannot decode it keeps the source spelling instead.
-  if (!g_unicode) return text;
-  return TransliterateMath(text);
-}
-
-std::string MathBody(const std::string& span) {
-  if (span.starts_with("$$")) return span.substr(2, span.size() - 4);
-  if (span.starts_with("\\(") || span.starts_with("\\[")) {
-    return span.substr(2, span.size() - 4);
-  }
-  return span.substr(1, span.size() - 2);
-}
-
-// ANSI escapes are zero-width to DisplayWidth, and TerminalSafe has already
-// removed any raw escape the model could have emitted, so the rendered string
-// measures exactly like its visible text.
-std::string RenderCell(const std::string& text, size_t& visible_columns) {
-  std::string output;
-  bool bold = false, italic = false, code = false;
-  for (size_t index = 0; index < text.size(); ++index) {
-    char value = text[index];
-    if (value == '`') {
-      code = !code;
-      if (code) output += CODE();
-      output += value;
-      if (!code) output += FgDfl();
-      continue;
-    }
-    size_t math_end = code || (value != '$' && value != '\\')
-                          ? std::string::npos
-                          : MathSpan(text, index);
-    if (math_end != std::string::npos) {
-      std::string span = text.substr(index, math_end - index);
-      std::string rendered = PrettyMath(MathBody(span));
-      output += MATH();
-      output += rendered;
-      output += FgDfl();
-      index = math_end - 1;
-      continue;
-    }
-    if (!code && value == '\\' && index + 1 < text.size() &&
-        MarkdownEscapable(text[index + 1])) {
-      output += text[++index];
-      continue;
-    }
-    if (value == '*' && !code) {
-      bool tight = index + 1 < text.size() && text[index + 1] != ' ';
-      if (index + 1 < text.size() && text[index + 1] == '*') {
-        bold = !bold;
-        output += bold ? BOLD() : BoldOff();
-        ++index;
-      } else if (italic || tight) {
-        italic = !italic;
-        output += italic ? ITAL() : ItalOff();
-      } else {
-        output += value;
-      }
-      continue;
-    }
-    output += value;
-  }
-  visible_columns = DisplayWidth(output);
-  if (bold || italic || code) output += RST();
-  return output;
-}
-
-std::vector<std::string> SplitCells(const std::string& text) {
-  std::vector<std::string> cells;
-  std::string cell;
-  bool code_span = false;
-  for (size_t index = 0; index < text.size(); ++index) {
-    char value = text[index];
-    if (value == '`') code_span = !code_span;
-    size_t end = code_span || (value != '$' && value != '\\')
-                     ? std::string::npos
-                     : MathSpan(text, index);
-    if (end != std::string::npos) {
-      cell += text.substr(index, end - index);
-      index = end - 1;
-    } else if (value == '\\' && index + 1 < text.size() &&
-               text[index + 1] == '|') {
-      cell += "\\|";
-      ++index;
-    } else if (value == '|' && !code_span) {
-      cells.push_back(Trim(cell));
-      cell.clear();
-    } else {
-      cell += text[index];
-    }
-  }
-  cells.push_back(Trim(cell));
-  return cells;
-}
-
-}  // namespace
 
 MdStream::MdStream() { on = g_tty && MarkdownEnabled(); }
 
@@ -214,22 +27,20 @@ void MdStream::Feed(std::string_view s) {
   std::string safe = TerminalSafe(s);
   if (!on) {
     Put(safe);
-    FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+    FlushOut();
     return;
   }
   for (char c : safe) Step(c);
-  FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+  FlushOut();
 }
 
 void MdStream::FeedPlain(std::string_view s) {
-  std::string safe = TerminalSafe(s);
-  Put(safe);
-  FlushOutput(safe.size(), false, true);
+  Put(TerminalSafe(s));
+  FlushOut();
 }
 
 void MdStream::Control(const char* s) {
   Put(s);
-  pending_output += strlen(s);
   // A control sequence is the caller's way of ordering its own writes around
   // this stream, so it may not sit in the buffer waiting for text.
   FlushOut();
@@ -237,7 +48,7 @@ void MdStream::Control(const char* s) {
 
 void MdStream::Flush() {  // stream end: resolve everything still held
   if (!on) {
-    FlushOutput(0, false, true);
+    FlushOut();
     return;
   }
   while (math) ReplayMath();
@@ -261,20 +72,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
   star = 0;
   dollar = math_dollar = slash = false;
   linestart = true;
-  FlushOutput(0, false, true);
-}
-
-void MdStream::FlushOutput(size_t bytes, bool newline, bool force) {
   FlushOut();
-  pending_output += bytes;
-  auto now = std::chrono::steady_clock::now();
-  if (force || newline || !output_started || pending_output >= kFlushBytes ||
-      now - last_flush >= kFlushInterval) {
-    fflush(stdout);
-    pending_output = 0;
-    output_started = true;
-    last_flush = now;
-  }
 }
 
 void MdStream::ReleaseBlanks() {
@@ -302,44 +100,34 @@ void MdStream::Pc(char c) {
 // outside writer can observe has moved.
 void MdStream::Put(char value) {
   outbuf += value;
-  TrackRendered(value);
+  TrackRendered(std::string_view(&value, 1));
 }
 
 void MdStream::Put(std::string_view text) {
   outbuf.append(text);
-  // Whole runs of plain text are the common case and carry no state change,
-  // so they are measured in one append rather than a byte at a time.
-  if (escape_state == 0 &&
-      text.find_first_of("\x1b\n\r") == std::string_view::npos) {
+  TrackRendered(text);
+}
+
+// Colour changes cost no columns, and neither does the closing newline. An
+// escape is always written whole: the model's text has none left.
+void MdStream::TrackRendered(std::string_view text) {
+  // Whole runs of plain text are the common case, so they are measured in
+  // one append rather than a byte at a time.
+  if (text.find_first_of("\x1b\n\r") == std::string_view::npos) {
     if (cur_rendered.size() < kMdLineBytes) cur_rendered.append(text);
     return;
   }
-  for (char value : text) TrackRendered(value);
-}
-
-// Colour changes cost no columns, and neither does the closing newline.
-void MdStream::TrackRendered(char value) {
-  if (escape_state != 0) {
-    if (escape_state == 1) {
-      escape_state = value == '[' ? 2 : 0;
-      return;
+  for (size_t at = 0; at < text.size(); ++at) {
+    if (const size_t span = CsiSpan(text.substr(at))) {
+      at += span - 1;
+    } else if (text[at] != '\n' && text[at] != '\r' &&
+               cur_rendered.size() < kMdLineBytes) {
+      cur_rendered += text[at];
     }
-    const unsigned char byte = Byte(value);
-    if (byte >= 0x40 && byte <= 0x7e) escape_state = 0;
-    return;
   }
-  if (value == 0x1b) {
-    escape_state = 1;
-    return;
-  }
-  if (value == '\n' || value == '\r') return;
-  if (cur_rendered.size() < kMdLineBytes) cur_rendered += value;
 }
 
-void MdStream::ForgetRenderedLine() {
-  cur_rendered.clear();
-  escape_state = 0;
-}
+void MdStream::ForgetRenderedLine() { cur_rendered.clear(); }
 
 void MdStream::FlushOut() {
   if (outbuf.empty()) return;
@@ -695,89 +483,6 @@ void MdStream::InlineChar(char c) {
   Pc(c);
 }
 
-void MdStream::MathChar(char c) {
-  // An unterminated span would otherwise buffer the rest of the response.
-  if (math_text.size() >= kMdMathBytes) {
-    ReplayMath();
-    InlineChar(c);
-    return;
-  }
-  if (slash) {
-    slash = false;
-    if ((math == 3 && c == ')') || (math == 4 && c == ']')) {
-      FinishMath();
-    } else {
-      math_text += '\\';
-      math_text += c;
-    }
-    return;
-  }
-  if (c == '\\') {
-    slash = true;
-    return;
-  }
-  if (math == 1 && c == '$') {
-    if (!PlausibleInlineMath(math_text)) {
-      math_text += '$';
-      ReplayMath();
-      return;
-    }
-    FinishMath();
-    return;
-  }
-  if (math == 2) {
-    if (math_dollar) {
-      math_dollar = false;
-      if (c == '$') {
-        FinishMath();
-        return;
-      }
-      math_text += '$';
-    }
-    if (c == '$') {
-      math_dollar = true;
-      return;
-    }
-  }
-  if (c != '\n') {
-    math_text += c;
-    return;
-  }
-  // Inline math never spans lines; display math gives up at a blank line.
-  // Either way the held text was not math after all — replay it verbatim.
-  bool inline_span = math == 1 || math == 3;
-  if (!inline_span && (math_text.empty() || math_text.back() != '\n')) {
-    math_text += '\n';
-    return;
-  }
-  do {
-    ReplayMath();
-  } while (math);
-  EndLine();
-}
-
-void MdStream::FinishMath() {
-  Pv(PrettyMath(math_text));
-  math_text.clear();
-  math = 0;
-  dollar = math_dollar = slash = false;
-  linestart = false;
-  Put(FgDfl());
-}
-
-void MdStream::ReplayMath() {
-  int kind = math;
-  if (slash) math_text += '\\';
-  if (math_dollar) math_text += '$';
-  std::string text = std::move(math_text);
-  math_text.clear();
-  math = 0;
-  dollar = math_dollar = slash = false;
-  Put(FgDfl());
-  Pv(MathOpen(kind));
-  for (char value : text) InlineChar(value);
-}
-
 void MdStream::ForgetPreviousLine() {
   prev_raw.clear();
   prev_rows = 1;
@@ -807,110 +512,6 @@ void MdStream::EndLine() {  // inline styles never span lines
   cur_raw.clear();
   ForgetRenderedLine();
   linestart = true;
-}
-
-void MdStream::RetroTable() {
-  for (size_t i = 0; i < prev_rows; ++i) {
-    Put("\033[A\033[2K");  // up + clear
-  }
-  table.push_back(prev_raw);
-  table.emplace_back(Marker());
-  pre.clear();
-  cur_raw.clear();
-  ForgetRenderedLine();
-  ForgetPreviousLine();
-  tablemode = true;  // body rows follow until a line without '|'
-}
-
-// At the cap, render what has arrived and start a fresh block.
-void MdStream::PushTableRow(const std::string& raw) {
-  table.push_back(raw);
-  if (table.size() < kMdTableRows) return;
-  bool resume = tablemode;
-  FlushTable();
-  tablemode = resume;
-}
-
-void MdStream::FlushTable() {
-  if (table.empty()) return;
-  std::vector<std::vector<std::pair<std::string, size_t>>>
-      rows;  // cell, visible width
-  std::vector<bool> sep;
-  std::vector<size_t> w;
-  bool any_sep = false;  // a |---| row is what makes this block a table
-  for (auto& raw : table) {
-    std::string t = Trim(raw);
-    if (t.size() > 1 && t.find_first_not_of("-:| ") == std::string::npos) {
-      any_sep = true;
-    }
-    if (!t.empty() && t.front() == '|') t.erase(0, 1);
-    if (!t.empty() && t.back() == '|') t.pop_back();
-    std::vector<std::string> cells = SplitCells(t);
-    bool is_sep = true;  // |---|:--:| alignment row
-    for (auto& c : cells) {
-      if (c.find_first_not_of("-: ") != std::string::npos) is_sep = false;
-    }
-    sep.push_back(is_sep);
-    rows.emplace_back();
-    for (size_t c = 0; c < cells.size(); c++) {
-      size_t vis = 0;
-      std::string out = is_sep ? "" : RenderCell(cells[c], vis);
-      rows.back().emplace_back(std::move(out), vis);
-      if (c >= w.size()) w.resize(c + 1, 0);
-      if (vis > w[c]) w[c] = vis;
-    }
-  }
-  // no separator row -> not actually a table (e.g. "| jq ."): pass through
-  if (!any_sep) {
-    for (const auto& raw : table) {
-      Put(raw);
-      Put('\n');
-    }
-    table.clear();
-    return;
-  }
-  size_t header = 0;
-  while (header < rows.size() && sep[header]) ++header;
-  size_t table_width = w.empty() ? 0 : (w.size() - 1) * 2;
-  for (size_t width : w) table_width += width;
-  if (table_width > static_cast<size_t>(TerminalColumns())) {
-    bool after_separator = false;
-    for (size_t r = 0; r < rows.size(); ++r) {
-      if (sep[r]) {
-        after_separator = true;
-        continue;
-      }
-      if (!after_separator && r == header) continue;
-      if (r != header && r > 0) Put('\n');
-      for (size_t c = 0; c < rows[r].size(); ++c) {
-        std::string label = header < rows.size() && c < rows[header].size()
-                                ? rows[header][c].first
-                                : "Column " + std::to_string(c + 1);
-        Put(DIM() + label + ":" + RST() + " " + rows[r][c].first + "\n");
-      }
-    }
-    table.clear();
-    ForgetPreviousLine();
-    return;
-  }
-  const std::string no_cell;
-  for (size_t r = 0; r < rows.size(); r++) {
-    if (sep[r]) continue;
-    std::string ln;
-    ln.reserve(table_width);
-    for (size_t c = 0; c < w.size(); c++) {
-      bool present = c < rows[r].size();
-      const std::string& text = present ? rows[r][c].first : no_cell;
-      if (c > 0) ln += "  ";
-      size_t padding =
-          c + 1 < w.size() ? w[c] - (present ? rows[r][c].second : 0) : 0;
-      ln += text;
-      ln.append(padding, ' ');
-    }
-    Put((r == header ? BOLD() : "") + ln + RST() + "\n");
-  }
-  table.clear();
-  ForgetPreviousLine();
 }
 
 void MdPrint(const std::string& text) {

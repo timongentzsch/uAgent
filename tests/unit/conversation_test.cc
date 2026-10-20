@@ -543,6 +543,17 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(JsonEstimatedBytes(view) < size_t{512} * 1024);
   CHECK(view["more"] == true);
   CHECK(view["blocks"].back()["id"] == "large-63");
+  // A checkpoint is bounded once, after all its blocks, to the same rows.
+  json checkpoint = json::array();
+  for (int i = 64; i < 128; ++i) {
+    checkpoint.push_back({{"id", "large-" + std::to_string(i)},
+                          {"sequence", i + 100},
+                          {"text", std::string(16384, 'x')}});
+  }
+  json merged = view;
+  for (const json& block : checkpoint) MergeDisplayBlock(view, block);
+  MergeDisplayBlocks(merged, checkpoint);
+  CHECK(merged == view);
 
   // Live deltas and the saved preview are one row, keyed by the response id.
   // A bounded checkpoint may enrich metadata, but it cannot shorten a body

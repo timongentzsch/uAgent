@@ -1,13 +1,13 @@
 import type { ComponentProps } from "preact";
 import type ModelPicker from "./model-picker.tsx";
 import { Gauge, ChevronDown } from "lucide-preact";
-import { Deferred, DataText } from "./ui.tsx";
+import { Deferred, DataText, updateChecked } from "./ui.tsx";
 import { ModelLoading } from "./loading.tsx";
 import { SheetButton } from "./sheet.tsx";
 import "./model-control.css";
 
 const modelPicker = () => import("./model-picker.tsx");
-export default function ModelControl(
+function ModelControl(
   props: Omit<ComponentProps<typeof ModelPicker>, "close">,
 ) {
   const label = props.selection || props.state?.route || "Select model";
@@ -41,3 +41,6 @@ export default function ModelControl(
     </SheetButton>
   );
 }
+
+// The picker reads the route and efforts, nothing else of the state.
+export default updateChecked(ModelControl, ["route", "effort", "efforts"]);

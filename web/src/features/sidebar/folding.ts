@@ -1,5 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { storage } from "../../shared/storage.ts";
+import { storageKeys } from "../../shared/storage-keys.ts";
 import { readStored, writeStored } from "../../state/store.ts";
 
 const watchers = new Set<() => void>();
@@ -8,7 +9,7 @@ const watchers = new Set<() => void>();
 // Alt+↑/↓ steps through what is shown, so it reads the same set the list
 // draws from.
 function remembered(name: string) {
-  const key = `uagent.sidebar.${name}`;
+  const key = storageKeys.places(name);
   const paths = new Set(readStored<string[]>(storage, key, []));
   return {
     has: (path: string) => paths.has(path),

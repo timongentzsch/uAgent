@@ -1,8 +1,8 @@
 # Accessibility
 
 What µAgent does for people who use a screen reader, magnification, high
-contrast, reduced motion or only a keyboard, in the terminal and in the web
-app, and how each promise is tested.
+contrast, reduced motion or only a keyboard, in the terminal and the web app,
+and how each promise is tested.
 
 ## Terminal
 
@@ -41,10 +41,11 @@ high-contrast theme, applies.
 
 ### Reduced motion
 
-`UAGENT_REDUCED_MOTION=1` replaces the spinner with a still label
-("Working…") that changes only when the work it names changes. Plain mode
-implies it. To keep either setting, save it once from a session:
-`/config user UAGENT_PLAIN=1`. Both apply when a terminal next starts.
+`UAGENT_REDUCED_MOTION=1` holds the spinner still: the working row changes
+only when the work it names changes, and its elapsed time once a second.
+Plain mode implies it. To keep either setting, save it once from a session,
+for example `/config user UAGENT_PLAIN=1`. Both apply when a terminal next
+starts.
 
 ### Other
 
@@ -78,14 +79,14 @@ meets.
   and Alt+↑/↓ step through conversations. Menus open with the arrow keys on
   their button, jump by first letter, and close with Tab. The composer is a
   combobox that announces how many suggestions it has. Image markup places
-  pins with the arrow keys and Enter. The remote browser screen has zoom and
-  scroll buttons.
+  pins with the arrow keys and Enter. A docked pane's edge resizes it with
+  the arrow keys. The remote browser screen has zoom and scroll buttons.
 - **Structure.** Sheets are native `<dialog>`s and menus are popovers, so
   focus, Escape and the top layer come from the browser. Markdown headings
   sit below the page's own.
 - **Motion.** `prefers-reduced-motion`, or Settings → This browser →
-  Animations: Off, stops every animation and transition. A working spinner
-  still turns.
+  Animations: Off, stops every animation and transition except a working
+  spinner, which turns slowly.
 
 ## Tests
 
@@ -94,5 +95,6 @@ meets.
 | Plain mode: no cursor control, labelled rows, ASCII only | `test_plain_mode_writes_labelled_lines_without_cursor_control` in `tests/integration_ui.py` |
 | Plain row marks | `tests/unit/presentation_test.cc` |
 | `NO_COLOR` keeps attributes | `test_no_color_keeps_bold_italic_and_dim` in `tests/integration_ui.py` |
+| Reduced motion: the working row redraws once a second | `test_reduced_motion_redraws_the_working_row_once_a_second` in `tests/integration_ui.py` |
 | ASCII fallback | `test_non_utf8_locale_draws_only_ascii` in `tests/integration_ui.py` |
-| Web: no axe WCAG 2.2 AA violations in the component showcase, chat, decisions, ask, settings, the drawer; keyboard menus, skip link, forced-colours switch, viewer scroll buttons; axe absent from `dist/` | `web/tests/a11y.spec.js` |
+| Web: no axe WCAG 2.2 AA violations in the component showcase, chat, decisions, ask, settings, the drawer, the Files pane and resize handles; keyboard menus, skip link, forced-colours switch, viewer scroll buttons; axe absent from `dist/` | `web/tests/a11y.spec.js` |

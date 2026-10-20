@@ -397,16 +397,20 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             )
             raw = ""
             offset = 0
+            pages = 0
             while True:
                 status, page, _ = client.json(
                     f"/api/sessions/{session['id']}?detail={detail_id}&raw=1&offset={offset}"
                 )
                 assert_true(status == 200, page)
                 raw += page["text"]
+                pages += 1
                 if not page["more"]:
                     break
                 assert_true(page["next"] > offset, page)
                 offset = page["next"]
+            # Paged like every long text, retained or still inline.
+            assert_true(pages > 1, pages)
             exchange = json.loads(raw)
             assert_true(exchange["complete"] and "FULL_BODY_END" in exchange["response"], exchange)
             assert_true("�" not in exchange["response"], "UTF-8 page boundary split")

@@ -3,34 +3,41 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a local coding agent that fits in one native binary: a C++20
-program with the web interface built in, which works in a terminal, from a
-script or in the browser on the same conversations, and runs its commands in a
-sandbox limited to your folder.
+µAgent is a local coding agent in one native binary. The C++20 program has
+the web interface built in, serves the same conversations to a terminal, a
+script and a browser, and runs its commands in a sandbox limited to your
+folder.
 
 ![The web interface as an installable app: on a desktop and on a phone, a folder's panel where two members, Ada and Linus, review a token-bucket rate limiter and disagree over its race test and Redis while a thread reruns the tests, with the desktop sidebar listing a "Perf lab" workspace and the folder, whose name carries its members as avatars](docs/images/web-desktop-phone.png)
 
 ## Highlights
 
-- **Terminal, script and browser share conversations.** `uagent` is the
-  terminal, `uagent -p "..." --json` runs one turn from a script, `uagent --web`
-  serves the browser; leave one and pick the conversation up in another.
+- **Terminal, script and browser share conversations.** `uagent` opens the
+  terminal, `uagent -p "..." --json` runs one turn from a script and
+  `uagent --web` serves the browser. Leave one and continue in another.
 - **Any endpoint.** It talks to Chat Completions, OpenAI Responses and
   Anthropic Messages APIs, local or hosted.
-- **Sandboxed, with approvals and `/undo`.** Commands can write only inside the
-  folder; it asks before it changes a file, runs a command or uses the
-  network, and `/undo` puts back what the last turn changed.
-- **A panel for several agents.** A folder's panel hosts a chat with a
-  moderator and members you add, and starts threads that do the work in
-  parallel and report back.
+- **Sandboxed, with approvals and `/undo`.** Commands can write only inside
+  the folder. The agent asks before it changes a file, runs a command or uses
+  the network, and `/undo` puts back what the last turn changed.
+- **A panel for several agents.** A folder's panel is a chat with a
+  moderator and the members you add. It starts threads that work in parallel
+  and report back.
 - **Your browser, your logins, never the password.** The agent drives a
-  persistent Chrome that you watch and take over from any device. It signs in
-  with Chrome's saved passwords without reading them, and hands you codes,
-  captchas and payments. [The agent's browser](docs/BROWSER.md) has the setup.
+  persistent Chrome that you can watch and take over from any device. It signs
+  in with Chrome's saved passwords without reading them and hands you codes,
+  captchas and payments. See [the agent's browser](docs/BROWSER.md) for the
+  setup.
+- **The folder beside the chat.** In the browser, Files lists the
+  conversation's folder next to the conversation, read only: search by name,
+  code with line numbers, rendered markdown with its images. Every pane can be
+  resized.
 
 ![Bars comparing µAgent, Claude Code and Codex CLI on executable size, idle memory, CPU per headless turn and time to first screen](docs/images/footprint.svg)
 
 ![The terminal on the left and the web interface on a phone on the right showing the same conversation live: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
+
+![The web interface with Files open beside a conversation about the Files pane itself: the README renders with its images, a search for master_files opens the C++ source with line numbers, and the pane is dragged wider](docs/images/files.gif)
 
 ![The web interface on a desktop and on a phone while the agent signs in to a demo status dashboard in Ask mode: the phone approves each browser action, the live browser on the desktop shows Chrome's saved login filling in with the password as dots, then the agent asks for the 6-digit code, the phone opens the browser, types it and taps Done, and the agent reports the last deploy's error rate](docs/images/browser-login.gif)
 
@@ -40,9 +47,9 @@ C++20 with libcurl, cpp-httplib and nlohmann/json; the web interface is
 Preact, TypeScript and Vite; the tests are C++, Python and Playwright.
 
 Every conversation runs in its own session runtime process. The terminal and
-the browser's web host attach to it over a private Unix socket, so neither has
-authority the other lacks and neither runs a second agent. A script
-(`-p --json`) runs its turn in its own process.
+the web host attach to it over a private Unix socket, so neither has authority
+the other lacks and neither runs a second agent. A script (`-p --json`) runs
+its turn in its own process.
 
 ```mermaid
 flowchart LR
@@ -58,9 +65,10 @@ wire format.
 
 ## Engineering
 
-- **Tests run without a key or network.** 133 C++ unit cases, 287 Python
-  integration tests against a mock provider (real binary, real PTY), 154
-  Playwright browser tests (Chromium; a subset also runs in WebKit) and 68 Node unit tests.
+- **Tests run without a key or network.** 155 C++ unit cases, 336 Python
+  integration tests against a mock provider (real binary, real PTY), 199
+  Playwright browser tests (Chromium; 101 also run in WebKit) and 84 Node unit
+  tests.
 - **Fuzzing.** Two libFuzzer targets, the SSE stream decoder and the terminal
   input decoder, replay their corpus on every CI run and search for five minutes each, weekly.
 - **Static analysis.** clang-format, cpplint, clang-tidy with warnings as
@@ -79,47 +87,45 @@ See [Contributing](CONTRIBUTING.md) and [Testing](docs/TESTING.md).
 
 | | µAgent | Claude Code | Codex CLI |
 |---|---|---|---|
-| Executable alone | 6.5 MB | 247.9 MB | 246.6 MB |
-| Install on disk | 7.0 MB, 33 files | 247.9 MB, 1 file | 338.1 MB, 42 files |
-| Download (macOS arm64, tar.gz) | 4.4 MB | not measured | not measured |
+| Executable alone | 6.9 MB | 271.2 MB | 250.0 MB |
+| Install on disk | 7.4 MB, 35 files | 271.2 MB, 1 file | 340.8 MB, 41 files |
+| Download (macOS arm64, tar.gz) | 4.6 MB | not measured | not measured |
 | Non-system shared libraries | 0 | 0 | 0 |
-| `--version`, wall (median / p90) | 10 / 13 ms | 15 / 19 ms | 15 / 19 ms |
-| `--version`, CPU (median / p90) | 6 / 8 ms | 11 / 13 ms | 12 / 14 ms |
-| Idle session, resident memory | 25.1 MB (2 processes) | 188.5 MB (1) | 182.2 MB (1)\* |
-| Idle session, CPU over 10 s | 0 ms | 40 ms | 10 ms\* |
-| Time to first screen | 102 ms | 344 ms | 3284 ms |
-| One headless turn, CPU | 65 ms | 790 ms | 639 ms |
-| One headless turn, peak resident memory | 12.5 MB | 257.2 MB | 191.5 MB |
-| One headless turn, wall time (model and network bound) | 1522 ms | 2974 ms | 4332 ms |
+| `--version`, wall (median / p90) | 7 / 12 ms | 11 / 12 ms | 13 / 14 ms |
+| `--version`, CPU (median / p90) | 5 / 5 ms | 9 / 9 ms | 10 / 12 ms |
+| Idle session, resident memory | 25.7 MB (2 processes) | 192.0 MB (1) | 192.2 MB (1)\* |
+| Idle session, CPU over 10 s | 0 ms | 30 ms | 10 ms\* |
+| Time to first screen | 115 ms | 327 ms | 2949 ms |
+| One headless turn, CPU | 50 ms | 741 ms | 648 ms |
+| One headless turn, peak resident memory | 12.6 MB | 284.8 MB | 198.3 MB |
+| One headless turn, wall time (model and network bound) | 2955 ms | 3757 ms | 4544 ms |
 
-Medians of 30 `--version` runs (3 warm-ups) and of 5 idle and 5 headless runs.
-No MCP servers, plugins or extensions are loaded: Claude Code runs with
-`--strict-mcp-config`, an empty MCP config and only project settings, Codex
-CLI's headless turn with `exec --ignore-user-config`, and µAgent has none
-configured. Each tool uses its own default login and model (µAgent:
-`claude-haiku-5-5` through a local proxy), so headless wall time depends on the
-model and is not comparable. The idle session is measured for 10 s in a 120×40
-pseudo-terminal after the screen settles, with the provider's model list
-cached (µAgent fetches it once a day), at each tool's folder-trust prompt
-where it asks; resident memory is summed over the tool's own processes,
-including helpers it starts. µAgent's two are the client and its session
-runtime. \*Codex CLI's interactive UI cannot skip the user config, so its idle
-row counts only Codex's own executables and leaves out the MCP servers it
-started from this machine's configuration. Runs alternate between the tools to
-share any background load, and idle memory varied between runs (Codex CLI 91 to
-189 MB, Claude Code 188 to 194 MB, µAgent 15 to 25 MB). Install size counts
-the executable plus what ships with it: `bin/` and `share/uagent/` for µAgent
-(from `cmake --install --strip`), the single versioned file for Claude Code,
-the cask directory for Codex CLI. Measured on an Apple M1 Pro with 16 GB,
-macOS 27.0.1, on 2026-10-14 with µAgent 1.3.1 built from master (`77816d72`),
-Claude Code 2.1.299 and Codex CLI 0.162.1. The download size is the installed
-tree compressed with `tar czf`. Reproduce with
-`python3 benchmarks/compare_agents.py --help`.
+Medians of 30 `--version` runs and of 5 idle and 5 headless runs, with no MCP
+servers, plugins or extensions loaded. Each tool uses its own login and model
+(µAgent: `claude-haiku-5-5` through a local proxy), so headless wall time is
+not comparable. µAgent's two idle processes are the client and its session
+runtime. \*Codex CLI's idle rows leave out the MCP servers it starts from the
+machine's configuration. Measured on an Apple M1 Pro with 16 GB, macOS 27.0.1,
+on 2026-10-20, with µAgent 1.4.0 built from master, Claude Code 2.1.304 and
+Codex CLI 0.163.0. [The method](benchmarks/README.md#footprint-comparison)
+has the details; reproduce with `python3 benchmarks/compare_agents.py`.
 
-The browser interface is served by the same binary: the idle web host uses
-9.5 MB of resident memory, and 38.0 MB with two open conversations (the host
-at 11.6 MB plus a session runtime of about 13 MB each). The page itself runs in
-your browser. Measured with `benchmarks/web.py` against a mock provider.
+The web host is the same binary: 9.7 MB of resident memory idle, and 39.0 MB
+with two open conversations (the host at 11.7 MB plus a session runtime of
+about 13.7 MB each). Measured with `benchmarks/web.py` against a mock provider.
+
+Recent efficiency work, measured with `uagent_bench` and the web render-count
+test (before → after):
+
+| Path | Before | After |
+|---|---|---|
+| A 1 MB streamed answer, copying per process | 410 ms | 19 ms |
+| 1 GB of command output, per buffer | 1,260 ms | 48 ms |
+| A checkpoint late in a 30-turn conversation, sent to browsers | 107 KB | 4 KB |
+| Terminal output for text with inline code, per token | 1,349 B | 209 B |
+| Typing 20 characters in the browser: sidebar and transcript renders | 20 each | 0 |
+| An open Settings dialog while 60 frames stream | 61 renders | 0 |
+| A 4 MB PDF prepared for 20 model calls in a turn | 248 ms | 17 ms |
 
 ## Install
 
@@ -129,24 +135,24 @@ Linux and macOS. From a checkout:
 ./install.sh
 ```
 
-This builds a Release binary in `build/release` (reusing a build already
-there) and installs `uagent` and the bundled skills under `~/.local`; put
+This builds a Release binary in `build/release`, reusing a build already
+there, and installs `uagent` and the bundled skills under `~/.local`. Put
 `~/.local/bin` on your `PATH`. `UAGENT_PREFIX` and `UAGENT_BUILD_DIR` change
 the two locations.
 
-Each tagged release also ships built archives
-(`uagent-<version>-linux-x86_64`, `-linux-arm64`, `-macos-arm64`, each
-`.tar.gz`). Unpack one and run `bin/uagent`; keep `bin` and `share` together,
-since the skills are found relative to the binary. `SHA256SUMS`, signed
-with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
+Each tagged release also ships built archives:
+`uagent-<version>-linux-x86_64.tar.gz`, `-linux-arm64.tar.gz` and
+`-macos-arm64.tar.gz`. Unpack one and run `bin/uagent`. Keep `bin` and `share`
+together, since the skills are found relative to the binary. `SHA256SUMS`,
+signed with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's
+checksum.
 
 ### Requirements
 
 - CMake 3.21+, a C++20 compiler, libcurl 7.66+ and zlib.
 - Node.js, to build the browser interface from `web/`. Without it the build
-  is terminal-only. Each release also ships the built interface as
-  `uagent-web-dist-<version>.tar.gz`; unpack it into `web/dist` before
-  building.
+  is terminal-only, unless you unpack the release's
+  `uagent-web-dist-<version>.tar.gz` into `web/dist` before building.
 - Optional at run time: [uv](https://docs.astral.sh/uv/) for Python `scratch`
   scripts with dependencies; `npm install -g @playwright/cli@latest` for the
   `browser-use` skill.
@@ -159,16 +165,16 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 
 ## Quick start
 
-1. **Give it a key.** With an [OpenRouter](https://openrouter.ai) key and
-   nothing else, the first start opens the model picker:
+1. **Give it a key.** With only an [OpenRouter](https://openrouter.ai) key
+   set, the first start opens the model picker:
 
    ```sh
    export OPENROUTER_API_KEY=replace-me
    ```
 
-   For a local or other OpenAI-compatible endpoint set `UAGENT_BASE_URL` and
-   `UAGENT_MODEL` instead (and `UAGENT_API_KEY` if it wants one). Responses
-   and Anthropic Messages endpoints are set up as
+   For a local or other Chat Completions endpoint, set `UAGENT_BASE_URL` and
+   `UAGENT_MODEL` instead, plus `UAGENT_API_KEY` if it needs one. Responses
+   and Anthropic Messages endpoints are
    [named providers](docs/GUIDE.md#models-and-providers).
 
 2. **Start it in a project folder** and say what you want:
@@ -180,37 +186,36 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 
    Enter sends, Esc stops a turn, `/` lists the commands.
 
-3. **When it asks before acting**, answer `y` (once), `s` (for this
-   conversation), `a` (always in this repository) or `n`. It asks before it
-   changes a file, runs a command or uses the network. Commands run in a
-   sandbox that can write only inside the folder. `/undo` puts back the files
-   the last turn changed.
+3. **Answer approvals.** Before it changes a file, runs a command or uses
+   the network, it asks: answer `y` (once), `s` (for this conversation), `a`
+   (always in this repository) or `n`. `/undo` puts back the files the last
+   turn changed.
 
-4. **Pick a model.** `/models` searches what your key offers;
+4. **Pick a model.** `/models` searches what your key offers.
    `/model NAME --default` also keeps the choice for new conversations.
 
-5. **Leave and come back.** `/quit` leaves the conversation running;
+5. **Leave and come back.** `/quit` leaves the conversation running.
    `uagent -c` continues the latest and `uagent --resume` lets you pick.
 
-6. **In the browser or on a phone.** `uagent --web` prints a link that pairs
-   the browser; one host serves every folder's conversations. See the
+6. **Open it in a browser or on a phone.** `uagent --web` prints a link that
+   pairs the browser. One host serves every folder's conversations; see the
    [web guide](docs/WEB.md).
 
-7. **Several at once.** `uagent panel` opens the folder's panel. Ask it
-   for work and it starts threads that do it; ask it for another voice and it
-   adds a member to the chat. Start a message with a name ("Ada, …") to ask
-   that one alone.
+7. **Run several at once.** `uagent panel` opens the folder's panel. Ask it
+   for work and it starts threads; ask for another voice and it adds a member
+   to the chat. Start a message with a name ("Ada, …") to ask that member
+   alone.
 
-8. **From a script.** `uagent -p "inspect this repository" --json` runs one
-   turn and prints one JSON envelope.
+8. **Script it.** `uagent -p "inspect this repository" --json` runs one turn
+   and prints one JSON envelope.
 
-The [guide](docs/GUIDE.md) tells the rest in order: keys, models and
-providers, settings, approvals, coming back to a conversation, the
-panel and its chat, and scripting. `uagent --help` lists every flag.
+The [guide](docs/GUIDE.md) covers the rest in order: keys, models and
+providers, settings, approvals, returning to a conversation, the panel and
+scripting. `uagent --help` lists every flag.
 
 ## Documentation
 
-- [Guide](docs/GUIDE.md): the whole story, in order
+- [Guide](docs/GUIDE.md): everything in order, from the first conversation
 - [Web interface](docs/WEB.md) and the [browser the agent drives](docs/BROWSER.md)
 - [Tools](docs/TOOLS.md)
 - [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
@@ -230,5 +235,5 @@ panel and its chat, and scripting. `uagent --help` lists every flag.
 
 ## Development
 
-See [Contributing](CONTRIBUTING.md) for building, the checks CI runs and
-[Testing](docs/TESTING.md) for running one test.
+[Contributing](CONTRIBUTING.md) covers building and the checks CI runs;
+[Testing](docs/TESTING.md) covers running a single test.

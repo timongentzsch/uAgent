@@ -33,8 +33,10 @@ class HeadTailBuffer {
                    bytes.end());
       return;
     }
+    // The tail may run to twice its budget before its oldest bytes go, so
+    // each byte is moved at most once: amortised O(1) per byte pushed.
     tail_.append(bytes.data(), bytes.size());
-    if (tail_.size() > tail_budget_) {
+    if (tail_.size() > 2 * tail_budget_) {
       size_t excess = tail_.size() - tail_budget_;
       tail_.erase(0, excess);
       omitted_ += excess;
@@ -42,12 +44,14 @@ class HeadTailBuffer {
   }
 
   std::string Snapshot() const {
-    if (head_.empty() && tail_.empty() && omitted_ == 0) return "";
+    const std::string_view tail = Tail();
+    const size_t omitted = omitted_ + tail_.size() - tail.size();
+    if (head_.empty() && tail.empty() && omitted == 0) return "";
     std::string output = head_;
-    if (omitted_ > 0) {
-      output += "\n... " + std::to_string(omitted_) + " bytes omitted ...\n";
+    if (omitted > 0) {
+      output += "\n... " + std::to_string(omitted) + " bytes omitted ...\n";
     }
-    output += tail_;
+    output += tail;
     return output;
   }
 
@@ -55,7 +59,7 @@ class HeadTailBuffer {
   // a process still running. Scans backwards over a bounded window instead of
   // building Snapshot(), which is a megabyte the caller would throw away.
   std::string TailLine(size_t cap = 160) const {
-    std::string line = LastLine(tail_, cap);
+    std::string line = LastLine(Tail(), cap);
     return line.empty() ? LastLine(head_, cap) : line;
   }
 
@@ -76,7 +80,7 @@ class HeadTailBuffer {
   // process that just printed a newline has not stopped saying what it was
   // saying. The window bounds a producer that emits one enormous line or a
   // great many blank ones -- the cost stays the same either way.
-  static std::string LastLine(const std::string& text, size_t cap) {
+  static std::string LastLine(std::string_view text, size_t cap) {
     static constexpr size_t kWindow = 4096;
     size_t limit = text.size() > kWindow ? text.size() - kWindow : 0;
     size_t end = text.size();
@@ -90,7 +94,13 @@ class HeadTailBuffer {
     while (begin < end && Blank(text[begin])) ++begin;
     // Cut from the front: the head of a progress line is what names the work,
     // and the caller bounds it again for its own width.
-    return Utf8Prefix(text.substr(begin, end - begin), cap);
+    return Utf8Prefix(std::string(text.substr(begin, end - begin)), cap);
+  }
+
+  // The newest tail_budget_ bytes: what the buffer keeps.
+  std::string_view Tail() const {
+    return std::string_view(tail_).substr(
+        tail_.size() > tail_budget_ ? tail_.size() - tail_budget_ : 0);
   }
 
   size_t head_budget_;

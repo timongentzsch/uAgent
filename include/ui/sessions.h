@@ -31,10 +31,23 @@
 
 namespace uagent {
 
+// The path of the one session `matches` accepts. Empty when none or several
+// do, so callers fall back to the picker or say so instead of guessing.
+template <class Matches>
+std::string UniqueSession(const std::vector<SessionInfo>& sessions,
+                          const Matches& matches) {
+  std::string match;
+  for (const SessionInfo& session : sessions) {
+    if (!matches(session)) continue;
+    if (!match.empty()) return "";
+    match = session.path;
+  }
+  return match;
+}
+
 // Unique prefix match over saved sessions: an exact path wins, otherwise the
 // single session whose file name or title contains the argument
-// (case-insensitive). Empty when absent or ambiguous, so callers fall back
-// to the picker instead of guessing.
+// (case-insensitive).
 inline std::string MatchSessionPrefix(const std::string& prefix) {
   const std::string arg = AsciiLower(Trim(prefix));
   if (arg.empty()) return "";
@@ -42,19 +55,13 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
   for (const SessionInfo& session : sessions) {
     if (session.path == prefix) return session.path;
   }
-  std::string match;
-  for (const SessionInfo& session : sessions) {
-    if (session.kind == kSessionKindPanel) continue;  // `uagent panel`
+  return UniqueSession(sessions, [&](const SessionInfo& session) {
     const std::string name =
         std::filesystem::path(session.path).filename().string();
-    if (AsciiLower(name).find(arg) == std::string::npos &&
-        AsciiLower(session.title).find(arg) == std::string::npos) {
-      continue;
-    }
-    if (!match.empty()) return "";  // Ambiguous: let the picker decide.
-    match = session.path;
-  }
-  return match;
+    return session.kind != kSessionKindPanel &&  // `uagent panel`
+           (AsciiLower(name).find(arg) != std::string::npos ||
+            AsciiLower(session.title).find(arg) != std::string::npos);
+  });
 }
 
 // print a numbered list and read a choice; returns the chosen path or "".

@@ -147,10 +147,8 @@ inline std::string ActivityBar(const ActivityView& view) {
   std::string seconds =
       FmtDuration(std::chrono::duration<double>(view.elapsed).count());
   std::string activity = CurrentTerminalActivity();
-  static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
-  auto ticks =
-      std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed) /
-      kSpinnerInterval;
+  // Without motion the spinner holds still.
+  auto ticks = g_motion ? view.elapsed / kSpinnerPeriod : 0;
   std::string prefix = SpinnerFrame(static_cast<size_t>(ticks));
   prefix += " ";
   // What the turn is doing, in descending order of how directly the human
@@ -201,7 +199,7 @@ inline std::string ActivityBar(const ActivityView& view) {
 inline std::string StatusBarLine(const std::string& status) {
   std::string text =
       DisplayTrunc(AsciiGlyphs(TerminalSafe(status)), TerminalWidth(1));
-  return std::string(RST()) + DIM() + text + "\033[K" + RST();
+  return std::string(RST()) + DIM() + text + kEraseRight + RST();
 }
 
 }  // namespace uagent

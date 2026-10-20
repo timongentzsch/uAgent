@@ -14,6 +14,7 @@
           "options": {
             "reportUnnecessaryDependencies": false,
             "hooks": [
+              { "name": "useLatest", "stableResult": true },
               {
                 "name": "useResource",
                 "stableResult": ["setValue", "setError"]

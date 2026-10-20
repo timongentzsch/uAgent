@@ -734,6 +734,14 @@ void TestTerminalSafety() {
   g_color = prior_color;
   CHECK(DisplayWidth("ASCII") == 5);
   CHECK(DisplayWidth("界") >= 1);
+  // Where an escape ends is one rule for every reader of the terminal's own
+  // output: parameter and intermediate bytes, then one final byte.
+  CHECK(CsiSpan("\033[38;5;9mx") == 9);
+  CHECK(CsiSpan("\033[?2026h") == 8);
+  CHECK(CsiSpan("\033[1") == 0);
+  CHECK(CsiSpan("\033]0;title\a") == 0);
+  CHECK(CsiSpan("x\033[1m") == 0);
+  CHECK(DisplayWidth("\033[1mbold\033[22m") == 4);
   CHECK(WrapLines("abcdef", 3) == std::vector<std::string>({"abc", "def"}));
   std::string wide = "a界b";
   std::vector<std::string> wrapped_wide = WrapLines(wide, 2);

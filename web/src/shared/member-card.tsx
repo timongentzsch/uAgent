@@ -10,7 +10,7 @@ import { Avatar } from "./avatar.tsx";
 import { Menu, MenuItem } from "./menu.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { Button } from "./ui.tsx";
-import { coarsePointer, viewportBounds } from "./layout.ts";
+import { coarsePointer, placePopover } from "./layout.ts";
 import { useHostContext } from "../state/host-context.ts";
 import "./member-card.css";
 
@@ -116,17 +116,7 @@ export function MemberAvatar({ item }: { item: Session }) {
     if (!open || !element || !button) return;
     element.showPopover();
     // Under the avatar, or over it where there is no room below.
-    const { left: x, top: y, width, height } = viewportBounds(true);
-    const target = button.getBoundingClientRect();
-    const gap =
-      parseFloat(getComputedStyle(element).getPropertyValue("row-gap")) || 0;
-    const below = y + height - target.bottom - 2 * gap;
-    const above = target.top - y - 2 * gap;
-    const upwards = element.scrollHeight > below && above > below;
-    element.style.maxHeight = `${Math.max(1, upwards ? above : below)}px`;
-    const box = element.getBoundingClientRect();
-    element.style.left = `${Math.max(x + gap, Math.min(target.left, x + width - box.width - gap))}px`;
-    element.style.top = `${upwards ? target.top - box.height - gap : target.bottom + gap}px`;
+    placePopover(element, button, "start");
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (element.contains(document.activeElement))

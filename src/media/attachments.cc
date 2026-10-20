@@ -10,8 +10,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <limits>
+#include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -153,12 +155,11 @@ std::string AudioMime(std::string_view bytes) {
 }
 
 // SVG has no magic number: scan the prolog (BOM, whitespace, <?...?>,
-// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most ScanBytes
-// in. Anything else -- including bare <?xml without svg, HTML, or plain
-// text -- is not an SVG document.
+// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most
+// kAttachmentSniffBytes in. Anything else -- including bare <?xml without
+// svg, HTML, or plain text -- is not an SVG document.
 std::string SvgMime(std::string_view bytes) {
-  constexpr size_t kScanBytes = size_t{64} * 1024;
-  const size_t end = std::min(bytes.size(), kScanBytes);
+  const size_t end = std::min(bytes.size(), kAttachmentSniffBytes);
   size_t pos = 0;
   if (end - pos >= 3 && bytes.substr(pos, 3) == "\xEF\xBB\xBF") pos += 3;
   auto skip_blank = [&] {
@@ -269,7 +270,7 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
   // One head read covers the raster/HEIC signatures as well as the SVG
   // prolog scan below; vector documents may legitimately start with
   // kilobytes of XML declarations before <svg.
-  if (!ReadRegularFile(path, size_t{64} * 1024, prefix, error_read, true)) {
+  if (!ReadRegularFile(path, kAttachmentSniffBytes, prefix, error_read, true)) {
     error = error_read;
     return false;
   }
@@ -568,24 +569,72 @@ std::string AttachmentFingerprint(const Attachment& attachment) {
          std::to_string(nanos);
 }
 
+// Encoded payloads by kind and file fingerprint, least recently used first.
+// An attachment goes with every model call of its turn; reading, resizing
+// and encoding it again for each is work the first call already did.
+struct Payload {
+  std::string key, mime, data;
+};
+struct PayloadCache {
+  std::mutex mutex;
+  std::list<Payload> items UAGENT_GUARDED_BY(mutex);
+};
+PayloadCache& Payloads() {
+  static PayloadCache cache;
+  return cache;
+}
+
+bool CachedPayload(const std::string& key, std::string& mime,
+                   std::string& data) {
+  PayloadCache& cache = Payloads();
+  std::lock_guard lock(cache.mutex);
+  auto found = std::ranges::find(cache.items, key, &Payload::key);
+  if (found == cache.items.end()) return false;
+  cache.items.splice(cache.items.end(), cache.items, found);
+  mime = found->mime;
+  data = found->data;
+  return true;
+}
+
+void CachePayload(const std::string& key, const std::string& mime,
+                  const std::string& data) {
+  if (data.size() > kAttachmentCacheBytes) return;
+  PayloadCache& cache = Payloads();
+  std::lock_guard lock(cache.mutex);
+  std::erase_if(cache.items,
+                [&](const Payload& item) { return item.key == key; });
+  cache.items.push_back({key, mime, data});
+  size_t total = 0;
+  for (const Payload& item : cache.items) total += item.data.size();
+  while (total > kAttachmentCacheBytes) {
+    total -= cache.items.front().data.size();
+    cache.items.pop_front();
+  }
+}
+
+// A file's base64 under `prefix`, from the cache while the file is unchanged.
+std::string EncodedFile(const Attachment& attachment, uintmax_t max_bytes,
+                        std::string& error, const std::string& prefix) {
+  const std::string fingerprint = AttachmentFingerprint(attachment);
+  const std::string key = prefix + "|" + fingerprint;
+  std::string mime, data;
+  if (!fingerprint.empty() && CachedPayload(key, mime, data)) return data;
+  data = Base64File(attachment, max_bytes, error, prefix);
+  if (!fingerprint.empty() && error.empty()) CachePayload(key, "", data);
+  return data;
+}
+
 std::string PreparedImage(const Attachment& attachment, std::string& mime,
                           std::string& error) {
   constexpr size_t kImageBytes = size_t{4} * 1024 * 1024;
-  static std::mutex mutex;
-  static std::map<std::string, std::pair<std::string, std::string>> cache
-      UAGENT_GUARDED_BY(mutex);
-  const std::string key = AttachmentFingerprint(attachment);
-  if (key.empty()) {
+  const std::string fingerprint = AttachmentFingerprint(attachment);
+  if (fingerprint.empty()) {
     error = "image is no longer available";
     return "";
   }
-  {
-    std::lock_guard lock(mutex);
-    if (auto found = cache.find(key); found != cache.end()) {
-      mime = found->second.first;
-      return found->second.second;
-    }
-  }
+  const std::string key = "image|" + fingerprint;
+  std::string cached;
+  if (CachedPayload(key, mime, cached)) return cached;
   // Platform helpers keep image decoders out of the harness binary. No shell,
   // bounded lifetime, original retained. Linux uses ImageMagick when installed.
   // Vector originals rasterize first: neither inspector below reads SVG,
@@ -678,14 +727,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   std::string encoded =
       Base64File(prepared, kImageBytes, error, "data:" + mime + ";base64,");
   if (!error.empty()) return "";
-  std::lock_guard lock(mutex);
-  cache[key] = {mime, encoded};
-  size_t total = 0;
-  for (const auto& item : cache) total += item.second.second.size();
-  while (total > kImageCacheBytes && !cache.empty()) {
-    total -= cache.begin()->second.second.size();
-    cache.erase(cache.begin());
-  }
+  CachePayload(key, mime, encoded);
   return encoded;
 }
 }  // namespace
@@ -768,14 +810,14 @@ bool PrepareAttachments(json& messages,
         }
         if (TextMime(attachment.mime)) {
           std::string text;
-          if (ReadRegularFile(path, size_t{64} * 1024, text, detail, true) &&
+          if (ReadRegularFile(path, kAttachedTextBytes, text, detail, true) &&
               text.find('\0') == std::string::npos) {
             prepared.push_back(
                 {{"type", "text"},
                  {"text",
                   "[Attached text: " + name + "]\n" +
-                      Utf8Prefix(std::move(text), size_t{64} * 1024) +
-                      (attachment.bytes > size_t{64} * 1024
+                      Utf8Prefix(std::move(text), kAttachedTextBytes) +
+                      (attachment.bytes > kAttachedTextBytes
                            ? "\n[truncated; read the original file for more]"
                            : "")}});
             delivery = "Text";
@@ -794,8 +836,8 @@ bool PrepareAttachments(json& messages,
           std::string header;
           if (ReadRegularFile(path, 5, header, detail, true) &&
               header == "%PDF-") {
-            std::string data = Base64File(attachment, limit, detail,
-                                          "data:application/pdf;base64,");
+            std::string data = EncodedFile(attachment, limit, detail,
+                                           "data:application/pdf;base64,");
             if (detail.empty()) {
               prepared.push_back(
                   {{"type", "file"},
@@ -809,7 +851,7 @@ bool PrepareAttachments(json& messages,
         } else if (IsAudioMime(attachment.mime) && capabilities.audio_input) {
           // OpenRouter takes raw base64 plus a format word, never a data
           // URI, and no audio URLs at all.
-          std::string data = Base64File(attachment, limit, detail, "");
+          std::string data = EncodedFile(attachment, limit, detail, "");
           if (detail.empty()) {
             prepared.push_back({{"type", "input_audio"},
                                 {"input_audio",
@@ -820,8 +862,9 @@ bool PrepareAttachments(json& messages,
         } else if (IsVideoMime(attachment.mime) && capabilities.video_input) {
           // Local files ride as base64 data URLs, mirroring image_url;
           // remote URLs stay provider-specific and are out of scope.
-          std::string data = Base64File(attachment, limit, detail,
-                                        "data:" + attachment.mime + ";base64,");
+          std::string data =
+              EncodedFile(attachment, limit, detail,
+                          "data:" + attachment.mime + ";base64,");
           if (detail.empty()) {
             prepared.push_back({{"type", "video_url"},
                                 {"video_url", {{"url", std::move(data)}}}});

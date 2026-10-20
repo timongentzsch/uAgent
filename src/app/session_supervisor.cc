@@ -4,7 +4,9 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/agent/session_view.h"
 #include "include/app/library.h"
@@ -33,29 +35,45 @@ SessionStatus LiveStatus(const HostSession& session) {
                                             : SessionStatus::kIdle;
 }
 
-// Sets next["view"]: the held view merged with what the worker
-// sent.
-void MergeView(HostSession& session, json& next) {
+// Sets next["view"]: the held view merged with what the worker sent.
+// Returns the rows that changed, or null when a browser holding the view
+// must take all of it: a new view epoch, or a field of the view that changed
+// other than by rows bounded out (a browser keeps those as older pages).
+json MergeView(HostSession& session, json& next) {
   // A rewound conversation starts a new view epoch: its old blocks are
   // gone, so the checkpoint replaces the view instead of merging into it.
   json view = json::object();
-  if (auto held = session.state.find("view");
-      held != session.state.end() &&
-      JsonValue(next, "view_epoch", uint64_t{0}) ==
-          JsonValue(session.state, "view_epoch", uint64_t{0})) {
-    view = std::move(*held);
+  auto held = session.state.find("view");
+  const bool same = held != session.state.end() &&
+                    JsonValue(next, "view_epoch", uint64_t{0}) ==
+                        JsonValue(session.state, "view_epoch", uint64_t{0});
+  if (same) view = std::move(*held);
+  json fields = json::object();
+  for (auto it = view.begin(); it != view.end(); ++it) {
+    if (it.key() != "blocks") fields[it.key()] = it.value();
   }
+  json rows = json::array();
+  size_t dropped = 0;
   if (const json* checkpoint_view = JsonObject(next, "view")) {
     for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
          ++it) {
       if (it.key() != "blocks") view[it.key()] = it.value();
     }
     if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
-      for (const json& block : *blocks) MergeDisplayBlock(view, block);
+      dropped = MergeDisplayBlocks(view, *blocks, &rows);
     }
   }
   if (!view.contains("blocks")) view["blocks"] = json::array();
+  bool whole = !same;
+  for (auto it = view.begin(); it != view.end() && !whole; ++it) {
+    // Rows bounded out move `before` and `more`; a browser keeps its own.
+    const bool bounded =
+        dropped && (it.key() == "before" || it.key() == "more");
+    whole = it.key() != "blocks" && !bounded &&
+            JsonValue(fields, it.key().c_str(), json()) != it.value();
+  }
   next["view"] = std::move(view);
+  return whole ? json(nullptr) : rows;
 }
 
 // The tool result a browser may ask to see in full, kept while it is recent.
@@ -213,7 +231,7 @@ void SessionHost::Received(HostSession* session, json frame) {
                   !session->run_id.empty() || session->restart);
   if (kind == "gap") {
     lock.unlock();
-    session->Send({{"kind", "refresh"}, {"request_id", RandomToken(16)}});
+    session->Send(ControlFrame("refresh"));
   }
   changed_.notify_all();
 }
@@ -234,7 +252,7 @@ bool SessionHost::RecycleStaleWorkerLocked(
   // Claimed now, so no other pass starts a second recycle while this one
   // waits; restored if the worker keeps running.
   const bool restart = std::exchange(session->restart, false);
-  session->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
+  session->Send(ControlFrame("close"));
   changed_.wait_for(lock, kWorkerShutdownTimeout,
                     [&] { return session->exited.load(); });
   if (!session->exited) {
@@ -353,19 +371,38 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
 void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
   auto sent = frame.find("state");
   json next = sent != frame.end() ? std::move(*sent) : json::object();
-  MergeView(session, next);
+  json rows = MergeView(session, next);
   // Between checkpoints the worker sends only light state: keep the rest.
+  std::vector<const char*> resent;
   for (const char* field : session::kCheckpointFields) {
-    if (!next.contains(field) && session.state.contains(field)) {
-      next[field] = std::move(session.state[field]);
+    if (!next.contains(field)) {
+      if (session.state.contains(field)) {
+        next[field] = std::move(session.state[field]);
+      }
+    } else if (std::string_view(field) != "view" &&
+               JsonValue(session.state, field, json()) != next[field]) {
+      resent.push_back(field);
     }
   }
   session.state = std::move(next);
   // Browsers hold the host's view, never the worker's partial one, and
-  // apply block patches to it between checkpoints.
+  // apply block patches to it between checkpoints. A checkpoint reaches
+  // them the same way: the rows that changed, then its state without the
+  // view and with only the checkpoint fields that changed. The whole view
+  // goes only when they could not follow it row by row.
   const bool checkpoint = JsonValue(frame, "checkpoint", false);
-  frame["state"] =
-      checkpoint ? session.state : session::LightState(session.state);
+  const bool whole = checkpoint && rows.is_null();
+  frame["state"] = whole ? session.state : session::LightState(session.state);
+  if (checkpoint && !whole) {
+    for (const char* field : resent) {
+      frame["state"][field] = session.state[field];
+    }
+    for (json& row : rows) {
+      replay_.Publish(epoch_, session.id, session.generation,
+                      {{"kind", "block"}, {"block", std::move(row)}},
+                      !session.run_id.empty() || session.restart);
+    }
+  }
   session.pending = JsonValue(frame, "pending", json(nullptr));
   session.turn_active = JsonValue(frame, "busy", false);
   session.command_busy = JsonValue(frame, "command_busy", false);

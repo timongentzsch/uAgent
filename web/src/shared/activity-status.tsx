@@ -19,7 +19,13 @@ import {
   Square,
   Terminal,
 } from "lucide-preact";
-import { cleanText, Button, IconButton, DataText } from "./ui.tsx";
+import {
+  cleanText,
+  Button,
+  IconButton,
+  DataText,
+  updateChecked,
+} from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { command } from "../state/api.ts";
 import { useAction } from "./use-action.ts";
@@ -135,7 +141,7 @@ export function ActivityStatus({
 // Always under the input: what is running, then idle agents -- the same set
 // as /agents -- since those stay resumable. Finished commands live only in the
 // conversation.
-export function ActivityButton({
+function ActivityButtonView({
   items,
   agents,
   session,
@@ -204,6 +210,9 @@ export function ActivityButton({
     </SheetButton>
   );
 }
+// The composer renders with every key pressed; the button only when the
+// work it lists changes.
+export const ActivityButton = updateChecked(ActivityButtonView);
 
 // What a running activity can be told: Stop, and for a command the turn
 // still waits on, Move to background.

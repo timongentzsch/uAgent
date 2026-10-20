@@ -7,6 +7,7 @@ import {
   createContext,
   type ComponentChildren,
   type ComponentType,
+  type FunctionComponent,
   type ButtonHTMLAttributes,
   type GenericEventHandler,
   type Ref,
@@ -14,7 +15,7 @@ import {
   type SelectHTMLAttributes,
   type TargetedEvent,
 } from "preact";
-import { failure } from "./types.ts";
+import { failure, type State } from "./types.ts";
 import {
   useContext,
   useEffect,
@@ -45,6 +46,38 @@ import {
 
 // Every timestamp in the app: formatted by the viewer's time preferences,
 // with the full moment on hover. `value` is an ISO string or epoch ms.
+// Whether any prop changed identity: the update check of a view whose
+// parent renders more often than its props change.
+export const propsChanged = (prior: object, next: object) =>
+  Object.entries(next).some(
+    ([key, value]) => (prior as Record<string, unknown>)[key] !== value,
+  );
+
+// `View`, rendered only when a prop changes identity; of a session's
+// `state`, only when one of the `fields` it reads does, or with none named
+// any field but the transcript's view, which every streamed block replaces.
+export function updateChecked<P extends object>(
+  View: FunctionComponent<P>,
+  fields?: (keyof State)[],
+) {
+  return class extends Component<P> {
+    shouldComponentUpdate(next: P) {
+      const { state: before, ...prior } = this.props as { state?: State };
+      const { state: after, ...rest } = next as { state?: State };
+      if (propsChanged(prior, rest) || !before !== !after) return true;
+      const keys = fields || [
+        ...(Object.keys({ ...before, ...after }) as (keyof State)[]),
+      ];
+      return keys.some(
+        (key) => key !== "view" && before?.[key] !== after?.[key],
+      );
+    }
+    render(props: P) {
+      return <View {...props} />;
+    }
+  };
+}
+
 export function Time({ value }: { value?: string | number }) {
   const prefs = useContext(TimePrefsContext);
   const now = useNow(prefs.style !== "absolute");

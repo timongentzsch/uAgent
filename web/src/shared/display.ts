@@ -2,7 +2,7 @@
 // Pure functions only — no hooks, no JSX. TS-only imports so node --test
 // can load this module directly.
 import { duration } from "./duration.ts";
-import type { Session } from "./types.ts";
+import type { Asset, Session } from "./types.ts";
 
 // The folder a session belongs to: a thread's panel folder, else its
 // own working directory.
@@ -17,6 +17,15 @@ export const permissionLabels = {
 // Any other mode asks.
 export const permissionLabel = (mode?: string) =>
   permissionLabels[mode === "yolo" || mode === "auto" ? mode : "ask"];
+
+// The uploaded files a message lists; an older message names some by a
+// bare string, which has nothing to show.
+export const assetsOf = (files: readonly (Asset | string)[] = []) =>
+  files.filter((file): file is Asset => typeof file === "object");
+
+// A word as a label starts it: "saved" reads "Saved".
+export const capitalize = (text: string) =>
+  text.charAt(0).toUpperCase() + text.slice(1);
 
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");

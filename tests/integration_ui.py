@@ -567,10 +567,10 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             base_env(home, server.url),
             [
                 (b"go\n", b"Allow run?"),
-                (b"y\n", b"approval-done"),
                 # The idle status carries the route in schema form, then the
                 # approval mode, and the context window beside what is used.
-                (b"", b"Ready \xc2\xb7 test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
+                # The answer may arrive in the same frame.
+                (b"y\n", b"Ready \xc2\xb7 test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),
@@ -580,6 +580,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, output)
+        assert_true(b"approval-done" in output, output)
         assert_true(b"approval-history-ok" in output, output)
         assert_true(b"/16.4k" in output, output)  # used/window, not used alone
         assert_true(len(server.requests) == 3, server.requests)
@@ -828,6 +829,70 @@ def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
     assert_true(per_token < 400, per_token)
 
 
+def test_streaming_code_spans_cost_what_plain_text_costs(root, home, *, binary):
+    """Inline code streams for about the bytes plain text does.
+
+    A redrawn row replayed every style the paragraph had used before it, so
+    bytes per token grew with the number of code spans streamed so far.
+    """
+    tokens = [(f"`c{index:03d}` " if index % 3 == 0 else f"w{index:03d} ") for index in range(600)]
+
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": token}, finish=None) for token in tokens] + [event({})],
+            delay=0.005,
+        )
+
+    with Server([streamed]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_REQUEST_TIMEOUT"] = timeout_setting(60)
+        code, output = run_pty(
+            root,
+            env,
+            [(b"go\n", b"w599", b"Ready", None), b"/q\n"],
+            timeout=20,
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    streamed_bytes = output.rfind(b"w599") - output.find(b"c000")
+    per_token = streamed_bytes / len(tokens)
+    print(f"  {per_token:.0f} bytes per token", flush=True)
+    assert_true(per_token < 400, per_token)
+
+
+def test_streaming_paints_at_most_once_a_frame(root, home, *, binary):
+    """However fast tokens arrive, the terminal repaints at a frame rate."""
+    tokens = [f"t{index:04d} " for index in range(2000)]
+    span = []
+
+    def streamed(handler, _):
+        started = time.monotonic()
+        write_sse_sequence(
+            handler,
+            [event({"content": token}, finish=None) for token in tokens] + [event({})],
+            delay=0.001,
+        )
+        span.append(time.monotonic() - started)
+
+    with Server([streamed]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_REQUEST_TIMEOUT"] = timeout_setting(60)
+        code, output = run_pty(
+            root,
+            env,
+            [(b"go\n", b"t1999", b"Ready", None), b"/q\n"],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    streaming = output[output.find(b"t0000") : output.rfind(b"t1999")]
+    paints = streaming.count(b"\x1b[?2026h")
+    # A frame is 16 ms: at most 62.5 paints a second, plus the edges.
+    print(f"  {paints} paints in {span[0]:.1f} s", flush=True)
+    assert_true(paints < 64 * span[0] + 8, (paints, span[0]))
+
+
 def test_live_region_repaints_in_one_synchronized_write(root, home, *, binary):
     # Every walk back up the live region, and every erase, is inside one
     # synchronized update: a terminal never shows an erase without its redraw.
@@ -970,7 +1035,9 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
             root,
             base_env(home, server.url),
             [
-                (b"work\n", b"Working"),
+                # Not "Working": a label held for less than a frame is
+                # never drawn.
+                (b"work\n", b"Waiting for model"),
                 (b"pending draft", b"status-redraw-ok"),
                 b"\x15/q\n",
             ],
@@ -985,6 +1052,24 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
         # the draft.
         response_at = output.index(b"uagent", output.index(b"pending draft"))
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
+
+
+def test_reduced_motion_redraws_the_working_row_once_a_second(root, home, *, binary):
+    """Without motion the working row counts seconds and wakes nothing more."""
+
+    def delayed(_, __):
+        time.sleep(1.5)
+        return event({"content": "still-ok"})
+
+    with Server([delayed]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_REDUCED_MOTION"] = "1"
+        code, output = run_pty(root, env, [(b"go\n", b"still-ok"), b"/q\n"], binary=binary)
+    assert_true(code == 0, output)
+    waiting = output[output.find(b"Waiting for model") : output.find(b"still-ok")]
+    paints = waiting.count(b"\x1b[?2026h")
+    print(f"  {paints} paints in 1.5 s", flush=True)
+    assert_true(0 < paints <= 4, waiting)
 
 
 def test_suspend_restores_and_rearms_terminal(root, home, *, binary):

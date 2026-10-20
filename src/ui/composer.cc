@@ -145,14 +145,14 @@ bool RawComposer::Start() {
   // A fatal signal or Ctrl+Z from here on has to hand the terminal back
   // cooked, and only the handler can do that.
   ArmTerminalModes(saved_, raw);
-  output_.Write("\033[?2004h");
+  output_.Write(kBracketedPasteOn);
   return true;
 }
 
 void RawComposer::Stop() {
   if (!active_) return;
   DisarmTerminalModes();
-  output_.Write("\033[?2004l");
+  output_.Write(kTerminalModeReset);
   tcsetattr(STDIN_FILENO, TCSANOW, &saved_);
   active_ = false;
 }
@@ -261,18 +261,20 @@ InteractiveInputEvent RawComposer::Read() {
       ResetDraftState();
       return {InteractiveInputKind::kLine, std::move(line)};
     }
-    if (ch == 0x02) {
+    if (ch == Ctrl('B')) {
       return {InteractiveInputKind::kBackground, buffer_};
     }
-    if (ch == 0x04 && buffer_.empty()) return {InteractiveInputKind::kEof, {}};
+    if (ch == Ctrl('D') && buffer_.empty()) {
+      return {InteractiveInputKind::kEof, {}};
+    }
     if (editor_prefix_) {
       editor_prefix_ = false;
-      if (ch == 0x05) {  // Ctrl+X Ctrl+E, readline's spelling
+      if (ch == Ctrl('E')) {  // Ctrl+X Ctrl+E, readline's spelling
         if (!EditExternally()) output_.Write("\a");
         continue;
       }
     }
-    if (ch == 0x18) {  // Ctrl+X, a prefix on its own
+    if (ch == Ctrl('X')) {  // a prefix on its own
       editor_prefix_ = true;
       continue;
     }
@@ -291,9 +293,15 @@ size_t RawComposer::AvailableColumns() const {
 }
 
 RawComposer::Layout RawComposer::View() const {
+  const size_t columns = AvailableColumns();
+  if (shown_ && shown_->prompt == prompt_ && shown_->buffer == buffer_ &&
+      shown_->note == note_ && shown_->cursor == cursor_ &&
+      shown_->selected == selected_ && shown_->columns == columns) {
+    return shown_->layout;
+  }
   size_t mapped_cursor = 0;
   std::string safe = DisplayText(buffer_, cursor_, &mapped_cursor);
-  std::vector<std::string> rows = WrapLines(safe, AvailableColumns());
+  std::vector<std::string> rows = WrapLines(safe, columns);
   if (rows.empty()) rows = {""};
 
   size_t before_width = DisplayWidth(safe.substr(0, mapped_cursor));
@@ -322,12 +330,17 @@ RawComposer::Layout RawComposer::View() const {
     std::string suggestion =
         (found.menu && index == selected ? "> " : "  ") + match.name;
     if (!match.description.empty()) suggestion += "  " + match.description;
-    rows.push_back(DisplayTrunc(TerminalSafe(suggestion), AvailableColumns()));
+    rows.push_back(DisplayTrunc(TerminalSafe(suggestion), columns));
   }
-  if (!note_.empty()) {
-    rows.push_back(DisplayTrunc("  " + note_, AvailableColumns()));
-  }
-  return {std::move(rows), row, caret_col};
+  if (!note_.empty()) rows.push_back(DisplayTrunc("  " + note_, columns));
+  shown_ = {prompt_,
+            buffer_,
+            note_,
+            cursor_,
+            selected_,
+            columns,
+            {std::move(rows), row, caret_col}};
+  return shown_->layout;
 }
 
 bool RawComposer::Insert(const std::string& text) {

@@ -1,15 +1,16 @@
 # Instructions and the system prompt
 
-To tell the agent how to work, write instructions: `AGENTS.md` for every
-session, `PANEL.md` for a folder's panel. `/init` drafts a
-project `AGENTS.md`, and `/instructions` shows what a session reads.
+Instructions tell the agent how to work: `AGENTS.md` for every session,
+`PANEL.md` for a folder's panel. `/init` drafts a project `AGENTS.md`, and
+`/instructions` shows what a session reads.
 
 A session's system message is the built-in base followed by these
-instructions. Instructions only ever add; nothing a person or an agent writes
-replaces the base, except the agent's own opt-in self-directive below. Host
-facts (date, working directory, approval mode) and the memory index ride in a
-runtime note after the system message. When one changes, a new note is
-appended and the earlier text stays, so the cached prefix holds.
+instructions. Instructions only add; nothing a person or an agent writes
+replaces the base, except the agent's opt-in
+[self-directive](#self-directive). Host facts (date, working directory,
+approval mode) and the memory index follow in a runtime note after the system
+message. When one changes, a new note is appended and the earlier text stays,
+so the cached prefix holds.
 
 ## Instruction files
 
@@ -18,15 +19,14 @@ appended and the earlier text stays, so the cached prefix holds.
 | Yours, in every folder | `~/.uagent/AGENTS.md` | `~/.uagent/PANEL.md` |
 | The project's | `AGENTS.md` at the repository root | `<folder>/.uagent/PANEL.md` |
 
-A session reads one instruction file per directory, from `~/.uagent` and then
-from the repository root down to its working directory. In each directory it
-takes `AGENTS.override.md`, else `AGENTS.md`, else `CLAUDE.md` when
-`UAGENT_OTHER_AGENTS` names `claude`; where a level has one of the others,
-that is the file every editor below opens. A panel then reads its
-`PANEL.md` files, yours first.
+A session reads one instruction file per directory, from `~/.uagent` and
+then from the repository root down to its working directory. In each
+directory it takes `AGENTS.override.md`, else `AGENTS.md`, else `CLAUDE.md`
+when `UAGENT_OTHER_AGENTS` names `claude`; the editors below open whichever
+file a level uses. A panel then reads its `PANEL.md` files, yours first.
 
 Together the files are bounded to 32 KiB. They are read once when a session
-starts, so they stay in the cached prefix: an edit reaches new and restarted
+starts and stay in the cached prefix, so an edit reaches new and restarted
 sessions (`/restart`), not a running one.
 
 A project's `AGENTS.md` and `.uagent/PANEL.md` are ordinary repository
@@ -37,8 +37,8 @@ not. Editors never write through a symbolic link.
 ## Editing
 
 - Web: **Settings → All conversations** (or **This project**) **→
-  Instructions** shows the stack in the order the
-  model reads it; each file is edited in place.
+  Instructions** shows the files in the order the model reads them, each
+  editable in place.
 - Terminal: `/instructions` shows it; `/instructions edit sessions|panel
   user|project` opens `$VISUAL` or `$EDITOR`.
 - Agents: `uagent` action `inspect` topic `instructions`, and
@@ -53,23 +53,23 @@ a model call; `/context` shows a live conversation's full request.
 ## Self-directive
 
 With `UAGENT_ADAPT_SYSTEM=1` (off by default; applies after a restart) the
-agent gets `adapt_system`: text it adds to (overlay) or, with the user's
-approval, substitutes for (replace) the base, for the current conversation
+agent gets `adapt_system`: text it adds to the base (overlay) or, with the
+user's approval, puts in its place (replace), for the current conversation
 only. An overlay needs no approval; a replace always needs a person. Writes
 carry the revision from `show` and a non-empty `reason`; an approval is bound
 to the exact previewed text, expires after five minutes and cannot be reused.
-`/instructions clear` and the web's Clear remove it. It is saved with the
-conversation and copied by forks.
+`/instructions clear` and the web's Clear remove the directive. It is saved
+with the conversation and copied by forks.
 
 ## Limits and experiments
 
-The assembled message is limited to 64 KiB. Tool schemas, approvals,
-sandboxing and host limits are enforced by the runtime and cannot be changed by
-prompt text. The built-in base and the short capability notes added for some
-tools are listed in the generated
+The assembled message is limited to 64 KiB. The runtime enforces tool
+schemas, approvals, sandboxing and host limits; prompt text cannot change
+them. The built-in base and the short capability notes added for some tools
+are in the generated
 [system prompt reference](../skills/uagent-config/references/system-prompt.md).
 
-`benchmarks/eval.py --prompt-overlay` names an experimental JSON
-file whose named-section `replace` entries and `append` text are applied to
-the built-in base, so a variant can be measured without a rebuild; its digest
-is recorded in request traces.
+`benchmarks/eval.py --prompt-overlay FILE` applies an experimental JSON
+file's named-section `replace` entries and `append` text to the built-in
+base, so a variant can be measured without a rebuild; its digest is recorded
+in request traces.

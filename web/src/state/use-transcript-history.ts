@@ -4,6 +4,7 @@ import {
   storeBookmark,
   type Bookmark,
 } from "./transcript-bookmarks.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 type Anchor = {
   node: HTMLElement;
@@ -139,8 +140,7 @@ export function useTranscriptHistory(
   // an older history page prepended above never reads as new.
   const lastBlock = useRef(blocks.at(-1)?.id);
   const [unseen, setUnseen] = useState(0);
-  const onFollowRef = useRef(onFollow);
-  onFollowRef.current = onFollow;
+  const onFollowRef = useLatest(onFollow);
   const observer = useRef<ResizeObserver | null>(null);
   // What the observer watches, so a refresh observes only new nodes: each
   // observe() makes the observer report that node once more.
@@ -288,8 +288,7 @@ export function useTranscriptHistory(
     capture();
   }, [capture, pin, selectAnchor, settleWheel, writeTop]);
 
-  const reconcileRef = useRef(reconcile);
-  reconcileRef.current = reconcile;
+  const reconcileRef = useLatest(reconcile);
 
   const observe = useCallback(() => {
     const watch = observer.current;
@@ -380,9 +379,20 @@ export function useTranscriptHistory(
       if (!restore()) reconcile();
     };
     const watch = new ResizeObserver(settle);
+    // The watched set changes only with the column's rows, or with the
+    // inner anchors of the row read from; markdown filling a row elsewhere
+    // leaves it as it is.
     const mutations = new MutationObserver((records) => {
       settle();
-      if (records.some((record) => record.type === "childList")) observe();
+      const row = anchor.current && rowFor(anchor.current.node);
+      if (
+        records.some(
+          (record) =>
+            record.type === "childList" &&
+            (record.target === column || row?.contains(record.target)),
+        )
+      )
+        observe();
     });
     const readiness = new MutationObserver(settle);
     observer.current = watch;

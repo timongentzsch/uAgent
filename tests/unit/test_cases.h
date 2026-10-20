@@ -76,6 +76,7 @@ namespace uagent {
   X(TestScheduledPreparationDoesNotBlockHost)     \
   X(TestReceiptLog)                               \
   X(TestReplayLogReadsInBatches)                  \
+  X(TestTransientBatcherHoldsStreamedText)        \
   X(TestReceiptLogBackpressure)                   \
   X(TestHostCommandKinds)                         \
   X(TestToolCopiesKeepRoomForUserFiles)           \

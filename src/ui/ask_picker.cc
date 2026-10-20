@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/platform.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
@@ -26,6 +27,7 @@ using Live = std::function<bool()>;
 // Decoded keys from stdin. Empty once stdin closes or the decision is gone.
 class Keys {
  public:
+  explicit Keys(int wake) : wake_(wake) {}
   std::optional<TerminalInputToken> Next(const Live& live) {
     for (;;) {
       const auto deadline = decoder_.WakeDeadline();
@@ -33,8 +35,10 @@ class Keys {
           deadline && std::chrono::steady_clock::now() >= *deadline;
       if (auto token = decoder_.Next(expired)) return token;
       if (!live()) return std::nullopt;
-      pollfd in{STDIN_FILENO, POLLIN, 0};
-      if (poll(&in, 1, deadline ? 20 : 200) <= 0) continue;
+      pollfd waits[] = {{STDIN_FILENO, POLLIN, 0}, {wake_, POLLIN, 0}};
+      if (poll(waits, 2, deadline ? 20 : -1) <= 0) continue;
+      DrainDescriptor(wake_);
+      if (!waits[0].revents) continue;
       unsigned char bytes[1024];
       const ssize_t count = read(STDIN_FILENO, bytes, sizeof bytes);
       if (count == 0) return std::nullopt;
@@ -43,6 +47,7 @@ class Keys {
   }
 
  private:
+  int wake_;
   TerminalInputDecoder decoder_;
 };
 
@@ -70,7 +75,7 @@ std::optional<std::string> ReadLine(Keys& keys, LiveRegion& region,
     if (Enter(*token)) return Trim(line);
     if (token->kind == TerminalInputTokenKind::kSequence) continue;
     for (char ch : token->text) {
-      if (ch == 0x7f || ch == 0x08) {
+      if (Byte(ch) == kBackspaceKey || Byte(ch) == Ctrl('H')) {
         line.erase(Utf8BoundaryBefore(line, line.size()));
       } else if (static_cast<unsigned char>(ch) >= 0x20) {
         line += ch;
@@ -191,10 +196,10 @@ std::string AskAnswersFromLine(const json& questions, const std::string& line) {
   return JsonDump(answers);
 }
 
-json PickAskAnswers(const json& questions, LiveRegion& region,
+json PickAskAnswers(const json& questions, LiveRegion& region, int wake,
                     const Live& live) {
-  Keys keys;
-  // Each poll redraws what a resize reflowed.
+  Keys keys(wake);
+  // Each wake redraws what a resize reflowed.
   const Live awake = [&] {
     region.Flush();
     return live();

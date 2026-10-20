@@ -1,7 +1,7 @@
 # Prompt caching
 
-What µAgent sends to make provider prompt caching work, what reduces reuse, and
-how to measure it. A cache policy is not evidence of a cache hit; check
+What µAgent sends so providers can cache prompts, what reduces reuse, and
+how to measure it. A cache policy is no evidence of a hit; check
 provider-reported usage on representative conversations.
 
 ## Requests
@@ -19,8 +19,8 @@ CLI and web sessions share one request encoder and one usage accounting path.
   [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
 - **OpenRouter.** Most providers behind it cache matching prefixes by
   themselves; some, such as Anthropic's models, only when asked, so every
-  request to an endpoint that declares `prompt_cache_control` (OpenRouter does)
-  carries the same top-level `cache_control`. See
+  request to an endpoint that declares `prompt_cache_control` (OpenRouter
+  does) carries the same top-level `cache_control`. See
   [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching).
 - **All routes.** Every model request carries an `X-Session-Id` header so a
   proxy can keep account affinity across wire dialects. Account failover in
@@ -28,9 +28,9 @@ CLI and web sessions share one request encoder and one usage accounting path.
 
 ## What changes the prefix
 
-The static system prefix stays stable, unchanged wire encoding is memoized, and
-provider-native reasoning is replayed as received. These operations still
-change earlier input and can cost cache reuse:
+The static system prefix stays stable, unchanged wire encoding is memoized,
+and provider-native reasoning is replayed as received. These still change
+earlier input and can cost cache reuse:
 
 - compaction, attachment pruning and old tool-result pruning;
 - a changed self-directive (`adapt_system`), which rewrites the system
@@ -44,12 +44,12 @@ note that carries them is appended as a new message and the old one stays in
 place. Instruction files are read once at start, so editing one costs nothing
 until the session restarts.
 
-µAgent sends no keepalive requests to hold a cache warm, including between
-Fusion handoffs; they cost a model call and cannot guarantee a hit.
+µAgent sends no keepalive requests to hold a cache warm, also not between
+`fusion` skill handoffs: they cost a model call and cannot guarantee a hit.
 
 Hit rate alone is not the goal: redundant context also costs tokens and can
-hurt results. Change pruning or prompt semantics only with a measured
-comparison of quality, latency and cost.
+hurt results. Change pruning or prompt semantics only after measuring
+quality, latency and cost.
 
 ## Measurement
 

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,6 +16,8 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
@@ -84,9 +87,9 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
     for (const auto& entry : history_) {
       bytes += std::max(int64_t{0}, entry->stamp.size);
     }
-    constexpr int64_t kHistoryFileBytes = int64_t{32} * 1024 * 1024;
     while (history_.size() > 1 &&
-           (history_.size() > 3 || bytes > kHistoryFileBytes)) {
+           (history_.size() > kHistoryCacheEntries ||
+            bytes > static_cast<int64_t>(kHistoryCacheBytes))) {
       bytes -= std::max(int64_t{0}, history_.back()->stamp.size);
       history_.pop_back();
     }
@@ -165,99 +168,108 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
       return {LiveSnapshot(*session), 200};
     }
   }
-  if (query.has_http) {
-    json exchange;
-    {
-      std::lock_guard lock(mutex_);
-      exchange = FindHttpExchange(session->state, query.http);
-    }
-    if (exchange.is_null()) {
-      auto history = ReadHistory(session->path);
-      const auto& loaded = history->loaded;
-      if (loaded.record) {
-        const json& display = loaded.record->state.display;
-        exchange =
-            query.http == "latest"
-                ? FindHttpExchange(
-                      JsonValue(JsonValue(display, "facts", json::object()),
-                                "http-latest", json::object()),
-                      query.http)
-                : FindHttpExchange(display, query.http);
-      }
-    }
-    if (exchange.is_null()) {
-      return {{{"error", "HTTP exchange was not captured"}}, 404};
-    }
-    if (query.part != "request" && query.part != "response") {
-      return {{{"error", "choose request or response"}}, 400};
-    }
-    json body = ReadPrivateArtifact(
-        JsonValue(exchange, (query.part + "_path").c_str(), ""),
-        ClampedOffset(query.offset));
-    body["exchange"] = exchange;
-    const int status = body.contains("error") ? 404 : 200;
-    return {std::move(body), status};
-  }
+  if (query.has_http) return HttpSnapshot(*session, query);
   if (query.has_detail) {
-    // The live view names a row's stored exchange, or its diff stored whole.
-    const char* stored = query.raw ? "exchange_path" : "change_path";
-    std::string path;
-    json inline_exchange = nullptr;
-    bool turn_active = false;
-    {
-      std::lock_guard lock(mutex_);
-      turn_active = session->turn_active;
-      auto active = session->active_exchanges.find(query.detail);
-      if (active != session->active_exchanges.end()) {
-        inline_exchange = active->second;
-        turn_active = true;
-      }
-      const json* view = JsonObject(session->state, "view");
-      const json* blocks = view ? JsonArray(*view, "blocks") : nullptr;
-      if (blocks) {
-        for (const json& block : *blocks) {
-          if (JsonValue(block, "detail_id", "") == query.detail) {
-            path = JsonValue(block, stored, "");
-            break;
-          }
-          if (const json* tools = JsonArray(block, "tools")) {
-            auto found = std::find_if(
-                tools->begin(), tools->end(), [&](const json& tool) {
-                  return JsonValue(tool, "detail_id", "") == query.detail;
-                });
-            if (found != tools->end()) {
-              path = JsonValue(*found, stored, "");
-              const json retained_request = {
-                  {"name", JsonValue(*found, "name", "")},
-                  {"arguments", JsonValue(*found, "arguments", "")}};
-              if (!inline_exchange.is_null()) {
-                inline_exchange["request"] = retained_request;
-              } else if (path.empty()) {
-                inline_exchange = {{"request", retained_request},
-                                   {"response", ""},
-                                   {"complete", false}};
-              }
-              if (!path.empty()) break;
+    if (auto detail = LiveDetail(*session, query)) return std::move(*detail);
+  }
+  return SavedSnapshot(std::move(session), query);
+}
+
+SnapshotResult SessionHost::HttpSnapshot(HostSession& session,
+                                         const SnapshotQuery& query) {
+  json exchange;
+  {
+    std::lock_guard lock(mutex_);
+    exchange = FindHttpExchange(session.state, query.http);
+  }
+  if (exchange.is_null()) {
+    auto history = ReadHistory(session.path);
+    const auto& loaded = history->loaded;
+    if (loaded.record) {
+      const json& display = loaded.record->state.display;
+      exchange =
+          query.http == "latest"
+              ? FindHttpExchange(
+                    JsonValue(JsonValue(display, "facts", json::object()),
+                              "http-latest", json::object()),
+                    query.http)
+              : FindHttpExchange(display, query.http);
+    }
+  }
+  if (exchange.is_null()) {
+    return {{{"error", "HTTP exchange was not captured"}}, 404};
+  }
+  if (query.part != "request" && query.part != "response") {
+    return {{{"error", "choose request or response"}}, 400};
+  }
+  json body = ReadPrivateArtifact(
+      JsonValue(exchange, (query.part + "_path").c_str(), ""),
+      ClampedOffset(query.offset));
+  body["exchange"] = exchange;
+  const int status = body.contains("error") ? 404 : 200;
+  return {std::move(body), status};
+}
+
+std::optional<SnapshotResult> SessionHost::LiveDetail(
+    HostSession& session, const SnapshotQuery& query) {
+  // The live view names a row's stored exchange, or its diff stored whole.
+  const char* stored = query.raw ? "exchange_path" : "change_path";
+  std::string path;
+  json inline_exchange = nullptr;
+  bool turn_active = false;
+  {
+    std::lock_guard lock(mutex_);
+    turn_active = session.turn_active;
+    auto active = session.active_exchanges.find(query.detail);
+    if (active != session.active_exchanges.end()) {
+      inline_exchange = active->second;
+      turn_active = true;
+    }
+    const json* view = JsonObject(session.state, "view");
+    const json* blocks = view ? JsonArray(*view, "blocks") : nullptr;
+    if (blocks) {
+      for (const json& block : *blocks) {
+        if (JsonValue(block, "detail_id", "") == query.detail) {
+          path = JsonValue(block, stored, "");
+          break;
+        }
+        if (const json* tools = JsonArray(block, "tools")) {
+          auto found =
+              std::find_if(tools->begin(), tools->end(), [&](const json& tool) {
+                return JsonValue(tool, "detail_id", "") == query.detail;
+              });
+          if (found != tools->end()) {
+            path = JsonValue(*found, stored, "");
+            const json retained_request = {
+                {"name", JsonValue(*found, "name", "")},
+                {"arguments", JsonValue(*found, "arguments", "")}};
+            if (!inline_exchange.is_null()) {
+              inline_exchange["request"] = retained_request;
+            } else if (path.empty()) {
+              inline_exchange = {{"request", retained_request},
+                                 {"response", ""},
+                                 {"complete", false}};
             }
+            if (!path.empty()) break;
           }
         }
       }
     }
-    const size_t start = ClampedOffset(query.offset);
-    if (!path.empty()) {
-      json body = ReadPrivateArtifact(path, start);
-      const int status = body.contains("error") ? 404 : 200;
-      return {std::move(body), status};
-    }
-    if (query.raw && turn_active && !inline_exchange.is_null()) {
-      std::string text = JsonDump(inline_exchange);
-      return {{{"text", text.substr(std::min(text.size(), start))},
-               {"next", text.size()},
-               {"bytes", text.size()},
-               {"more", false}},
-              200};
-    }
   }
+  const size_t start = ClampedOffset(query.offset);
+  if (!path.empty()) {
+    json body = ReadPrivateArtifact(path, start);
+    const int status = body.contains("error") ? 404 : 200;
+    return SnapshotResult{std::move(body), status};
+  }
+  if (query.raw && turn_active && !inline_exchange.is_null()) {
+    return SnapshotResult{PageText(JsonDump(inline_exchange), start), 200};
+  }
+  return std::nullopt;
+}
+
+SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
+                                          const SnapshotQuery& query) {
   auto history = ReadHistory(session->path);
   const auto& loaded = history->loaded;
   json state = json::object();
@@ -286,9 +298,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
              {"model", record.metadata.model},
              {"turns", record.metadata.turns},
              {"statistics", conversation.Statistics()},
-             {"http", JsonValue(JsonValue(conversation.DisplayFacts(),
-                                          "http-latest", json::object()),
-                                "http", json::array())}};
+             {"http", LatestHttp(conversation.DisplayFacts())}};
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};
   }
@@ -298,14 +308,9 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
   if (session->pid > 0 && !query.has_before) {
     return {LiveSnapshot(*session), 200};
   }
-  return {{{"v", kProtocol},
-           {"epoch", epoch_},
-           {"cursor", replay_.Cursor()},
-           {"metadata", Metadata(*session)},
-           {"state", std::move(state)},
-           {"pending", session->pending},
-           {"live", json::array()}},
-          200};
+  json body = SnapshotBody(*session, std::move(state));
+  body["live"] = json::array();
+  return {std::move(body), 200};
 }
 
 }  // namespace uagent::session

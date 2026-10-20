@@ -154,6 +154,15 @@ class RawComposer {
   std::string note_;
   // Ctrl+X seen, waiting to learn whether it opens the editor.
   bool editor_prefix_ = false;
+  // View's last layout and what it was made of. A paint with nothing typed
+  // reuses it: wrapping the draft and listing an @path's directory cost more
+  // than the rest of the paint.
+  struct Shown {
+    std::string prompt, buffer, note;
+    size_t cursor = 0, selected = 0, columns = 0;
+    Layout layout;
+  };
+  mutable std::optional<Shown> shown_;
 };
 
 }  // namespace uagent

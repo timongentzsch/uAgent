@@ -3,6 +3,7 @@
 
 import argparse
 import gzip
+import http.client
 import json
 import pathlib
 import platform
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 SOURCE = pathlib.Path(__file__).resolve().parents[1]
@@ -41,6 +43,56 @@ def process_sample(pid):
 def children(pid):
     rows = subprocess.check_output(["ps", "-ax", "-o", "pid=,ppid="], text=True).splitlines()
     return [int(row.split()[0]) for row in rows if int(row.split()[1]) == pid]
+
+
+def contended_latency(client, seconds=3, loaders=4):
+    """Light /api requests while other clients load the catalogue."""
+    stop = threading.Event()
+    headers = {"Origin": client.origin, "Cookie": client.cookie}
+
+    def get(connection, path):
+        # One connection per thread, opened again when the host closes it
+        # (keep-alive is bounded): fresh ones would run out of local ports.
+        for attempt in range(2):
+            try:
+                connection.request("GET", path, headers=headers)
+                connection.getresponse().read()
+                return
+            except (http.client.HTTPException, ConnectionError):
+                connection.close()
+                if attempt:
+                    raise
+
+    loads = []
+
+    def load():
+        connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=10)
+        while not stop.is_set():
+            get(connection, "/api/sessions")
+            loads.append(1)
+        connection.close()
+
+    threads = [threading.Thread(target=load) for _ in range(loaders)]
+    for thread in threads:
+        thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=10)
+    samples = []
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        started = time.monotonic()
+        get(connection, "/api/receipts/" + "0" * 32)
+        samples.append((time.monotonic() - started) * 1000)
+    connection.close()
+    stop.set()
+    for thread in threads:
+        thread.join()
+    samples.sort()
+    return {
+        "catalogue_loads": len(loads),
+        "requests": len(samples),
+        "p50_ms": round(samples[len(samples) // 2], 2),
+        "p99_ms": round(samples[len(samples) * 99 // 100], 2),
+    }
 
 
 def stripped_bytes(binary):
@@ -131,6 +183,12 @@ def main():
             time.sleep(1)
             report["master_with_two_workers"] = process_sample(process.pid)
             report["two_workers"] = [process_sample(pid) for pid in children(process.pid)]
+            # Last, so the memory samples above are not taken after the load.
+            for index in range(64):
+                drafts = root / f"drafts-{index}"
+                drafts.mkdir()
+                client.create(drafts, activate=False)
+            report["receipt_under_catalogue_load"] = contended_latency(client)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({key: value for key, value in report.items() if key != "assets"}, indent=2))
 

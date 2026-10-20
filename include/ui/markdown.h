@@ -5,7 +5,6 @@
 // Streaming Markdown-to-ANSI state. The parser implementation is compiled once
 // in src/ui/markdown.cc; the terminal presenter owns this value type.
 
-#include <chrono>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -51,21 +50,15 @@ class MdStream {
   // What the terminal showed for this line, escapes excluded. The source is
   // not a substitute: `**bold**` is eight source columns and four rendered.
   std::string cur_rendered;
-  int escape_state = 0;  // 0 none · 1 after ESC · 2 inside CSI
   size_t prev_rows = 1;
-  size_t pending_output = 0;
-  bool output_started = false;
-  std::chrono::steady_clock::time_point last_flush =
-      std::chrono::steady_clock::now();
 
-  void FlushOutput(size_t bytes, bool newline, bool force = false);
   void Pv(const std::string& text);
   void Pc(char value);
   void Put(char value);
   void Put(std::string_view text);
   // Every emitted byte passes through Put, the only place that can tell
   // rendered text from the escapes around it.
-  void TrackRendered(char value);
+  void TrackRendered(std::string_view text);
   void ForgetRenderedLine();
   void FlushOut();
   void EmitPre();

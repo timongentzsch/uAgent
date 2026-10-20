@@ -131,6 +131,8 @@ struct PushSender::Impl {
   };
   std::string directory, contact;
   PushKey key;
+  // The key's public half as browsers subscribe with it, encoded once.
+  std::string public_key;
   PushTransport transport;
   mutable std::mutex mutex;
   std::condition_variable changed;
@@ -324,6 +326,7 @@ PushSender::PushSender(const std::string& directory, const std::string& contact,
     impl_->reason = "cannot load the private VAPID key";
     return;
   }
+  impl_->public_key = Base64Url(PushPublicKey(impl_->key.get()));
   const json entries =
       ReadJsonFile(directory + "/push-subscriptions.json", kPushStoreBytes);
   if (entries.is_array() && entries.size() <= kWebDeviceLimit) {
@@ -350,10 +353,8 @@ json PushSender::Capabilities(const std::string& device) const {
   json result = {{"push", impl_->reason.empty()},
                  {"push_reason", impl_->reason},
                  {"subscribed", false}};
+  if (impl_->key) result["vapid_public_key"] = impl_->public_key;
   std::lock_guard lock(impl_->mutex);
-  if (impl_->key) {
-    result["vapid_public_key"] = Base64Url(PushPublicKey(impl_->key.get()));
-  }
   result["subscribed"] =
       std::any_of(impl_->subscriptions.begin(), impl_->subscriptions.end(),
                   [&](const auto& item) { return item.device == device; });

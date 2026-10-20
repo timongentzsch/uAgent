@@ -9,6 +9,7 @@ import {
   readStored,
   stateFrame,
   withActivities,
+  keptSession,
 } from "../src/state/store.ts";
 import { api, command, receiveOutcome } from "../src/state/api.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
@@ -272,6 +273,10 @@ test("a catalogue update that changes nothing keeps the catalogue's identity", (
     patchCatalogue(catalogue, "a", (item) => withActivities(item, value));
   assert.equal(activities([{ id: "1" }]), catalogue);
   assert.deepEqual(activities([]).sessions[0].activities, []);
+  // A state frame's metadata, the same but for its objects.
+  assert.equal(keptSession(a, { ...a, activities: [{ id: "1" }] }), a);
+  const working = { ...a, activity: "Reading" };
+  assert.equal(keptSession(a, working), working);
   assert.equal(
     patchCatalogue(catalogue, "missing", () => ({ id: "missing" })),
     catalogue,
@@ -348,4 +353,78 @@ test("a state frame without the view keeps the last view, HTTP log and prompt", 
   assert.equal(checkpoint.view, next);
   assert.deepEqual(checkpoint.http, []);
   assert.equal(checkpoint.system_prompt, "NEW");
+});
+
+// The stream's events, applied without a browser: a host whose state is
+// plain values the setters update.
+async function eventHost(snapshot) {
+  const { snapshotStore } = await import("../src/state/snapshot-store.ts");
+  const { applyEvent } = await import("../src/state/apply-event.ts");
+  const update = (key) => (next) =>
+    (host.state[key] =
+      typeof next === "function" ? next(host.state[key]) : next);
+  const host = {
+    state: {
+      catalogue: {
+        sessions: [snapshot.metadata],
+        devices: [],
+        capabilities: {},
+      },
+      outgoing: [],
+      unread: new Set(),
+    },
+    live: { current: { [snapshot.metadata.id]: snapshot } },
+    snapshots: snapshotStore(),
+    selection: { current: snapshot.metadata.id },
+    reading: { current: true },
+    notifications: { current: false },
+    subscribed: { current: false },
+    localRequests: { current: new Set() },
+    flush: { current: () => {} },
+    setManagementVersion: () => {},
+    setVerbosityLevel: () => {},
+    setCatalogue: update("catalogue"),
+    patchSession: (id, change) =>
+      update("catalogue")((prior) => patchCatalogue(prior, id, change)),
+    upsertSession: () => {},
+    setOutgoing: update("outgoing"),
+    setUnread: update("unread"),
+    settleOutgoing: () => false,
+    forget: () => {},
+    refresh: () => {},
+    report: (error) => {
+      throw error;
+    },
+    onResult: () => {},
+  };
+  return { host, apply: (event) => applyEvent(event, host) };
+}
+
+test("a state frame that restates its session keeps the session's object", async () => {
+  const metadata = { id: "s", generation: "g", activity: "Ready" };
+  const { host, apply } = await eventHost({
+    epoch: "e",
+    cursor: 1,
+    metadata,
+    state: { phase: "idle" },
+  });
+  const frame = (sequence, activity) => ({
+    kind: "state",
+    epoch: "e",
+    sequence,
+    session_id: "s",
+    generation: "g",
+    phase: "working",
+    state: { phase: "working" },
+    metadata: { ...metadata, activity },
+  });
+  apply(frame(2, "Ready"));
+  assert.equal(host.live.current.s.metadata, metadata);
+  assert.equal(host.state.catalogue.sessions[0], metadata);
+  assert.equal(host.live.current.s.state.phase, "working");
+  // An event the snapshot already holds changes nothing.
+  apply(frame(2, "Reading"));
+  assert.equal(host.state.catalogue.sessions[0], metadata);
+  apply(frame(3, "Reading"));
+  assert.equal(host.state.catalogue.sessions[0].activity, "Reading");
 });

@@ -189,12 +189,15 @@ class SessionHost {
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
   json Catalogue() const;
-  // A space is renamed by its label, its folder and so every conversation
-  // in it staying what they are. Deleting one closes and removes its
-  // conversations, then the folder with everything in it. Each returns why
-  // it could not, or nothing.
-  std::string RenameSpace(const std::string& path, const std::string& name);
-  std::string DeleteSpace(const std::string& path, const std::string& device);
+  // What the host answers itself, for the settings screens: management of
+  // the library, schedules and the like (announced as management.changed
+  // when something changed); a workspace's name or its end, answered with
+  // the spaces after it (announced as spaces.changed); and the settings
+  // saved for a folder or for all.
+  json Manage(const json& command);
+  json SpaceControl(const json& command, const std::string& device,
+                    std::string& error);
+  json Configure(const json& command);
   std::string AssetPath(const std::string& id) const;
   // The folder a conversation works in: a thread's project, else its own.
   std::string Folder(const std::string& id) const;
@@ -206,6 +209,12 @@ class SessionHost {
                                       const std::string& request_id);
 
  private:
+  // A space is renamed by its label, its folder and so every conversation
+  // in it staying what they are. Deleting one closes and removes its
+  // conversations, then the folder with everything in it. Each returns why
+  // it could not, or nothing.
+  std::string RenameSpace(const std::string& path, const std::string& name);
+  std::string DeleteSpace(const std::string& path, const std::string& device);
   std::string epoch_;
   std::string executable_, directory_;
   // Ordered event log and attachment quotas live in their own components;
@@ -263,7 +272,7 @@ class SessionHost {
   // False when the frame changed nothing a browser shows.
   bool ApplyRuntimeFrame(HostSession& session, json& frame);
   // The parts of a runtime frame that change a session.
-  static void ApplyStateFrame(HostSession& session, json& frame);
+  void ApplyStateFrame(HostSession& session, json& frame);
   static void RecordRunEvent(HostSession& session, const std::string& type,
                              json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.
@@ -282,7 +291,18 @@ class SessionHost {
   std::vector<std::string> InvalidationPaths(
       const std::vector<std::string>& projects) const;
   json Metadata(const HostSession& session) const;
+  // What GET /api/sessions/{id} answers: `state` with the session's identity
+  // and the replay cursor it is current to.
+  json SnapshotBody(const HostSession& session, json state) const;
   json LiveSnapshot(const HostSession& session) const;
+  // Snapshot's three answers: an HTTP exchange's stored body, a row's detail
+  // the live view still holds (none when it holds none), and what the saved
+  // history has.
+  SnapshotResult HttpSnapshot(HostSession& session, const SnapshotQuery& query);
+  std::optional<SnapshotResult> LiveDetail(HostSession& session,
+                                           const SnapshotQuery& query);
+  SnapshotResult SavedSnapshot(std::shared_ptr<HostSession> session,
+                               const SnapshotQuery& query);
   std::shared_ptr<HostSession> StartScheduledRun(const json& run)
       UAGENT_REQUIRES(mutex_);
   // `lock` is the caller's lock on mutex_, passed only for condition-variable

@@ -1,8 +1,8 @@
 # Delegation benchmark
 
-Four tasks, each run three ways: one session that may not delegate (`solo`),
-one that may use subagents (`sub`), and a folder's panel (`panel`).
-It measures wall time, model steps and tokens per session, and checks the
+Four tasks, each run three ways: a session that may not delegate (`solo`),
+one that may use subagents (`sub`), and a folder's panel (`panel`). It
+measures wall time, model steps and tokens per session, and checks the
 answers that can be checked mechanically.
 
 | Task | What | Checked by |
@@ -14,10 +14,10 @@ answers that can be checked mechanically.
 
 ## Running it
 
-Run it on a Linux host that has the binary and a provider. The scripts are
+Run it on a Linux host with the binary and a provider. The scripts are
 written for one host: `run.sh` and `rerun.sh` expect the folder at
 `/home/dev/uagent-eval` and the binary at `/home/dev/.local/bin/uagent`, and
-`prep.sh` names the model (`local/gpt-6.1-sol`). Edit those for another host.
+`prep.sh` names the model (`local/gpt-6.1-sol`). Edit them for another host.
 
 ```sh
 mkdir -p ~/uagent-eval && cp -r benchmarks/delegation/. ~/uagent-eval/
@@ -28,14 +28,15 @@ cd ~/uagent-eval && nohup ./all.sh &      # twelve runs, one after another
 python3 collect.py                        # table, and results.json
 ```
 
-Each run gets its own home and workspace under `runs/<task>-<mode>/`. Its
-provider settings are copied from the real `~/.uagent/config/settings.json`;
-it runs in yolo with the sandbox, memory and web search off. Nothing touches
-the real settings or conversations. `progress.txt` shows where `all.sh` is.
+Each run gets its own home and workspace under `runs/<task>-<mode>/`, with
+provider settings copied from the real `~/.uagent/config/settings.json`. It
+runs in yolo mode with the sandbox, memory and web search off, and never
+touches the real settings or conversations. `progress.txt` shows where
+`all.sh` is.
 
-`research` and `audit` read this repository, so their answers follow the
-commit the corpus was made from. One trial per cell: read differences of a
-factor, not of a few percent.
+`research` and `audit` read this repository, so their answers depend on the
+commit the corpus was made from. Each cell is one trial: trust differences of
+a factor, not of a few percent.
 
 ## Results
 
@@ -49,9 +50,9 @@ Panel runs, wall time and input tokens:
 | research | 255 s / 702k | 236 s / 491k | 101 s / 138k | 89 s / 102k |
 | audit | 231 s / 548k | 267 s / 289k | 290 s / 350k | 356 s / 680k |
 
-Before the fixes thirteen attempts ended on the provider's
-`server_is_overloaded`; since then the runs complete first time, but for one
-panel run at `c6cff034` that answered a spawn with empty text (the
-spawn result now asks for a line). A
-panel itself takes 3 to 12 steps; the rest is its threads' work. The
-provider reports no cached input on this route, with or without a cache key.
+Before the fixes, thirteen attempts ended on the provider's
+`server_is_overloaded`. Since then every run completes the first time, except
+one panel run at `c6cff034` that answered a spawn with empty text (the spawn
+result now asks for a line). A panel itself takes 3 to 12 steps; the rest is
+its threads' work. The provider reports no cached input on this route, with or
+without a cache key.

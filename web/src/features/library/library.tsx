@@ -1,4 +1,5 @@
 import { tabStorage } from "../../shared/storage.ts";
+import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
@@ -93,7 +94,7 @@ export default function Library({
   );
   const [rename, setRename] = useState("");
   const generation = useRef(0);
-  const storage = `uagent-library-${kind}-${cwd}`;
+  const storage = storageKeys.library(kind, cwd);
   const dirty = !!item && (!item.key || content !== item.content);
   useLayoutEffect(() => {
     generation.current++;

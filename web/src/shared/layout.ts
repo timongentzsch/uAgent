@@ -78,6 +78,29 @@ export function viewportBounds(safeArea = false) {
   return bounds;
 }
 
+// A popover against its anchor: under it, or over it where there is more
+// room above and too little below; as tall as that room, inside the safe
+// viewport, and lined up with the anchor's start or end edge.
+export function placePopover(
+  element: HTMLElement,
+  anchor: HTMLElement,
+  align: "start" | "end",
+) {
+  const { left: x, top: y, width, height } = viewportBounds(true);
+  const target = anchor.getBoundingClientRect();
+  const gap =
+    parseFloat(getComputedStyle(element).getPropertyValue("row-gap")) || 0;
+  const above = Math.max(0, target.top - y - 2 * gap);
+  const below = Math.max(0, y + height - target.bottom - 2 * gap);
+  const upwards = below < Math.min(element.scrollHeight, above);
+  element.style.maxWidth = `${width - 2 * gap}px`;
+  element.style.maxHeight = `${Math.max(1, upwards ? above : below)}px`;
+  const box = element.getBoundingClientRect();
+  const left = align === "end" ? target.right - box.width : target.left;
+  element.style.left = `${Math.max(x + gap, Math.min(left, x + width - box.width - gap))}px`;
+  element.style.top = `${Math.max(y + gap, Math.min(upwards ? target.top - box.height - gap : target.bottom + gap, y + height - box.height - gap))}px`;
+}
+
 // Safari can pan as well as shrink the visible area when the keyboard opens.
 // Shells and top-layer surfaces consume the same event-driven geometry.
 export function observeViewport(update: () => void) {
@@ -212,6 +235,9 @@ export function useMedia(query: string) {
 
 // The width under which the phone layout applies, as the stylesheets have it.
 export const usePhone = () => useMedia("(max-width: 600px)");
+// The width under which the conversations list moves into a drawer, as the
+// stylesheets have it.
+export const useCompact = () => useMedia("(max-width: 900px)");
 
 // Animations play unless this device asks for less motion or Settings
 // turns them off.

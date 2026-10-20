@@ -123,12 +123,7 @@ test("breakpoints in the stylesheets match the scripts'", () => {
     "max-width: 900px",
     "min-width: 601px",
   ]);
-  assert.match(
-    readFileSync("src/shared/layout.ts", "utf8"),
-    /useMedia\("\(max-width: 600px\)"\)/,
-  );
-  assert.match(
-    readFileSync("src/app/app.tsx", "utf8"),
-    /useMedia\("\(max-width: 900px\)"\)/,
-  );
+  const layout = readFileSync("src/shared/layout.ts", "utf8");
+  assert.match(layout, /useMedia\("\(max-width: 600px\)"\)/);
+  assert.match(layout, /useMedia\("\(max-width: 900px\)"\)/);
 });

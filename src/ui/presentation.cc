@@ -84,17 +84,9 @@ std::string OutputText(std::string_view text) {
   std::string plain;
   plain.reserve(text.size());
   for (size_t at = 0; at < text.size();) {
-    if (text.substr(at, 2) == "\033[") {
-      size_t end = at + 2;
-      while (end < text.size() && Byte(text[end]) >= 0x20 &&
-             Byte(text[end]) <= 0x3f) {
-        ++end;
-      }
-      if (end < text.size() && Byte(text[end]) >= 0x40 &&
-          Byte(text[end]) <= 0x7e) {
-        at = end + 1;
-        continue;
-      }
+    if (const size_t span = CsiSpan(text.substr(at))) {
+      at += span;
+      continue;
     }
     plain += text[at++];
   }

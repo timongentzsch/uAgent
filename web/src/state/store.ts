@@ -212,14 +212,44 @@ export function patchCatalogue(
   return changed ? { ...prior, sessions } : prior;
 }
 
+// Flat records with the same fields and values.
+function sameFields(a: object, b: object) {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every(
+      (key) =>
+        (a as Record<string, unknown>)[key] ===
+        (b as Record<string, unknown>)[key],
+    )
+  );
+}
+
+const sameActivities = (
+  a: Session["activities"] = [],
+  b: Session["activities"] = [],
+) =>
+  a.length === b.length && a.every((item, index) => sameFields(item, b[index]));
+
 // A repeat of the activities it has keeps the session's identity.
 export function withActivities(
   item: Session,
   activities: Session["activities"],
 ): Session {
-  return JSON.stringify(item.activities) === JSON.stringify(activities)
+  return sameActivities(item.activities, activities)
     ? item
     : { ...item, activities };
+}
+
+// A frame that restates a session unchanged keeps its identity, so what
+// reads the session skips the frame.
+export function keptSession(prior: Session | undefined, next: Session) {
+  if (!prior) return next;
+  const { activities: before, ...rest } = prior;
+  const { activities: after, ...fields } = next;
+  return sameFields(rest, fields) && sameActivities(before, after)
+    ? prior
+    : next;
 }
 
 // A session's count of arrivals only rises.

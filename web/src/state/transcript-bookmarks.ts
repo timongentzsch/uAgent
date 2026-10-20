@@ -2,6 +2,7 @@ import { tabStorage } from "../shared/storage.ts";
 // Where each transcript was left: following its end, or a message (and the
 // paragraph inside it) with its offset. Kept in browser storage for this tab.
 import { maxTranscriptBookmarks } from "../shared/limits.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 
 export type Bookmark = {
   follow: boolean;
@@ -10,12 +11,11 @@ export type Bookmark = {
   offset?: number;
 };
 
-const BOOKMARKS_KEY = "uagent-transcript-bookmarks";
 const SAVE_MS = 500;
 export const bookmarks = new Map<string, Bookmark>();
 try {
   for (const [key, value] of Object.entries(
-    JSON.parse(tabStorage.getItem(BOOKMARKS_KEY) || "{}"),
+    JSON.parse(tabStorage.getItem(storageKeys.bookmarks) || "{}"),
   ).slice(-maxTranscriptBookmarks)) {
     if (typeof (value as Bookmark)?.follow === "boolean")
       bookmarks.set(key, value as Bookmark);
@@ -32,7 +32,7 @@ function saveBookmarks() {
   saving = undefined;
   try {
     tabStorage.setItem(
-      BOOKMARKS_KEY,
+      storageKeys.bookmarks,
       JSON.stringify(Object.fromEntries(bookmarks)),
     );
   } catch {

@@ -1,4 +1,4 @@
-import { observeResize, observeViewport, viewportBounds } from "./layout.ts";
+import { observeResize, observeViewport, placePopover } from "./layout.ts";
 import { settled } from "./motion.ts";
 import {
   createContext,
@@ -81,21 +81,7 @@ export function Menu({
     const button = anchor.current;
     if (!element || !button) return;
     element.showPopover({ source: button });
-    const place = () => {
-      const { left: x, top: y, width, height } = viewportBounds(true);
-      const target = button.getBoundingClientRect();
-      const gap =
-        parseFloat(getComputedStyle(element).getPropertyValue("row-gap")) || 0;
-      const above = Math.max(0, target.top - y - 2 * gap);
-      const below = Math.max(0, y + height - target.bottom - 2 * gap);
-      const upwards = below < Math.min(element.scrollHeight, above);
-      element.style.maxWidth = `${width - 2 * gap}px`;
-      element.style.maxHeight = `${Math.max(1, upwards ? above : below)}px`;
-      const box = element.getBoundingClientRect();
-      const left = target.right - box.width;
-      element.style.left = `${Math.max(x + gap, Math.min(left, x + width - box.width - gap))}px`;
-      element.style.top = `${Math.max(y + gap, Math.min(upwards ? target.top - box.height - gap : target.bottom + gap, y + height - box.height - gap))}px`;
-    };
+    const place = () => placePopover(element, button, "end");
     place();
     const items = enabledItems(element);
     (start.current === "last" ? items.at(-1) : items[0])?.focus({

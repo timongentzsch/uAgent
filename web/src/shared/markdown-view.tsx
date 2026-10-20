@@ -230,12 +230,14 @@ function RenderedMarkdown({
   const [, setReady] = useState(!!loaded);
   const pending = useRef({ active: true, text, running: false });
   pending.current.text = text;
-  // The finished part of a streaming reply, parsed once per boundary.
+  // The finished part of a streaming reply, parsed once per boundary, and
+  // the line the rest starts on.
   const head = useRef<{
     text: string;
     blocks: MarkdownBlock[];
     env: Record<string, unknown>;
-  }>({ text: "", blocks: [], env: {} });
+    offset: number;
+  }>({ text: "", blocks: [], env: {}, offset: 0 });
   // The last streamed frame stays on screen until the final parse lands.
   const last = useRef<{ text: string; blocks: MarkdownBlock[] }>({
     text: "",
@@ -252,8 +254,8 @@ function RenderedMarkdown({
   }, [live]);
   const streamed = useMemo(() => {
     if (!live || !loaded) return null;
-    const boundary = streamingHead(text);
     const cached = head.current;
+    const boundary = streamingHead(text, cached.text);
     if (boundary !== cached.text) {
       // Long replies append new blocks instead of re-parsing everything.
       const append =
@@ -265,12 +267,13 @@ function RenderedMarkdown({
       head.current = {
         text: boundary,
         env,
+        offset: boundary ? boundary.split("\n").length - 1 : 0,
         blocks: append
           ? [
               ...cached.blocks,
               ...loaded.markdownBlocks(
                 boundary.slice(cached.text.length + 1),
-                cached.text.split("\n").length,
+                cached.offset + 1,
                 env,
               ),
             ]
@@ -280,10 +283,9 @@ function RenderedMarkdown({
       };
     }
     const tail = text.slice(boundary.length);
-    const offset = boundary ? boundary.split("\n").length - 1 : 0;
     const blocks = [
       ...head.current.blocks,
-      ...loaded.markdownBlocks(loaded.healTail(tail), offset, {
+      ...loaded.markdownBlocks(loaded.healTail(tail), head.current.offset, {
         // Its own copy: a half-typed `[ref]:` in the tail must not stick.
         references: {
           ...((head.current.env.references as object | undefined) || {}),

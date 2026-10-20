@@ -1,111 +1,53 @@
-import { storage } from "../shared/storage.ts";
-import { readStored, writeStored } from "../state/store.ts";
-import { idlePreloadMs } from "../shared/limits.ts";
 import type {
   JSONValue,
   Draft,
-  InstallPrompt,
-  ActivityTarget,
-  Block,
-  Exchange,
-  PresentedBlock,
-  UserBlock,
   Session,
   Space,
   Act,
   CommandKind,
   CommandFields,
-  SlashCommand,
   AppModal,
   InspectorTarget,
 } from "../shared/types.ts";
-import { failure } from "../shared/types.ts";
-import { render, type TargetedSubmitEvent } from "preact";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "preact/hooks";
+import { render } from "preact";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
-import { api, command, requestId, routes } from "../state/api.ts";
+import { command } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
-import {
-  Modal,
-  Deferred,
-  IconButton,
-  Button,
-  Spinner,
-  preloadDeferred,
-  ErrorBoundary,
-} from "../shared/ui.tsx";
-import {
-  Ellipsis,
-  FolderOpen,
-  Globe2,
-  ListTree,
-  Menu,
-  Settings,
-} from "lucide-preact";
-import { StatusLed } from "../shared/connection-status.tsx";
+import { Modal, Deferred, Spinner, ErrorBoundary } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
-// Prefetch helpers live next to the renderer so marker regexes stay in one
-// place. Loaded dynamically: a static import would drag markdown.css into
-// the initial bundle and break the CSS size budget.
-const markdownView = () => import("../shared/markdown-view.tsx");
 import { useDismiss } from "../shared/dismiss.ts";
-import {
-  QUEUED_NEXT,
-  queuedGuidance,
-  recallable,
-  unsent,
-} from "../shared/message-view.ts";
 import Sidebar, {
   ConversationMenu,
-  SpaceMenu,
-  restartConversation,
   sessionOrder,
-  shareTranscript,
 } from "../features/sidebar/sidebar.tsx";
-import { collapsed } from "../features/sidebar/folding.ts";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
-import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
-import Board, { PanelHelp } from "../features/panel/board.tsx";
-import {
-  isRunning,
-  sessionById,
-  threadsOf,
-  waiting as waitingOn,
-} from "../state/attention.ts";
-import { folderName } from "../shared/folder-label.tsx";
+import { isRunning, sessionById, threadsOf } from "../state/attention.ts";
 import { folderOf } from "../shared/display.ts";
-import {
-  lockPageZoom,
-  useMedia,
-  usePhone,
-  trackViewport,
-} from "../shared/layout.ts";
+import { lockPageZoom, useCompact } from "../shared/layout.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
-import { parseSlash } from "../features/composer/slash.ts";
 import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
-import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
-import Modals from "./modals.tsx";
+import ChatPage from "./chat-page.tsx";
+import ConversationHeader from "./conversation-header.tsx";
+import Modals, { PreferencesContext } from "./modals.tsx";
+import Toasts from "./toasts.tsx";
 import { usePreferences } from "./use-preferences.ts";
 import { useDraftUploads } from "./use-draft-uploads.ts";
+import { useBoot } from "./use-boot.ts";
+import { useSideConversations } from "./use-side-conversations.ts";
+import { usePlaces } from "./use-places.tsx";
+import { useCommands } from "./use-commands.ts";
+import { useMessageActions } from "./use-message-actions.ts";
 import {
   libraryModule,
   pairing,
-  instructionsDialog,
   scheduledModule,
-  settingsDialog,
-  toolsDialog,
-  statisticsDialog,
   paletteDialog,
   shortcutsDialog,
   filesPane,
@@ -118,8 +60,6 @@ import {
 // backstop for mounts that precede it. The transcript hook owns all
 // scrolling from here on.
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
-
-const BROWSER_KEY = "uagent-browser";
 
 // The shell: navigation, header, toasts and dialogs. It never reads a whole
 // snapshot, only what it selects from one (the session's metadata, whether
@@ -134,15 +74,11 @@ function App() {
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  const compact = useMedia("(max-width: 900px)");
-  const phone = usePhone();
+  const compact = useCompact();
   // What opens over the page: the conversations drawer, the board sheet, the
   // app's dialogs, the palette or shortcuts sheet, the image viewer, the
   // inspector and the /btw card.
   const [drawer, setDrawer] = useState(false);
-  // On a phone a panel's board slides in from the right on demand
-  // instead of taking the top of its chat.
-  const [boardOpen, setBoardOpen] = useState(false);
   // The conversation's files: beside the chat, or a sheet on a small screen.
   const [filesOpen, setFilesOpen] = useState(false);
   const [modal, setModal] = useState<AppModal | null>(null);
@@ -150,23 +86,6 @@ function App() {
   const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
-  const [sides, setSides] = useState<
-    Record<
-      string,
-      {
-        question: string;
-        id?: string;
-        firstRequest: string;
-      }
-    >
-  >(() => readStored(storage, "uagent-side-conversations", {}));
-  useEffect(() => {
-    writeStored(
-      storage,
-      "uagent-side-conversations",
-      Object.fromEntries(Object.entries(sides).filter(([, side]) => side.id)),
-    );
-  }, [sides]);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
@@ -178,11 +97,6 @@ function App() {
     setDrawer(false);
     setOverlay("palette");
   }, []);
-  // Remembered per device, so the header's browser slot is right from the
-  // first frame instead of appearing once the host answers.
-  const [browserAvailable, setBrowserAvailable] = useState(
-    () => storage.getItem(BROWSER_KEY) === "1",
-  );
   const [notice, setNotice] = useState("");
   // The banner shows one line: a new notice replaces an older error.
   useEffect(() => {
@@ -192,6 +106,7 @@ function App() {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
   }, []);
+  const host = useHost(onResult, page === "chat");
   const {
     managementVersion,
     authenticated,
@@ -224,36 +139,15 @@ function App() {
     updateView,
     correlate,
     reset,
-  } = useHost(onResult, page === "chat");
-  const side = sides[selected] || null;
-  const closeSide = useCallback(
-    () =>
-      setSides((current) => {
-        const next = { ...current };
-        delete next[selected];
-        return next;
-      }),
-    [selected],
-  );
-  useEffect(() => {
-    if (authenticated !== true || !online) return;
-    let active = true;
-    const known = (available: boolean) => {
-      if (!active) return;
-      setBrowserAvailable(available);
-      storage.setItem(BROWSER_KEY, available ? "1" : "0");
-    };
-    api(routes.browserStatus)
-      .then(() => known(true))
-      .catch(() => known(false));
-    return () => {
-      active = false;
-    };
-  }, [authenticated, online]);
-  const [folder, setFolder] = useState("");
+  } = host;
+  const { side, closeSide, ask, clearSides } = useSideConversations({
+    selected,
+    load,
+    refresh,
+    report,
+  });
   // The sidebar's filter, here because Alt+↑/↓ steps through what it shows.
   const [query, setQuery] = useState("");
-  const [space, setSpace] = useState("");
   const [busy, setBusy] = useState(false);
   const {
     zoom,
@@ -265,8 +159,6 @@ function App() {
     motion,
     setMotion,
   } = usePreferences();
-  const [install, setInstall] = useState<InstallPrompt | null>(null);
-  const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
   // How much of the agent's work shows: one level for every conversation,
   // browser and terminal. Only rendering reads it, so a change restyles
@@ -280,8 +172,14 @@ function App() {
     (level: string) => setVerbosity(level).catch(report),
     [setVerbosity, report],
   );
-  const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
-  const session = metadata || sessionById(catalogue.sessions, selected);
+  // Every event that changes a session changes its catalogue entry too, so
+  // the shell reads the entry and renders once per change; a snapshot's
+  // metadata stands in only for a session the catalogue does not list yet.
+  const listedSession = sessionById(catalogue.sessions, selected);
+  const metadata = useSnapshots(snapshots, (all) =>
+    listedSession ? undefined : all[selected]?.metadata,
+  );
+  const session = listedSession || metadata;
   // Until the catalogue answers, the shell renders with placeholders in the
   // places data will fill; a conversation in the URL keeps its surfaces.
   const booting = authenticated === null;
@@ -291,19 +189,6 @@ function App() {
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
   const running = !!session && isRunning(session, online);
-  // The browser icon shows when this conversation's agent is using it.
-  const browsing = useSnapshots(snapshots, (all) => isBrowsing(all[selected]));
-  // The update banner holds its reload while a turn waits on a decision.
-  const waiting = useSnapshots(
-    snapshots,
-    (all) => !!update && Object.values(all).some((item) => item.pending),
-  );
-  // Why an update must wait: unsent work (an upload is one) or a decision.
-  const updateBlocked = Object.values(drafts).some(hasContent)
-    ? "Send or copy unsent drafts first."
-    : waiting
-      ? "Wait for the running turn to finish."
-      : "";
   const { updateDraft, attachAnnotated, upload } = useDraftUploads({
     session,
     online,
@@ -313,9 +198,10 @@ function App() {
     setDrafts,
     report,
   });
-  function setDraft(value: Draft, id = selected) {
-    updateDraft(id, () => value);
-  }
+  const setDraft = useCallback(
+    (value: Draft, id = selected) => updateDraft(id, () => value),
+    [updateDraft, selected],
+  );
   // The moderator adds a member, with a persona, skills and model of its
   // choosing: asking for one starts the message that asks.
   function addMember() {
@@ -345,73 +231,6 @@ function App() {
       });
     focus(10);
   }
-  useEffect(() => {
-    // The core renderer chunk is needed for every assistant message, so
-    // fetch it immediately at boot (not idle: on mobile the idle callback
-    // can fire after the first snapshot already mounted, which spreads
-    // the plain-to-markdown height wave across the first seconds and
-    // fights the bottom pin). Marker-based chunks warm per text below.
-    Promise.allSettled([
-      markdownView().then((view) => view.prefetchMarkdown()),
-    ]);
-    // What a click opens, parsed once the shell has settled (the service
-    // worker already holds it), so a first open shows content, not a
-    // placeholder for its code.
-    const warm = setTimeout(
-      () =>
-        [
-          settingsDialog,
-          libraryModule,
-          scheduledModule,
-          statisticsDialog,
-          toolsDialog,
-          instructionsDialog,
-        ].forEach((load) => preloadDeferred<never>(load).catch(() => {})),
-      idlePreloadMs,
-    );
-    return () => clearTimeout(warm);
-  }, []);
-  useEffect(trackViewport, []);
-  // Files dropped anywhere attach to the open conversation; unhandled, the
-  // browser would open the file in place of the app. File inputs and
-  // dialogs keep their own drops.
-  const drops = useRef({ upload, page });
-  drops.current = { upload, page };
-  const attach = useCallback(
-    (files: File[]) => drops.current.upload(files),
-    [],
-  );
-  useEffect(() => {
-    const files = (event: DragEvent) =>
-      event.dataTransfer?.types.includes("Files") &&
-      !(
-        event.target instanceof HTMLInputElement && event.target.type === "file"
-      );
-    const over = (event: DragEvent) => files(event) && event.preventDefault();
-    const drop = (event: DragEvent) => {
-      if (!files(event)) return;
-      event.preventDefault();
-      if (
-        drops.current.page === "chat" &&
-        !(event.target as Element).closest?.("dialog")
-      )
-        void drops.current.upload([...(event.dataTransfer?.files || [])]);
-    };
-    addEventListener("dragover", over);
-    addEventListener("drop", drop);
-    return () => {
-      removeEventListener("dragover", over);
-      removeEventListener("drop", drop);
-    };
-  }, []);
-  useEffect(() => {
-    let stop: (() => void) | undefined;
-    import("../shared/pwa.ts").then(
-      ({ watchPwa }) => (stop = watchPwa(setInstall, setUpdate, report)),
-    );
-    return () => stop?.();
-  }, [report]);
-
   const act: Act = useCallback(
     async <K extends CommandKind>(kind: K, fields: CommandFields = {}) => {
       if (!online)
@@ -430,347 +249,70 @@ function App() {
     },
     [setSelected],
   );
-  useEffect(() => {
-    const openSession = (event: MessageEvent) => {
-      if (
-        event.data?.type === "OPEN_SESSION" &&
-        /^[a-f0-9]{16,64}$/.test(event.data.id || "")
-      ) {
-        choose(event.data.id);
-        if (event.data.decision !== undefined) focusDecision();
-      }
-    };
-    // A notification's link opened this window at a decision.
-    followDecisionLink();
-    addEventListener("hashchange", followDecisionLink);
-    navigator.serviceWorker?.addEventListener("message", openSession);
-    return () => {
-      navigator.serviceWorker?.removeEventListener("message", openSession);
-      removeEventListener("hashchange", followDecisionLink);
-    };
-  }, [choose]);
-  // A conversation in the workspace or folder typed into the dialog.
-  async function create(event: TargetedSubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      // Only the open dialog's field counts.
-      const workspace = modal?.type === "new" && modal.place === "workspace";
-      await startConversation(
-        workspace ? "" : folder,
-        false,
-        workspace ? space.trim() : "",
-      );
-      setModal(null);
-    } catch (failure) {
-      report(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
-  // The host returns a folder's existing panel rather than a second.
-  // One start at a time: a double click must not race two activations.
-  const starting = useRef(false);
-  const startConversation = useCallback(
-    async (folder: string, panel = false, space = "") => {
-      if (starting.current) return;
-      starting.current = true;
-      try {
-        // A workspace is asked for by its name; the host keeps its folder.
-        const created = await command("create", null, {
-          ...(space ? { space } : { cwd: folder }),
-          panel,
-        });
-        if (created.pending) return "";
-        upsertSession(created.session);
-        // The new conversation is not behind a fold.
-        collapsed.set(folderOf(created.session), false);
-        // Live before it is shown, so opening never flashes the saved state;
-        // shown even if activating fails, with the failure reported.
-        try {
-          if (created.session.presence !== "active")
-            await command("activate", created.session);
-        } finally {
-          await choose(created.session.id);
-        }
-        await load(created.session.id);
-        return created.session.id;
-      } finally {
-        starting.current = false;
-      }
-    },
-    [upsertSession, choose, load],
+  const { browserAvailable, install, setInstall, update, attach } = useBoot({
+    upload,
+    page,
+    choose,
+    report,
+    authenticated,
+    online,
+  });
+  // The update banner holds its reload while a turn waits on a decision.
+  const waiting = useSnapshots(
+    snapshots,
+    (all) => !!update && Object.values(all).some((item) => item.pending),
   );
-  // A command with a screen opens it when typed bare; with an argument it
-  // runs on the host, as in the terminal.
-  const screens: Record<string, () => void> = {
-    "/context": () => showContext(),
-    "/config": () => open({ type: "settings" }),
-    "/verbosity": () => open({ type: "settings", section: "user" }),
-    "/permissions": () => open({ type: "settings", section: "user" }),
-    "/mcp": () => open({ type: "settings", section: "user" }),
-    "/tools": () => setModal({ type: "tools", session_id: selected }),
-    "/rename": () => session && setModal({ type: "rename", session }),
-    "/memory": () => showLibrary("memory"),
-    "/skills": () => showLibrary("skills"),
-    "/schedule": () => setPage("scheduled"),
-    // The list is always beside a wide conversation: find in it instead.
-    "/sessions": () =>
-      compact
-        ? setDrawer(true)
-        : document.getElementById("session-search")?.focus(),
-  };
-  function showLibrary(kind: "memory" | "skills") {
-    setLibraryKind(kind);
-    setPage("library");
-  }
-  // A fork opens as its own conversation; the original stays as it was.
-  // Editing (a rewind) also puts the message it forked before back into
-  // the composer.
-  async function forkAndOpen(
-    target: Session | undefined,
-    fields: CommandFields = {},
-    edit = false,
-  ) {
-    const result = await command("fork", target, fields);
-    if (result.pending) return;
-    const { id, prompt, rewound } = result.result;
-    if (!rewound) {
-      await refresh();
-      await choose(id);
-      await command("activate", { id, generation: "" });
-    }
-    await load(id);
-    if (edit && prompt) setDraft({ text: prompt, files: [] }, id);
-    if (edit)
-      setNotice(
-        rewound
-          ? "The panel rewound to this message; edit and send."
-          : "Continuing in a fork. Files on disk are unchanged.",
-      );
-  }
-  async function localCommand(text: string) {
-    const { name, argument } = parseSlash(catalogue.commands || [], text);
-    if (!argument && screens[name]) screens[name]();
-    else if (name === "/reset") await startConversation(session!.cwd!);
-    else if (name === "/verbosity") {
-      if (!levels.includes(argument))
-        throw new Error(`Use /verbosity ${levels.join("|")}`);
-      await changeDetail(argument);
-    }
-    // In a terminal /quit detaches and the runtime stays; here that is just
-    // leaving the page, so it never closes anything.
-    else if (name === "/quit")
-      throw new Error("Use Close conversation in the conversation menu.");
-    else if (name === "/restart") {
-      setNotice(await restartConversation(session!));
-    } else if (name === "/fork") {
-      await forkAndOpen(session, { argument });
-    } else if (name === "/rewind" && argument) {
-      // Bare /rewind runs on the host and lists the message numbers.
-      await forkAndOpen(session, { argument }, true);
-    } else if (name === "/btw") {
-      if (!argument) throw new Error("Use /btw QUESTION");
-      const parent = session!;
-      const existing = sides[parent.id];
-      if (existing && !existing.id)
-        throw new Error("The side conversation is starting.");
-      if (existing?.id) {
-        const snapshot = await load(existing.id);
-        await command("submit", snapshot.metadata, { text: argument });
-        return true;
-      }
-      const firstRequest = requestId();
-      setSides((current) => ({
-        ...current,
-        [parent.id]: { question: argument, firstRequest },
-      }));
-      // The side owns an ordinary runtime: tool dispatch, approvals and
-      // follow-ups have one implementation, separate from the parent turn.
-      void (async () => {
-        const result = await command("side", parent, {
-          operation: "create",
-          text: argument,
-        });
-        if (result.pending || !result.result.id)
-          throw new Error(
-            "The side conversation could not be started. Refresh to inspect it.",
-          );
-        const id = result.result.id;
-        await refresh();
-        await command("activate", { id, generation: "" });
-        const snapshot = await load(id);
-        setSides((current) =>
-          current[parent.id]?.firstRequest === firstRequest
-            ? {
-                ...current,
-                [parent.id]: { question: argument, id, firstRequest },
-              }
-            : current,
-        );
-        await command("submit", snapshot.metadata, {
-          text: argument,
-          request_id: firstRequest,
-        });
-      })().catch((failure) => {
-        setSides((current) => {
-          if (current[parent.id]?.firstRequest !== firstRequest) return current;
-          const next = { ...current };
-          delete next[parent.id];
-          return next;
-        });
-        report(failure);
-      });
-    } else if (name === "/share") {
-      setNotice(await shareTranscript(session!));
-    } else if (name === "/instructions" && !argument) {
-      setModal({ type: "instructions" });
-    } else if (name === "/http") {
-      const exchanges = snapshots.get()[selected]?.state?.http || [];
-      const [number, part = "request"] = argument.split(/\s+/);
-      const index = number ? Number(number) : exchanges.length;
-      if (
-        !Number.isInteger(index) ||
-        index < 1 ||
-        index > exchanges.length ||
-        !["request", "response"].includes(part)
-      )
-        throw new Error(
-          exchanges.length
-            ? "Use /http INDEX request|response"
-            : "No HTTP exchange captured",
-        );
-      setModal({
-        type: "raw",
-        session: selected,
-        exchanges: [exchanges[index - 1]],
-        part: part as "request" | "response",
-      });
-    } else return false;
-    return true;
-  }
-  async function submit(event: Event, jumpToLatest: () => void, queue = false) {
-    event.preventDefault();
-    const pending = snapshots.get()[selected]?.pending;
-    setNotice("");
-    if (
-      !online ||
-      pending ||
-      (!draft.text.trim() && !draft.files.length) ||
-      uploading ||
-      busy
-    )
-      return;
-    setBusy(true);
-    // Sending always produces bottom content (optimistic message, command
-    // output, streamed answer): re-stick synchronously so the turn stays
-    // attached even if the stick was lost while reading history or the
-    // send-frame layout churn (composer shrink, optimistic append) moves
-    // scroll before the observers re-pin. Idempotent when already sticky.
-    jumpToLatest();
-    const id = selected,
-      sent = draft,
-      request_id = requestId();
-    if (sent.text.startsWith("/")) {
-      try {
-        // A side question is the one command meant for a running turn.
-        if (running && !sent.text.startsWith("/btw "))
-          throw new Error(
-            "Wait for this turn to finish before running a slash command.",
-          );
-        if (await localCommand(sent.text)) {
-          setDrafts((current) =>
-            current[id] === sent
-              ? { ...current, [id]: { ...sent, text: "" } }
-              : current,
-          );
-          setBusy(false);
-          return;
-        }
-        if (
-          parseSlash(catalogue.commands || [], sent.text).name === "/attach" &&
-          sent.text.trim().endsWith(" clear")
-        )
-          updateDraft(id, emptyDraft);
-      } catch (error) {
-        report(error);
-        setBusy(false);
-        return;
-      }
-    }
-    await deliver(id, sent, queue, request_id);
-  }
-  // A message goes out as a row of its own until the host confirms it; a
-  // failed one stays there, with Retry and Return to composer. Guidance
-  // joins the running turn, or with `queue` waits for it to end.
-  async function deliver(
-    id: string,
-    sent: Draft,
-    queue = false,
-    request_id = requestId(),
-  ) {
-    setBusy(true);
-    const kind = running && !snapshots.get()[id]?.pending ? "steer" : "submit";
-    const queued =
-      kind === "steer" && (queue ? QUEUED_NEXT : "Guidance queued");
-    const visible = !sent.text.startsWith("/") || sent.files.length;
-    if (visible)
-      setOutgoing((items) => [
-        ...items,
-        {
-          id: `outgoing-${request_id}`,
-          request_id,
-          session_id: id,
-          kind: "user",
-          text: sent.text,
-          files: sent.files,
-          time: new Date().toISOString(),
-          status: queued || "Sending…",
-        },
-      ]);
-    setDrafts((current) =>
-      current[id] === sent ? { ...current, [id]: emptyDraft() } : current,
-    );
-    try {
-      const result = await act(kind, {
-        request_id,
-        text: sent.text,
-        ...(queued && queue && { queue }),
-        attachment_ids: sent.files.map((item) => ({
-          id: item.id,
-          name: item.name,
-        })),
-      });
-      patchOutgoing(request_id, {
-        status: queued || (result.pending ? "Awaiting confirmation" : "Sent"),
-      });
-    } catch (error) {
-      const issue = failure(error);
-      if (visible)
-        patchOutgoing(request_id, {
-          status: issue.rejected ? "Not sent" : "Not confirmed",
-          error: issue.message,
-        });
-      else report(issue);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Why an update must wait: unsent work (an upload is one) or a decision.
+  const updateBlocked = Object.values(drafts).some(hasContent)
+    ? "Send or copy unsent drafts first."
+    : waiting
+      ? "Wait for the running turn to finish."
+      : "";
+  const places = usePlaces({
+    catalogue,
+    upsertSession,
+    choose,
+    load,
+    report,
+    open,
+    modal,
+    setModal,
+    setBusy,
+  });
+  const { startConversation, newPlace, startIn, openPanel, projects } = places;
+  const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
+    {
+      host,
+      session,
+      running,
+      busy,
+      setBusy,
+      draft,
+      uploading,
+      setDraft,
+      updateDraft,
+      act,
+      choose,
+      startConversation,
+      setModal,
+      open,
+      setPage,
+      setLibraryKind,
+      compact,
+      setDrawer,
+      setNotice,
+      levels,
+      changeDetail,
+      askSide: ask,
+    },
+  );
   // The other conversations of the open one's folder. A panel's chat
   // names who of them wrote what and shows each one's prompt.
   const threads = useMemo(
     () => threadsOf(catalogue.sessions, session?.cwd || ""),
     [catalogue.sessions, session?.cwd],
   );
-  const teamNames =
-    session?.kind === "panel"
-      ? [session.member, ...threads.map((item) => item.member)]
-          .filter(Boolean)
-          .join(" ")
-      : "";
-  // Every row reads these through one context value, so they must stay the
-  // same function; they read the latest state through a ref.
-  const current = {
+  const chatActions = useMessageActions({
     online,
     selected,
     act,
@@ -781,192 +323,28 @@ function App() {
     deliver,
     busy,
     showContext,
-    askMember,
     threads,
-  };
-  const latest = useRef(current);
-  latest.current = current;
-  // A failed message sends again as a new request; Continue resumes a
-  // stopped turn. Both leave the composer's draft alone.
-  const retrySend = useCallback((block: UserBlock) => {
-    const { online, selected, deliver, busy } = latest.current;
-    if (!online || busy || !block.request_id || !unsent(block)) return;
-    setOutgoing((items) =>
-      items.filter((item) => item.request_id !== block.request_id),
-    );
-    void deliver(selected, {
-      text: block.text || "",
-      files: (block.files || []).filter((file) => typeof file === "object"),
-    });
-  }, []);
-  const resume = useCallback(() => {
-    const { online, selected, deliver, busy } = latest.current;
-    if (online && !busy)
-      void deliver(selected, { text: "continue", files: [] });
-  }, []);
-  // From a message's menu: edit it in a fork (fork before it), or keep it
-  // and its reply (fork before the next message of yours).
-  const branchFrom = useCallback((block: Pick<Block, "id">, edit: boolean) => {
-    const { forkAndOpen, outgoing, selected, report } = latest.current;
-    const blocks = transcriptBlocks(
-      snapshots.get()[selected]?.state?.view,
-      outgoing,
-      selected,
-    );
-    const after = blocks.slice(
-      blocks.findIndex((item) => item.id === block.id) + 1,
-    );
-    const next = after.find((item) => item.kind === "user");
-    forkAndOpen(
-      latest.current.session,
-      edit ? { message_id: block.id } : next ? { message_id: next.id } : {},
-      edit,
-    ).catch(report);
-  }, []);
-  // Recall returns queued guidance to the composer while it is still
-  // queued. Delivered guidance belongs to the turn; dropping the row is
-  // then the only correct move. A send that failed returns the same way,
-  // with nothing to withdraw from the host.
-  const recallGuidance = useCallback(
-    async (block: UserBlock) => {
-      const { online, selected, act, report } = latest.current;
-      const target = block.request_id;
-      if (!target || !recallable(block, online)) return;
-      const queued = queuedGuidance(block);
-      const text = block.text || "";
-      const id = selected;
-      if (queued) {
-        try {
-          await act("recall", { target_id: target });
-        } catch (error) {
-          const issue = failure(error);
-          if (!/already delivered/i.test(issue.message)) {
-            report(error);
-            return;
-          }
-          // Delivery won the race: returning it would duplicate the input.
-          setOutgoing((items) =>
-            items.filter((item) => item.request_id !== target),
-          );
-          return;
-        }
-      }
-      setOutgoing((items) =>
-        items.filter((item) => item.request_id !== target),
-      );
-      updateDraft(id, (draft) => ({
-        ...draft,
-        text: text
-          ? draft.text
-            ? `${draft.text}\n${text}`
-            : text
-          : draft.text,
-        files: [
-          ...draft.files,
-          ...(block.files || []).filter(
-            (file) => !draft.files.some((current) => current.id === file.id),
-          ),
-        ],
-      }));
-    },
-    [updateDraft],
-  );
-  const insertGuidance = useCallback(
-    async (block: UserBlock) => {
-      const { online, act, report } = latest.current;
-      if (!online || !block.request_id || !queuedGuidance(block)) return;
-      try {
-        await act("insert", { target_id: block.request_id });
-        // Keep the tray until the transcript acknowledges actual delivery.
-        patchOutgoing(block.request_id, { status: "Guidance queued" });
-      } catch (error) {
-        if (!/already delivered/i.test(failure(error).message)) report(error);
-      }
-    },
-    [patchOutgoing],
-  );
-  const messageActions = useMemo(
-    () => ({
-      report,
-      recall: recallGuidance,
-      insert: insertGuidance,
-      retry: retrySend,
-      resume,
-      branch: branchFrom,
-      inspect: (id: string) =>
-        setInspector({
-          title: id.startsWith("t-") ? "Tool input/output" : "Full content",
-          raw: { id, session: selected },
-        }),
-      http: (exchanges: Exchange[]) =>
-        setModal({ type: "raw", session: selected, exchanges }),
-      activity: (block: ActivityTarget) => setInspector({ block }),
-      statistics: (block: PresentedBlock) =>
-        setModal({
-          type: "statistics",
-          session_id: selected,
-          block_id:
-            ("occurrence_id" in block && block.occurrence_id) ||
-            ("response_id" in block && block.response_id) ||
-            block.id,
-          unit: block.kind === "turn_summary" ? "Turn" : "Message",
-        }),
-    }),
-    [
-      report,
-      recallGuidance,
-      insertGuidance,
-      retrySend,
-      resume,
-      branchFrom,
-      selected,
-    ],
-  );
-  const chatActions = useMemo(
-    () =>
-      teamNames
-        ? {
-            ...messageActions,
-            team: latest.current.threads.filter((item) => item.member),
-            moderator: latest.current.session?.member || "Moderator",
-            prompt: (member?: string) =>
-              latest.current.showContext(
-                member
-                  ? latest.current.threads.find(
-                      (item) => item.member === member,
-                    )
-                  : undefined,
-              ),
-          }
-        : messageActions,
-    [messageActions, teamNames],
-  );
+    setOutgoing,
+    patchOutgoing,
+    updateDraft,
+    snapshots,
+    setInspector,
+    setModal,
+  });
+  // The host context and the conversation menus must keep their functions;
+  // they read the latest ones through a ref.
+  const latest = useLatest({ showContext, askMember, forkAndOpen });
   async function logout() {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
       await (await registration?.pushManager?.getSubscription())?.unsubscribe();
       await command("logout");
-      setSides({});
+      clearSides();
       reset();
       setModal(null);
     } catch (failure) {
       report(failure);
     }
-  }
-  // The context a session was last sent, its system prompt first: the open
-  // conversation's, or that of the one given.
-  function showContext(item?: Session) {
-    const shown = item ?? session;
-    const busy = item ? item.turn_active : running;
-    const prepare = shown?.generation && !busy && online ? shown : undefined;
-    const id = shown?.id || selected;
-    setModal({
-      type: "raw",
-      context: true,
-      session: id,
-      exchanges: prepare ? [] : snapshots.get()[id]?.state?.http || [],
-      prepare,
-    });
   }
 
   // Forks any conversation from its menu, as /fork does the open one.
@@ -996,28 +374,6 @@ function App() {
     ),
     [online, fork, load, report, open, detail, levels, changeDetail],
   );
-  // A slash command from the palette runs as if sent from the composer;
-  // one that needs an argument waits there for it.
-  async function runCommand(entry: SlashCommand) {
-    try {
-      if (entry.argument && !entry.argument.startsWith("[")) {
-        if (!session)
-          throw new Error(`Open a conversation to use ${entry.command}`);
-        setDraft({ ...draft, text: `${entry.command} ` });
-        requestAnimationFrame(() => document.getElementById("prompt")?.focus());
-      } else if (!(await localCommand(entry.command))) {
-        if (!session)
-          throw new Error(`Open a conversation to run ${entry.command}`);
-        if (running)
-          throw new Error(
-            "Wait for this turn to finish before running a slash command.",
-          );
-        await act("submit", { request_id: requestId(), text: entry.command });
-      }
-    } catch (failure) {
-      report(failure);
-    }
-  }
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
     const order = sessionOrder(listed, catalogue.spaces, query);
@@ -1038,35 +394,7 @@ function App() {
     setDrawer(false);
   }, []);
   const settings = useCallback(() => open({ type: "settings" }), [open]);
-  // Asks for the place's name or path, which starts a conversation there.
-  const newPlace = useCallback(
-    (place: "workspace" | "folder") => {
-      setSpace("");
-      setFolder("");
-      open({ type: "new", place });
-    },
-    [open],
-  );
-  // A workspace by the name it goes by, a folder by the end of its path.
-  const placeName = (path = "") =>
-    catalogue.spaces?.find((item) => item.path === path)?.name ||
-    folderName(path);
-  const startIn = useCallback(
-    (cwd: string) => startConversation(cwd).catch(report),
-    [startConversation, report],
-  );
-  const openPanel = useCallback(
-    (cwd: string) => startConversation(cwd, true).catch(report),
-    [startConversation, report],
-  );
-  const projects = [
-    ...new Set(
-      catalogue.sessions
-        .map((entry) => entry.cwd)
-        .filter((path): path is string => !!path),
-    ),
-  ];
-  const host = useMemo(
+  const hostContext = useMemo(
     () => ({
       online,
       connection,
@@ -1083,6 +411,9 @@ function App() {
   );
   const conversation = useMemo(
     () => ({
+      draft,
+      setDraft,
+      submit,
       act,
       upload: attach,
       uploading,
@@ -1091,7 +422,18 @@ function App() {
       setFollowing,
       zoom,
     }),
-    [act, attach, uploading, busy, following, setFollowing, zoom],
+    [
+      draft,
+      setDraft,
+      submit,
+      act,
+      attach,
+      uploading,
+      busy,
+      following,
+      setFollowing,
+      zoom,
+    ],
   );
   const sidebar = (
     <Sidebar
@@ -1106,9 +448,7 @@ function App() {
       query={query}
       setSearch={setQuery}
       spaces={catalogue.spaces || NO_SPACES}
-      spaceMenu={(space, conversations) => (
-        <SpaceMenu space={space} conversations={conversations} open={open} />
-      )}
+      spaceMenu={places.spaceMenu}
       selected={page === "chat" ? selected : ""}
       unread={unread}
       choose={choose}
@@ -1123,49 +463,20 @@ function App() {
 
   return (
     <TimePrefsContext.Provider value={timePrefs}>
-      <HostContext.Provider value={host}>
+      <HostContext.Provider value={hostContext}>
         <ConversationContext.Provider value={conversation}>
           <DetailContext.Provider value={detail}>
             <ImageViewer.Provider value={setViewed}>
-              {/* Notices float over the app, never push it down. */}
-              <div class="toasts">
-                {(error || notice) && (
-                  <div role={error ? "alert" : "status"} class="error-banner">
-                    <span>{error || notice}</span>
-                    <Button
-                      onClick={() => {
-                        setError("");
-                        setNotice("");
-                      }}
-                    >
-                      Dismiss
-                    </Button>
-                  </div>
-                )}
-                {/* A waiting service worker means this view is stale (notably in an
-          installed PWA with no chrome to pull-to-refresh). Surface it
-          here, not only in Settings, so reloads actually pick up fixes. */}
-                {update && (
-                  <div role="status" class="update-banner">
-                    <span>Update available with the latest fixes.</span>
-                    <Button
-                      variant="primary"
-                      disabled={!!updateBlocked}
-                      title={
-                        updateBlocked ||
-                        "Reloads this view with the latest fixes."
-                      }
-                      onClick={() =>
-                        import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                          applyUpdate(update),
-                        )
-                      }
-                    >
-                      Refresh now
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <Toasts
+                error={error}
+                notice={notice}
+                dismiss={() => {
+                  setError("");
+                  setNotice("");
+                }}
+                update={update}
+                updateBlocked={updateBlocked}
+              />
               {authenticated === false ? (
                 <Deferred
                   load={pairing}
@@ -1216,135 +527,25 @@ function App() {
                       )
                     )}
                     <main class="conversation" id="conversation" tabIndex={-1}>
-                      <header class="conversation-head">
-                        {compact && (
-                          <IconButton
-                            label="Open conversations"
-                            onClick={() => setDrawer(true)}
-                          >
-                            <Menu />
-                          </IconButton>
-                        )}
-                        <div>
-                          <h1 title={session?.cwd}>
-                            {page === "library" ? (
-                              "Library"
-                            ) : page === "scheduled" ? (
-                              "Scheduled"
-                            ) : session?.kind === "panel" ? (
-                              `Panel · ${placeName(session.cwd)}`
-                            ) : session ? (
-                              session.title || "Your workspace"
-                            ) : opening ? (
-                              <span class="text-skeleton" aria-hidden="true">
-                                Loading conversation
-                              </span>
-                            ) : (
-                              "Your workspace"
-                            )}
-                          </h1>
-                          {/* What a panel started leads back to it. */}
-                          {page === "chat" && session?.kind === "thread" && (
-                            <p class="panel-subtitle">
-                              <Button
-                                variant="quiet"
-                                onClick={() => openPanel(session.folder || "")}
-                              >
-                                ‹ Panel · {placeName(session.folder)}
-                              </Button>
-                            </p>
-                          )}
-                          {page === "chat" && session?.kind === "panel" && (
-                            <PanelHelp
-                              editInstructions={() =>
-                                open({ type: "instructions" })
-                              }
-                            />
-                          )}
-                        </div>
-                        {browserAvailable && (
-                          <IconButton
-                            label={
-                              browsing
-                                ? "Open browser, agent working"
-                                : "Open browser"
-                            }
-                            class="browser-toggle"
-                            disabled={booting}
-                            onClick={() => setModal({ type: "browser" })}
-                          >
-                            <Globe2 />
-                            {browsing && <StatusLed state="running" />}
-                          </IconButton>
-                        )}
-                        {/* Held in place while the session loads, inert. */}
-                        {page === "chat" && (session || opening) && (
-                          <IconButton
-                            label="Files"
-                            disabled={!session}
-                            aria-pressed={filesOpen}
-                            onClick={() => setFilesOpen(!filesOpen)}
-                          >
-                            <FolderOpen />
-                          </IconButton>
-                        )}
-                        {phone &&
-                          page === "chat" &&
-                          session?.kind === "panel" &&
-                          (() => {
-                            const waits = waitingOn(threads).length;
-                            return (
-                              <IconButton
-                                label={
-                                  waits ? `Board, ${waits} need you` : "Board"
-                                }
-                                aria-haspopup="dialog"
-                                aria-expanded={boardOpen}
-                                onClick={() => setBoardOpen(true)}
-                              >
-                                <ListTree />
-                                {waits > 0 && <StatusLed state="active" />}
-                              </IconButton>
-                            );
-                          })()}
-                        {compact && (
-                          <div>
-                            <IconButton label="Settings" onClick={settings}>
-                              <Settings />
-                            </IconButton>
-                          </div>
-                        )}
-                        {page === "chat" &&
-                          (session ? (
-                            conversationMenu(session, true)
-                          ) : opening ? (
-                            // Inert until the session is known.
-                            <IconButton label="Conversation menu" disabled>
-                              <Ellipsis />
-                            </IconButton>
-                          ) : null)}
-                      </header>
-                      {boardOpen && phone && session?.kind === "panel" && (
-                        <Modal
-                          title="Board"
-                          layout="sheet"
-                          className="side-sheet"
-                          close={() => setBoardOpen(false)}
-                        >
-                          <Board
-                            threads={threads}
-                            choose={(id) => {
-                              setBoardOpen(false);
-                              void choose(id);
-                            }}
-                            menu={conversationMenu}
-                            add={() => {
-                              setBoardOpen(false);
-                              addMember();
-                            }}
-                          />
-                        </Modal>
-                      )}
+                      <ConversationHeader
+                        page={page}
+                        selected={selected}
+                        session={session}
+                        opening={opening}
+                        booting={booting}
+                        threads={threads}
+                        placeName={places.placeName}
+                        browserAvailable={browserAvailable}
+                        filesOpen={filesOpen}
+                        setFilesOpen={setFilesOpen}
+                        openDrawer={() => setDrawer(true)}
+                        openPanel={openPanel}
+                        open={open}
+                        settings={settings}
+                        menu={conversationMenu}
+                        choose={choose}
+                        addMember={addMember}
+                      />
                       {filesOpen && compact && page === "chat" && session && (
                         <Modal
                           title="Files"
@@ -1409,9 +610,6 @@ function App() {
                         menu={conversationMenu}
                         newPlace={newPlace}
                         addMember={addMember}
-                        draft={draft}
-                        setDraft={setDraft}
-                        submit={submit}
                         updateView={updateView}
                         choose={choose}
                         side={side}
@@ -1473,25 +671,8 @@ function App() {
                   )}
                 </Modal>
               )}
-              <Modals
-                modal={modal}
-                inspector={inspector}
-                setInspector={setInspector}
-                viewed={viewed}
-                setViewed={setViewed}
-                annotate={session && online ? attachAnnotated : undefined}
-                selected={selected}
-                session={session}
-                catalogue={catalogue}
-                compact={compact}
-                managementVersion={managementVersion}
-                projects={projects}
-                folder={folder}
-                setFolder={setFolder}
-                space={space}
-                setSpace={setSpace}
-                create={create}
-                preferences={{
+              <PreferencesContext.Provider
+                value={{
                   theme,
                   setTheme,
                   motion,
@@ -1509,7 +690,22 @@ function App() {
                   notifications,
                   logout,
                 }}
-              />
+              >
+                <Modals
+                  modal={modal}
+                  inspector={inspector}
+                  setInspector={setInspector}
+                  viewed={viewed}
+                  setViewed={setViewed}
+                  annotate={session && online ? attachAnnotated : undefined}
+                  selected={selected}
+                  session={session}
+                  catalogue={catalogue}
+                  compact={compact}
+                  managementVersion={managementVersion}
+                  places={places}
+                />
+              </PreferencesContext.Provider>
             </ImageViewer.Provider>
           </DetailContext.Provider>
         </ConversationContext.Provider>

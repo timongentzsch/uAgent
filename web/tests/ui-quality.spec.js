@@ -594,7 +594,7 @@ test("phone header keeps its buttons in place from loading to ready", async ({
   }
 });
 
-test("user message metadata stays in the upper right on multiline bubbles", async ({
+test("user message metadata has a line of its own above the text", async ({
   page,
   session,
   command,
@@ -622,10 +622,12 @@ test("user message metadata stays in the upper right on multiline bubbles", asyn
     const header = await bubble.locator("header").boundingBox();
     const menu = await bubble.locator("header .action-menu").boundingBox();
     const time = await bubble.locator("header time").boundingBox();
+    const words = await bubble.getByText(text).boundingBox();
     expect(header.y - box.y).toBeLessThan(10);
     expect(box.x + box.width - menu.x - menu.width).toBeLessThan(20);
-    expect(time.y + time.height / 2).toBeLessThan(header.y + header.height);
     expect(time.x + time.width).toBeLessThanOrEqual(menu.x);
+    // The text starts under the line, so no line of it wraps around them.
+    expect(words.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
   }
 });
 

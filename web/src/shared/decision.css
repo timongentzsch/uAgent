@@ -103,7 +103,6 @@
   width: fit-content;
   color: var(--muted);
   font-size: var(--font-small);
-  cursor: pointer;
 }
 .decision-more-body {
   display: grid;

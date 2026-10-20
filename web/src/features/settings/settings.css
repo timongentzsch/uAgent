@@ -37,16 +37,6 @@ dialog.settings-view {
 .settings-nav .group {
   margin-bottom: var(--pad);
 }
-.settings-nav-label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-.settings-nav-label > svg {
-  width: var(--icon);
-  height: var(--icon);
-  color: var(--muted);
-}
 .settings-nav .row[aria-current="page"] {
   background: var(--raised);
 }

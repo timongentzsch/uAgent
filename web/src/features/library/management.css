@@ -28,11 +28,6 @@
   margin-bottom: var(--gap);
   width: 100%;
 }
-.library-row {
-  width: 100%;
-  padding: var(--space-3) var(--gap);
-  overflow-wrap: anywhere;
-}
 .management-editor {
   margin: 0;
   border: 0;
@@ -73,19 +68,16 @@
   font-weight: 400;
   color: var(--muted);
 }
-.library-group h2 > .folder-label,
-.library-group h2 > button {
-  padding: var(--gap);
+.library-group h2 > .folder-label {
+  padding-inline: var(--inset-x);
 }
 .library-group h2 > button {
-  display: flex;
-  align-items: center;
   width: 100%;
+  justify-content: flex-start;
+  gap: var(--gap);
   border: 0;
   background: none;
   color: inherit;
-  text-align: left;
-  gap: var(--gap);
 }
 .library-group .folder-label {
   min-width: 0;
@@ -147,8 +139,6 @@
 }
 .run-row > button:first-child {
   flex: 1;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-2);
 }
 @media (max-width: 900px) {
   .editor-actions > small {

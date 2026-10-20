@@ -229,9 +229,11 @@ export function Group({
   );
 }
 
-// One setting or destination: a label (and detail line), then its value or
-// control. With `onClick` the whole row is the button and shows a chevron.
+// One setting or destination: an icon, a label (and detail line), then its
+// value or control. With `onClick` the whole row is the button and shows a
+// chevron.
 export function Row({
+  icon,
   label,
   detail,
   children,
@@ -241,6 +243,7 @@ export function Row({
   disabled,
   expanded,
 }: {
+  icon?: ComponentChildren;
   label: ComponentChildren;
   detail?: ComponentChildren;
   children?: ComponentChildren;
@@ -254,6 +257,7 @@ export function Row({
 }) {
   const body = (
     <>
+      {icon && <span class="row-icon">{icon}</span>}
       <span class="row-text">
         <span class="row-label">
           <DataText>{label}</DataText>
@@ -541,8 +545,8 @@ export function DisclosureRow({
           } as TargetedEvent<HTMLDetailsElement>);
         }}
       >
-        {icon}
         <ChevronRight class="disclosure-chevron" aria-hidden="true" />
+        {icon}
         <span class="disclosure-label" title={label}>
           {marker}
           {label}

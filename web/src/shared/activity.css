@@ -131,7 +131,6 @@
 }
 
 .activity-info > summary {
-  cursor: pointer;
   color: var(--muted);
   font-size: var(--font-small);
 }

@@ -1,15 +1,12 @@
-/* A list entry (see ListRow): its title over a muted line. */
+/* A list entry (see ListRow): a row whose title and muted line each keep
+   to one line, so every entry in the list is the same height. */
 .list-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-  border: 0;
   background: none;
-  text-align: left;
 }
-.list-row small {
-  color: var(--muted);
+.list-row :is(.row-label, .row-detail) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .unread-dot {
   display: inline-block;

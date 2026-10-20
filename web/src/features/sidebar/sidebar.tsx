@@ -569,7 +569,7 @@ function SidebarView({
   };
   const list = places.map(([kind, shown]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
-      <p class="list-kind">{kind}</p>
+      <p class="section-title">{kind}</p>
       {shown.map(place)}
     </div>
   ));

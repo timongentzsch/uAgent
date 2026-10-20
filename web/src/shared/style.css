@@ -289,17 +289,23 @@ input[type="radio"] {
   translate: calc(16rem / 14) 0;
   background: var(--on-accent);
 }
+/* Every button: its content centred in a --control-tall box, padded only
+   at the sides, so a label never sits off-centre in its fill. */
 button,
 .file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
   min-height: var(--control);
-  padding: var(--space-2) var(--space-4);
+  padding: 0 var(--inset-x);
   cursor: pointer;
   line-height: var(--leading-snug);
 }
 /* A secondary action inside a row or toolbar: shorter and quieter. */
 .compact-button {
   min-height: var(--control-s);
-  padding: var(--space-1) var(--space-3);
+  padding-inline: var(--space-3);
   font-size: var(--font-small);
 }
 button:disabled,
@@ -345,11 +351,6 @@ button:enabled:active,
 .destructive {
   color: var(--removed);
 }
-button[aria-busy="true"] {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--gap);
-}
 button[aria-pressed="true"] {
   background: var(--accent);
   color: var(--on-accent);
@@ -381,14 +382,6 @@ button[aria-pressed="true"] {
   flex-shrink: 0;
   vertical-align: -3px;
   stroke-width: 1.75;
-}
-/* A control that shows an icon beside its label lays them out as one row. */
-/* Zero specificity: a component's own layout (rows, menus) still wins. */
-:where(button, .file-button):where(:has(> .lucide)) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
 }
 button:focus-visible,
 a:focus-visible,
@@ -980,9 +973,6 @@ dialog.sidebar:not([open]) {
 }
 .file-button {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 .file-button input {
   position: absolute;
@@ -1083,18 +1073,8 @@ dialog.sidebar:not([open]) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Every plain disclosure reads like DisclosureRow: no native triangle, a
-   chevron that turns as it opens. DisclosureRow draws its own. */
-details:not(.disclosure-row) > summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  list-style: none;
-  cursor: pointer;
-}
-details:not(.disclosure-row) > summary::-webkit-details-marker {
-  display: none;
-}
+/* Every plain disclosure reads like DisclosureRow: a chevron that turns as
+   it opens. DisclosureRow draws its own. */
 details:not(.disclosure-row) > summary::before {
   content: "";
   flex-shrink: 0;
@@ -1141,7 +1121,9 @@ details[open]:not(.disclosure-row) > summary::before {
 .action-menu {
   position: relative;
 }
+/* Menu items are controls, as tall as a button whatever list opened them. */
 .menu-panel {
+  --row: var(--control);
   position: fixed;
   inset: auto;
   margin: 0;
@@ -1169,26 +1151,11 @@ details[open]:not(.disclosure-row) > summary::before {
   }
 }
 .menu-panel button {
-  display: block;
-  width: 100%;
-  border: 0;
-  text-align: left;
   font-size: var(--font-small);
-}
-/* A row that opens a view names what is chosen in it and points on; the
-   row that leads back points the other way. */
-.menu-panel button[data-menu-stay] {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-2);
 }
 /* A choice carries its tick at the row's far edge. */
 .menu-panel button[role="menuitemradio"] {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
 }
 .menu-value {
   margin-left: auto;
@@ -1688,7 +1655,7 @@ dialog > header .icon-button {
    with a value or an action. Captions, cards and rows come from here only. */
 .section-title {
   margin: 0 0 var(--space-3);
-  padding-inline: var(--space-6);
+  padding-inline: var(--inset-x);
   color: var(--muted);
   font-size: var(--font-small);
   font-weight: 400;
@@ -1703,6 +1670,7 @@ dialog > header .icon-button {
 /* One column as wide as the group: a row's long value is cut short there
    rather than widening every row. */
 .group-rows {
+  --row: var(--control-l);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
@@ -1716,21 +1684,53 @@ dialog > header .icon-button {
 }
 .group-footer {
   margin: var(--space-3) 0 0;
-  padding: var(--space-2) var(--space-6);
+  padding: var(--space-2) var(--inset-x);
   color: var(--muted);
   font-size: var(--font-small);
   overflow-wrap: anywhere;
 }
-.row {
+/* A row: an entry in any list (settings, conversations, menus,
+   suggestions, disclosures). A leading icon, one line or a label over its
+   detail, then a trailing value, time or menu, centred in a --row-tall box.
+   A label over a detail is as tall as a roomy row, so a list keeps one
+   rhythm whichever its rows have. A disclosure's summary draws no fill,
+   so it sits flush with the text around it; every other row is inset. */
+:is(
+  .row,
+  .list-row,
+  .menu-panel button,
+  .suggestions button,
+  details > summary
+) {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--gap);
   width: 100%;
+  min-width: 0;
+  min-height: var(--row);
+  padding-block: var(--space-1);
   border: 0;
-  min-height: var(--touch);
-  padding: var(--space-3) var(--space-6);
+  line-height: var(--leading-snug);
   text-align: start;
+}
+:is(.row, .list-row, .menu-panel button, .suggestions button) {
+  padding-inline: var(--inset-x);
+}
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+.row {
   background: transparent;
+}
+.row-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
 }
 .row-text {
   flex: 1;

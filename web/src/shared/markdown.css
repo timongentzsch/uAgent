@@ -2,11 +2,36 @@
   line-height: var(--leading-prose);
   min-width: 0;
 }
-.markdown p:first-child {
-  margin-top: 0;
+/* One rhythm between a reply's blocks (one per top-level element), whatever
+   they are: each is --gap below the one before, a heading --pad. The blocks
+   keep no margins of their own, so nothing collapses or adds up. */
+.markdown
+  :is(
+    p,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    ul,
+    ol,
+    pre,
+    blockquote,
+    table,
+    hr,
+    .code-block,
+    .diagram,
+    .katex-display
+  ) {
+  margin-block: 0;
 }
-.markdown p:last-child {
-  margin-bottom: 0;
+.markdown > * + *,
+.markdown :is(li, blockquote) > * + * {
+  margin-top: var(--gap);
+}
+.markdown > * + :has(:is(h1, h2, h3, h4, h5, h6)) {
+  margin-top: var(--pad);
 }
 /* Rendered headings are shifted two levels down (see markdown.ts); their
    size follows the level the reply wrote. */
@@ -78,7 +103,6 @@
 
 .code-block {
   position: relative;
-  margin: var(--space-4) 0;
 }
 .code-block pre {
   margin: 0;
@@ -103,9 +127,6 @@
   }
 }
 
-.diagram {
-  margin: var(--gap) 0;
-}
 .diagram-preview {
   height: clamp(calc(140rem / 14), 25vh, calc(240rem / 14));
   display: grid;

@@ -3,7 +3,6 @@ import type {
   Activity,
   Block,
   Catalogue,
-  Draft,
   InspectorTarget,
   Outgoing,
   Session,
@@ -86,12 +85,9 @@ export default function ChatPage({
   catalogue,
   outgoing,
   loadError,
-  draft,
-  setDraft,
   menu,
   newPlace,
   addMember,
-  submit,
   updateView,
   choose,
   side,
@@ -110,14 +106,11 @@ export default function ChatPage({
   catalogue: Catalogue;
   outgoing: Outgoing[];
   loadError: unknown;
-  draft: Draft;
-  setDraft: (value: Draft) => void;
   // A panel's roster: a row's own actions, and asking for another member.
   menu: (item: Session) => ComponentChildren;
   // Asks for a workspace's name or a folder's path, to start a conversation.
   newPlace: (place: "workspace" | "folder") => void;
   addMember: () => void;
-  submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
   side: { question: string; id?: string; firstRequest: string } | null;
@@ -129,7 +122,7 @@ export default function ChatPage({
   files?: ComponentChildren;
 }) {
   const { store, online, report, load, setModal } = useHostContext();
-  const { setFollowing } = useConversation();
+  const { setFollowing, draft, setDraft, submit } = useConversation();
   const phone = usePhone();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;

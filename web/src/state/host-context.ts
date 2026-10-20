@@ -4,6 +4,7 @@ import type {
   Act,
   AppModal,
   ConnectionPhase,
+  Draft,
   Report,
   Session,
   Snapshot,
@@ -28,9 +29,14 @@ export interface Host {
   askMember: (item: Session) => void;
 }
 
-// What the open conversation's surfaces share. It changes with every send
-// and upload, so only the page and its composer read it, never a list row.
+// What the open conversation's surfaces share. It changes with every send,
+// upload and key typed, so only the page, its composer and the dialogs read
+// it, never a list row.
 export interface Conversation {
+  // The open conversation's draft, and sending it.
+  draft: Draft;
+  setDraft: (value: Draft) => void;
+  submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   // Runs a command on the open conversation.
   act: Act;
   // Attaches files to the open conversation's draft.

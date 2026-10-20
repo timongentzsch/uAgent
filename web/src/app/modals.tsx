@@ -6,7 +6,8 @@ import type {
 } from "../shared/types.ts";
 import { folderOf } from "../shared/display.ts";
 import { maxSpaceNameChars } from "../shared/limits.ts";
-import type { ComponentProps, TargetedSubmitEvent } from "preact";
+import { createContext, type ComponentProps } from "preact";
+import { useContext } from "preact/hooks";
 import {
   Modal,
   Deferred,
@@ -24,6 +25,7 @@ import type Settings from "../features/settings/settings.tsx";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
+import type { Places } from "./use-places.tsx";
 import {
   browserDialog,
   conversationActions,
@@ -55,6 +57,8 @@ type Preferences = Pick<
   | "notifications"
   | "logout"
 >;
+// Provided by the shell, read only by Settings.
+export const PreferencesContext = createContext<Preferences | null>(null);
 
 // The app's dialogs over the shell. Each selects from the snapshots only
 // what it shows, while it is open, so a streamed frame re-renders none of
@@ -71,13 +75,7 @@ export default function Modals({
   catalogue,
   compact,
   managementVersion,
-  projects,
-  folder,
-  setFolder,
-  space,
-  setSpace,
-  create,
-  preferences,
+  places,
 }: {
   modal: AppModal | null;
   inspector: InspectorTarget | null;
@@ -90,14 +88,14 @@ export default function Modals({
   catalogue: Catalogue;
   compact: boolean;
   managementVersion: number;
-  projects: string[];
-  folder: string;
-  setFolder: (folder: string) => void;
-  space: string;
-  setSpace: (space: string) => void;
-  create: (event: TargetedSubmitEvent<HTMLFormElement>) => void;
-  preferences: Preferences;
+  // The places to start in, and the New dialog's fields.
+  places: Pick<
+    Places,
+    "projects" | "folder" | "setFolder" | "space" | "setSpace" | "create"
+  >;
 }) {
+  const preferences = useContext(PreferencesContext)!;
+  const { projects, folder, setFolder, space, setSpace, create } = places;
   const {
     store,
     online,

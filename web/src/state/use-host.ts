@@ -67,6 +67,8 @@ function envelope(data: string): HostEvent | undefined {
   return undefined;
 }
 
+export type HostState = ReturnType<typeof useHost>;
+
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
   onResult: (value: JSONValue, inspect: boolean) => void,

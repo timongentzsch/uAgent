@@ -109,7 +109,8 @@ class TerminalActivityLabel {
 inline constexpr const char* kWaitingActivity = "Working";
 
 // The spinner the working row and a blocking call both animate: braille, or
-// |/-\\ where the locale cannot show it.
+// |/-\\ where the locale cannot show it, one frame per period.
+inline constexpr auto kSpinnerPeriod = std::chrono::milliseconds(100);
 inline const char* SpinnerFrame(size_t tick) {
   static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
                                             "⠴", "⠦", "⠧", "⠇", "⠏"};
@@ -146,7 +147,7 @@ class TerminalSpinner {
         ++frame_;
         // Without motion only a new label or the stop redraws.
         if (g_motion) {
-          wake_.wait_for(lock, std::chrono::milliseconds(100),
+          wake_.wait_for(lock, kSpinnerPeriod,
                          [this]() UAGENT_REQUIRES(mutex_) { return done_; });
         } else {
           wake_.wait(lock);

@@ -1054,6 +1054,24 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
 
+def test_reduced_motion_redraws_the_working_row_once_a_second(root, home, *, binary):
+    """Without motion the working row counts seconds and wakes nothing more."""
+
+    def delayed(_, __):
+        time.sleep(1.5)
+        return event({"content": "still-ok"})
+
+    with Server([delayed]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_REDUCED_MOTION"] = "1"
+        code, output = run_pty(root, env, [(b"go\n", b"still-ok"), b"/q\n"], binary=binary)
+    assert_true(code == 0, output)
+    waiting = output[output.find(b"Waiting for model") : output.find(b"still-ok")]
+    paints = waiting.count(b"\x1b[?2026h")
+    print(f"  {paints} paints in 1.5 s", flush=True)
+    assert_true(0 < paints <= 4, waiting)
+
+
 def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
     # Ctrl+Z stops the process, so it cannot restore anything on the way down:
     # the handler has to hand back a cooked line discipline before the stop and

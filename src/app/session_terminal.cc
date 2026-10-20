@@ -288,9 +288,14 @@ class Terminal {
       if (const auto deadline = composer_.WakeDeadline(); raw_ && deadline) {
         timeout = PollTimeoutMs(*deadline);
       }
-      // The working row's spinner and elapsed time advance on their own.
+      // The working row's spinner and elapsed time advance on their own;
+      // without motion only the seconds do.
       if (raw_ && running) {
-        timeout = timeout < 0 ? kWaitTickMs : std::min(timeout, kWaitTickMs);
+        const int tick = static_cast<int>(
+            std::chrono::milliseconds(g_motion ? kSpinnerPeriod
+                                               : std::chrono::seconds(1))
+                .count());
+        timeout = timeout < 0 ? tick : std::min(timeout, tick);
       }
       if (raw_ && stale) {
         const int frame = PollTimeoutMs(painted + kPaintInterval);

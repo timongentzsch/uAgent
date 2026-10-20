@@ -574,6 +574,10 @@ void TestActivityBar() {
   CHECK(second.starts_with("⠙"));
   CHECK(wrapped.starts_with("⠋"));
   CHECK(first != second);
+  // Reduced motion holds it still.
+  g_motion = false;
+  CHECK(ActivityBar(Working(std::chrono::milliseconds(100))).starts_with("⠋"));
+  g_motion = true;
 
   // Elapsed renders at one decimal; context always shows.
   CHECK(ActivityBar(Working(std::chrono::milliseconds(1500))).find("1.5s") !=

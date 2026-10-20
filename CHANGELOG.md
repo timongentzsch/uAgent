@@ -314,6 +314,8 @@
 - A draft naming an `@path` no longer lists that directory on every repaint
   of the terminal; the composer is laid out again only when the draft, the
   menu or the width changes.
+- With reduced motion the working row's spinner holds still and the terminal
+  redraws it once a second, for the elapsed time, instead of ten times.
 
 ## v1.4.0 - 2026-10-15
 

@@ -1,4 +1,9 @@
-import { test, expect, withoutServiceWorker } from "./fixtures.js";
+import {
+  test,
+  expect,
+  withoutServiceWorker,
+  headerAction,
+} from "./fixtures.js";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
   page,
@@ -88,7 +93,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       .click();
     await expect(drawer).toHaveCount(0);
   }
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   const geometry = await settings.evaluate((element) => {
     const box = element.getBoundingClientRect();
@@ -236,7 +241,7 @@ test("touch controls remain reachable at phone width", async ({
     const box = await picker.boundingBox();
     expect(box.x + box.width).toBeLessThanOrEqual(390);
     await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
-    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    await headerAction(page, "Settings");
     await page
       .locator(".settings-nav")
       .getByRole("button", { name: "This browser", exact: true })
@@ -391,7 +396,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await contained(picker, 430, 90);
     await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
     await viewport(844);
-    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", {
       name: "Settings",
       exact: true,

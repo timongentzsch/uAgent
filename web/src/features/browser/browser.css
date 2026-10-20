@@ -138,7 +138,7 @@ dialog.browser-view[data-layout="sheet"] {
   gap: var(--space-2);
   min-width: 0;
   height: calc(var(--control) + 2 * var(--gap));
-  padding: var(--gap) var(--surface-inset);
+  padding: var(--gap) var(--inset-x);
   border-top: 1px solid var(--line);
   background: var(--bg);
 }

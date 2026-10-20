@@ -14,7 +14,6 @@
 }
 .sidebar-head button {
   font-size: var(--font-small);
-  padding-inline: var(--space-3);
 }
 .sidebar nav {
   overflow: auto;
@@ -24,15 +23,6 @@
 /* Places stand apart by the space between them, and by their bold header. */
 .sidebar nav section + section {
   margin-top: var(--space-6);
-}
-/* Workspaces and folders, each under its word. */
-.list-kind {
-  margin: 0;
-  padding: var(--space-4) var(--space-4) 0;
-  color: var(--muted);
-  font-size: var(--font-micro);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 .list-group + .list-group {
   margin-top: var(--space-6);
@@ -60,15 +50,14 @@
   font-size: var(--font-small);
   font-weight: 600;
 }
+/* The name's text lines up with the conversations' under it. */
 .sidebar h2 button {
-  display: flex;
-  align-items: center;
   width: 100%;
+  justify-content: flex-start;
   gap: var(--gap);
   padding-inline: var(--space-2);
   font-size: inherit;
   font-weight: inherit;
-  text-align: left;
 }
 .sidebar h2 .folder-label {
   flex: 1;
@@ -136,25 +125,12 @@
    while the row is pointed at or focused, and always on a touch screen. */
 .sidebar .session {
   flex: 1;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--gap);
-  padding: var(--space-3) var(--space-4);
-  text-align: left;
-}
-.session > span:first-child {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-size: var(--font-small);
 }
 .session-time {
   display: none;
   flex: none;
   color: var(--muted);
-  font-size: var(--font-micro);
   white-space: nowrap;
 }
 .session-row:hover .session-time,
@@ -195,13 +171,13 @@
   align-items: center;
   gap: var(--space-2);
   border-top: 1px solid var(--line);
-  padding-top: var(--space-4);
+  padding-block: var(--space-2);
 }
 .menu-note {
   margin: 0;
   padding: var(--space-2) var(--space-4);
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .sidebar-sections {
   display: flex;

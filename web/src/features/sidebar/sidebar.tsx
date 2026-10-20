@@ -93,6 +93,7 @@ export function ConversationMenu({
   notify,
   open,
   detail,
+  children,
 }: {
   item: Session;
   fork: (item: Session) => void;
@@ -107,10 +108,13 @@ export function ConversationMenu({
     disabled: boolean;
     change: (level: string) => void;
   };
+  // What the conversation's header would hold on a wider screen, first.
+  children?: ComponentChildren;
 }) {
   const { online, load: loadSnapshot, report } = useHostContext();
   return (
     <Menu label="Conversation menu">
+      {children}
       <MenuItem
         disabled={
           !online ||
@@ -569,7 +573,7 @@ function SidebarView({
   };
   const list = places.map(([kind, shown]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
-      <p class="list-kind">{kind}</p>
+      <p class="section-title">{kind}</p>
       {shown.map(place)}
     </div>
   ));

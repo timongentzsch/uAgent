@@ -111,9 +111,13 @@ type MessageProps = {
   block: PresentedBlock;
   online: boolean;
   session: SessionRef;
+  // A turn's answer whose time and menu its footer carries, given to that
+  // footer as `answer` and to the answer itself as `footed`.
+  answer?: PresentedBlock;
+  footed?: boolean;
 };
 
-function MessageView({ block, online, session }: MessageProps) {
+function MessageView({ block, online, session, answer, footed }: MessageProps) {
   const {
     read,
     inspect,
@@ -239,6 +243,7 @@ function MessageView({ block, online, session }: MessageProps) {
             : capitalize(block.kind),
     block.time,
   );
+  const answerName = useRowName("Assistant", answer?.time);
   if (block.kind === "compaction" && block.compaction)
     return (
       <EventRow
@@ -284,7 +289,19 @@ function MessageView({ block, online, session }: MessageProps) {
         summary={block.summary}
         session={session}
         open={() => statistics?.(block)}
-      />
+      >
+        {answer && (
+          <>
+            <Time value={answer.time} />
+            <MessageMenu
+              label={`Actions for ${answerName}`}
+              block={answer}
+              statistics={statistics}
+              http={http}
+            />
+          </>
+        )}
+      </TurnFooter>
     );
   // In a chat with members the panel is named like everyone else.
   const panel =
@@ -302,7 +319,7 @@ function MessageView({ block, online, session }: MessageProps) {
       <h3 class="sr-only" id={nameId}>
         {name}
       </h3>
-      {!row && (
+      {!row && !footed && (
         <header>
           {member &&
             (seat ? <MemberAvatar item={seat} /> : <Avatar name={member} />)}
@@ -532,6 +549,11 @@ function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
 function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
   return (
     before.online === after.online &&
+    before.footed === after.footed &&
+    (before.answer === after.answer ||
+      (!!before.answer &&
+        !!after.answer &&
+        blockEqual(before.answer, after.answer))) &&
     before.session.id === after.session.id &&
     (before.session.generation || "") === (after.session.generation || "") &&
     blockEqual(before.block, after.block)
@@ -637,10 +659,22 @@ export function MessageRows({ blocks, ...props }: MessageRowsProps) {
     [blocks, policy, chat],
   );
   const scope = `${props.session?.id || ""}:${level}:`;
+  // A turn's answer puts its time and menu on the turn's footer, under it.
+  // In a chat the panel's answers keep their header, which names them.
+  const footed = (index: number) =>
+    !chat &&
+    rows[index]?.kind === "assistant" &&
+    rows[index + 1]?.kind === "turn_summary";
   return (
     <>
-      {rows.map((row) => (
-        <Message key={`${scope}${row.key || row.id}`} block={row} {...props} />
+      {rows.map((row, index) => (
+        <Message
+          key={`${scope}${row.key || row.id}`}
+          block={row}
+          footed={footed(index)}
+          answer={footed(index - 1) ? rows[index - 1] : undefined}
+          {...props}
+        />
       ))}
     </>
   );

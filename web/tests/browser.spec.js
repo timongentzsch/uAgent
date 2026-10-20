@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, headerAction } from "./fixtures.js";
 
 const profiles = {
   profile_id: "default",
@@ -20,7 +20,7 @@ const browserStatus = async (page, initial) => {
 };
 const openBrowser = async (page, session) => {
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Open browser" }).click();
+  await headerAction(page, "Open browser");
   return page.getByRole("dialog", { name: "Browser", exact: true });
 };
 const rect = async (locator) => {
@@ -66,7 +66,7 @@ test("clipboard card keeps native editing shortcuts local", async ({
       value: { readText: () => Promise.reject(new Error("denied")) },
     }),
   );
-  await page.getByRole("button", { name: "Open browser" }).click();
+  await headerAction(page, "Open browser");
   const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
   await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Paste" }).click();
@@ -122,7 +122,7 @@ test.describe("phone browser sheet", () => {
     });
     await page.goto(`/#session=${session.id}`);
     await remote.prepare();
-    await page.getByRole("button", { name: "Open browser" }).click();
+    await headerAction(page, "Open browser");
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     const screen = dialog.locator(".browser-screen");
     const bar = dialog.locator(".browser-bar");
@@ -193,7 +193,7 @@ test.describe("phone browser sheet", () => {
     });
     await page.goto(`/#session=${session.id}`);
     await remote.prepare();
-    await page.getByRole("button", { name: "Open browser" }).click();
+    await headerAction(page, "Open browser");
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     const viewport = dialog.getByLabel("Browser viewport");
     const canvas = dialog.locator(".browser-rfb canvas");
@@ -296,7 +296,7 @@ test.describe("phone browser sheet", () => {
     });
     await page.goto(`/#session=${session.id}`);
     await remote.prepare();
-    await page.getByRole("button", { name: "Open browser" }).click();
+    await headerAction(page, "Open browser");
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     await dialog.getByRole("button", { name: "Keyboard" }).click();
     await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
@@ -478,7 +478,7 @@ test("desktop Copy and Paste carry text between Chrome and the device", async ({
   });
   await page.goto(`/#session=${session.id}`);
   await remote.prepare();
-  await page.getByRole("button", { name: "Open browser" }).click();
+  await headerAction(page, "Open browser");
   const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
   await expect(dialog.getByRole("button", { name: "Keyboard" })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();

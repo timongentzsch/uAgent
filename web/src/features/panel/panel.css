@@ -13,10 +13,11 @@
   display: flex;
   align-items: center;
   gap: var(--gap);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
   font-weight: 400;
   color: var(--muted);
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--row);
+  padding: 0 var(--inset-x);
 }
 .board h2 button {
   margin-left: auto;
@@ -24,19 +25,10 @@
 .board-note {
   color: var(--muted);
   font-size: var(--font-small);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--inset-x);
 }
 .board-count {
   font-variant-numeric: tabular-nums;
-}
-.board-row {
-  width: 100%;
-}
-.board-row > span,
-.board-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* In its phone sheet the board is the sheet's content, not a column. */
 .side-sheet .board {

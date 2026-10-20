@@ -29,23 +29,13 @@ dialog.settings-view {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: var(--pad) var(--surface-inset) var(--space-12);
+  padding: var(--pad) var(--inset-x) var(--space-12);
 }
 .settings-nav {
   border-right: 1px solid var(--line);
 }
 .settings-nav .group {
   margin-bottom: var(--pad);
-}
-.settings-nav-label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-.settings-nav-label > svg {
-  width: var(--icon);
-  height: var(--icon);
-  color: var(--muted);
 }
 .settings-nav .row[aria-current="page"] {
   background: var(--raised);
@@ -60,18 +50,22 @@ dialog.settings-view {
     display: none;
   }
 }
+/* The pane's title and intro start where its rows' text does. */
 .settings-pane-title {
   margin: 0 0 var(--space-4);
+  padding-inline: var(--inset-x);
   font-size: var(--font-display);
 }
 /* What the section's scope affects and where it is saved. */
 .settings-scope {
   margin: 0 0 var(--pad);
+  padding-inline: var(--inset-x);
   color: var(--muted);
 }
-/* Content inside a group that is not a row (a slider, an error). */
+/* Content inside a group that is not a row (a slider, an error), inset as
+   a row's text is. */
 .group-block {
-  padding: var(--space-6);
+  padding: var(--space-6) var(--inset-x);
 }
 /* A setting edited in its row. What is typed gets a field as wide as a
    value needs; a switch, a choice and a reset take only their own width. */

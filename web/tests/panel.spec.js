@@ -2,7 +2,7 @@
 // and what it started beside the chat, and slides in from the right on a
 // phone. What it started lists under the place's name in the sidebar, and
 // its members show as avatars on it, each with a card.
-import { test, expect, openPanel } from "./fixtures.js";
+import { test, expect, openPanel, headerAction } from "./fixtures.js";
 
 const VIEWPORTS = [
   ["desktop", { width: 1440, height: 900 }],
@@ -58,13 +58,39 @@ for (const [name, viewport] of VIEWPORTS) {
         () => document.documentElement.scrollWidth - window.innerWidth,
       ),
     ).toBeLessThanOrEqual(0);
-    // What it is, in one line under its title, with its instructions a tap
-    // away even where the words truncate.
-    const subtitle = page.locator(".panel-subtitle");
-    await expect(subtitle).toContainText("hands work to threads");
-    const button = subtitle.getByRole("button", { name: "Edit instructions" });
-    await expect(button).toBeInViewport();
-    expect((await subtitle.boundingBox()).height).toBeLessThan(40);
+    const head = page.locator(".conversation-head");
+    if (name === "phone") {
+      // A phone keeps the title, the board and the menu, which holds the
+      // instructions.
+      await expect(head.locator(".panel-subtitle")).toHaveCount(0);
+      await head.getByRole("button", { name: "Conversation menu" }).click();
+      await expect(
+        page.getByRole("menuitem", { name: "Edit instructions" }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+    } else {
+      // What it is, in one line under its title, with its instructions a
+      // tap away even where the words truncate.
+      const subtitle = page.locator(".panel-subtitle");
+      await expect(subtitle).toContainText("hands work to threads");
+      const button = subtitle.getByRole("button", {
+        name: "Edit instructions",
+      });
+      await expect(button).toBeInViewport();
+      expect((await subtitle.boundingBox()).height).toBeLessThan(40);
+    }
+    // Nothing the title column holds reaches under the buttons beside it.
+    expect(
+      await head.evaluate((node) => {
+        const title = node.querySelector(":scope > div");
+        const next = title.nextElementSibling;
+        if (!next) return true;
+        const edge = next.getBoundingClientRect().left;
+        return [...title.querySelectorAll("*")].every(
+          (child) => child.getBoundingClientRect().right <= edge + 0.5,
+        );
+      }),
+    ).toBe(true);
     await shot(page, `help-${browserName}-${name}`);
   });
 
@@ -103,7 +129,7 @@ for (const [name, viewport] of VIEWPORTS) {
       .locator(".transcript-content > *")
       .evaluateAll((nodes) =>
         nodes.map((node) =>
-          node.classList.contains("turn-summary")
+          node.classList.contains("turn-footer")
             ? "stats"
             : node.classList.contains("user")
               ? // What shows: the row's spoken name ("You, 10:32") is not.
@@ -356,7 +382,7 @@ test("the panel's subtitle opens its instructions", async ({
   session,
 }) => {
   await openPanel(page, session);
-  await page.getByRole("button", { name: "Edit instructions" }).click();
+  await headerAction(page, "Edit instructions");
   const dialog = page.getByRole("dialog", { name: "Instructions" });
   const panel = dialog.getByLabel("Yours · panel");
   await expect(panel).toBeEnabled();
@@ -371,7 +397,7 @@ test("the panel's subtitle opens its instructions", async ({
 test("instructions read well on a phone", async ({ page, session }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPanel(page, session);
-  await page.getByRole("button", { name: "Edit instructions" }).click();
+  await headerAction(page, "Edit instructions");
   const dialog = page.getByRole("dialog", { name: "Instructions" });
   await expect(dialog.getByLabel("Yours · panel")).toBeEnabled();
   expect(

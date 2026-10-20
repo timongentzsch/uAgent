@@ -2,28 +2,19 @@
   flex: 1;
   min-width: var(--control);
 }
+/* The slot is the flexible one; the button is as wide as its name, with
+   its chevron beside it. */
 .model-selector {
   min-width: 0;
-  width: 100%;
-  text-align: left;
-  justify-content: flex-start;
+  max-width: 100%;
   font-size: var(--font-small);
-  padding-inline: var(--space-3);
 }
 .model-selector > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.model-selector > .lucide:last-child {
-  margin-left: auto;
-}
 @media (max-width: 600px) {
-  .model-selector {
-    font-size: var(--font-micro);
-    gap: var(--space-2);
-    padding-inline: var(--space-1);
-  }
   .model-selector > .lucide:first-child {
     display: none;
   }

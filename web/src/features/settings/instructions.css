@@ -36,11 +36,11 @@
   text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .instructions-also {
   overflow-wrap: anywhere;
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 /* An empty file is one line; it grows with what is typed. */
 .instruction-card .text-control:has(> textarea) {

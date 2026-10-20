@@ -69,7 +69,6 @@ export default function Board({
             <div class="session-row" key={item.id}>
               {item.member && <MemberAvatar item={item} />}
               <ListRow
-                class="board-row"
                 onClick={() => choose(item.id)}
                 title={<SessionName item={item} avatar={false} />}
                 meta={

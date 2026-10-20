@@ -186,6 +186,14 @@ export function Menu({
             event.preventDefault();
             items[match].focus();
           }}
+          // Focus is back on the menu's button before an item acts, so a
+          // dialog it opens returns focus there, not to an item about to go.
+          onClickCapture={(event) => {
+            const pressed =
+              event.target instanceof Element && event.target.closest("button");
+            if (pressed && !pressed.hasAttribute("data-menu-stay"))
+              anchor.current?.focus({ preventScroll: true });
+          }}
           onClick={(event) => {
             // A row that opens or leaves a view keeps the menu open.
             const pressed =

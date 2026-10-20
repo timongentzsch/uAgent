@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { duration } from "../../shared/duration.ts";
 import { cost, count, plural } from "../../shared/quantities.ts";
@@ -8,18 +9,21 @@ import { formatStat } from "../../shared/display.ts";
 // The review sheet loads on first open, as the statistics dialog does.
 const review = () => import("./turn-review.tsx");
 
-// Turn footer button. Lives apart from statistics.tsx (the lazily loaded
-// statistics dialog): every transcript message row renders this, so a
-// static import of the dialog chunk would chain the whole transcript
+// A turn's last line: its numbers, and after them what `children` adds
+// (the answer's time and menu). Lives apart from statistics.tsx (the lazily
+// loaded statistics dialog): every transcript message row renders this, so
+// a static import of the dialog chunk would chain the whole transcript
 // behind it and freeze message rendering until the dialog arrives.
 export function TurnFooter({
   summary,
   session,
   open,
+  children,
 }: {
   summary: TurnSummary;
   session: SessionRef;
   open: () => void;
+  children?: ComponentChildren;
 }) {
   const [reviewing, setReviewing] = useState(false);
   const files = summary.files || [];
@@ -27,21 +31,24 @@ export function TurnFooter({
     summary.outcome !== "completed" && <span> · {summary.outcome}</span>;
   if (!files.length)
     return (
-      // The name is the visible numbers, introduced for a listener.
-      <Button variant="quiet" class="turn-summary" onClick={open}>
-        <span class="sr-only">Turn statistics: </span>
-        {summary.usage_reported !== false && (
-          <span class="turn-tokens">
-            {count((summary.usage.input || 0) + (summary.usage.output || 0))}{" "}
-            tokens ·{" "}
+      <div class="turn-footer">
+        {/* The name is the visible numbers, introduced for a listener. */}
+        <Button variant="quiet" class="turn-summary" onClick={open}>
+          <span class="sr-only">Turn statistics: </span>
+          {summary.usage_reported !== false && (
+            <span class="turn-tokens">
+              {count((summary.usage.input || 0) + (summary.usage.output || 0))}{" "}
+              tokens ·{" "}
+            </span>
+          )}
+          <span>
+            {count(summary.model_calls ?? summary.steps)} model calls ·{" "}
+            {count(summary.tool_calls)} tools · {duration(summary.duration_ms)}
           </span>
-        )}
-        <span>
-          {count(summary.model_calls ?? summary.steps)} model calls ·{" "}
-          {count(summary.tool_calls)} tools · {duration(summary.duration_ms)}
-        </span>
-        {outcome}
-      </Button>
+          {outcome}
+        </Button>
+        {children}
+      </div>
     );
   // A turn that changed files leads with them: its receipt, and the way
   // back (the review sheet's Undo).
@@ -51,7 +58,7 @@ export function TurnFooter({
   );
   const spent = summary.usage.cost > 0 && summary.usage.cost_reported !== false;
   return (
-    <div class="turn-receipt">
+    <div class="turn-footer">
       <Button
         variant="quiet"
         class="turn-summary"
@@ -70,6 +77,7 @@ export function TurnFooter({
         {duration(summary.duration_ms)}
         {outcome}
       </Button>
+      {children}
       {reviewing && (
         <Modal
           title="Changed files"

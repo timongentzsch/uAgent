@@ -1,4 +1,4 @@
-import { test, expect, online, newFolder } from "./fixtures.js";
+import { test, expect, online, newFolder, headerAction } from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 
 test("appearance and configuration remain usable at large scales", async ({
@@ -8,7 +8,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   // A phone opens settings on its section list.
   await page
     .locator(".settings-nav")
@@ -589,7 +589,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
   session,
 }) => {
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   const nav = page.locator(".settings-nav");
   const form = page.locator(".configuration");
   const field = (name) => form.locator(`[data-setting="${name}"]`);
@@ -657,7 +657,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
 // a restart offers to restart the running conversations.
 test("locked settings and restart to apply", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   await page
     .locator(".settings-nav")
     .getByRole("button", { name: "All conversations", exact: true })

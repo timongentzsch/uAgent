@@ -38,7 +38,7 @@
 .file-chip small {
   display: block;
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .file-chip .attachment-tile {
   width: var(--control-l);

@@ -19,11 +19,13 @@ export function ListRow({
 }) {
   return (
     <Button {...props} class={`list-row ${className}`}>
-      <span>
-        {title}
-        {unread && <span class="unread-dot" role="img" aria-label={unread} />}
+      <span class="row-text">
+        <span class="row-label">
+          {title}
+          {unread && <span class="unread-dot" role="img" aria-label={unread} />}
+        </span>
+        {meta && <small class="row-detail">{meta}</small>}
       </span>
-      {meta && <small>{meta}</small>}
       {children}
     </Button>
   );

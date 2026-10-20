@@ -35,6 +35,3 @@
   border-bottom: 1px solid var(--line);
   font-size: var(--font-small);
 }
-.raw-body summary {
-  cursor: pointer;
-}

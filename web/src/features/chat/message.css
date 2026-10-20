@@ -1,6 +1,4 @@
 .message {
-  --control: 2rem;
-  --row-height: calc(24rem / 14);
   width: 100%;
   min-width: 0;
   container-type: inline-size;
@@ -8,7 +6,7 @@
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
   overflow-wrap: break-word;
-  padding: var(--space-1) var(--space-4);
+  padding: var(--space-2) var(--inset-x);
   /* No vertical margins anywhere in here: the transcript column owns all
      inter-message rhythm with one flex gap, so spacing cannot collapse or
      double up between header variants. */
@@ -24,28 +22,14 @@
      read wider by exactly this much. */
   margin-top: var(--space-6);
 }
+/* Every message opens with a line of its own: a member's name at the left,
+   the time and the menu at the right. */
 .message > header {
   display: flex;
   align-items: center;
   gap: var(--gap);
-  min-height: var(--control);
-  font-size: var(--font-micro);
-}
-/* Message time and menu float at the upper right of the first line, which wraps
-   around them. Row-height controls for a mouse; touch keeps the larger
-   coarse target. */
-@media (pointer: fine) {
-  .transcript-content > .message:not(.user) {
-    --control: var(--row-height);
-  }
-}
-.message:is(.user, .response) {
-  display: flow-root;
-}
-.message:is(.user, .response) > header {
-  float: right;
-  min-height: var(--row-height);
-  margin-left: var(--space-2);
+  min-height: var(--row);
+  font-size: var(--font-small);
 }
 @media (hover: hover) and (pointer: fine) {
   .message.response:not(:hover, :focus-within)
@@ -53,11 +37,6 @@
     > :is(time, .action-menu) {
     opacity: 0;
   }
-}
-/* A chat member's message opens with its name on a line of its own. */
-.message.member > header {
-  float: none;
-  margin-left: 0;
 }
 .message > header > .actor {
   font-weight: 600;
@@ -67,7 +46,7 @@
   margin-left: auto;
   flex: none;
   white-space: nowrap;
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .thinking {
   --text: var(--muted);
@@ -77,23 +56,8 @@
 .message details {
   margin: 0;
 }
-.message summary,
 .disclosure-row > summary {
-  cursor: pointer;
   color: var(--muted);
-  min-height: var(--row-height);
-  padding: var(--space-1) 0;
-}
-.disclosure-row > summary {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-2);
-  list-style: none;
-  text-align: left;
-}
-.disclosure-row > summary::-webkit-details-marker {
-  display: none;
 }
 .disclosure-chevron {
   width: var(--icon);
@@ -109,9 +73,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.disclosure-row > summary small,
-.disclosure-row > summary time {
+.disclosure-row > summary :is(small, time) {
+  flex: none;
   white-space: nowrap;
+}
+.disclosure-row > summary time {
+  margin-left: auto;
 }
 .disclosure-body {
   border-left: 1px solid var(--line);
@@ -134,11 +101,11 @@
    and the collapsed output share it, and the body runs under the menu so
    both boxes end at the same edge. */
 .message.tool {
-  --tool-indent: calc(16rem / 14 + var(--space-2));
+  --tool-indent: calc(var(--icon) + var(--gap));
 }
 .tool-row-head > .tool-disclosure > .disclosure-body {
   border-left: 0;
-  margin: 0 calc(-1 * (var(--control) + var(--space-2))) 0 var(--tool-indent);
+  margin: 0 calc(-1 * (var(--row) + var(--space-2))) 0 var(--tool-indent);
   padding-left: 0;
 }
 /* Status only when it matters: a running headline shimmers softly, a failed
@@ -182,7 +149,7 @@
 /* A session or turn error under the transcript, in the tool-failure red. */
 .failure {
   margin: 0;
-  padding: var(--space-1) var(--space-4);
+  padding: var(--space-1) var(--inset-x);
   color: var(--removed);
   overflow-wrap: anywhere;
 }
@@ -195,6 +162,7 @@
   padding-inline: 0;
 }
 .tool-disclosure > summary small {
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 32ch;
   overflow: hidden;
@@ -242,63 +210,25 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
-@media (pointer: coarse) {
-  .message {
-    --control: calc(32rem / 14);
-  }
-  .message summary,
-  .disclosure-row > summary {
-    min-height: var(--touch);
-  }
-}
-@media (max-width: 600px) {
-  .message {
-    padding: var(--space-2) var(--space-3);
-  }
-  .message > header,
-  .tool-disclosure > summary {
-    gap: var(--space-2);
-  }
-}
-
+/* Narrow: a tool's status takes a line of its own under its name. */
 @container (max-width: 500px) {
   .tool-disclosure > summary {
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
-    row-gap: var(--space-1);
+    flex-wrap: wrap;
+    row-gap: 0;
   }
   .tool-disclosure > summary small {
-    grid-column: 3;
-    font-size: var(--font-micro);
+    flex-basis: 100%;
+    max-width: none;
+    padding-left: var(--tool-indent);
   }
 }
 
+/* Inset as a message is, so its chevron lines up with theirs. */
 .event-row {
-  /* Direct transcript child: the column gap owns spacing. */
   margin: 0;
+  padding-inline: var(--inset-x);
   color: var(--muted);
   font-size: var(--font-small);
-}
-.event-row > summary {
-  align-items: center;
-  gap: var(--gap);
-  min-height: var(--control);
-  cursor: pointer;
-}
-.event-row > summary > .disclosure-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.event-row > summary svg {
-  flex-shrink: 0;
-  width: var(--icon);
-  height: var(--icon);
-}
-.event-row > summary small,
-.event-row time {
-  flex-shrink: 0;
 }
 .event-row[data-status="failed"] > summary {
   color: var(--text);
@@ -321,24 +251,33 @@
    statistics dialog chunk — or the footer renders unstyled until the
    dialog first opens. */
 .turn-summary {
-  display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--space-2);
-  padding: var(--space-2) var(--space-4) 0;
+  justify-content: flex-start;
+  column-gap: var(--space-2);
+  min-height: var(--row);
   color: var(--muted);
-  font-size: var(--font-micro);
-  text-align: left;
+  font-size: var(--font-small);
+  text-align: start;
 }
-/* A turn that changed files: its receipt, then its statistics. */
-.turn-receipt {
+/* A turn's last line: a receipt of the files it changed, its statistics,
+   then its answer's time and menu at the far end, inset as a message is. */
+.turn-footer {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  padding-inline-end: var(--inset-x);
 }
-.turn-receipt > .turn-summary + .turn-summary {
+.turn-footer > .turn-summary + .turn-summary {
   padding-left: var(--space-2);
 }
-.turn-receipt > .turn-summary:first-child {
+.turn-footer > .turn-summary:has(+ .turn-summary) {
   padding-right: 0;
+}
+.turn-footer > time {
+  margin-inline: auto var(--gap);
+  color: var(--muted);
+  font-size: var(--font-small);
+  white-space: nowrap;
 }
 .turn-files {
   display: grid;

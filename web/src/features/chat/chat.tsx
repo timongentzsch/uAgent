@@ -108,7 +108,7 @@ function Chat({
       {/* A log a listener can browse, silent as it streams: the status
           line above the composer announces a turn's start and end. */}
       <div
-        class="transcript-content"
+        class="transcript-content dense"
         ref={attachContent}
         role="log"
         aria-label="Conversation"

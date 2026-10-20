@@ -21,12 +21,8 @@ export function SettingsNav({
             (id !== "project" || project) && (
               <Row
                 key={id}
-                label={
-                  <span class="settings-nav-label">
-                    <Icon />
-                    {label}
-                  </span>
-                }
+                icon={<Icon />}
+                label={label}
                 detail={id === "project" ? project : undefined}
                 current={id === current}
                 onClick={() => select(id)}

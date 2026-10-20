@@ -137,7 +137,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .files-note {
   margin: 0;

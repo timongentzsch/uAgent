@@ -3,7 +3,7 @@
 // highlighted lines, rendered markdown or an image.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { test, expect } from "./fixtures.js";
+import { test, expect, headerAction } from "./fixtures.js";
 
 async function folder(project) {
   await mkdir(join(project, "src"));
@@ -26,7 +26,7 @@ test("files beside the chat: browse, read, search and view", async ({
   await folder(host.project);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await headerAction(page, "Files");
   const pane = page.getByRole("region", { name: "Files" });
   const list = pane.getByRole("navigation", { name: "Folder" });
   // Folders first.
@@ -83,7 +83,7 @@ test("on a phone files are a sheet showing the list or the file", async ({
   await folder(host.project);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await headerAction(page, "Files");
   const sheet = page.getByRole("dialog", { name: "Files" });
   const list = sheet.getByRole("navigation", { name: "Folder" });
   await list.getByRole("button", { name: "README.md" }).click();
@@ -123,7 +123,7 @@ test("docked panes resize by drag and keys, and keep their width", async ({
 
   // The files pane widens when its edge is dragged left, and stops short
   // of crowding out the chat.
-  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await headerAction(page, "Files");
   const pane = page.locator(".side-pane");
   const handle = page.getByRole("separator", { name: "Resize the files" });
   const start = await width(pane);

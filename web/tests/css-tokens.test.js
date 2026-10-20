@@ -127,3 +127,19 @@ test("breakpoints in the stylesheets match the scripts'", () => {
   assert.match(layout, /useMedia\("\(max-width: 600px\)"\)/);
   assert.match(layout, /useMedia\("\(max-width: 900px\)"\)/);
 });
+// Control and row heights and the spacing between and inside boxes are set
+// in style.css alone (its .dense list and touch rules included). A sheet
+// that redefines one resizes everything inside it, menus too.
+const GEOMETRY = /^\s*--(?:control|row|gap|pad|inset-x)\s*:/;
+test("only style.css sets the control, row and spacing tokens", () => {
+  const stray = [];
+  for (const path of sheets("src")) {
+    if (path === join("shared", "style.css")) continue;
+    for (const [index, line] of readFileSync(join("src", path), "utf8")
+      .split("\n")
+      .entries())
+      if (GEOMETRY.test(line))
+        stray.push(`${path}:${index + 1}: ${line.trim()}`);
+  }
+  assert.deepEqual(stray, []);
+});

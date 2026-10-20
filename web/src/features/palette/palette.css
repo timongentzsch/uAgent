@@ -36,7 +36,7 @@
   padding: 0 var(--space-1);
   border: 1px solid var(--line);
   font: inherit;
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
   text-align: center;
   color: var(--muted);
 }

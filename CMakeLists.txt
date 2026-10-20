@@ -267,6 +267,9 @@ add_library(
   src/app/transient_batcher.cc
   src/app/panel_prompt.cc
   src/app/session_terminal.cc
+  src/app/session_terminal_commands.cc
+  src/app/session_terminal_link.cc
+  src/app/session_terminal_screen.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
   src/ui/ask_picker.cc

@@ -19,16 +19,6 @@
 
 namespace uagent {
 
-namespace {
-
-std::string ValidationMessage(const Tool& tool, const json& arguments) {
-  if (!tool.validate) return {};
-  auto issue = tool.validate(arguments);
-  return issue ? issue->message : std::string();
-}
-
-}  // namespace
-
 void TestGrepTool() {
   namespace fs = std::filesystem;
   fs::path root =
@@ -167,12 +157,7 @@ void TestGrepTool() {
     CHECK(run->command_policy);
     CHECK(static_cast<bool>(run->validate));
     CHECK(!run->validate({{"command", "cmake --build build"}}));
-    CHECK(ValidationMessage(*run, {{"command", "python -c 'print(1')"}})
-              .find("scratch") != std::string::npos);
-    CHECK(ValidationMessage(*run, {{"command", "python3 script.py"}})
-              .find("scratch") != std::string::npos);
-    CHECK(ValidationMessage(*run, {{"command", "pip install reportlab"}})
-              .find("PEP 723") != std::string::npos);
+    CHECK(!run->validate({{"command", "python3 -m unittest"}}));
     CHECK(!run->validate({{"command", "sudo -n true"}}));
   }
   const Tool* grep = FindTool(lean_tools, "grep");

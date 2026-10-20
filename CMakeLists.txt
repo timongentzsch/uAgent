@@ -227,6 +227,8 @@ add_library(
   src/app/application_channel.cc
   src/app/application_headless.cc
   src/app/bootstrap.cc
+  src/app/bootstrap_tools.cc
+  src/app/approvals.cc
   src/app/commands.cc
   src/app/commands_control.cc
   src/app/commands_model.cc

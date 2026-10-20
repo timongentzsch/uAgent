@@ -1,14 +1,14 @@
 # Guide
 
-The whole story in order, from a first conversation to several running at
-once. Each section says what to do and links to the reference that has the
-detail. [README](../README.md) has the install and a one-screen quick start.
+From a first conversation to several running at once. Each section says what
+to do and links to the reference with the detail. The [README](../README.md)
+has the install and a one-screen quick start.
 
-Words used throughout: a **conversation** is what you talk in (its file and
-its running process are a *session*); a **thread** is a conversation a
-panel started to do work; a **member** is a persona in a panel's
-chat; an **activity** is a command or agent that keeps running in the
-background; **approval** is being asked before an action.
+Terms: a **conversation** is what you talk in (its file and its running
+process are a *session*); a **thread** is a conversation a panel started to do
+work; a **member** is a persona in a panel's chat; an **activity** is a
+command or agent that keeps running in the background; **approval** is being
+asked before an action.
 
 ## A first conversation
 
@@ -41,33 +41,34 @@ screen reader ([Accessibility](ACCESSIBILITY.md)).
 ## Models and providers
 
 A model is named `[provider/]model[:effort]`, for example
-`deepseek/deepseek-v4-flash:high`. A suffix that is no effort stays in the
-model id, so an endpoint's own routing suffix (OpenRouter's `:nitro`, `:floor`
-or `:free`) is part of the name: `openrouter/vendor/model:nitro:high`.
+`deepseek/deepseek-v4-flash:high`. A suffix that is not an effort stays in
+the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
+`:floor` or `:free`) is part of the name: `openrouter/vendor/model:nitro:high`.
 
 - `/models QUERY` searches the models your key offers and selects one.
 - `/model NAME` chooses for this conversation; `/model NAME --default` also
   saves it for new ones. `/effort LEVEL` sets the reasoning effort.
 - With no model set, the first start opens the model picker and saves your
-  choice for new conversations, as `/model NAME --default` does. `-p` and `--json` never choose for you: they exit
-  with an error that lists up to ten of the endpoint's models.
-- Background jobs run on your conversation's model unless you name one: the
-  title (`title.model`, or `off`), memory extraction and subagents. Reading
-  images does too when that model can; otherwise it falls to the first model
-  of the same endpoint that accepts images, or says to set `image.model`.
-- Web search uses the conversation's route when it has hosted search, else the
-  first configured endpoint that declares a search plugin (OpenRouter does),
-  with the model `webSearch.model` names; with no such endpoint it is off. The
-  `auto` approval reviewer needs an endpoint that declares `decisions`
-  (OpenRouter does); with none, Auto mode asks you.
+  choice as `/model NAME --default` does. `-p` and `--json` never choose for
+  you: they exit with an error that lists up to ten of the endpoint's models.
+- Background jobs use your conversation's model unless you name one: the
+  title (`title.model`, or `off`), memory extraction and subagents. Image
+  reading does too when that model accepts images; otherwise it uses the
+  first model of the same endpoint that does, or tells you to set
+  `image.model`.
+- Web search uses the conversation's route when it has hosted search, else
+  the first endpoint that declares a search plugin (OpenRouter does), with
+  the model `webSearch.model` names. With neither, it is off.
+- The `auto` approval reviewer needs an endpoint that declares `decisions`
+  (OpenRouter does). With none, Auto mode asks you.
 
-To keep a key between shells, save it once instead of exporting it:
+To keep a key between shells, save it once instead of exporting it. It
+applies to conversations started afterwards (`/restart` applies it to this
+one):
 
 ```text
 /config user openrouter.apiKey=sk-or-…
 ```
-
-It applies to conversations started after that (`/restart` for this one).
 
 One endpoint that speaks Chat Completions needs only `UAGENT_BASE_URL`,
 `UAGENT_MODEL` and, if it asks for one, `UAGENT_API_KEY`. Anything else is a
@@ -100,31 +101,28 @@ editable in the web's Settings):
 }
 ```
 
-`wire_api` is `chat_completions` (the default), `responses` or
-`anthropic_messages`. `models` gives short names; `work/sonnet` then selects
-that model at that provider, and `local/anything` passes the name through.
-`context` states the context window where the endpoint does not report one.
+| Field | Meaning |
+| --- | --- |
+| `wire_api` | `chat_completions` (default), `responses` or `anthropic_messages` |
+| `models` | Short names: `work/sonnet` selects that model at that provider; `local/anything` passes the name through |
+| `context` | The context window, where the endpoint does not report one |
+| `options` | Endpoint options, such as OpenRouter's upstream `provider` and document engine `pdf_engine` (`cloudflare-ai` by default) |
+| `supports` | What an endpoint of OpenRouter's dialect does, from `hosted_search`, `search_plugin`, `provider_routing`, `session_passthrough`, `raw_vendor_ids`, `model_variants`, `reasoning_object`, `reasoning_replay_text`, `prompt_cache_control`, `pdf_parser`, `max_completion_tokens`, `search_sources`, `reasoning_summary`, `inline_usage` and `decisions` |
+| `hosted_tools` | `["web_search"]` declares `hosted_search` for a route that runs its own search |
 
-An endpoint is an address, a wire API and what it declares of itself. A
-provider that has an OpenRouter or OpenAI address is known by it; a provider
-named `openrouter` needs no `base_url` or `api_key` (the key is
-`OPENROUTER_API_KEY`) and states only what differs, as above: its `options`
-pin the upstream provider (`provider`) and choose the engine that reads
-documents (`pdf_engine`, `cloudflare-ai` by default). Any other gateway that
-speaks OpenRouter's dialect lists what it does in `supports`, from
-`hosted_search`, `search_plugin`, `provider_routing`, `session_passthrough`,
-`raw_vendor_ids`, `model_variants`, `reasoning_object`, `reasoning_replay_text`,
-`prompt_cache_control`, `pdf_parser`, `max_completion_tokens`,
-`search_sources`, `reasoning_summary`, `inline_usage` and `decisions`;
-`hosted_tools: ["web_search"]` is `hosted_search` for a route that runs its own
-search. `decisions` marks an endpoint that serves decision models for Auto
-approval: its `options` give the address (`decisions_url`), the model used by
-default (`decisions_model`), each model's bars (`decision_bars`, see
-[Approvals](#approvals-and-the-sandbox)) and, when it also declares `provider_routing`,
+An endpoint with an OpenRouter or OpenAI address is recognized by it. A
+provider named `openrouter` needs no `base_url` or `api_key` (the key is
+`OPENROUTER_API_KEY`) and states only what differs, as above.
+
+`decisions` marks an endpoint that serves decision models for
+[Auto approval](#approvals-and-the-sandbox). Its `options` give the address
+(`decisions_url`), the default model (`decisions_model`), each model's bars
+(`decision_bars`) and, when it also declares `provider_routing`,
 `decisions_private: false` to stop asking for providers that retain nothing.
-A start that must read the endpoint's `/models` for a default model or the
-window keeps the answer for a day under `~/.uagent/models/`; delete the file
-to ask again.
+
+When a start must read the endpoint's `/models` for a default model or the
+context window, it keeps the answer for a day under `~/.uagent/models/`.
+Delete the file to ask again.
 
 ## Settings
 
@@ -138,57 +136,58 @@ to ask again.
 | move settings between hosts | `uagent config export`, `uagent config import FILE` |
 
 `KEY` is a setting's name (`limits.maxSteps`) or its environment name
-(`UAGENT_MAX_STEPS`); both work everywhere. A flag overrides the
-environment, which overrides what is saved for the project, which overrides
-what is saved for all conversations. Nothing is read from the project
-folder and `.env` files are never loaded.
-[Operations](OPERATIONS.md#settings) describes the file;
-the [configuration reference](../skills/uagent-config/references/configuration.md)
+(`UAGENT_MAX_STEPS`). A flag overrides the environment, which overrides the
+project's settings, which override those for all conversations. Nothing is
+read from the project folder, and `.env` files are never loaded.
+[Operations](OPERATIONS.md#settings) describes the file and when a change
+applies; the
+[configuration reference](../skills/uagent-config/references/configuration.md)
 lists every setting with its default.
 
 ## Approvals and the sandbox
 
-Two separate things keep a turn in bounds.
+Two separate mechanisms keep a turn in bounds.
 
 - **Approval** decides who is asked. In `ask`, the default, you approve each
-  change to a file, each command, each use of the network and each read
-  outside the folder: `y` once, `s` for this conversation, `a` always in this
-  repository, `n` no. Any other answer denies the call and is given to the
-  model as guidance. `/permissions auto` lets a decision model decide the
-  calls the sandbox contains, and asks you about the rest (see below), and
-  `/permissions yolo` (or `--yolo`) asks nobody. A few actions always ask,
-  such as changing µAgent's own settings.
-- **The sandbox** decides what a command can touch: it writes only inside
-  the folder, and cannot read your saved logins, whatever the approval mode,
-  unless you change its level (`sandbox.level`: `strict`, `default`,
-  `relaxed` or `off`). A command that fails on a path outside the folder is
-  the sandbox working.
+  file change, command, network use and read outside the folder: `y` once,
+  `s` for this conversation, `a` always in this repository, `n` no. Any other
+  answer denies the call and reaches the model as guidance.
+  `/permissions auto` lets a decision model decide the calls the sandbox
+  contains and asks you about the rest; `/permissions yolo` (or `--yolo`)
+  asks nobody. A few actions always ask, such as changing µAgent's own
+  settings.
+- **The sandbox** decides what a command can touch, whatever the approval
+  mode: it writes only inside the folder and cannot read your saved logins.
+  `sandbox.level` sets it to `strict`, `default`, `relaxed` or `off`. A
+  command that fails on a path outside the folder is the sandbox working.
 
-**Auto approval** asks a *decision model* (a model that answers questions with
-probabilities; OpenRouter serves `~typesafe/jev-latest` and
-`openai/gpt-6-luna-decisions`) about each call the sandbox contains. It never
-judges a command that runs outside the sandbox (or any command while the
-sandbox is off or not enforced), a path outside the folder or anything else
-that always asks: those go to you. It sends your last message and
-the action. It allows when P(allow) reaches the model's allow bar and none of
-four risk questions (irreversible, beyond your request, sends data off the
-machine, touches credentials) reaches its risk bar, refuses when P(deny)
-reaches the deny bar, and otherwise asks you, showing the risks it saw with
-their probabilities and the bar that decided. With nobody to ask, a call it
-cannot decide is denied. Automatic decisions are checked again on later calls,
-so a later user restriction takes effect. The bars are data of the model's
-endpoint, found with
-`tests/reviewer_eval`; `approval.allowAbove`, `approval.denyAbove` and
-`approval.vetoAbove` override them, and `approval.reviewerModel`
-(`[endpoint/]model`) chooses another decision model. Requests ask for
-providers that keep no data (`decisions_private`) and carry a hash of the
-conversation, never its id. With no endpoint that declares `decisions`, Auto
-mode says so and asks.
+**Auto approval** asks a *decision model*, a model that answers questions
+with probabilities (OpenRouter serves `~typesafe/jev-latest` and
+`openai/gpt-6-luna-decisions`), about each call the sandbox contains. It
+never judges a command that runs outside the sandbox (or any command while
+the sandbox is off or not enforced), a path outside the folder, or anything
+else that always asks: those go to you.
+
+- It sends your last message and the action. Requests ask for providers that
+  keep no data (`decisions_private`) and carry a hash of the conversation,
+  never its id.
+- It allows when P(allow) reaches the model's allow bar and none of four risk
+  questions (irreversible, beyond your request, sends data off the machine,
+  touches credentials) reaches its risk bar. It refuses when P(deny) reaches
+  the deny bar. Otherwise it asks you, showing the risks it saw with their
+  probabilities and the bar that decided. With nobody to ask, an undecided
+  call is denied.
+- Automatic decisions are checked again on later calls, so a restriction you
+  add later takes effect.
+- The bars are part of the endpoint's data, found with `tests/reviewer_eval`.
+  `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove`
+  override them; `approval.reviewerModel` (`[endpoint/]model`) chooses
+  another decision model.
+- With no endpoint that declares `decisions`, Auto mode says so and asks.
 
 `/changes` lists the files the last turn changed and `/undo` puts them back
-(in the web, Undo under the turn); changes a shell command made are not
-tracked. [Security](../SECURITY.md) has
-the full rules.
+(in the web, Undo under the turn). Changes a shell command made are not
+tracked. [Security](../SECURITY.md) has the full rules.
 
 ## Leaving and coming back
 
@@ -206,74 +205,66 @@ running and stops by itself after 15 minutes with nothing to do.
 | make room in a long conversation | `/compact` |
 
 `/btw` copies the conversation's current checkpoint into a separate, saved
-conversation. In the web app its card stays beside the input: follow up there
-or use `/btw` again, and open it as a full conversation when needed. In a
-terminal it opens that separate conversation. It keeps the parent's model,
-approval setting and enabled tools, including a moderator's panel tools.
-Messages stay out of the parent transcript; tool actions use the same workspace
-and can change files or external state. Closing the card hides it; the saved
-conversation remains available in the conversation list.
+conversation with the parent's model, approval setting and enabled tools
+(including a moderator's panel tools). Its messages stay out of the parent's
+transcript, but its tools work in the same folder and can change files or
+external state. In the web its card stays beside the input: follow up there,
+or open it as a full conversation. Closing the card hides it; the
+conversation stays in the list. In a terminal, `/btw` opens that
+conversation.
 
 [Persistence](PERSISTENCE.md) says where conversations are kept and for how
 long.
 
 ## In the browser and on a phone
 
-```sh
-uagent --web
-```
-
-prints a link that pairs the browser; the code in it works once, for five
-minutes. One web host serves every folder's conversations, and a
+`uagent --web` prints a link that pairs the browser; its code works once,
+for five minutes. One web host serves every folder's conversations, and a
 conversation open in a terminal is the same one in the browser.
-[Web interface](WEB.md) covers a phone or another machine and notifications;
-[The agent's browser](BROWSER.md): the browser the agent can drive.
+[Web interface](WEB.md) covers phones, other machines and notifications;
+[The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
 
 ## The panel
 
-```sh
-uagent panel
-```
-
-opens the folder's panel (`/panel` from inside a conversation; in the
-web, the **Panel** row under a place in the sidebar). You talk to its **moderator**,
-which never edits files itself. Ask it for work and it starts **threads**:
-conversations of their own, each on a brief, that report back when their
-turn ends. The moderator answers the approvals a thread cannot settle or
-passes them to you.
+`uagent panel` opens the folder's panel (`/panel` from inside a
+conversation; in the web, the place's name in the sidebar). You talk to its
+**moderator**, which never edits files itself. Ask it for work and it starts
+**threads**: conversations of their own, each on a brief, that report back
+when their turn ends. The moderator answers the approvals a thread cannot
+settle or passes them to you.
 
 - **The board** lists the folder's conversations, what each is doing and what
   waits on you: `/board` in the terminal, beside the chat in the web.
   `/open ID` switches to one.
 - **Where a thread works.** By default in a git worktree of its own under
   `~/.uagent/worktrees/`, started from your `HEAD`, so your checkout stays as
-  it is while several threads work. Ask the moderator for a thread's diff.
-  To take the work, have the thread commit and merge or cherry-pick that
+  it is while several threads work. Ask the moderator for a thread's diff. To
+  take the work, have the thread commit, then merge or cherry-pick that
   commit from your checkout (the worktree shares your repository). With
-  `panel.environment=local`, and in a folder outside git such as a
-  workspace, threads work in the folder itself.
-- **Limits.** Five threads at once (`panel.maxThreads`) and $20 of
-  reported cost a day for a panel and its threads
-  (`panel.dailySpendUsd`); at the limit, threads' reports wait.
-- **Instructions.** `PANEL.md` holds what every moderator reads at
-  start ([Instructions](INSTRUCTIONS.md)). A `COORDINATOR.md`, its name
-  before, is read where no `PANEL.md` exists.
+  `panel.environment=local`, or in a folder outside git such as a workspace,
+  threads work in the folder itself.
+- **Limits.** Five threads at once (`panel.maxThreads`) and $20 of reported
+  cost a day for a panel and its threads (`panel.dailySpendUsd`); at the
+  limit, thread reports wait.
+- **Instructions.** Every moderator reads `PANEL.md` at start
+  ([Instructions](INSTRUCTIONS.md)). Where no `PANEL.md` exists, it reads
+  `COORDINATOR.md`, the file's former name.
 
 ### The chat
 
-Ask the moderator for another voice ("add a sceptical reviewer called
-Ada") and it adds a **member**: a persona with a name, optionally its own
-model, that reads and searches but changes nothing. From then on the
-panel's conversation is a chat.
+Ask the moderator for another voice ("add a sceptical reviewer called Ada")
+and it adds a **member**: a persona with a name, optionally its own model,
+that reads and searches but changes nothing. From then on the panel's
+conversation is a chat.
 
 - **Everyone reads every message** and decides whether to answer. A
-  participant with nothing to add says nothing, and one that sees someone
-  else typing may wait for them. You only see the messages.
-- **To ask one participant alone, start the message with its name** followed
-  by a comma or a colon: `Ada, is this safe?`, `Ada and Lin: your view?`,
-  `Moderator, summarise`. Only those named answer, and the answer comes
-  back to you without waking the others. A name anywhere else in the
-  message addresses nobody.
+  participant with nothing to add stays silent, and one that sees someone
+  else typing may wait for them. You see only the messages.
+- **To ask one participant alone, start the message with its name** and a
+  comma or colon: `Ada, is this safe?`, `Ada and Lin: your view?`,
+  `Moderator, summarise`. Only those named answer, and the answer comes back
+  to you without waking the others. A name elsewhere in the message
+  addresses nobody.
 - **A message for everyone** starts with no name; members also answer one
   another.
 - **A closing answer.** When the discussion settles and the panel's threads
@@ -281,26 +272,26 @@ panel's conversation is a chat.
   still open. Its answers to you, the closing one included, wake no member.
   After the close, thread reports reach the moderator alone until you write
   again.
-- **Limits.** For each message of yours, and each thread report the
+- **Limits.** For each of your messages, and each thread report the
   moderator passes on before the close, every participant may take three
-  turns (`panel.chatTurns`) and post two messages; a chat has at most
-  16 members.
+  turns (`panel.chatTurns`) and post two messages. A chat has at most 16
+  members.
 - **Who said what.** Each message is shown under its author's name; in the
   web, a message's menu shows the prompt its author was given.
-- **Names.** A name may be several words ("Security Reviewer"), without a
-  comma, colon or `&`. Rename a member like any conversation: what it wrote
-  before is shown under the new name, the others are told, and a message
-  that opens with the old name still reaches it. Renaming the panel's own
-  conversation renames its moderator.
+- **Names.** A name may be several words ("Security Reviewer") but contains
+  no comma, colon or `&`. Rename a member like any conversation: its earlier
+  messages show the new name, the others are told, and a message that opens
+  with the old name still reaches it. Renaming the panel's conversation
+  renames its moderator.
 - Ask the moderator to remove a member; it asks you to confirm.
 
 ## Memory, skills and schedules
 
 The agent keeps facts between conversations as memories, loads instructions
-for particular tasks as skills, and can run a task on a schedule.
+for particular tasks as skills, and can run a task on a schedule. See
 [Memory, skills and scheduled tasks](MANAGEMENT.md) and
-[Bundled skills](../skills/README.md) cover them; [Tools](TOOLS.md) lists
-what the agent can do.
+[Bundled skills](../skills/README.md); [Tools](TOOLS.md) lists what the agent
+can do.
 
 ## From a script
 
@@ -316,15 +307,15 @@ uagent panel -p "status of the threads"             # ask the panel
 
 - `--json` prints one object with `schema` (`uagent.headless.v1`), `answer`,
   `error`, `stop`, `usage`, `routes`, `trace` and `exit_code`. Nothing else
-  is written to stdout; problems go to stderr.
+  goes to stdout; problems go to stderr.
 - `--json-stream` prints events as they happen, each
   `{"schema": "uagent.event.v2", "seq": N, "time": "…", "type": "…",
   "data": {…}}`. Types include `turn.started`, `usage.updated`, `notice`,
-  tool and approval events, and at the end `answer`, whose `data` is the
+  tool and approval events, and finally `answer`, whose `data` is the
   `--json` envelope.
-- `--budget` caps spend in USD and `--token-budget` generated tokens; nobody
-  is there to approve, so choose `--yolo` or expect calls that need approval
-  to be denied.
+- `--budget` caps spend in USD and `--token-budget` generated tokens. Nobody
+  is there to approve, so pass `--yolo` or expect calls that need approval to
+  be denied.
 
 [Operations](OPERATIONS.md) covers limits, budgets and what to do when a run
 fails.

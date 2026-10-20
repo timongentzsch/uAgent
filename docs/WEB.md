@@ -1,9 +1,7 @@
 # Web interface
 
 `uagent --web` serves µAgent to a browser: the same conversations as the
-terminal, on this machine or a paired phone. This guide covers starting it,
-pairing devices, remote access, notifications, the agent's browser,
-and reference material for operators and frontend development.
+terminal, on this machine or on a paired phone.
 
 ## Quick start
 
@@ -21,44 +19,45 @@ Open the `#pair=` link: it pairs the browser and drops the code from the
 address. Or open the URL and type the code.
 
 - **Pair another device.** Run `uagent --web` again. It reuses the running
-  host and prints a fresh code, which replaces the previous one. The running
-  host keeps its port and origin; flags on the second call do not change them.
+  host, which keeps its port and origin whatever flags you pass, and prints a
+  fresh code that replaces the previous one.
 - **A refused code** (used, mistyped or older than five minutes) says it
   expired. Run `uagent --web` again.
 - **Remove a device.** Settings → Host → Paired devices → **Revoke**, or
   **Log out this device**.
 
-The sidebar lists this OS user's conversations by where they are: **Workspaces**
-first, then **Folders**. A place's header is its panel: its name opens the
-panel (the first time, it starts one), and the chevron before it folds the
-place away (remembered per browser). **+** starts a conversation there. Once
-the panel has members, their avatars sit at the end of the header,
-the moderator's first. Under the header come the threads the panel started,
-then a line, then the place's own conversations. Browsing saved history does
-not start a model or run a command.
+The sidebar lists this OS user's conversations by place: **Workspaces**
+first, then **Folders**. A place's header is its panel: the name opens the
+panel (starting one the first time), the chevron before it folds the place
+away (remembered per browser) and **+** starts a conversation there. Once the
+panel has members, their avatars sit at the end of the header, the
+moderator's first. Under the header come the threads the panel started, a
+divider, then the place's own conversations. Browsing saved history starts no
+model and runs no command.
 
 **New** at the top of the sidebar starts a **Workspace…** (a name) or a
-**Folder…** (a directory on the host) and opens a conversation there. A
-**workspace** is a folder the host keeps under `~/.uagent/spaces/`, made the
-first time its name is used. Use one for work that belongs to no
-project, rather than the home directory, which
-[commands cannot write](../SECURITY.md#sandboxing).
+**Folder…** (a directory on the host) and opens a conversation there.
 
-A workspace goes by its name, which may be several words and can be changed:
-renaming a workspace (the menu beside its name) moves nothing, so its
-conversations stay as they are. Deleting a workspace removes its
-conversations and its folder with every file in it. A **folder** is a directory of yours: it is listed while it has
-conversations, and µAgent never removes it.
+- A **workspace** is a folder the host keeps under `~/.uagent/spaces/`,
+  created the first time its name is used. Use one for work that belongs to
+  no project, rather than the home directory, which
+  [commands cannot write](../SECURITY.md#sandboxing). Its name may be several
+  words; renaming it (the menu beside the name) moves nothing. Deleting a
+  workspace removes its conversations and its folder with every file in it.
+- A **folder** is a directory of yours. It is listed while it has
+  conversations, and µAgent never removes it.
 
 **Files** (the folder button in a conversation's header) shows the
 conversation's folder beside the chat, or as a sheet on a small screen. It
-reads and never writes. Search finds a file by name anywhere in the folder.
-Code opens with line numbers and highlighting, markdown rendered with its
-images (**Source** shows the text), an image at full size on a click; any
-other file offers a download. What is open is read again when a turn ends.
+never writes. Search finds a file by name anywhere in the folder. Code opens
+with line numbers and highlighting, Markdown rendered with its images
+(**Source** shows the text), and an image at full size on a click; any other
+file offers a download. What is open is read again when a turn ends.
+
 Drag the edge of the sidebar, the board, Files or its list to resize it, or
-focus the edge and use the arrow keys; a double-click or Enter puts the
-default width back. Each device keeps its widths.
+focus the edge and use the arrow keys (Shift for larger steps). A
+double-click or Enter restores the default width. Each device keeps its own
+widths.
 
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
 `--json`, `-c`, `--resume`, `--yolo`, `--attach`, `--model`, …). It reads the
@@ -68,29 +67,28 @@ settings saved for all conversations and the environment, never a project's.
 | --- | --- | --- |
 | `--web-port PORT` | `UAGENT_WEB_PORT` | `8080` (1024–65535) |
 | `--web-origin ORIGIN` | `UAGENT_WEB_ORIGIN` | empty (loopback only) |
-| — | `UAGENT_WEB_BIND` | `127.0.0.1` (or `0.0.0.0`) |
-| — | `UAGENT_WEB_PUSH_CONTACT` | empty (no background push) |
-| — | `UAGENT_BROWSER_DATA` | empty (no shared browser) |
+| | `UAGENT_WEB_BIND` | `127.0.0.1`; `0.0.0.0` listens on all interfaces |
+| | `UAGENT_WEB_PUSH_CONTACT` | empty (no background push) |
+| | `UAGENT_BROWSER_DATA` | empty (no shared browser) |
 
 Save one from a terminal session with `/config user KEY=VALUE`, or set it in
-the host's environment. All five apply when the web host next starts.
+the host's environment. Each applies when the web host next starts.
 
 ## Remote access and installation
 
 The host listens on loopback. To reach it from another device, put an HTTPS
-reverse proxy in front of the port and tell the host its exact public origin:
+reverse proxy in front of the port and give the host its exact public origin:
 
 ```sh
 uagent --web --web-origin https://your-host.example
 ```
 
-The origin is bare: scheme, host and optional port, no path. Forwarded headers
-never override it, and the browser must use exactly that origin.
+The origin is bare (scheme, host and optional port, no path). Forwarded
+headers never override it, and the browser must use exactly that origin.
 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve) can
 provide a private HTTPS endpoint. The proxy must forward the event stream
 (`/api/events`, Server-Sent Events) and, for the
-[shared browser](BROWSER.md), WebSocket upgrades on
-`/api/browser/viewer`.
+[shared browser](BROWSER.md), WebSocket upgrades on `/api/browser/viewer`.
 
 For a quick test without HTTPS, an HTTP origin with a literal IPv4 address in
 the tailnet range `100.64.0.0/10` is also accepted:
@@ -114,16 +112,16 @@ same pairing, device authentication and Origin checks.
 
 **Install as an app.** Settings → Host → Install. Installing from another
 device needs trusted HTTPS. On iOS, use Safari → Share → Add to Home Screen,
-then pair the installed app if its storage is separate. An update is offered
-under Settings → Host → **Apply update**; it never reloads over a draft or a
-pending decision by itself.
+then pair the installed app if its storage is separate. Settings → Host →
+**Apply update** offers a new version; it never reloads by itself over a
+draft or a pending decision.
 
 ## Notifications
 
-Turn them on per device under Settings → Host → Notifications. A notification
-is sent when a turn completes, a decision waits on you or a conversation
-fails. It says only that µAgent needs your attention, never a prompt or an
-answer, and opens the conversation at its decision.
+Turn them on per device under Settings → Host → Notifications. A
+notification is sent when a turn completes, a decision waits on you or a
+conversation fails. It says only that µAgent needs your attention, never a
+prompt or an answer, and opens the conversation at its decision.
 
 | Mode | When | Needs |
 | --- | --- | --- |
@@ -140,10 +138,10 @@ opt in with `-DUAGENT_WEB_PUSH=ON` and need OpenSSL 3.
 
 ## The agent's browser
 
-The web host can run a Google Chrome that the agent can drive and that you
-can watch, take over and sign in to from any paired device, in the Docker
-image or on a Linux host. [The agent's browser](BROWSER.md) covers setting it
-up, profiles and saved logins, the viewer and how it is isolated.
+The web host can run a Google Chrome that the agent drives and that you can
+watch, take over and sign in to from any paired device, in the Docker image
+or on a Linux host. [The agent's browser](BROWSER.md) covers setup, profiles
+and saved logins, the viewer and isolation.
 
 ## Execution and persistence
 
@@ -160,14 +158,14 @@ settings and inspect activity. See [Architecture](ARCHITECTURE.md) and
 | 15 minutes with nothing to do | The runtime stops the same way by itself |
 
 "Nothing to do" means no turn, no queued message, no running command and no
-terminal attached. The next message, or a setting changed on the conversation
-(model, approval mode, tools), starts a runtime from the saved conversation
-with its model and approval mode. It never repeats a previous command.
-Commands started with `detach` keep running through both.
+terminal attached. The next message, or a change to the conversation's
+settings (model, approval mode, tools), starts a runtime from the saved
+conversation with its model and approval mode. It never repeats an earlier
+command. Commands started with `detach` keep running through both.
 
-On Linux, a systemd-launched web host starts each runtime in its own user
+On Linux, a web host launched by systemd starts each runtime in its own user
 scope through `systemd-run` (254 or newer), so a service restart does not
-kill it. Keep the normal service kill policy; Close owns session shutdown.
+kill it. Keep the service's normal kill policy; Close owns session shutdown.
 
 When the connection drops or the page reloads:
 
@@ -180,7 +178,7 @@ When the connection drops or the page reloads:
   on the decision with **Retry**.
 
 Session cost follows provider-reported usage and is never invented. The
-context counter is an estimate of the current request size, separate from
+context counter estimates the current request size and is separate from
 billing totals.
 
 ## Conversation controls
@@ -191,66 +189,66 @@ A conversation with a pending decision shows "Needs your input". Decisions
 waiting on you are counted once, across every folder:
 
 - The count heads the sidebar ("2 need you") and opens every waiting
-  decision, with its folder and question, to answer or open in place.
+  decision, with its folder and question, to answer there or open in place.
 - It also shows in the tab title ("(2) µAgent") and, where the browser
   supports it, on the installed app's badge.
 - Answering there or in the conversation is the same act; the first answer
   wins.
 
 An approval opens above the input, which stays in place, read-only, until it
-is answered; Approval stays usable. The card shows what it would do (the
-command, or the change as a diff, scrolling past about six lines), the folder
-and its risks, with **Deny**, **Allow for session** and **Allow once** in one
-row. Under **More options**, **Always allow this exact action here** makes
-Allow once a rule for the repository, listed under Settings → This project →
-*Allowed actions*, and **+ guidance** answers in words instead. Numbered
-choices are cards.
+is answered; the **Approval** control stays usable. The card shows what the
+call would do (the command, or the change as a diff that scrolls past about
+six lines), the folder and its risks, with **Deny**, **Allow for session**
+and **Allow once** in one row. Under **More options**, **Always allow this
+exact action here** makes Allow once a rule for the repository, listed under
+Settings → This project → *Allowed actions*, and **+ guidance** answers in
+words instead. Numbered choices are cards.
 
 The agent's questions are answered a page at a time. The steps above the page
-show which are answered and lead back to any already seen; a tap on a single
-choice moves on; three or more questions end on a review of every answer
+show which are answered and lead back to any already seen. A tap on a single
+choice moves on, and three or more questions end on a review of every answer
 before Submit.
 
 ### Composer
 
-- The model control combines provider/model and reasoning effort.
-  Choosing does not send a message and applies to this conversation; **Also
-  use for new conversations** makes it the default.
+- The model control combines provider/model and reasoning effort. Choosing
+  applies to this conversation and sends nothing; **Also use for new
+  conversations** makes it the default.
 - Enter sends; Shift+Enter inserts a newline. On a touch keyboard Enter
   inserts a newline and the Send button sends.
 - While a turn runs, Enter adds guidance to it and Esc stops it; with an
-  empty draft the Send button is Stop. **Queue
-  next** (Alt+Enter), on the status line once there is a draft, holds the
-  message until the turn ends and then runs it as its own turn.
+  empty draft the Send button is Stop. **Queue next** (Alt+Enter), on the
+  status line once there is a draft, holds the message until the turn ends
+  and then runs it as its own turn.
 - After a turn stopped short (Stop, an error, a step or budget limit) the
   status line reads **Stopped** with **Continue**, which sends `continue`.
 - `/` opens slash commands with suggestions and Tab completion. The list
-  offers what the page has no control for; other commands still run when
+  offers the commands the page has no control for; others still run when
   typed. `/restart` does the same as the menu; `/quit` closes nothing here.
-- A command with its own screen opens it when typed without an argument:
-  `/config`, `/verbosity`, `/permissions`, `/mcp`, `/tools`, `/rename`,
-  `/memory`, `/skills`, `/schedule`, `/context` and `/sessions`. With an
-  argument it runs on the host, as in the terminal.
+- Typed without an argument, `/config`, `/verbosity`, `/permissions`,
+  `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`, `/context`
+  and `/sessions` open their screen. With an argument they run on the host,
+  as in the terminal.
 
 ### Transcript
 
 - A turn that changed files ends with its receipt (files, lines, cost, time).
   It opens the changed files, each with **Undo**, and **Undo all**; a file
-  changed since is kept and says why. Shell commands' changes are not
+  changed since is kept and says why. Changes made by shell commands are not
   tracked.
 - Tool calls that read as one step fold into one row ("Explored · 4 calls")
   that expands to the calls. **Detail** in the conversation menu sets how
-  much work is shown (`UAGENT_VERBOSITY`), for every conversation and the
-  terminal: minimal shows the answer and one "Worked · N steps" row per turn,
+  much work is shown (`UAGENT_VERBOSITY`) for every conversation and the
+  terminal. Minimal shows the answer and one "Worked · N steps" row per turn,
   with failures and prompts on rows of their own.
-- Message menus expose retained tool input/output and HTTP request/response
-  captures. Credential headers are redacted; bodies can contain sensitive
-  workspace content.
+- Message menus expose retained tool input and output and HTTP request and
+  response captures. Credential headers are redacted; bodies can contain
+  sensitive workspace content.
 - Background completions, memory updates and compaction appear as expandable
   event rows. Subagent views work like the main conversation. Ordinary
-  subagent follow-ups can select another model;
-  persistent agents keep their runtime model. Process children show
-  statistics from their latest saved checkpoint and label them as such.
+  subagent follow-ups can select another model; persistent agents keep their
+  runtime model. Process children show statistics from their latest saved
+  checkpoint, labelled as such.
 - Markdown supports code highlighting, math and fenced `mermaid` diagrams.
   Raw HTML and trusted math commands are disabled, remote images are inert
   and links use a scheme allowlist. Renderers and fonts ship locally and load
@@ -260,40 +258,39 @@ before Submit.
 
 - Ctrl+K (⌘K on a Mac), or the search button atop the sidebar on a phone,
   opens the command palette: conversations, folders, slash commands, settings
-  sections and actions, matched by letters in order (a prefix first), each
+  sections and actions, matched by letters in order (prefixes first), each
   with its shortcut.
 - `?` outside a text field lists every shortcut. Alt+↑ and Alt+↓ step through
   the conversations in sidebar order.
 - The conversation menu has **Fork conversation**, **Rename**,
   **Statistics**, **Tools**, **Export transcript**, **Detail**, **Compact**,
-  **Restart**, **Close conversation** and **Delete**. Tools controls the active
-  schema and groups tools into persistent custom categories. Stop and close a
+  **Restart**, **Close conversation** and **Delete**. Tools controls the
+  active schema and groups tools into persistent custom categories. Close a
   live runtime before deleting its history; project files are unaffected.
 
 ### The panel and its chat
 
-- A place's panel opens from the place's name in the sidebar; the command
-  palette opens it too. The threads it started are listed under the name,
-  and a thread or member links back to its panel under its title.
+[The guide](GUIDE.md#the-panel) explains threads, members and the chat's
+rules. In the web:
+
+- A place's name in the sidebar, or the command palette, opens its panel.
+  The threads it started are listed under the name, and a thread or member
+  links back to its panel under its title.
 - The **board** beside the chat (a button in the header on a phone) lists
-  the chat's members and the work the moderator started. A row's menu
-  renames or removes it, and **+** starts a message asking for another
-  member. What needs you is above the input and in the sidebar's inbox.
-- Members appear with an avatar, on the place's name, on the board and on
-  their messages. Pointing at or focusing one (tapping it on a touch screen,
-  which opens a sheet) shows its card: its model, its persona and skills,
-  and **Ask**, which starts a message to it in the panel's input,
-  **Full prompt** and a menu to rename or remove it. The moderator's card
-  says what the moderator is. Each message carries its author's name, and
-  its menu's **Show prompt** shows what that author was given. The line above
-  the input says who is typing.
-- Start a message with a member's name to ask that one alone.
-  [The guide](GUIDE.md#the-panel) explains threads, members and the
-  chat's rules.
+  the chat's members and the work the moderator started. A row's menu renames
+  or removes it, and **+** starts a message asking for another member. What
+  needs you is above the input and in the sidebar's "need you" count.
+- Members appear with an avatar on the place's name, on the board and on
+  their messages. Pointing at or focusing one (on a touch screen, tapping it
+  opens a sheet) shows its card: its model, persona and skills, **Ask** to
+  start a message to it, **Full prompt**, and a menu to rename or remove it.
+  The moderator's card says what the moderator is. A message's menu has
+  **Show prompt**, what its author was given. The line above the input says
+  who is typing.
 
 ### Settings
 
-Settings are found by what they affect:
+Settings are grouped by what they affect:
 
 | Scope | Holds |
 | --- | --- |
@@ -302,27 +299,27 @@ Settings are found by what they affect:
 | **This browser** | Appearance, Animations, Clock, Timestamps, Zoom |
 | **Host** | Update, Install, Notifications, Paired devices |
 
-- The first two list every setting under its group, with a box that narrows
+- The first two list every setting under its group, with a box that filters
   them by name or variable. A switch or a choice applies as it changes; text
-  and numbers are saved on leaving the field or Enter, and Escape takes back
-  what was typed.
+  and numbers are saved when you leave the field or press Enter, and Escape
+  takes back what was typed.
 - The arrow beside a changed setting puts it back to what applies without it.
   **Reset all to defaults** (or **Remove all overrides** for a project) does
   that for the whole scope; API keys are kept.
-- A value the environment or the command line decides is shown and cannot be
-  edited; one this project overrides says so. Saves reach every open browser.
+- A value set by the environment or the command line is shown read-only; one
+  this project overrides says so. Saves reach every open browser.
 - A change that needs a restart offers it: running conversations restart once
-  idle and keep their history, and the web host re-execs itself for its own
-  settings.
-- **MCP servers** shows each server's state, tools and, when it failed, its
-  reason and stderr tail. **Retry** starts a failed server again; the switch
-  sets `disabled` in the file that defines the server and applies at once. A
-  project file is only edited while it still matches what was trusted, and
-  trust follows that one edit.
+  idle and keep their history, and the web host re-executes itself for its
+  own settings.
+- **MCP servers** shows each server's state and tools and, when it failed,
+  its reason and stderr tail. **Retry** starts a failed server again; the
+  switch sets `disabled` in the file that defines the server and applies at
+  once. A project file is edited only while it still matches what was
+  trusted, and the trust follows that edit.
 
 The terminal has the same through `/config`, `/restart`, `/mcp` and
-`/permissions rules`. Memory, skills, schedules and instructions have
-dedicated editors; see [Memory, skills and scheduled tasks](MANAGEMENT.md) and
+`/permissions rules`. Memory, skills, schedules and instructions have their
+own editors; see [Memory, skills and scheduled tasks](MANAGEMENT.md) and
 [Instructions](INSTRUCTIONS.md).
 
 ### Zoom and touch
@@ -340,21 +337,21 @@ model. See [Tools](TOOLS.md) for `read_path` media input and
 
 The image viewer fits the whole image and zooms like a document viewer: the
 **− / + / Fit** controls, ⌘/Ctrl+wheel or a trackpad pinch, ⌘/Ctrl with −, +
-and 0, a touch pinch or a double-tap; the level reads against the image's real
-size.
+and 0, a touch pinch or a double-tap. The zoom level is relative to the
+image's real size.
 
 **Annotate** in the image viewer marks up an image to steer the agent: pen
-strokes and numbered pins with a note each, drawn with mouse, trackpad, finger
-or pencil, zoomed the same way (two fingers pinch; one draws). **Attach** bakes
-the marks into a copy that joins the draft (as PNG, or JPEG past the upload
-limit) and replaces the draft image it was drawn on.
+strokes and numbered pins with a note each, drawn with mouse, trackpad,
+finger or pencil and zoomed the same way (two fingers pinch, one draws).
+**Attach** bakes the marks into a copy (PNG, or JPEG past the upload limit)
+that replaces the draft image it was drawn on.
 
 ## Offline behavior
 
-A connection to the host is required: transcripts and history are not stored
-in the browser, and commands are disabled while disconnected. The browser
-keeps only unsent drafts and the last conversation list (titles and folders).
-Signing out or a revoked device clears local UI state.
+The app needs a connection to the host: transcripts and history are not
+stored in the browser, and commands are disabled while disconnected. The
+browser keeps only unsent drafts and the last conversation list (titles and
+folders). Signing out or a revoked device clears local UI state.
 
 ## Security model
 
@@ -370,8 +367,8 @@ Signing out or a revoked device clears local UI state.
   mutations must carry that exact Origin. API routes other than pairing
   require device authentication.
 - A paired device can read the files of a conversation's folder, as the
-  agent can: the [hidden stores](../SECURITY.md#sandboxing) and µAgent's
-  own settings files are refused, and nothing outside the folder is served,
+  agent can: the [hidden stores](../SECURITY.md#sandboxing) and µAgent's own
+  settings files are refused, and nothing outside the folder is served,
   through a symlink or otherwise. Images are served inline under a
   sandboxing policy; every other file, HTML included, only as a download.
 - The page runs under a content security policy that allows only its own
@@ -382,6 +379,6 @@ Signing out or a revoked device clears local UI state.
 
 [Contributing](../CONTRIBUTING.md) has the build and the checks,
 [Testing](TESTING.md#web-tests) how the web tests run and
-[Architecture](ARCHITECTURE.md) how the frontend is laid out. Physical iOS
-keyboard, installation and notification behavior is not covered by automated
-tests; browser emulation does not establish it.
+[Architecture](ARCHITECTURE.md) how the frontend is laid out. Automated tests
+do not cover a physical iOS keyboard, installation or notifications, and
+browser emulation does not establish them.

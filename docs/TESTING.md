@@ -1,13 +1,13 @@
 # Testing
 
-How to run µAgent's test suites, behavioral evaluation and measurement tools,
-and how CI selects them. Build and style rules live in
+How to run the test suites, the behavioral evaluation and the measurement
+tools, and how CI selects them. Build and style rules are in
 [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Common cases
 
-The suite needs no API key or network. Build the debug tree while iterating:
-the release tree links with LTO, about 20 s after any edit.
+The suite needs no API key or network. Iterate on the debug tree; the release
+tree links with LTO, which takes about 20 s after any edit.
 
 ```sh
 cmake --preset debug
@@ -26,9 +26,9 @@ cmake --build --preset debug --parallel
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
-Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier, Biome) are in
-[CONTRIBUTING.md](../CONTRIBUTING.md). [CI](#ci) lists what a pull request
-runs beyond this.
+Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier, Biome) are
+in [CONTRIBUTING.md](../CONTRIBUTING.md); [CI](#ci) lists what a pull request
+runs beyond them.
 
 ## Hermetic suite
 
@@ -44,7 +44,7 @@ Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 | CTest name | Covers |
 | --- | --- |
 | `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`) |
-| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_delegation`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and PTY (`tests/integration*.py`) |
+| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_delegation`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`) |
 | `integration_web`, `integration_management` | native web host; only with `UAGENT_WEB=ON` |
 | `web_push` | Web Push encryption; only with `UAGENT_WEB_PUSH=ON` |
 | `behavior_eval` | scenario scores against the committed baseline |
@@ -55,8 +55,8 @@ Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 ### Selecting cases
 
 Both runners take `--list`, `--test NAME` (exact) and `-k SUBSTRING`. The
-integration runner also takes `--group` and `-j`, and repeats `--test` and
-`-k`:
+integration runner also takes `--group` and `-j`, and accepts `--test` and
+`-k` more than once:
 
 ```sh
 build/debug/uagent_tests --list
@@ -69,13 +69,12 @@ The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
 `sandbox`, `web` and `management`; `--list` prints each case with its group.
 
 - A new top-level `test_` function in a group's module registers itself.
-- Each case has its own deadline. `UAGENT_TEST_TIMEOUT_SCALE` multiplies
-  them on slow or instrumented builds.
-- A failing case does not stop the run: every case runs, and the failures
-  are listed at the end.
-- `-j N` runs the selection in N processes. Every case has a home and ports
-  of its own, so the whole suite takes about 20 s at `-j 8` against two
-  minutes in one.
+- Each case has its own deadline; `UAGENT_TEST_TIMEOUT_SCALE` multiplies the
+  deadlines on slow or instrumented builds.
+- A failing case does not stop the run; the failures are listed at the end.
+- `-j N` runs the selection in N processes. Every case has its own home and
+  ports, so the whole suite takes about 20 s at `-j 8` and two minutes in one
+  process.
 
 ### Sanitizers, coverage and fuzzers
 
@@ -106,7 +105,7 @@ build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096 \
   /tmp/corpus/input_decoder
 ```
 
-That is CI's smoke pass. A weekly workflow (`fuzz.yml`) searches for five
+That is CI's smoke pass. The weekly `fuzz.yml` workflow searches for five
 minutes per fuzzer and uploads the corpus it reached.
 
 ## Web tests
@@ -122,29 +121,29 @@ npm run test:spec -- tests/phone-layout.spec.js   # one spec: Chromium, no retry
 
 Which binary and bundle a browser test drives:
 
-- The host is `tests/web_host.py`, started with `UAGENT_TEST_BINARY`.
-  Without it: `../build/debug/uagent` locally, `../build/release/uagent` in
-  CI and for `performance.spec.js`, whose timings are a release build's.
-- Locally the host serves the bundle in `web/dist` from disk, so a web edit
-  needs `npm run build` and no rebuild of the binary. In CI it serves the
-  bundle embedded in the binary, as a release does.
+- `tests/web_host.py` runs `UAGENT_TEST_BINARY`, or by default
+  `../build/debug/uagent` locally and `../build/release/uagent` in CI and for
+  `performance.spec.js`, whose timings are a release build's.
+- Locally the host serves `web/dist` from disk, so a web edit needs
+  `npm run build` but no rebuild of the binary. In CI it serves the bundle
+  embedded in the binary, as a release does.
 
 How the tests are isolated:
 
 - Each test owns its host, temporary HOME and project, mock provider, pairing
-  cookie and output directory. It waits on visible state or an API condition
+  cookie and output directory, and waits on visible state or an API condition
   rather than a fixed delay.
 - The showcase's dev server takes a port derived from the checkout's path and
-  is never reused if one already listens there, so a run cannot test another
+  never reuses a server already listening there, so a run cannot test another
   checkout's tree.
 
 What a spec may assume about time:
 
 - The composer sends and attaches nothing until the event stream has caught
   up. A Playwright click waits for its control to enable; `press("Enter")`,
-  `setInputFiles` and a click scripted inside the page do not, and what they
-  carried is lost without an error. `await online(page)` (`fixtures.js`)
-  comes before the first of them, and again after a step that reconnects.
+  `setInputFiles` and a click scripted inside the page do not, and lose their
+  input silently. Call `await online(page)` (`fixtures.js`) before the first
+  of them, and again after a step that reconnects.
 - A layer closed from the interface (a popover, a dialog) removes its history
   entry in a step back of its own. A spec that then navigates by
   `location.hash` first waits for `history.state?.layer` to be gone.
@@ -155,11 +154,13 @@ What a spec may assume about time:
   `browser.spec.js` and `showcase.spec.js`, and the pauses between the wheel
   and scroll steps in `scroll-stick.spec.js`.
 
-Playwright has two projects. `chromium` runs every spec. `webkit` runs `phone-layout`,
-`mobile-navigation`, `loading-surfaces`, `session-state`, `ui-quality`, `browser`, `showcase`, `dismiss`, `history-anchor`,
-`scroll-restore`, `scroll-stick` and `panel`. A failed test is retried
-once, locally and in CI; four workers run locally and two in CI; traces
-and screenshots of failures are kept in `web/test-results`.
+Playwright has two projects. `chromium` runs every spec. `webkit` runs
+`btw`, `guidance-queue`, `phone-layout`, `mobile-navigation`,
+`loading-surfaces`, `session-state`, `ui-quality`, `browser`, `model-picker`,
+`showcase`, `dismiss`, `history-anchor`, `scroll-restore`, `scroll-stick` and
+`panel`. A failed test is retried once, locally and in CI. Four workers run
+locally and two in CI. Traces and screenshots of failures are kept in
+`web/test-results`.
 
 ## Behavioral evaluation
 
@@ -168,8 +169,8 @@ and screenshots of failures are kept in `web/test-results`.
 provider and the checks that define a good run (answer, files read, forbidden
 tools, model rounds, batch width, deduplication, cumulative request and result
 size, workspace immutability). Results are compared with
-`benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the
-shared run timing and trace aggregation used by the eval and the audit.
+`benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
+timing and trace aggregation the eval and the audit share.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
@@ -256,8 +257,9 @@ python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pull requests, pushes to `master`, `v*`
-tags and weekly.
+`.github/workflows/ci.yml` runs on pull requests, pushes to `master`, weekly
+and by hand. `release.yml` also calls it for a tag whose commit has no
+passing `master` run.
 
 On a pull request, `.github/changes.py` selects jobs by the paths changed:
 
@@ -274,17 +276,16 @@ one job; when it changes a header, the build files or the rules, it reads
 all of them, as `master` always does.
 
 The Linux build jobs reuse compiled objects through ccache
-(`.github/actions/ccache`): restored in every run, saved only from `master`.
-A newer push to a pull request cancels the run of the older one; runs on
-`master` are never cancelled, so each merge is tested as it landed. A browser
-spec gets one retry, locally and in CI.
+(`.github/actions/ccache`), restored in every run and saved only from
+`master`. A newer push to a pull request cancels the older run; runs on
+`master` are never cancelled, so each merge is tested as it landed.
 
-A pull request skips the slowest legs (ARM64, the variants and ThreadSanitizer)
-unless it is heavy: it touches `CMakeLists.txt`, `CMakePresets.json`, `cmake/`,
-`third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/`,
-`include/browser/`, or a C++ file that mentions `UAGENT_WEB` or
-`UAGENT_BROWSER` (`heavy` in `.github/changes.py`). Master, the schedule and manual runs always
-run them.
+A pull request skips the slowest legs (ARM64, the variants and
+ThreadSanitizer) unless it is heavy: it touches `CMakeLists.txt`,
+`CMakePresets.json`, `cmake/`, `third_party/`, `.github/`, `src/web/`,
+`src/browser/`, `include/web/`, `include/browser/`, or a C++ file that
+mentions `UAGENT_WEB` or `UAGENT_BROWSER` (`heavy` in `.github/changes.py`).
+Master, scheduled and manual runs always run them.
 
 | Job | Runs |
 | --- | --- |
@@ -302,10 +303,10 @@ run them.
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a
-merge. Superseded runs are cancelled. GitHub sends two events for a pull
-request stacked on another's branch when both are pushed together: the first
-run is then cancelled within seconds, and its `CI result` reads failed.
-CodeQL runs in its own workflow on pushes, pull requests and weekly.
+merge. When a pull request stacked on another's branch is pushed together
+with it, GitHub sends two events: the first run is cancelled within seconds
+and its `CI result` reads failed. CodeQL runs in its own workflow on pushes
+to `master`, pull requests and weekly.
 
 ## Guidelines
 
@@ -329,5 +330,5 @@ A test passes or fails the same way on a slow machine:
   firing.
 - After a look at state, act on it only if a refusal is handled: the state
   may have moved on.
-- Text expected in the terminal's working row fits it at any elapsed time:
-  the row clips its label to the columns its counters leave.
+- Text expected in the terminal's working row must fit it at any elapsed
+  time: the row clips its label to the columns its counters leave.

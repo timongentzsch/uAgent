@@ -18,8 +18,8 @@ The exact schemas and their sizes are in the generated
 
 The set is built when a session starts and refreshed when an MCP server's
 tool list changes. "Full toolset" means every session except a `lean`
-subagent, which reads and runs but gets no file-editing, memory, `uagent`
-or `subagent` tool.
+subagent, which reads and runs but gets no file-editing, memory, `uagent` or
+`subagent` tool.
 
 | Tool | Purpose | Available |
 | --- | --- | --- |
@@ -29,45 +29,47 @@ or `subagent` tool.
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached | always |
-| `scratch` | run a `.py` (under uv) or `.sh` script in `.uagent/scratch`, given as `code` in the call or written before with `write_file`; writes there need no approval, the run does and shows the script; it runs in the workspace, and its result names what it left in the workspace root | `uv` or `python3` on `PATH` |
+| `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | once a command is still running or detached |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
-| `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
+| `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a route or configured endpoint that declares `search_plugin` |
-| `thread`, `decide`, `state`, `history` | a panel's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's panel only; see the [guide](GUIDE.md#the-panel) |
+| `thread`, `decide`, `state`, `history` | the panel's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's panel, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-panel) |
 | `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a panel and its threads are linked, and so are YOLO sessions in one folder |
-| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
+| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
-| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [INSTRUCTIONS.md](INSTRUCTIONS.md) |
-| `browser` | drive the shared Chrome of the web host | top-level sessions (web, terminal, headless, panel moderators and threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; queued shared access or opt-in isolated parallel research; see [BROWSER.md](BROWSER.md) |
-| `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
+| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [Instructions](INSTRUCTIONS.md#self-directive) |
+| `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, panel moderators and threads) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
+| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a panel or a lean child |
 
 Independent calls to parallel-safe tools run up to four at a time; results
 are appended in the order the model issued the calls. A tool with a per-turn
-cap (`web_search` 4, `subagent` 32) is withdrawn for the rest of the turn once
-the cap is reached. Tool limits, timeouts and turn budgets apply in every
-approval mode.
+cap (`web_search` 4, `subagent` 32) is withdrawn for the rest of the turn
+once the cap is reached. Tool limits, timeouts and turn budgets apply in
+every approval mode.
 
 ## Approval
 
 Reading and searching inside the workspace needs no approval. Calls that
 change files, run commands, use the network or touch a path outside the
-workspace follow the approval mode:
+workspace follow the approval mode, set with `/permissions ask|auto|yolo` and
+saved as the default with `UAGENT_APPROVAL`:
 
-| To | Use |
-| --- | --- |
-| approve each call yourself (the default) | `/permissions ask` |
-| let a decision model decide | `/permissions auto`; needs an endpoint that declares `decisions` (OpenRouter, with `OPENROUTER_API_KEY`); `UAGENT_PERMISSION_MODEL` chooses the model |
-| run them unasked, commands still sandboxed | `/permissions yolo`, `/yolo` or `--yolo` |
-| save a mode as the default | `UAGENT_APPROVAL` |
-| list or remove remembered approvals | `/permissions rules`, `/permissions forget N\|all` |
+- `ask` (the default): you approve each call.
+- `auto`: a decision model decides. It needs an endpoint that declares
+  `decisions` (OpenRouter, with `OPENROUTER_API_KEY`);
+  `UAGENT_PERMISSION_MODEL` chooses the model.
+- `yolo` (also `/yolo` or `--yolo`): calls run unasked; commands stay
+  sandboxed.
 
-What each mode covers, what always needs a person, and how subagents and a
-panel's threads differ is in
-[SECURITY.md](../SECURITY.md#what-the-agent-may-do-without-asking).
+`/permissions rules` lists remembered approvals and
+`/permissions forget N|all` removes them.
+[Security](../SECURITY.md#what-the-agent-may-do-without-asking) says what
+each mode covers, what always needs a person, and how subagents and a
+panel's threads differ.
 
 ## Files and search
 
@@ -81,15 +83,12 @@ panel's threads differ is in
 - `/changes` lists the files the last turn's `write_file`, `edit_file` and
   `delete_file` calls changed, and `/undo [FILE]` puts them back. Changes
   made by shell commands are not tracked.
-- `run`, `scratch` and `grep` execute inside the OS sandbox: writes are
-  limited to the workspace, temporary directories and package caches; reads
-  and, by default, the network stay open, except for the browser profile,
-  uAgent's settings and the credential stores of the cloud CLIs, which the
-  file tools refuse too (`sandbox.hide` and `sandbox.reveal` adjust the list).
-  The `sandbox.level` setting moves all of this: `strict` also denies the
-  network, `relaxed` also opens the home folder. Stdio MCP servers run under
-  the same policy. See [SECURITY.md](../SECURITY.md#sandboxing) for the full
-  policy.
+- `run`, `scratch` and `grep` run inside the OS sandbox: writes are limited
+  to the workspace, temporary directories and package caches, and the hidden
+  stores (the browser profile, µAgent's settings and other tools' credential
+  stores) cannot be read; the file tools refuse them too.
+  [Sandboxing](../SECURITY.md#sandboxing) has the full policy and the
+  settings that change it.
 
 ## Activities
 
@@ -108,21 +107,19 @@ Every `activity` call names one `operation`:
 | `wait` | `wait_ms`; optional `ids` (default: all) and `mode=any\|all` |
 | `write` | `id`, `chars`; an empty string is a valid write and `\u0003` interrupts the process group |
 | `resize` | `id`, `rows` and `cols` in 1..1000; PTY activities only |
-| `stop` | `id`; ends the process group and removes its records and logs |
+| `stop` | `id`; sends TERM, then KILL, to the process group and removes its records and logs |
 
-`run` and `activity` accept `max_output_chars` (256–65,536) to lower the output
-cap for one call. Output returned once is not returned again. Writing to a
-non-PTY activity is rejected.
+`run` and `activity` accept `max_output_chars` (256–65,536) to lower the
+output cap for one call. Output returned once is not returned again. Writing
+to a non-PTY activity is rejected.
 
-- Activities of a conversation live only in memory. Detached ones are
+- A conversation's activities live only in memory. Detached ones are
   PID-backed with a rotating log; launching the same detached command from
   the same directory reuses its process group, and it cannot be reattached
   interactively after µAgent exits.
 - A command's completion appears only in the UI and never starts a model
-  turn. A subagent's completion is added once to the next model call without
-  starting one.
-- `stop` sends TERM, then KILL, to the whole process group and removes its
-  records and logs.
+  turn. A subagent's completion is added once to the next model call
+  without starting one.
 - A failed child reports its route, failure stage, bounded diagnostics and a
   remedy. µAgent never silently changes provider, model, pricing or privacy
   policy for a child.
@@ -139,40 +136,38 @@ activity ID at once.
 - `model` picks the child's route; without it the child runs on the
   parent's.
 - `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
-  one child, within the session's remaining budgets; `memory=false` withholds
-  memory.
+  one child, within the session's remaining budgets; `limits.memory=false`
+  withholds memory.
 - `followup` resumes the child's private conversation and prepends its
   stored `directive`; a new directive replaces it.
 - `message` delivers one-shot guidance at a running child's next step; a
   finished child runs again on it.
 - `list` reports this session's children with model, toolset and state.
-- Use `activity` to wait for, read or stop ordinary children. `/agents` shows
-  the same records.
+- `activity` waits for, reads or stops ordinary children. `/agents` shows the
+  same records.
 
 ## Web
 
-`web_fetch` needs no hosted-search route. It decodes HTML, JSON, XML and plain
-text. A PDF is saved and attached to the model's next step, as `read_path`
-attaches one: a route that reads documents gets it whole, any other its path.
-Other content types are refused; download images with `run` and open them
-with `read_path`. A 404 says to find the page with `web_search` rather than
-guess its address. Bodies over the attachment cap (`UAGENT_ATTACHMENT_MB`) are
-truncated and marked partial. Pages behind a login
-or built by scripts need the browser.
-
-Only public Internet addresses are accepted, on redirects too; loopback,
-private and link-local addresses are refused and proxy variables are
-ignored.
+`web_fetch` needs no hosted-search route. It decodes HTML, JSON, XML and
+plain text. A PDF is saved and attached to the model's next step, as
+`read_path` attaches one: a route that reads documents gets it whole, any
+other its path. Other content types are refused; download images with `run`
+and open them with `read_path`. A 404 says to find the page with
+`web_search` rather than guess its address. Bodies over the attachment cap
+(`UAGENT_ATTACHMENT_MB`) are truncated and marked partial. Pages behind a
+login or built by scripts need the browser. Only public Internet addresses
+are accepted, on redirects too; loopback, private and link-local addresses
+are refused and proxy variables are ignored.
 
 `web_search` calls the search plugin of an endpoint that declares one
 (OpenRouter does) on a route of its own: the conversation's when it declares
-one, else the first configured endpoint that does, which needs `UAGENT_WEB_SEARCH_MODEL` to name the model (a route
-that has hosted search of its own uses that instead). A call without that
-model says so; with no such endpoint at all the tool is not offered.
-`UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
+one, else the first configured endpoint that does, with the model
+`UAGENT_WEB_SEARCH_MODEL` names. A route with hosted search of its own uses
+that instead. A call without a search model says so; with no such endpoint
+the tool is not offered. `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
 `browser` drives the web host's shared Chrome; [BROWSER.md](BROWSER.md)
-explains setup, saved logins and taking over. `open` with `path` shows a
+covers setup, saved logins and taking over. Its `open` with `path` shows a
 self-contained `.html` or `.svg` file the agent wrote, without a server.
 
 ## Presentation
@@ -181,8 +176,8 @@ Adjacent successful calls of one kind fold into one row: Explored,
 Researched, Verified or Edited. A failure or an approval prompt keeps its
 own row.
 
-How much of this is shown is one display setting, `UAGENT_VERBOSITY`, read by
-the terminal and the web alike and never by the model:
+How much of this is shown is one display setting, `UAGENT_VERBOSITY`, read
+by the terminal and the web alike and never by the model:
 
 | Level | Tool work | Arguments and output | Thinking | Routine notices |
 | --- | --- | --- | --- | --- |

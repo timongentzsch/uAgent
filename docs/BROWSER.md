@@ -1,13 +1,11 @@
 # The agent's browser
 
-The browser the agent can drive and you can watch. For the web interface
-itself see [Web interface](WEB.md).
-
-The web host can run a real Google Chrome for the agent that you can watch,
-drive and sign in to from any paired device. The optional
+The web host can run a real Google Chrome that the agent drives and that you
+can watch, take over and sign in to from any paired device. For the web
+interface itself, see [Web interface](WEB.md). The optional
 [Compose stack](../deploy/compose.yaml) builds one image with the web host,
 Chrome Stable and TigerVNC; a Linux host with the same programs installed
-does it [without Docker](#without-docker).
+runs it [without Docker](#without-docker).
 
 ```sh
 mkdir -p workspaces
@@ -46,19 +44,23 @@ measured workload needs more space.
 
 ## Agent and human control
 
-The agent's `browser` tool and the viewer drive the same visible tab. Each
-agent action waits for the page to settle and returns the page as text: what
-can be clicked or filled, numbered, and the page's text. The agent acts on a
-number, which keeps naming that element while the page stays, so several
-actions can come from one look. It reads more of a long page or only the
-lines it searches for, and asks for a screenshot where text does not describe the page. A tab the
-action opens becomes the active tab, and the agent can open one of its own. A page that looks like a bot
-check or rate limit is flagged as a suspected block, so the agent can hand
-off or try another source. A page's alert, confirm or prompt is reported in
-place of the page until the agent answers it with Enter or Escape, and a
-password field takes no typed text: the agent uses a saved login or asks
-you. The agent uploads files of the conversation's folder, never others,
-and what a page downloads lands in that folder's `downloads`.
+The agent's `browser` tool and the viewer drive the same visible tab.
+
+- Each agent action waits for the page to settle and returns it as text: the
+  page's text and its numbered controls. A number keeps naming its element
+  while the page stays, so several actions can come from one look. The agent
+  can read more of a long page, search it for lines, or ask for a screenshot
+  where text does not describe the page.
+- A tab an action opens becomes the active tab, and the agent can open one of
+  its own.
+- A page that looks like a bot check or rate limit is flagged as a suspected
+  block, so the agent can hand off or try another source.
+- A page's alert, confirm or prompt is reported in place of the page until
+  the agent answers it with Enter or Escape.
+- A password field takes no typed text: the agent uses a saved login or asks
+  you.
+- The agent uploads only files of the conversation's folder, and what a page
+  downloads lands in that folder's `downloads`.
 
 | You want to | Do this |
 | --- | --- |
@@ -71,20 +73,20 @@ and what a page downloads lands in that folder's `downloads`.
 - While you drive, the owning agent waits for handback before its next
   action. Other browser instances can keep working.
 - The agent calls `request_human` for a login Chrome has not saved, MFA, a
-  captcha or bot check, or a payment confirmation. The conversation shows its
-  reason. Only the device that took control can finish it, and closing the
+  captcha or bot check, or a payment confirmation, and the conversation shows
+  its reason. Only the device that took control can finish it; closing the
   viewer keeps the agent waiting. A request whose conversation no longer runs
   is dropped.
 - Without a pending request or profile sign-in, closing the viewer hands
   control back like **Done**.
 - One conversation uses the browser at a time. It is free again when that
-  conversation's turn ends, or after three minutes without a browser action.
-  Competing calls wait in a bounded FIFO queue below the model loop, with
-  their position shown in the live activity label and the browser status menu.
-  Cancellation removes the waiting call without performing its action. The
-  agent can call `release` sooner when finished browsing; a dead session's
-  published runtime lease also frees its browser.
-  When a shared-browser turn ends, only the tab the agent was on stays open.
+  conversation's turn ends, after three minutes without a browser action, or
+  when the agent calls `release`; a dead session's runtime lease also frees
+  it. Competing calls wait in a bounded first-in, first-out queue, with their
+  position shown in the live activity label and the browser status menu.
+  Cancelling a waiting call removes it without performing its action.
+- When a turn on the shared browser ends, only the tab the agent was on
+  stays open.
 - Chrome stops after 15 minutes without browser work, unless you control it
   or the agent waits for you, and starts again on the next action. Watching
   alone does not keep it running.
@@ -92,31 +94,30 @@ and what a page downloads lands in that folder's `downloads`.
 ## Parallel research
 
 In the browser status menu, **Browser scheduling** selects the shared browser
-(default) or 1, 2 or 4 isolated research browsers. This preference is saved in
-the browser data directory's `scheduler.json`. Parallel research is opt-in;
-start with two and measure the host's memory and CPU before increasing it.
+(the default) or 1, 2 or 4 isolated research browsers. The choice is saved in
+the browser data directory's `scheduler.json`. Start with two and measure the
+host's memory and CPU before going higher.
 
-New agent calls use the isolated pool when enabled. Each slot owns a separate
-Chrome process, profile, display, control channel and viewer socket. A
-conversation keeps its slot across related browser calls until release or turn
-completion. Its profile is reset before another conversation receives that slot:
-cookies, logins and page state are not shared between research conversations.
-Turning parallel mode down lets existing holders finish; new calls use the
-remaining capacity. Turning it off moves waiting work to the shared queue.
-
-`browser=shared` explicitly selects the persistent signed-in browser for a
-conversation that has not acquired a slot yet. Release a research slot first
-before requesting shared access. All callers, including the panel moderator and
-its threads, use the same broker. A moderator should release its browser before
-waiting on a thread that needs it.
-
-**Viewing** switches between instances and names their owning conversation.
-Takeover, Done, profile controls and clipboard input apply only to that instance.
-A turn ending while a human holds its browser defers release until handback.
-Queue waits are bounded by the tool deadline and a five-minute admission limit;
-an abandoned queue entry expires after 15 seconds without a poll. Actions carry
-a lease token, so a request from an earlier owner cannot reach a reassigned
-browser. Queue polling never holds a page-operation lock.
+- When enabled, new agent calls use the isolated pool. Each slot has its own
+  Chrome process, profile, display, control channel and viewer socket.
+- A conversation keeps its slot until it releases it or its turn ends. The
+  profile is reset before another conversation gets the slot, so cookies,
+  logins and page state are never shared between research conversations.
+- Lowering the count lets current holders finish; new calls use the
+  remaining capacity. Turning it off moves waiting work to the shared queue.
+- `browser=shared` selects the persistent signed-in browser for a
+  conversation that holds no slot; release a research slot first. All
+  callers, including the panel moderator and its threads, use the same
+  broker, so a moderator should release its browser before waiting on a
+  thread that needs it.
+- **Viewing** switches between instances and names the conversation that
+  owns each. Take over, Done, profile controls and clipboard input apply only
+  to the instance shown. A turn that ends while you hold its browser releases
+  it at handback.
+- A queued call waits at most until its tool deadline and the five-minute
+  admission limit; an abandoned entry expires after 15 seconds without a
+  poll. Actions carry a lease token, so a request from an earlier owner
+  cannot reach a reassigned browser.
 
 ## Profiles and saved logins
 
@@ -174,7 +175,7 @@ several paired devices.
 
 - The service exposes neither a CDP nor a VNC TCP port. The agent reaches
   Chrome over inherited pipes, the viewer over the authenticated web host.
-- Chrome's sandbox needs a narrow [seccomp profile](../deploy/NOTICE.md) that
+- Chrome's sandbox needs a narrow [seccomp profile](../deploy/seccomp-chrome.json) that
   permits user namespace creation. Compose applies it without privileged mode
   and without disabling the sandbox. If the host disables unprivileged user
   namespaces, takeover fails and the browser stays stopped.
@@ -194,8 +195,9 @@ several paired devices.
   refused as a path. `file://` URLs stay refused.
 - The [managed policy](../deploy/chrome-policy.json) blocks Chrome's local
   password and autofill pages, `view-source:` and DevTools. DevTools is
-  blocked by its `devtools://` pages: `DeveloperToolsAvailability` would also
-  refuse the browser service's own control pipe ("Not allowed", Chrome 155).
+  blocked by its `devtools://` URLs, because `DeveloperToolsAvailability`
+  would also refuse the browser service's own control pipe ("Not allowed",
+  Chrome 155).
 - On Linux before 7.1 (Landlock ABI 9) the sockets stay reachable: the agent
   can drive the browser, which it may do anyway, but with the policy
   installed it reaches neither DevTools nor the password pages.

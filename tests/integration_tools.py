@@ -520,8 +520,17 @@ def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, 
     responses = [tool_call("activity", call) for _ in range(12)]
     # Stopped, the loop's turn answers from what it has, in one more round.
     responses.append(event({"content": "answered-after-the-loop"}))
+    trace = root / "repeat-guard-trace.jsonl"
     with Server(responses) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "list", binary=binary)
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            f"--debug={trace}",
+            "-p",
+            "list",
+            binary=binary,
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "answered-after-the-loop", result.stdout)
         assert_true(len(server.requests) == 13, len(server.requests))
@@ -530,6 +539,14 @@ def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, 
             "model repeated the same tool call 12 times after two recovery instructions" in told,
             told,
         )
+        # The first call of the run is no fault; each repeat after it is one.
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        strikes = [
+            r["data"]["strike"]
+            for r in records
+            if r["event"] == "model_fault" and r["data"]["fault"] == "repeated_call"
+        ]
+        assert_true(strikes == list(range(2, 13)), strikes)
 
 
 def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):

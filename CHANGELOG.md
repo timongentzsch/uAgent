@@ -254,6 +254,10 @@
   one, answers from what it has, as a turn stopped at its step or time limit
   does. Before, a researcher stuck retrying a capped `web_search` lost all its
   findings.
+- A debug trace records a `repeated_call` fault only for a call that
+  repeats the one before. Every call used to log strike 1, so a trace read
+  as if the agent repeated itself on every step; the guard's advice and stop
+  count the same as before.
 - A model's input modalities from the endpoint's catalogue survive starting a
   route, so a text-only model is known as one before its first image is
   rejected.

@@ -148,8 +148,12 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     std::string normalized =
         arguments.is_object() ? JsonDump(arguments) : call.args;
     std::string signature = call.name + "\n" + normalized;
-    if (signature != last_call) repeated_calls = 0;
-    last_call = std::move(signature);
+    // The first of a run counts but is no fault; only its repeats strike.
+    if (signature != last_call) {
+      last_call = std::move(signature);
+      repeated_calls = 1;
+      continue;
+    }
     if (!Strike(Fault::kRepeat, state, loop, "", /*advise=*/false)) {
       return false;
     }

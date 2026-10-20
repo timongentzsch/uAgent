@@ -21,19 +21,13 @@ import {
 } from "preact/hooks";
 import {
   retainedViews,
-  applySessionEvent,
-  isIncoming,
-  keepOlderPages,
-  stateFrame,
   readStored,
   writeStored,
   hasContent,
   patchCatalogue,
-  withActivities,
-  keptSession,
-  raiseIncoming,
-  confirmOutgoing,
 } from "./store.ts";
+import { applyEvent as applyHostEvent } from "./apply-event.ts";
+import { usePersisted } from "./use-persisted.ts";
 import { api, manage, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
@@ -375,179 +369,29 @@ export function useHost(
       delay * (0.5 + Math.random() / 2),
     );
   };
-  // One event of the stream, applied in order to the catalogue, the outgoing
-  // rows and its session's snapshot.
-  const applyEvent = (event: HostEvent) => {
-    if (
-      event.kind === "management.changed" ||
-      (event.kind === "event" && event.type === "prompt.changed")
-    ) {
-      setManagementVersion((version) => version + 1);
-      return;
-    }
-    // Something saved changed: the detail level, and whatever shows settings.
-    if (event.kind === "settings.changed") {
-      setVerbosityLevel(event.level);
-      setManagementVersion((version) => version + 1);
-      return;
-    }
-    if (event.kind === "spaces.changed") {
-      setCatalogue((prior) => ({ ...prior, spaces: event.spaces }));
-      return;
-    }
-    if (event.kind === "scheduled.changed" && event.scheduled) {
-      setCatalogue((prior) => ({ ...prior, scheduled: event.scheduled }));
-      return;
-    }
-    const data = event.data || {};
-    const shown = event.kind === "outcome" && settleOutgoing(event);
-    if (event.kind === "gap") {
-      refresh();
-      return;
-    }
-    const id = event.session_id;
-    const current = live.current[id];
-    if (current && event.sequence <= current.cursor) return;
-    if (
-      current?.metadata.generation &&
-      current.metadata.generation !== event.generation &&
-      event.kind !== "activated" &&
-      event.kind !== "deactivated" &&
-      event.kind !== "metadata" &&
-      event.kind !== "deleted"
-    )
-      return;
-    // Most state and activity frames restate the session unchanged: it
-    // keeps its object, and what shows it skips the frame.
-    const activities = () => {
-      const metadata = event.metadata;
-      if (current)
-        live.current[id] = {
-          ...applySessionEvent(current, event),
-          ...(metadata && {
-            metadata: keptSession(current.metadata, metadata),
-          }),
-        };
-      patchSession(id, (item) =>
-        metadata
-          ? keptSession(item, metadata)
-          : withActivities(item, data.activities),
-      );
-    };
-    switch (event.kind) {
-      case "block":
-        if (event.block) {
-          const block = event.block;
-          setOutgoing((items) =>
-            confirmOutgoing(
-              items,
-              "request_id" in block ? block.request_id : undefined,
-            ),
-          );
-          const incoming = "incoming" in block ? block.incoming : undefined;
-          if (incoming)
-            patchSession(id, (item) => raiseIncoming(item, incoming));
-        }
-        if (current) live.current[id] = applySessionEvent(current, event);
-        break;
-      case "activated":
-      case "deactivated":
-      case "metadata":
-        if (!event.metadata) break;
-        upsertSession(event.metadata);
-        if (current)
-          live.current[id] = {
-            ...current,
-            epoch: event.epoch,
-            cursor: event.sequence,
-            metadata: event.metadata,
-            pending: event.kind === "metadata" ? current.pending : null,
-          };
-        break;
-      case "deleted":
-        forget(id);
-        break;
-      case "state": {
-        const phase = event.phase || event.state?.phase || "idle";
-        const pendingDecision = event.pending ?? null;
-        const metadata = event.metadata!;
-        const projected: Snapshot = {
-          ...current,
-          epoch: event.epoch,
-          cursor: event.sequence,
-          metadata: keptSession(current?.metadata, metadata),
-          state: stateFrame(current?.state, event.state, phase),
-          pending: pendingDecision,
-        };
-        live.current[id] = keepOlderPages(current, projected);
-        // Decisions and canonical phase changes flush without text batching.
-        if (id === selection.current || snapshots.watches(id))
-          snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
-        patchSession(id, (item) => keptSession(item, metadata));
-        break;
-      }
-      case "activity":
-        activities();
-        break;
-      case "event":
-        if (event.type === "activities.changed") {
-          activities();
-          break;
-        }
-        if (!current) break;
-        if (
-          id === selection.current &&
-          event.type === "command.completed" &&
-          !!data.request_id &&
-          localRequests.current.delete(data.request_id) &&
-          (data.output?.trim() || Object.keys(data.result || {}).length)
-        ) {
-          onResult(
-            Object.keys(data.result || {}).length ? data.result! : data.output!,
-            data.inspect !== false,
-          );
-        }
-        if (event.type === "notice" && data.presentation?.status === "failed")
-          report(new Error(data.presentation?.title));
-        live.current[id] = applySessionEvent(current, event);
-        break;
-      case "outcome":
-        if (!event.accepted && !shown) report(new Error(event.error));
-        break;
-      case "error":
-        report(new Error(event.error));
-        break;
-      case "closed": {
-        const metadata = event.metadata;
-        if (!metadata) break;
-        if (current)
-          live.current[id] = {
-            ...current,
-            cursor: event.sequence,
-            pending: null,
-            metadata,
-          };
-        patchSession(id, () => metadata);
-        break;
-      }
-    }
-    flush.current(id);
-    if (isIncoming(event) && (id !== selection.current || !reading.current))
-      setUnread((prior) => (prior.has(id) ? prior : new Set([...prior, id])));
-    // The host decides what needs a person; its id dedupes with push.
-    if (event.attention_id) {
-      if (
-        notifications.current &&
-        !subscribed.current &&
-        document.visibilityState !== "visible"
-      )
-        navigator.serviceWorker?.controller?.postMessage({
-          type: "ATTENTION",
-          id: event.attention_id,
-          session_id: id,
-        });
-    }
-  };
+  const applyEvent = (event: HostEvent) =>
+    applyHostEvent(event, {
+      live,
+      snapshots,
+      selection,
+      reading,
+      notifications,
+      subscribed,
+      localRequests,
+      flush,
+      setManagementVersion,
+      setVerbosityLevel,
+      setCatalogue,
+      patchSession,
+      upsertSession,
+      setOutgoing,
+      setUnread,
+      settleOutgoing,
+      forget,
+      refresh,
+      report,
+      onResult,
+    });
   // retryLater and applyEvent call refresh again, so they cannot be listed;
   // what they capture (report, forget, onResult, ...) is.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
@@ -780,38 +624,19 @@ export function useHost(
         : navigator.clearAppBadge()
       ).catch(() => {});
   }, [attention]);
-  useEffect(() => {
-    writeStored(storage, storageKeys.unread, [...unread]);
-  }, [unread]);
-  useEffect(() => {
-    writeStored(tabStorage, storageKeys.outgoing, outgoing);
-  }, [outgoing]);
-  // Saved once typing pauses, not per key, and before the page may go away;
-  // drafts as they were read or last saved leave what another tab saved
-  // alone.
-  const savedDrafts = useRef(drafts);
-  useEffect(() => {
-    const save = () => {
-      if (savedDrafts.current === drafts) return;
-      savedDrafts.current = drafts;
-      writeStored(
-        storage,
-        storageKeys.drafts,
-        Object.fromEntries(
-          Object.entries(drafts).filter(([, draft]) => hasContent(draft)),
-        ),
-      );
-    };
-    const timer = setTimeout(save, draftSaveDelayMs);
-    const hidden = () => document.visibilityState === "hidden" && save();
-    addEventListener("pagehide", save);
-    document.addEventListener("visibilitychange", hidden);
-    return () => {
-      clearTimeout(timer);
-      removeEventListener("pagehide", save);
-      document.removeEventListener("visibilitychange", hidden);
-    };
-  }, [drafts]);
+  usePersisted(storage, storageKeys.unread, unread, (value) => [...value]);
+  usePersisted(tabStorage, storageKeys.outgoing, outgoing);
+  // Saved once typing pauses, not per key.
+  usePersisted(
+    storage,
+    storageKeys.drafts,
+    drafts,
+    (value) =>
+      Object.fromEntries(
+        Object.entries(value).filter(([, draft]) => hasContent(draft)),
+      ),
+    draftSaveDelayMs,
+  );
   // Reading the conversation marks each of its snapshots read.
   useEffect(() => {
     if (!readingConversation || !following) return;

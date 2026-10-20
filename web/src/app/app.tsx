@@ -1,6 +1,7 @@
 import { storage } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
-import { readStored, writeStored } from "../state/store.ts";
+import { readStored } from "../state/store.ts";
+import { usePersisted } from "../state/use-persisted.ts";
 import { idlePreloadMs } from "../shared/limits.ts";
 import type {
   JSONValue,
@@ -159,13 +160,9 @@ function App() {
       }
     >
   >(() => readStored(storage, storageKeys.sideConversations, {}));
-  useEffect(() => {
-    writeStored(
-      storage,
-      storageKeys.sideConversations,
-      Object.fromEntries(Object.entries(sides).filter(([, side]) => side.id)),
-    );
-  }, [sides]);
+  usePersisted(storage, storageKeys.sideConversations, sides, (value) =>
+    Object.fromEntries(Object.entries(value).filter(([, side]) => side.id)),
+  );
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);

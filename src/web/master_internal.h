@@ -4,8 +4,9 @@
 #define UAGENT_SRC_WEB_MASTER_INTERNAL_H_
 // Module-private split of the web host. The Master class is declared here and
 // defined across master.cc (startup, routes, settings), master_auth.cc
-// (pairing and devices), master_command.cc (commands and receipts) and
-// master_stream.cc (snapshots, events, uploads, assets).
+// (pairing and devices), master_command.cc (commands and receipts),
+// master_stream.cc (snapshots, events, uploads, assets) and master_files.cc
+// (the files in a conversation's folder).
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -49,6 +50,10 @@ extern std::atomic<int> shutdown_fd;
 void Reply(Response& response, const json& value, int status = 200);
 void Error(Response& response, const std::string& error, int status = 400);
 bool EqualSecret(std::string_view a, std::string_view b);
+// A file's bytes under a policy that lets none of it act on this origin:
+// shown in the browser when `inline_view`, else saved as `name`.
+void ServeFile(Response& response, std::string bytes, const std::string& mime,
+               const std::string& name, bool inline_view);
 
 struct Device {
   std::string id, token, name;
@@ -77,6 +82,7 @@ class Master {
   void Events(const Request&, Response&);
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
+  void Files(const Request&, Response&);
 
   WebOptions options_;
   std::string executable_, directory_, local_, local_authority_, origin_,

@@ -188,9 +188,16 @@ void Master::AssetRead(const Request& request, Response& response) {
   // Images, PDFs and HTML open in the browser; HTML runs sandboxed in an
   // opaque origin, so its scripts can never read this device's session or
   // call the API. Everything else, or ?download, is saved under its name.
+  const bool inline_view =
+      !request.has_param("download") &&
+      (image || mime == "text/html" || mime == "application/pdf");
+  ServeFile(response, std::move(bytes), mime,
+            JsonValue(asset, "name", "download"), inline_view);
+}
+
+void ServeFile(Response& response, std::string bytes, const std::string& mime,
+               const std::string& name, bool inline_view) {
   const bool html = mime == "text/html";
-  const bool inline_view = !request.has_param("download") &&
-                           (image || html || mime == "application/pdf");
   // Replace the app's policy rather than add to it: browsers enforce every
   // CSP header, so the app's would block the file's own scripts and forbid
   // the conversation from framing its preview. HTML runs its scripts in an
@@ -206,7 +213,6 @@ void Master::AssetRead(const Request& request, Response& response) {
   if (!inline_view) {
     // RFC 6266: an ASCII fallback for old clients, the exact UTF-8 name
     // percent-encoded for the rest.
-    const std::string name = JsonValue(asset, "name", "download");
     std::string fallback, encoded;
     for (const char ch : name) {
       const auto byte = static_cast<unsigned char>(ch);

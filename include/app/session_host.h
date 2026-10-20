@@ -196,6 +196,8 @@ class SessionHost {
   std::string RenameSpace(const std::string& path, const std::string& name);
   std::string DeleteSpace(const std::string& path, const std::string& device);
   std::string AssetPath(const std::string& id) const;
+  // The folder a conversation works in: a thread's project, else its own.
+  std::string Folder(const std::string& id) const;
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);
   SnapshotResult Snapshot(const std::string& id, const SnapshotQuery& query);

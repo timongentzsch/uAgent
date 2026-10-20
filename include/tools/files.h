@@ -7,6 +7,7 @@
 #include <sys/types.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -50,6 +51,9 @@ ToolResult ToolEditFile(const std::string& path,
 std::optional<ToolResult> ApplyFileEdits(std::string& data,
                                          const std::string& path,
                                          const std::vector<FileEdit>& edits);
+// Whether a file reads as text: no binary type by its name, no control bytes
+// in its first block.
+bool LikelyTextFile(const std::filesystem::path& path);
 ToolResult ToolListDir(const std::string& path, int64_t offset = 1,
                        int64_t limit = 0, bool include_small_files = false);
 

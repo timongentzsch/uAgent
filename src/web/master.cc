@@ -412,6 +412,10 @@ bool Master::Initialize(std::string& error) {
               [this](const Request& request, Response& response) {
                 AssetRead(request, response);
               });
+  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/files)",
+              [this](const Request& request, Response& response) {
+                Files(request, response);
+              });
   // Browser tests serve the bundle they just built, so a web edit needs no
   // rebuild of this binary: that folder alone answers, never a mix of it
   // and the embedded bundle. Never set outside a test run.

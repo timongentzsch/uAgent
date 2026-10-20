@@ -13,6 +13,14 @@ std::string SessionHost::AssetPath(const std::string& id) const {
   return found == sessions_.end() ? std::string{} : found->second->path;
 }
 
+std::string SessionHost::Folder(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  auto found = sessions_.find(id);
+  if (found == sessions_.end()) return {};
+  return found->second->folder.empty() ? found->second->cwd
+                                       : found->second->folder;
+}
+
 AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,
                                          const std::string& bytes,
                                          std::string name) {

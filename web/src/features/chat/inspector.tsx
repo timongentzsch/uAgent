@@ -620,7 +620,7 @@ function DetailBody({
       {(isAgent || detail.conversation) && (
         <section aria-label="Thread">
           <div
-            class="child-thread"
+            class="child-thread dense"
             data-history-key={historyKey}
             ref={thread.attachScroller}
             aria-label="Subagent task"

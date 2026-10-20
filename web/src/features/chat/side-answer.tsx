@@ -92,7 +92,7 @@ export default function SideAnswer({
         </IconButton>
       </header>
       <div
-        class="side-transcript"
+        class="side-transcript dense"
         ref={transcript}
         onScroll={(event) => {
           const node = event.currentTarget;

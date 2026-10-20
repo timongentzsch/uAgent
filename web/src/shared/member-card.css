@@ -67,7 +67,7 @@
 .member-card h3 {
   margin: 0;
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
   font-weight: 400;
   letter-spacing: 0.06em;
 }

@@ -82,8 +82,8 @@
 }
 .code-block pre {
   margin: 0;
-  min-height: calc(var(--control) + var(--space-6));
-  padding-right: calc(var(--control) + 2 * var(--space-4));
+  min-height: calc(var(--row) + var(--space-6));
+  padding-right: calc(var(--row) + 2 * var(--space-4));
 }
 .code-copy {
   position: absolute;
@@ -100,11 +100,6 @@
   .code-block:hover .code-copy,
   .code-block:focus-within .code-copy {
     opacity: 1;
-  }
-}
-@media (pointer: coarse) {
-  .code-block {
-    --control: calc(44rem / 14);
   }
 }
 
@@ -136,7 +131,7 @@
 }
 .diagram summary {
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .diagram-expanded {
   width: min(

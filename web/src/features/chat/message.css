@@ -1,6 +1,4 @@
 .message {
-  --control: 2rem;
-  --row-height: calc(24rem / 14);
   width: 100%;
   min-width: 0;
   container-type: inline-size;
@@ -28,23 +26,16 @@
   display: flex;
   align-items: center;
   gap: var(--gap);
-  min-height: var(--control);
-  font-size: var(--font-micro);
+  min-height: var(--row);
+  font-size: var(--font-small);
 }
 /* Message time and menu float at the upper right of the first line, which wraps
-   around them. Row-height controls for a mouse; touch keeps the larger
-   coarse target. */
-@media (pointer: fine) {
-  .transcript-content > .message:not(.user) {
-    --control: var(--row-height);
-  }
-}
+   around them. */
 .message:is(.user, .response) {
   display: flow-root;
 }
 .message:is(.user, .response) > header {
   float: right;
-  min-height: var(--row-height);
   margin-left: var(--space-2);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -67,7 +58,7 @@
   margin-left: auto;
   flex: none;
   white-space: nowrap;
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .thinking {
   --text: var(--muted);
@@ -81,7 +72,7 @@
 .disclosure-row > summary {
   cursor: pointer;
   color: var(--muted);
-  min-height: var(--row-height);
+  min-height: var(--row);
   padding: var(--space-1) 0;
 }
 .disclosure-row > summary {
@@ -138,7 +129,7 @@
 }
 .tool-row-head > .tool-disclosure > .disclosure-body {
   border-left: 0;
-  margin: 0 calc(-1 * (var(--control) + var(--space-2))) 0 var(--tool-indent);
+  margin: 0 calc(-1 * (var(--row) + var(--space-2))) 0 var(--tool-indent);
   padding-left: 0;
 }
 /* Status only when it matters: a running headline shimmers softly, a failed
@@ -242,15 +233,6 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
-@media (pointer: coarse) {
-  .message {
-    --control: calc(32rem / 14);
-  }
-  .message summary,
-  .disclosure-row > summary {
-    min-height: var(--touch);
-  }
-}
 @media (max-width: 600px) {
   .message {
     padding: var(--space-2) var(--space-3);
@@ -268,7 +250,7 @@
   }
   .tool-disclosure > summary small {
     grid-column: 3;
-    font-size: var(--font-micro);
+    font-size: var(--font-small);
   }
 }
 
@@ -326,7 +308,7 @@
   gap: 0 var(--space-2);
   padding: var(--space-2) var(--space-4) 0;
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
   text-align: left;
 }
 /* A turn that changed files: its receipt, then its statistics. */

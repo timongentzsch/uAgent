@@ -30,7 +30,7 @@
   margin: 0;
   padding: var(--space-4) var(--space-4) 0;
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -154,7 +154,7 @@
   display: none;
   flex: none;
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
   white-space: nowrap;
 }
 .session-row:hover .session-time,
@@ -201,7 +201,7 @@
   margin: 0;
   padding: var(--space-2) var(--space-4);
   color: var(--muted);
-  font-size: var(--font-micro);
+  font-size: var(--font-small);
 }
 .sidebar-sections {
   display: flex;

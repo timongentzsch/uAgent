@@ -317,7 +317,7 @@ export default function ChatPage({
     // catalogue names the session.
     <>
       <div class="transcript">
-        <div class="transcript-content">
+        <div class="transcript-content dense">
           <TranscriptPlaceholder session={{ id: selected }} />
         </div>
       </div>

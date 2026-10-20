@@ -21,6 +21,7 @@
 #include "include/agent/jobs.h"
 #include "include/agent/process.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
@@ -30,6 +31,8 @@ namespace {
 
 constexpr size_t kRetainedActivities = 16;
 constexpr auto kTrailingOutputGrace = std::chrono::milliseconds(100);
+// The newest output an `until` marker is looked for in.
+constexpr size_t kUntilWindowBytes = KiB(64);
 
 // Release the descriptors when the activity goes terminal, not when the
 // session object is finally dropped.
@@ -675,10 +678,11 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
             }
             session->pending_output.Push(chunk);
             session->transcript.Push(chunk);
+            // Trimmed at twice its size, so each byte moves at most once.
             session->until_window.append(chunk);
-            if (session->until_window.size() > size_t{64} * 1024) {
+            if (session->until_window.size() > 2 * kUntilWindowBytes) {
               session->until_window.erase(
-                  0, session->until_window.size() - size_t{64} * 1024);
+                  0, session->until_window.size() - kUntilWindowBytes);
             }
             int64_t remaining = std::max(
                 int64_t{0}, session->log_limit - session->logged_bytes);

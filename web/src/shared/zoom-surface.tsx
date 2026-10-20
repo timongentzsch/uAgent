@@ -16,6 +16,7 @@ import {
   TAP_SLOP_PX,
 } from "./zoom.ts";
 import "./zoom-surface.css";
+import { useLatest } from "./use-latest.ts";
 
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM = 2.5;
@@ -54,10 +55,8 @@ export function ZoomSurface({
   // The level shown: against the content's real size, else against the fit.
   const [percent, setPercent] = useState(100);
   // Read at apply time: the resize and wheel handlers bind once.
-  const naturalWidth = useRef(natural);
-  naturalWidth.current = natural;
-  const viewChanged = useRef(onView);
-  viewChanged.current = onView;
+  const naturalWidth = useLatest(natural);
+  const viewChanged = useLatest(onView);
   const points = useRef(new Map<number, Point>());
   const pinch = useRef<Pinch | null>(null);
   const start = useRef<Point | null>(null);

@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { useLayoutEffect } from "preact/hooks";
+import { useLatest } from "./use-latest.ts";
 
 // Open layers (dialogs, sheets, inner pages) as one stack bound to browser
 // history, so the system back gesture closes the topmost layer as it does in
@@ -82,8 +83,7 @@ function sync() {
 
 // While `active`, the layer sits on the stack and back calls `close`.
 export function useDismiss(active: boolean, close: () => void) {
-  const latest = useRef(close);
-  latest.current = close;
+  const latest = useLatest(close);
   // Layout effect: the entry exists as soon as the layer is on screen, so a
   // quick back can never skip past it.
   useLayoutEffect(() => {

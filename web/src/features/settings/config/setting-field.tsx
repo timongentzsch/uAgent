@@ -20,6 +20,7 @@ import {
   type SavedScope,
 } from "./facts.ts";
 import { ProvidersField } from "./providers-field.tsx";
+import { useLatest } from "../../../shared/use-latest.ts";
 
 // One setting, edited where it is listed. A switch and a choice apply as
 // they change; text and numbers keep a draft and are saved on leaving the
@@ -71,8 +72,7 @@ export function SettingField({
       value ? { key: setting.name, value } : { key: setting.name, unset: true },
     );
   // The latest of each, for a save that answers after something newer.
-  const typed = useRef(draft);
-  typed.current = draft;
+  const typed = useLatest(draft);
   // A switch or a choice shows what was just picked until its save answers.
   const [picked, setPicked] = useState<string>();
   const picks = useRef(0);

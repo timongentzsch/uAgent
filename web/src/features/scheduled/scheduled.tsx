@@ -32,7 +32,7 @@ import { readStored, writeStored } from "../../state/store.ts";
 import { ProjectField } from "../../shared/project-field.tsx";
 import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { ListRow } from "../../shared/list-row.tsx";
-import { permissionLabels } from "../../shared/display.ts";
+import { capitalize, permissionLabels } from "../../shared/display.ts";
 
 const blank = (cwd: string): ScheduledTask => ({
   id: "",
@@ -554,7 +554,7 @@ export default function Scheduled({
                       onClick={() => choose(run.session_id).catch(setError)}
                       title={run.title}
                       unread={unread.has(run.session_id) && "Unread results"}
-                      meta={`${run.status.replace(/^./, (c) => c.toUpperCase())} · ${moment(run.scheduled_for)}`}
+                      meta={`${capitalize(run.status)} · ${moment(run.scheduled_for)}`}
                     >
                       {run.error && <small>{run.error}</small>}
                     </ListRow>

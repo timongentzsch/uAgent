@@ -29,10 +29,9 @@ import {
   propsChanged,
 } from "../../shared/ui.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
-import { folderOf } from "../../shared/display.ts";
+import { capitalize, folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
-import { levelLabel } from "../../shared/verbosity.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { MemberAvatar } from "../../shared/member-card.tsx";
@@ -153,7 +152,7 @@ export function ConversationMenu({
         Export transcript
       </MenuItem>
       {detail && detail.levels.length > 0 && (
-        <MenuSub label="Detail" value={levelLabel(detail.level)}>
+        <MenuSub label="Detail" value={capitalize(detail.level)}>
           {detail.levels.map((level) => (
             <MenuItem
               key={level}
@@ -162,7 +161,7 @@ export function ConversationMenu({
               disabled={detail.disabled}
               onClick={() => detail.change(level)}
             >
-              {levelLabel(level)}
+              {capitalize(level)}
               {level === detail.level && <Check />}
             </MenuItem>
           ))}

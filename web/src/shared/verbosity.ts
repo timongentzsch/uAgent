@@ -22,8 +22,4 @@ export function detail(verbosity?: Verbosity): Detail {
   return policy ? { level, policy } : defaultDetail;
 }
 
-// A level's name as a control shows it.
-export const levelLabel = (level: string) =>
-  level.charAt(0).toUpperCase() + level.slice(1);
-
 export const DetailContext = createContext<Detail>(defaultDetail);

@@ -17,6 +17,7 @@ import {
 import { command } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { bytes } from "../../shared/quantities.ts";
+import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
 
 const labels: Record<string, string> = {
@@ -196,7 +197,7 @@ export default function Tools({
         >
           {shown.profiles.map((profile) => (
             <option value={profile} key={profile}>
-              {profile[0].toUpperCase() + profile.slice(1)}
+              {capitalize(profile)}
             </option>
           ))}
         </Select>

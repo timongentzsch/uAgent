@@ -17,6 +17,7 @@ import {
   type Point,
   type ZoomView,
 } from "../../shared/zoom.ts";
+import { useLatest } from "../../shared/use-latest.ts";
 
 type Gesture =
   | { kind: "pending"; start: Point }
@@ -48,8 +49,7 @@ export default function BrowserTouch({
   const gesture = useRef<Gesture | null>(null);
   const hold = useRef<number | undefined>(undefined);
   const view = useRef<ZoomView>({ scale: 1, x: 0, y: 0 });
-  const send = useRef(pointer);
-  send.current = pointer;
+  const send = useLatest(pointer);
   // The screen's size, kept by the resize observer: a moving finger reads
   // no layout for it.
   const size = useRef({ width: 0, height: 0 });

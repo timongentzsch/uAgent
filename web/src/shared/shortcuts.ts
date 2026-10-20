@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect } from "preact/hooks";
+import { useLatest } from "./use-latest.ts";
 
 // Every keyboard shortcut, once: the global listener below matches these,
 // and the shortcuts sheet and command palette show them. `keys` is
@@ -73,8 +74,7 @@ function matches(keys: string, event: KeyboardEvent) {
 export function useShortcuts(
   handlers: Partial<Record<ShortcutId, () => void>>,
 ) {
-  const latest = useRef(handlers);
-  latest.current = handlers;
+  const latest = useLatest(handlers);
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;

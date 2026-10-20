@@ -81,7 +81,7 @@ import {
   waiting as waitingOn,
 } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
-import { folderOf } from "../shared/display.ts";
+import { assetsOf, folderOf } from "../shared/display.ts";
 import {
   lockPageZoom,
   useCompact,
@@ -110,6 +110,7 @@ import {
   shortcutsDialog,
   filesPane,
 } from "./dialogs.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 // Own scroll restoration from the first paint. history restoration only
 // covers the document; the early opt-out in index.html (<head>, before any
@@ -377,8 +378,7 @@ function App() {
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
   // dialogs keep their own drops.
-  const drops = useRef({ upload, page });
-  drops.current = { upload, page };
+  const drops = useLatest({ upload, page });
   const attach = useCallback(
     (files: File[]) => drops.current.upload(files),
     [],
@@ -791,8 +791,7 @@ function App() {
     askMember,
     threads,
   };
-  const latest = useRef(current);
-  latest.current = current;
+  const latest = useLatest(current);
   // A failed message sends again as a new request; Continue resumes a
   // stopped turn. Both leave the composer's draft alone.
   const retrySend = useCallback((block: UserBlock) => {
@@ -803,7 +802,7 @@ function App() {
     );
     void deliver(selected, {
       text: block.text || "",
-      files: (block.files || []).filter((file) => typeof file === "object"),
+      files: assetsOf(block.files),
     });
   }, []);
   const resume = useCallback(() => {

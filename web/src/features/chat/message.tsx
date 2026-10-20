@@ -42,6 +42,8 @@ import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
 import {
+  assetsOf,
+  capitalize,
   diffCounts,
   formatStat,
   isRunningStatus,
@@ -77,9 +79,7 @@ function MentionFile({
   files?: (Asset | string)[];
   assets: string;
 }) {
-  const file = files?.find(
-    (item): item is Asset => typeof item === "object" && item.id === id,
-  );
+  const file = assetsOf(files).find((item) => item.id === id);
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
   const href = `${assets}${file.id}`;
   return file.image ? (
@@ -236,7 +236,7 @@ function MessageView({ block, online, session }: MessageProps) {
           ? "Assistant"
           : row
             ? call?.name || "Tool"
-            : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
+            : capitalize(block.kind),
     block.time,
   );
   if (block.kind === "compaction" && block.compaction)
@@ -434,7 +434,7 @@ function MessageView({ block, online, session }: MessageProps) {
       )}
       {online && !!files?.length && !row && (
         <AttachmentList
-          files={files.filter((file) => typeof file === "object")}
+          files={assetsOf(files)}
           href={(id) => `${assets}${id}`}
         />
       )}

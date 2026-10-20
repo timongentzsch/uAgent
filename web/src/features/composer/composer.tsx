@@ -56,7 +56,11 @@ import {
   maxRecalledPromptSessions,
   stopGuardMs,
 } from "../../shared/limits.ts";
-import { permissionLabel, permissionLabels } from "../../shared/display.ts";
+import {
+  capitalize,
+  permissionLabel,
+  permissionLabels,
+} from "../../shared/display.ts";
 import GuidanceQueue from "./guidance-queue.tsx";
 import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
@@ -273,8 +277,7 @@ function Composer({
   const detached = (
     ["saved", "interrupted", "draft", "starting"] as SessionStatus[]
   ).includes(session?.status!)
-    ? (session?.status || "").charAt(0).toUpperCase() +
-      (session?.status || "").slice(1)
+    ? capitalize(session?.status || "")
     : "";
   const empty = !draft.text.trim() && !draft.files.length;
   // The one primary control: Stop while a turn runs and there is nothing

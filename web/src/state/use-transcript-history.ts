@@ -4,6 +4,7 @@ import {
   storeBookmark,
   type Bookmark,
 } from "./transcript-bookmarks.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 type Anchor = {
   node: HTMLElement;
@@ -139,8 +140,7 @@ export function useTranscriptHistory(
   // an older history page prepended above never reads as new.
   const lastBlock = useRef(blocks.at(-1)?.id);
   const [unseen, setUnseen] = useState(0);
-  const onFollowRef = useRef(onFollow);
-  onFollowRef.current = onFollow;
+  const onFollowRef = useLatest(onFollow);
   const observer = useRef<ResizeObserver | null>(null);
   // What the observer watches, so a refresh observes only new nodes: each
   // observe() makes the observer report that node once more.
@@ -288,8 +288,7 @@ export function useTranscriptHistory(
     capture();
   }, [capture, pin, selectAnchor, settleWheel, writeTop]);
 
-  const reconcileRef = useRef(reconcile);
-  reconcileRef.current = reconcile;
+  const reconcileRef = useLatest(reconcile);
 
   const observe = useCallback(() => {
     const watch = observer.current;

@@ -14,10 +14,13 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/protocol.h"
+#include "include/agent/session_view.h"
 #include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
+#include "include/core/output_buffer.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
@@ -143,6 +146,62 @@ void BenchmarkActivity(bool labels) {
             << " ms\n";
 }
 
+// One 100 KB answer folded into a held view the way worker, host and
+// terminal each do it: one delta per 12 ms batch of a fast model (64 bytes).
+void BenchmarkStreamedAnswer() {
+  constexpr size_t kAnswerBytes = KiB(100);
+  constexpr size_t kBatchBytes = 64;
+  const std::string chunk(kBatchBytes, 'x');
+  const std::string delta_type(AppType(EventId::kAnswerDelta));
+  json state;
+  ApplySessionEvent(state, std::string(AppType(EventId::kResponseStarted)),
+                    {{"response_id", "r"}});
+  size_t offset = 0;
+  Report("100 KB answer, 12 ms batches", kAnswerBytes / kBatchBytes,
+         Measure(kAnswerBytes / kBatchBytes, [&] {
+           json patch;
+           ApplySessionEvent(
+               state, delta_type,
+               {{"response_id", "r"}, {"text", chunk}, {"offset", offset}},
+               &patch);
+           offset += kBatchBytes;
+           return patch.size();
+         }));
+}
+
+// 100 MB of command output through the bounded buffer a running command
+// keeps, in the 8 KiB reads the process reader makes.
+void BenchmarkCommandOutput() {
+  constexpr size_t kOutputBytes = MiB(100);
+  const std::string read(KiB(8), 'x');
+  HeadTailBuffer buffer;
+  Report("100 MB command output", kOutputBytes / read.size(),
+         Measure(kOutputBytes / read.size(), [&] {
+           buffer.Push(read);
+           return size_t{1};
+         }));
+}
+
+// A checkpoint's 64 blocks merged into the 64 the host already holds.
+void BenchmarkCheckpointMerge() {
+  constexpr size_t kBlocks = 64;
+  constexpr size_t kCheckpoints = 100;
+  json checkpoint = json::array();
+  for (size_t index = 1; index <= kBlocks; ++index) {
+    checkpoint.push_back({{"id", "m-" + std::to_string(index)},
+                          {"sequence", index},
+                          {"kind", index % 2 ? "user" : "assistant"},
+                          {"text", std::string(KiB(4), 'x')},
+                          {"truncated", false}});
+  }
+  json view = json::object();
+  for (const json& block : checkpoint) MergeDisplayBlock(view, block);
+  Report("64-block checkpoint merge", kCheckpoints, Measure(kCheckpoints, [&] {
+           for (const json& block : checkpoint) MergeDisplayBlock(view, block);
+           return view["blocks"].size();
+         }));
+}
+
 }  // namespace
 
 int RunBenchmarks() {
@@ -162,6 +221,9 @@ int RunBenchmarks() {
   BenchmarkStream();
   BenchmarkActivity(false);
   BenchmarkActivity(true);
+  BenchmarkStreamedAnswer();
+  BenchmarkCommandOutput();
+  BenchmarkCheckpointMerge();
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {

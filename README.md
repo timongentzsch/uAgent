@@ -7,7 +7,7 @@
 binary that serves the same conversations to a terminal, a script and a
 browser, and runs commands in a sandbox limited to the project folder.
 
-![The web interface on a desktop and on a phone: a folder's panel where two members, Ada and Linus, review a token-bucket rate limiter and disagree over its race test and Redis while a thread reruns the tests](docs/images/web-desktop-phone.png)
+![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
 
 ## Features
 
@@ -28,8 +28,6 @@ browser, and runs commands in a sandbox limited to the project folder.
   you. See [the agent's browser](docs/BROWSER.md).
 - **Files.** In the browser, the conversation's folder can be shown beside the
   chat, read only, with search, highlighted code and rendered markdown.
-
-![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](docs/images/files.gif)
 

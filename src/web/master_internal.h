@@ -55,6 +55,9 @@ bool EqualSecret(std::string_view a, std::string_view b);
 void ServeFile(Response& response, std::string bytes, const std::string& mime,
                const std::string& name, bool inline_view);
 
+// Browser instances "0" to "4", each watched by at most one viewer.
+inline constexpr size_t kViewerInstances = 5;
+
 struct Device {
   std::string id, token, name;
   int64_t expires = 0;
@@ -118,7 +121,7 @@ class Master {
   std::atomic<bool> reexec_{false};
   std::unique_ptr<PushSender> push_;
   browser::ServiceProcess browser_process_;
-  std::array<std::atomic<bool>, 5> viewer_active_{};
+  std::array<std::atomic<bool>, kViewerInstances> viewer_active_{};
 };
 
 }  // namespace uagent::web::master

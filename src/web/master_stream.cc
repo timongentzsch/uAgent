@@ -44,12 +44,16 @@ void Master::Snapshot(const Request& request, Response& response) {
 }
 
 void Master::Events(const Request& request, Response& response) {
-  UniqueLock lock(mutex_);
-  if (sse_count_ >= kWebSseConnections) {
-    Error(response, "event connection limit reached", 429);
-    return;
+  std::string device;
+  {
+    std::lock_guard lock(mutex_);
+    if (sse_count_ >= kWebSseConnections) {
+      Error(response, "event connection limit reached", 429);
+      return;
+    }
+    device = DeviceId(request);
+    ++sse_count_;
   }
-  std::string device = DeviceId(request);
   std::string cursor = request.get_header_value("Last-Event-ID");
   if (cursor.empty()) {
     cursor = request.get_param_value("cursor");
@@ -61,14 +65,15 @@ void Master::Events(const Request& request, Response& response) {
       ParseInt64(cursor.substr(colon + 1).c_str(), parsed) && parsed >= 0;
   uint64_t next = static_cast<uint64_t>(std::max(int64_t{0}, parsed));
   const uint64_t replay_watermark = host_.Cursor();
-  ++sse_count_;
   response.set_header("X-Accel-Buffering", "no");
+  // Only the device check takes the lock: reading and formatting the
+  // replay never holds up another client's request.
   response.set_chunked_content_provider(
       "text/event-stream",
       [this, device, next, valid, replay_watermark, ready_sent = false](
           size_t, httplib::DataSink& sink) mutable {
-        UniqueLock guard(mutex_);
-        auto authorized = [&]() UAGENT_REQUIRES(mutex_) {
+        auto authorized = [&] {
+          std::lock_guard guard(mutex_);
           return std::any_of(
               devices_.begin(), devices_.end(), [&](const Device& entry) {
                 return entry.id == device && entry.expires > NowMillis();
@@ -77,30 +82,22 @@ void Master::Events(const Request& request, Response& response) {
         if (stopping_ || !authorized()) {
           return false;
         }
-        auto replay = host_.ReadReplay(next, valid, replay_watermark,
-                                       kWebEventBatchBytes);
+        // Caught up: wait for news, then read. A reader still replaying
+        // reads the next batch at once.
+        if (ready_sent) {
+          host_.WaitForReplay(next, kReplayWait);
+          if (stopping_ || !authorized()) return false;
+        }
+        auto replay = host_.ReadReplay(
+            next, valid, ready_sent ? host_.Cursor() : replay_watermark,
+            kWebEventBatchBytes);
         if (replay.reset) {
-          guard.unlock();
           std::string reset = "event: resync\ndata: {}\n\n";
           if (!sink.write(reset.data(), reset.size())) {
             return false;
           }
           sink.done();
           return true;
-        }
-        // Caught up: wait for news, then read again. A reader still
-        // replaying sends the batch just read.
-        if (ready_sent) {
-          guard.unlock();
-          host_.WaitForReplay(next, kReplayWait);
-          guard.lock();
-          if (stopping_ || !authorized()) return false;
-          replay = host_.ReadReplay(next, valid, host_.Cursor(),
-                                    kWebEventBatchBytes);
-          if (replay.reset) {
-            valid = false;
-            return true;
-          }
         }
         std::string batch;
         for (const session::HostReplay& event : replay.events) {
@@ -120,7 +117,6 @@ void Master::Events(const Request& request, Response& response) {
         if (batch.empty()) {
           batch = ": heartbeat\n\n";
         }
-        guard.unlock();
         return sink.is_writable() && sink.write(batch.data(), batch.size());
       },
       [this](bool) {

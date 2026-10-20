@@ -161,11 +161,11 @@ void Master::Command(const Request& request, Response& response) {
     error = JsonValue(command, "action", "") == "delete"
                 ? host_.DeleteSpace(path, device)
                 : host_.RenameSpace(path, Trim(JsonValue(command, "name", "")));
+    const json spaces = session::Spaces();
     lock.lock();
-    outcome["result"] = {{"spaces", session::Spaces()}};
+    outcome["result"] = {{"spaces", spaces}};
     if (error.empty()) {
-      host_.Publish(
-          "", "", {{"kind", "spaces.changed"}, {"spaces", session::Spaces()}});
+      host_.Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
     }
   } else if (kind == "restart_conversations") {
     // Settings that need a restart reach running conversations only through

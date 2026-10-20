@@ -51,8 +51,12 @@ namespace {
 constexpr size_t kOriginChars = 255;
 constexpr size_t kSubscriptionRequestBytes = KiB(8);
 constexpr size_t kDiscoveryBytes = KiB(4);
-constexpr int kWorkerThreads = 12;
-constexpr int kWorkerQueue = 24;
+// Four workers wait while idle. Busy, the pool grows to one per event stream
+// and viewer, which each hold theirs as long as they stay open, plus twelve
+// for requests, so those connections cannot starve the API.
+constexpr size_t kIdleWorkerThreads = 4;
+constexpr size_t kRequestWorkerThreads = 12;
+constexpr size_t kWorkerQueue = 24;
 constexpr int kReadTimeoutSeconds = 5;
 constexpr int kWriteTimeoutSeconds = 2;
 constexpr int kKeepAliveRequests = 50;
@@ -209,8 +213,10 @@ bool Master::Initialize(std::string& error) {
   host_.RefreshCatalogue();
   host_.RefreshInvalidations({});
   server_.new_task_queue = [] {
-    return new httplib::ThreadPool(kWorkerThreads, kWorkerThreads,
-                                   kWorkerQueue);
+    return new httplib::ThreadPool(
+        kIdleWorkerThreads,
+        kWebSseConnections + kViewerInstances + kRequestWorkerThreads,
+        kWorkerQueue);
   };
   server_.set_read_timeout(kReadTimeoutSeconds);
   server_.set_write_timeout(kWriteTimeoutSeconds);
@@ -270,9 +276,14 @@ bool Master::Initialize(std::string& error) {
           host_.RefreshCatalogue(true);
         }
         host_.RefreshPresence();
-        UniqueLock lock(mutex_);
         json catalogue = host_.Catalogue();
-        const std::string device = DeviceId(request);
+        std::string device;
+        json devices;
+        {
+          std::lock_guard lock(mutex_);
+          device = DeviceId(request);
+          devices = PublicDevices();
+        }
         const json body = {{"v", kProtocol},
                            {"epoch", epoch_},
                            {"cursor", std::move(catalogue["cursor"])},
@@ -286,11 +297,9 @@ bool Master::Initialize(std::string& error) {
                               return table;
                             }()},
                            {"capabilities", push_->Capabilities(device)},
-                           {"devices", PublicDevices()},
+                           {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
                            {"device", device}};
-        // Every /api request authenticates under this lock.
-        lock.unlock();
         Reply(response, body);
       });
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64}))",

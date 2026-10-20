@@ -638,9 +638,13 @@ void TestBrowserSecretMaskAndBack() {
   // An earlier look at the same page still names its elements, so one look
   // serves several actions; a point needs the latest look, and another page
   // takes none of the earlier ones.
-  CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
-  CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
-             .contains("error"));
+  // A look is kept by use: a batch of more actions on it than looks are
+  // kept, each followed by the look its result brings, never pushes it out.
+  for (int action = 0; action < 10; ++action) {
+    CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+    CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+               .contains("error"));
+  }
   CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
   CHECK(act({{"op", "click"}, {"x", 5}, {"y", 5}, {"view_id", view}})
             .value("error", "") ==

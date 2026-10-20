@@ -193,6 +193,13 @@
   test command a person gave (`python3 -m unittest ...`) while the same
   command after `cd x &&` ran, and every refusal cost a round. Using `scratch`
   for one-off computation stays the prompt's advice.
+- `browser`: `type` sets a list (`<select>`) to the option it names, and a
+  date, time or color field to its value, such as `2027-03-12` or `19:30`.
+  Before, typing into a date or time field reported `type done` while the
+  field stayed empty, and a list refused with "cannot tell which field has
+  focus", so a model stepped segments with arrow keys until it gave up: an
+  order form went from 0 of 11 checks in 26–64 calls to 11 of 11 in 14. A
+  value the field does not take is refused with the form it takes.
 - `browser`: several actions from one look work. An element number of an
   earlier look at the same page still names what that look numbered, so a
   form can be filled in one step. Before, every action after the first was

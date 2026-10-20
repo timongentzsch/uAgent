@@ -167,7 +167,16 @@ void TestGrepTool() {
   CHECK(grep != nullptr);
   CHECK(!file_search.contains("context"));
   CHECK(grep && !FindToolArgumentIssue(*grep, file_search));
+  // What uAgent wrote for the model is read without asking; anything else
+  // outside the folder still asks, and so does writing where uAgent wrote.
+  const std::string spilled = UagentDir(kArtifactsDir) + "/output-test";
+  const Tool* read = FindTool(lean_tools, "read_path");
+  CHECK(read && !read->needs_approval({{"path", spilled}}));
+  CHECK(read && read->needs_approval({{"path", "/etc/hosts"}}));
+  CHECK(grep && !grep->needs_approval({{"pattern", "x"}, {"path", spilled}}));
   auto evaluator_tools = BuiltinTools(supervisor, root);
+  const Tool* write = FindTool(evaluator_tools, "write_file");
+  CHECK(write && write->needs_approval({{"path", spilled}}));
   ApplyToolPolicy(evaluator_tools,
                   {.allowed = Capability(ToolCapability::kInspect),
                    .tool_allowlist = {"grep", "read_path", "run"},

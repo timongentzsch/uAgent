@@ -127,8 +127,7 @@ ScheduleTick SessionHost::TickSchedules() {
     if (prior == "stopping" && !session->stop_sent) {
       session->stop_sent = true;
       session->launch_prompt.clear();
-      tick.commands.push_back(
-          {session, {{"kind", "interrupt"}, {"request_id", RandomToken(16)}}});
+      tick.commands.push_back({session, ControlFrame("interrupt")});
       session->run_result = "interrupted";
     }
     if (!session->launch_prompt.empty() && session->state.contains("route") &&
@@ -164,8 +163,7 @@ ScheduleTick SessionHost::TickSchedules() {
       }
       session->closing = true;
       session->status = SessionStatus::kClosing;
-      tick.commands.push_back(
-          {session, {{"kind", "close"}, {"request_id", RandomToken(16)}}});
+      tick.commands.push_back({session, ControlFrame("close")});
     }
   }
   for (const auto& update : updates) RecordRun(update);

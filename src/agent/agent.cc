@@ -321,9 +321,7 @@ void Agent::RestoreToolSelection(const json& settings) {
   PublishSideContext();
 }
 json Agent::HttpExchanges() const {
-  return JsonValue(
-      JsonValue(conversation_.DisplayFacts(), "http-latest", json::object()),
-      "http", json::array());
+  return LatestHttp(conversation_.DisplayFacts());
 }
 json Agent::PreviewContext() {
   RefreshSystemMessage();

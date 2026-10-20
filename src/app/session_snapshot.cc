@@ -15,6 +15,7 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
@@ -84,9 +85,9 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
     for (const auto& entry : history_) {
       bytes += std::max(int64_t{0}, entry->stamp.size);
     }
-    constexpr int64_t kHistoryFileBytes = int64_t{32} * 1024 * 1024;
     while (history_.size() > 1 &&
-           (history_.size() > 3 || bytes > kHistoryFileBytes)) {
+           (history_.size() > kHistoryCacheEntries ||
+            bytes > static_cast<int64_t>(kHistoryCacheBytes))) {
       bytes -= std::max(int64_t{0}, history_.back()->stamp.size);
       history_.pop_back();
     }
@@ -250,12 +251,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
       return {std::move(body), status};
     }
     if (query.raw && turn_active && !inline_exchange.is_null()) {
-      std::string text = JsonDump(inline_exchange);
-      return {{{"text", text.substr(std::min(text.size(), start))},
-               {"next", text.size()},
-               {"bytes", text.size()},
-               {"more", false}},
-              200};
+      return {PageText(JsonDump(inline_exchange), start), 200};
     }
   }
   auto history = ReadHistory(session->path);
@@ -286,9 +282,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
              {"model", record.metadata.model},
              {"turns", record.metadata.turns},
              {"statistics", conversation.Statistics()},
-             {"http", JsonValue(JsonValue(conversation.DisplayFacts(),
-                                          "http-latest", json::object()),
-                                "http", json::array())}};
+             {"http", LatestHttp(conversation.DisplayFacts())}};
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};
   }
@@ -298,14 +292,9 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
   if (session->pid > 0 && !query.has_before) {
     return {LiveSnapshot(*session), 200};
   }
-  return {{{"v", kProtocol},
-           {"epoch", epoch_},
-           {"cursor", replay_.Cursor()},
-           {"metadata", Metadata(*session)},
-           {"state", std::move(state)},
-           {"pending", session->pending},
-           {"live", json::array()}},
-          200};
+  json body = SnapshotBody(*session, std::move(state));
+  body["live"] = json::array();
+  return {std::move(body), 200};
 }
 
 }  // namespace uagent::session

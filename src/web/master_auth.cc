@@ -65,8 +65,7 @@ void Master::LoadDevices() {
     Device device{JsonValue(item, "id", ""), JsonValue(item, "token", ""),
                   JsonValue(item, "name", "Device"),
                   JsonValue(item, "expires", int64_t{0})};
-    if (OpaqueId(device.id) && OpaqueId(device.token) &&
-        device.expires > NowMillis()) {
+    if (OpaqueId(device.id) && OpaqueId(device.token) && device.Active()) {
       devices_.push_back(std::move(device));
     }
   }
@@ -96,7 +95,7 @@ std::string Master::DeviceId(const Request& request) const {
     token = part.substr(14);
   }
   for (const Device& device : devices_) {
-    if (device.expires > NowMillis() && EqualSecret(token, device.token)) {
+    if (device.Active() && EqualSecret(token, device.token)) {
       return device.id;
     }
   }
@@ -123,9 +122,8 @@ void Master::Authenticate(const Request& request, Response& response) {
     Error(response, "invalid or expired pairing code", 403);
     return;
   }
-  std::erase_if(devices_, [](const Device& device) {
-    return device.expires <= NowMillis();
-  });
+  std::erase_if(devices_,
+                [](const Device& device) { return !device.Active(); });
   if (devices_.size() >= kWebDeviceLimit) {
     Error(response, "device limit reached; revoke a device first", 409);
     return;

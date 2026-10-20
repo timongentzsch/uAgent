@@ -61,7 +61,12 @@ json ConversationDetail(const Conversation& conversation, const std::string& id,
 // Exact retained tool arguments/result, independent of presentation previews.
 json ConversationExchange(const Conversation& conversation,
                           const std::string& id, size_t offset = 0);
+// One page of a long text from `offset`, cut at UTF-8 boundaries, with where
+// the next starts and whether there is more.
+json PageText(const std::string& text, size_t offset);
 json ReadPrivateArtifact(const std::string& path, size_t offset);
 json FindHttpExchange(const json& value, const std::string& id);
+// The HTTP exchanges of the latest model request, from the display facts.
+json LatestHttp(const json& facts);
 }  // namespace uagent
 #endif  // UAGENT_INCLUDE_AGENT_SESSION_VIEW_H_

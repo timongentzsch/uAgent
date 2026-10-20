@@ -31,8 +31,6 @@ namespace {
 
 constexpr size_t kRetainedActivities = 16;
 constexpr auto kTrailingOutputGrace = std::chrono::milliseconds(100);
-// The newest output an `until` marker is looked for in.
-constexpr size_t kUntilWindowBytes = KiB(64);
 
 // Release the descriptors when the activity goes terminal, not when the
 // session object is finally dropped.

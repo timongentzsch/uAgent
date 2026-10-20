@@ -35,7 +35,6 @@
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/thread_annotations.h"
-#include "include/core/time.h"
 #include "include/core/verbosity.h"
 #include "include/tools/files.h"
 #include "include/web/assets.h"
@@ -562,7 +561,7 @@ int Master::Run() {
         if (!notice.attention_id.empty()) {
           std::lock_guard lock(mutex_);
           for (const auto& device : devices_) {
-            if (device.expires > NowMillis()) {
+            if (device.Active()) {
               push_->Notify(notice.attention_id, notice.session, device.id);
             }
           }

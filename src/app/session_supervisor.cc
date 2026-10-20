@@ -231,7 +231,7 @@ void SessionHost::Received(HostSession* session, json frame) {
                   !session->run_id.empty() || session->restart);
   if (kind == "gap") {
     lock.unlock();
-    session->Send({{"kind", "refresh"}, {"request_id", RandomToken(16)}});
+    session->Send(ControlFrame("refresh"));
   }
   changed_.notify_all();
 }
@@ -252,7 +252,7 @@ bool SessionHost::RecycleStaleWorkerLocked(
   // Claimed now, so no other pass starts a second recycle while this one
   // waits; restored if the worker keeps running.
   const bool restart = std::exchange(session->restart, false);
-  session->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
+  session->Send(ControlFrame("close"));
   changed_.wait_for(lock, kWorkerShutdownTimeout,
                     [&] { return session->exited.load(); });
   if (!session->exited) {

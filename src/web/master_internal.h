@@ -31,6 +31,7 @@
 #include "include/core/file_watch.h"
 #include "include/core/settings_store.h"
 #include "include/core/thread_annotations.h"
+#include "include/core/time.h"
 #include "include/web/protocol.h"
 #include "include/web/push.h"
 
@@ -61,6 +62,7 @@ inline constexpr size_t kViewerInstances = 5;
 struct Device {
   std::string id, token, name;
   int64_t expires = 0;
+  bool Active() const { return expires > NowMillis(); }
 };
 class Master {
  public:

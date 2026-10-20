@@ -158,7 +158,7 @@ std::string SessionHost::DeleteSpace(const std::string& path,
       return "a conversation in the workspace did not stop; try again";
     }
     const SessionCommandResult result =
-        ExecuteCommand(command, device, RandomToken(16));
+        ExecuteCommand(command, device, NewRequestId());
     if (!result.error.empty()) return result.error;
   }
   // Under the lock a conversation is created under: none starts in a

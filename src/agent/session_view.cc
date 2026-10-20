@@ -71,17 +71,6 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
   return entries;
 }
 
-json TextPage(const std::string& text, size_t offset) {
-  offset = std::min(offset, text.size());
-  const size_t end =
-      Utf8BoundaryBefore(text, std::min(text.size(), offset + KiB(16)));
-  offset = Utf8BoundaryAfter(text, offset);
-  return {{"text", text.substr(offset, end >= offset ? end - offset : 0)},
-          {"next", end},
-          {"bytes", text.size()},
-          {"more", end < text.size()}};
-}
-
 std::string Text(const json& message) {
   if (JsonValue(message, "kind", "") == "activity") {
     return JsonValue(message, "text", "");
@@ -726,7 +715,7 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
       }
     }
   }
-  return TextPage(text, offset);
+  return PageText(text, offset);
 }
 
 json FindHttpExchange(const json& value, const std::string& id) {
@@ -746,6 +735,22 @@ json FindHttpExchange(const json& value, const std::string& id) {
   return nullptr;
 }
 
+json LatestHttp(const json& facts) {
+  const json* latest = JsonObject(facts, "http-latest");
+  return latest ? JsonValue(*latest, "http", json::array()) : json::array();
+}
+
+json PageText(const std::string& text, size_t offset) {
+  offset = std::min(offset, text.size());
+  const size_t end =
+      Utf8BoundaryBefore(text, std::min(text.size(), offset + kTextPageBytes));
+  offset = Utf8BoundaryAfter(text, offset);
+  return {{"text", text.substr(offset, end >= offset ? end - offset : 0)},
+          {"next", end},
+          {"bytes", text.size()},
+          {"more", end < text.size()}};
+}
+
 json ReadPrivateArtifact(const std::string& path, size_t offset) {
   const std::filesystem::path file_path(path);
   if (path.empty()) return {{"error", "retained body unavailable"}};
@@ -763,9 +768,8 @@ json ReadPrivateArtifact(const std::string& path, size_t offset) {
       OpenOwnedRegular((base / file_path.filename()).string(), SIZE_MAX, &size);
   if (!file) return {{"error", "retained body unavailable"}};
   offset = std::min(offset, size);
-  constexpr size_t kPage = size_t{16} * 1024;
   // Look ahead so the page boundary can be checked against the next byte.
-  std::string text(std::min(size - offset, kPage + 4), '\0');
+  std::string text(std::min(size - offset, kTextPageBytes + 4), '\0');
   ssize_t bytes;
   do {
     bytes =
@@ -775,7 +779,8 @@ json ReadPrivateArtifact(const std::string& path, size_t offset) {
   text.resize(static_cast<size_t>(bytes));
   // JSON pages split only at UTF-8 boundaries, never inside a code point.
   const size_t start = Utf8BoundaryAfter(text, 0);
-  const size_t end = Utf8BoundaryBefore(text, std::min(kPage, text.size()));
+  const size_t end =
+      Utf8BoundaryBefore(text, std::min(kTextPageBytes, text.size()));
   return {{"text", text.substr(start, end - start)},
           {"next", offset + end},
           {"bytes", size},
@@ -806,7 +811,7 @@ json TranscriptView::Exchange(const std::string& id, size_t offset) const {
       }
     }
   }
-  return TextPage(JsonDump(exchange), offset);
+  return PageText(JsonDump(exchange), offset);
 }
 json ConversationView(const Conversation& conversation, uint64_t before) {
   return TranscriptView(conversation).Page(before);

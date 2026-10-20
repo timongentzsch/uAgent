@@ -139,8 +139,8 @@ bool SessionHost::PublishMetadata(const std::string& id, HostSession& session) {
 
 bool SessionHost::RefreshCatalogue(bool force) {
   std::lock_guard scan(scan_mutex_);
-  if (!force &&
-      std::chrono::steady_clock::now() - scanned_ < std::chrono::seconds(1)) {
+  if (!force && std::chrono::steady_clock::now() - scanned_ <
+                    std::chrono::seconds(kCatalogueRescanSeconds)) {
     rescan_ = true;
     return false;
   }
@@ -220,7 +220,7 @@ std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
     const {
   std::lock_guard scan(scan_mutex_);
   if (!rescan_) return std::nullopt;
-  return scanned_ + std::chrono::seconds(1);
+  return scanned_ + std::chrono::seconds(kCatalogueRescanSeconds);
 }
 
 void SessionHost::RefreshPresence() {
@@ -325,14 +325,19 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"updated", session.updated}};
 }
 
-json SessionHost::LiveSnapshot(const HostSession& session) const {
+json SessionHost::SnapshotBody(const HostSession& session, json state) const {
   return {{"v", kProtocol},
           {"epoch", epoch_},
           {"cursor", replay_.Cursor()},
           {"metadata", Metadata(session)},
-          {"state", session.state},
-          {"pending", session.pending},
-          {"live_truncated", session.live_truncated}};
+          {"state", std::move(state)},
+          {"pending", session.pending}};
+}
+
+json SessionHost::LiveSnapshot(const HostSession& session) const {
+  json body = SnapshotBody(session, session.state);
+  body["live_truncated"] = session.live_truncated;
+  return body;
 }
 
 json SessionHost::Catalogue() const {

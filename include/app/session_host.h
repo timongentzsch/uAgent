@@ -282,6 +282,9 @@ class SessionHost {
   std::vector<std::string> InvalidationPaths(
       const std::vector<std::string>& projects) const;
   json Metadata(const HostSession& session) const;
+  // What GET /api/sessions/{id} answers: `state` with the session's identity
+  // and the replay cursor it is current to.
+  json SnapshotBody(const HostSession& session, json state) const;
   json LiveSnapshot(const HostSession& session) const;
   std::shared_ptr<HostSession> StartScheduledRun(const json& run)
       UAGENT_REQUIRES(mutex_);

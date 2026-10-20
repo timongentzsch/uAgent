@@ -272,6 +272,24 @@ inline constexpr int64_t kTerminalDays = 7;
 // next message, mail or browser action starts it again.
 inline constexpr int64_t kIdleMinutes = 15;
 
+// Host and runtime pacing. The web host rescans the session catalogue at
+// most once a second and keeps a few saved histories parsed for paging; a
+// long text is read a page at a time; a stopping runtime gives its clients
+// this long to take what is queued for them. An hour of silence in a panel
+// usually means a new topic.
+inline constexpr int64_t kCatalogueRescanSeconds = 1;
+inline constexpr size_t kHistoryCacheEntries = 3;
+inline constexpr size_t kHistoryCacheBytes = MiB(32);
+inline constexpr size_t kTextPageBytes = KiB(16);
+inline constexpr int64_t kServerDrainMs = 500;
+inline constexpr int64_t kSecondsPerHour = 3600;
+// Heads of files: what is read to tell a file's kind (an SVG prolog may run
+// this long), the text of an attached text file the model reads inline, and
+// the newest output an `until` marker is looked for in.
+inline constexpr size_t kAttachmentSniffBytes = KiB(64);
+inline constexpr size_t kAttachedTextBytes = KiB(64);
+inline constexpr size_t kUntilWindowBytes = KiB(64);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_LIMITS_H_

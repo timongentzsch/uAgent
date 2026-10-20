@@ -28,6 +28,13 @@ inline json LightState(const json& state) {
   return light;
 }
 
+// A fresh id for a request the host or a client sends a runtime.
+inline std::string NewRequestId() { return RandomToken(16); }
+// A command that carries nothing but its kind, under a fresh request id.
+inline json ControlFrame(const char* kind) {
+  return {{"kind", kind}, {"request_id", NewRequestId()}};
+}
+
 std::string SocketPath(const std::string& path);
 struct Connection {
   Fd socket;

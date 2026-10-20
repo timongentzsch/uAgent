@@ -155,12 +155,11 @@ std::string AudioMime(std::string_view bytes) {
 }
 
 // SVG has no magic number: scan the prolog (BOM, whitespace, <?...?>,
-// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most ScanBytes
-// in. Anything else -- including bare <?xml without svg, HTML, or plain
-// text -- is not an SVG document.
+// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most
+// kAttachmentSniffBytes in. Anything else -- including bare <?xml without
+// svg, HTML, or plain text -- is not an SVG document.
 std::string SvgMime(std::string_view bytes) {
-  constexpr size_t kScanBytes = size_t{64} * 1024;
-  const size_t end = std::min(bytes.size(), kScanBytes);
+  const size_t end = std::min(bytes.size(), kAttachmentSniffBytes);
   size_t pos = 0;
   if (end - pos >= 3 && bytes.substr(pos, 3) == "\xEF\xBB\xBF") pos += 3;
   auto skip_blank = [&] {
@@ -271,7 +270,7 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
   // One head read covers the raster/HEIC signatures as well as the SVG
   // prolog scan below; vector documents may legitimately start with
   // kilobytes of XML declarations before <svg.
-  if (!ReadRegularFile(path, size_t{64} * 1024, prefix, error_read, true)) {
+  if (!ReadRegularFile(path, kAttachmentSniffBytes, prefix, error_read, true)) {
     error = error_read;
     return false;
   }
@@ -811,14 +810,14 @@ bool PrepareAttachments(json& messages,
         }
         if (TextMime(attachment.mime)) {
           std::string text;
-          if (ReadRegularFile(path, size_t{64} * 1024, text, detail, true) &&
+          if (ReadRegularFile(path, kAttachedTextBytes, text, detail, true) &&
               text.find('\0') == std::string::npos) {
             prepared.push_back(
                 {{"type", "text"},
                  {"text",
                   "[Attached text: " + name + "]\n" +
-                      Utf8Prefix(std::move(text), size_t{64} * 1024) +
-                      (attachment.bytes > size_t{64} * 1024
+                      Utf8Prefix(std::move(text), kAttachedTextBytes) +
+                      (attachment.bytes > kAttachedTextBytes
                            ? "\n[truncated; read the original file for more]"
                            : "")}});
             delivery = "Text";

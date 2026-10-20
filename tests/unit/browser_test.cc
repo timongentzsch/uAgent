@@ -715,7 +715,8 @@ void TestBrowserSecretMaskAndBack() {
 // it returns at once, a look reports it, even after a visit to another tab,
 // and only Enter or Escape (with text typed first for a prompt) reach it. A
 // plea to stay is accepted unasked only when the agent is leaving the page.
-// A password field takes no typed text, nor does another site's frame.
+// A password field takes no typed text, nor does another site's frame. A
+// list or a date field is set, never typed into, or says what it takes.
 void TestBrowserDialogsAndPasswordFields() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-dialogs");
@@ -786,6 +787,15 @@ void TestBrowserDialogsAndPasswordFields() {
   CHECK(act({{"op", "type"}, {"text", "hunter2"}})
             .value("error", "")
             .starts_with("the field is in another site's frame"));
+  fs::remove(profile / "password-focused");
+  std::ofstream(profile / "control-focused") << R"({"set": true})";
+  CHECK(!act({{"op", "type"}, {"text", "2027-03-12"}}).contains("error"));
+  std::ofstream(profile / "control-focused")
+      << R"({"error": "a date field takes YYYY-MM-DD"})";
+  CHECK(act({{"op", "type"}, {"text", "03/12/2027"}})
+            .value("error", "")
+            .starts_with("a date field takes YYYY-MM-DD"));
+  fs::remove(profile / "control-focused");
   std::vector<json> answers;
   int attached = 0;
   bool moved = false, typed = false;
@@ -799,7 +809,8 @@ void TestBrowserDialogsAndPasswordFields() {
                 params.value("targetId", "") == "tab";
     moved = moved || params.value("type", "") == "mouseMoved";
     if (params.value("type", "") == "mousePressed") CHECK(moved);
-    typed = typed || params.value("text", "") == "hunter2";
+    const std::string text = params.value("text", "");
+    typed = typed || text == "hunter2" || text.ends_with("2027");
   }
   CHECK(answers == std::vector<json>({{{"accept", false}},
                                       {{"accept", true}, {"promptText", "Ada"}},

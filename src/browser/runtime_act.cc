@@ -108,6 +108,56 @@ constexpr const char* kSecretFieldScript = R"js((() => {
     e.type === 'password' || /password/i.test(e.getAttribute('autocomplete') || ''));
 })())js";
 
+// A select, or a date, time or color field, takes no typed text: Chrome
+// draws it as a list or as segments, so inserted text lands nowhere and
+// typing would report a value it never set. The focused one (followed as
+// kSecretFieldScript does) is set as the page's own script would set it, and
+// told of it through input and change; a value it refuses is said, with the
+// form it takes. Anything else gives null and is typed into.
+constexpr const char* kControlScript = R"js((text) => {
+  let e = document.activeElement;
+  for (;;) {
+    if (e && e.shadowRoot && e.shadowRoot.activeElement) {
+      e = e.shadowRoot.activeElement;
+    } else if (e && /^I?FRAME$/.test(e.tagName)) {
+      let inner = null;
+      try { inner = e.contentDocument; } catch (_) {}
+      if (!inner) return null;
+      e = inner.activeElement;
+    } else break;
+  }
+  const forms = {date: 'YYYY-MM-DD', time: 'HH:MM, 24-hour',
+                 'datetime-local': 'YYYY-MM-DDTHH:MM', month: 'YYYY-MM',
+                 week: 'YYYY-Www', color: '#rrggbb', range: 'a number'};
+  const select = e && e.tagName === 'SELECT';
+  if (!select && !(e && e.tagName === 'INPUT' && e.type in forms)) return null;
+  const view = e.ownerDocument.defaultView;
+  const want = text.trim();
+  let value = want;
+  if (select) {
+    const label = (o) => o.label.trim().replace(/\s+/g, ' ').toLowerCase();
+    const options = [...e.options];
+    const match = options.find((o) => label(o) === want.toLowerCase()) ||
+                  options.find((o) => o.value === want);
+    if (!match || match.disabled) {
+      return {error: 'this list has no ' + (match ? 'enabled ' : '') +
+              'option ' + JSON.stringify(want) + '; its options: ' +
+              options.slice(0, 20).map((o) => JSON.stringify(o.label.trim()))
+                  .join(', ')};
+    }
+    value = match.value;
+  }
+  const proto = select ? view.HTMLSelectElement : view.HTMLInputElement;
+  Object.getOwnPropertyDescriptor(proto.prototype, 'value').set.call(e, value);
+  if (!select && want && !e.value) {
+    return {error: 'a ' + e.type + ' field takes ' + forms[e.type] + '; ' +
+            JSON.stringify(want) + ' is not one'};
+  }
+  e.dispatchEvent(new view.Event('input', {bubbles: true}));
+  e.dispatchEvent(new view.Event('change', {bubbles: true}));
+  return {set: true};
+})js";
+
 // types what `text` says: the name alone reaches the page's own listeners
 // and nothing else, so Enter would not send a form nor Backspace delete.
 struct Key {
@@ -382,6 +432,21 @@ json Runtime::Act(const std::string& op, const json& command) {
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
+    json control = Call("Runtime.evaluate",
+                        {{"expression", std::string("(") + kControlScript +
+                                            ")(" + JsonDump(value) + ")"},
+                         {"returnByValue", true}},
+                        page_session_);
+    const json* set = JsonObject(control, "result");
+    set = set ? JsonObject(*set, "result") : nullptr;
+    set = set ? JsonObject(*set, "value") : nullptr;
+    if (set) {
+      if (const std::string why = JsonValue(*set, "error", ""); !why.empty()) {
+        return {{"error", why}};
+      }
+      observation_.clear();
+      return {{"ok", true}};
+    }
     json secret =
         Call("Runtime.evaluate",
              {{"expression", kSecretFieldScript}, {"returnByValue", true}},

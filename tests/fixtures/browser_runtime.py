@@ -202,6 +202,11 @@ while chunk := os.read(3, 4096):
                 focused = profile / "password-focused"
                 value = focused.exists() and (focused.read_text() or True)
                 result = {"result": {"value": value}}
+            elif "HTMLSelectElement" in asked:
+                # A list or date field the test focused answers as the page would.
+                control = profile / "control-focused"
+                value = json.loads(control.read_text()) if control.exists() else None
+                result = {"result": {"value": value}}
             elif "performance.timeOrigin" in asked:
                 # A page that has finished loading and stays as it is.
                 result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}

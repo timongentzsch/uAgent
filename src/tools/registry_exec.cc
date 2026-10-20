@@ -91,10 +91,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
   run.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
-    std::string error = RunCommandPolicyError(JsonValue(a, "command", ""));
-    if (!error.empty()) {
-      return ArgumentIssue("run.command_policy", std::move(error), "command");
-    }
     int64_t yield_ms = JsonValue(a, "yield_ms", int64_t{0});
     if (yield_ms > 0 && yield_ms < kMinYieldMs) {
       return ArgumentIssue(

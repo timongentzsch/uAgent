@@ -188,6 +188,11 @@
   `web_fetch`. The policy now blocks DevTools by its `devtools://` pages,
   which still stops F12 and the inspector. A native Linux host with the
   policy installed needs it installed again; `install.sh` prints the command.
+- `run` no longer refuses a command that starts with `python`, `python3`,
+  `pip` or `pip3`. The check matched only the first word, so it refused the
+  test command a person gave (`python3 -m unittest ...`) while the same
+  command after `cd x &&` ran, and every refusal cost a round. Using `scratch`
+  for one-off computation stays the prompt's advice.
 - `browser`: several actions from one look work. An element number of an
   earlier look at the same page still names what that look numbered, so a
   form can be filled in one step. Before, every action after the first was

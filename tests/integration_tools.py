@@ -298,18 +298,6 @@ def test_large_run_output_is_recoverable(root, home, *, binary):
         assert_true(artifact["path"].exists(), artifact)
 
 
-def test_run_rejects_bare_python_before_execution(root, home, *, binary):
-    def after_python(_, body):
-        results = tool_results(body["messages"])
-        assert_true(any("use scratch" in value for value in results), results)
-        return event({"content": "guarded"})
-
-    with Server([tool_call("run", {"command": "python -c 'print(1)'"}), after_python]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "work", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "guarded", result.stdout)
-
-
 def test_delete_file_removes_and_receipts(root, home, *, binary):
     """Deleting reports what was removed, and refuses what it must not touch.
 

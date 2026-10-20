@@ -11,7 +11,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -596,25 +595,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   running.parts =
       json::array({LinkPart("activity", activity_id, "Open activity")});
   return {std::move(running), std::nullopt, /*launched=*/true};
-}
-
-bool StartsWithShellWord(const std::string& command, const std::string& word) {
-  std::string trimmed = Trim(command);
-  return trimmed == word ||
-         (trimmed.starts_with(word) && trimmed.size() > word.size() &&
-          std::isspace(static_cast<unsigned char>(trimmed[word.size()])));
-}
-
-std::string RunCommandPolicyError(const std::string& command) {
-  for (const char* executable : {"python", "python3", "pip", "pip3"}) {
-    if (StartsWithShellWord(command, executable)) {
-      return "error: do not invoke bare Python or pip through run. For project "
-             "Python use its existing runner (for example uv run or pytest); "
-             "for one-off computation use scratch with dependencies in the "
-             "scratch script's PEP 723 header.";
-    }
-  }
-  return "";
 }
 
 bool PythonScriptHasDependencies(const std::string& source) {

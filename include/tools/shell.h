@@ -54,8 +54,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                                    const ToolContext& context,
                                    ShellCommand command);
 
-bool StartsWithShellWord(const std::string& command, const std::string& word);
-std::string RunCommandPolicyError(const std::string& command);
 bool PythonScriptHasDependencies(const std::string& source);
 // argv as the receipt and the call row show it: quoted only where a shell
 // would need it, because neither is re-executed.

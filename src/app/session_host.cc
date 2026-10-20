@@ -182,9 +182,11 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.model = item.model;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
-    const FileStamp stamp = SnapshotFile(item.path);
+    // The catalogue stated the file already; its time is the one it read.
     session.updated =
-        stamp.modified_seconds * 1000 + stamp.modified_nanoseconds / 1000000;
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::file_clock::to_sys(item.mtime).time_since_epoch())
+            .count();
     if (session.status == SessionStatus::kDraft) {
       session.status = SessionStatus::kSaved;
     }

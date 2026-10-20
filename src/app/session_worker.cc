@@ -514,17 +514,19 @@ class WorkerChannel final : public ApplicationChannel {
       pending_delta_ = event;
       delta_started_ = now;
     } else {
-      pending_delta_->data["text"] =
-          JsonValue(pending_delta_->data, "text", "") +
-          JsonValue(event.data, "text", "");
+      json& text = pending_delta_->data["text"];
+      if (!text.is_string()) text = "";
+      if (const std::string* more = JsonStringRef(event.data, "text")) {
+        text.get_ref<std::string&>() += *more;
+      }
       if (JsonValue(event.data, "preview_truncated", false)) {
         pending_delta_->data["preview_truncated"] = true;
       }
       pending_delta_->sequence = event.sequence;
       pending_delta_->time = event.time;
     }
-    if (JsonValue(pending_delta_->data, "text", "").size() >=
-            kStreamBatchBytes ||
+    const std::string* batched = JsonStringRef(pending_delta_->data, "text");
+    if ((batched && batched->size() >= kStreamBatchBytes) ||
         now - delta_started_ >= kStreamBatchInterval) {
       FlushDelta();
     } else {

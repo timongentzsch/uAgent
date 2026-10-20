@@ -51,7 +51,7 @@ void MergeView(HostSession& session, json& next) {
       if (it.key() != "blocks") view[it.key()] = it.value();
     }
     if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
-      for (const json& block : *blocks) MergeDisplayBlock(view, block);
+      MergeDisplayBlocks(view, *blocks);
     }
   }
   if (!view.contains("blocks")) view["blocks"] = json::array();

@@ -146,13 +146,18 @@ std::string DisplayText(const json& message) {
 }
 }  // namespace
 
-const json* MergeDisplayBlock(json& view, const json& block) {
-  json& blocks = view["blocks"];
-  if (!blocks.is_array()) blocks = json::array();
-  const std::string id = JsonValue(block, "id", "");
-  auto found = std::find_if(
-      blocks.begin(), blocks.end(),
-      [&](const json& item) { return JsonValue(item, "id", "") == id; });
+namespace {
+std::string_view BlockId(const json& block) {
+  const std::string* id = JsonStringRef(block, "id");
+  return id ? std::string_view(*id) : std::string_view();
+}
+
+// Upserts one block without bounding the view; returns the row's index.
+size_t UpsertBlock(json& blocks, const json& block) {
+  const std::string_view id = BlockId(block);
+  auto found =
+      std::find_if(blocks.begin(), blocks.end(),
+                   [&](const json& item) { return BlockId(item) == id; });
   if (found == blocks.end()) {
     // Retained rows carry their sequence: insert in position so a late
     // arrival (replay, pre-facts emit) can never strand older content
@@ -192,7 +197,13 @@ const json* MergeDisplayBlock(json& view, const json& block) {
     }
     *found = std::move(merged);
   }
-  const size_t kept = static_cast<size_t>(found - blocks.begin());
+  return static_cast<size_t>(found - blocks.begin());
+}
+
+// Drops the oldest rows past the view's bounds, in one walk of the view;
+// returns how many went.
+size_t BoundView(json& view) {
+  json& blocks = view["blocks"];
   size_t bytes = JsonEstimatedBytes(blocks);
   size_t dropped = 0;
   while (dropped < blocks.size() &&
@@ -208,16 +219,31 @@ const json* MergeDisplayBlock(json& view, const json& block) {
   if (!blocks.empty()) {
     view["before"] = JsonValue(blocks.front(), "sequence", uint64_t{0});
   }
+  return dropped;
+}
+}  // namespace
+
+const json* MergeDisplayBlock(json& view, const json& block) {
+  json& blocks = view["blocks"];
+  if (!blocks.is_array()) blocks = json::array();
+  const size_t kept = UpsertBlock(blocks, block);
+  const size_t dropped = BoundView(view);
   return kept >= dropped ? &blocks[kept - dropped] : nullptr;
+}
+
+void MergeDisplayBlocks(json& view, const json& blocks) {
+  json& held = view["blocks"];
+  if (!held.is_array()) held = json::array();
+  for (const json& block : blocks) UpsertBlock(held, block);
+  BoundView(view);
 }
 
 namespace {
 json* FindBlock(json& state, const std::string& id) {
   json& blocks = state["view"]["blocks"];
   if (id.empty() || !blocks.is_array()) return nullptr;
-  auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {
-    return JsonValue(block, "id", "") == id;
-  });
+  auto found = std::find_if(blocks.begin(), blocks.end(),
+                            [&](json& block) { return BlockId(block) == id; });
   return found == blocks.end() ? nullptr : &*found;
 }
 
@@ -304,15 +330,17 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     }
     const char* field = answer ? "text" : "reasoning";
     const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
-    const std::string current = JsonValue(*found, field, "");
-    const std::string delta = JsonValue(data, "text", "");
-    std::string added = delta;
+    const std::string* sent = JsonStringRef(data, "text");
+    const std::string_view delta = sent ? *sent : std::string_view();
     if (!answer && JsonValue(data, "reset", false)) {
       (*found)[field] = delta;
       (*found)[bytes] = delta.size();
       changed(found);
       return true;
     }
+    const std::string* held = JsonStringRef(*found, field);
+    const std::string_view current = held ? *held : std::string_view();
+    std::string_view added = delta;
     if (data.contains("offset")) {
       const size_t offset = JsonValue(data, "offset", size_t{0});
       // A checkpoint may already contain this delta. Only append the
@@ -320,18 +348,21 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
       // conflicting revision waits for the next complete block.
       if (offset > current.size()) return true;
       const size_t overlap = std::min(delta.size(), current.size() - offset);
-      if (current.compare(offset, overlap, delta, 0, overlap) != 0) {
+      if (current.compare(offset, overlap, delta.substr(0, overlap)) != 0) {
         return true;
       }
       added = delta.substr(overlap);
     }
     if (added.empty()) return true;
-    (*found)[field] = current + added;
-    (*found)[bytes] = current.size() + added.size();
+    // Appended in place: a long answer is never copied per delta.
+    json& stored = (*found)[field];
+    if (!stored.is_string()) stored = "";
+    std::string& text = stored.get_ref<std::string&>();
+    text += added;
+    (*found)[bytes] = text.size();
     if (patch) {
-      *patch = {{"kind", "block"},
-                {"id", response_id},
-                {"append", {{field, std::move(added)}}}};
+      *patch = {
+          {"kind", "block"}, {"id", response_id}, {"append", {{field, added}}}};
     }
   } else if (type == AppType(EventId::kResponseFinished)) {
     if (json* found = FindBlock(state, JsonValue(data, "response_id", ""))) {

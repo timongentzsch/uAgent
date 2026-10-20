@@ -195,9 +195,9 @@ void BenchmarkCheckpointMerge() {
                           {"truncated", false}});
   }
   json view = json::object();
-  for (const json& block : checkpoint) MergeDisplayBlock(view, block);
+  MergeDisplayBlocks(view, checkpoint);
   Report("64-block checkpoint merge", kCheckpoints, Measure(kCheckpoints, [&] {
-           for (const json& block : checkpoint) MergeDisplayBlock(view, block);
+           MergeDisplayBlocks(view, checkpoint);
            return view["blocks"].size();
          }));
 }

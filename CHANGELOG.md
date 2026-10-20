@@ -186,6 +186,13 @@
 - The file tools refuse the whole hidden set, not only the browser profile.
 - SECURITY.md describes the sandbox by level, and the stale pointer to the
   web's old **New conversation** is **New → Workspace…**.
+- Long answers, large command output and busy event streams cost the web
+  host, the runtime and the terminal less: streamed text is appended in place,
+  command output is trimmed in bulk, a checkpoint reaches browsers as the rows
+  it changed instead of the whole view (a late turn of a long conversation
+  sends about a quarter of the bytes), the web host holds its lock only to
+  look up devices, and an attached file is encoded once for the model calls
+  of its turn.
 
 ### Fixed
 
@@ -295,6 +302,8 @@
   no member, so members no longer answer a question that was meant for the
   user. After the close, thread reports reach the moderator alone, so the
   panel stops instead of discussing each follow-up thread.
+- The raw detail of a tool call whose turn is still running is paged like
+  any long text. Before, all of it came in one response.
 
 ## v1.4.0 - 2026-10-15
 

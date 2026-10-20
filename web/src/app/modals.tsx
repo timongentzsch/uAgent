@@ -20,7 +20,7 @@ import { StatisticsLoading } from "../shared/statistics-layout.tsx";
 import { SettingsLoading } from "../features/settings/loading.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
 import type Settings from "../features/settings/settings.tsx";
-import { useSnapshots, type Snapshots } from "../state/snapshot-store.ts";
+import { useSnapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
 import {
@@ -55,10 +55,9 @@ type Preferences = Pick<
   | "logout"
 >;
 
-const NONE: Snapshots = {};
-
-// The app's dialogs over the shell. They read snapshots only while one is
-// open, so a closed set costs a streamed frame nothing.
+// The app's dialogs over the shell. Each selects from the snapshots only
+// what it shows, while it is open, so a streamed frame re-renders none of
+// them unless that changed.
 export default function Modals({
   modal,
   inspector,
@@ -109,15 +108,37 @@ export default function Modals({
     showContext,
   } = useHostContext();
   const { busy } = useConversation();
-  const snapshots = useSnapshots(store, (all) =>
-    modal || inspector ? all : NONE,
+  const activities = useSnapshots(store, (all) =>
+    inspector ? all[selected]?.state?.activities : undefined,
   );
-  const snapshot = snapshots[selected];
+  const agents = useSnapshots(store, (all) =>
+    inspector ? all[selected]?.state?.agents : undefined,
+  );
+  const http = useSnapshots(store, (all) =>
+    modal?.type === "raw" && modal.session
+      ? all[modal.session]?.state?.http
+      : undefined,
+  );
+  const self = useSnapshots(store, (all) =>
+    modal?.type === "instructions"
+      ? all[selected]?.state?.self_directive
+      : undefined,
+  );
+  const mcp = useSnapshots(store, (all) =>
+    modal?.type === "settings" ? all[selected]?.state?.mcp : undefined,
+  );
   const running = !!session && isRunning(session, online);
   const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
-  const toolsSnapshot = snapshots[toolsSessionId];
+  const toolsMetadata = useSnapshots(
+    store,
+    (all) => all[toolsSessionId]?.metadata,
+  );
+  const toolsPending = useSnapshots(
+    store,
+    (all) => !!all[toolsSessionId]?.pending,
+  );
   const toolsSession =
-    toolsSnapshot?.metadata || sessionById(catalogue.sessions, toolsSessionId);
+    toolsMetadata || sessionById(catalogue.sessions, toolsSessionId);
   const close = () => setModal(null);
   return (
     <>
@@ -178,8 +199,8 @@ export default function Modals({
           load={inspectorDialog}
           fallback={null}
           target={inspector}
-          items={snapshot?.state?.activities || []}
-          agents={snapshot?.state?.agents || []}
+          items={activities || []}
+          agents={agents || []}
           cwd={session.cwd || ""}
           running={running}
           session={session}
@@ -303,9 +324,7 @@ export default function Modals({
             session={modal.session}
             value={modal.value}
             exchanges={modal.exchanges}
-            latest={
-              modal.session ? snapshots[modal.session]?.state?.http : undefined
-            }
+            latest={http}
             context={modal.context}
             prepare={modal.prepare}
             part={modal.part}
@@ -318,7 +337,7 @@ export default function Modals({
             load={instructionsDialog}
             fallback={<Spinner label="Loading instructions…" surface />}
             session={session}
-            state={snapshot?.state}
+            self={self}
             projects={projects}
             online={online}
             version={managementVersion}
@@ -341,16 +360,7 @@ export default function Modals({
             initialSection={modal.section}
             version={managementVersion}
             {...preferences}
-            installed={
-              matchMedia("(display-mode: standalone)").matches ||
-              ("standalone" in navigator && navigator.standalone === true)
-            }
-            ios={
-              /iPhone|iPad/.test(navigator.userAgent) ||
-              (navigator.platform === "MacIntel" &&
-                navigator.maxTouchPoints > 1)
-            }
-            snapshots={snapshots}
+            mcp={mcp}
             catalogue={catalogue}
             online={online}
             refresh={refresh}
@@ -368,7 +378,7 @@ export default function Modals({
               fallback={<Spinner label="Loading tools…" surface />}
               session={toolsSession}
               online={online}
-              busy={!!toolsSession.turn_active || !!toolsSnapshot?.pending}
+              busy={!!toolsSession.turn_active || toolsPending}
               changed={() => load(toolsSessionId)}
             />
           ) : (

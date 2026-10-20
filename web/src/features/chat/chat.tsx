@@ -5,7 +5,12 @@ import type {
   Snapshot,
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
-import { LoadError, Placeholder, Welcome } from "../../shared/ui.tsx";
+import {
+  LoadError,
+  Placeholder,
+  Welcome,
+  updateChecked,
+} from "../../shared/ui.tsx";
 import { useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
@@ -39,17 +44,7 @@ export function TranscriptPlaceholder({ session }: { session: SessionRef }) {
   );
 }
 
-export default function Chat({
-  attachScroller,
-  attachContent,
-  selected,
-  snapshot,
-  loadError,
-  blocks,
-  session,
-  older,
-  preserveWhile,
-}: {
+type ChatProps = {
   attachScroller: (node: HTMLDivElement | null) => void;
   attachContent: (node: HTMLDivElement | null) => void;
   selected: string;
@@ -59,7 +54,19 @@ export default function Chat({
   session: Session;
   older: () => Promise<void>;
   preserveWhile: (load: () => Promise<void>) => Promise<void>;
-}) {
+};
+
+function Chat({
+  attachScroller,
+  attachContent,
+  selected,
+  snapshot,
+  loadError,
+  blocks,
+  session,
+  older,
+  preserveWhile,
+}: ChatProps) {
   const { online, load: loadSnapshot, report } = useHostContext();
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [preparedKey, setPreparedKey] = useState("");
@@ -179,3 +186,7 @@ export default function Chat({
     </div>
   );
 }
+
+// The page renders with every key pressed in the composer; the transcript
+// only when one of its props changes, which the page keeps stable.
+export default updateChecked(Chat);

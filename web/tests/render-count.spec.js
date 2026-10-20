@@ -215,7 +215,9 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(counts.SessionRow || 0).toBe(0);
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
   expect(counts.MessageView).toBeLessThanOrEqual(62 + 6);
-  expect(counts.Composer).toBeLessThanOrEqual(62);
+  // The composer and its controls show nothing a streamed block changes.
+  for (const name of ["Composer", "ModelControl", "ActivityButtonView"])
+    expect(counts[name] || 0, name).toBe(0);
 
   // Background work the turn started, then twenty of its progress ticks.
   await page.evaluate(async () => {
@@ -331,10 +333,22 @@ test("typing renders the composer, not the transcript or the list", async ({
   measured("typed", { renders, writes });
   expect(renders.Composer).toBeGreaterThan(0);
   expect(renders.App || 0).toBeLessThanOrEqual(20);
-  expect(renders.SidebarView || 0).toBeLessThanOrEqual(20);
   expect(renders.ChatPage || 0).toBeLessThanOrEqual(20);
-  expect(renders.Chat || 0).toBeLessThanOrEqual(20);
-  expect(writes["uagent-drafts"] || 0).toBeLessThanOrEqual(20);
+  // Nor the controls under the input, which show nothing typed.
+  for (const name of [
+    "SidebarView",
+    "Chat",
+    "ModelControl",
+    "ContextSummaryView",
+    "SessionSummaryView",
+    "ActivityButtonView",
+  ])
+    expect(renders[name] || 0, name).toBe(0);
+  // The draft is saved once typing pauses, not per key.
+  expect(writes["uagent-drafts"] || 0).toBe(0);
+  await expect
+    .poll(() => page.evaluate(() => testSince().writes["uagent-drafts"]))
+    .toBe(1);
 });
 
 test("state frames and an open dialog leave the shell alone", async ({
@@ -370,12 +384,12 @@ test("state frames and an open dialog leave the shell alone", async ({
     return { state, activity: testSince().renders };
   }, turn);
   measured("frames", frames);
-  expect(frames.state.App || 0).toBeLessThanOrEqual(20);
-  expect(frames.state.SidebarView || 0).toBeLessThanOrEqual(20);
-  expect(frames.state.Composer || 0).toBeLessThanOrEqual(20);
-  expect(frames.activity.App || 0).toBeLessThanOrEqual(40);
-  expect(frames.activity.SidebarView || 0).toBeLessThanOrEqual(40);
-  expect(frames.activity.SessionRow || 0).toBeLessThanOrEqual(20);
+  // The first frame starts the turn; the others restate it.
+  for (const name of ["App", "SidebarView", "SessionRow", "Composer"])
+    expect(frames.state[name] || 0, name).toBeLessThanOrEqual(1);
+  // A new caption renders the shell and that one row once a frame.
+  for (const name of ["App", "SidebarView", "SessionRow"])
+    expect(frames.activity[name] || 0, name).toBeLessThanOrEqual(20);
   expect(frames.activity.Composer || 0).toBeLessThanOrEqual(40);
 
   // Settings stays open while the reply streams behind it.
@@ -387,5 +401,6 @@ test("state frames and an open dialog leave the shell alone", async ({
   await streamReply(page);
   const { renders } = await page.evaluate(() => testSince());
   measured("settings", renders);
-  expect(renders.SettingsNav || 0).toBeLessThanOrEqual(62);
+  for (const name of ["Modals", "SettingsNav"])
+    expect(renders[name] || 0, name).toBe(0);
 });

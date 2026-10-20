@@ -2,9 +2,9 @@ import type { State } from "./types.ts";
 import "./session-summary.css";
 import { cost, count } from "./quantities.ts";
 import { contextSummary } from "../state/context-summary.ts";
-import { Button, DataText } from "./ui.tsx";
+import { Button, DataText, updateChecked } from "./ui.tsx";
 
-export function ContextSummary({
+function ContextSummaryView({
   state,
   open,
   online = true,
@@ -45,7 +45,7 @@ export function ContextSummary({
   );
 }
 
-export function SessionSummary({
+function SessionSummaryView({
   state,
   open,
 }: {
@@ -61,3 +61,15 @@ export function SessionSummary({
     </Button>
   );
 }
+
+// The composer renders with every key pressed; these only when what they
+// count changes.
+export const ContextSummary = updateChecked(ContextSummaryView, [
+  "context_tokens",
+  "context_window",
+]);
+export const SessionSummary = updateChecked(SessionSummaryView, [
+  "statistics",
+  "turns",
+  "usage",
+]);

@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { McpServer, Session, State } from "../../shared/types.ts";
+import type { McpServer, Session } from "../../shared/types.ts";
 import { Button, Group, LoadError, Row, Switch } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { command } from "../../state/api.ts";
@@ -19,12 +19,12 @@ const SUMMARY: Record<McpServer["state"], string> = {
 export function McpServers({
   scope,
   session,
-  state,
+  servers = [],
   online,
 }: {
   scope: McpServer["scope"];
   session?: Session;
-  state?: State;
+  servers?: McpServer[];
   online: boolean;
 }) {
   const [open, setOpen] = useState("");
@@ -38,7 +38,6 @@ export function McpServers({
         <Row label="Open a conversation to see its MCP servers" />
       </Group>
     );
-  const servers = state?.mcp || [];
   const control = async (name: string, fields: Record<string, unknown>) => {
     setBusy(name);
     await run(() => command("tools", session, { name, ...fields }));

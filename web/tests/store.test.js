@@ -9,6 +9,7 @@ import {
   readStored,
   stateFrame,
   withActivities,
+  keptSession,
 } from "../src/state/store.ts";
 import { api, command, receiveOutcome } from "../src/state/api.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
@@ -272,6 +273,10 @@ test("a catalogue update that changes nothing keeps the catalogue's identity", (
     patchCatalogue(catalogue, "a", (item) => withActivities(item, value));
   assert.equal(activities([{ id: "1" }]), catalogue);
   assert.deepEqual(activities([]).sessions[0].activities, []);
+  // A state frame's metadata, the same but for its objects.
+  assert.equal(keptSession(a, { ...a, activities: [{ id: "1" }] }), a);
+  const working = { ...a, activity: "Reading" };
+  assert.equal(keptSession(a, working), working);
   assert.equal(
     patchCatalogue(catalogue, "missing", () => ({ id: "missing" })),
     catalogue,

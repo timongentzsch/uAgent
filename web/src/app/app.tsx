@@ -52,9 +52,8 @@ import { StatusLed } from "../shared/connection-status.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
-// place. Loaded dynamically: a static import would drag markdown.css into
-// the initial bundle and break the CSS size budget.
-const markdownView = () => import("../shared/markdown-view.tsx");
+// place.
+import { prefetchMarkdown } from "../shared/markdown-view.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
 import {
   QUEUED_NEXT,
@@ -280,8 +279,14 @@ function App() {
     (level: string) => setVerbosity(level).catch(report),
     [setVerbosity, report],
   );
-  const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
-  const session = metadata || sessionById(catalogue.sessions, selected);
+  // Every event that changes a session changes its catalogue entry too, so
+  // the shell reads the entry and renders once per change; a snapshot's
+  // metadata stands in only for a session the catalogue does not list yet.
+  const listedSession = sessionById(catalogue.sessions, selected);
+  const metadata = useSnapshots(snapshots, (all) =>
+    listedSession ? undefined : all[selected]?.metadata,
+  );
+  const session = listedSession || metadata;
   // Until the catalogue answers, the shell renders with placeholders in the
   // places data will fill; a conversation in the URL keeps its surfaces.
   const booting = authenticated === null;
@@ -351,9 +356,7 @@ function App() {
     // can fire after the first snapshot already mounted, which spreads
     // the plain-to-markdown height wave across the first seconds and
     // fights the bottom pin). Marker-based chunks warm per text below.
-    Promise.allSettled([
-      markdownView().then((view) => view.prefetchMarkdown()),
-    ]);
+    prefetchMarkdown();
     // What a click opens, parsed once the shell has settled (the service
     // worker already holds it), so a first open shows content, not a
     // placeholder for its code.
@@ -1059,13 +1062,22 @@ function App() {
     (cwd: string) => startConversation(cwd, true).catch(report),
     [startConversation, report],
   );
-  const projects = [
-    ...new Set(
-      catalogue.sessions
-        .map((entry) => entry.cwd)
-        .filter((path): path is string => !!path),
+  const projects = useMemo(
+    () => [
+      ...new Set(
+        catalogue.sessions
+          .map((entry) => entry.cwd)
+          .filter((path): path is string => !!path),
+      ),
+    ],
+    [catalogue.sessions],
+  );
+  const spaceMenu = useCallback(
+    (space: Space, conversations: number) => (
+      <SpaceMenu space={space} conversations={conversations} open={open} />
     ),
-  ];
+    [open],
+  );
   const host = useMemo(
     () => ({
       online,
@@ -1106,9 +1118,7 @@ function App() {
       query={query}
       setSearch={setQuery}
       spaces={catalogue.spaces || NO_SPACES}
-      spaceMenu={(space, conversations) => (
-        <SpaceMenu space={space} conversations={conversations} open={open} />
-      )}
+      spaceMenu={spaceMenu}
       selected={page === "chat" ? selected : ""}
       unread={unread}
       choose={choose}

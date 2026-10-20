@@ -6,7 +6,6 @@ import type {
   InstructionStack,
   SelfDirective,
   Session,
-  State,
 } from "../../shared/types.ts";
 import { command } from "../../state/api.ts";
 import {
@@ -31,14 +30,15 @@ const TITLES: Record<string, string> = {
 // restarted sessions, so the running ones keep their cached prefix.
 export default function Instructions({
   session,
-  state,
+  self,
   projects,
   online,
   version,
   showRequest,
 }: {
   session?: Session;
-  state?: State;
+  // The conversation's own addition to its instructions.
+  self?: SelfDirective;
   projects: string[];
   online: boolean;
   version: number;
@@ -66,7 +66,6 @@ export default function Instructions({
     [cwd, online, version],
   );
   const stack = loaded?.cwd === cwd ? loaded.stack : undefined;
-  const self = state?.self_directive;
   const card = (file: InstructionFile) => (
     <InstructionCard
       key={file.path}

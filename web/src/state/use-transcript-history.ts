@@ -380,9 +380,20 @@ export function useTranscriptHistory(
       if (!restore()) reconcile();
     };
     const watch = new ResizeObserver(settle);
+    // The watched set changes only with the column's rows, or with the
+    // inner anchors of the row read from; markdown filling a row elsewhere
+    // leaves it as it is.
     const mutations = new MutationObserver((records) => {
       settle();
-      if (records.some((record) => record.type === "childList")) observe();
+      const row = anchor.current && rowFor(anchor.current.node);
+      if (
+        records.some(
+          (record) =>
+            record.type === "childList" &&
+            (record.target === column || row?.contains(record.target)),
+        )
+      )
+        observe();
     });
     const readiness = new MutationObserver(settle);
     observer.current = watch;

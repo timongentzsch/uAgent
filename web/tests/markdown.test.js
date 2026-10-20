@@ -112,6 +112,19 @@ test("a long open code block splits above its fence", async () => {
   assert.equal(streamingHead("```\nonly code\n\nmore"), "");
 });
 
+test("a streaming head resumes where the last frame's ended", async () => {
+  const { streamingHead } = await import("../src/shared/markdown-split.ts");
+  const reply =
+    "One.\n\n```js\nconst a = 1;\n\nconst b = 2;\n```\n\nTwo.\n\n~~~\nx\n";
+  for (let end = 1, head = ""; end <= reply.length; end++) {
+    const text = reply.slice(0, end);
+    head = streamingHead(text, head);
+    assert.equal(head, streamingHead(text), JSON.stringify(text));
+  }
+  // A blank line still being written may yet gain text.
+  assert.equal(streamingHead("One.\n\nTwo.\n"), "One.");
+});
+
 test("headings shift two levels down and keep their source level", async () => {
   const text = "# One\n\n### Three\n\n##### Five";
   const html = await renderMarkdown(text);

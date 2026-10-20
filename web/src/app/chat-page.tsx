@@ -9,10 +9,10 @@ import type {
   Session,
   Snapshot,
   View,
-  UserBlock,
+  SlashCommand,
 } from "../shared/types.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
-import { useMemo } from "preact/hooks";
+import { useCallback, useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import {
@@ -39,8 +39,9 @@ import { prependHistoryPage } from "../state/history-page.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { sideAnswer } from "./dialogs.ts";
 
-// One empty list, so an idle context value never changes identity.
+// Empty lists, so an idle context value or prop never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
+const NO_COMMANDS: SlashCommand[] = [];
 
 // The transcript's rows: the host's view, then this device's messages the
 // host has not confirmed yet.
@@ -136,16 +137,23 @@ export default function ChatPage({
     () => transcriptBlocks(view, outgoing, selected),
     [view, outgoing, selected],
   );
-  const queued = allBlocks.filter(
-    (block): block is UserBlock =>
-      block.kind === "user" && queuedGuidance(block),
+  // This device's guidance waiting on the turn: beside the composer, not in
+  // the transcript, and unchanged by the frames streamed meanwhile.
+  const queued = useMemo(
+    () =>
+      outgoing.filter(
+        (item) => item.session_id === selected && queuedGuidance(item),
+      ),
+    [outgoing, selected],
   );
   const blocks = useMemo(
     () =>
-      allBlocks.filter(
-        (block) => block.kind !== "user" || !queuedGuidance(block),
-      ),
-    [allBlocks],
+      queued.length
+        ? allBlocks.filter(
+            (block) => block.kind !== "user" || !queuedGuidance(block),
+          )
+        : allBlocks,
+    [allBlocks, queued],
   );
   // Session-scoped surfaces: switching conversations resumes the saved
   // scroll position (or pins a fresh one); the hook owns this, so there
@@ -160,9 +168,10 @@ export default function ChatPage({
   } = useTranscriptHistory(setFollowing, historyKey, blocks);
   // The shared transcript controller retains the visible block through
   // this bounded page update; this loader only owns data and cursors.
-  async function older() {
-    if (!view?.more || !transcript.current) return;
-    const before = view.before;
+  const more = view?.more;
+  const before = view?.before;
+  const older = useCallback(async () => {
+    if (!more || !transcript.current) return;
     const id = selected;
     const value = await api<Snapshot>(routes.session(id, `before=${before}`));
     await prepareHistoryBlocks(value.state?.view?.blocks || []);
@@ -183,7 +192,31 @@ export default function ChatPage({
         },
       };
     });
-  }
+  }, [more, before, selected, updateView, transcript]);
+  // What the composer is given keeps its identity across streamed frames.
+  const send = useCallback(
+    (event: Event, queue?: boolean) => submit(event, jumpToLatest, queue),
+    [submit, jumpToLatest],
+  );
+  // Optimistic: pin to the end synchronously (<1 frame), refresh the
+  // snapshot in the background. jumpToLatest is idempotent and load()
+  // dedupes in flight, so rapid presses stay a single pin + a single fetch.
+  const jump = useCallback(() => {
+    jumpToLatest();
+    load(selected).catch(report);
+  }, [jumpToLatest, load, selected, report]);
+  const showStatistics = useCallback(
+    () => setModal({ type: "statistics", session_id: selected }),
+    [setModal, selected],
+  );
+  const openBrowser = useCallback(
+    () => setModal({ type: "browser", handoff: true }),
+    [setModal],
+  );
+  const members = useMemo(
+    () => threads?.filter((thread) => thread.member),
+    [threads],
+  );
   if (!active) return null;
 
   // The last turn stopped short, and nothing new has been sent since: the
@@ -207,28 +240,20 @@ export default function ChatPage({
       queued={queued}
       recall={actions.recall}
       insert={actions.insert}
-      commands={catalogue.commands || []}
-      snapshot={snapshot}
+      commands={catalogue.commands || NO_COMMANDS}
+      state={snapshot?.state}
+      pending={snapshot?.pending}
       draft={draft}
       setDraft={setDraft}
-      submit={(event, queue) => submit(event, jumpToLatest, queue)}
+      submit={send}
       unseen={unseen}
-      // Optimistic: pin to the end synchronously (<1 frame),
-      // refresh the snapshot in the background. jumpToLatest
-      // is idempotent and load() dedupes in flight, so rapid
-      // presses stay a single pin + a single fetch.
-      jump={() => {
-        jumpToLatest();
-        load(selected).catch(report);
-      }}
+      jump={jump}
       openInspector={setInspector}
-      showStatistics={() =>
-        setModal({ type: "statistics", session_id: selected })
-      }
-      openBrowser={() => setModal({ type: "browser", handoff: true })}
+      showStatistics={showStatistics}
+      openBrowser={openBrowser}
       stopped={stopped}
       resume={actions.resume}
-      members={threads?.filter((thread) => thread.member)}
+      members={members}
     />
   );
   return session ? (

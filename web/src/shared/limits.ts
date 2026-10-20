@@ -22,7 +22,6 @@ export const maxPreparedMarkdownChars = 4_000_000;
 // (lists and references across blank lines stay intact); past it, only new
 // blocks are parsed and appended, so cost stays flat as the reply grows.
 export const wholeStreamingMarkdownChars = 16_000;
-export const progressiveMarkdownScanLines = 40;
 export const retainedBackgroundViews = 4;
 export const commandReceiptWaitMs = 30_000;
 // How long a notification's link waits for its decision to be drawn.
@@ -49,6 +48,8 @@ export const maxSpaceNameChars = 64;
 export const defaultZoom = 100;
 // How long after start the idle screens are fetched ahead of use.
 export const idlePreloadMs = 2_000;
+// Drafts are saved once typing pauses this long, and when the page hides.
+export const draftSaveDelayMs = 500;
 // A second press of Stop within this is the first one bouncing, not a decision.
 export const stopGuardMs = 500;
 // The first reconnect delay; it doubles with each failure up to

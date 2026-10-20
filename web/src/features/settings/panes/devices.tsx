@@ -12,16 +12,22 @@ import { manage } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
 import { NotificationsPane } from "./notifications.tsx";
 
+// The display mode and the device are fixed for the page's life.
+const installed =
+  matchMedia("(display-mode: standalone)").matches ||
+  ("standalone" in navigator && navigator.standalone === true);
+const ios =
+  /iPhone|iPad/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
 // This device and the others paired with the host: updating and installing
 // the app, notifications, and who may connect.
 export function DevicesPane() {
   const {
     update,
     updateBlocked,
-    installed,
     install,
     setInstall,
-    ios,
     catalogue,
     refresh,
     logout,

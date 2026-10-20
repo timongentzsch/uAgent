@@ -29,6 +29,7 @@ import {
   hasContent,
   patchCatalogue,
   withActivities,
+  keptSession,
   raiseIncoming,
   confirmOutgoing,
 } from "./store.ts";
@@ -37,6 +38,7 @@ import { snapshotStore } from "./snapshot-store.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
+  draftSaveDelayMs,
   maxLocalRequests,
   reconnectBaseDelayMs,
   reconnectGraceMs,
@@ -127,6 +129,12 @@ export function useHost(
   const stream = useRef<EventSource | undefined>(undefined);
   const reconnecting = useRef(false);
   const refreshAgain = useRef(false);
+  // Whether the next catalogue read has the host rescan its sessions on
+  // disk: at start, when the stream lost its cursor, or when asked. A
+  // reconnect reads the catalogue the host keeps, whose changes still
+  // follow on the stream.
+  const rescan = useRef(false);
+  const resuming = useRef(false);
   // A failed load retries on its own, backing off to reconnectMaxDelayMs.
   const retry = useRef<{
     attempt: number;
@@ -364,7 +372,7 @@ export function useHost(
       reconnectBaseDelayMs * 2 ** retry.current.attempt++,
     );
     retry.current.timer = setTimeout(
-      () => refresh(),
+      () => reconnect(),
       delay * (0.5 + Math.random() / 2),
     );
   };
@@ -410,15 +418,21 @@ export function useHost(
       event.kind !== "deleted"
     )
       return;
+    // Most state and activity frames restate the session unchanged: it
+    // keeps its object, and what shows it skips the frame.
     const activities = () => {
+      const metadata = event.metadata;
       if (current)
         live.current[id] = {
           ...applySessionEvent(current, event),
-          ...(event.metadata && { metadata: event.metadata }),
+          ...(metadata && {
+            metadata: keptSession(current.metadata, metadata),
+          }),
         };
-      patchSession(
-        id,
-        (item) => event.metadata || withActivities(item, data.activities),
+      patchSession(id, (item) =>
+        metadata
+          ? keptSession(item, metadata)
+          : withActivities(item, data.activities),
       );
     };
     switch (event.kind) {
@@ -462,7 +476,7 @@ export function useHost(
           ...current,
           epoch: event.epoch,
           cursor: event.sequence,
-          metadata,
+          metadata: keptSession(current?.metadata, metadata),
           state: stateFrame(current?.state, event.state, phase),
           pending: pendingDecision,
         };
@@ -470,7 +484,7 @@ export function useHost(
         // Decisions and canonical phase changes flush without text batching.
         if (id === selection.current || snapshots.watches(id))
           snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
-        patchSession(id, () => metadata);
+        patchSession(id, (item) => keptSession(item, metadata));
         break;
       }
       case "activity":
@@ -539,6 +553,8 @@ export function useHost(
   // what they capture (report, forget, onResult, ...) is.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   const refresh = useCallback(async () => {
+    rescan.current ||= !resuming.current;
+    resuming.current = false;
     clearTimeout(retry.current.timer);
     setManagementVersion((value) => value + 1);
     if (reconnecting.current) {
@@ -551,9 +567,13 @@ export function useHost(
     loads.current.clear();
     const signal = lifetime.current.signal;
     try {
-      const list = await api<Catalogue>(routes.refreshedSessions, undefined, {
-        signal,
-      });
+      const scan = rescan.current;
+      rescan.current = false;
+      const list = await api<Catalogue>(
+        scan ? routes.refreshedSessions : routes.sessions,
+        undefined,
+        { signal },
+      );
       if (signal.aborted) return;
       retry.current.attempt = 0;
       revoked.current = false;
@@ -665,10 +685,16 @@ export function useHost(
       reconnecting.current = false;
       if (refreshAgain.current) {
         refreshAgain.current = false;
-        refresh();
+        reconnect();
       }
     }
   }, [load, report, forget, onResult, dropStream, signedOut, settleOutgoing]);
+  // Reads the catalogue again without asking for a rescan; one a refresh
+  // asked for meanwhile still happens.
+  const reconnect = useCallback(() => {
+    resuming.current = true;
+    refresh();
+  }, [refresh]);
   useEffect(() => {
     refresh();
     const recover = (event?: Event) => {
@@ -677,7 +703,7 @@ export function useHost(
         (event instanceof PageTransitionEvent && event.persisted) ||
         !stream.current
       )
-        refresh();
+        reconnect();
       else flush.current();
     };
     const disconnected = () => {
@@ -691,7 +717,7 @@ export function useHost(
       // selected transcript only once that traversal has finished.
       navigation = setTimeout(() => setSelected(selectedFromURL()), 0);
     };
-    addEventListener("online", refresh);
+    addEventListener("online", reconnect);
     addEventListener("offline", disconnected);
     const suspend = (event: PageTransitionEvent) =>
       event.persisted && disconnected();
@@ -720,7 +746,7 @@ export function useHost(
       stream.current?.close();
       cancelAnimationFrame(frame);
       clearTimeout(navigation);
-      removeEventListener("online", refresh);
+      removeEventListener("online", reconnect);
       removeEventListener("offline", disconnected);
       removeEventListener("pageshow", recover);
       removeEventListener("pagehide", suspend);
@@ -728,7 +754,7 @@ export function useHost(
       removeEventListener("popstate", hash);
       document.removeEventListener("visibilitychange", recover);
     };
-  }, [refresh, dropStream, snapshots]);
+  }, [refresh, reconnect, dropStream, snapshots]);
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load]);
@@ -761,14 +787,31 @@ export function useHost(
   useEffect(() => {
     writeStored(tabStorage, "uagent-outgoing", outgoing);
   }, [outgoing]);
+  // Saved once typing pauses, not per key, and before the page may go away;
+  // drafts as they were read or last saved leave what another tab saved
+  // alone.
+  const savedDrafts = useRef(drafts);
   useEffect(() => {
-    writeStored(
-      storage,
-      "uagent-drafts",
-      Object.fromEntries(
-        Object.entries(drafts).filter(([, draft]) => hasContent(draft)),
-      ),
-    );
+    const save = () => {
+      if (savedDrafts.current === drafts) return;
+      savedDrafts.current = drafts;
+      writeStored(
+        storage,
+        "uagent-drafts",
+        Object.fromEntries(
+          Object.entries(drafts).filter(([, draft]) => hasContent(draft)),
+        ),
+      );
+    };
+    const timer = setTimeout(save, draftSaveDelayMs);
+    const hidden = () => document.visibilityState === "hidden" && save();
+    addEventListener("pagehide", save);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      clearTimeout(timer);
+      removeEventListener("pagehide", save);
+      document.removeEventListener("visibilitychange", hidden);
+    };
   }, [drafts]);
   // Reading the conversation marks each of its snapshots read.
   useEffect(() => {

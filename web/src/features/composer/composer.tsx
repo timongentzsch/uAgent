@@ -13,19 +13,21 @@ import {
   Input,
   Spinner,
   DataText,
+  updateChecked,
 } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
 import type {
   InspectorTarget,
   SlashCommand,
   Session,
-  Snapshot,
+  State,
   Draft,
+  Pending,
   SessionStatus,
   UserBlock,
 } from "../../shared/types.ts";
 import type { TargetedKeyboardEvent } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command, routes } from "../../state/api.ts";
 import { useConversation, useHostContext } from "../../state/host-context.ts";
@@ -57,6 +59,7 @@ import "./composer.css";
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
 const NO_MEMBERS: Session[] = [];
+const NONE: [] = [];
 
 // "Ada is typing…", for the participants of a chat answering now.
 function typingLabel(names: string[]) {
@@ -66,13 +69,14 @@ function typingLabel(names: string[]) {
   return `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`;
 }
 
-export default function Composer({
+function Composer({
   session,
-  queued = [],
+  queued = NONE,
   recall,
   insert,
   commands,
-  snapshot,
+  state,
+  pending,
   draft,
   setDraft,
   submit,
@@ -90,7 +94,9 @@ export default function Composer({
   recall?: (block: UserBlock) => Promise<void>;
   insert?: (block: UserBlock) => Promise<void>;
   commands: SlashCommand[];
-  snapshot?: Snapshot;
+  state?: State;
+  // A decision the turn waits on.
+  pending?: Pending | null;
   draft: Draft;
   setDraft: (draft: Draft) => void;
   submit: (event: Event, queue?: boolean) => void;
@@ -199,7 +205,7 @@ export default function Composer({
     : suggestions.count;
   const send = (event: Event, queue = false) => {
     // A pending decision holds the draft until it is answered.
-    if (snapshot?.pending) {
+    if (pending) {
       event.preventDefault();
       return;
     }
@@ -246,7 +252,6 @@ export default function Composer({
   };
   // Reconnecting keeps the last known request and activities on screen,
   // inert (their controls follow `online`), so resuming never reflows.
-  const pending = snapshot?.pending;
   // Focus left with the decision card returns to the input below it.
   const decided = useRef(!!pending);
   useEffect(() => {
@@ -255,7 +260,7 @@ export default function Composer({
     decided.current = !!pending;
   }, [pending]);
   const running = isRunning(session, online);
-  const state = snapshot?.state;
+  const openContext = useCallback(() => showContext(), [showContext]);
   // A session without a live worker names its lifecycle state here instead
   // of a phase, so closing a session still reports that it was saved.
   const detached = (
@@ -650,19 +655,15 @@ export default function Composer({
       </form>
       <div class="composer-metrics">
         <ActivityButton
-          agents={state?.agents || []}
+          agents={state?.agents || NONE}
           open={openInspector}
           session={session}
           online={online}
           report={report}
-          items={state?.activities || []}
+          items={state?.activities || NONE}
         />
         <div class="metrics">
-          <ContextSummary
-            state={state}
-            open={() => showContext()}
-            online={online}
-          />
+          <ContextSummary state={state} open={openContext} online={online} />
           <SessionSummary state={state} open={showStatistics} />
           {!!session.guidance && !queued.length && (
             <span class="muted" role="status">
@@ -674,3 +675,7 @@ export default function Composer({
     </section>
   );
 }
+
+// The page renders with every streamed block; the composer only when what
+// it shows changes.
+export default updateChecked(Composer);

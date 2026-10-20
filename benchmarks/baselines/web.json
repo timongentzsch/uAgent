@@ -80,36 +80,39 @@
     "bytes": 4846032
   },
   "frontend": {
+    "date": "2026-10-20",
     "bytes": {
+      "diagrams": {
+        "raw": 5096036,
+        "gzip": 1464832
+      },
+      "app": {
+        "raw": 1368533,
+        "gzip": 642687
+      },
       "initial_js": {
-        "raw": 51042,
-        "gzip": 18783
+        "raw": 194473,
+        "gzip": 79870
       },
       "initial_css": {
-        "raw": 15830,
-        "gzip": 4230
+        "raw": 65612,
+        "gzip": 18173
       },
       "lazy_and_shell": {
-        "raw": 790544,
-        "gzip": 441304
+        "raw": 6204484,
+        "gzip": 2009476
+      },
+      "optional_runtime": {
+        "raw": 5921591,
+        "gzip": 1893753
+      },
+      "precache": {
+        "raw": 510405,
+        "gzip": 202147
       },
       "total": {
-        "raw": 857416,
-        "gzip": 464317
-      }
-    },
-    "budgets": {
-      "initial_js": {
-        "raw": 57344,
-        "gzip": 21504
-      },
-      "initial_css": {
-        "raw": 16384,
-        "gzip": 4608
-      },
-      "total": {
-        "raw": 870400,
-        "gzip": 512000
+        "raw": 6464569,
+        "gzip": 2107519
       }
     }
   },

@@ -16,9 +16,17 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/thread_annotations.h"
 
 namespace uagent::session {
+
+// Upload quotas: one file, one message's files, one session's assets, and
+// all sessions' together.
+inline constexpr size_t kUploadBytes = MiB(8);
+inline constexpr size_t kUploadCount = 8;
+inline constexpr size_t kSessionAssetBytes = MiB(64);
+inline constexpr size_t kGlobalAssetBytes = MiB(512);
 
 struct AssetStoreResult {
   json value;

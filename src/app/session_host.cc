@@ -341,6 +341,8 @@ json SessionHost::LiveSnapshot(const HostSession& session) const {
 }
 
 json SessionHost::Catalogue() const {
+  // Read from disk, so outside the lock.
+  json spaces = Spaces();
   std::lock_guard lock(mutex_);
   json sessions = json::array();
   for (const auto& [id, session] : sessions_) {
@@ -348,6 +350,7 @@ json SessionHost::Catalogue() const {
   }
   return {{"cursor", replay_.Cursor()},
           {"sessions", std::move(sessions)},
+          {"spaces", std::move(spaces)},
           {"scheduled", scheduled_view_}};
 }
 

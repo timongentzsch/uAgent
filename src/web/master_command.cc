@@ -5,11 +5,8 @@
 #include <string>
 #include <utility>
 
-#include "include/app/config_proposal.h"
-#include "include/app/control.h"
 #include "include/app/session_host.h"
 #include "include/browser/browser.h"
-#include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
@@ -201,28 +198,14 @@ void Master::BrowserCommand(CommandCall& call) {
 }
 
 void Master::ManagementCommand(CommandCall& call) {
-  json result = ControlProcess(call.command);
-  call.error = JsonValue(result, "error", "");
-  auto action = JsonValue(call.command, "action", "list");
-  if (call.error.empty() && action != "list" && action != "get" &&
-      action != "show" && action != "preview") {
-    host_.Publish("", "", {{"kind", "management.changed"}});
-  }
-  call.outcome["result"] = std::move(result);
+  call.outcome["result"] = host_.Manage(call.command);
+  call.error = JsonValue(call.outcome["result"], "error", "");
 }
 
 // A workspace's own: its name, and its end with everything in it.
 void Master::SpaceCommand(CommandCall& call) {
-  const std::string path = JsonValue(call.command, "cwd", "");
-  call.error =
-      JsonValue(call.command, "action", "") == "delete"
-          ? host_.DeleteSpace(path, call.device)
-          : host_.RenameSpace(path, Trim(JsonValue(call.command, "name", "")));
-  const json spaces = session::Spaces();
-  call.outcome["result"] = {{"spaces", spaces}};
-  if (call.error.empty()) {
-    host_.Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
-  }
+  call.outcome["result"] =
+      host_.SpaceControl(call.command, call.device, call.error);
 }
 
 // Settings that need a restart reach running conversations only through a
@@ -245,12 +228,7 @@ void Master::ConfigCommand(CommandCall& call) {
     SessionCommand(call);
     return;
   }
-  // The host belongs to no project: a request names the folder it is
-  // about, and without one only what is saved for all is in reach.
-  const auto folder = CanonicalDirectory(JsonValue(call.command, "cwd", ""));
-  auto manager =
-      ConfigManager::Capture({}, folder ? folder->string() : std::string());
-  json result = ConfigurationControl(call.command, manager);
+  json result = host_.Configure(call.command);
   PublishSettings();
   call.error = JsonValue(result, "error", "");
   call.outcome["result"] = std::move(result);
@@ -265,6 +243,7 @@ void Master::SessionCommand(CommandCall& call) {
   call.revoked = "device changed while handling command; refresh";
   if (executed.wake) host_wake_.Wake();
 }
+
 // Runs a browser control the viewer asked for; `done` also answers the
 // conversation's pending browser decision. Called without mutex_ held.
 json Master::BrowserControl(const json& command, const std::string& device,

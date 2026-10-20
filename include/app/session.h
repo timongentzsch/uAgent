@@ -8,6 +8,7 @@
 #include <string>
 
 #include "include/cli/options.h"
+#include "include/core/env.h"
 #include "include/transport/session.h"
 namespace uagent::session {
 // State only checkpoints carry. Between them clients keep the last
@@ -15,6 +16,23 @@ namespace uagent::session {
 // never cross the wire on every phase or usage change.
 inline constexpr const char* kCheckpointFields[] = {"view", "http",
                                                     "system_prompt", "answer"};
+
+// Whether an activity row is work its session still waits on. A detached
+// process (a server left running) outlives its session by design, so it
+// never counts.
+inline bool ActivityRuns(const json& activity) {
+  const std::string state =
+      JsonValue(activity, "status", JsonValue(activity, "state", ""));
+  return !JsonValue(activity, "detached", false) &&
+         (state == "running" || state == "starting" || state == "stopping" ||
+          state == "finishing");
+}
+// A session with nothing to do for this long stops its runtime; whatever
+// reaches it next starts it again. Tests shorten it.
+inline std::chrono::seconds IdlePeriod() {
+  return std::chrono::seconds(std::max<int64_t>(
+      1, EnvLong("UAGENT_INTERNAL_IDLE_S", kIdleMinutes * 60)));
+}
 
 // `state` without its checkpoint-only fields.
 inline json LightState(const json& state) {

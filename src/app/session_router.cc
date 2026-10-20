@@ -10,6 +10,8 @@
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
 #include "include/app/chat.h"
+#include "include/app/config_proposal.h"
+#include "include/app/control.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -18,6 +20,7 @@
 #include "include/app/session_host.h"
 #include "include/cli/cli.h"
 #include "include/core/capture.h"
+#include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -105,6 +108,38 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
     return "";
   }
   return folder;
+}
+
+json SessionHost::Manage(const json& command) {
+  json result = ControlProcess(command);
+  const std::string action = JsonValue(command, "action", "list");
+  if (JsonValue(result, "error", "").empty() && action != "list" &&
+      action != "get" && action != "show" && action != "preview") {
+    Publish("", "", {{"kind", "management.changed"}});
+  }
+  return result;
+}
+
+json SessionHost::SpaceControl(const json& command, const std::string& device,
+                               std::string& error) {
+  const std::string path = JsonValue(command, "cwd", "");
+  error = JsonValue(command, "action", "") == "delete"
+              ? DeleteSpace(path, device)
+              : RenameSpace(path, Trim(JsonValue(command, "name", "")));
+  const json spaces = Spaces();
+  if (error.empty()) {
+    Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
+  }
+  return {{"spaces", spaces}};
+}
+
+// The host belongs to no project: a request names the folder it is about,
+// and without one only what is saved for all is in reach.
+json SessionHost::Configure(const json& command) {
+  const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
+  auto manager =
+      ConfigManager::Capture({}, folder ? folder->string() : std::string());
+  return ConfigurationControl(command, manager);
 }
 
 std::string SessionHost::RenameSpace(const std::string& path,

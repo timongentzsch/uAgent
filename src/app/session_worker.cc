@@ -18,6 +18,7 @@
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/asset_store.h"
 #include "include/app/bootstrap.h"
 #include "include/app/chat.h"
 #include "include/app/launch.h"

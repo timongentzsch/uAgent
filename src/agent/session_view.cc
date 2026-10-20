@@ -2,8 +2,6 @@
 
 #include "include/agent/session_view.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
@@ -21,6 +19,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 
@@ -749,42 +748,6 @@ json PageText(const std::string& text, size_t offset) {
           {"next", end},
           {"bytes", text.size()},
           {"more", end < text.size()}};
-}
-
-json ReadPrivateArtifact(const std::string& path, size_t offset) {
-  const std::filesystem::path file_path(path);
-  if (path.empty()) return {{"error", "retained body unavailable"}};
-  // Either a retained artifact, or a diff kept with a session's edits.
-  auto base = CanonicalAccessPath(file_path.parent_path());
-  const bool diff =
-      file_path.filename().string().starts_with("diff-") &&
-      base.string().ends_with(std::string(".json") + kSessionEditsSuffix) &&
-      PathWithin(base, CanonicalAccessPath(UagentDir(kHistoryDir)));
-  if (!diff && base != CanonicalAccessPath(UagentDir(kArtifactsDir))) {
-    return {{"error", "retained body unavailable"}};
-  }
-  size_t size = 0;
-  Fd file =
-      OpenOwnedRegular((base / file_path.filename()).string(), SIZE_MAX, &size);
-  if (!file) return {{"error", "retained body unavailable"}};
-  offset = std::min(offset, size);
-  // Look ahead so the page boundary can be checked against the next byte.
-  std::string text(std::min(size - offset, kTextPageBytes + 4), '\0');
-  ssize_t bytes;
-  do {
-    bytes =
-        pread(file.Get(), text.data(), text.size(), static_cast<off_t>(offset));
-  } while (bytes < 0 && errno == EINTR);
-  if (bytes < 0) return {{"error", "retained body read failed"}};
-  text.resize(static_cast<size_t>(bytes));
-  // JSON pages split only at UTF-8 boundaries, never inside a code point.
-  const size_t start = Utf8BoundaryAfter(text, 0);
-  const size_t end =
-      Utf8BoundaryBefore(text, std::min(kTextPageBytes, text.size()));
-  return {{"text", text.substr(start, end - start)},
-          {"next", offset + end},
-          {"bytes", size},
-          {"more", offset + end < size}};
 }
 
 json TranscriptView::Exchange(const std::string& id, size_t offset) const {

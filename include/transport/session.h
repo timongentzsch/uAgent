@@ -2,13 +2,11 @@
 #ifndef UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 #define UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 
-#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <string>
 #include <string_view>
 
-#include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -19,10 +17,6 @@ inline constexpr int kProtocol = 2;
 inline constexpr size_t kFrameBytes = MiB(1);
 inline constexpr size_t kCommandBytes = KiB(512);
 inline constexpr size_t kQueueBytes = MiB(4);
-inline constexpr size_t kUploadBytes = MiB(8);
-inline constexpr size_t kUploadCount = 8;
-inline constexpr size_t kSessionAssetBytes = MiB(64);
-inline constexpr size_t kGlobalAssetBytes = MiB(512);
 inline constexpr size_t kReceiptEntries = 256;
 inline constexpr size_t kMaxClients = 16;
 inline constexpr size_t kMaxSessions = kMaxCatalogueEntries;
@@ -52,22 +46,6 @@ enum WorkerExit : int {
 inline std::string SocketPathForId(const std::string& id,
                                    const std::string& dir = RuntimeDir()) {
   return dir + "/" + id + ".sock";
-}
-// Whether an activity row is work its session still waits on. A detached
-// process (a server left running) outlives its session by design, so it
-// never counts.
-inline bool ActivityRuns(const json& activity) {
-  const std::string state =
-      JsonValue(activity, "status", JsonValue(activity, "state", ""));
-  return !JsonValue(activity, "detached", false) &&
-         (state == "running" || state == "starting" || state == "stopping" ||
-          state == "finishing");
-}
-// A session with nothing to do for this long stops its runtime; whatever
-// reaches it next starts it again. Tests shorten it.
-inline std::chrono::seconds IdlePeriod() {
-  return std::chrono::seconds(std::max<int64_t>(
-      1, EnvLong("UAGENT_INTERNAL_IDLE_S", kIdleMinutes * 60)));
 }
 inline constexpr auto kStreamBatchInterval =
     std::chrono::milliseconds(kStreamBatchIntervalMs);

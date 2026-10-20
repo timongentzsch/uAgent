@@ -189,12 +189,15 @@ class SessionHost {
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
   json Catalogue() const;
-  // A space is renamed by its label, its folder and so every conversation
-  // in it staying what they are. Deleting one closes and removes its
-  // conversations, then the folder with everything in it. Each returns why
-  // it could not, or nothing.
-  std::string RenameSpace(const std::string& path, const std::string& name);
-  std::string DeleteSpace(const std::string& path, const std::string& device);
+  // What the host answers itself, for the settings screens: management of
+  // the library, schedules and the like (announced as management.changed
+  // when something changed); a workspace's name or its end, answered with
+  // the spaces after it (announced as spaces.changed); and the settings
+  // saved for a folder or for all.
+  json Manage(const json& command);
+  json SpaceControl(const json& command, const std::string& device,
+                    std::string& error);
+  json Configure(const json& command);
   std::string AssetPath(const std::string& id) const;
   // The folder a conversation works in: a thread's project, else its own.
   std::string Folder(const std::string& id) const;
@@ -206,6 +209,12 @@ class SessionHost {
                                       const std::string& request_id);
 
  private:
+  // A space is renamed by its label, its folder and so every conversation
+  // in it staying what they are. Deleting one closes and removes its
+  // conversations, then the folder with everything in it. Each returns why
+  // it could not, or nothing.
+  std::string RenameSpace(const std::string& path, const std::string& name);
+  std::string DeleteSpace(const std::string& path, const std::string& device);
   std::string epoch_;
   std::string executable_, directory_;
   // Ordered event log and attachment quotas live in their own components;

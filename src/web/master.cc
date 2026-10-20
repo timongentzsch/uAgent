@@ -399,7 +399,7 @@ void Master::RegisterApiRoutes() {
                            {"epoch", epoch_},
                            {"cursor", std::move(catalogue["cursor"])},
                            {"sessions", std::move(catalogue["sessions"])},
-                           {"spaces", session::Spaces()},
+                           {"spaces", std::move(catalogue["spaces"])},
                            {"commands", CommandSchemaJson()},
                            {"verbosity",
                             [] {

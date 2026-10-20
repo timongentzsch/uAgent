@@ -64,7 +64,6 @@ json ConversationExchange(const Conversation& conversation,
 // One page of a long text from `offset`, cut at UTF-8 boundaries, with where
 // the next starts and whether there is more.
 json PageText(const std::string& text, size_t offset);
-json ReadPrivateArtifact(const std::string& path, size_t offset);
 json FindHttpExchange(const json& value, const std::string& id);
 // The HTTP exchanges of the latest model request, from the display facts.
 json LatestHttp(const json& facts);

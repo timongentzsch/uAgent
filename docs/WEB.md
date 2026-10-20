@@ -50,6 +50,16 @@ conversations stay as they are. Deleting a workspace removes its
 conversations and its folder with every file in it. A **folder** is a directory of yours: it is listed while it has
 conversations, and µAgent never removes it.
 
+**Files** (the folder button in a conversation's header) shows the
+conversation's folder beside the chat, or as a sheet on a small screen. It
+reads and never writes. Search finds a file by name anywhere in the folder.
+Code opens with line numbers and highlighting, markdown rendered with its
+images (**Source** shows the text), an image at full size on a click; any
+other file offers a download. What is open is read again when a turn ends.
+Drag the edge of the sidebar, the board, Files or its list to resize it, or
+focus the edge and use the arrow keys; a double-click or Enter puts the
+default width back. Each device keeps its widths.
+
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
 `--json`, `-c`, `--resume`, `--yolo`, `--attach`, `--model`, …). It reads the
 settings saved for all conversations and the environment, never a project's.
@@ -359,6 +369,11 @@ Signing out or a revoked device clears local UI state.
 - Every request must address the configured origin or the loopback URL, and
   mutations must carry that exact Origin. API routes other than pairing
   require device authentication.
+- A paired device can read the files of a conversation's folder, as the
+  agent can: the [hidden stores](../SECURITY.md#sandboxing) and µAgent's
+  own settings files are refused, and nothing outside the folder is served,
+  through a symlink or otherwise. Images are served inline under a
+  sandboxing policy; every other file, HTML included, only as a download.
 - The page runs under a content security policy that allows only its own
   scripts, connections and frames. Attached HTML opens sandboxed in an opaque
   origin.

@@ -1,0 +1,69 @@
+/* The chat keeps at least --chat-min; a pane takes its width, or what is
+   left beside that minimum. */
+.side-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(var(--chat-min), 1fr) minmax(0, auto);
+}
+.side-chat {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.side-pane {
+  position: relative;
+  min-height: 0;
+  max-width: 100%;
+  min-width: var(--pane-s);
+  display: flex;
+  flex-direction: column;
+}
+.side-pane > :not(.resize-handle) {
+  flex: 1;
+  min-height: 0;
+}
+.side-pane[data-pane="board"] {
+  width: var(--board-width, var(--pane));
+}
+.side-pane[data-pane="files"] {
+  width: var(--files-width, clamp(var(--popover), 45cqi, var(--sheet) * 1.5));
+}
+
+/* A wide grip over the pane's 1px edge; the edge itself turns to the
+   accent while it is pointed at, focused or dragged. */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: var(--z-popover);
+  width: var(--space-6);
+  cursor: col-resize;
+  touch-action: none;
+}
+.resize-handle.start {
+  left: calc(var(--space-6) / -2);
+}
+.resize-handle.end {
+  right: calc(var(--space-6) / -2);
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - var(--space-1) / 2);
+  width: var(--space-1);
+}
+.resize-handle:focus-visible {
+  outline: none;
+}
+.resize-handle:is(:focus-visible, [data-dragging])::after {
+  background: var(--accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .resize-handle:hover::after {
+    background: var(--accent);
+  }
+}

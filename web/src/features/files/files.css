@@ -1,0 +1,243 @@
+/* The list beside the open file; a narrow pane (a phone's sheet) shows
+   one of them at a time, with Back from the file to the list. */
+.files {
+  container: files / inline-size;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+}
+.files-sheet > .dialog-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+.files-sheet .files {
+  margin: 0;
+  border: 0;
+}
+.files-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.files-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  margin: 0;
+  font-size: var(--font-body);
+  white-space: nowrap;
+}
+/* The name stays in view; a long folder path gives way first. */
+.files-title .files-dir {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.files-title .files-name {
+  flex: none;
+  max-width: 100%;
+}
+.files-dir {
+  color: var(--muted);
+  font-weight: 400;
+}
+.files-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control);
+  color: var(--text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .files-download:hover {
+    background: var(--raised);
+  }
+}
+.files-columns {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, var(--files-list-width, var(--pane))) minmax(
+      0,
+      1fr
+    );
+}
+.files-list {
+  position: relative;
+  min-width: var(--pane-s);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.files-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-small);
+}
+.files-crumbs button {
+  min-height: var(--control-m);
+  padding-inline: var(--space-2);
+  color: var(--muted);
+}
+.files-crumbs button + button::before {
+  content: "/";
+  margin-right: var(--space-2);
+  color: var(--muted);
+}
+.files-crumbs [aria-current] {
+  color: var(--text);
+  font-weight: 700;
+}
+.files-entries,
+.files-results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.files-entries button,
+.files-results button {
+  width: 100%;
+  min-height: var(--control-m);
+  justify-content: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  text-align: left;
+}
+.files-entries [aria-current] {
+  background: var(--raised);
+}
+.files-entries .lucide {
+  color: var(--muted);
+}
+.files-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.files-results .files-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--font-micro);
+}
+.files-note {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.files-view {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.files-view > .markdown {
+  padding: var(--space-6) var(--space-12);
+}
+.files-view .markdown img {
+  cursor: zoom-in;
+}
+.files-cut {
+  border-top: 1px solid var(--line);
+}
+
+/* One row per line: the number column sizes to the longest number and
+   stays put while a long line scrolls. Copying takes only the code. */
+.code-view {
+  margin: 0;
+  padding: var(--space-4) 0;
+  display: grid;
+  grid-template-columns: max-content max-content;
+  font-size: var(--font-small);
+  line-height: var(--leading);
+  border: 0;
+  background: none;
+}
+.code-view .line-number {
+  position: sticky;
+  left: 0;
+  padding-inline: var(--space-6) var(--space-6);
+  text-align: right;
+  color: var(--muted);
+  background: var(--bg);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.code-view .line {
+  padding-right: var(--space-12);
+  white-space: pre;
+}
+
+.files-image {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: var(--space-12);
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.files-image img {
+  max-width: 100%;
+  border: 1px solid var(--line);
+}
+.files-binary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-24) var(--space-12);
+  text-align: center;
+  color: var(--muted);
+}
+
+/* A wide pane scrolls long lines; a narrow one wraps them and shows the
+   list or the file. */
+@container files (max-width: 40rem) {
+  .files-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .files[data-showing="file"] .files-list,
+  .files[data-showing="list"] .files-view {
+    display: none;
+  }
+  .files-list {
+    border-right: 0;
+  }
+  .files-list .resize-handle {
+    display: none;
+  }
+  .code-view {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .code-view .line {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+@container files (min-width: 40.0625rem) {
+  .files-back {
+    display: none;
+  }
+}

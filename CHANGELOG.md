@@ -106,6 +106,13 @@
 
 ### Added
 
+- Web: **Files** in a conversation's header browses its folder beside the
+  chat, read only: a file list with search across the folder, code with line
+  numbers and highlighting, rendered markdown with its images, and images at
+  full size. On a small screen it is a sheet.
+- Web: the sidebar, a panel's board, Files and its file list resize by
+  dragging their edge or with the arrow keys; each device keeps the widths.
+
 - Panel chat rechecks a deferred round close when a member publishes idle,
   so a final report read before that state change cannot strand the round.
   The idle notification adds no chat text or model turn.

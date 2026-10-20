@@ -223,6 +223,10 @@ inline constexpr int64_t kListDirEntries = 1000;
 inline constexpr int64_t kListDirScanEntries = 100000;
 inline constexpr int64_t kGrepResults = 200;
 inline constexpr int64_t kBashLogBytes = MiB(64);
+// The web host's file browser: a file's first MiB shows as text, a search
+// answers this many paths.
+inline constexpr size_t kFileViewBytes = MiB(1);
+inline constexpr size_t kFileFindMatches = 200;
 // Delegation and hosted search.
 inline constexpr int64_t kSubagentCallsPerTurn = 32;
 inline constexpr int64_t kWebSearchTimeoutSeconds = 60;

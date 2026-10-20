@@ -104,9 +104,6 @@ ToolResult FileOpenFailure(const std::string& path) {
   return ToolFailure(FileToolError(error), "error: cannot open " + path);
 }
 
-// Defined below, beside the directory preview that shares it.
-bool LikelyTextFile(const std::filesystem::path& path);
-
 // Scan skipped lines without retaining them; never allocate a complete giant
 // line merely to truncate it. Cancellation is checked once per input chunk.
 class FileLines {
@@ -588,6 +585,8 @@ bool LikelyTextSample(std::string_view sample) {
   return true;
 }
 
+}  // namespace
+
 bool LikelyTextFile(const std::filesystem::path& path) {
   const std::string mime = AttachmentMime(path.string());
   if (mime.starts_with("image/") ||
@@ -603,6 +602,8 @@ bool LikelyTextFile(const std::filesystem::path& path) {
   if (!input && !input.eof()) return false;
   return LikelyTextSample(std::string_view(sample, static_cast<size_t>(size)));
 }
+
+namespace {
 
 // The whole contents of a tiny directory, when every entry is a small text
 // file. Any reason not to inline them leaves the plain listing in place.

@@ -24,7 +24,9 @@ import {
 } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
-import Board, { PanelLayout } from "../features/panel/board.tsx";
+import Board from "../features/panel/board.tsx";
+import { SideLayout } from "../shared/side-pane.tsx";
+import { usePhone } from "../shared/layout.ts";
 import WaitingList from "../shared/escalations.tsx";
 import Chat, {
   TranscriptPlaceholder,
@@ -95,6 +97,7 @@ export default function ChatPage({
   closeSide,
   actions,
   setInspector,
+  files,
 }: {
   active: boolean;
   historyKey: string;
@@ -120,9 +123,13 @@ export default function ChatPage({
   closeSide: () => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
+  // The files pane, when it is open beside the chat; it takes the board's
+  // place while it is.
+  files?: ComponentChildren;
 }) {
   const { store, online, report, load, setModal } = useHostContext();
   const { setFollowing } = useConversation();
+  const phone = usePhone();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
   const allBlocks = useMemo(
@@ -225,16 +232,24 @@ export default function ChatPage({
     />
   );
   return session ? (
-    <PanelLayout
-      board={
-        threads && (
-          <Board
-            threads={threads}
-            choose={choose}
-            menu={menu}
-            add={addMember}
-          />
-        )
+    <SideLayout
+      pane={
+        files
+          ? { name: "files", label: "Resize the files", content: files }
+          : threads && !phone
+            ? {
+                name: "board",
+                label: "Resize the board",
+                content: (
+                  <Board
+                    threads={threads}
+                    choose={choose}
+                    menu={menu}
+                    add={addMember}
+                  />
+                ),
+              }
+            : undefined
       }
     >
       {/* Remount the transcript per session: a stale surface's
@@ -278,7 +293,7 @@ export default function ChatPage({
         />
       )}
       {composerFor(session)}
-    </PanelLayout>
+    </SideLayout>
   ) : opening ? (
     // A reload on a conversation: its surfaces, before the
     // catalogue names the session.

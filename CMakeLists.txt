@@ -301,8 +301,8 @@ cmake_dependent_option(UAGENT_BROWSER "Build the browser appliance" ON
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
   add_library(uagent_web src/web/master.cc src/web/master_auth.cc
-                         src/web/master_command.cc src/web/master_stream.cc
-                         "${_web_generated}")
+                         src/web/master_command.cc src/web/master_files.cc
+                         src/web/master_stream.cc "${_web_generated}")
   find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
   target_link_libraries(uagent_web PUBLIC uagent_core ZLIB::ZLIB)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)

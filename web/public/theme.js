@@ -14,6 +14,16 @@
   } catch {}
   if (t !== "light" && t !== "dark")
     t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // The panes someone resized keep their width from the first frame.
+  try {
+    const panes = JSON.parse(localStorage.getItem("uagent-panes") || "{}");
+    for (const name of ["sidebar", "board", "files", "files-list"])
+      if (Number.isFinite(panes[name]))
+        document.documentElement.style.setProperty(
+          `--${name}-width`,
+          `${panes[name]}rem`,
+        );
+  } catch {}
   document.documentElement.dataset.theme = t;
   document.documentElement.style.setProperty("--zoom", String(z / 100));
   document.documentElement.style.setProperty(

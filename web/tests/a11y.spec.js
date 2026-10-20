@@ -218,6 +218,24 @@ test("the settings sheet has no violations", async ({ page, session }) => {
   expect(await violations(page)).toEqual([]);
 });
 
+for (const scheme of ["dark", "light"])
+  test(`the files pane and the resize handles have no violations in ${scheme}`, async ({
+    page,
+    session,
+  }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/#session=${session.id}`);
+    await page.getByRole("button", { name: "Files", exact: true }).click();
+    await page.getByRole("button", { name: "shot.png" }).click();
+    await expect(
+      page.getByRole("button", { name: "View shot.png" }),
+    ).toBeVisible();
+    await page.getByRole("combobox", { name: "Search files" }).fill("png");
+    await expect(page.getByRole("option", { name: /shot\.png/ })).toBeVisible();
+    expect(await violations(page)).toEqual([]);
+  });
+
 for (const width of [390, 1280])
   test(`the settings form has no violations at ${width}px, and logging out asks first`, async ({
     page,

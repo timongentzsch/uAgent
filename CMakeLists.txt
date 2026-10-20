@@ -277,6 +277,8 @@ add_library(
   src/ui/live_region.cc
   src/ui/editor.cc
   src/ui/markdown.cc
+  src/ui/markdown_math.cc
+  src/ui/markdown_table.cc
   src/ui/presentation.cc)
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 

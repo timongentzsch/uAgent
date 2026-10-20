@@ -260,6 +260,7 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
+  src/app/transient_batcher.cc
   src/app/panel_prompt.cc
   src/app/session_terminal.cc
   src/ui/conversation.cc

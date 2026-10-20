@@ -291,9 +291,15 @@ size_t RawComposer::AvailableColumns() const {
 }
 
 RawComposer::Layout RawComposer::View() const {
+  const size_t columns = AvailableColumns();
+  if (shown_ && shown_->prompt == prompt_ && shown_->buffer == buffer_ &&
+      shown_->note == note_ && shown_->cursor == cursor_ &&
+      shown_->selected == selected_ && shown_->columns == columns) {
+    return shown_->layout;
+  }
   size_t mapped_cursor = 0;
   std::string safe = DisplayText(buffer_, cursor_, &mapped_cursor);
-  std::vector<std::string> rows = WrapLines(safe, AvailableColumns());
+  std::vector<std::string> rows = WrapLines(safe, columns);
   if (rows.empty()) rows = {""};
 
   size_t before_width = DisplayWidth(safe.substr(0, mapped_cursor));
@@ -322,12 +328,17 @@ RawComposer::Layout RawComposer::View() const {
     std::string suggestion =
         (found.menu && index == selected ? "> " : "  ") + match.name;
     if (!match.description.empty()) suggestion += "  " + match.description;
-    rows.push_back(DisplayTrunc(TerminalSafe(suggestion), AvailableColumns()));
+    rows.push_back(DisplayTrunc(TerminalSafe(suggestion), columns));
   }
-  if (!note_.empty()) {
-    rows.push_back(DisplayTrunc("  " + note_, AvailableColumns()));
-  }
-  return {std::move(rows), row, caret_col};
+  if (!note_.empty()) rows.push_back(DisplayTrunc("  " + note_, columns));
+  shown_ = {prompt_,
+            buffer_,
+            note_,
+            cursor_,
+            selected_,
+            columns,
+            {std::move(rows), row, caret_col}};
+  return shown_->layout;
 }
 
 bool RawComposer::Insert(const std::string& text) {

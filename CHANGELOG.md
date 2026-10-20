@@ -311,6 +311,9 @@
 - The terminal draws a fast stream at most once a frame (16 ms) and repaints
   once per wake instead of twice, so a quick model costs it less CPU. What is
   typed is still drawn at once.
+- A draft naming an `@path` no longer lists that directory on every repaint
+  of the terminal; the composer is laid out again only when the draft, the
+  menu or the width changes.
 
 ## v1.4.0 - 2026-10-15
 

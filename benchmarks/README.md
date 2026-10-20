@@ -2,7 +2,7 @@
 
 Measurements of the agent's behavior and footprint. They are trend signals,
 not correctness gates, except the hermetic evaluation, which CTest runs as
-`behavior_eval`. From the repository root:
+`behavior_eval`. Run from the repository root:
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check    # scenarios against the baseline
@@ -12,9 +12,8 @@ cmake -B build/bench -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_BENCHMARKS=ON
 cmake --build build/bench --target uagent_bench && build/bench/uagent_bench
 ```
 
-The scenarios, live runs, cost authority and the other options are in
-[Testing](../docs/TESTING.md#behavioral-evaluation). The rest of this file
-maps the directory.
+[Testing](../docs/TESTING.md#behavioral-evaluation) covers the scenarios,
+live runs, the cost authority and the other options.
 
 | Path | Contents |
 | --- | --- |

@@ -261,6 +261,10 @@ void TestReplayLogReadsInBatches() {
   CHECK(!first.reset);
   CHECK(first.events.size() > 1 && first.events.size() < 10);
   CHECK(first.events.front().sequence == 1);
+  // Kept as the event stream sends it, so no reader formats it again.
+  CHECK(first.events.front().frame->starts_with(
+      "id: e:1\nevent: update\ndata: {"));
+  CHECK(first.events.front().frame->ends_with("}\n\n"));
   uint64_t next = first.events.back().sequence;
   size_t seen = first.events.size();
   while (next < log.Cursor()) {

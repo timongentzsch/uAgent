@@ -101,8 +101,7 @@ void Master::Events(const Request& request, Response& response) {
         }
         std::string batch;
         for (const session::HostReplay& event : replay.events) {
-          batch += "id: " + epoch_ + ":" + std::to_string(event.sequence) +
-                   "\nevent: update\ndata: " + event.frame + "\n\n";
+          batch += *event.frame;
           next = event.sequence;
           if (batch.size() >= kWebEventBatchBytes) {
             break;

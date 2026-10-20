@@ -3,6 +3,7 @@
 #include "include/app/replay_log.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,10 +45,13 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   value["epoch"] = epoch;
   value["sequence"] = ++sequence_;
   StampFrame(value, session, generation);
-  replay_.push_back({sequence_, JsonDump(value)});
-  replay_bytes_ += replay_.back().frame.size();
+  replay_.push_back(
+      {sequence_, std::make_shared<const std::string>(
+                      "id: " + epoch + ":" + std::to_string(sequence_) +
+                      "\nevent: update\ndata: " + JsonDump(value) + "\n\n")});
+  replay_bytes_ += replay_.back().frame->size();
   while (replay_bytes_ > byte_limit_ || replay_.size() > event_limit_) {
-    replay_bytes_ -= replay_.front().frame.size();
+    replay_bytes_ -= replay_.front().frame->size();
     replay_.pop_front();
   }
   if (!notice.attention_id.empty() || notice.wake) {
@@ -67,12 +71,14 @@ ReplayBatch ReplayLog::Read(uint64_t next, bool valid, uint64_t watermark,
   batch.reset = !valid || next > sequence_ ||
                 (!replay_.empty() && next + 1 < replay_.front().sequence);
   if (batch.reset) return batch;
+  // Sequences are consecutive, so the first unread frame is found by index.
   size_t bytes = 0;
-  for (const HostReplay& event : replay_) {
-    if (event.sequence <= next) continue;
+  for (size_t index = replay_.empty() ? 0 : next + 1 - replay_.front().sequence;
+       index < replay_.size(); ++index) {
+    const HostReplay& event = replay_[index];
     if (event.sequence > watermark || bytes >= byte_budget) break;
     batch.events.push_back(event);
-    bytes += event.frame.size();
+    bytes += event.frame->size();
   }
   return batch;
 }

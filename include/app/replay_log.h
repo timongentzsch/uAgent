@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_REPLAY_LOG_H_
 #define UAGENT_INCLUDE_APP_REPLAY_LOG_H_
-// Transport-independent host event ordering and bounded reconnect replay.
-// The HTTP adapter serializes these frames but does not own their sequence.
+// Host event ordering and bounded reconnect replay. Each frame is kept once,
+// as the event stream sends it, so every reader shares it as it is.
 // The host owns the lock; every method below runs with it held, so this
 // class carries data but no mutex or condition variable. Bodies live in
 // src/app/replay_log.cc.
@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,8 @@ namespace uagent::session {
 
 struct HostReplay {
   uint64_t sequence = 0;
-  std::string frame;
+  // `id: EPOCH:SEQUENCE`, `event: update` and the frame as `data`.
+  std::shared_ptr<const std::string> frame;
 };
 
 struct ReplayBatch {

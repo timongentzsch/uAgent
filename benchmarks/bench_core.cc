@@ -18,6 +18,7 @@
 #include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
+#include "include/app/replay_log.h"
 #include "include/core/events.h"
 #include "include/core/limits.h"
 #include "include/core/output_buffer.h"
@@ -202,6 +203,22 @@ void BenchmarkCheckpointMerge() {
          }));
 }
 
+// An event stream reading the newest frames of a full replay log, as each
+// connected device does after every publish.
+void BenchmarkReplayRead() {
+  constexpr size_t kHeld = 2048;
+  constexpr size_t kReads = 10000;
+  session::ReplayLog log(MiB(4), kHeld);
+  for (size_t index = 0; index < kHeld; ++index) {
+    log.Publish("e", "s", "g",
+                {{"kind", "block"}, {"append", {{"text", "token "}}}}, false);
+  }
+  Report("replay read, 2048 held", kReads, Measure(kReads, [&] {
+           return log.Read(log.Cursor() - 1, true, log.Cursor(), KiB(64))
+               .events.size();
+         }));
+}
+
 }  // namespace
 
 int RunBenchmarks() {
@@ -224,6 +241,7 @@ int RunBenchmarks() {
   BenchmarkStreamedAnswer();
   BenchmarkCommandOutput();
   BenchmarkCheckpointMerge();
+  BenchmarkReplayRead();
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {

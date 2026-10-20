@@ -9,7 +9,7 @@ import type {
   AppModal,
   InspectorTarget,
 } from "../shared/types.ts";
-import { render } from "preact";
+import { render, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
 import { command } from "../state/api.ts";
@@ -354,7 +354,7 @@ function App() {
   );
   // The open conversation's menu also holds the level its transcript shows.
   const conversationMenu = useCallback(
-    (item: Session, withDetail = false) => (
+    (item: Session, withDetail = false, extra?: ComponentChildren) => (
       <ConversationMenu
         item={item}
         fork={fork}
@@ -370,7 +370,9 @@ function App() {
               }
             : undefined
         }
-      />
+      >
+        {extra}
+      </ConversationMenu>
     ),
     [online, fork, load, report, open, detail, levels, changeDetail],
   );

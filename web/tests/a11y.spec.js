@@ -2,7 +2,13 @@
 // showcase of every primitive, a live conversation, both kinds of pending
 // decision, the settings sheet and the phone drawer. axe is a test-only
 // dependency, injected into the page; the product bundle never carries it.
-import { test, showcaseTest, expect, SHOWCASE_URL } from "./fixtures.js";
+import {
+  test,
+  showcaseTest,
+  expect,
+  SHOWCASE_URL,
+  headerAction,
+} from "./fixtures.js";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -209,7 +215,7 @@ test("an approval decision has no violations and takes focus", async ({
 
 test("the settings sheet has no violations", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible();
   await expect(
@@ -226,7 +232,7 @@ for (const scheme of ["dark", "light"])
     await page.emulateMedia({ colorScheme: scheme });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Files", exact: true }).click();
+    await headerAction(page, "Files");
     await page.getByRole("button", { name: "shot.png" }).click();
     await expect(
       page.getByRole("button", { name: "View shot.png" }),
@@ -243,7 +249,7 @@ for (const width of [390, 1280])
   }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
     const nav = settings.locator(".settings-nav");
     await nav

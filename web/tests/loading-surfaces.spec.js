@@ -4,6 +4,7 @@ import {
   online,
   withoutServiceWorker,
   newFolder,
+  headerAction,
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -353,7 +354,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(mobilePanel.x).toBeGreaterThanOrEqual(0);
   expect(mobilePanel.x + mobilePanel.width).toBeLessThanOrEqual(390);
   await page.keyboard.press("Escape");
-  await settingsButton.click();
+  await headerAction(page, "Settings");
   await settings
     .locator(".settings-nav")
     .getByRole("button", { name: "This browser", exact: true })
@@ -399,7 +400,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       );
     }),
   ).toBe(true);
-  await settingsButton.click();
+  await headerAction(page, "Settings");
   await settings
     .locator(".settings-nav")
     .getByRole("button", { name: "This browser", exact: true })

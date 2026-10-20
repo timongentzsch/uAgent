@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import type { AppModal, Session } from "../shared/types.ts";
 import { Button, IconButton, Modal } from "../shared/ui.tsx";
+import { MenuItem } from "../shared/menu.tsx";
 import {
   Ellipsis,
   FolderOpen,
@@ -20,7 +21,8 @@ import { isBrowsing } from "./chat-page.tsx";
 
 // The page's title and what acts on the open conversation: the browser, its
 // files, a panel's board (a sheet on a phone), Settings on a small screen
-// and the conversation's menu.
+// and the conversation's menu. A phone keeps the title, the board and the
+// menu, which takes the rest; the browser stays while the agent uses it.
 export default function ConversationHeader({
   page,
   selected,
@@ -55,7 +57,11 @@ export default function ConversationHeader({
   openPanel: (cwd: string) => void;
   open: (modal: AppModal) => void;
   settings: () => void;
-  menu: (item: Session, withDetail?: boolean) => ComponentChildren;
+  menu: (
+    item: Session,
+    withDetail?: boolean,
+    extra?: ComponentChildren,
+  ) => ComponentChildren;
   choose: (id: string) => Promise<void>;
   addMember: () => void;
 }) {
@@ -67,6 +73,28 @@ export default function ConversationHeader({
   const [boardOpen, setBoardOpen] = useState(false);
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
+  const openBrowser = () => setModal({ type: "browser" });
+  // On a phone the conversation's menu holds the header's other actions;
+  // without a conversation there is no menu, and Settings keeps its button.
+  const inMenu = phone && page === "chat" && !!(session || opening);
+  const phoneItems = inMenu && (
+    <>
+      <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
+        Files
+      </MenuItem>
+      {browserAvailable && (
+        <MenuItem disabled={booting} onClick={openBrowser}>
+          Open browser
+        </MenuItem>
+      )}
+      {session?.kind === "panel" && (
+        <MenuItem onClick={() => open({ type: "instructions" })}>
+          Edit instructions
+        </MenuItem>
+      )}
+      <MenuItem onClick={settings}>Settings</MenuItem>
+    </>
+  );
   return (
     <>
       <header class="conversation-head">
@@ -104,25 +132,25 @@ export default function ConversationHeader({
               </Button>
             </p>
           )}
-          {page === "chat" && session?.kind === "panel" && (
+          {!phone && page === "chat" && session?.kind === "panel" && (
             <PanelHelp
               editInstructions={() => open({ type: "instructions" })}
             />
           )}
         </div>
-        {browserAvailable && (
+        {browserAvailable && (!inMenu || browsing) && (
           <IconButton
             label={browsing ? "Open browser, agent working" : "Open browser"}
             class="browser-toggle"
             disabled={booting}
-            onClick={() => setModal({ type: "browser" })}
+            onClick={openBrowser}
           >
             <Globe2 />
             {browsing && <StatusLed state="running" />}
           </IconButton>
         )}
         {/* Held in place while the session loads, inert. */}
-        {page === "chat" && (session || opening) && (
+        {!inMenu && page === "chat" && (session || opening) && (
           <IconButton
             label="Files"
             disabled={!session}
@@ -149,7 +177,7 @@ export default function ConversationHeader({
               </IconButton>
             );
           })()}
-        {compact && (
+        {compact && !inMenu && (
           <div>
             <IconButton label="Settings" onClick={settings}>
               <Settings />
@@ -158,7 +186,7 @@ export default function ConversationHeader({
         )}
         {page === "chat" &&
           (session ? (
-            menu(session, true)
+            menu(session, true, phoneItems)
           ) : opening ? (
             // Inert until the session is known.
             <IconButton label="Conversation menu" disabled>

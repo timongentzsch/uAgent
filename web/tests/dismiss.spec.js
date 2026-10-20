@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, headerAction } from "./fixtures.js";
 
 // The system back gesture closes the topmost layer, as in a native app, and
 // layers closed from the interface leave no entry for back to reopen.
@@ -19,7 +19,7 @@ test.describe("back closes what is open", () => {
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
 
     // A dialog: back closes it and stays in the conversation.
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toBeVisible();
     expect(await layerDepth(page)).toBe(1);
@@ -30,7 +30,7 @@ test.describe("back closes what is open", () => {
 
     // Closing from the interface removes its entry: back does not reopen it
     // and does not leave the conversation either.
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     await settings.getByRole("button", { name: "Close settings" }).click();
     await expect(settings).toHaveCount(0);
     await expect.poll(() => layerDepth(page)).toBe(0);
@@ -58,7 +58,7 @@ test.describe("back closes what is open", () => {
     session,
   }) => {
     await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
@@ -89,7 +89,7 @@ test.describe("back closes what is open", () => {
   }) => {
     await page.goto(`/#session=${session.id}`);
     const before = await page.evaluate(() => history.length);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
@@ -106,7 +106,7 @@ test.describe("back closes what is open", () => {
     await expect(prompt).toHaveCount(0);
     await expect.poll(() => layerDepth(page)).toBe(0);
     // Closing from the interface leaves history where it started.
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     await settings.getByRole("button", { name: "Close settings" }).click();
     await expect.poll(() => layerDepth(page)).toBe(0);
     expect(await page.evaluate(() => history.length)).toBeGreaterThanOrEqual(
@@ -119,7 +119,7 @@ test.describe("back closes what is open", () => {
     session,
   }) => {
     await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await headerAction(page, "Settings");
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await page.reload();
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
@@ -131,7 +131,7 @@ test.describe("back closes what is open", () => {
 test("dialogs play their exit before they leave", async ({ page, session }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible();
   // Record the leave state as it happens: the exit takes 200ms.
@@ -153,7 +153,7 @@ test("a tap on the scrim closes a centred dialog", async ({
   session,
 }) => {
   await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible();
   // A press that starts inside and ends on the scrim is a drag, not a tap.
@@ -249,7 +249,7 @@ test("a conversation opened as a closed layer's entry leaves stays open", async 
   await page.keyboard.press(down ? "Alt+ArrowUp" : "Alt+ArrowDown");
   await expect(page).toHaveURL(new RegExp(session.id));
 
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);

@@ -45,6 +45,27 @@ export async function openPanel(page, session) {
   return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
 }
 
+// What a wider header shows as a button beside the title (Settings, Files,
+// Open browser, Edit instructions) and a phone keeps in the conversation's
+// menu. A button's name may say more after it ("Open browser, agent
+// working"). Without a conversation a phone has no menu and keeps Settings.
+export async function headerAction(page, name) {
+  const head = page.locator(".conversation-head");
+  const menu = head.getByRole("button", { name: "Conversation menu" });
+  const phone = await page.evaluate(
+    () => matchMedia("(max-width: 600px)").matches,
+  );
+  if (phone && (await menu.count())) {
+    await menu.click();
+    return page.getByRole("menuitem", { name, exact: true }).click();
+  }
+  await page
+    .getByRole("button", { name: new RegExp(`^${name}\\b`) })
+    .filter({ visible: true })
+    .first()
+    .click();
+}
+
 // The UI showcase is a development page: the Vite dev server serves it
 // (see playwright.config.js), not the native host.
 export { showcaseUrl as SHOWCASE_URL } from "./showcase-url.js";

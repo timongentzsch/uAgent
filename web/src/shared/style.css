@@ -730,21 +730,15 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   font-size: var(--font-small);
 }
-.panel-subtitle span {
+.panel-subtitle :is(span, button) {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Beside four header buttons on a phone there is room for a letter of it:
-   the link stays, and the empty chat says the rest. */
-@media (max-width: 600px) {
-  .panel-subtitle span {
-    display: none;
-  }
-}
+/* A link in the line: cut short too, never pushed under the buttons. */
 .panel-subtitle button {
-  flex-shrink: 0;
+  display: block;
   font-size: inherit;
   min-height: 0;
   padding: 0;

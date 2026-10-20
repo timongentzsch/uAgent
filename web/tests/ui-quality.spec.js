@@ -1,4 +1,4 @@
-import { test, expect, SHOWCASE_URL } from "./fixtures.js";
+import { test, expect, SHOWCASE_URL, headerAction } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 const geometry = (locator) =>
@@ -180,9 +180,15 @@ test("browser shell keeps its bounds through cold code and data loading", async 
   });
   try {
     await page.goto(`/#session=${session.id}`);
-    const trigger = page.getByRole("button", { name: "Open browser" });
+    // On a phone the browser opens from the conversation's menu.
+    const trigger = page
+      .locator(".conversation-head")
+      .getByRole("button", { name: "Conversation menu" });
     await trigger.focus();
     await trigger.press("Enter");
+    await page
+      .getByRole("menuitem", { name: "Open browser", exact: true })
+      .press("Enter");
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     await expect(dialog.getByRole("status")).toHaveText("Loading browser…");
     // The loading frame is the live panel's geometry: screen, bar, action.
@@ -302,7 +308,7 @@ test.describe("touch interaction", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await stale(844, 325, 47, 90);
     await aligned(390, 844);
-    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    await headerAction(page, "Settings");
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
     const bounds = await geometry(dialog);
     expect(bounds.x).toBeGreaterThanOrEqual(0);
@@ -315,7 +321,7 @@ test.describe("touch interaction", () => {
     session,
   }) => {
     await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", {
       name: "Settings",
       exact: true,
@@ -340,7 +346,7 @@ test.describe("touch interaction", () => {
     await page.goto(`/#session=${session.id}`);
     const input = page.getByRole("combobox", { name: "Message or guidance" });
     for (const zoom of [50, 75, 100, 150]) {
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await headerAction(page, "Settings");
       const settings = page.getByRole("dialog", {
         name: "Settings",
         exact: true,
@@ -447,7 +453,7 @@ test.describe("touch interaction", () => {
       session,
     }, testInfo) => {
       await page.goto(`/#session=${session.id}`);
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await headerAction(page, "Settings");
       const settings = page.getByRole("dialog", {
         name: "Settings",
         exact: true,
@@ -581,12 +587,13 @@ test("phone header keeps its buttons in place from loading to ready", async ({
     const booting = head.locator(".text-skeleton");
     await expect(booting).toBeVisible();
     const loading = await buttons();
-    // Menu, browser, files, settings and the conversation menu, all reserved.
-    expect(loading).toHaveLength(5);
+    // The drawer and the conversation's menu, which holds the rest on a
+    // phone, reserved while the conversation loads.
+    expect(loading).toHaveLength(2);
     release();
     await expect(booting).toHaveCount(0);
     await expect(
-      head.getByRole("button", { name: "Open browser" }),
+      head.getByRole("button", { name: "Conversation menu" }),
     ).toBeEnabled();
     expect(await buttons()).toEqual(loading);
   } finally {

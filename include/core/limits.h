@@ -28,8 +28,9 @@ inline constexpr size_t kTraceSummaryChars = 512;
 // The opening of a change/diff that a tool-result fact and its live event
 // carry. A longer diff is kept whole in a private artifact the row names.
 inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
-// Decoded-image cache cap and largest dimension kept for vision payloads.
-inline constexpr size_t kImageCacheBytes = size_t{16} * 1024 * 1024;
+// Cap of the encoded attachments kept for the model calls of a turn, and the
+// largest dimension kept for vision payloads.
+inline constexpr size_t kAttachmentCacheBytes = size_t{16} * 1024 * 1024;
 inline constexpr int kMaxImageDimension = 2048;
 // Kept-receipt detail cap: compact rows record title/summary/flags, and only
 // multiline rows carry a bounded detail body.

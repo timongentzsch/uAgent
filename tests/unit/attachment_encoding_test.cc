@@ -87,6 +87,21 @@ void TestAttachmentEncoding() {
                            &deliveries));
   CHECK(deliveries[0]["delivery"] == "Document");
   CHECK(JsonDump(request).find("file_data") != std::string::npos);
+  // Every model call of a turn sends it the same; once the file changes,
+  // its new bytes go.
+  const json attached =
+      json::array({{{"role", "user"},
+                    {"content", AttachmentContent("read", {pdf}, error)}}});
+  const std::string sent = JsonDump(request);
+  request = attached;
+  CHECK(PrepareAttachments(request, capabilities, false, "vision", error));
+  CHECK(JsonDump(request) == sent);
+  CHECK(ToolWriteFile(document.string(), "%PDF-1.5 revised").Ok());
+  request = attached;
+  CHECK(PrepareAttachments(request, capabilities, false, "vision", error));
+  CHECK(JsonDump(request) != sent);
+  CHECK(JsonDump(request).find("JVBERi0xLjUgcmV2aXNlZA==") !=
+        std::string::npos);
   fs::path invalid = root / "invalid.png";
   CHECK(ToolWriteFile(invalid.string(), "not a PNG").Ok());
   CHECK(!InspectAttachment(invalid.string(), image_attachment, error));

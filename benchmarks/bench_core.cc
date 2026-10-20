@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <future>
 #include <iomanip>
 #include <iostream>
@@ -20,10 +21,12 @@
 #include "include/api/wire.h"
 #include "include/app/replay_log.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/output_buffer.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/media/attachments.h"
 #include "include/tools/registry.h"
 
 namespace uagent {
@@ -219,6 +222,35 @@ void BenchmarkReplayRead() {
          }));
 }
 
+// A 4 MB PDF attached in a turn goes with every model call of that turn:
+// 20 calls, each preparing the request from the stored conversation.
+void BenchmarkAttachedDocument() {
+  constexpr size_t kCalls = 20;
+  ScopedTempFile pdf(
+      (std::filesystem::temp_directory_path() / "uagent-bench-XXXXXX")
+          .string());
+  const std::string body = "%PDF-" + std::string(MiB(4), 'x');
+  if (!pdf || write(pdf.Get(), body.data(), body.size()) !=
+                  static_cast<ssize_t>(body.size())) {
+    perror("cannot write benchmark document");
+    return;
+  }
+  const json messages = {{{"role", "user"},
+                          {"content",
+                           {{{"type", "attachment"},
+                             {"path", pdf.Path()},
+                             {"name", "report.pdf"},
+                             {"mime", "application/pdf"}}}}}};
+  ProviderCapabilities capabilities;
+  capabilities.file_input = true;
+  Report("4 MB PDF, 20 model calls", kCalls, Measure(kCalls, [&] {
+           json projected = messages;
+           std::string error;
+           PrepareAttachments(projected, capabilities, false, "bench", error);
+           return JsonEstimatedBytes(projected);
+         }));
+}
+
 }  // namespace
 
 int RunBenchmarks() {
@@ -242,6 +274,7 @@ int RunBenchmarks() {
   BenchmarkCommandOutput();
   BenchmarkCheckpointMerge();
   BenchmarkReplayRead();
+  BenchmarkAttachedDocument();
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {

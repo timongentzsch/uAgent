@@ -286,6 +286,14 @@ class SessionHost {
   // and the replay cursor it is current to.
   json SnapshotBody(const HostSession& session, json state) const;
   json LiveSnapshot(const HostSession& session) const;
+  // Snapshot's three answers: an HTTP exchange's stored body, a row's detail
+  // the live view still holds (none when it holds none), and what the saved
+  // history has.
+  SnapshotResult HttpSnapshot(HostSession& session, const SnapshotQuery& query);
+  std::optional<SnapshotResult> LiveDetail(HostSession& session,
+                                           const SnapshotQuery& query);
+  SnapshotResult SavedSnapshot(std::shared_ptr<HostSession> session,
+                               const SnapshotQuery& query);
   std::shared_ptr<HostSession> StartScheduledRun(const json& run)
       UAGENT_REQUIRES(mutex_);
   // `lock` is the caller's lock on mutex_, passed only for condition-variable

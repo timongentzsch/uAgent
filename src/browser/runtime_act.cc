@@ -80,10 +80,13 @@ constexpr const char* kElementScript = R"js((async e => {
   return {x: Math.round(x), y: Math.round(y)};
 }))js";
 
-// The element a look numbered, as the page holds it (runtime_page.cc).
+// The element a look numbered, as the page holds it (runtime_page.cc). The
+// look becomes the last one used, as in looks_, so the looks its actions add
+// do not push it out.
 std::string Numbered(const std::string& look, int number) {
-  return "(window.__uagentLooks?.get(" + JsonDump(look) + ") || [])[" +
-         std::to_string(number - 1) + "]";
+  return "(((m, k) => { const kept = m?.get(k); if (kept) { m.delete(k); "
+         "m.set(k, kept); } return kept; })(window.__uagentLooks, " +
+         JsonDump(look) + ") || [])[" + std::to_string(number - 1) + "]";
 }
 
 // Whether the field typed text reaches is one the screenshots mask
@@ -268,8 +271,12 @@ json Runtime::Act(const std::string& op, const json& command) {
   const int element = JsonValue(command, "element", 0);
   const auto unseen = [&]() -> std::string {
     if (observation_.empty()) return "observe the current tab, then " + op;
-    if (view == observation_ ||
-        (element > 0 && std::ranges::find(looks_, view) != looks_.end())) {
+    if (view == observation_) return "";
+    if (const auto used = std::ranges::find(looks_, view);
+        element > 0 && used != looks_.end()) {
+      // Kept by use, not by age: a batch of actions on one look adds a look
+      // per action, which would otherwise push the batch's own look out.
+      std::rotate(used, used + 1, looks_.end());
       return "";
     }
     return op + (element > 0 ? " needs view_id from a look at this page"

@@ -205,6 +205,10 @@
   form can be filled in one step. Before, every action after the first was
   refused for an outdated `view_id`, and the model fell back to one field
   per step. A point (`x`, `y`) and a scroll still need the latest look.
+- `browser`: a batch of more than eight actions on one look works. Looks
+  were kept by age, and each action's result adds one, so the ninth action
+  of a form filled from one look was refused for an outdated `view_id`.
+  Looks are now kept by use.
 - `browser`: "Allow for this conversation" (or always, in this repository)
   on a browser action now covers that action on that site. Before, the
   remembered approval named the look the action came from, so it never

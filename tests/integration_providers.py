@@ -1822,6 +1822,17 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
             assert_true(said == 1, result.stdout + result.stderr)
             assert_true(len(search_server.requests) == 1, search_server.requests)
 
+        # Turned off by the person, it is nothing they need to be told about.
+        with Server([event({"content": "quiet"})]) as plain:
+            env = base_env(home, plain.url)
+            env["UAGENT_PROVIDERS"] = json.dumps(providers)
+            dialog = "/tools off web_search\none\n/q\n"
+            result = run_dialog(root, env, dialog, "--yolo", binary=binary)
+            assert_true(result.returncode == 0, result.stdout + result.stderr)
+            assert_true(len(plain.requests) == 1, plain.requests)
+            said = result.stdout + result.stderr
+            assert_true("set webSearch.model" not in said, said)
+
     # No endpoint offers search: the tool is off.
     with Server([event({"content": "no tool"})]) as plain:
         result = run(root, base_env(home, plain.url), "--yolo", "-p", "search", binary=binary)

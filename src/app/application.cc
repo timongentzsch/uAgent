@@ -129,11 +129,14 @@ void Application::RunTurns(const std::string& input, json content,
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
   // Search an endpoint offers but no model is named for is withheld from the
-  // model, so the person hears why once, when the route stops running it.
+  // model, so the person hears why once, when the route stops running it;
+  // not when they turned the tool off themselves.
   const Tool* search = FindTool(context_.tools, "web_search");
-  const bool unnamed = search && search->available &&
-                       api_.config.web_search_model.empty() &&
-                       !search->available();
+  const std::vector<std::string> enabled = agent_.EnabledTools();
+  const bool unnamed =
+      search && search->available &&
+      std::ranges::find(enabled, search->name) != enabled.end() &&
+      api_.config.web_search_model.empty() && !search->available();
   if (unnamed && !search_unnamed_) {
     Emit(NoticeEvent(PresentationStatus::kWarned, kWebSearchNoModel));
   }

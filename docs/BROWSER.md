@@ -193,7 +193,9 @@ several paired devices.
   load local files or its own relative links, and the profile directory is
   refused as a path. `file://` URLs stay refused.
 - The [managed policy](../deploy/chrome-policy.json) blocks Chrome's local
-  password and autofill pages, `view-source:` and DevTools.
+  password and autofill pages, `view-source:` and DevTools. DevTools is
+  blocked by its `devtools://` pages: `DeveloperToolsAvailability` would also
+  refuse the browser service's own control pipe ("Not allowed", Chrome 155).
 - On Linux before 7.1 (Landlock ABI 9) the sockets stay reachable: the agent
   can drive the browser, which it may do anyway, but with the policy
   installed it reaches neither DevTools nor the password pages.

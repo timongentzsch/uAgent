@@ -3,9 +3,9 @@
     "chrome://password-manager",
     "chrome://settings/passwords",
     "chrome://settings/autofill",
-    "view-source:*"
+    "view-source:*",
+    "devtools://*"
   ],
-  "DeveloperToolsAvailability": 2,
   "PasswordManagerEnabled": true,
   "PasswordLeakDetectionEnabled": true
 }

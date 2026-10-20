@@ -182,6 +182,12 @@
 
 ### Fixed
 
+- `browser` in the Docker image works again with current Chrome. The
+  managed policy's `DeveloperToolsAvailability` made Chrome 155 refuse every
+  action of the browser service with `Not allowed`, so the agent fell back to
+  `web_fetch`. The policy now blocks DevTools by its `devtools://` pages,
+  which still stops F12 and the inspector. A native Linux host with the
+  policy installed needs it installed again; `install.sh` prints the command.
 - `browser`: several actions from one look work. An element number of an
   earlier look at the same page still names what that look numbered, so a
   form can be filled in one step. Before, every action after the first was

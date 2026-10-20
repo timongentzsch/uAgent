@@ -124,9 +124,9 @@ class Master {
     const std::string& request_id;
     Response& response;
     json outcome;
-    std::string error;
+    std::string error{};
     // The runtime request that will settle a receipt left pending.
-    std::string worker_request;
+    std::string worker_request{};
     // What to answer instead when the device no longer authenticates
     // after a handler that ran without mutex_.
     const char* revoked = nullptr;

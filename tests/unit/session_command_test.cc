@@ -295,16 +295,15 @@ void TestTransientBatcherHoldsStreamedText() {
     }
     return text;
   };
-  batcher.Push({.type = std::string(AppType(EventId::kTurnStarted))});
+  batcher.Push({0, "", std::string(AppType(EventId::kTurnStarted))});
   for (const char* text : {"a", "b", "c"}) {
-    batcher.Push(
-        {.type = delta, .data = {{"response_id", "r"}, {"text", text}}});
+    batcher.Push({0, "", delta, {{"response_id", "r"}, {"text", text}}});
   }
   CHECK(sent_text().starts_with("a"));
-  batcher.Push({.type = usage, .data = {{"usage", 1}}});
-  batcher.Push({.type = usage, .data = {{"usage", 2}}});
+  batcher.Push({0, "", usage, {{"usage", 1}}});
+  batcher.Push({0, "", usage, {{"usage", 2}}});
   CHECK(sent.back().type == usage && sent.back().data["usage"] == 1);
-  batcher.Push({.type = std::string(AppType(EventId::kTurnCompleted))});
+  batcher.Push({0, "", std::string(AppType(EventId::kTurnCompleted))});
   CHECK(sent_text() == "abc");
   REQUIRE(sent.size() >= 2);
   CHECK(sent[sent.size() - 2].data["usage"] == 2);

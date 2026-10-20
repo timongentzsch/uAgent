@@ -316,6 +316,9 @@
   menu or the width changes.
 - With reduced motion the working row's spinner holds still and the terminal
   redraws it once a second, for the elapsed time, instead of ten times.
+- A question waiting in the terminal's picker, and a terminal detaching while
+  a reply finishes, sleep until something happens instead of checking five or
+  fifty times a second.
 
 ## v1.4.0 - 2026-10-15
 

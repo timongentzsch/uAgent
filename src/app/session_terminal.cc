@@ -132,7 +132,7 @@ class Terminal {
     if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" && raw_) {
       const json answered =
           PickAskAnswers(JsonValue(pending, "questions", json::array()),
-                         region_, [this, decision] {
+                         region_, wake_.read.Get(), [this, decision] {
                            std::lock_guard lock(mutex_);
                            return JsonValue(pending_, "id", "") == decision;
                          });
@@ -431,8 +431,10 @@ class Terminal {
       // would deadlock a client leaving during a long response.
       while (!disconnected_) {
         if (raw_) Paint();
-        pollfd ready{wake_.read.Get(), POLLIN, 0};
-        poll(&ready, 1, kPollTickMs);
+        pollfd ready[] = {{wake_.read.Get(), POLLIN, 0},
+                          {raw_ ? output_.ReadFd() : -1, POLLIN, 0}};
+        poll(ready, 2, -1);
+        wake_.Drain();
       }
       reader_.join();
     }

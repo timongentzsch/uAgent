@@ -10,6 +10,7 @@ from integration_support import (
     event,
     function_names,
     run,
+    run_dialog,
     run_pty,
     tool_call,
     tool_results,
@@ -77,6 +78,29 @@ def test_ask_is_answered_in_the_terminal(root, home, *, binary):
         result = tool_results(server.requests[-1][1]["messages"])[0]
         assert_true("Which database?\n→ SQLite" in result, result)
         assert_true("Which extras?\n→ Tracing, Backups" in result, result)
+
+
+def test_ask_answered_elsewhere_closes_the_picker(root, home, *, binary):
+    # The picker sleeps until a key or the session's wake: the state frame
+    # that settles the question elsewhere has to close it.
+    elsewhere = {}
+    with Server([_ask_then_answer()]) as server:
+        env = base_env(home, server.url)
+
+        def answer(_):
+            elsewhere["result"] = run_dialog(root, env, "1;2\n/q\n", "-c", binary=binary)
+
+        code, output = run_pty(
+            root,
+            env,
+            [(b"pick\n", HINT), (answer, b"ask-ok"), b"/q\n"],
+            binary=binary,
+            timeout=20,
+        )
+        assert_true(code == 0, output[-2000:])
+        assert_true(elsewhere["result"].returncode == 0, elsewhere)
+        result = tool_results(server.requests[-1][1]["messages"])[0]
+        assert_true("Which database?\n→ SQLite" in result, result)
 
 
 def test_ask_takes_their_own_words_and_an_image(root, home, *, binary):

@@ -7,10 +7,12 @@
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <future>
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/agent/agent.h"
@@ -28,6 +30,11 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/tools/registry.h"
+#include "include/ui/display.h"
+#include "include/ui/input_decoder.h"
+#include "include/ui/interactive.h"
+#include "include/ui/live_region.h"
+#include "include/ui/markdown.h"
 
 namespace uagent {
 namespace {
@@ -251,6 +258,84 @@ void BenchmarkAttachedDocument() {
          }));
 }
 
+// The terminal client's paint path at 100 columns, one paint per token:
+// markdown renders the token into the stdout pipe, and the live region draws
+// the tail, the working row and a draft naming a directory, whose listing the
+// composer offers below it. One paragraph of 2,000 tokens, plain or with an
+// inline code span every third token; terminal bytes go to a file.
+void BenchmarkTerminalPaint(bool styled) {
+  constexpr size_t kTokens = 2000;
+  namespace fs = std::filesystem;
+  const fs::path folder = fs::temp_directory_path() / "uagent-bench-paint";
+  fs::create_directories(folder);
+  for (int index = 0; index < 32; ++index) {
+    std::ofstream(folder / ("file" + std::to_string(index)));
+  }
+  FILE* screen = tmpfile();
+  fflush(stdout);
+  const int saved_out = dup(STDOUT_FILENO), saved_in = dup(STDIN_FILENO);
+  const int null = open("/dev/null", O_RDONLY);
+  if (!screen || saved_out < 0 || saved_in < 0 || null < 0 ||
+      dup2(fileno(screen), STDOUT_FILENO) < 0 || dup2(null, STDIN_FILENO) < 0) {
+    perror("cannot redirect benchmark output");
+    return;
+  }
+  close(null);
+  const bool prior_tty = g_tty, prior_color = g_color;
+  g_tty = g_color = true;
+  setenv("COLUMNS", "100", 1);
+  SetPersistentComposer(true);
+  double milliseconds = 0;
+  {
+    InteractiveOutput output;
+    LiveRegion region(output);
+    TerminalInputDecoder keys;
+    RawComposer composer(output, region, keys);
+    composer.Mount(InputPrompt(), "look at @" + folder.string() + "/");
+    MdStream markdown;
+    output.Start();
+    const auto started = std::chrono::steady_clock::now();
+    size_t index = 0;
+    milliseconds = Measure(kTokens, [&] {
+      markdown.Feed(styled && index % 3 == 0
+                        ? "`code" + std::to_string(index++) + "` "
+                        : "word" + std::to_string(index++) + " ");
+      fflush(stdout);
+      auto update = output.Read();
+      if (update.changed) {
+        region.Commit(std::move(update.committed));
+        region.SetTail(std::move(update.tail));
+      }
+      region.SetStatus(StatusBarLine(
+          ActivityBar({.elapsed = std::chrono::steady_clock::now() - started,
+                       .context_used = 12000,
+                       .context_window = 200000,
+                       .model = "benchmark-model"})));
+      const RawComposer::Layout draft = composer.View();
+      region.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
+      region.Flush();
+      return size_t{1};
+    });
+    markdown.Flush();
+    output.Stop();
+  }
+  SetPersistentComposer(false);
+  unsetenv("COLUMNS");
+  g_tty = prior_tty;
+  g_color = prior_color;
+  fflush(stdout);
+  const off_t bytes = lseek(STDOUT_FILENO, 0, SEEK_END);
+  dup2(saved_out, STDOUT_FILENO);
+  dup2(saved_in, STDIN_FILENO);
+  close(saved_out);
+  close(saved_in);
+  fclose(screen);
+  fs::remove_all(folder);
+  Report(styled ? "paint, code spans" : "paint, plain", kTokens, milliseconds);
+  std::cout << "  " << bytes / static_cast<off_t>(kTokens)
+            << " terminal bytes per token\n";
+}
+
 }  // namespace
 
 int RunBenchmarks() {
@@ -275,6 +360,8 @@ int RunBenchmarks() {
   BenchmarkCheckpointMerge();
   BenchmarkReplayRead();
   BenchmarkAttachedDocument();
+  BenchmarkTerminalPaint(false);
+  BenchmarkTerminalPaint(true);
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {

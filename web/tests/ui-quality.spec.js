@@ -614,6 +614,9 @@ test("user message metadata has a line of its own above the text", async ({
     .locator(".message.user")
     .filter({ hasText: text })
     .first();
+  // Measured once the turn has ended: the host's copy of the message has
+  // replaced the one sent from this page by then.
+  await expect(page.locator(".turn-footer")).toBeVisible();
   await expect(bubble).toBeVisible();
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });

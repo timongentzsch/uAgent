@@ -103,7 +103,7 @@ for (const [name, viewport] of VIEWPORTS) {
       .locator(".transcript-content > *")
       .evaluateAll((nodes) =>
         nodes.map((node) =>
-          node.classList.contains("turn-summary")
+          node.classList.contains("turn-footer")
             ? "stats"
             : node.classList.contains("user")
               ? // What shows: the row's spoken name ("You, 10:32") is not.

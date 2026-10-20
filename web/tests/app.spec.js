@@ -98,8 +98,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     ),
   ).toBeLessThan(2);
   await expect(page.getByRole("button", { name: /^Reply to:/ })).toHaveCount(0);
-  await reply.getByLabel(/^Actions for /).click();
-  await reply
+  // An answer's menu is on its turn's last line, under it.
+  const footer = page.locator(".turn-footer").last();
+  await footer.getByLabel(/^Actions for /).click();
+  await footer
     .getByRole("menuitem", { name: "HTTP request/response", exact: true })
     .click();
   await expect(page.getByRole("dialog").locator("pre").last()).toContainText(
@@ -125,9 +127,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "print('hello')\n",
   );
-  await expect(reply.locator("time")).toHaveAttribute("datetime", /T/);
-  await reply.getByLabel(/^Actions for /).click();
-  await reply
+  await expect(footer.locator("time")).toHaveAttribute("datetime", /T/);
+  await footer.getByLabel(/^Actions for /).click();
+  await footer
     .getByRole("menuitem", { name: "Statistics", exact: true })
     .click();
   await expect(

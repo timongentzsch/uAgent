@@ -259,16 +259,25 @@
   font-size: var(--font-small);
   text-align: start;
 }
-/* A turn that changed files: its receipt, then its statistics. */
-.turn-receipt {
+/* A turn's last line: a receipt of the files it changed, its statistics,
+   then its answer's time and menu at the far end, inset as a message is. */
+.turn-footer {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  padding-inline-end: var(--inset-x);
 }
-.turn-receipt > .turn-summary + .turn-summary {
+.turn-footer > .turn-summary + .turn-summary {
   padding-left: var(--space-2);
 }
-.turn-receipt > .turn-summary:first-child {
+.turn-footer > .turn-summary:has(+ .turn-summary) {
   padding-right: 0;
+}
+.turn-footer > time {
+  margin-inline: auto var(--gap);
+  color: var(--muted);
+  font-size: var(--font-small);
+  white-space: nowrap;
 }
 .turn-files {
   display: grid;

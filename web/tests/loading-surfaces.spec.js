@@ -528,7 +528,12 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  await reply.getByRole("button", { name: /^Actions for / }).click();
+  // An answer's menu is on its turn's last line, under it.
+  await page
+    .locator(".turn-footer")
+    .last()
+    .getByRole("button", { name: /^Actions for / })
+    .click();
   const rawAction = page.getByRole("menuitem", {
     name: "HTTP request/response",
     exact: true,

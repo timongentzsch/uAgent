@@ -7,7 +7,7 @@
 }
 .configuration-file {
   margin: 0;
-  padding: var(--space-3) var(--space-6);
+  padding: var(--space-3) var(--inset-x);
   overflow: auto;
   font-size: var(--font-small);
 }

@@ -73,6 +73,9 @@ class Master {
   bool Reexec() const { return reexec_; }
 
  private:
+  void RegisterApiRoutes();
+  void RegisterBrowserRoutes();
+  bool RegisterAssetRoutes(std::string& error);
   const std::string* ExpectedOrigin(const Request& request) const;
   static std::string ConfiguredVerbosity();
   void PublishSettings();
@@ -114,6 +117,31 @@ class Master {
   // A receipt still pending asks the host whether its worker has answered.
   void RefreshReceipt(Receipt& receipt, const std::string& request_id)
       UAGENT_REQUIRES(mutex_);
+  // One command as its handler sees it, and what the handler answers.
+  struct CommandCall {
+    json command;
+    const std::string& device;
+    const std::string& request_id;
+    Response& response;
+    json outcome;
+    std::string error;
+    // The runtime request that will settle a receipt left pending.
+    std::string worker_request;
+    // What to answer instead when the device no longer authenticates
+    // after a handler that ran without mutex_.
+    const char* revoked = nullptr;
+  };
+  // Handlers of Command's table. Only those that change the devices run
+  // under mutex_; the rest run without it, and Command takes it back.
+  void RevokeDevice(CommandCall& call) UAGENT_REQUIRES(mutex_);
+  void TestNotification(CommandCall& call);
+  void BrowserCommand(CommandCall& call);
+  void ManagementCommand(CommandCall& call);
+  void SpaceCommand(CommandCall& call);
+  void RestartConversations(CommandCall& call);
+  void RestartHost(CommandCall& call);
+  void ConfigCommand(CommandCall& call);
+  void SessionCommand(CommandCall& call);
   json BrowserControl(const json& command, const std::string& device,
                       const std::string& request_id, std::string& error);
   std::map<std::string, Receipt> requests_ UAGENT_GUARDED_BY(mutex_);

@@ -91,7 +91,6 @@ void Master::Command(const Request& request, Response& response) {
     Error(response, "command needs a queued guidance id", 409);
     return;
   }
-  json outcome = {{"request_id", request_id}, {"accepted", true}};
   // Reserve before releasing the mutex for any pipe write or process join.
   // A concurrent retry observes this same request instead of enqueueing again.
   Receipt receipt;
@@ -100,122 +99,172 @@ void Master::Command(const Request& request, Response& response) {
       {"request_id", request_id}, {"accepted", true}, {"pending", true}};
   requests_[key] = std::move(receipt);
   request_order_.push_back(key);
-  std::string error;
-  if (kind == "logout" || kind == "revoke_device") {
-    std::string remove =
-        kind == "logout" ? device : JsonValue(command, "device_id", "");
-    auto old = devices_;
-    std::erase_if(devices_,
-                  [&](const Device& entry) { return entry.id == remove; });
-    if (!SaveDevices()) {
-      devices_ = std::move(old);
-      error = "cannot persist revocation";
-    } else {
-      push_->Revoke(remove);
-      if (remove == device) {
-        response.set_header(
-            "Set-Cookie",
-            "uagent_device=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
-      }
-    }
-  } else if (kind == "test_notification") {
-    std::string session_id = JsonValue(command, "session_id", "");
-    if (!host_.Contains(session_id)) {
-      error = "select a session before testing notifications";
-    } else if (!push_->Notify(epoch_ + ":" + request_id, session_id, device)) {
-      error = "push is unavailable or queue is full";
-    }
-  } else if (kind == "browser" && !browser::DataDirectory().empty()) {
-    const std::string action = JsonValue(command, "action", "");
-    if (action != "takeover" && action != "done" && action != "stop" &&
-        action != "create_profile" && action != "select_profile" &&
-        action != "setup_profile" && action != "configure") {
-      error = "unsupported browser control";
-    } else {
-      lock.unlock();
-      std::string control_error;
-      json result = BrowserControl(command, device, request_id, control_error);
-      lock.lock();
-      if (DeviceId(request) != device) control_error = "device revoked";
-      error = std::move(control_error);
-      outcome["result"] = result;
-    }
-  } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
-             kind == "models" || kind == "permission_rules" ||
-             kind == "tool_categories" || kind == "instructions" ||
-             kind == "import") {
-    lock.unlock();
-    auto result = ControlProcess(command);
-    lock.lock();
-    outcome["result"] = result;
-    error = JsonValue(result, "error", "");
-    auto action = JsonValue(command, "action", "list");
-    if (error.empty() && action != "list" && action != "get" &&
-        action != "show" && action != "preview") {
-      host_.Publish("", "", {{"kind", "management.changed"}});
-    }
-  } else if (kind == "space") {
-    // A workspace's own: its name, and its end with everything in it.
-    lock.unlock();
-    const std::string path = JsonValue(command, "cwd", "");
-    error = JsonValue(command, "action", "") == "delete"
-                ? host_.DeleteSpace(path, device)
-                : host_.RenameSpace(path, Trim(JsonValue(command, "name", "")));
-    const json spaces = session::Spaces();
-    lock.lock();
-    outcome["result"] = {{"spaces", spaces}};
-    if (error.empty()) {
-      host_.Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
-    }
-  } else if (kind == "restart_conversations") {
-    // Settings that need a restart reach running conversations only through
-    // a fresh runtime; each keeps its history and restarts when idle.
-    lock.unlock();
-    outcome["result"] =
-        host_.RestartRunning(JsonValue(command, "cwd", std::string()),
-                             JsonValue(command, "target_id", std::string()));
-    lock.lock();
-  } else if (kind == "restart_host") {
-    // The stop loop lets this reply go out before it stops the server.
-    reexec_ = true;
-    outcome["result"] = {{"restarting", true}};
-    WakeDescriptor(shutdown_fd);
-  } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
-    lock.unlock();
-    // The host belongs to no project: a request names the folder it is
-    // about, and without one only what is saved for all is in reach.
-    const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
-    auto manager =
-        ConfigManager::Capture({}, folder ? folder->string() : std::string());
-    auto result = ConfigurationControl(command, manager);
-    PublishSettings();
-    lock.lock();
-    outcome["result"] = result;
-    error = JsonValue(result, "error", "");
+  // Commands the host answers itself; any other goes to a conversation's
+  // runtime. `locked` handlers change the devices.
+  struct Route {
+    std::string_view kind;
+    bool locked;
+    void (Master::*handle)(CommandCall&);
+  };
+  static constexpr Route kRoutes[] = {
+      {"logout", true, &Master::RevokeDevice},
+      {"revoke_device", true, &Master::RevokeDevice},
+      {"test_notification", false, &Master::TestNotification},
+      {"browser", false, &Master::BrowserCommand},
+      {"memory", false, &Master::ManagementCommand},
+      {"skills", false, &Master::ManagementCommand},
+      {"schedule", false, &Master::ManagementCommand},
+      {"models", false, &Master::ManagementCommand},
+      {"permission_rules", false, &Master::ManagementCommand},
+      {"tool_categories", false, &Master::ManagementCommand},
+      {"instructions", false, &Master::ManagementCommand},
+      {"import", false, &Master::ManagementCommand},
+      {"space", false, &Master::SpaceCommand},
+      {"restart_conversations", false, &Master::RestartConversations},
+      {"restart_host", false, &Master::RestartHost},
+      {"config", false, &Master::ConfigCommand}};
+  const auto* route = std::ranges::find(kRoutes, kind, &Route::kind);
+  const bool locked = route != std::end(kRoutes) && route->locked;
+  auto handle =
+      route != std::end(kRoutes) ? route->handle : &Master::SessionCommand;
+  CommandCall call{.command = std::move(command),
+                   .device = device,
+                   .request_id = request_id,
+                   .response = response,
+                   .outcome = {{"request_id", request_id}, {"accepted", true}}};
+  if (locked) {
+    (this->*handle)(call);
   } else {
     lock.unlock();
-    auto executed =
-        host_.ExecuteCommand(std::move(command), device, request_id);
+    (this->*handle)(call);
     lock.lock();
-    if (DeviceId(request) != device) {
-      executed.error = "device changed while handling command; refresh";
-    }
-    outcome = std::move(executed.outcome);
-    error = std::move(executed.error);
-    if (!executed.worker_request.empty()) {
-      requests_.at(key).worker_request = std::move(executed.worker_request);
-    }
-    if (executed.wake) host_wake_.Wake();
+    if (call.revoked && DeviceId(request) != device) call.error = call.revoked;
   }
-  outcome["accepted"] = error.empty();
-  if (!error.empty()) {
-    outcome["error"] = error;
+  if (!call.worker_request.empty()) {
+    requests_.at(key).worker_request = std::move(call.worker_request);
+  }
+  json& outcome = call.outcome;
+  outcome["accepted"] = call.error.empty();
+  if (!call.error.empty()) {
+    outcome["error"] = call.error;
   }
   requests_.at(key).outcome = outcome;
   requests_.at(key).handling = false;
-  Reply(response, outcome, error.empty() ? 200 : 409);
+  Reply(response, outcome, call.error.empty() ? 200 : 409);
 }
 
+void Master::RevokeDevice(CommandCall& call) {
+  std::string remove = JsonValue(call.command, "kind", "") == "logout"
+                           ? call.device
+                           : JsonValue(call.command, "device_id", "");
+  auto old = devices_;
+  std::erase_if(devices_,
+                [&](const Device& entry) { return entry.id == remove; });
+  if (!SaveDevices()) {
+    devices_ = std::move(old);
+    call.error = "cannot persist revocation";
+    return;
+  }
+  push_->Revoke(remove);
+  if (remove == call.device) {
+    call.response.set_header(
+        "Set-Cookie",
+        "uagent_device=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+  }
+}
+
+void Master::TestNotification(CommandCall& call) {
+  std::string session_id = JsonValue(call.command, "session_id", "");
+  if (!host_.Contains(session_id)) {
+    call.error = "select a session before testing notifications";
+  } else if (!push_->Notify(epoch_ + ":" + call.request_id, session_id,
+                            call.device)) {
+    call.error = "push is unavailable or queue is full";
+  }
+}
+
+void Master::BrowserCommand(CommandCall& call) {
+  if (browser::DataDirectory().empty()) {
+    SessionCommand(call);
+    return;
+  }
+  const std::string action = JsonValue(call.command, "action", "");
+  if (action != "takeover" && action != "done" && action != "stop" &&
+      action != "create_profile" && action != "select_profile" &&
+      action != "setup_profile" && action != "configure") {
+    call.error = "unsupported browser control";
+    return;
+  }
+  call.outcome["result"] =
+      BrowserControl(call.command, call.device, call.request_id, call.error);
+  call.revoked = "device revoked";
+}
+
+void Master::ManagementCommand(CommandCall& call) {
+  json result = ControlProcess(call.command);
+  call.error = JsonValue(result, "error", "");
+  auto action = JsonValue(call.command, "action", "list");
+  if (call.error.empty() && action != "list" && action != "get" &&
+      action != "show" && action != "preview") {
+    host_.Publish("", "", {{"kind", "management.changed"}});
+  }
+  call.outcome["result"] = std::move(result);
+}
+
+// A workspace's own: its name, and its end with everything in it.
+void Master::SpaceCommand(CommandCall& call) {
+  const std::string path = JsonValue(call.command, "cwd", "");
+  call.error =
+      JsonValue(call.command, "action", "") == "delete"
+          ? host_.DeleteSpace(path, call.device)
+          : host_.RenameSpace(path, Trim(JsonValue(call.command, "name", "")));
+  const json spaces = session::Spaces();
+  call.outcome["result"] = {{"spaces", spaces}};
+  if (call.error.empty()) {
+    host_.Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
+  }
+}
+
+// Settings that need a restart reach running conversations only through a
+// fresh runtime; each keeps its history and restarts when idle.
+void Master::RestartConversations(CommandCall& call) {
+  call.outcome["result"] =
+      host_.RestartRunning(JsonValue(call.command, "cwd", std::string()),
+                           JsonValue(call.command, "target_id", std::string()));
+}
+
+// The stop loop lets this reply go out before it stops the server.
+void Master::RestartHost(CommandCall& call) {
+  reexec_ = true;
+  call.outcome["result"] = {{"restarting", true}};
+  WakeDescriptor(shutdown_fd);
+}
+
+void Master::ConfigCommand(CommandCall& call) {
+  if (!JsonValue(call.command, "session_id", "").empty()) {
+    SessionCommand(call);
+    return;
+  }
+  // The host belongs to no project: a request names the folder it is
+  // about, and without one only what is saved for all is in reach.
+  const auto folder = CanonicalDirectory(JsonValue(call.command, "cwd", ""));
+  auto manager =
+      ConfigManager::Capture({}, folder ? folder->string() : std::string());
+  json result = ConfigurationControl(call.command, manager);
+  PublishSettings();
+  call.error = JsonValue(result, "error", "");
+  call.outcome["result"] = std::move(result);
+}
+
+void Master::SessionCommand(CommandCall& call) {
+  auto executed = host_.ExecuteCommand(std::move(call.command), call.device,
+                                       call.request_id);
+  call.outcome = std::move(executed.outcome);
+  call.error = std::move(executed.error);
+  call.worker_request = std::move(executed.worker_request);
+  call.revoked = "device changed while handling command; refresh";
+  if (executed.wake) host_wake_.Wake();
+}
 // Runs a browser control the viewer asked for; `done` also answers the
 // conversation's pending browser decision. Called without mutex_ held.
 json Master::BrowserControl(const json& command, const std::string& device,

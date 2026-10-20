@@ -254,227 +254,9 @@ bool Master::Initialize(std::string& error) {
     }
     return httplib::Server::HandlerResponse::Unhandled;
   });
-  server_.Post("/api/instance", [this](const Request& request,
-                                       Response& response) {
-    if (!EqualSecret(request.get_header_value("X-Uagent-Instance"), secret_)) {
-      Error(response, "instance authentication failed", 403);
-      return;
-    }
-    std::lock_guard lock(mutex_);
-    Reply(response, {{"v", kProtocol},
-                     {"epoch", epoch_},
-                     {"url", origin_},
-                     {"pairing_code", Pair()}});
-  });
-  server_.Post("/api/auth", [this](const Request& request, Response& response) {
-    Authenticate(request, response);
-  });
-  server_.Get(
-      "/api/sessions", [this](const Request& request, Response& response) {
-        if (request.has_param("refresh")) {
-          host_.RefreshCatalogue(true);
-        }
-        host_.RefreshPresence();
-        json catalogue = host_.Catalogue();
-        std::string device;
-        json devices;
-        {
-          std::lock_guard lock(mutex_);
-          device = DeviceId(request);
-          devices = PublicDevices();
-        }
-        const json body = {{"v", kProtocol},
-                           {"epoch", epoch_},
-                           {"cursor", std::move(catalogue["cursor"])},
-                           {"sessions", std::move(catalogue["sessions"])},
-                           {"spaces", session::Spaces()},
-                           {"commands", CommandSchemaJson()},
-                           {"verbosity",
-                            [] {
-                              json table = DetailPoliciesJson();
-                              table["level"] = ConfiguredVerbosity();
-                              return table;
-                            }()},
-                           {"capabilities", push_->Capabilities(device)},
-                           {"devices", std::move(devices)},
-                           {"scheduled", std::move(catalogue["scheduled"])},
-                           {"device", device}};
-        Reply(response, body);
-      });
-  server_.Get(R"(/api/sessions/([a-f0-9]{16,64}))",
-              [this](const Request& request, Response& response) {
-                Snapshot(request, response);
-              });
-  server_.Post("/api/command",
-               [this](const Request& request, Response& response) {
-                 Command(request, response);
-               });
-  if (!browser::DataDirectory().empty()) {
-    server_.Get("/api/browser/status",
-                [this](const Request& request, Response& response) {
-                  json status = browser::Request(
-                      {{"op", "status"},
-                       {"instance_id", request.has_param("instance")
-                                           ? request.get_param_value("instance")
-                                           : "0"}});
-                  std::lock_guard lock(mutex_);
-                  status["controller"] =
-                      JsonValue(status, "viewer", "") == DeviceId(request);
-                  status["leased"] = !JsonValue(status, "viewer", "").empty();
-                  status.erase("viewer");
-                  Reply(response, status);
-                });
-    server_.WebSocket(
-        "/api/browser/viewer",
-        [this](const Request& request, httplib::ws::WebSocket& socket) {
-          std::string device;
-          {
-            std::lock_guard lock(mutex_);
-            const std::string* expected_origin = ExpectedOrigin(request);
-            if (expected_origin &&
-                request.get_header_value("Origin") == *expected_origin) {
-              device = DeviceId(request);
-            }
-          }
-          const std::string instance = request.has_param("instance")
-                                           ? request.get_param_value("instance")
-                                           : "0";
-          if (instance.size() != 1 || instance[0] < '0' || instance[0] > '4') {
-            socket.close(httplib::ws::CloseStatus::PolicyViolation);
-            return;
-          }
-          auto& active = viewer_active_[static_cast<size_t>(instance[0] - '0')];
-          if (device.empty() || active.exchange(true)) {
-            socket.close(httplib::ws::CloseStatus::PolicyViolation);
-            return;
-          }
-          if (auto viewed = RelayBrowserViewer(socket, device, instance);
-              viewed.display) {
-            browser::Request({{"op", "viewer_disconnected"},
-                              {"instance_id", instance},
-                              {"device", device},
-                              {"display", viewed.display},
-                              {"generation", viewed.generation}});
-          }
-          active = false;
-        });
-  }
-  server_.Get(
-      R"(/api/receipts/([a-f0-9]{16,64}))",
-      [this](const Request& request, Response& response) {
-        std::lock_guard lock(mutex_);
-        auto found =
-            requests_.find(DeviceId(request) + ":" + request.matches[1].str());
-        if (found != requests_.end()) {
-          RefreshReceipt(found->second, request.matches[1].str());
-        }
-        Reply(response, found == requests_.end()
-                            ? json{{"request_id", request.matches[1].str()},
-                                   {"unknown", true}}
-                            : found->second.outcome);
-      });
-  server_.Post("/api/push/subscriptions", [this](const Request& request,
-                                                 Response& response) {
-    if (request.body.size() > kSubscriptionRequestBytes) {
-      Error(response, "subscription exceeds limit", 413);
-      return;
-    }
-    std::lock_guard lock(mutex_);
-    std::string subscription_error;
-    std::string device = DeviceId(request);
-    if (device.empty()) {
-      Error(response, "device revoked", 401);
-      return;
-    }
-    if (!push_->Subscribe(device, json::parse(request.body, nullptr, false),
-                          subscription_error)) {
-      Error(response, subscription_error, 422);
-      return;
-    }
-    Reply(response, push_->Capabilities(device));
-  });
-  server_.Delete("/api/push/subscriptions", [this](const Request& request,
-                                                   Response& response) {
-    std::lock_guard lock(mutex_);
-    std::string device = DeviceId(request);
-    if (device.empty()) {
-      Error(response, "device revoked", 401);
-      return;
-    }
-    if (!push_->Revoke(device)) {
-      Error(response, "cannot persist notification revocation", 500);
-      return;
-    }
-    Reply(response, push_->Capabilities(device));
-  });
-  server_.Get("/api/events",
-              [this](const Request& request, Response& response) {
-                Events(request, response);
-              });
-  server_.Post(R"(/api/sessions/([a-f0-9]{16,64})/attachments)",
-               [this](const Request& request, Response& response,
-                      const httplib::ContentReader& reader) {
-                 Upload(request, response, reader);
-               });
-  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/assets/([a-f0-9]{16,64}))",
-              [this](const Request& request, Response& response) {
-                AssetRead(request, response);
-              });
-  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/files)",
-              [this](const Request& request, Response& response) {
-                Files(request, response);
-              });
-  // Browser tests serve the bundle they just built, so a web edit needs no
-  // rebuild of this binary: that folder alone answers, never a mix of it
-  // and the embedded bundle. Never set outside a test run.
-  const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
-  if (dist) {
-    server_.set_file_extension_and_mimetype_mapping(
-        "webmanifest", "application/manifest+json");
-    if (!server_.set_mount_point("/", dist)) {
-      error = std::string("cannot serve the web bundle in ") + dist;
-      return false;
-    }
-  }
-  server_.Get(R"(/.*)", [dist](const Request& request, Response& response) {
-    std::string path = request.path == "/" ? "/index.html" : request.path;
-    for (const Asset& asset : Assets()) {
-      if (dist) break;
-      if (asset.path != path) {
-        continue;
-      }
-      response.set_header(
-          "Cache-Control",
-          path.starts_with("/assets/")
-              ? "public, max-age=" + std::to_string(kSecondsPerYear) +
-                    ", immutable"
-              : "no-cache");
-      if (!asset.gzip) {
-        response.set_content(reinterpret_cast<const char*>(asset.data),
-                             asset.size, std::string(asset.mime));
-        return;
-      }
-      response.set_header("Vary", "Accept-Encoding");
-      // A range selects bytes of the plain asset: slices of a gzip stream
-      // are not one, so a ranged request is always answered plain.
-      if (!request.has_header("Range") &&
-          AcceptsGzip(request.get_header_value("Accept-Encoding"))) {
-        response.set_header("Content-Encoding", "gzip");
-        response.set_content(reinterpret_cast<const char*>(asset.data),
-                             asset.size, std::string(asset.mime));
-        return;
-      }
-      std::string plain;
-      if (!Gunzip(asset, plain)) {
-        fprintf(stderr, "web asset %s does not inflate\n", path.c_str());
-        Error(response, "asset unavailable", 500);
-        return;
-      }
-      response.set_content(std::move(plain), std::string(asset.mime));
-      return;
-    }
-    Error(response, "not found", 404);
-  });
+  RegisterApiRoutes();
+  if (!browser::DataDirectory().empty()) RegisterBrowserRoutes();
+  if (!RegisterAssetRoutes(error)) return false;
   if (!server_.bind_to_port(options_.bind, options_.port)) {
     error = "web port is unavailable; no alternate server was started";
     return false;
@@ -580,6 +362,237 @@ int Master::Run() {
   host_.Shutdown();
   browser_process_.owner.Reset();
   return served ? 0 : 1;
+}
+
+// The API: pairing, conversations, commands, events and their files.
+void Master::RegisterApiRoutes() {
+  server_.Post("/api/instance", [this](const Request& request,
+                                       Response& response) {
+    if (!EqualSecret(request.get_header_value("X-Uagent-Instance"), secret_)) {
+      Error(response, "instance authentication failed", 403);
+      return;
+    }
+    std::lock_guard lock(mutex_);
+    Reply(response, {{"v", kProtocol},
+                     {"epoch", epoch_},
+                     {"url", origin_},
+                     {"pairing_code", Pair()}});
+  });
+  server_.Post("/api/auth", [this](const Request& request, Response& response) {
+    Authenticate(request, response);
+  });
+  server_.Get(
+      "/api/sessions", [this](const Request& request, Response& response) {
+        if (request.has_param("refresh")) {
+          host_.RefreshCatalogue(true);
+        }
+        host_.RefreshPresence();
+        json catalogue = host_.Catalogue();
+        std::string device;
+        json devices;
+        {
+          std::lock_guard lock(mutex_);
+          device = DeviceId(request);
+          devices = PublicDevices();
+        }
+        const json body = {{"v", kProtocol},
+                           {"epoch", epoch_},
+                           {"cursor", std::move(catalogue["cursor"])},
+                           {"sessions", std::move(catalogue["sessions"])},
+                           {"spaces", session::Spaces()},
+                           {"commands", CommandSchemaJson()},
+                           {"verbosity",
+                            [] {
+                              json table = DetailPoliciesJson();
+                              table["level"] = ConfiguredVerbosity();
+                              return table;
+                            }()},
+                           {"capabilities", push_->Capabilities(device)},
+                           {"devices", std::move(devices)},
+                           {"scheduled", std::move(catalogue["scheduled"])},
+                           {"device", device}};
+        Reply(response, body);
+      });
+  server_.Get(R"(/api/sessions/([a-f0-9]{16,64}))",
+              [this](const Request& request, Response& response) {
+                Snapshot(request, response);
+              });
+  server_.Post("/api/command",
+               [this](const Request& request, Response& response) {
+                 Command(request, response);
+               });
+  server_.Get(
+      R"(/api/receipts/([a-f0-9]{16,64}))",
+      [this](const Request& request, Response& response) {
+        std::lock_guard lock(mutex_);
+        auto found =
+            requests_.find(DeviceId(request) + ":" + request.matches[1].str());
+        if (found != requests_.end()) {
+          RefreshReceipt(found->second, request.matches[1].str());
+        }
+        Reply(response, found == requests_.end()
+                            ? json{{"request_id", request.matches[1].str()},
+                                   {"unknown", true}}
+                            : found->second.outcome);
+      });
+  server_.Post("/api/push/subscriptions", [this](const Request& request,
+                                                 Response& response) {
+    if (request.body.size() > kSubscriptionRequestBytes) {
+      Error(response, "subscription exceeds limit", 413);
+      return;
+    }
+    std::lock_guard lock(mutex_);
+    std::string subscription_error;
+    std::string device = DeviceId(request);
+    if (device.empty()) {
+      Error(response, "device revoked", 401);
+      return;
+    }
+    if (!push_->Subscribe(device, json::parse(request.body, nullptr, false),
+                          subscription_error)) {
+      Error(response, subscription_error, 422);
+      return;
+    }
+    Reply(response, push_->Capabilities(device));
+  });
+  server_.Delete("/api/push/subscriptions", [this](const Request& request,
+                                                   Response& response) {
+    std::lock_guard lock(mutex_);
+    std::string device = DeviceId(request);
+    if (device.empty()) {
+      Error(response, "device revoked", 401);
+      return;
+    }
+    if (!push_->Revoke(device)) {
+      Error(response, "cannot persist notification revocation", 500);
+      return;
+    }
+    Reply(response, push_->Capabilities(device));
+  });
+  server_.Get("/api/events",
+              [this](const Request& request, Response& response) {
+                Events(request, response);
+              });
+  server_.Post(R"(/api/sessions/([a-f0-9]{16,64})/attachments)",
+               [this](const Request& request, Response& response,
+                      const httplib::ContentReader& reader) {
+                 Upload(request, response, reader);
+               });
+  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/assets/([a-f0-9]{16,64}))",
+              [this](const Request& request, Response& response) {
+                AssetRead(request, response);
+              });
+  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/files)",
+              [this](const Request& request, Response& response) {
+                Files(request, response);
+              });
+}
+
+// The shared browser's status and its live viewer.
+void Master::RegisterBrowserRoutes() {
+  server_.Get("/api/browser/status", [this](const Request& request,
+                                            Response& response) {
+    json status = browser::Request(
+        {{"op", "status"},
+         {"instance_id", request.has_param("instance")
+                             ? request.get_param_value("instance")
+                             : "0"}});
+    std::lock_guard lock(mutex_);
+    status["controller"] = JsonValue(status, "viewer", "") == DeviceId(request);
+    status["leased"] = !JsonValue(status, "viewer", "").empty();
+    status.erase("viewer");
+    Reply(response, status);
+  });
+  server_.WebSocket(
+      "/api/browser/viewer",
+      [this](const Request& request, httplib::ws::WebSocket& socket) {
+        std::string device;
+        {
+          std::lock_guard lock(mutex_);
+          const std::string* expected_origin = ExpectedOrigin(request);
+          if (expected_origin &&
+              request.get_header_value("Origin") == *expected_origin) {
+            device = DeviceId(request);
+          }
+        }
+        const std::string instance = request.has_param("instance")
+                                         ? request.get_param_value("instance")
+                                         : "0";
+        if (instance.size() != 1 || instance[0] < '0' || instance[0] > '4') {
+          socket.close(httplib::ws::CloseStatus::PolicyViolation);
+          return;
+        }
+        auto& active = viewer_active_[static_cast<size_t>(instance[0] - '0')];
+        if (device.empty() || active.exchange(true)) {
+          socket.close(httplib::ws::CloseStatus::PolicyViolation);
+          return;
+        }
+        if (auto viewed = RelayBrowserViewer(socket, device, instance);
+            viewed.display) {
+          browser::Request({{"op", "viewer_disconnected"},
+                            {"instance_id", instance},
+                            {"device", device},
+                            {"display", viewed.display},
+                            {"generation", viewed.generation}});
+        }
+        active = false;
+      });
+}
+
+// The app itself: the embedded bundle, or a test's build of it.
+bool Master::RegisterAssetRoutes(std::string& error) {
+  // Browser tests serve the bundle they just built, so a web edit needs no
+  // rebuild of this binary: that folder alone answers, never a mix of it
+  // and the embedded bundle. Never set outside a test run.
+  const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
+  if (dist) {
+    server_.set_file_extension_and_mimetype_mapping(
+        "webmanifest", "application/manifest+json");
+    if (!server_.set_mount_point("/", dist)) {
+      error = std::string("cannot serve the web bundle in ") + dist;
+      return false;
+    }
+  }
+  server_.Get(R"(/.*)", [dist](const Request& request, Response& response) {
+    std::string path = request.path == "/" ? "/index.html" : request.path;
+    for (const Asset& asset : Assets()) {
+      if (dist) break;
+      if (asset.path != path) {
+        continue;
+      }
+      response.set_header(
+          "Cache-Control",
+          path.starts_with("/assets/")
+              ? "public, max-age=" + std::to_string(kSecondsPerYear) +
+                    ", immutable"
+              : "no-cache");
+      if (!asset.gzip) {
+        response.set_content(reinterpret_cast<const char*>(asset.data),
+                             asset.size, std::string(asset.mime));
+        return;
+      }
+      response.set_header("Vary", "Accept-Encoding");
+      // A range selects bytes of the plain asset: slices of a gzip stream
+      // are not one, so a ranged request is always answered plain.
+      if (!request.has_header("Range") &&
+          AcceptsGzip(request.get_header_value("Accept-Encoding"))) {
+        response.set_header("Content-Encoding", "gzip");
+        response.set_content(reinterpret_cast<const char*>(asset.data),
+                             asset.size, std::string(asset.mime));
+        return;
+      }
+      std::string plain;
+      if (!Gunzip(asset, plain)) {
+        fprintf(stderr, "web asset %s does not inflate\n", path.c_str());
+        Error(response, "asset unavailable", 500);
+        return;
+      }
+      response.set_content(std::move(plain), std::string(asset.mime));
+      return;
+    }
+    Error(response, "not found", 404);
+  });
+  return true;
 }
 
 const std::string* Master::ExpectedOrigin(const Request& request) const {

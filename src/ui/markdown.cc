@@ -4,9 +4,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <cstdio>
-#include <cstring>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -21,9 +18,6 @@
 
 namespace uagent {
 namespace {
-
-constexpr size_t kFlushBytes = 256;
-constexpr auto kFlushInterval = std::chrono::milliseconds(16);
 
 // Each accumulator holds model-supplied text that only ends when the model
 // says so. Past these bounds the stream degrades to plain output rather than
@@ -214,22 +208,20 @@ void MdStream::Feed(std::string_view s) {
   std::string safe = TerminalSafe(s);
   if (!on) {
     Put(safe);
-    FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+    FlushOut();
     return;
   }
   for (char c : safe) Step(c);
-  FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+  FlushOut();
 }
 
 void MdStream::FeedPlain(std::string_view s) {
-  std::string safe = TerminalSafe(s);
-  Put(safe);
-  FlushOutput(safe.size(), false, true);
+  Put(TerminalSafe(s));
+  FlushOut();
 }
 
 void MdStream::Control(const char* s) {
   Put(s);
-  pending_output += strlen(s);
   // A control sequence is the caller's way of ordering its own writes around
   // this stream, so it may not sit in the buffer waiting for text.
   FlushOut();
@@ -237,7 +229,7 @@ void MdStream::Control(const char* s) {
 
 void MdStream::Flush() {  // stream end: resolve everything still held
   if (!on) {
-    FlushOutput(0, false, true);
+    FlushOut();
     return;
   }
   while (math) ReplayMath();
@@ -261,20 +253,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
   star = 0;
   dollar = math_dollar = slash = false;
   linestart = true;
-  FlushOutput(0, false, true);
-}
-
-void MdStream::FlushOutput(size_t bytes, bool newline, bool force) {
   FlushOut();
-  pending_output += bytes;
-  auto now = std::chrono::steady_clock::now();
-  if (force || newline || !output_started || pending_output >= kFlushBytes ||
-      now - last_flush >= kFlushInterval) {
-    fflush(stdout);
-    pending_output = 0;
-    output_started = true;
-    last_flush = now;
-  }
 }
 
 void MdStream::ReleaseBlanks() {

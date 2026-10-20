@@ -42,6 +42,9 @@
 
 namespace uagent::session {
 namespace {
+// Output is drawn at most this often, however fast it arrives.
+constexpr auto kPaintInterval = std::chrono::milliseconds(16);
+
 // The pinned row from the worker's state frame: the working row while a turn
 // runs, the session row otherwise -- the same renderers presentation_test pins.
 std::string StatusRow(const json& state, bool interrupting,
@@ -245,8 +248,18 @@ class Terminal {
     std::string cooked;
     bool quit = false;
     int exit_code = 0;
+    // One paint per wake: at once after a key, otherwise once a frame, so
+    // output that arrives faster than that is drawn in batches.
+    bool stale = true, typed = true;
+    std::chrono::steady_clock::time_point painted;
     while (!quit && !disconnected_ && !navigate_) {
-      if (raw_) Paint();  // the last input's draft
+      if (raw_ && stale &&
+          (typed ||
+           std::chrono::steady_clock::now() >= painted + kPaintInterval)) {
+        Paint();
+        painted = std::chrono::steady_clock::now();
+        stale = typed = false;
+      }
       bool running;
       bool needs_model;
       {
@@ -267,7 +280,8 @@ class Terminal {
       pollfd waits[] = {
           {!raw_ && input_blocked_ && !interaction_ ? -1 : STDIN_FILENO, POLLIN,
            0},
-          {raw_ ? output_.ReadFd() : -1, POLLIN, 0},
+          // Output waiting for its frame is read when the frame comes.
+          {raw_ && !stale ? output_.ReadFd() : -1, POLLIN, 0},
           {wake_.read.Get(), POLLIN, 0},
           {AbortWakeFd(), POLLIN, 0}};
       int timeout = -1;
@@ -278,7 +292,12 @@ class Terminal {
       if (raw_ && running) {
         timeout = timeout < 0 ? kWaitTickMs : std::min(timeout, kWaitTickMs);
       }
+      if (raw_ && stale) {
+        const int frame = PollTimeoutMs(painted + kPaintInterval);
+        timeout = timeout < 0 ? frame : std::min(timeout, frame);
+      }
       if (poll(waits, 4, timeout) < 0 && errno != EINTR) break;
+      stale = true;
       wake_.Drain();
       if (TakeIdleInterrupt()) {
         if (quit_hint_) {
@@ -299,7 +318,6 @@ class Terminal {
         ClearAbort();
         NormalizeAbortWake();
       }
-      if (raw_) Paint();
       json pending;
       {
         std::lock_guard lock(mutex_);
@@ -309,6 +327,8 @@ class Terminal {
       std::string decision = JsonValue(pending, "id", "");
       if (decision != decision_) {
         decision_ = decision;
+        // The output before the decision is shown before it.
+        if (raw_) Absorb();
         if (PresentDecision(pending, decision)) continue;
       }
       if (!(waits[0].revents & (POLLIN | POLLHUP)) &&
@@ -318,6 +338,7 @@ class Terminal {
       InteractiveInputEvent input;
       if (raw_) {
         input = composer_.Read();
+        typed = true;
       } else {
         char byte;
         ssize_t count = read(STDIN_FILENO, &byte, 1);
@@ -355,6 +376,7 @@ class Terminal {
       if (raw_) {
         if (decision.empty() && !Trim(input.text).empty()) {
           // A streaming tail is finished where it stands, above the echo.
+          Absorb();
           region_.Commit((tail_.empty() ? "" : tail_ + "\n") +
                          UserEchoRow(InputPrompt(), TerminalSafe(input.text)));
           if (!tail_.empty()) {
@@ -810,21 +832,25 @@ class Terminal {
     }
     wake_.Wake();
   }
+  // Takes the output written so far into the live region, unpainted.
+  void Absorb() {
+    auto update = output_.Read();
+    if (update.changed) {
+      region_.Commit(std::move(update.committed));
+      tail_ = std::move(update.tail);
+      region_.SetTail(tail_);
+    }
+  }
   // Brings the live region up to date: new output, the status row and the
   // draft, repainted only where they changed.
   void Paint() {
-    auto update = output_.Read();
+    Absorb();
     json state;
     {
       std::lock_guard lock(mutex_);
       state = state_;
     }
     if (!JsonValue(state, "turn_active", false)) interrupting_ = false;
-    if (update.changed) {
-      region_.Commit(std::move(update.committed));
-      tail_ = std::move(update.tail);
-      region_.SetTail(tail_);
-    }
     region_.SetStatus(
         StatusBarLine(StatusRow(state, interrupting_, Detail().level)));
     const RawComposer::Layout draft = composer_.View();

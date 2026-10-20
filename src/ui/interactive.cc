@@ -32,12 +32,11 @@ bool InteractiveOutput::Start() {
   // From here stdout is the pipe, so signal handlers must not write there.
   SetSignalTerminalFd(saved_.Get());
   // Buffered, deliberately: unbuffered turned every putchar of the streaming
-  // markdown renderer into its own write(2) and left the renderer's byte/time
-  // flush governor with nothing to govern. Buffering hands that governor the
-  // real flush control. Line buffering rather than fully buffered, because
-  // callers outside this layer print notices with plain printf and rely on
-  // them reaching the pipe when the line ends; only the mid-line streaming
-  // path (which flushes on its own budget) and Stop() need explicit flushes.
+  // markdown renderer into its own write(2). Line buffering rather than fully
+  // buffered, because callers outside this layer print notices with plain
+  // printf and rely on them reaching the pipe when the line ends; only the
+  // mid-line streaming path (flushed once per received frame) and Stop() need
+  // explicit flushes.
   static char buffer[64 * 1024];
   setvbuf(stdout, buffer, _IOLBF, sizeof buffer);
   return true;

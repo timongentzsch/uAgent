@@ -308,6 +308,9 @@
   repaint of an unfinished paragraph replayed every style it had used so far,
   so a reply with many inline code spans wrote six times as many bytes per
   token as plain text, and more the longer the paragraph ran.
+- The terminal draws a fast stream at most once a frame (16 ms) and repaints
+  once per wake instead of twice, so a quick model costs it less CPU. What is
+  typed is still drawn at once.
 
 ## v1.4.0 - 2026-10-15
 

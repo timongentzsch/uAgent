@@ -63,10 +63,13 @@ def contended_latency(client, seconds=3, loaders=4):
                 if attempt:
                     raise
 
+    loads = []
+
     def load():
         connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=10)
         while not stop.is_set():
             get(connection, "/api/sessions")
+            loads.append(1)
         connection.close()
 
     threads = [threading.Thread(target=load) for _ in range(loaders)]
@@ -85,6 +88,7 @@ def contended_latency(client, seconds=3, loaders=4):
         thread.join()
     samples.sort()
     return {
+        "catalogue_loads": len(loads),
         "requests": len(samples),
         "p50_ms": round(samples[len(samples) // 2], 2),
         "p99_ms": round(samples[len(samples) * 99 // 100], 2),
@@ -161,7 +165,7 @@ def main():
                 "sample_seconds": round(time.monotonic() - started, 3),
                 "cpu_delta_seconds": round(after["cpu_seconds"] - before["cpu_seconds"], 3),
             }
-            for index in range(32):
+            for index in range(64):
                 drafts = root / f"drafts-{index}"
                 drafts.mkdir()
                 client.create(drafts, activate=False)

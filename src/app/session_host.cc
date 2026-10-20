@@ -225,17 +225,27 @@ std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
 
 void SessionHost::RefreshPresence() {
   RefreshCatalogue();
+  // The runtimes' sockets, listed once: the cost of a pass is the runtimes
+  // that run, not a stat for every conversation there is.
+  std::set<std::string> sockets;
+  std::error_code ec;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(RuntimeDir(), ec)) {
+    sockets.insert(entry.path().filename().string());
+  }
   UniqueLock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> candidates;
   for (const auto& [id, session] : sessions_) {
     if ((session->pid <= 0 || session->exited) && !session->closing &&
         session->status != SessionStatus::kUpdating &&
-        session->status != SessionStatus::kDeleting) {
+        session->status != SessionStatus::kDeleting &&
+        sockets.contains(std::filesystem::path(SocketPath(session->path))
+                             .filename()
+                             .string())) {
       candidates.push_back(session);
     }
   }
   for (const auto& session : candidates) {
-    if (!PathExists(SocketPath(session->path))) continue;
     std::string error;
     ActivateLocked(session, error, lock, false);
   }

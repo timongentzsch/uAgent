@@ -212,6 +212,9 @@ export function useMedia(query: string) {
 
 // The width under which the phone layout applies, as the stylesheets have it.
 export const usePhone = () => useMedia("(max-width: 600px)");
+// The width under which the conversations list moves into a drawer, as the
+// stylesheets have it.
+export const useCompact = () => useMedia("(max-width: 900px)");
 
 // Animations play unless this device asks for less motion or Settings
 // turns them off.

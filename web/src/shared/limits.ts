@@ -4,6 +4,10 @@ export const maxLocalRequests = 256;
 export const maxAttentionReceipts = 256;
 export const maxHttpExchanges = 64;
 export const maxRecalledPromptSessions = 32;
+// Prompts Up and Down recall per conversation.
+export const maxRecalledPrompts = 100;
+// Rows a transcript keeps as older pages are read in.
+export const maxHistoryBlocks = 256;
 export const reconnectMaxDelayMs = 30_000;
 // A reconnect shorter than this (a resumed app) shows no status change.
 export const reconnectGraceMs = 1_000;

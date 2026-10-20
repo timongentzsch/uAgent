@@ -1,6 +1,7 @@
 import { normalizeZoom } from "./layout.ts";
 import { defaultZoom } from "./limits.ts";
 import { storage } from "./storage.ts";
+import { storageKeys } from "./storage-keys.ts";
 import {
   defaultTimePrefs,
   normalizeTimePrefs,
@@ -8,8 +9,7 @@ import {
 } from "./time.ts";
 
 // This browser's preferences: where each is kept, what it is when nothing
-// is kept, and reading and writing it. The pre-paint script
-// (public/theme.js) cannot import this and repeats three of the keys.
+// is kept, and reading and writing it.
 function kept<T>(
   key: string,
   fallback: T,
@@ -41,16 +41,21 @@ const parsed = (text: string | null) => JSON.parse(text || "null");
 export type Pane = "sidebar" | "board" | "files" | "files-list";
 
 export const devicePrefs = {
-  theme: kept("uagent-theme", "system", (text) => text || "system", String),
-  motion: kept("uagent-motion", "system", (text) => text || "system", String),
-  zoom: kept("uagent-zoom", defaultZoom, (text) => {
+  theme: kept(storageKeys.theme, "system", (text) => text || "system", String),
+  motion: kept(
+    storageKeys.motion,
+    "system",
+    (text) => text || "system",
+    String,
+  ),
+  zoom: kept(storageKeys.zoom, defaultZoom, (text) => {
     const value = parsed(text);
     return normalizeZoom(typeof value === "number" ? value : defaultZoom);
   }),
-  time: kept<TimePrefs>("uagent-time", defaultTimePrefs, (text) =>
+  time: kept<TimePrefs>(storageKeys.time, defaultTimePrefs, (text) =>
     normalizeTimePrefs(parsed(text)),
   ),
-  panes: kept<Partial<Record<Pane, number>>>("uagent-panes", {}, (text) => {
+  panes: kept<Partial<Record<Pane, number>>>(storageKeys.panes, {}, (text) => {
     const value = parsed(text);
     return value && typeof value === "object" ? value : {};
   }),

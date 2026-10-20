@@ -30,14 +30,26 @@ function present(block: Block, source?: AssistantBlock): PresentedBlock {
   return row;
 }
 
+// What a message of yours shows until the host's own row replaces it.
+export const outgoingStatus = {
+  sending: "Sending…",
+  // Guidance for the running turn, or a message held for after it.
+  guidance: "Guidance queued",
+  next: "Queued for after this turn",
+  awaiting: "Awaiting confirmation",
+  sent: "Sent",
+  refused: "Not sent",
+  unconfirmed: "Not confirmed",
+};
+
 // A message of yours the host refused, or never confirmed receiving.
 export const unsent = (block: Pick<Block, "status">) =>
-  block.status === "Not sent" || block.status === "Not confirmed";
+  block.status === outgoingStatus.refused ||
+  block.status === outgoingStatus.unconfirmed;
 
-// Guidance for the running turn, or a message held for after it.
-export const QUEUED_NEXT = "Queued for after this turn";
 export const queuedGuidance = (block: Pick<Block, "status">) =>
-  block.status === "Guidance queued" || block.status === QUEUED_NEXT;
+  block.status === outgoingStatus.guidance ||
+  block.status === outgoingStatus.next;
 
 // What returns to the composer: guidance still queued (withdrawn from the
 // host, so only while connected) or a message that never went out.

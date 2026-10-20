@@ -51,7 +51,11 @@ import {
   SessionSummary,
 } from "../../shared/session-summary.tsx";
 const decisionPanel = () => import("../../shared/decision.tsx");
-import { maxRecalledPromptSessions, stopGuardMs } from "../../shared/limits.ts";
+import {
+  maxRecalledPrompts,
+  maxRecalledPromptSessions,
+  stopGuardMs,
+} from "../../shared/limits.ts";
 import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 import GuidanceQueue from "./guidance-queue.tsx";
 import "./composer.css";
@@ -222,7 +226,10 @@ function Composer({
         if (past.at(-1) !== draft.text) {
           // Re-insert so Map order is recency; the oldest session drops out.
           sentPrompts.delete(session.id);
-          sentPrompts.set(session.id, [...past, draft.text].slice(-100));
+          sentPrompts.set(
+            session.id,
+            [...past, draft.text].slice(-maxRecalledPrompts),
+          );
           if (sentPrompts.size > maxRecalledPromptSessions)
             sentPrompts.delete(sentPrompts.keys().next().value!);
         }

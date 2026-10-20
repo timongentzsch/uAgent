@@ -1,4 +1,5 @@
 import { tabStorage } from "../../shared/storage.ts";
+import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
 import {
   defaultScheduleSeconds,
@@ -50,7 +51,7 @@ const blank = (cwd: string): ScheduledTask => ({
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   },
 });
-const storage = "uagent-scheduled-draft";
+const storage = storageKeys.scheduledDraft;
 const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {

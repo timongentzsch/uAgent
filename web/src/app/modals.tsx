@@ -5,6 +5,7 @@ import type {
   Session,
 } from "../shared/types.ts";
 import { folderOf } from "../shared/display.ts";
+import { maxSpaceNameChars } from "../shared/limits.ts";
 import type { ComponentProps, TargetedSubmitEvent } from "preact";
 import {
   Modal,
@@ -245,7 +246,7 @@ export default function Modals({
                     onInput={(event) => setSpace(event.currentTarget.value)}
                     placeholder="A name, new or existing"
                     required
-                    maxLength={64}
+                    maxLength={maxSpaceNameChars}
                     autoComplete="off"
                   />
                 </label>

@@ -1,4 +1,5 @@
 import { storage } from "../shared/storage.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 import { readStored, writeStored } from "../state/store.ts";
 import { idlePreloadMs } from "../shared/limits.ts";
 import type {
@@ -56,7 +57,7 @@ import { ResizeHandle } from "../shared/side-pane.tsx";
 import { prefetchMarkdown } from "../shared/markdown-view.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
 import {
-  QUEUED_NEXT,
+  outgoingStatus,
   queuedGuidance,
   recallable,
   unsent,
@@ -83,7 +84,7 @@ import { folderName } from "../shared/folder-label.tsx";
 import { folderOf } from "../shared/display.ts";
 import {
   lockPageZoom,
-  useMedia,
+  useCompact,
   usePhone,
   trackViewport,
 } from "../shared/layout.ts";
@@ -118,8 +119,6 @@ import {
 // scrolling from here on.
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
-const BROWSER_KEY = "uagent-browser";
-
 // The shell: navigation, header, toasts and dialogs. It never reads a whole
 // snapshot, only what it selects from one (the session's metadata, whether
 // its agent browses, whether any turn waits), so a streamed frame re-renders
@@ -133,7 +132,7 @@ function App() {
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  const compact = useMedia("(max-width: 900px)");
+  const compact = useCompact();
   const phone = usePhone();
   // What opens over the page: the conversations drawer, the board sheet, the
   // app's dialogs, the palette or shortcuts sheet, the image viewer, the
@@ -158,11 +157,11 @@ function App() {
         firstRequest: string;
       }
     >
-  >(() => readStored(storage, "uagent-side-conversations", {}));
+  >(() => readStored(storage, storageKeys.sideConversations, {}));
   useEffect(() => {
     writeStored(
       storage,
-      "uagent-side-conversations",
+      storageKeys.sideConversations,
       Object.fromEntries(Object.entries(sides).filter(([, side]) => side.id)),
     );
   }, [sides]);
@@ -180,7 +179,7 @@ function App() {
   // Remembered per device, so the header's browser slot is right from the
   // first frame instead of appearing once the host answers.
   const [browserAvailable, setBrowserAvailable] = useState(
-    () => storage.getItem(BROWSER_KEY) === "1",
+    () => storage.getItem(storageKeys.browser) === "1",
   );
   const [notice, setNotice] = useState("");
   // The banner shows one line: a new notice replaces an older error.
@@ -240,7 +239,7 @@ function App() {
     const known = (available: boolean) => {
       if (!active) return;
       setBrowserAvailable(available);
-      storage.setItem(BROWSER_KEY, available ? "1" : "0");
+      storage.setItem(storageKeys.browser, available ? "1" : "0");
     };
     api(routes.browserStatus)
       .then(() => known(true))
@@ -715,7 +714,8 @@ function App() {
     setBusy(true);
     const kind = running && !snapshots.get()[id]?.pending ? "steer" : "submit";
     const queued =
-      kind === "steer" && (queue ? QUEUED_NEXT : "Guidance queued");
+      kind === "steer" &&
+      (queue ? outgoingStatus.next : outgoingStatus.guidance);
     const visible = !sent.text.startsWith("/") || sent.files.length;
     if (visible)
       setOutgoing((items) => [
@@ -728,7 +728,7 @@ function App() {
           text: sent.text,
           files: sent.files,
           time: new Date().toISOString(),
-          status: queued || "Sending…",
+          status: queued || outgoingStatus.sending,
         },
       ]);
     setDrafts((current) =>
@@ -745,13 +745,17 @@ function App() {
         })),
       });
       patchOutgoing(request_id, {
-        status: queued || (result.pending ? "Awaiting confirmation" : "Sent"),
+        status:
+          queued ||
+          (result.pending ? outgoingStatus.awaiting : outgoingStatus.sent),
       });
     } catch (error) {
       const issue = failure(error);
       if (visible)
         patchOutgoing(request_id, {
-          status: issue.rejected ? "Not sent" : "Not confirmed",
+          status: issue.rejected
+            ? outgoingStatus.refused
+            : outgoingStatus.unconfirmed,
           error: issue.message,
         });
       else report(issue);
@@ -881,7 +885,7 @@ function App() {
       try {
         await act("insert", { target_id: block.request_id });
         // Keep the tray until the transcript acknowledges actual delivery.
-        patchOutgoing(block.request_id, { status: "Guidance queued" });
+        patchOutgoing(block.request_id, { status: outgoingStatus.guidance });
       } catch (error) {
         if (!/already delivered/i.test(failure(error).message)) report(error);
       }

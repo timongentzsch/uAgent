@@ -1,4 +1,5 @@
 import { storage, tabStorage } from "../shared/storage.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 import type {
   JSONValue,
   Snapshot,
@@ -35,7 +36,7 @@ import {
 } from "./store.ts";
 import { api, manage, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
-import { queuedGuidance } from "../shared/message-view.ts";
+import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   draftSaveDelayMs,
@@ -45,8 +46,6 @@ import {
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
 import { needsYou } from "./attention.ts";
-
-const CATALOGUE_KEY = "uagent-catalogue";
 
 // What the sidebar lists: conversations, not scheduled runs or their tasks.
 function listedSessions({
@@ -98,7 +97,7 @@ export function useHost(
   const [catalogue, setCatalogue] = useState<Catalogue>(() => {
     const sessions = readStored<Catalogue["sessions"]>(
       storage,
-      CATALOGUE_KEY,
+      storageKeys.catalogue,
       [],
     );
     return { sessions, capabilities: {}, devices: [] };
@@ -111,7 +110,7 @@ export function useHost(
   const [drafts, setDrafts] = useState(() =>
     Object.fromEntries(
       Object.entries(
-        readStored<Record<string, Draft>>(storage, "uagent-drafts", {}),
+        readStored<Record<string, Draft>>(storage, storageKeys.drafts, {}),
       ).map(([id, draft]) => [
         id,
         { ...draft, files: draft.files.filter((file) => !file.pending) },
@@ -120,10 +119,10 @@ export function useHost(
   );
   const [error, setError] = useState("");
   const [unread, setUnread] = useState(
-    () => new Set(readStored<string[]>(storage, "uagent-unread", [])),
+    () => new Set(readStored<string[]>(storage, storageKeys.unread, [])),
   );
   const [outgoing, setOutgoing] = useState(() =>
-    readStored<Outgoing[]>(tabStorage, "uagent-outgoing", []),
+    readStored<Outgoing[]>(tabStorage, storageKeys.outgoing, []),
   );
   const [following, setFollowing] = useState(true);
   const stream = useRef<EventSource | undefined>(undefined);
@@ -147,7 +146,7 @@ export function useHost(
   const subscribed = useRef(false);
   const reading = useRef(false);
   const readCounts = useRef(
-    readStored<Record<string, number>>(storage, "uagent-read", {}),
+    readStored<Record<string, number>>(storage, storageKeys.read, {}),
   );
   const outgoingRef = useRef(outgoing);
   const localRequests = useRef(new Set<string>());
@@ -233,7 +232,7 @@ export function useHost(
     revoked.current = true;
     catalogueRef.current = undefined;
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
-    storage.removeItem(CATALOGUE_KEY);
+    storage.removeItem(storageKeys.catalogue);
     setDrafts({});
     setAuthenticated(false);
     live.current = {};
@@ -342,18 +341,18 @@ export function useHost(
       const awaited = receiveOutcome(outcome);
       patchOutgoing(outcome.request_id, (item) => ({
         status: outcome.unknown
-          ? "Not confirmed"
+          ? outgoingStatus.unconfirmed
           : outcome.pending
             ? queuedGuidance(item)
               ? item.status
-              : "Awaiting confirmation"
+              : outgoingStatus.awaiting
             : outcome.accepted
               ? // Accepted guidance waits for its step and stays
                 // recallable until the transcript shows it.
                 queuedGuidance(item)
                 ? item.status
-                : "Sent"
-              : "Not sent",
+                : outgoingStatus.sent
+              : outgoingStatus.refused,
         error: outcome.error,
       }));
       return (
@@ -768,7 +767,7 @@ export function useHost(
     [catalogue.sessions, catalogue.scheduled],
   );
   useEffect(() => {
-    if (authenticated) writeStored(storage, CATALOGUE_KEY, listed);
+    if (authenticated) writeStored(storage, storageKeys.catalogue, listed);
   }, [authenticated, listed]);
   // The tab title and the installed app's badge count what needs you;
   // written only when that count changes.
@@ -782,10 +781,10 @@ export function useHost(
       ).catch(() => {});
   }, [attention]);
   useEffect(() => {
-    writeStored(storage, "uagent-unread", [...unread]);
+    writeStored(storage, storageKeys.unread, [...unread]);
   }, [unread]);
   useEffect(() => {
-    writeStored(tabStorage, "uagent-outgoing", outgoing);
+    writeStored(tabStorage, storageKeys.outgoing, outgoing);
   }, [outgoing]);
   // Saved once typing pauses, not per key, and before the page may go away;
   // drafts as they were read or last saved leave what another tab saved
@@ -797,7 +796,7 @@ export function useHost(
       savedDrafts.current = drafts;
       writeStored(
         storage,
-        "uagent-drafts",
+        storageKeys.drafts,
         Object.fromEntries(
           Object.entries(drafts).filter(([, draft]) => hasContent(draft)),
         ),
@@ -822,7 +821,7 @@ export function useHost(
       const incoming = snapshot.metadata?.incoming || 0;
       if ((readCounts.current[selected] || 0) < incoming) {
         readCounts.current[selected] = incoming;
-        writeStored(storage, "uagent-read", readCounts.current);
+        writeStored(storage, storageKeys.read, readCounts.current);
       }
       setUnread((prior) => {
         if (!prior.has(selected)) return prior;

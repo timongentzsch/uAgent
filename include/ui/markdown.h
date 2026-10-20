@@ -50,7 +50,6 @@ class MdStream {
   // What the terminal showed for this line, escapes excluded. The source is
   // not a substitute: `**bold**` is eight source columns and four rendered.
   std::string cur_rendered;
-  int escape_state = 0;  // 0 none · 1 after ESC · 2 inside CSI
   size_t prev_rows = 1;
 
   void Pv(const std::string& text);
@@ -59,7 +58,7 @@ class MdStream {
   void Put(std::string_view text);
   // Every emitted byte passes through Put, the only place that can tell
   // rendered text from the escapes around it.
-  void TrackRendered(char value);
+  void TrackRendered(std::string_view text);
   void ForgetRenderedLine();
   void FlushOut();
   void EmitPre();

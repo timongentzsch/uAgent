@@ -60,6 +60,12 @@ std::string Utf8Prefix(std::string s, size_t cap);
 // The same bound with an ellipsis when truncation is required.
 std::string Utf8Trunc(std::string s, size_t cap);
 
+// The bytes of the CSI escape sequence `text` starts with: ESC [, parameter
+// and intermediate bytes (0x20-0x3f), one final byte (0x40-0x7e). 0 when it
+// starts with none or an incomplete one. The one definition every parser of
+// the terminal's own output uses, so none ends a sequence elsewhere.
+size_t CsiSpan(std::string_view text);
+
 // Terminal column width for valid UTF-8 in the active locale. Invalid or
 // incomplete sequences degrade to one column rather than breaking rendering.
 size_t DisplayWidth(const std::string& s);

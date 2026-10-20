@@ -466,16 +466,11 @@ class Terminal {
   std::string MatchFolderSession(const std::string& argument) const {
     const std::string wanted = AsciiLower(Trim(argument));
     if (wanted.empty()) return "";
-    std::string match;
-    for (const SessionInfo& info : FolderSessions(Folder())) {
-      if (!HashHex(info.path).starts_with(wanted) &&
-          AsciiLower(info.title).find(wanted) == std::string::npos) {
-        continue;
-      }
-      if (!match.empty()) return "";
-      match = info.path;
-    }
-    return match;
+    return UniqueSession(
+        FolderSessions(Folder()), [&](const SessionInfo& info) {
+          return HashHex(info.path).starts_with(wanted) ||
+                 AsciiLower(info.title).find(wanted) != std::string::npos;
+        });
   }
   // What the next session's composer starts with.
   const std::string& Carry() const { return carry_; }

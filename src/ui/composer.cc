@@ -145,14 +145,14 @@ bool RawComposer::Start() {
   // A fatal signal or Ctrl+Z from here on has to hand the terminal back
   // cooked, and only the handler can do that.
   ArmTerminalModes(saved_, raw);
-  output_.Write("\033[?2004h");
+  output_.Write(kBracketedPasteOn);
   return true;
 }
 
 void RawComposer::Stop() {
   if (!active_) return;
   DisarmTerminalModes();
-  output_.Write("\033[?2004l");
+  output_.Write(kTerminalModeReset);
   tcsetattr(STDIN_FILENO, TCSANOW, &saved_);
   active_ = false;
 }
@@ -261,18 +261,20 @@ InteractiveInputEvent RawComposer::Read() {
       ResetDraftState();
       return {InteractiveInputKind::kLine, std::move(line)};
     }
-    if (ch == 0x02) {
+    if (ch == Ctrl('B')) {
       return {InteractiveInputKind::kBackground, buffer_};
     }
-    if (ch == 0x04 && buffer_.empty()) return {InteractiveInputKind::kEof, {}};
+    if (ch == Ctrl('D') && buffer_.empty()) {
+      return {InteractiveInputKind::kEof, {}};
+    }
     if (editor_prefix_) {
       editor_prefix_ = false;
-      if (ch == 0x05) {  // Ctrl+X Ctrl+E, readline's spelling
+      if (ch == Ctrl('E')) {  // Ctrl+X Ctrl+E, readline's spelling
         if (!EditExternally()) output_.Write("\a");
         continue;
       }
     }
-    if (ch == 0x18) {  // Ctrl+X, a prefix on its own
+    if (ch == Ctrl('X')) {  // a prefix on its own
       editor_prefix_ = true;
       continue;
     }

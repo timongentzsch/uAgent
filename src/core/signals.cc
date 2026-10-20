@@ -41,7 +41,6 @@ std::atomic<bool> g_termios_armed{false};
 // Nothing drains the REPL's stdout pipe once the process is exiting or
 // stopped, so handlers write to the terminal descriptor the composer saved.
 SignalFlag g_signal_terminal_fd = STDOUT_FILENO;
-constexpr char kBracketedPasteOn[] = "\033[?2004h";
 
 void WriteToTerminal(const char* bytes, size_t size) {
   (void)(write(static_cast<int>(g_signal_terminal_fd), bytes, size) < 0);

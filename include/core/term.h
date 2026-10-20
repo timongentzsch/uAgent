@@ -55,6 +55,22 @@ inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
 inline constexpr char kTerminalModeReset[] = "\033[?2004l";
+inline constexpr char kBracketedPasteOn[] = "\033[?2004h";
+// Cursor control, not colour, so no gate: only a terminal's own paths, the
+// live region and a table rewritten in place, write it.
+inline constexpr char kEraseLine[] = "\033[2K";
+inline constexpr char kEraseRight[] = "\033[K";
+inline constexpr char kEraseBelow[] = "\033[J";
+inline constexpr char kLineUp[] = "\033[A";
+inline std::string CursorUp(size_t rows) {
+  return rows ? "\033[" + std::to_string(rows) + "A" : "";
+}
+inline std::string CursorRight(size_t columns) {
+  return columns ? "\033[" + std::to_string(columns) + "C" : "";
+}
+// A terminal that knows synchronized output shows what is between whole.
+inline constexpr char kSyncBegin[] = "\033[?2026h";
+inline constexpr char kSyncEnd[] = "\033[?2026l";
 // Two rules for every SGR accessor below: one for colour, one for attributes.
 inline const char* Sgr(const char* sequence) { return g_color ? sequence : ""; }
 inline const char* Attribute(const char* sequence) {

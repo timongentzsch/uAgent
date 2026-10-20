@@ -75,7 +75,7 @@ std::optional<std::string> ReadLine(Keys& keys, LiveRegion& region,
     if (Enter(*token)) return Trim(line);
     if (token->kind == TerminalInputTokenKind::kSequence) continue;
     for (char ch : token->text) {
-      if (ch == 0x7f || ch == 0x08) {
+      if (Byte(ch) == kBackspaceKey || Byte(ch) == Ctrl('H')) {
         line.erase(Utf8BoundaryBefore(line, line.size()));
       } else if (static_cast<unsigned char>(ch) >= 0x20) {
         line += ch;

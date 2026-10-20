@@ -281,44 +281,34 @@ void MdStream::Pc(char c) {
 // outside writer can observe has moved.
 void MdStream::Put(char value) {
   outbuf += value;
-  TrackRendered(value);
+  TrackRendered(std::string_view(&value, 1));
 }
 
 void MdStream::Put(std::string_view text) {
   outbuf.append(text);
-  // Whole runs of plain text are the common case and carry no state change,
-  // so they are measured in one append rather than a byte at a time.
-  if (escape_state == 0 &&
-      text.find_first_of("\x1b\n\r") == std::string_view::npos) {
+  TrackRendered(text);
+}
+
+// Colour changes cost no columns, and neither does the closing newline. An
+// escape is always written whole: the model's text has none left.
+void MdStream::TrackRendered(std::string_view text) {
+  // Whole runs of plain text are the common case, so they are measured in
+  // one append rather than a byte at a time.
+  if (text.find_first_of("\x1b\n\r") == std::string_view::npos) {
     if (cur_rendered.size() < kMdLineBytes) cur_rendered.append(text);
     return;
   }
-  for (char value : text) TrackRendered(value);
-}
-
-// Colour changes cost no columns, and neither does the closing newline.
-void MdStream::TrackRendered(char value) {
-  if (escape_state != 0) {
-    if (escape_state == 1) {
-      escape_state = value == '[' ? 2 : 0;
-      return;
+  for (size_t at = 0; at < text.size(); ++at) {
+    if (const size_t span = CsiSpan(text.substr(at))) {
+      at += span - 1;
+    } else if (text[at] != '\n' && text[at] != '\r' &&
+               cur_rendered.size() < kMdLineBytes) {
+      cur_rendered += text[at];
     }
-    const unsigned char byte = Byte(value);
-    if (byte >= 0x40 && byte <= 0x7e) escape_state = 0;
-    return;
   }
-  if (value == 0x1b) {
-    escape_state = 1;
-    return;
-  }
-  if (value == '\n' || value == '\r') return;
-  if (cur_rendered.size() < kMdLineBytes) cur_rendered += value;
 }
 
-void MdStream::ForgetRenderedLine() {
-  cur_rendered.clear();
-  escape_state = 0;
-}
+void MdStream::ForgetRenderedLine() { cur_rendered.clear(); }
 
 void MdStream::FlushOut() {
   if (outbuf.empty()) return;
@@ -790,7 +780,8 @@ void MdStream::EndLine() {  // inline styles never span lines
 
 void MdStream::RetroTable() {
   for (size_t i = 0; i < prev_rows; ++i) {
-    Put("\033[A\033[2K");  // up + clear
+    Put(kLineUp);
+    Put(kEraseLine);
   }
   table.push_back(prev_raw);
   table.emplace_back(Marker());

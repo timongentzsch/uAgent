@@ -199,7 +199,7 @@ inline std::string ActivityBar(const ActivityView& view) {
 inline std::string StatusBarLine(const std::string& status) {
   std::string text =
       DisplayTrunc(AsciiGlyphs(TerminalSafe(status)), TerminalWidth(1));
-  return std::string(RST()) + DIM() + text + "\033[K" + RST();
+  return std::string(RST()) + DIM() + text + kEraseRight + RST();
 }
 
 }  // namespace uagent

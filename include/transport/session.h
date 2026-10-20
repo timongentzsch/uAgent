@@ -68,6 +68,7 @@ class FrameBuffer {
  private:
   size_t limit_;
   std::string pending_;
+  size_t scanned_ = 0;  // the part of pending_ known to hold no newline
 };
 // Reads until `receive` declines, the peer closes, `stop_fd` turns readable
 // or the deadline passes. A `stop_fd` of -1 never stops the read.

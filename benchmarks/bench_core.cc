@@ -30,6 +30,7 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/tools/registry.h"
+#include "include/transport/session.h"
 #include "include/ui/display.h"
 #include "include/ui/input_decoder.h"
 #include "include/ui/interactive.h"
@@ -336,6 +337,26 @@ void BenchmarkTerminalPaint(bool styled) {
             << " terminal bytes per token\n";
 }
 
+// A frame of the 1 MiB limit arriving in the reads ReadFrames makes.
+void BenchmarkFrameBuffer() {
+  const std::string frame =
+      JsonDump(json{{"v", session::kProtocol},
+                    {"text", std::string(session::kFrameBytes - 64, 'x')}}) +
+      "\n";
+  constexpr size_t kFrames = 20;
+  Report("frame buffer, 1 MiB", kFrames, Measure(kFrames, [&] {
+           session::FrameBuffer buffer;
+           size_t received = 0;
+           for (size_t at = 0; at < frame.size();
+                at += session::kIoBufferBytes) {
+             buffer.Feed(
+                 std::string_view(frame).substr(at, session::kIoBufferBytes),
+                 [&](const json&) { return ++received > 0; });
+           }
+           return received;
+         }));
+}
+
 }  // namespace
 
 int RunBenchmarks() {
@@ -362,6 +383,7 @@ int RunBenchmarks() {
   BenchmarkAttachedDocument();
   BenchmarkTerminalPaint(false);
   BenchmarkTerminalPaint(true);
+  BenchmarkFrameBuffer();
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {

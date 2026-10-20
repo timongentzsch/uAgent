@@ -19,17 +19,26 @@
 namespace uagent {
 namespace {
 
-// Every SGR `text` wrote, in order: replayed after a reset they restore the
-// styling it left set, so a row drawn on its own keeps the bold or colour an
-// earlier row opened, whatever the codes (38;5;n included).
-std::string ActiveSgr(std::string_view text) {
-  std::string replay;
+// `replay` followed by the SGRs `text` wrote: replayed after a reset they
+// restore the styling it left set, so a row drawn on its own keeps the bold or
+// colour an earlier row opened, whatever the codes (38;5;n included). An SGR
+// sets the same attributes wherever it stands, so only its last occurrence
+// counts, and a reset leaves nothing to restore: the replay stays as long as
+// the distinct styles in use, not as the text.
+std::string ActiveSgr(std::string_view text, std::string replay = {}) {
   for (size_t at = text.find("\033["); at != std::string_view::npos;
        at = text.find("\033[", at + 1)) {
     const size_t end = text.find_first_not_of("0123456789;:", at + 2);
-    if (end != std::string_view::npos && text[end] == 'm') {
-      replay += text.substr(at, end + 1 - at);
+    if (end == std::string_view::npos || text[end] != 'm') continue;
+    const std::string_view sgr = text.substr(at, end + 1 - at);
+    if (sgr == "\033[m" || sgr == "\033[0m") {
+      replay.clear();
+      continue;
     }
+    if (const size_t seen = replay.find(sgr); seen != std::string::npos) {
+      replay.erase(seen, sgr.size());
+    }
+    replay += sgr;
   }
   return replay;
 }
@@ -74,7 +83,7 @@ std::vector<std::string> Rows(std::string_view text, size_t width,
     for (std::string& row :
          WrapLines(std::string(text.substr(from, end - from)), width)) {
       std::string drawn = sgr + StylingOnly(row);
-      sgr = ActiveSgr(drawn);
+      sgr = ActiveSgr(row, std::move(sgr));
       if (drawn.find('\033') != std::string::npos) drawn += RST();
       rows.push_back(std::move(drawn));
       if (raw) raw->push_back(std::move(row));
@@ -94,21 +103,25 @@ void LiveRegion::Commit(std::string text) {
       text.compare(0, tail_.size(), tail_) == 0 && text[tail_.size()] == '\n') {
     adopted_ = drawn_tail_rows_;
     emitted_ = 0;
+    emitted_sgr_.clear();
     text.erase(0, tail_.size() + 1);
     if (text.empty()) return;
   } else if (emitted_ > 0) {
     if (text.compare(0, emitted_, tail_, 0, emitted_) == 0) {
-      text = ActiveSgr(std::string_view(text).substr(0, emitted_)) +
-             text.substr(emitted_);
+      text = emitted_sgr_ + text.substr(emitted_);
     }
     emitted_ = 0;
+    emitted_sgr_.clear();
   }
   if (text.back() != '\n') text += '\n';
   committed_ += text;
 }
 
 void LiveRegion::SetTail(std::string text) {
-  if (text.compare(0, emitted_, tail_, 0, emitted_) != 0) emitted_ = 0;
+  if (text.compare(0, emitted_, tail_, 0, emitted_) != 0) {
+    emitted_ = 0;
+    emitted_sgr_.clear();
+  }
   tail_ = std::move(text);
 }
 
@@ -151,14 +164,14 @@ void LiveRegion::Flush() {
   // repainted where no erase can reach it.
   std::vector<std::string> raw;
   std::vector<std::string> tail =
-      Rows(std::string_view(tail_).substr(emitted_), width,
-           ActiveSgr(std::string_view(tail_).substr(0, emitted_)), &raw);
+      Rows(std::string_view(tail_).substr(emitted_), width, emitted_sgr_, &raw);
   const size_t room = std::max<size_t>(
       1, ScreenRows() - std::min(ScreenRows(), frame.size() + 1));
   const size_t spilled = tail.size() > room ? tail.size() - room : 0;
   for (size_t row = 0; row < spilled; ++row) {
     committed_ += tail[row] + "\n";
     emitted_ += raw[row].size();
+    emitted_sgr_ = ActiveSgr(raw[row], std::move(emitted_sgr_));
   }
   tail.erase(tail.begin(), tail.begin() + static_cast<ptrdiff_t>(spilled));
   const size_t tail_rows = tail.size();

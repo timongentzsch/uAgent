@@ -828,6 +828,38 @@ def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
     assert_true(per_token < 400, per_token)
 
 
+def test_streaming_code_spans_cost_what_plain_text_costs(root, home, *, binary):
+    """Inline code streams for about the bytes plain text does.
+
+    A redrawn row replayed every style the paragraph had used before it, so
+    bytes per token grew with the number of code spans streamed so far.
+    """
+    tokens = [(f"`c{index:03d}` " if index % 3 == 0 else f"w{index:03d} ") for index in range(600)]
+
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": token}, finish=None) for token in tokens] + [event({})],
+            delay=0.005,
+        )
+
+    with Server([streamed]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_REQUEST_TIMEOUT"] = timeout_setting(60)
+        code, output = run_pty(
+            root,
+            env,
+            [(b"go\n", b"w599", b"Ready", None), b"/q\n"],
+            timeout=20,
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    streamed_bytes = output.rfind(b"w599") - output.find(b"c000")
+    per_token = streamed_bytes / len(tokens)
+    print(f"  {per_token:.0f} bytes per token", flush=True)
+    assert_true(per_token < 400, per_token)
+
+
 def test_live_region_repaints_in_one_synchronized_write(root, home, *, binary):
     # Every walk back up the live region, and every erase, is inside one
     # synchronized update: a terminal never shows an erase without its redraw.

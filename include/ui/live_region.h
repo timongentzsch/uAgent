@@ -40,7 +40,8 @@ class LiveRegion {
 
   const InteractiveOutput& output_;
   std::string committed_, tail_, status_, overlay_;
-  size_t emitted_ = 0;  // bytes of the tail already in scrollback
+  size_t emitted_ = 0;       // bytes of the tail already in scrollback
+  std::string emitted_sgr_;  // the styling those bytes left set
   // The tail as last drawn, and its rows at the frame's top; a commit that
   // finishes it adopts those rows in place instead of writing them again.
   std::string drawn_tail_;

@@ -304,6 +304,10 @@
   panel stops instead of discussing each follow-up thread.
 - The raw detail of a tool call whose turn is still running is paged like
   any long text. Before, all of it came in one response.
+- The terminal streams styled text for about the bytes plain text costs. Each
+  repaint of an unfinished paragraph replayed every style it had used so far,
+  so a reply with many inline code spans wrote six times as many bytes per
+  token as plain text, and more the longer the paragraph ran.
 
 ## v1.4.0 - 2026-10-15
 

@@ -110,8 +110,8 @@ on 2026-10-20, with µAgent 1.4.0 built from master, Claude Code 2.1.304 and
 Codex CLI 0.163.0. [The method](benchmarks/README.md#footprint-comparison)
 has the details; reproduce with `python3 benchmarks/compare_agents.py`.
 
-The web host is the same binary: 9.7 MB of resident memory idle, and 42.8 MB
-with two open conversations (the host at 15.4 MB plus a session runtime of
+The web host is the same binary: 9.7 MB of resident memory idle, and 39.0 MB
+with two open conversations (the host at 11.7 MB plus a session runtime of
 about 13.7 MB each). Measured with `benchmarks/web.py` against a mock provider.
 
 Recent efficiency work, measured with `uagent_bench` and the web render-count

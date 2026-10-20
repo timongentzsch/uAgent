@@ -165,11 +165,6 @@ def main():
                 "sample_seconds": round(time.monotonic() - started, 3),
                 "cpu_delta_seconds": round(after["cpu_seconds"] - before["cpu_seconds"], 3),
             }
-            for index in range(64):
-                drafts = root / f"drafts-{index}"
-                drafts.mkdir()
-                client.create(drafts, activate=False)
-            report["receipt_under_catalogue_load"] = contended_latency(client)
             sessions = []
             for index in range(2):
                 project = root / f"project-{index}"
@@ -188,6 +183,12 @@ def main():
             time.sleep(1)
             report["master_with_two_workers"] = process_sample(process.pid)
             report["two_workers"] = [process_sample(pid) for pid in children(process.pid)]
+            # Last, so the memory samples above are not taken after the load.
+            for index in range(64):
+                drafts = root / f"drafts-{index}"
+                drafts.mkdir()
+                client.create(drafts, activate=False)
+            report["receipt_under_catalogue_load"] = contended_latency(client)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({key: value for key, value in report.items() if key != "assets"}, indent=2))
 

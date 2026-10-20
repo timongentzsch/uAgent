@@ -19,7 +19,7 @@ live runs, the cost authority and the other options.
 | --- | --- |
 | `eval.py`, `live_authority.py`, `run_trace.py` | Scenario evaluation, the live-route authority check and the shared run timing |
 | `audit.py`, `session_metrics.py` | Request-size report and a summary of real sessions from their journals |
-| `compare_agents.py` | Footprint of µAgent beside other coding-agent CLIs; writes the README table's data and `docs/images/footprint.svg` |
+| `compare_agents.py` | Footprint of µAgent beside other coding-agent CLIs: a JSON report and, with `--chart`, an SVG chart |
 | `web.py` | Native web host footprint with disposable state and a mock provider |
 | `bench_core.cc` | Source of `uagent_bench`, built with `UAGENT_BUILD_BENCHMARKS=ON` |
 | `scenarios/` | One declarative JSON file per evaluation scenario |

@@ -565,7 +565,7 @@ def chart_svg(tools, report):
     machine = report["_machine"]
     out.append(
         f'<text class="note" x="20" y="{height - 8}">medians, {machine["chip"]}, '
-        f"{machine['date']}; see Footprint</text>"
+        f"{machine['date']}; see benchmarks/README.md</text>"
     )
     out.append("</svg>")
     return "\n".join(out) + "\n"

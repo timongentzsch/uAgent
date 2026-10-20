@@ -242,6 +242,11 @@
   request as well as its latest message. A panel thread's research fetches were
   refused because the reviewer saw only the panel's latest note, not the
   thread's brief.
+- `read_path` and `grep` read what uAgent wrote for the model, such as
+  command output spilled to `~/.uagent/artifacts`, without asking. The
+  result said to read that file, but outside the folder the read needed an
+  approval, which a thread with nobody to ask was refused, while a command
+  could read the same file freely. Writing there still asks.
 - Subagents started in one batch run together. Before, the parent waited for
   each in turn unless the model set `background`, and five researchers took
   16 minutes instead of four. Under a session budget, which every panel thread

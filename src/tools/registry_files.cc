@@ -56,7 +56,16 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     return !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
                        CanonicalAccessPath(ScratchDir(workspace).string()));
   };
-  auto reads_only = [](Tool& tool) {
+  // What uAgent wrote for the model to read, such as output a result spilled
+  // to a file, is read where that result says without asking: a command
+  // reads it freely, so asking only blocks the recovery the result offers.
+  auto reads_only = [workspace](Tool& tool) {
+    tool.needs_approval = [workspace](const json& args) {
+      const std::string path = JsonValue(args, "path", ".");
+      return PathApprovalRequired(path, workspace) &&
+             !PathWithin(CanonicalAccessPath(path),
+                         CanonicalAccessPath(UagentDir(kArtifactsDir)));
+    };
     tool.approval_class = [](const json& args) {
       return PathApprovalClass(JsonValue(args, "path", "."), PathAccess::kRead);
     };

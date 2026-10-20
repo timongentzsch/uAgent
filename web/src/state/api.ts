@@ -30,6 +30,13 @@ export const routes = {
     `/api/sessions/${session}/assets/${id}`,
   attachments: (session: string, name: string) =>
     `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
+  // The conversation's folder, read only: `list`, `read` and `find` answer
+  // JSON, `raw` is the file itself.
+  files: (
+    session: string,
+    mode: "list" | "read" | "raw" | "find",
+    value: string,
+  ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
 };
 
 export const requestId = () =>

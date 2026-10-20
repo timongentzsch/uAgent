@@ -7,7 +7,6 @@ import { useHostContext } from "../../state/host-context.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { MemberAvatar } from "../../shared/member-card.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
-import { usePhone } from "../../shared/layout.ts";
 import "./panel.css";
 
 const DONE_SHOWN = 8;
@@ -90,26 +89,6 @@ export default function Board({
         </section>
       ))}
     </aside>
-  );
-}
-
-// A panel's chat keeps the conversation column; the board sits beside
-// it. On a phone the header's Board button opens it from the right instead.
-// Other conversations render unchanged.
-export function PanelLayout({
-  board,
-  children,
-}: {
-  board: ComponentChildren;
-  children: ComponentChildren;
-}) {
-  const phone = usePhone();
-  if (!board || phone) return <>{children}</>;
-  return (
-    <div class="panel-layout">
-      <div class="panel-chat">{children}</div>
-      {board}
-    </div>
   );
 }
 

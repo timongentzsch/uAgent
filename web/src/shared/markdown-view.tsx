@@ -8,6 +8,7 @@ import { Component, type ComponentType } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
 import { CodeCopy, LoadError, DataText, usePlaceholder } from "./ui.tsx";
+import { useResource } from "./use-resource.ts";
 
 type Renderer = typeof import("./markdown.ts");
 let renderer: Promise<Renderer> | undefined;
@@ -158,6 +159,36 @@ class RenderedBlock extends Component<RenderedBlockProps> {
     }
     return <div dangerouslySetInnerHTML={{ __html: block.html }} />;
   }
+}
+
+// A file's markdown, rendered whole once it is read. Relative images and
+// links resolve in the file's folder, `base`, and `url` serves a path in it.
+export function MarkdownFile({
+  text,
+  base,
+  url,
+}: {
+  text: string;
+  base: string;
+  url: (path: string) => string;
+}) {
+  const { value, error, retry } = useResource(
+    () =>
+      loadRenderer().then((module) =>
+        module.renderMarkdownBlocks(text, 0, { base, url }),
+      ),
+    [text, base],
+  );
+  return (
+    <div class="markdown">
+      {value?.map((block) => (
+        <div key={block.key}>
+          <RenderedBlock block={block} />
+        </div>
+      ))}
+      {error && <LoadError error={error} retry={retry} />}
+    </div>
+  );
 }
 
 type MarkdownProps = {

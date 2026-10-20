@@ -3,19 +3,65 @@ const markdown = new MarkdownIt({ html: false, linkify: false, breaks: false });
 const safeURL = (url: string) =>
   /^(https?:|mailto:)/i.test(url) || /^(?!\/\/)[/#]/.test(url);
 markdown.validateLink = safeURL;
-markdown.renderer.rules.image = (tokens, index) =>
-  markdown.utils.escapeHtml(
-    `[image: ${tokens[index].content || "remote image blocked"}]`,
-  );
-markdown.renderer.rules.link_open = (
-  tokens,
-  index,
-  options,
-  _env,
-  renderer,
-) => {
-  tokens[index].attrSet("rel", "noopener noreferrer");
-  tokens[index].attrSet("target", "_blank");
+
+// A file in the files pane resolves its relative images and links in its
+// own folder: `base` is that folder, `url` what serves a path in it. A
+// reply has neither, so a relative link there stays text.
+interface FileEnv {
+  base?: string;
+  url?: (path: string) => string;
+}
+const relative = (url: string) =>
+  !!url && !/^([a-z][a-z\d+.-]*:|[/#])/i.test(url);
+// The folder-relative path `target` names from `base`, or undefined when it
+// leaves the folder.
+export function resolvePath(base: string, target: string) {
+  const parts = base ? base.split("/") : [];
+  try {
+    for (const part of target
+      .split(/[?#]/)[0]
+      .split("/")
+      .map(decodeURIComponent))
+      if (part === "..") {
+        if (!parts.pop()) return undefined;
+      } else if (part && part !== ".") parts.push(part);
+  } catch {
+    return undefined;
+  }
+  return parts.join("/");
+}
+// What a relative `target` in a file is: its path in the folder and the
+// address that serves it; undefined in a reply or outside the folder.
+function fileTarget(env: unknown, target: string) {
+  const { base = "", url } = (env || {}) as FileEnv;
+  const path = url && relative(target) ? resolvePath(base, target) : undefined;
+  return url && path !== undefined ? { path, url: url(path) } : undefined;
+}
+
+markdown.renderer.rules.image = (tokens, index, _options, env) => {
+  const token = tokens[index];
+  const file = fileTarget(env, String(token.attrGet("src") ?? ""));
+  const escape = markdown.utils.escapeHtml;
+  return file
+    ? `<img src="${escape(file.url)}" alt="${escape(token.content)}">`
+    : escape(`[image: ${token.content || "remote image blocked"}]`);
+};
+markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
+  const token = tokens[index];
+  const href = String(token.attrGet("href") ?? "");
+  const file = fileTarget(env, href);
+  if (file) {
+    // The pane opens it; a new tab gets the file itself.
+    token.attrSet("href", file.url);
+    token.attrSet(
+      "data-file",
+      href.endsWith("/") ? `${file.path}/` : file.path,
+    );
+  } else if (relative(href)) token.attrs = null;
+  else {
+    token.attrSet("rel", "noopener noreferrer");
+    token.attrSet("target", "_blank");
+  }
   return renderer.renderToken(tokens, index, options);
 };
 // A reply sits under the page's h1 and a section's h2: its own headings
@@ -86,9 +132,10 @@ function plugins(text: string) {
 export async function renderMarkdownBlocks(
   text: string,
   line = 0,
+  env: Record<string, unknown> = {},
 ): Promise<MarkdownBlock[]> {
   await Promise.all(plugins(text));
-  return markdownBlocks(text, line);
+  return markdownBlocks(text, line, env);
 }
 
 // `env` carries link references between parts parsed separately (a long
@@ -99,7 +146,16 @@ export function markdownBlocks(
   env: Record<string, unknown> = {},
 ): MarkdownBlock[] {
   void plugins(text);
-  const tokens = markdown.parse(text, env);
+  // Only a file's own links may be relative: in a reply they would point
+  // into this app.
+  if ((env as FileEnv).url)
+    markdown.validateLink = (url) => safeURL(url) || relative(url);
+  let tokens: ReturnType<typeof markdown.parse>;
+  try {
+    tokens = markdown.parse(text, env);
+  } finally {
+    markdown.validateLink = safeURL;
+  }
   const lines = text.split(/\n/);
   const blocks: MarkdownBlock[] = [];
   for (let start = 0; start < tokens.length;) {

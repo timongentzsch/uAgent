@@ -122,3 +122,28 @@ test("headings shift two levels down and keep their source level", async () => {
   assert.equal(await renderMarkdown(text), html);
   assert.equal(concatenate(await renderMarkdownBlocks(text)), html);
 });
+
+test("a file's relative images and links resolve in its folder", async () => {
+  const url = (path) => `/raw?${path}`;
+  const text =
+    "![shot](../images/a%20b.png) [guide](./GUIDE.md) [up](../../x.md) [out](../../../etc)\n\n![remote](https://x/y.png) [site](https://x)";
+  const html = concatenate(
+    await renderMarkdownBlocks(text, 0, { base: "docs/web", url }),
+  );
+  assert.match(html, /<img src="\/raw\?docs\/images\/a b.png" alt="shot">/);
+  assert.match(
+    html,
+    /<a href="\/raw\?docs\/web\/GUIDE.md" data-file="docs\/web\/GUIDE.md">/,
+  );
+  assert.match(html, /<a href="\/raw\?x.md" data-file="x.md">up<\/a>/);
+  // Outside the folder: the words stay, the link goes.
+  assert.match(html, /<a>out<\/a>/);
+  assert.match(html, /\[image: remote\]/);
+  assert.match(
+    html,
+    /<a href="https:\/\/x" rel="noopener noreferrer" target="_blank">/,
+  );
+  // A reply's relative links stay text, as before.
+  const reply = await renderMarkdown("[guide](./GUIDE.md) ![shot](a.png)");
+  assert.doesNotMatch(reply, /<a |<img /);
+});

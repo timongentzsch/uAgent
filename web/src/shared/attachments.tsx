@@ -62,7 +62,10 @@ export function ImageViewerDialog({
           <a href={image.src} target="_blank" rel="noopener">
             Open
           </a>
-          <a href={`${image.src}?download=1`} download={image.name}>
+          <a
+            href={`${image.src}${image.src.includes("?") ? "&" : "?"}download=1`}
+            download={image.name}
+          >
             Download
           </a>
         </>

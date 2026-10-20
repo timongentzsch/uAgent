@@ -47,6 +47,8 @@
   --pane: calc(220rem / 14);
   --sidebar: calc(260rem / 14);
   --pane-s: calc(180rem / 14);
+  /* The narrowest the conversation gets beside a pane someone widened. */
+  --chat-min: calc(360rem / 14);
   --popover: calc(320rem / 14);
   --sheet: calc(560rem / 14);
   --surface-inset: var(--space-4);
@@ -658,8 +660,14 @@ pre code {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: min(30vw, var(--sidebar)) minmax(0, 1fr);
+  grid-template-columns: minmax(0, auto) minmax(var(--chat-min), 1fr);
   overflow: hidden;
+}
+aside.sidebar {
+  position: relative;
+  width: var(--sidebar-width, min(30vw, var(--sidebar)));
+  min-width: var(--pane-s);
+  max-width: 100%;
 }
 .sidebar {
   border-right: 1px solid var(--line);

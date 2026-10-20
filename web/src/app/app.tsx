@@ -40,9 +40,17 @@ import {
   preloadDeferred,
   ErrorBoundary,
 } from "../shared/ui.tsx";
-import { Ellipsis, Globe2, ListTree, Menu, Settings } from "lucide-preact";
+import {
+  Ellipsis,
+  FolderOpen,
+  Globe2,
+  ListTree,
+  Menu,
+  Settings,
+} from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
+import { ResizeHandle } from "../shared/side-pane.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -100,6 +108,7 @@ import {
   statisticsDialog,
   paletteDialog,
   shortcutsDialog,
+  filesPane,
 } from "./dialogs.ts";
 
 // Own scroll restoration from the first paint. history restoration only
@@ -134,6 +143,8 @@ function App() {
   // On a phone a panel's board slides in from the right on demand
   // instead of taking the top of its chat.
   const [boardOpen, setBoardOpen] = useState(false);
+  // The conversation's files: beside the chat, or a sheet on a small screen.
+  const [filesOpen, setFilesOpen] = useState(false);
   const [modal, setModal] = useState<AppModal | null>(null);
   // The command palette (Mod+K) or the shortcuts sheet (?).
   const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
@@ -1187,6 +1198,11 @@ function App() {
                         aria-label="Projects and conversations"
                       >
                         {sidebar}
+                        <ResizeHandle
+                          pane="sidebar"
+                          label="Resize the sidebar"
+                          edge="end"
+                        />
                       </aside>
                     ) : (
                       drawer && (
@@ -1261,6 +1277,17 @@ function App() {
                             {browsing && <StatusLed state="running" />}
                           </IconButton>
                         )}
+                        {/* Held in place while the session loads, inert. */}
+                        {page === "chat" && (session || opening) && (
+                          <IconButton
+                            label="Files"
+                            disabled={!session}
+                            aria-pressed={filesOpen}
+                            onClick={() => setFilesOpen(!filesOpen)}
+                          >
+                            <FolderOpen />
+                          </IconButton>
+                        )}
                         {phone &&
                           page === "chat" &&
                           session?.kind === "panel" &&
@@ -1315,6 +1342,20 @@ function App() {
                               setBoardOpen(false);
                               addMember();
                             }}
+                          />
+                        </Modal>
+                      )}
+                      {filesOpen && compact && page === "chat" && session && (
+                        <Modal
+                          title="Files"
+                          layout="sheet"
+                          className="files-sheet"
+                          close={() => setFilesOpen(false)}
+                        >
+                          <Deferred
+                            key={session.id}
+                            load={filesPane}
+                            session={session}
                           />
                         </Modal>
                       )}
@@ -1377,6 +1418,18 @@ function App() {
                         closeSide={closeSide}
                         actions={chatActions}
                         setInspector={setInspector}
+                        files={
+                          filesOpen &&
+                          !compact &&
+                          session && (
+                            <Deferred
+                              key={session.id}
+                              load={filesPane}
+                              session={session}
+                              close={() => setFilesOpen(false)}
+                            />
+                          )
+                        }
                       />
                     </main>
                   </div>

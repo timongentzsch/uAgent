@@ -581,8 +581,8 @@ test("phone header keeps its buttons in place from loading to ready", async ({
     const booting = head.locator(".text-skeleton");
     await expect(booting).toBeVisible();
     const loading = await buttons();
-    // Menu, browser, settings and the conversation menu, all reserved.
-    expect(loading).toHaveLength(4);
+    // Menu, browser, files, settings and the conversation menu, all reserved.
+    expect(loading).toHaveLength(5);
     release();
     await expect(booting).toHaveCount(0);
     await expect(

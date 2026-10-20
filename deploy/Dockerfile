@@ -14,7 +14,8 @@ COPY . .
 COPY --from=frontend /web/dist /src/web/dist
 RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
     -DUAGENT_WEB=ON -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
-    && cmake --build /tmp/uagent-build --target uagent -j 4
+    && cmake --build /tmp/uagent-build --target uagent -j 4 \
+    && cmake --install /tmp/uagent-build --prefix /opt/uagent --strip
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
@@ -25,7 +26,8 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
     && apt-get install -y --no-install-recommends /tmp/chrome.deb \
     && rm -f /tmp/chrome.deb \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=native /tmp/uagent-build/uagent /usr/local/bin/uagent
+# The install, not the bare binary: the bundled skills sit beside it.
+COPY --from=native /opt/uagent/ /usr/local/
 COPY deploy/chrome-policy.json /etc/opt/chrome/policies/managed/uagent.json
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     --home-dir /data/agent --shell /bin/bash agent \

@@ -225,6 +225,9 @@
 - `browser`: `type` refuses a password field, including one a reveal toggle
   shows as text, and points to `fill_saved` or `request_human`. Before, only
   the tool's description asked the model not to.
+- The Docker image carries the bundled skills (`uagent-config`,
+  `browser-use`, `fusion`, `import`) and the documentation. It copied only
+  the binary, so a session in the appliance had no skills to offer.
 - A message with files sent while a turn runs is taken as guidance for that
   turn, as a message without files already was. Before, it was refused as
   busy.

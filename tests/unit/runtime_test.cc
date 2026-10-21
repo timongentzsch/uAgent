@@ -742,6 +742,16 @@ void TestAgentConfigAllowlist() {
   ConfigManager loaded = ConfigManager::Capture({});
   (void)loaded.Initialize();
   CHECK(SettingText("OPENROUTER_API_KEY") == "test-key");
+  // So may one in the environment, where a $ that names nothing stays.
+  {
+    ScopedEnv providers(
+        "UAGENT_PROVIDERS",
+        R"({"p":{"api_key":"${secret}","note":"$5 a $month"}})");
+    ConfigManager from_environment = ConfigManager::Capture({});
+    (void)from_environment.Initialize();
+    CHECK(SettingText("UAGENT_PROVIDERS") ==
+          R"({"p":{"api_key":"test-key","note":"$5 a $month"}})");
+  }
 
   std::error_code ec;
   fs::remove_all(root, ec);

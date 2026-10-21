@@ -61,6 +61,14 @@ The agent's `browser` tool and the viewer drive the same visible tab.
   while the page stays, so several actions can come from one look. The agent
   can read more of a long page, search it for lines, or ask for a screenshot
   where text does not describe the page.
+- Besides clicking and typing, the agent can right-click, double-click,
+  drag (sliders, sortable lists, drag-and-drop), press key combinations such
+  as Control+A, and go back, forward or reload.
+- For debugging a page, the agent reads what its console logged and the
+  errors it did not catch, and the tab's requests since the page began:
+  method, status or failure, kind, address and size. The console is read
+  with Chrome's Runtime events on for that moment only, since a page can
+  notice them.
 - A tab an action opens becomes the active tab, and the agent can open one of
   its own.
 - A page that looks like a bot check or rate limit is flagged as a suspected
@@ -71,7 +79,9 @@ The agent's `browser` tool and the viewer drive the same visible tab.
   you.
 - The agent uploads only files of the conversation's folder, and what a page
   downloads lands in that folder's `downloads`. A PDF link downloads there
-  too (the managed policy), rather than opening in Chrome's viewer.
+  too (the managed policy), rather than opening in Chrome's viewer. A
+  download that ends after the action that started it is reported with the
+  agent's next browser result.
 
 | You want to | Do this |
 | --- | --- |
@@ -198,7 +208,8 @@ several paired devices.
 - Screenshots draw every password field as dots, including one a site's
   reveal toggle switched to text; autofill still works. Fields in cross-site
   iframes and shadow roots are not masked.
-- `back` refuses history entries that are not HTTP(S), like `open`.
+- `back` and `forward` refuse history entries that are not HTTP(S), like
+  `open`.
 - `open` with `path` shows a self-contained `.html` or `.svg` file the agent
   wrote, so it needs no local server to look at its own page. The file's
   markup is written into a blank page: it has no `file://` origin, cannot

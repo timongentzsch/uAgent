@@ -17,9 +17,13 @@ namespace uagent {
 
 using EnvValues = std::map<std::string, std::string>;
 
+// The value of `key` in `values`, each $NAME or ${NAME} in it replaced by
+// what that name resolves to, and $$ by $. A name defined nowhere resolves
+// to nothing, or with `keep_unknown` stays as written.
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
-                            bool process_fallback = true);
+                            bool process_fallback = true,
+                            bool keep_unknown = false);
 
 std::string ExpandProcessEnv(const std::string& value);
 

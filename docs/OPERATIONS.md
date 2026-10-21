@@ -32,7 +32,10 @@ folder. Each key is a setting as the
 names it, with a value of its type. A value of `$NAME` stands for the entry
 of that name under `variables`. Every setting also has an environment name
 (`UAGENT_MAX_TURN_COST` for `limits.maxTurnCost`), which `/config` accepts
-too.
+too. A value set in the environment may refer to a variable or another
+environment name the same way, inside a JSON value such as
+`UAGENT_PROVIDERS` too; there a `$` that names nothing defined stays as
+written.
 
 Change settings with `/config`, the web's Settings, the agent's `uagent` tool
 (you approve the exact change) or an editor; `settings.schema.json` beside

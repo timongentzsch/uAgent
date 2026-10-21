@@ -8,6 +8,7 @@ from integration_support import (
     assert_true,
     base_env,
     event,
+    fnv1a64,
     function_names,
     run,
     run_dialog,
@@ -16,6 +17,7 @@ from integration_support import (
     tool_results,
     wait_until,
 )
+from session_support import SessionClient, runtime_directory
 
 QUESTIONS = [
     {
@@ -88,6 +90,22 @@ def test_ask_answered_elsewhere_closes_the_picker(root, home, *, binary):
         env = base_env(home, server.url)
 
         def answer(_):
+            # A client that joins now hears the question open throughout what
+            # it is sent: a state frame from before the question, replayed
+            # after the snapshot, made a joining terminal take its answer for
+            # a new message.
+            history = home / ".uagent" / "history"
+            session = max(history.glob("*/*.json"), key=lambda path: path.stat().st_mtime)
+            joined = SessionClient(runtime_directory(home) / f"{fnv1a64(str(session))}.sock")
+            joined.socket.settimeout(0.5)
+            try:
+                while line := joined.stream.readline():
+                    frame = json.loads(line)
+                    if frame.get("kind") == "state":
+                        elsewhere.setdefault("pending", []).append(frame.get("pending"))
+            except TimeoutError:
+                pass
+            joined.close()
             elsewhere["result"] = run_dialog(root, env, "1;2\n/q\n", "-c", binary=binary)
 
         code, output = run_pty(
@@ -99,6 +117,8 @@ def test_ask_answered_elsewhere_closes_the_picker(root, home, *, binary):
         )
         assert_true(code == 0, output[-2000:])
         assert_true(elsewhere["result"].returncode == 0, elsewhere)
+        pending = elsewhere.get("pending")
+        assert_true(pending and all(pending), pending)
         result = tool_results(server.requests[-1][1]["messages"])[0]
         assert_true("Which database?\n→ SQLite" in result, result)
 

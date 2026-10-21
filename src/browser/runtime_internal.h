@@ -11,6 +11,7 @@
 #include <sys/types.h>
 
 #include <string>
+#include <vector>
 
 #include "include/core/json.h"
 
@@ -72,6 +73,10 @@ constexpr const char* kLeasedElsewhere =
 bool Alive(pid_t& pid);
 std::string CdError(const json& value);
 std::string ProfileName(std::string name);
+// A line for what a console event says: a message the page logged, or an
+// error it did not catch, with where it came from.
+void Logged(const std::string& event, const json& params,
+            std::vector<std::string>& lines);
 
 }  // namespace uagent::browser
 

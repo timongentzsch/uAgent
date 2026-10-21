@@ -768,7 +768,9 @@ std::string Agent::RuntimeContextText() const {
   if (std::string memory = MemoryText(); !memory.empty()) {
     content += "\n\n" + memory;
   }
-  return content;
+  // Providers that alternate roles merge this note with the user message
+  // after it; unmarked, that message reads as the last memory entry's tail.
+  return content + "\n[end of harness context]";
 }
 
 namespace {

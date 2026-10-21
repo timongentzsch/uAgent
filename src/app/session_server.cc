@@ -11,11 +11,13 @@
 #include <algorithm>
 #include <atomic>
 #include <csignal>
+#include <cstddef>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -247,6 +249,11 @@ struct Server::State {
   std::deque<std::string> replay;
   size_t replay_bytes = 0;
   bool replay_gap = false;
+  // Where the replay holds a state frame. Only the latest is kept: the
+  // snapshot already says what every state frame said, and an older one
+  // replayed after it would set a joining client back, for a moment, to a
+  // question no longer pending or a turn no longer running.
+  std::optional<size_t> replay_state;
   uint64_t sequence = 0;
   std::vector<Client> clients;
   std::atomic<size_t> client_count{0};
@@ -301,12 +308,20 @@ struct Server::State {
           replay_gap = false;
           replay.clear();
           replay_bytes = 0;
+          replay_state.reset();
         } else if (JsonValue(frame, "kind", "") != "outcome") {
+          if (state && replay_state) {
+            replay_bytes -= replay[*replay_state].size();
+            replay.erase(replay.begin() +
+                         static_cast<std::ptrdiff_t>(*replay_state));
+          }
           replay.push_back(line);
           replay_bytes += line.size();
+          if (state) replay_state = replay.size() - 1;
           if (replay_bytes > kQueueBytes) {
             replay.clear();
             replay_bytes = 0;
+            replay_state.reset();
             replay_gap = true;
             // Refresh at the authoritative channel; no file tailing.
             json refresh = ControlFrame("refresh");

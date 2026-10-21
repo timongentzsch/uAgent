@@ -50,6 +50,22 @@
   starting background work no longer rewrites the prompt cache.
 - A panel's daily spend counts what threads from earlier days spend today,
   and warns when the route reports no cost.
+- The agent's browser reads the page's console (what it logged and the
+  errors it did not catch) and the tab's requests, and can right-click,
+  double-click, drag, press key combinations such as Control+A, go forward
+  and reload. A download that ends after the action that started it is
+  reported with the next browser result instead of going unmentioned.
+- The runtime context (environment, memory index, always-on memories) ends
+  with a closing line. Providers that alternate roles merge it with the user
+  message after it, which then read as the last memory entry's tail, and the
+  model could decline the request as "only memory".
+- A client that joins a running conversation no longer replays older state
+  frames after its snapshot. One of them could say no question was pending
+  while one was, so a terminal joining to answer took the answer for a new
+  message, and the terminal showing the question waited on it.
+- A setting given in the environment resolves `$NAME` references as a saved
+  one does, so `UAGENT_PROVIDERS` can name a key held elsewhere; a `$` that
+  names nothing defined stays as written.
 - `install.sh` says what it found and asks where µAgent runs: in the
   container (recommended where Docker runs), or here, offering on Linux to
   install Chrome, TigerVNC and the Chrome policy for the agent's browser.

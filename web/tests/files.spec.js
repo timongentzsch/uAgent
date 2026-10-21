@@ -18,6 +18,28 @@ async function folder(project) {
   await writeFile(join(project, "blob.bin"), Buffer.from([0, 1, 2, 0, 255]));
 }
 
+// Opening or closing the pane narrows the chat in place: the transcript
+// keeps its element, its scroll and its history, never loading them again.
+test("the files pane does not remount the chat", async ({ page, session }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  const transcript = page.locator(".transcript");
+  await expect(transcript).toBeVisible();
+  await transcript.evaluate((element) => {
+    window.keptTranscript = element;
+  });
+  const same = () =>
+    page.evaluate(
+      () => document.querySelector(".transcript") === window.keptTranscript,
+    );
+  await headerAction(page, "Files");
+  await expect(page.getByRole("region", { name: "Files" })).toBeVisible();
+  expect(await same()).toBe(true);
+  await headerAction(page, "Files");
+  await expect(page.getByRole("region", { name: "Files" })).toHaveCount(0);
+  expect(await same()).toBe(true);
+});
+
 test("files beside the chat: browse, read, search and view", async ({
   page,
   session,

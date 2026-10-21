@@ -1,9 +1,12 @@
-/* The chat keeps at least --chat-min; a pane takes its width, or what is
-   left beside that minimum. */
+/* With a pane the chat keeps at least --chat-min, and the pane takes its
+   width or what is left beside that minimum. */
 .side-layout {
   flex: 1;
   min-height: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.side-layout:has(> .side-pane) {
   grid-template-columns: minmax(var(--chat-min), 1fr) minmax(0, auto);
 }
 .side-chat {

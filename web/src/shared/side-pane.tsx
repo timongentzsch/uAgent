@@ -96,8 +96,9 @@ export function ResizeHandle({
 }
 
 // A conversation with a pane docked beside it (a panel's board, the
-// files): the chat keeps the rest of the row. Without a pane the chat
-// renders unchanged.
+// files): the chat keeps the rest of the row. The chat sits in the same
+// place with or without a pane, so opening one only narrows it: a new
+// parent would remount the transcript and load its history again.
 export function SideLayout({
   pane,
   children,
@@ -105,14 +106,15 @@ export function SideLayout({
   pane?: { name: Pane; label: string; content: ComponentChildren };
   children: ComponentChildren;
 }) {
-  if (!pane) return <>{children}</>;
   return (
     <div class="side-layout">
       <div class="side-chat">{children}</div>
-      <div class="side-pane" data-pane={pane.name}>
-        <ResizeHandle pane={pane.name} label={pane.label} edge="start" />
-        {pane.content}
-      </div>
+      {pane && (
+        <div class="side-pane" data-pane={pane.name}>
+          <ResizeHandle pane={pane.name} label={pane.label} edge="start" />
+          {pane.content}
+        </div>
+      )}
     </div>
   );
 }

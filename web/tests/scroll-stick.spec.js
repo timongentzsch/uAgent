@@ -3,7 +3,12 @@
 // mid-stream is never yanked back down.
 import { test, expect, online } from "./fixtures.js";
 
-async function startLongProbe(page, session, command) {
+async function startProbe(
+  page,
+  session,
+  command,
+  probe = "Long continuity probe",
+) {
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
   await online(page);
@@ -13,7 +18,7 @@ async function startLongProbe(page, session, command) {
     operation: "select",
     model: "mock/model-b",
   });
-  await prompt.fill("Long continuity probe");
+  await prompt.fill(probe);
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
   return prompt;
@@ -27,15 +32,16 @@ const gap = (page) =>
         element.scrollHeight - element.scrollTop - element.clientHeight,
     );
 
-// The bottom gap at every frame from now until the turn ends. Samples
-// taken by the clock are fewer the slower the machine.
-async function gapsUntilIdle(page) {
+// The bottom gap and the content height at every frame from now until the
+// turn ends. Samples taken by the clock are fewer the slower the machine.
+async function framesUntilIdle(page) {
   await page.locator(".transcript").evaluate((element) => {
-    const gaps = (window.gaps = []);
+    const samples = (window.samples = []);
     const frame = () => {
-      gaps.push(
-        element.scrollHeight - element.scrollTop - element.clientHeight,
-      );
+      samples.push({
+        gap: element.scrollHeight - element.scrollTop - element.clientHeight,
+        height: element.scrollHeight,
+      });
       window.gapFrame = requestAnimationFrame(frame);
     };
     frame();
@@ -45,9 +51,11 @@ async function gapsUntilIdle(page) {
   });
   return page.evaluate(() => {
     cancelAnimationFrame(window.gapFrame);
-    return window.gaps;
+    return window.samples;
   });
 }
+const gapsUntilIdle = async (page) =>
+  (await framesUntilIdle(page)).map((frame) => frame.gap);
 
 test("progressive rendering retains text while syntax highlighting loads", async ({
   page,
@@ -61,7 +69,7 @@ test("progressive rendering retains text while syntax highlighting loads", async
     await route.continue();
   });
   try {
-    await startLongProbe(page, session, command);
+    await startProbe(page, session, command);
     const stream = page.locator(".message.response .markdown[data-streaming]");
     await expect
       .poll(async () => (await stream.textContent())?.length || 0)
@@ -90,7 +98,7 @@ test("streaming stays pinned to the end while following", async ({
   command,
 }) => {
   test.setTimeout(120000);
-  await startLongProbe(page, session, command);
+  await startProbe(page, session, command);
   // A frame can land between a state apply and its pre-paint pin, so a
   // single excursion is not detachment: what matters is that the tail
   // recovers to the band and settles at zero when done.
@@ -103,13 +111,30 @@ test("streaming stays pinned to the end while following", async ({
   ).toHaveCount(0);
 });
 
+// A line still being written may not yet decide its block (a table row,
+// a setext underline, a bare list marker). Shown early and then undone,
+// everything above the end would drop for a frame and rise again.
+test("streamed content only grows while pinned", async ({
+  page,
+  session,
+  command,
+}) => {
+  await startProbe(page, session, command, "Structured stream probe");
+  const frames = await framesUntilIdle(page);
+  const shrinks = frames.filter(
+    (frame, index) => index && frame.height < frames[index - 1].height,
+  );
+  expect(shrinks).toEqual([]);
+  expect(frames.at(-1).gap).toBeLessThan(2);
+});
+
 test("scrolled-up reader is never yanked down by streaming", async ({
   page,
   session,
   command,
 }) => {
   test.setTimeout(120000);
-  await startLongProbe(page, session, command);
+  await startProbe(page, session, command);
   // Wait for real overflow (total scrollable height), then move up out
   // of the stick band. Note: the bottom *gap* stays ~0 while pinned, so
   // overflow — not gap — is the precondition.
@@ -151,7 +176,7 @@ test("background completion badges while unfollowed, cleared on jump", async ({
   command,
 }) => {
   test.setTimeout(180000);
-  await startLongProbe(page, session, command);
+  await startProbe(page, session, command);
   // Build scrollable history first, then let it finish while following.
   await expect(page.locator(".composer .status-led.running")).toBeHidden({
     timeout: 60000,
@@ -189,7 +214,7 @@ test("wheeling back down to the end follows again mid-stream", async ({
   command,
 }) => {
   test.setTimeout(120000);
-  await startLongProbe(page, session, command);
+  await startProbe(page, session, command);
   const transcript = page.locator(".transcript");
   await expect
     .poll(
@@ -226,7 +251,7 @@ test("a wheel at the end with no room below follows again", async ({
   command,
 }) => {
   test.setTimeout(120000);
-  await startLongProbe(page, session, command);
+  await startProbe(page, session, command);
   await expect(page.locator(".composer .status-led.running")).toBeHidden({
     timeout: 60000,
   });
@@ -256,7 +281,7 @@ test("a wheel up inside nested output leaves following alone", async ({
   command,
 }) => {
   test.setTimeout(120000);
-  await startLongProbe(page, session, command);
+  await startProbe(page, session, command);
   await expect(page.locator(".composer .status-led.running")).toBeHidden({
     timeout: 60000,
   });

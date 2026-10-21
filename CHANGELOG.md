@@ -16,7 +16,9 @@
 ### Changes
 
 - The agent's Chrome no longer reads as a test browser: pages see no
-  `navigator.webdriver`, WebGL renders in software, and `TZ` reaches Chrome.
+  `navigator.webdriver` and none of the agent's scripts (they run in an
+  isolated world), WebGL renders in software, text is typed key by key,
+  `TZ` and `LANGUAGE` reach Chrome, and the image carries common fonts.
   Google searches and bahn.de bookings that answered "unusual traffic" or
   "resembles a bot" now work. PDF links download instead of opening in
   Chrome's viewer, so the agent can read them.

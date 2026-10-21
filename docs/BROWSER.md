@@ -29,13 +29,16 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
   and `/data/browser` (Chrome profiles). Back up the whole volume to keep
   every login.
 - Chrome and Xvnc stay stopped until the browser is first used.
-- Set `TZ` (for example `TZ=Europe/Berlin`) in `.env.appliance`: pages see
-  that clock instead of the container's UTC.
+- Set `TZ` and `LANGUAGE` (for example `TZ=Europe/Berlin` and
+  `LANGUAGE=de`) in `.env.appliance`: pages see that clock and language
+  instead of the container's UTC and English. Chrome sets a profile's
+  languages when it creates it.
 - Chrome runs as a person's browser: pages do not see
-  `navigator.webdriver`, and WebGL renders in software. Sites that turn
-  away test browsers then serve the agent's searches and bookings; a bot
-  check that still appears is handed to you (`request_human`), never
-  solved by the agent.
+  `navigator.webdriver`, WebGL renders in software, the agent's scripts run
+  in a world of their own that the page cannot see, and text is typed key
+  by key. Sites that turn away test browsers then serve the agent's
+  searches and bookings; a bot check that still appears is handed to you
+  (`request_human`), never solved by the agent.
 
 | Compose variable | Default | Purpose |
 | --- | --- | --- |

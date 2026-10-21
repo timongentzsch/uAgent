@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <initializer_list>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -228,9 +229,12 @@ bool StartService(const std::string& executable, ServiceProcess& process,
       "UAGENT_INTERNAL_RUNTIME_DIR=" + RuntimeDir(),
       "LANG=C.UTF-8",
       "TMPDIR=/tmp"};
-  // Pages read the user's clock, not the container's UTC.
-  if (const char* zone = getenv("TZ"); zone && *zone) {
-    environment.push_back(std::string("TZ=") + zone);
+  // Pages read the user's clock and language, not the container's UTC and
+  // English: Chrome takes its zone from TZ and its languages from LANGUAGE.
+  for (const char* name : {"TZ", "LANGUAGE"}) {
+    if (const char* value = getenv(name); value && *value) {
+      environment.push_back(std::string(name) + "=" + value);
+    }
   }
   std::vector<char*> envp;
   envp.reserve(environment.size() + 1);

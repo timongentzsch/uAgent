@@ -566,6 +566,19 @@ json Runtime::Call(const std::string& method, const json& parameters,
   }
 }
 
+json Runtime::Evaluate(json parameters) {
+  // A page target's id is its main frame's; Chrome keeps one world of a name
+  // per frame, so what a look stored is there for the next call.
+  json world =
+      Call("Page.createIsolatedWorld",
+           {{"frameId", target_}, {"worldName", kWorld}}, page_session_);
+  const json* created = JsonObject(world, "result");
+  if (!created) return world;
+  parameters["contextId"] =
+      JsonValue(*created, "executionContextId", int64_t{0});
+  return Call("Runtime.evaluate", parameters, page_session_);
+}
+
 bool Runtime::SelectPage(std::string& error) {
   for (const json& item : Targets()) {
     if (JsonValue(item, "type", "") == "page") {
@@ -623,10 +636,11 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
     error = enabled;
     return false;
   }
-  if (auto installed =
-          CdError(Call("Page.addScriptToEvaluateOnNewDocument",
-                       {{"source", kSecretScript}, {"runImmediately", true}},
-                       attached_session));
+  if (auto installed = CdError(Call("Page.addScriptToEvaluateOnNewDocument",
+                                    {{"source", kSecretScript},
+                                     {"worldName", kWorld},
+                                     {"runImmediately", true}},
+                                    attached_session));
       !installed.empty()) {
     target_ = previous;
     error = installed;

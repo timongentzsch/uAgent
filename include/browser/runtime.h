@@ -32,6 +32,8 @@ class Runtime {
   void Stop(bool preserve_lease = false);
   json Call(const std::string& method, const json& parameters = json::object(),
             const std::string& session = {});
+  // Runtime.evaluate on the attached page, in our own world (kWorld).
+  json Evaluate(json parameters);
   // Writes a command without waiting for its reply; its id, or -1.
   int64_t Send(const std::string& method, const json& parameters,
                const std::string& session);

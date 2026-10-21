@@ -225,9 +225,8 @@ json Runtime::Probe() {
       }
     }
   }
-  json state = Call("Runtime.evaluate",
-                    {{"expression", kProbeScript}, {"returnByValue", true}},
-                    page_session_);
+  json state =
+      Evaluate({{"expression", kProbeScript}, {"returnByValue", true}});
   const json* response = JsonObject(state, "result");
   const json* remote = response ? JsonObject(*response, "result") : nullptr;
   const json* value = remote ? JsonObject(*remote, "value") : nullptr;
@@ -252,14 +251,12 @@ json Runtime::Probe() {
 }
 
 json Runtime::Read(const json& command) {
-  json page =
-      Call("Runtime.evaluate",
-           {{"expression",
-             PageScript() + "(" +
-                 std::to_string(std::max(JsonValue(command, "offset", 0), 0)) +
-                 "," + JsonDump(JsonValue(command, "find", "")) + ",\"\")"},
-            {"returnByValue", true}},
-           page_session_);
+  json page = Evaluate(
+      {{"expression",
+        PageScript() + "(" +
+            std::to_string(std::max(JsonValue(command, "offset", 0), 0)) + "," +
+            JsonDump(JsonValue(command, "find", "")) + ",\"\")"},
+       {"returnByValue", true}});
   if (auto reason = CdError(page); !reason.empty()) {
     return {{"error", reason}};
   }
@@ -294,8 +291,7 @@ json Runtime::Observe(bool image) {
   std::string picture;
   if (image) {
     // No picture unless the mask is known to be in place.
-    json masked = Call("Runtime.evaluate", {{"expression", kSecretScript}},
-                       page_session_);
+    json masked = Evaluate({{"expression", kSecretScript}});
     const json* ran = JsonObject(masked, "result");
     if (!CdError(masked).empty() || !ran || ran->contains("exceptionDetails")) {
       return {{"error", CdError(masked).empty()
@@ -320,11 +316,9 @@ json Runtime::Observe(bool image) {
     picture = JsonValue(*taken, "data", "");
   }
   observation_ = RandomToken(12);
-  json page = Call(
-      "Runtime.evaluate",
+  json page = Evaluate(
       {{"expression", PageScript() + "(0,\"\"," + JsonDump(observation_) + ")"},
-       {"returnByValue", true}},
-      page_session_);
+       {"returnByValue", true}});
   json details = json::object();
   if (const json* response = JsonObject(page, "result")) {
     if (const json* remote = JsonObject(*response, "result")) {

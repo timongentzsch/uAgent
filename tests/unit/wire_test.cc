@@ -591,6 +591,111 @@ void TestWireStreamHostedSearch() {
         false);
 }
 
+// A tool the provider runs, defined in `hosted_tools`, is sent as written
+// with an agent's own tools, reported while it runs, and kept for replay;
+// its streamed input is never mistaken for a call to run here.
+void TestWireHostedToolDefinitions() {
+  Api api(RuntimeConfig{});
+  api.model = "hosted-test";
+  const json code = {{"type", "code_execution_20250825"},
+                     {"name", "code_execution"}};
+  api.hosted_tools = json::array({code});
+  json messages = json::array({{{"role", "user"}, {"content", "compute"}}});
+  json schemas = json::array({FunctionSchema("read_path")});
+  for (WireApi wire : {WireApi::kResponses, WireApi::kAnthropicMessages,
+                       WireApi::kChatCompletions}) {
+    api.wire_api = wire;
+    json body = api.BuildRequestBody(messages, schemas, "session");
+    REQUIRE(body["tools"].is_array());
+    CHECK(body["tools"].back() == code);
+    // The cached encoding follows a change of definitions, too.
+    CHECK(api.ChatPayload(messages, schemas, "session") == JsonDump(body));
+    api.hosted_tools = json::array();
+    CHECK(api.ChatPayload(messages, schemas, "session") ==
+          JsonDump(api.BuildRequestBody(messages, schemas, "session")));
+    api.hosted_tools = json::array({code});
+    // A request offering no tools of its own (a title) carries none.
+    CHECK(!api.BuildRequestBody(messages, json::array(), "session")
+               .contains("tools"));
+    // One named like an agent's own tool takes its place.
+    api.hosted_tools =
+        json::array({{{"type", "web_fetch_20250910"}, {"name", "read_path"}}});
+    json replaced = api.BuildRequestBody(messages, schemas, "session");
+    CHECK(replaced["tools"].size() == 1);
+    CHECK(replaced["tools"][0] == api.hosted_tools[0]);
+    api.hosted_tools = json::array({code});
+  }
+
+  ChatResult result;
+  std::map<int, ToolCall> calls;
+  WireStreamState state;
+  std::vector<std::string> steps;
+  auto event = [&](const json& value) {
+    WireStreamDelta delta = DecodeWireStreamEvent(
+        WireApi::kAnthropicMessages, JsonDump(value), result, calls, state);
+    if (!delta.hosted_tool) return;
+    json payload = HostedToolJson(*delta.hosted_tool);
+    steps.push_back(payload["tool"].get<std::string>() + " " +
+                    payload["phase"].get<std::string>());
+  };
+  event({{"type", "content_block_start"},
+         {"index", 0},
+         {"content_block",
+          {{"type", "server_tool_use"},
+           {"id", "srvtoolu_1"},
+           {"name", "code_execution"},
+           {"input", json::object()}}}});
+  event({{"type", "content_block_delta"},
+         {"index", 0},
+         {"delta",
+          {{"type", "input_json_delta"}, {"partial_json", "{\"code\":"}}}});
+  event(
+      {{"type", "content_block_delta"},
+       {"index", 0},
+       {"delta",
+        {{"type", "input_json_delta"}, {"partial_json", "\"print(6*7)\"}"}}}});
+  event({{"type", "content_block_stop"}, {"index", 0}});
+  event({{"type", "content_block_start"},
+         {"index", 1},
+         {"content_block",
+          {{"type", "code_execution_tool_result"},
+           {"tool_use_id", "srvtoolu_1"},
+           {"content",
+            {{"type", "code_execution_result"}, {"stdout", "42\n"}}}}}});
+  event({{"type", "content_block_stop"}, {"index", 1}});
+  event({{"type", "message_stop"}});
+  const std::vector<std::string> expected = {"code_execution started",
+                                             "code_execution completed"};
+  CHECK(steps == expected);
+  CollectToolCalls(calls, result);
+  CHECK(result.tool_calls.empty());
+  CHECK(result.nameless_tool_calls == 0);
+  CHECK(result.replay["content"][0]["input"]["code"] == "print(6*7)");
+  // Searches stay out: the answer carries what they found.
+  CHECK(ReplayHoldsHostedTool(result.replay));
+  CHECK(!ReplayHoldsHostedTool(
+      {{"wire_api", "responses"},
+       {"items",
+        json::array({{{"type", "web_search_call"}}, {{"type", "message"}}})}}));
+  CHECK(ReplayHoldsHostedTool(
+      {{"wire_api", "responses"},
+       {"items", json::array({{{"type", "code_interpreter_call"}}})}}));
+
+  ChatResult responses;
+  std::map<int, ToolCall> responses_calls;
+  WireStreamState responses_state;
+  WireStreamDelta added = DecodeWireStreamEvent(
+      WireApi::kResponses,
+      JsonDump(
+          json{{"type", "response.output_item.added"},
+               {"output_index", 0},
+               {"item", {{"type", "code_interpreter_call"}, {"id", "ci_1"}}}}),
+      responses, responses_calls, responses_state);
+  REQUIRE(added.hosted_tool.has_value());
+  CHECK(added.hosted_tool->tool == "code_interpreter");
+  CHECK(added.hosted_tool->phase == HostedToolPhase::kStarted);
+}
+
 // Usage and citation payloads are provider-controlled, and under
 // -fno-exceptions an operator[] chain through a scalar aborts the process.
 // Wrong-typed fields must decode into a sane result instead.
@@ -656,7 +761,8 @@ void TestWireStreamMalformedValues() {
        {"index", 1},
        {"content_block",
         {{"type", "text"}, {"text", ""}, {"citations", "not-an-array"}}}});
-  // A wrong-typed citations field is left alone; a scalar citation is dropped.
+  // A wrong-typed citations field is left alone; a scalar citation is
+  // dropped.
   anthropic_event({{"type", "content_block_delta"},
                    {"index", 1},
                    {"delta",

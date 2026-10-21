@@ -42,7 +42,7 @@ dialog.settings-view {
 }
 /* Beside the pane the list selects rather than drills in: no chevrons. */
 /* The section list is structured by its groups' gaps alone. */
-.settings-nav .group-rows > * + * {
+.settings-nav .group-rows > :not(:first-child) {
   border-top: 0;
 }
 @media (min-width: 601px) {
@@ -86,22 +86,14 @@ dialog.settings-view {
 .setting-field .sheet-control .setting-summary {
   display: block;
 }
-/* A provider's rows sit one step in from the setting they belong to. */
-.providers {
-  border-top: 1px solid var(--line);
+/* A provider's sheet: Remove leads its actions, apart from Cancel and Save.
+   A hosted tool's definition opens in its list as a block of its own. */
+.provider-form .dialog-actions > .destructive {
+  margin-right: auto;
 }
-.provider {
-  border-bottom: 1px solid var(--line);
-  padding-inline-start: var(--space-6);
-}
-.provider >
-/* An address is long: its field takes the room the row has. */
-.provider .row-value {
-  flex: 1;
-}
-.provider .row-value > .text-control:not(.select) {
-  flex: 1;
-  width: auto;
+.provider-tool {
+  display: grid;
+  gap: var(--gap);
 }
 .setting-error {
   color: var(--removed);

@@ -530,6 +530,13 @@ void TestHostedSearchStatusRow() {
   CHECK(CurrentTerminalActivity() == "Searching the web");
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "completed"}});
   CHECK(CurrentTerminalActivity() == "Searching the web");
+  // Any other tool the provider runs is named while it runs.
+  send(EventId::kHostedToolActivity,
+       {{"id", "c"}, {"tool", "code_execution"}, {"phase", "started"}});
+  CHECK(CurrentTerminalActivity() == "Using code_execution");
+  send(EventId::kHostedToolActivity,
+       {{"id", "c"}, {"tool", "code_execution"}, {"phase", "completed"}});
+  CHECK(CurrentTerminalActivity() == "Searching the web");
   send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
   CHECK(CurrentTerminalActivity() == "Thinking · Checking release notes");
   send(EventId::kAnswerDelta);

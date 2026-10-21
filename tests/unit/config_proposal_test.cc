@@ -234,6 +234,21 @@ void TestConfigProposalAndCommit() {
   const json kept = json::parse(HeldSettings("").at("UAGENT_PROVIDERS"));
   CHECK(kept["old"]["api_key"] == "existing-provider-secret");
   CHECK(kept["old"]["base_url"] == "https://new.example/v1");
+  // Renamed on the screen, a provider keeps its hidden key; the note naming
+  // the old name is not stored.
+  ConfigProposal renamed = PrepareConfigProposal(
+      ConfigProposalScope::kUser,
+      {{"UAGENT_PROVIDERS",
+        R"({"lab":{"base_url":"https://new.example/v1",)"
+        R"("api_key":"<redacted>","renamed_from":"old"}})",
+        false}},
+      manager, /*direct_user=*/true);
+  CHECK(renamed.ok);
+  CHECK(CommitConfigProposal(renamed, error));
+  const json moved = json::parse(HeldSettings("").at("UAGENT_PROVIDERS"));
+  CHECK(moved["lab"]["api_key"] == "existing-provider-secret");
+  CHECK(!moved["lab"].contains("renamed_from"));
+  CHECK(!moved.contains("old"));
   ConfigProposal keyless = PrepareConfigProposal(
       ConfigProposalScope::kUser,
       {{"UAGENT_PROVIDERS",

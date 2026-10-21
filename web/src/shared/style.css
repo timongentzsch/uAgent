@@ -1651,6 +1651,19 @@ dialog > header .icon-button {
 .group {
   margin: 0 0 var(--space-12);
 }
+/* A caption with an action for the whole group, which ends where the
+   rows' values do. */
+.group-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin: 0 0 var(--space-3);
+  padding-inline-end: var(--inset-x);
+}
+.group-caption > .section-title {
+  margin: 0;
+}
 /* Quiet: rows sit on the surface itself, separated by hairlines, with no
    card around them; only hover and the current item are filled. */
 /* One column as wide as the group: a row's long value is cut short there
@@ -1660,7 +1673,8 @@ dialog > header .icon-button {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
-.group-rows > * + * {
+/* More specific than a row's own `border: 0` below, so the line shows. */
+.group-rows > :not(:first-child) {
   border-top: 1px solid var(--line);
 }
 @media (hover: hover) and (pointer: fine) {

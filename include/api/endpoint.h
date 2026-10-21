@@ -27,6 +27,9 @@ struct Endpoint {
   // What the configuration declares of the models there; the catalogue's are
   // merged into the capabilities when a route is applied.
   json model_features = nullptr;
+  // Tools the endpoint runs itself, defined as its API takes them (the
+  // objects of `hosted_tools`); an agent's requests there carry them.
+  json hosted_tools = json::array();
 
   std::string Option(const char* key) const {
     return JsonValue(options, key, "");

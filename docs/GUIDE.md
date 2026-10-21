@@ -109,7 +109,7 @@ editable in the web's Settings):
 | `context` | The context window, where the endpoint does not report one |
 | `options` | Endpoint options, such as OpenRouter's upstream `provider` and document engine `pdf_engine` (`cloudflare-ai` by default) |
 | `supports` | What an endpoint of OpenRouter's dialect does, from `hosted_search`, `search_plugin`, `provider_routing`, `session_passthrough`, `raw_vendor_ids`, `model_variants`, `reasoning_object`, `reasoning_replay_text`, `prompt_cache_control`, `pdf_parser`, `max_completion_tokens`, `search_sources`, `reasoning_summary`, `inline_usage` and `decisions` |
-| `hosted_tools` | `["web_search"]` declares `hosted_search` for a route that runs its own search |
+| `hosted_tools` | Tools the endpoint runs itself. `"web_search"` declares `hosted_search`, in place of uAgent's own search; an object is a tool as the endpoint's API documents it, such as `{"type": "code_execution_20250825", "name": "code_execution"}`, sent as written with the agent's requests there, in place of the agent's own tool of its `name`, and replayed with its results. A model's own list replaces the provider's |
 
 An endpoint with an OpenRouter or OpenAI address is recognized by it. A
 provider named `openrouter` needs no `base_url` or `api_key` (the key is

@@ -22,6 +22,14 @@
   Google searches and bahn.de bookings that answered "unusual traffic" or
   "resembles a bot" now work. PDF links download instead of opening in
   Chrome's viewer, so the agent can read them.
+- Settings lists each named provider on one line and edits it in a sheet:
+  its name (a rename keeps a hidden key), address, key, protocol and hosted
+  tools. A hosted tool is defined there as the endpoint's API documents it
+  and saved in `hosted_tools`; uAgent sends it with the agent's requests to
+  that provider, shows "Using <tool>" while it runs and replays its call and
+  result on later turns. Lists in Settings have their dividers back.
+- A tool the provider runs no longer turns its streamed input into a
+  nameless call on Anthropic Messages, which retried the step.
 - Statistics read the full usage everywhere: the web turn footer counts
   cached and cache-written input, `/cost` shows cache writes and per-route
   hit rates that agree with the total, and the status row's "in" is the

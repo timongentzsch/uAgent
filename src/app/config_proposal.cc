@@ -159,19 +159,20 @@ std::string SanitizeCompositeValue(const std::string& value) {
 }
 
 // A providers value a person edited, with each key they left hidden put back
-// from what is held. Empty with `error` when a hidden key has nothing behind
-// it.
+// from what is held: under the provider's name, or the name it had when the
+// screen renamed it (`renamed_from`, which is not stored). Empty with `error`
+// when a hidden key has nothing behind it.
 static std::string KeepHiddenKeys(const std::string& value,
                                   const std::string& held, std::string& error) {
   json providers = json::parse(value, nullptr, false);
   const json before = json::parse(held, nullptr, false);
   if (!providers.is_object()) return value;
   for (auto& [name, provider] : providers.items()) {
-    if (!provider.is_object() ||
-        JsonValue(provider, "api_key", "") != kRedactedValue) {
-      continue;
-    }
-    const json* kept = JsonObject(before, name.c_str());
+    if (!provider.is_object()) continue;
+    const std::string was = JsonValue(provider, "renamed_from", name);
+    provider.erase("renamed_from");
+    if (JsonValue(provider, "api_key", "") != kRedactedValue) continue;
+    const json* kept = JsonObject(before, was.c_str());
     if (!kept || !kept->contains("api_key")) {
       error = "enter the key for provider " + name;
       return "";

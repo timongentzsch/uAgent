@@ -31,11 +31,16 @@ struct WireRequest {
   bool native_web_search = false;
   bool function_web_search = true;
   bool include_web_search_sources = false;
+  // Tools the endpoint runs itself, as written in `hosted_tools`.
+  json hosted_tools = json::array();
   bool reasoning_summary = false;
   bool adaptive_thinking = false;
 };
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);
+// Whether a response's replay holds the call or result of a tool the
+// provider ran other than its web search, whose findings the answer carries.
+bool ReplayHoldsHostedTool(const json& replay);
 json EncodeWireRequest(WireApi wire_api, const WireRequest& request);
 
 // Shares the wire encoders above, retaining only unchanged per-message
@@ -72,7 +77,8 @@ enum class HostedToolPhase : uint8_t {
 // routing a provider's own search through the tool loop would make it look
 // like a round this agent still owes a result for.
 struct HostedToolDelta {
-  HostedTool tool = HostedTool::kWebSearch;
+  // The provider's name for it: web_search, code_execution, ...
+  std::string tool = "web_search";
   HostedToolPhase phase = HostedToolPhase::kNone;
   std::string id;
   int64_t source_count = -1;  // negative when the provider did not say
@@ -122,6 +128,8 @@ struct ResponsesStreamState {
 
 struct AnthropicBlockState {
   json block = json::object();
+  // A provider-run tool's input as it streams; it is not a call to run here.
+  std::string input;
 };
 
 struct AnthropicStreamState {

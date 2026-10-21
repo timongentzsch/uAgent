@@ -211,18 +211,28 @@ export function SectionTitle({ children }: { children: ComponentChildren }) {
 }
 
 // Rows on one inset card, with an optional caption and a help line below.
+// `action` acts on the whole group (Add) and ends its caption.
 export function Group({
   title,
+  action,
   footer,
   children,
 }: {
   title?: string;
+  action?: ComponentChildren;
   footer?: ComponentChildren;
   children: ComponentChildren;
 }) {
   return (
     <section class="group" aria-label={title}>
-      {title && <SectionTitle>{title}</SectionTitle>}
+      {action ? (
+        <div class="group-caption">
+          <SectionTitle>{title}</SectionTitle>
+          {action}
+        </div>
+      ) : (
+        title && <SectionTitle>{title}</SectionTitle>
+      )}
       <div class="group-rows">{children}</div>
       {footer && <p class="group-footer">{footer}</p>}
     </section>

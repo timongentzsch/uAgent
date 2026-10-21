@@ -224,8 +224,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
     if (response.content.empty()) message["content"] = nullptr;
   }
   // Preserve the replay fields the active route actually emitted while the
-  // turn continues; completed prose does not burden later turns.
-  if (!calls.empty() || response.stop_cause == ResponseStopCause::kPause) {
+  // turn continues; completed prose does not burden later turns, unless it
+  // holds what a tool the provider ran did, which later turns build on.
+  if (!calls.empty() || response.stop_cause == ResponseStopCause::kPause ||
+      ReplayHoldsHostedTool(response.replay)) {
     api_.PreserveAssistantReasoning(message, response);
   }
   conversation_.Push(std::move(message), MessageKind::kAssistant);

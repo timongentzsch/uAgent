@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { plural } from "../../shared/quantities.ts";
-import type { Session } from "../../shared/types.ts";
+import type { ConfigSetting, Session } from "../../shared/types.ts";
 import {
   Button,
   ConfirmModal,
@@ -10,7 +10,7 @@ import {
   Row,
 } from "../../shared/ui.tsx";
 import { SettingRowsLoading } from "./loading.tsx";
-import { note, type SavedScope } from "./config/facts.ts";
+import { itemized, note, type SavedScope } from "./config/facts.ts";
 import { RestartNotice } from "./config/restart-notice.tsx";
 import { SettingField } from "./config/setting-field.tsx";
 import { useConfiguration } from "./config/use-configuration.ts";
@@ -133,38 +133,42 @@ export default function Configuration({
       {!asFile &&
         config.categories.map(({ id, label }) => {
           const own = listed.filter((setting) => setting.category === id);
-          return (
-            own.length > 0 && (
-              <Group key={id} title={label}>
-                {own.map((setting) => (
-                  <SettingField
-                    key={setting.name}
-                    setting={setting}
-                    scope={scope}
-                    folder={folder}
-                    find={find}
-                    note={note(
-                      setting,
-                      scope,
-                      find,
-                      config.restart.includes(setting.name),
-                    )}
-                    error={
-                      config.failed?.key === setting.name
-                        ? String(
-                            (config.failed.error as Error)?.message ||
-                              config.failed.error,
-                          )
-                        : undefined
-                    }
-                    disabled={!online}
-                    online={online}
-                    save={config.save}
-                  />
-                ))}
-              </Group>
-            )
+          const field = (setting: ConfigSetting) => (
+            <SettingField
+              key={setting.name}
+              setting={setting}
+              scope={scope}
+              folder={folder}
+              find={find}
+              note={note(
+                setting,
+                scope,
+                find,
+                config.restart.includes(setting.name),
+              )}
+              error={
+                config.failed?.key === setting.name
+                  ? String(
+                      (config.failed.error as Error)?.message ||
+                        config.failed.error,
+                    )
+                  : undefined
+              }
+              disabled={!online}
+              online={online}
+              save={config.save}
+            />
           );
+          // A list follows its group as a group of its own.
+          const rows = own.filter((setting) => !itemized(setting));
+          return [
+            rows.length > 0 && (
+              <Group key={id} title={label}>
+                {rows.map(field)}
+              </Group>
+            ),
+            ...own.filter(itemized).map(field),
+          ];
         })}
       {!asFile && needle && !listed.length && (
         <p class="group-footer">No setting matches.</p>

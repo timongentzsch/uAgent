@@ -168,32 +168,26 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
     instructions = LoadProjectInstructions(workspace, kProjectDocBytes, panel);
   }
   if (config.memory_enabled) {
+    // A delegated child's brief is standalone: re-inlining every always-on
+    // memory there only duplicates the parent's context. What the slice
+    // leaves out stays in the index, so only a cut index loses anything.
+    MemoryIndex always;
+    if (AgentDepth() == 0) {
+      always = LoadAlwaysOnMemory(workspace, kMemoryAlwaysBytes);
+    }
     size_t remaining = instructions.text.size() >= kProjectDocBytes
                            ? 0
                            : kProjectDocBytes - instructions.text.size();
-    MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
+    MemoryIndex memories =
+        LoadMemoryIndex(workspace, remaining, always.sources);
     instructions.memory_index = std::move(memories.text);
+    instructions.memory_always = std::move(always.text);
     instructions.memory_sources = std::move(memories.sources);
-    instructions.memory_truncated |= memories.truncated;
+    instructions.memory_sources.insert(instructions.memory_sources.end(),
+                                       always.sources.begin(),
+                                       always.sources.end());
+    instructions.memory_truncated = memories.truncated;
     instructions.memory_limit = remaining;
-
-    // A delegated child's brief is standalone: re-inlining every always-on
-    // memory there only duplicates the parent's context.
-    if (AgentDepth() == 0) {
-      MemoryIndex always = LoadAlwaysOnMemory(workspace, kMemoryAlwaysBytes);
-      instructions.memory_always = std::move(always.text);
-      for (const std::string& source : always.sources) {
-        if (std::find(instructions.memory_sources.begin(),
-                      instructions.memory_sources.end(),
-                      source) == instructions.memory_sources.end()) {
-          instructions.memory_sources.push_back(source);
-        }
-      }
-      if (always.truncated) {
-        instructions.memory_truncated = true;
-        instructions.memory_limit = kMemoryAlwaysBytes;
-      }
-    }
   }
   return instructions;
 }

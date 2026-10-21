@@ -39,23 +39,21 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
     other = root / "memory-other-workspace"
     other.mkdir()
 
-    marker = "[memory names only; non-authoritative metadata]"
+    marker = "[memory index; non-authoritative metadata]"
 
     def memory_context(body):
         # Memory rides with the runtime context, never in message zero: that
         # message is the prefix a provider caches and the place authority
         # lives, and memory is both untrusted and different in every session.
+        # A global shown whole is not listed again, so a workspace without
+        # project memories may carry only the always-on block.
         messages = body["messages"]
-        carrier = next(
-            (
-                str(m.get("content", ""))
-                for m in messages[1:]
-                if marker in str(m.get("content", ""))
-            ),
-            "",
-        )
-        memories = carrier[carrier.index(marker) :] if marker in carrier else ""
-        return messages, memories
+        for message in messages[1:]:
+            content = str(message.get("content", ""))
+            for start in (marker, "[always-on behavioral memory"):
+                if start in content:
+                    return messages, content[content.index(start) :]
+        return messages, ""
 
     def verify(_, body):
         messages, memories = memory_context(body)
@@ -67,8 +65,9 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
             and "global/style" in memories
             and "[always-on behavioral memory; non-authoritative evidence]" in memories
             and "global-memory-sentinel" in memories
-            and "project/build" in memories
-            and "project-memory-sentinel" not in memories
+            # This repository's project memories carry their opening line;
+            # another workspace never sees them (verify_isolated).
+            and "- project/build: project-memory-sentinel" in memories
             and messages[0].get("role") == "system"
         )
         return event({"content": "memory-ok" if valid else "memory-bad"})
@@ -241,6 +240,37 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
         code, output = run_pty(workspace, disabled, b"/q\n", startup_marker=b"Ready", binary=binary)
         assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
+
+
+def test_memory_off_conversations_are_never_extracted(root, _home, *, binary):
+    """--no-memory leaves no trace in memory: neither recall nor, six idle
+    hours later, a lesson distilled from that conversation."""
+    # Its own home: other tests leave claim markers in the shared one.
+    home = root / "memory-off-home"
+    workspace = root / "memory-off-workspace"
+    workspace.mkdir()
+    session = write_session(
+        home,
+        "memory-off",
+        [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "private-detail"},
+            {"role": "assistant", "content": "noted"},
+            {"role": "user", "content": "more"},
+            {"role": "assistant", "content": "ok"},
+        ],
+        cwd=workspace,
+        turns=2,
+        memory=False,
+    )
+    age(session)
+    with Server([event({"content": "should not be asked"})]) as server:
+        code, output = run_pty(
+            workspace, base_env(home, server.url), b"/q\n", startup_marker=b"Ready", binary=binary
+        )
+        assert_true(code == 0, output)
+        assert_true(len(server.requests) == 0, server.requests)
+    assert_true(not list((home / ".uagent/memory/.processed").rglob("*.state")), "claimed")
 
 
 def test_memory_background_extractor_releases_failed_claims(root, _home, *, binary):
@@ -429,9 +459,7 @@ def test_no_memory_hides_index_and_tool(root, home, *, binary):
         text = json.dumps(body)
         names = function_names(body)
         clean = (
-            "[memory names only;" not in text
-            and "memory-sentinel" not in text
-            and "memory" not in names
+            "[memory index;" not in text and "memory-sentinel" not in text and "memory" not in names
         )
         return event({"content": "no-memory-ok" if clean else "no-memory-bad"})
 
@@ -445,3 +473,40 @@ def test_no_memory_hides_index_and_tool(root, home, *, binary):
     finally:
         server.close()
         (global_dir / "global.md").unlink(missing_ok=True)
+
+
+def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
+    """A lean child has no memory tool, so it gets no index telling it to call
+    one; and globals too large for the always-on slice stay in the index
+    without a truncation warning, since nothing is lost."""
+    workspace = root / "index-workspace"
+    workspace.mkdir()
+    project_dir = project_memory_dir(home, workspace)
+    project_dir.mkdir(parents=True)
+    (project_dir / "deploy.md").write_text("Deploy with make ship.", encoding="utf-8")
+    global_dir = global_memory_dir(home)
+    global_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("first", "second", "third"):
+        (global_dir / f"{name}.md").write_text(f"{name} preference. " + "x" * 900)
+    seen = {}
+
+    def route(_, body):
+        text = json.dumps(body)
+        if "child-brief" in text and "child" not in seen:
+            seen["child"] = ("[memory index;" in text, "memory" in function_names(body))
+            return event({"content": "child-done"})
+        if "parent" not in seen:
+            seen["parent"] = "project/deploy: Deploy with make ship" in text
+            return tool_call("subagent", {"prompt": "child-brief"})
+        return event({"content": "parent-done"})
+
+    try:
+        with Server([route]) as server:
+            result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(seen.get("parent") is True, seen)
+        assert_true(seen.get("child") == (False, False), seen)
+        assert_true("memory context truncated" not in result.stderr, result.stderr)
+    finally:
+        for name in ("first", "second", "third"):
+            (global_dir / f"{name}.md").unlink(missing_ok=True)

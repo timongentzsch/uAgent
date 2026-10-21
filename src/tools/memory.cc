@@ -199,23 +199,34 @@ ToolResult SearchMemoryText(const std::string& query,
                                "no memory matches: " + TerminalSafe(query));
 }
 
+bool Writable(const MemoryEntry& memory) {
+  return memory.key.starts_with("global/") ||
+         memory.key.starts_with("project/");
+}
+
 ToolResult ReadMemoryFile(const MemoryEntry& memory) {
-  bool writable =
-      memory.key.starts_with("global/") || memory.key.starts_with("project/");
+  const bool writable = Writable(memory);
   std::ifstream input(memory.path, std::ios::binary);
   if (!input) {
     return ToolFailure(ToolErrorCode::kNotFound, "no such memory");
   }
   std::string body;
   bool truncated = ReadBounded(input, kMemoryBytes, body);
-  if (truncated && writable) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "saved memory exceeds configured limit");
-  }
   body = RedactMemorySecrets(std::move(body));
-  if (truncated) body += "\n[external memory truncated; use search to narrow]";
-  return ToolSuccess("[memory " + memory.key + "; non-authoritative evidence" +
-                     (writable ? "" : "; read-only") + "]\n" + body);
+  // A file edited by hand can outgrow the limit; it is still read, in part.
+  if (truncated) {
+    body += writable ? "\n[memory truncated; set it again within the limit]"
+                     : "\n[external memory truncated; use search to narrow]";
+  }
+  // When it was last saved, so the model can weigh a fact that may be stale.
+  const int64_t saved = SnapshotFile(memory.path).modified_seconds;
+  return ToolSuccess(
+      "[memory " + memory.key +
+      (saved > 0
+           ? "; saved " + LocalTime(static_cast<std::time_t>(saved), "%Y-%m-%d")
+           : "") +
+      "; non-authoritative evidence" + (writable ? "" : "; read-only") + "]\n" +
+      body);
 }
 
 ToolResult AccessMemory(const std::string& name, const std::string& scope,
@@ -241,7 +252,8 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   }
   if (forget) {
     std::string previous, error;
-    if (!ReadRegularFile(path.string(), kMemoryBytes, previous, error)) {
+    if (!ReadRegularFile(path.string(), kMemoryBytes, previous, error,
+                         /*prefix=*/true)) {
       return ToolFailure(ToolErrorCode::kNotFound, error);
     }
     std::error_code code;
@@ -295,9 +307,11 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     std::string project = path.parent_path().filename().string();
     MakePrivateDir(projects, project.c_str());
   }
+  // A prefix one byte past the limit: enough for the preview and to tell an
+  // oversized hand-edited file from the content replacing it.
   std::string previous, read_error;
-  if (existed &&
-      !ReadRegularFile(path.string(), kMemoryBytes, previous, read_error)) {
+  if (existed && !ReadRegularFile(path.string(), kMemoryBytes + 1, previous,
+                                  read_error, /*prefix=*/true)) {
     return ToolFailure(ToolErrorCode::kInternal, read_error);
   }
   std::string action = !existed               ? "created"
@@ -563,9 +577,11 @@ std::vector<MemoryEntry> ListMemories() {
   return ListMemories(*cwd);
 }
 
+// Everything on disk: the 32-per-scope limit governs writes, and the agent
+// sees the same store as the Library.
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit) {
-  if (limit == 0) limit = kMaxMemories;
+  if (limit == 0) limit = kMaxCatalogueEntries;
   namespace fs = std::filesystem;
   std::vector<MemoryEntry> entries;
   RepositoryPaths repo = Repository(cwd);
@@ -587,13 +603,11 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
   return entries;
 }
 
-// One line per memory, and for a global one, enough of it to judge whether it
-// is worth fetching: a bare key says something exists and not what.
-//
-// Global scope only. A global body is already eligible for every request
-// through the always-on slice, so an opening clause discloses nothing new,
-// while project-scoped bodies are deliberately never injected -- a hook there
-// would put every workspace's memories into every prompt.
+// One line per memory, and for ours, enough of it to judge whether it is
+// worth fetching: a bare key says something exists and not what, and live a
+// model missed a project memory whose key did not share the question's words.
+// The index lists only this repository's project memories, so their hooks
+// cost at most one line each.
 constexpr size_t kMemoryHookChars = 96;
 
 std::string MemoryHook(const std::filesystem::path& path) {
@@ -615,14 +629,20 @@ std::string MemoryHook(const std::filesystem::path& path) {
                    kMemoryHookChars);
 }
 
-MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
-                            size_t max_bytes) {
+MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
+                            const std::vector<std::string>& inlined) {
+  // Ours first: a large borrowed store must not spend the budget before them.
+  std::vector<MemoryEntry> entries = ListMemories(cwd);
+  std::stable_partition(entries.begin(), entries.end(), Writable);
   MemoryIndex index;
   size_t used = 0;
-  for (const MemoryEntry& memory : ListMemories(cwd)) {
-    std::string hook = memory.key.starts_with("global/")
-                           ? MemoryHook(memory.path)
-                           : std::string();
+  for (const MemoryEntry& memory : entries) {
+    // Shown whole in the always-on slice already.
+    if (std::find(inlined.begin(), inlined.end(), memory.path) !=
+        inlined.end()) {
+      continue;
+    }
+    std::string hook = Writable(memory) ? MemoryHook(memory.path) : "";
     std::string line =
         "- " + memory.key + (hook.empty() ? "" : ": " + hook) + "\n";
     std::optional<size_t> total = CheckedAdd(used, line.size());

@@ -39,10 +39,10 @@ earlier input and can cost cache reuse:
   its per-turn cap) and effort changes;
 - forks, which get a new session identity (resumed sessions keep theirs).
 
-A new day, a changed approval mode or a memory write does not: the runtime
-note that carries them is appended as a new message and the old one stays in
-place. Instruction files are read once at start, so editing one costs nothing
-until the session restarts.
+A new day or a changed approval mode does not: the runtime note that carries
+them is appended as a new message and the old one stays in place. Instruction
+files and memory are read once at start, so editing one, or saving a memory,
+costs nothing until a new or restarted session.
 
 µAgent sends no keepalive requests to hold a cache warm, also not between
 `fusion` skill handoffs: they cost a model call and cannot guarantee a hit.

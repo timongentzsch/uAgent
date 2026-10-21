@@ -21,13 +21,15 @@ Text after the key is the content; `@FILE` reads it from a file.
 
 ## Library
 
-A memory is a short Markdown note of at most 2 KiB; each scope holds up to
-32. Global memories are read into every top-level session, smallest first,
-while they fit in 2 KiB together. Of the rest the agent sees only the names
-and opens one with its `memory` tool when the topic fits. It writes a memory
-when you ask, and a background extractor adds lessons from finished sessions
-unless `UAGENT_MEMORY_GENERATE=0`. `UAGENT_MEMORY=0` or `--no-memory` turns
-memory off.
+A memory is a short Markdown note of at most 2 KiB; a scope takes up to 32
+new ones, and files you put there yourself are all read. Global memories are
+read into every top-level session, smallest first, while they fit in 2 KiB
+together. Every other memory is listed with its key, its first sentence and,
+when opened, the date it was saved; the agent opens one with its `memory`
+tool when the topic fits. It writes a memory when you ask, and a background
+extractor adds lessons from finished sessions unless
+`UAGENT_MEMORY_GENERATE=0`. `UAGENT_MEMORY=0` or `--no-memory` turns memory
+off, and a conversation run with it off is never extracted from.
 
 A skill is a folder with a `SKILL.md`; see
 [Bundled skills](../skills/README.md) for the format and where skills are

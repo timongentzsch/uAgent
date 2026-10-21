@@ -86,4 +86,47 @@ void TestMemoryAlwaysOnSelection() {
   fs::remove_all(root, ec);
 }
 
+// The agent and the Library read one store. The 32-per-scope limit governs
+// writes only: live, the model saw 32 of 37 hand-placed files, and a memory
+// edited past 2 KiB was listed but could not be read or deleted.
+void TestMemoryOneView() {
+  namespace fs = std::filesystem;
+  const char* prior_home = getenv("HOME");
+  const std::string saved_home = prior_home ? prior_home : "";
+  fs::path root = fs::temp_directory_path() / "uagent-memory-one-view";
+  std::error_code ec;
+  fs::remove_all(root, ec);
+  fs::path globals = root / ".uagent" / "memory" / "global";
+  fs::create_directories(globals, ec);
+  setenv("HOME", root.c_str(), 1);
+
+  for (int i = 0; i < 36; ++i) WriteGlobal(globals, "m" + std::to_string(i), 8);
+  WriteGlobal(globals, "zz-oversized", 2600);
+  size_t listed = 0;
+  for (const MemoryEntry& memory : ListMemories(root)) {
+    listed += memory.key.starts_with("global/");
+  }
+  CHECK(listed == 37);
+  CHECK(ToolMemoryAction("list", "", std::nullopt)
+            .output.find("global/zz-oversized") != std::string::npos);
+  CHECK(ToolMemoryAction("set", "global/one-more", std::string("x")).error ==
+        ToolErrorCode::kLimitExceeded);
+
+  ToolResult read =
+      ToolMemoryAction("get", "global/zz-oversized", std::nullopt);
+  CHECK(read.Ok());
+  CHECK(read.output.find("[memory truncated; set it again within the limit]") !=
+        std::string::npos);
+  CHECK(ToolMemoryAction("set", "global/zz-oversized", std::string("short"))
+            .Ok());
+  CHECK(ToolMemoryAction("forget", "global/zz-oversized", std::nullopt).Ok());
+
+  if (prior_home) {
+    setenv("HOME", saved_home.c_str(), 1);
+  } else {
+    unsetenv("HOME");
+  }
+  fs::remove_all(root, ec);
+}
+
 }  // namespace uagent

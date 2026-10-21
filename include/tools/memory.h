@@ -27,7 +27,10 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit = 0);
 // Where Claude Code keeps the memories of the project `cwd` belongs to.
 std::filesystem::path ClaudeMemoryPath(const std::filesystem::path& cwd);
-MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes);
+// One line per memory within `max_bytes`, leaving out the files `inlined`
+// already shows whole.
+MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
+                            const std::vector<std::string>& inlined = {});
 // Behavioral always-on slice: full content of global-scope memories, capped.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes);

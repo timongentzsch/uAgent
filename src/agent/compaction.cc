@@ -280,6 +280,8 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
     }
   }
   conversation_.Push(std::move(summary), MessageKind::kInternal);
+  // The next turn request measures the new history afresh.
+  context_offset_ = 0;
   json compact_block = conversation_.RecordEntry(
       {{"kind", "compaction"},
        {"turn_root", turn_root_},

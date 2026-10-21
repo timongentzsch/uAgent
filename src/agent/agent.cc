@@ -238,6 +238,7 @@ void Agent::Reset() {
   session_usage_ = Usage{};
   SyncApiSessionUsage();
   route_usage_.clear();
+  context_offset_ = 0;
   logged_msgs_ = 0;
   logged_schemas_.clear();
   total_user_turns_ = 0;
@@ -263,6 +264,7 @@ json Agent::LatestToolTrace() const {
 void Agent::RouteChanged() {
   session_id_ = MakeSessionId();
   image_route_ = {};
+  context_offset_ = 0;
   ++revision_;
 }
 
@@ -450,6 +452,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
     }
   }
   RefreshBaseline();
+  context_offset_ = 0;
   session_usage_ = record.state.usage;
   SyncApiSessionUsage();
   route_usage_ = std::move(record.state.route_usage);
@@ -485,8 +488,12 @@ size_t Agent::RequestContextBytes(size_t schema_bytes,
   return SaturatingAdd(bytes, schema_bytes);
 }
 
+int64_t Agent::ContextTokens(size_t bytes) const {
+  return SaturatingNonnegativeAdd(EstimatedTokens(bytes), context_offset_);
+}
+
 int64_t Agent::ContextUsed() const {
-  return EstimatedTokens(RequestContextBytes(schema_bytes_));
+  return ContextTokens(RequestContextBytes(schema_bytes_));
 }
 
 void Agent::InvalidateToolSchemas(bool force_system) {

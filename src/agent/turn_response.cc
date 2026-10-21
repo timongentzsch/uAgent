@@ -119,7 +119,7 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
       SafeContextRecovery(response) && !attachment) {
     loop.context_overflow_recovery_attempted = true;
     int64_t rejected_tokens =
-        EstimatedTokens(RequestContextBytes(JsonEstimatedBytes(schemas)));
+        ContextTokens(RequestContextBytes(JsonEstimatedBytes(schemas)));
     int64_t learned_context =
         std::max<int64_t>(4096, rejected_tokens - rejected_tokens / 10);
     int64_t prior_context = api_.ctx_window;

@@ -68,6 +68,9 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
             # This repository's project memories carry their opening line;
             # another workspace never sees them (verify_isolated).
             and "- project/build: project-memory-sentinel" in memories
+            # Merged with the user message after it, as role-alternating
+            # providers do, the note still says where it ends.
+            and memories.endswith("[end of harness context]")
             and messages[0].get("role") == "system"
         )
         return event({"content": "memory-ok" if valid else "memory-bad"})

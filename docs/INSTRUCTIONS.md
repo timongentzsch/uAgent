@@ -8,9 +8,10 @@ A session's system message is the built-in base followed by these
 instructions. Instructions only add; nothing a person or an agent writes
 replaces the base, except the agent's opt-in
 [self-directive](#self-directive). Host facts (date, working directory,
-approval mode) and the memory index follow in a runtime note after the system
-message. When one changes, a new note is appended and the earlier text stays,
-so the cached prefix holds.
+approval mode) and memory follow in a runtime note after the system message.
+When a host fact changes, a new note is appended and the earlier text stays,
+so the cached prefix holds; memory is read at start, so a memory saved now
+reaches new sessions.
 
 ## Instruction files
 

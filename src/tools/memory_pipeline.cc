@@ -125,8 +125,8 @@ std::string ClaimCandidate(const std::filesystem::path& cwd,
   auto oldest = std::chrono::hours(24 * std::max(int64_t{1}, HistoryDays()));
   for (const SessionInfo& session : ListSessions()) {
     auto age = now - session.mtime;
-    if (session.path == excluded || session.turns < kMinimumTurns ||
-        age < idle || age > oldest) {
+    if (session.path == excluded || !session.memory ||
+        session.turns < kMinimumTurns || age < idle || age > oldest) {
       continue;
     }
     if (Claim(session.path, cwd, error)) return session.path;

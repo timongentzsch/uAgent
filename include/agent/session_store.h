@@ -60,6 +60,7 @@ struct SessionInfo {
   json delegation = json::object();
   std::string kind;
   json thread = json::object();
+  bool memory = true;
 };
 
 // The one panel session file of a canonical folder.
@@ -113,6 +114,8 @@ struct SessionMetadata {
   json delegation = json::object();
   std::string kind{};
   json thread = json::object();
+  // False for a conversation run with memory off: nothing learns from it.
+  bool memory = true;
 };
 
 struct SessionState {

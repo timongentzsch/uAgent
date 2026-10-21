@@ -105,7 +105,10 @@ Two kinds of session act for you unattended:
   before model requests and memory writes; `UAGENT_MEMORY_REDACT_KEYWORDS`
   adds site-specific assignment keywords. Codex and Claude memories are
   read-only, untrusted evidence. Redaction is defense in depth, not a
-  guarantee that every secret is recognized.
+  guarantee that every secret is recognized: it finds keyword assignments,
+  bearer tokens, private keys and known vendor token prefixes, not a bare
+  token or a password named in prose. A conversation run with `--no-memory`
+  is never extracted.
 - Model, MCP and tool text is terminal-sanitized.
 - The web host's pairing, device authentication, Origin checks and file
   serving are described in [Web interface](docs/WEB.md#security-model).

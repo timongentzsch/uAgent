@@ -132,6 +132,7 @@ json HeaderJson(const SessionMetadata& metadata) {
   }
   if (!metadata.kind.empty()) header[kSessionHeaderKind] = metadata.kind;
   if (!metadata.thread.empty()) header[kSessionHeaderThread] = metadata.thread;
+  if (!metadata.memory) header["memory"] = false;
   return header;
 }
 
@@ -406,6 +407,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
             JsonValue(header, kSessionHeaderDelegation, json::object());
         item.kind = StoredKind(header);
         item.thread = JsonValue(header, kSessionHeaderThread, json::object());
+        item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
         }

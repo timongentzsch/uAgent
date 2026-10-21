@@ -623,16 +623,25 @@ void TestScopedBaseAndMemory() {
   // through the always-on slice, so this discloses nothing new.
   CHECK(loaded.memory_index.find(
             "global/prefers-tabs: The user prefers tabs") != std::string::npos);
-  // A project memory travels by name only. Its body is never injected, which
-  // is what keeps one workspace's notes out of every other prompt.
-  CHECK(loaded.memory_index.find("project/build-uses-ninja") !=
-        std::string::npos);
-  CHECK(loaded.memory_index.find("This repo builds with ninja") ==
+  // A project memory gets its hook too: the index lists only this
+  // repository's, and a bare key was missed live when the question did not
+  // share its words.
+  CHECK(loaded.memory_index.find(
+            "project/build-uses-ninja: This repo builds with ninja") !=
         std::string::npos);
   CHECK(loaded.memory_index.find("codex/MEMORY") != std::string::npos);
   CHECK(loaded.memory_index.find("claude/MEMORY") != std::string::npos);
   CHECK(loaded.memory_index.find("global/prefers-tabs") <
         loaded.memory_index.find("project/build-uses-ninja"));
+  // Ours come before borrowed stores, which cannot spend the budget first.
+  CHECK(loaded.memory_index.find("project/build-uses-ninja") <
+        loaded.memory_index.find("claude/MEMORY"));
+  // What the always-on slice shows whole is not listed a second time.
+  CHECK(LoadMemoryIndex(workspace, size_t{32} * 1024, index.sources)
+            .text.empty());
+  // A get says when the memory was saved.
+  CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::nullopt)
+            .output.find("; saved 20") != std::string::npos);
   CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::nullopt)
             .output.find("The user prefers tabs.") != std::string::npos);
   CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::string())

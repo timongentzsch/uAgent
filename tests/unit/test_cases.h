@@ -128,6 +128,7 @@ namespace uagent {
   X(TestGrepTool)                                 \
   X(TestPythonTool)                               \
   X(TestMemoryAlwaysOnSelection)                  \
+  X(TestMemoryOneView)                            \
   X(TestEarlyTurnInterruption)                    \
   X(TestLocalAbortIsolation)                      \
   X(TestRuntimeOwnershipHelpers)                  \

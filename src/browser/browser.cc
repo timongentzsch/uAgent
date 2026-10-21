@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -227,6 +228,10 @@ bool StartService(const std::string& executable, ServiceProcess& process,
       "UAGENT_INTERNAL_RUNTIME_DIR=" + RuntimeDir(),
       "LANG=C.UTF-8",
       "TMPDIR=/tmp"};
+  // Pages read the user's clock, not the container's UTC.
+  if (const char* zone = getenv("TZ"); zone && *zone) {
+    environment.push_back(std::string("TZ=") + zone);
+  }
   std::vector<char*> envp;
   envp.reserve(environment.size() + 1);
   for (auto& setting : environment) envp.push_back(setting.data());

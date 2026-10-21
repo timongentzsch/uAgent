@@ -15,6 +15,11 @@
 
 ### Changes
 
+- The agent's Chrome no longer reads as a test browser: pages see no
+  `navigator.webdriver`, WebGL renders in software, and `TZ` reaches Chrome.
+  Google searches and bahn.de bookings that answered "unusual traffic" or
+  "resembles a bot" now work. PDF links download instead of opening in
+  Chrome's viewer, so the agent can read them.
 - Statistics read the full usage everywhere: the web turn footer counts
   cached and cache-written input, `/cost` shows cache writes and per-route
   hit rates that agree with the total, and the status row's "in" is the

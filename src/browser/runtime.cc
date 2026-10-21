@@ -389,7 +389,13 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--hide-crash-restore-bubble",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
-      "--disable-component-update", no_downloads, "--disk-cache-size=67108864"};
+      "--disable-component-update", no_downloads, "--disk-cache-size=67108864",
+      // A person's browser, not a test runner: the debugging pipe would
+      // mark every page navigator.webdriver, and with no GPU Chrome offers
+      // pages no WebGL. Sites read both as a bot and refuse the user's
+      // own errands (searches, bookings).
+      "--disable-blink-features=AutomationControlled",
+      "--enable-unsafe-swiftshader"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome, nullptr, environment);
     if (chrome_pid_ < 0) {

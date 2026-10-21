@@ -29,6 +29,13 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
   and `/data/browser` (Chrome profiles). Back up the whole volume to keep
   every login.
 - Chrome and Xvnc stay stopped until the browser is first used.
+- Set `TZ` (for example `TZ=Europe/Berlin`) in `.env.appliance`: pages see
+  that clock instead of the container's UTC.
+- Chrome runs as a person's browser: pages do not see
+  `navigator.webdriver`, and WebGL renders in software. Sites that turn
+  away test browsers then serve the agent's searches and bookings; a bot
+  check that still appears is handed to you (`request_human`), never
+  solved by the agent.
 
 | Compose variable | Default | Purpose |
 | --- | --- | --- |
@@ -60,7 +67,8 @@ The agent's `browser` tool and the viewer drive the same visible tab.
 - A password field takes no typed text: the agent uses a saved login or asks
   you.
 - The agent uploads only files of the conversation's folder, and what a page
-  downloads lands in that folder's `downloads`.
+  downloads lands in that folder's `downloads`. A PDF link downloads there
+  too (the managed policy), rather than opening in Chrome's viewer.
 
 | You want to | Do this |
 | --- | --- |
@@ -130,8 +138,8 @@ To sign in to sites: take over, then choose **Sign in to profile**. This
 reopens the profile in ordinary Chrome without a debugging connection. Sign in
 and complete MFA, then choose **Done** to reopen the same profile for the
 agent. Chrome restores saved tabs; finish unsaved page edits first. No browser
-security checks are disabled, and Google may still reject
-automation-controlled browsers; see its
+security checks are disabled, and Google may still reject a sign-in from a
+browser it does not support; see its
 [supported browser guidance](https://support.google.com/accounts/answer/7675428).
 
 Passwords follow Chrome's own model: sign the profile into your Google

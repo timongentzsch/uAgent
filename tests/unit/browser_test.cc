@@ -869,14 +869,24 @@ void TestBrowserUploadsAndDownloads() {
              {"file", "/work/photo.png"}})
             .value("error", "")
             .starts_with("element 1 opened no file chooser"));
+  // A download is told with the answer that sees it end: the click's own,
+  // or, when it ends later, whatever is asked next.
+  const json done =
+      json::array({{{"name", "report.pdf"}, {"state", "completed"}}});
   std::ofstream(profile / "download-on-click").close();
-  CHECK(!act({{"op", "click"},
-              {"element", 1},
-              {"view_id", view()},
-              {"downloads", "/work/downloads"}})
-             .contains("error"));
-  CHECK(act({{"op", "probe"}}).value("downloads", json()) ==
-        json::array({{{"name", "report.pdf"}, {"state", "completed"}}}));
+  CHECK(act({{"op", "click"},
+             {"element", 1},
+             {"view_id", view()},
+             {"downloads", "/work/downloads"}})
+            .value("downloads", json()) == done);
+  std::ofstream(profile / "download-on-click") << "later";
+  CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view()}})
+             .contains("downloads"));
+  const json busy = act({{"op", "probe"}});
+  CHECK(busy.value("loading", false) &&
+        busy.value("downloading", json()) == json::array({"report.pdf"}));
+  std::ofstream(profile / "download-done").close();
+  CHECK(act({{"op", "network"}}).value("downloads", json()) == done);
   std::vector<json> files;
   std::string into;
   std::ifstream log(profile / "cdp.jsonl");
@@ -900,6 +910,106 @@ void TestBrowserUploadsAndDownloads() {
 }
 
 // The site an approval covers: scheme and host as a browser compares them.
+// console reads what the page's console holds with Runtime events on for
+// that read alone; network tells a tab's requests since its document began.
+// A click can be right or double, a drag drops what the page held back, a
+// key can come with modifiers, and history goes forward as well as back.
+void TestBrowserConsoleNetworkAndPointer() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-pointer");
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-pointer-" + std::to_string(getpid()));
+  FakeBrowser fake(workspace.root / "bin", directory);
+  const auto profile = directory / "profile";
+  browser::Runtime runtime;
+  const auto act = [&](json command) {
+    command["session_id"] = "cccccccccccccccccccccccccccccccc";
+    return runtime.Execute(command);
+  };
+  const auto view = [&] {
+    return act({{"op", "observe"}, {"image", false}}).value("view_id", "");
+  };
+  CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
+             .contains("error"));
+  const json console = act({{"op", "console"}});
+  CHECK(console.value("count", 0) == 2);
+  CHECK(console.value("lines", "") ==
+        "log: hello 42 (https://example.com/app.js:3)\n"
+        "uncaught: Error: boom (https://example.com/app.js:9)\n");
+  CHECK(act({{"op", "console"}, {"find", "BOOM"}}).value("count", 0) == 1);
+  const json requests = act({{"op", "network"}});
+  CHECK(requests.value("lines", "") ==
+        "GET 200 Document https://example.com/ 1234 B\n"
+        "GET 404 Script https://example.com/app.js\n"
+        "POST failed (net::ERR_FAILED) Fetch https://api.example.com/items\n");
+  // Another document of the tab starts its list again.
+  CHECK(!act({{"op", "open"}, {"url", "https://example.com/next"}})
+             .contains("error"));
+  CHECK(act({{"op", "network"}, {"find", "/next"}}).value("count", 0) == 1);
+  CHECK(act({{"op", "network"}}).value("count", 0) == 3);
+
+  CHECK(!act({{"op", "click"},
+              {"element", 1},
+              {"view_id", view()},
+              {"button", "right"},
+              {"count", 2}})
+             .contains("error"));
+  CHECK(act({{"op", "click"},
+             {"element", 1},
+             {"view_id", view()},
+             {"button", "side"}})
+            .value("error", "")
+            .starts_with("click takes button"));
+  std::ofstream(profile / "drag-intercept").close();
+  CHECK(!act({{"op", "drag"},
+              {"element", 1},
+              {"to_element", 1},
+              {"view_id", view()}})
+             .contains("error"));
+  CHECK(act({{"op", "drag"}, {"element", 1}, {"view_id", view()}})
+            .value("error", "")
+            .starts_with("drag ends at to_element"));
+  CHECK(!act({{"op", "press"}, {"key", "Control+a"}}).contains("error"));
+  CHECK(act({{"op", "press"}, {"key", "Hyper+a"}}).value("error", "") ==
+        "unsupported key");
+  CHECK(act({{"op", "forward"}}).value("error", "") == "there is no next page");
+  CHECK(!act({{"op", "reload"}}).contains("error"));
+
+  std::vector<json> clicks, drops, keys;
+  std::vector<std::string> console_events;
+  bool reloaded = false;
+  std::ifstream log(profile / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    const json params = command.value("params", json::object());
+    if (method == "Runtime.enable" || method == "Runtime.disable") {
+      console_events.push_back(method);
+    }
+    if (params.value("type", "") == "mousePressed") clicks.push_back(params);
+    if (method == "Input.dispatchDragEvent") drops.push_back(params);
+    if (method == "Input.dispatchKeyEvent") keys.push_back(params);
+    reloaded = reloaded || method == "Page.reload";
+  }
+  // Runtime events were on only while the console was read.
+  CHECK(console_events ==
+        std::vector<std::string>({"Runtime.enable", "Runtime.disable",
+                                  "Runtime.enable", "Runtime.disable"}));
+  // A right double click: two presses, the second counted as such; then the
+  // drag's press.
+  CHECK(clicks.size() == 3);
+  CHECK(clicks[0].value("button", "") == "right" &&
+        clicks[0].value("clickCount", 0) == 1 &&
+        clicks[1].value("clickCount", 0) == 2);
+  CHECK(drops.size() == 3 && drops[2].value("type", "") == "drop" &&
+        drops[2]["data"]["items"][0].value("data", "") == "card");
+  CHECK(!keys.empty() && keys[0].value("modifiers", 0) == 2 &&
+        keys[0].value("code", "") == "KeyA" && !keys[0].contains("text"));
+  CHECK(reloaded);
+  runtime.Shutdown();
+  fs::remove_all(directory);
+}
+
 void TestBrowserOrigin() {
   CHECK(browser::Origin("https://Example.COM/a?b#c") == "https://example.com");
   CHECK(browser::Origin("https://user:pw@example.com:443/") ==
@@ -1157,6 +1267,19 @@ void TestBrowserToolSteps() {
       {});
   CHECK(fetched.output.find("Downloaded report.pdf to downloads/report.pdf.") !=
         std::string::npos);
+  // console and network answer in lines and ask no approval; a drag is
+  // approved for both its ends.
+  ToolResult logged = tool.run({{"action", "console"}}, {});
+  CHECK(logged.Ok() &&
+        logged.output.starts_with("2 console messages and uncaught errors:\n"
+                                  "log: hello 42"));
+  CHECK(!tool.needs_approval({{"action", "network"}}));
+  CHECK(tool.approval_preview({{"action", "drag"},
+                               {"element", 1},
+                               {"view_id", view(fetched.output)},
+                               {"to_x", 5},
+                               {"to_y", 6}})
+            .starts_with("drag [1] text \"Search\" (empty) to (5, 6) on "));
   CHECK(tool.validate(
                 {{"action", "upload"}, {"element", 1}, {"path", "/etc/hosts"}})
             .has_value());

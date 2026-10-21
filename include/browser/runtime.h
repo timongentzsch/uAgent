@@ -58,6 +58,14 @@ class Runtime {
   json Observe(bool image);
   // More of the page's text than a look carries, or the lines that match.
   json Read(const json& command);
+  // What the page logged and threw, and what it asked of the network.
+  json Console(const json& command);
+  json Network(const json& command);
+  // Keeps a tab's request as Chrome tells of it.
+  void Requested(const std::string& session, const std::string& event,
+                 const json& params);
+  // The downloads that ended since the last time they were told.
+  json Finished();
   bool SaveHandover() const;
   bool SaveProfiles() const;
   std::string ProfilePath() const;
@@ -102,6 +110,12 @@ class Runtime {
   int64_t chooser_ = 0;
   json downloads_ = json::object();
   std::string download_path_;
+  // What the page logged, while a console read gathers it.
+  std::vector<std::string>* logged_ = nullptr;
+  // Each tab's requests since its document began, by session, latest last.
+  std::map<std::string, std::vector<json>> requests_;
+  // A drag Chrome held back from the page, to be dropped where it ends.
+  json dragged_;
   std::chrono::steady_clock::time_point used_ =
       std::chrono::steady_clock::now();
   // The browser changed hands and its holder has not yet opened or looked

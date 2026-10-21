@@ -82,18 +82,31 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   snapshot.warning = saved.warning;
   MergeScope(saved.all, "user", process_, snapshot);
   MergeScope(saved.project, "project", process_, snapshot);
-  auto layer = [&](const char* source, const RuntimeConfig::Values& held,
-                   bool filter) {
+  // A value from the environment refers to a name as a saved one does, but
+  // a $ that names nothing defined is its own, as in a key or a price.
+  RuntimeConfig::Values names(saved.all.begin(), saved.all.end());
+  for (const auto& [key, value] : saved.project) names[key] = value;
+  for (const auto& [key, value] : process_) names[key] = value;
+  for (const auto& [key, value] : process_) {
+    if (!AgentConfigKey(key)) continue;
+    std::set<std::string> resolving;
+    snapshot.values[key] = value.find('$') == std::string::npos
+                               ? value
+                               : ResolveEnvValue(key, names, resolving,
+                                                 /*process_fallback=*/false,
+                                                 /*keep_unknown=*/true);
+    snapshot.sources[key] = "environment";
+    snapshot.layers["environment"][key] = value;
+  }
+  auto layer = [&](const char* source, const RuntimeConfig::Values& held) {
     for (const auto& [key, value] : held) {
-      if (filter && !AgentConfigKey(key)) continue;
       snapshot.values[key] = value;
       snapshot.sources[key] = source;
       snapshot.layers[source][key] = value;
     }
   };
-  layer("environment", process_, true);
-  layer("cli", cli_, false);
-  layer("conversation", Conversation(), false);
+  layer("cli", cli_);
+  layer("conversation", Conversation());
   snapshot.config = RuntimeConfig::FromValues(snapshot.values);
   return snapshot;
 }

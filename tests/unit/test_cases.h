@@ -16,6 +16,7 @@ namespace uagent {
   X(TestBrowserDialogsAndPasswordFields) \
   X(TestBrowserOrigin)                   \
   X(TestBrowserUploadsAndDownloads)      \
+  X(TestBrowserConsoleNetworkAndPointer) \
   X(TestBrowserToolQueue)                \
   X(TestBrowserToolSteps)
 #else

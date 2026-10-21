@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <initializer_list>
@@ -27,10 +28,13 @@ namespace {
 // since a page may animate it there (a hidden tab draws no frames and is not
 // waited for). Nothing when it left the page or has no size; whether it is
 // still moving after ten frames; and what lies on top when something else
-// would take the click, so the model can deal with that.
-constexpr const char* kElementScript = R"js((async e => {
+// would take the click, so the model can deal with that. `held` leaves it
+// where it is, and says when it is out of view there.
+constexpr const char* kElementScript = R"js((async (e, held) => {
   if (!e || !e.isConnected) return null;
-  e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  if (!held) {
+    e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  }
   // Its box, and the box of each frame it sits in, any of which may move.
   const box = () => {
     let at = JSON.stringify(e.getBoundingClientRect());
@@ -53,6 +57,9 @@ constexpr const char* kElementScript = R"js((async e => {
   // frame it sits in must be on top in its root, the frame moving the point
   // by where it is, up to the page itself.
   let x = r.x + r.width / 2, y = r.y + r.height / 2, target = e;
+  if (held && (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight)) {
+    return {away: true};
+  }
   for (;;) {
     const root = target.getRootNode();
     const hit = root.elementFromPoint(x, y);
@@ -304,6 +311,41 @@ json Runtime::Act(const std::string& op, const json& command) {
     return op + (element > 0 ? " needs view_id from a look at this page"
                              : " needs view_id from the latest observe");
   };
+  // Where element `number` is now, or why it cannot be acted on there;
+  // `held` finds it without bringing it into view.
+  const auto locate = [&](int number, int& x, int& y,
+                          bool held = false) -> std::string {
+    const std::string named = "element " + std::to_string(number);
+    json where = Evaluate(
+        {{"expression", std::string(kElementScript) + "(" +
+                            Numbered(view, number) + (held ? ",true)" : ")")},
+         {"returnByValue", true},
+         {"awaitPromise", true}});
+    const json* found = JsonObject(where, "result");
+    found = found ? JsonObject(*found, "result") : nullptr;
+    found = found ? JsonObject(*found, "value") : nullptr;
+    if (!found) return "that element is gone; look again";
+    if (JsonValue(*found, "moving", false)) {
+      return named + " is still moving; look again";
+    }
+    if (JsonValue(*found, "away", false)) {
+      return named +
+             " is out of view while the drag's start is in it; drag by x "
+             "and y, or in steps";
+    }
+    if (JsonValue(*found, "transformed", false)) {
+      return named +
+             " is in a frame drawn scaled or turned; act by x and y from a "
+             "screenshot";
+    }
+    if (const std::string over = JsonValue(*found, "covered", "");
+        !over.empty()) {
+      return named + " is covered by " + over + "; deal with that first";
+    }
+    x = JsonValue(*found, "x", -1);
+    y = JsonValue(*found, "y", -1);
+    return "";
+  };
   // A click may open a file chooser: held back, it never shows a window the
   // agent cannot answer, and upload fills its field instead.
   struct Release {
@@ -358,67 +400,57 @@ json Runtime::Act(const std::string& op, const json& command) {
       reply = Call("Page.setDocumentContent",
                    {{"frameId", target_}, {"html", html}}, page_session_);
     }
-  } else if (op == "back") {
+  } else if (op == "back" || op == "forward") {
+    const bool back = op == "back";
+    const std::string which = back ? "previous" : "next";
     json history =
         Call("Page.getNavigationHistory", json::object(), page_session_);
     const json* result = JsonObject(history, "result");
     const json* entries = result ? JsonArray(*result, "entries") : nullptr;
     const int current = result ? JsonValue(*result, "currentIndex", -1) : -1;
-    if (!entries || current < 1 ||
-        current >= static_cast<int>(entries->size())) {
-      return {{"error", CdError(history).empty() ? "there is no previous page"
-                                                 : CdError(history)}};
+    const int wanted = current + (back ? -1 : 1);
+    if (!entries || current < 0 || wanted < 0 ||
+        wanted >= static_cast<int>(entries->size())) {
+      return {{"error", CdError(history).empty()
+                            ? "there is no " + which + " page"
+                            : CdError(history)}};
     }
     // The same rule as open: history can hold chrome:// or file:// pages a
     // person visited, and back must not be a way to reach them.
-    const std::string url = JsonValue(
-        (*entries)[static_cast<size_t>(current - 1)], "url", std::string());
+    const json& entry = (*entries)[static_cast<size_t>(wanted)];
+    const std::string url = JsonValue(entry, "url", std::string());
     if (!url.starts_with("https://") && !url.starts_with("http://")) {
-      return {{"error", "the previous page is not HTTP(S)"}};
+      return {{"error", "the " + which + " page is not HTTP(S)"}};
     }
     observation_.clear();
     looks_.clear();
     leaving_ = true;
-    reply = Call(
-        "Page.navigateToHistoryEntry",
-        {{"entryId",
-          JsonValue((*entries)[static_cast<size_t>(current - 1)], "id", 0)}},
-        page_session_);
+    reply = Call("Page.navigateToHistoryEntry",
+                 {{"entryId", JsonValue(entry, "id", 0)}}, page_session_);
+    leaving_ = false;
+  } else if (op == "reload") {
+    observation_.clear();
+    looks_.clear();
+    leaving_ = true;
+    reply = Call("Page.reload", json::object(), page_session_);
     leaving_ = false;
   } else if (op == "click") {
     if (const std::string why = unseen(); !why.empty()) {
       return {{"error", why}};
     }
+    const std::string button = JsonValue(command, "button", "left");
+    const int pressed = button == "left"     ? 1
+                        : button == "right"  ? 2
+                        : button == "middle" ? 4
+                                             : 0;
+    const int count = JsonValue(command, "count", 1);
+    if (!pressed || count < 1 || count > 3) {
+      return {{"error",
+               "click takes button left, right or middle, and count 1 to 3"}};
+    }
     int x = -1, y = -1;
-    const std::string named = "element " + std::to_string(element);
-    // Where the element is now, or why it cannot be clicked there.
-    const auto locate = [&]() -> std::string {
-      json where = Evaluate({{"expression", std::string(kElementScript) + "(" +
-                                                Numbered(view, element) + ")"},
-                             {"returnByValue", true},
-                             {"awaitPromise", true}});
-      const json* found = JsonObject(where, "result");
-      found = found ? JsonObject(*found, "result") : nullptr;
-      found = found ? JsonObject(*found, "value") : nullptr;
-      if (!found) return "that element is gone; look again";
-      if (JsonValue(*found, "moving", false)) {
-        return named + " is still moving; look again";
-      }
-      if (JsonValue(*found, "transformed", false)) {
-        return named +
-               " is in a frame drawn scaled or turned; click by x "
-               "and y from a screenshot";
-      }
-      if (const std::string over = JsonValue(*found, "covered", "");
-          !over.empty()) {
-        return named + " is covered by " + over + "; deal with that first";
-      }
-      x = JsonValue(*found, "x", -1);
-      y = JsonValue(*found, "y", -1);
-      return "";
-    };
     if (element > 0) {
-      if (const std::string why = locate(); !why.empty()) {
+      if (const std::string why = locate(element, x, y); !why.empty()) {
         return {{"error", why}};
       }
     } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
@@ -438,24 +470,106 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     if (element > 0) {
       const int was_x = x, was_y = y;
-      if (const std::string why = locate(); !why.empty()) {
+      if (const std::string why = locate(element, x, y); !why.empty()) {
         return {{"error", why}};
       }
       if (x != was_x || y != was_y) {
-        return {{"error", named + " moved when the pointer reached it; look "
-                                  "again"}};
+        return {{"error", "element " + std::to_string(element) +
+                              " moved when the pointer reached it; look "
+                              "again"}};
       }
     }
-    json event = {{"type", "mousePressed"}, {"x", x},          {"y", y},
-                  {"button", "left"},       {"clickCount", 1}, {"buttons", 1}};
-    if (auto reason =
-            CdError(Call("Input.dispatchMouseEvent", event, page_session_));
-        !reason.empty()) {
-      return {{"error", reason}};
+    // A double click is a click, then one counted as the second.
+    for (int click = 1; click <= count; ++click) {
+      json event = {{"type", "mousePressed"},
+                    {"x", x},
+                    {"y", y},
+                    {"button", button},
+                    {"clickCount", click},
+                    {"buttons", pressed}};
+      if (auto reason =
+              CdError(Call("Input.dispatchMouseEvent", event, page_session_));
+          !reason.empty()) {
+        return {{"error", reason}};
+      }
+      event["type"] = "mouseReleased";
+      event["buttons"] = 0;
+      reply = Call("Input.dispatchMouseEvent", event, page_session_);
+      if (!CdError(reply).empty()) break;
     }
-    event["type"] = "mouseReleased";
-    event["buttons"] = 0;
-    reply = Call("Input.dispatchMouseEvent", event, page_session_);
+  } else if (op == "drag") {
+    if (const std::string why = unseen(); !why.empty()) {
+      return {{"error", why}};
+    }
+    // It starts at element (or x and y), brought into view, and ends at
+    // to_element (or to_x and to_y) wherever that then is.
+    int x = -1, y = -1, to_x = -1, to_y = -1;
+    const int to = JsonValue(command, "to_element", 0);
+    if (element > 0) {
+      if (const std::string why = locate(element, x, y); !why.empty()) {
+        return {{"error", why}};
+      }
+    } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
+      return {{"error", "drag starts at an element, or x and y"}};
+    }
+    if (to > 0) {
+      if (const std::string why = locate(to, to_x, to_y, true); !why.empty()) {
+        return {{"error", why}};
+      }
+    } else if (!Coordinate(command, "to_x", to_x) ||
+               !Coordinate(command, "to_y", to_y)) {
+      return {{"error", "drag ends at to_element, or to_x and to_y"}};
+    }
+    if (std::max(x, to_x) >= view_width_ || std::max(y, to_y) >= view_height_ ||
+        std::min({x, y, to_x, to_y}) < 0) {
+      return {{"error", "coordinates exceed the observed viewport"}};
+    }
+    observation_.clear();
+    // A slider or a sortable list follows the pointer. The page's own
+    // drag-and-drop would hand the drag to the system, which never sees
+    // these events: Chrome holds it back instead, and it is dropped where
+    // the pointer ends.
+    dragged_ = nullptr;
+    Call("Input.setInterceptDrags", {{"enabled", true}}, page_session_);
+    const auto pointer = [&](const char* type, int at_x, int at_y, int held) {
+      return CdError(Call("Input.dispatchMouseEvent",
+                          {{"type", type},
+                           {"x", at_x},
+                           {"y", at_y},
+                           {"button", held ? "left" : "none"},
+                           {"buttons", held},
+                           {"clickCount", 1}},
+                          page_session_));
+    };
+    std::string reason = pointer("mouseMoved", x, y, 0);
+    if (reason.empty()) reason = pointer("mousePressed", x, y, 1);
+    // In steps, as a hand moves: a page may start a drag only once the
+    // pointer has travelled.
+    constexpr int kSteps = 8;
+    for (int step = 1; reason.empty() && step <= kSteps; ++step) {
+      reason = pointer("mouseMoved", x + (to_x - x) * step / kSteps,
+                       y + (to_y - y) * step / kSteps, 1);
+    }
+    if (reason.empty() && dragged_.is_object()) {
+      for (const char* type : {"dragEnter", "dragOver", "drop"}) {
+        reason = CdError(
+            Call("Input.dispatchDragEvent",
+                 {{"type", type}, {"x", to_x}, {"y", to_y}, {"data", dragged_}},
+                 page_session_));
+        if (!reason.empty()) break;
+      }
+    }
+    // The button comes up even after a failure, so nothing stays held.
+    reply = Call("Input.dispatchMouseEvent",
+                 {{"type", "mouseReleased"},
+                  {"x", to_x},
+                  {"y", to_y},
+                  {"button", "left"},
+                  {"buttons", 0},
+                  {"clickCount", 1}},
+                 page_session_);
+    Call("Input.setInterceptDrags", {{"enabled", false}}, page_session_);
+    if (!reason.empty()) return {{"error", reason}};
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
@@ -563,16 +677,50 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     reply = json::object();
   } else if (op == "press") {
-    const std::string name = JsonValue(command, "key", "");
+    // A key of kKeys or one character, after any of Alt, Control, Meta and
+    // Shift joined to it by +, as in Control+A.
+    std::string name = JsonValue(command, "key", "");
+    int modifiers = 0;
+    for (size_t plus = name.find('+');
+         plus != std::string::npos && plus + 1 < name.size();
+         plus = name.find('+')) {
+      const std::string held = name.substr(0, plus);
+      const int bit = held == "Alt"       ? 1
+                      : held == "Control" ? 2
+                      : held == "Meta"    ? 4
+                      : held == "Shift"   ? 8
+                                          : 0;
+      if (!bit) return {{"error", "unsupported key"}};
+      modifiers |= bit;
+      name.erase(0, plus + 1);
+    }
     const Key* key = std::ranges::find_if(
         kKeys, [&](const Key& known) { return name == known.name; });
-    if (key == std::end(kKeys)) return {{"error", "unsupported key"}};
+    std::string typed, code = name;
+    int number = 0;
+    if (key != std::end(kKeys)) {
+      typed = key->text;
+      number = key->code;
+    } else if (name.size() == 1 && name[0] > ' ' && name[0] < 0x7F) {
+      const auto ascii = static_cast<unsigned char>(name[0]);
+      const char upper = static_cast<char>(std::toupper(ascii));
+      if (modifiers & 8) name = std::string(1, upper);
+      typed = name;
+      code = std::isalpha(ascii)   ? std::string("Key") + upper
+             : std::isdigit(ascii) ? std::string("Digit") + name
+                                   : "";
+      number = std::isalnum(ascii) ? upper : 0;
+    } else {
+      return {{"error", "unsupported key"}};
+    }
+    // With Control, Alt or Meta held it is a shortcut, which types nothing.
+    if (modifiers & 7) typed.clear();
     observation_.clear();
-    const std::string typed = key->text;
     json event = {{"type", typed.empty() ? "rawKeyDown" : "keyDown"},
                   {"key", typed == " " ? typed : name},
-                  {"code", name},
-                  {"windowsVirtualKeyCode", key->code}};
+                  {"code", code},
+                  {"windowsVirtualKeyCode", number},
+                  {"modifiers", modifiers}};
     if (!typed.empty()) event["text"] = typed;
     reply = Call("Input.dispatchKeyEvent", event, page_session_);
     if (CdError(reply).empty()) {

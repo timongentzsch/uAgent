@@ -22,7 +22,7 @@ namespace uagent {
 
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
-                            bool process_fallback) {
+                            bool process_fallback, bool keep_unknown) {
   if (process_fallback) {
     const char* inherited = getenv(key.c_str());
     if (inherited) return inherited;
@@ -62,8 +62,15 @@ std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
       }
     }
     std::string ref = value.substr(begin, end - begin);
-    out += ResolveEnvValue(ref, values, resolving, process_fallback);
-    i = braced ? end + 1 : end;
+    const size_t after = braced ? end + 1 : end;
+    if (keep_unknown && !values.contains(ref) &&
+        !(process_fallback && getenv(ref.c_str()))) {
+      out += value.substr(i, after - i);
+    } else {
+      out += ResolveEnvValue(ref, values, resolving, process_fallback,
+                             keep_unknown);
+    }
+    i = after;
   }
   resolving.erase(key);
   return out;

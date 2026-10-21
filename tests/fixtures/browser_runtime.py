@@ -113,6 +113,10 @@ while chunk := os.read(3, 4096):
             os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
             continue
         method = command["method"]
+        # A download the test lets end now, after the action that began it.
+        if (profile / "download-done").exists():
+            (profile / "download-done").unlink()
+            emit("Browser.downloadProgress", None, guid="g1", state="completed")
         if method == "Page.navigate" and (profile / "pause-navigation").exists():
             (profile / "navigation-paused").touch()
             deadline = time.monotonic() + 5
@@ -129,6 +133,7 @@ while chunk := os.read(3, 4096):
                     backendNodeId=7,
                 )
             if (profile / "download-on-click").exists():
+                later = (profile / "download-on-click").read_text() == "later"
                 (profile / "download-on-click").unlink()
                 emit(
                     "Browser.downloadWillBegin",
@@ -137,7 +142,17 @@ while chunk := os.read(3, 4096):
                     url="https://example.com/report.pdf",
                     suggestedFilename="report.pdf",
                 )
-                emit("Browser.downloadProgress", None, guid="g1", state="completed")
+                if not later:
+                    emit("Browser.downloadProgress", None, guid="g1", state="completed")
+        # The page's own drag-and-drop, held back once the pointer travels.
+        if command["params"].get("type") == "mouseMoved" and command["params"].get("buttons"):
+            if (profile / "drag-intercept").exists():
+                (profile / "drag-intercept").unlink()
+                data = {
+                    "items": [{"mimeType": "text/plain", "data": "card"}],
+                    "dragOperationsMask": 1,
+                }
+                emit("Input.dragIntercepted", None, data=data)
         # A dialog on press, on release (a click), or while the page is looked at.
         looking = re.search(r',"","\w+"\)$', command["params"].get("expression", ""))
         phase = command["params"].get("type") or ("look" if looking else "-")
@@ -159,6 +174,45 @@ while chunk := os.read(3, 4096):
             )
             os.write(4, json.dumps({"id": withheld, "result": {}}).encode() + b"\0")
             continue
+        if method == "Page.navigate":
+            # The document, a script it loads and a request that fails.
+            session = command.get("sessionId")
+            for request_id, kind, url in (
+                ("d", "Document", command["params"]["url"]),
+                ("s", "Script", "https://example.com/app.js"),
+                ("f", "Fetch", "https://api.example.com/items"),
+            ):
+                request = {"method": "POST" if kind == "Fetch" else "GET", "url": url}
+                emit(
+                    "Network.requestWillBeSent",
+                    session,
+                    requestId=request_id,
+                    frameId="tab",
+                    type=kind,
+                    request=request,
+                )
+            emit("Network.responseReceived", session, requestId="d", response={"status": 200})
+            emit("Network.loadingFinished", session, requestId="d", encodedDataLength=1234.0)
+            emit("Network.responseReceived", session, requestId="s", response={"status": 404})
+            emit("Network.loadingFailed", session, requestId="f", errorText="net::ERR_FAILED")
+        if method == "Runtime.enable":
+            # What the console held, replayed as Chrome does.
+            session = command.get("sessionId")
+            frame = {"url": "https://example.com/app.js", "lineNumber": 2}
+            emit(
+                "Runtime.consoleAPICalled",
+                session,
+                type="log",
+                args=[{"type": "string", "value": "hello"}, {"type": "number", "value": 42}],
+                stackTrace={"callFrames": [frame]},
+            )
+            details = {
+                "text": "Uncaught",
+                "exception": {"description": "Error: boom\n    at app.js:9"},
+                "url": "https://example.com/app.js",
+                "lineNumber": 8,
+            }
+            emit("Runtime.exceptionThrown", session, exceptionDetails=details)
         if command["method"] == "Page.getNavigationHistory":
             result = {
                 "currentIndex": 1,
@@ -182,7 +236,7 @@ while chunk := os.read(3, 4096):
             asked = command["params"]["expression"]
             if "scrollIntoView" in asked:
                 # Element 1 is on the page; any other is gone.
-                value = {"x": 40, "y": 30} if asked.endswith("[0])") else None
+                value = {"x": 40, "y": 30} if re.search(r"\[0\](,true)?\)$", asked) else None
                 result = {"result": {"value": value}}
             elif asked.endswith(',"clip","")'):
                 read = {"url": "https://example.com/", "title": "Clips", "chars": 9, "matches": 1}

@@ -44,6 +44,11 @@ constexpr Action kActions[] = {
     {"fill_saved", true, "Taking a saved login in", "Took a saved login in"},
     {"scroll", true, "Scrolling", "Scrolled"},
     {"back", true, "Going back in", "Went back in"},
+    {"forward", true, "Going forward in", "Went forward in"},
+    {"reload", true, "Reloading", "Reloaded"},
+    {"drag", true, "Dragging in", "Dragged in"},
+    {"console", false, "Reading the console of", "Read the console of"},
+    {"network", false, "Checking the requests of", "Checked the requests of"},
     {"upload", true, "Uploading in", "Uploaded in"},
     {"request_human", false, "Asking you to use", "Asked you to use"},
     {"release", false, "Releasing", "Released"}};
@@ -65,13 +70,30 @@ constexpr int kQuietProbes = 2;
 // handed back.
 constexpr int kHandbackWaitMs = 5000;
 
-// A grant fences every operation, including probes and human handback.
+// The downloads an answer of the browser tells of, as lines for the model.
+std::string DownloadLines(const json& answer) {
+  std::string lines;
+  for (const json& file : JsonValue(answer, "downloads", json::array())) {
+    const std::string name = JsonValue(file, "name", "");
+    lines += JsonValue(file, "state", "") == "completed"
+                 ? "Downloaded " + name + " to downloads/" + name + ".\n"
+                 : "The download of " + name + " did not finish.\n";
+  }
+  return lines;
+}
+
+// A grant fences every operation, including probes and human handback. A
+// download may end long after the action that started it, so any answer
+// can tell of one: what they told is gathered in `news` for the result.
 struct BrowserAccess {
   std::string session_id, lease;
+  mutable std::string news;
   json Request(json command, int timeout = browser::kRequestDefaultMs) const {
     command["session_id"] = session_id;
     if (!lease.empty()) command["lease"] = lease;
-    return browser::Request(command, timeout);
+    json answer = browser::Request(command, timeout);
+    news += DownloadLines(answer);
+    return answer;
   }
 };
 
@@ -114,7 +136,7 @@ ToolResult Acquire(const std::string& session_id, const json& args,
       return ToolFailure(ToolErrorCode::kRemoteError, error);
     }
     if (answer.value("acquired", false)) {
-      access = {session_id, JsonValue(answer, "lease", "")};
+      access = {session_id, JsonValue(answer, "lease", ""), {}};
       if (context.progress && !waiting.empty()) {
         context.progress("Using browser");
       }
@@ -243,23 +265,36 @@ std::string Preview(const json& args, Seen& seen) {
                                 site + ", wherever it then leads.";
   }
   std::lock_guard lock(seen.mutex);
-  std::string target;
-  if (const int element = JsonValue(args, "element", 0); element > 0) {
-    // A row of the look the call names, never one of another page.
-    const std::string number = "[" + std::to_string(element) + "]";
-    const size_t row = JsonValue(args, "view_id", "") == seen.view_id
-                           ? ("\n" + seen.elements).find("\n" + number + " ")
-                           : std::string::npos;
-    target =
-        row == std::string::npos
-            ? "element " + number + " of a look that is not the latest"
-            : seen.elements.substr(row, seen.elements.find('\n', row) - row);
-  } else if (args.contains("x")) {
-    target = "at (" + std::to_string(JsonValue(args, "x", 0)) + ", " +
-             std::to_string(JsonValue(args, "y", 0)) + ")";
-  }
+  // What an element number names: a row of the look the call names, never
+  // one of another page; or a point.
+  const auto place = [&](const char* number, const char* across,
+                         const char* down, const char* at) -> std::string {
+    if (const int element = JsonValue(args, number, 0); element > 0) {
+      const std::string named = "[" + std::to_string(element) + "]";
+      const size_t row = JsonValue(args, "view_id", "") == seen.view_id
+                             ? ("\n" + seen.elements).find("\n" + named + " ")
+                             : std::string::npos;
+      return row == std::string::npos
+                 ? "element " + named + " of a look that is not the latest"
+                 : seen.elements.substr(row,
+                                        seen.elements.find('\n', row) - row);
+    }
+    if (!args.contains(across)) return "";
+    return at + ("(" + std::to_string(JsonValue(args, across, 0))) + ", " +
+           std::to_string(JsonValue(args, down, 0)) + ")";
+  };
+  const std::string target = place("element", "x", "y", "at ");
+  const int count = JsonValue(args, "count", 1);
+  const std::string button = JsonValue(args, "button", "left");
   std::string said =
-      action == "upload"
+      action == "drag"
+          ? "drag " + target + " to " + place("to_element", "to_x", "to_y", "")
+      : action == "click" && (count > 1 || button != "left")
+          ? std::string(count == 3   ? "triple-"
+                        : count == 2 ? "double-"
+                                     : "") +
+                (button == "left" ? "" : button + "-") + "click " + target
+      : action == "upload"
           ? "upload " + JsonValue(args, "path", "") + " into " + target
       : action == "type"
           ? "type " + JsonDump(JsonValue(args, "text", "")) +
@@ -426,12 +461,6 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
           "\n";
     }
     if (const json* tabs = JsonArray(probe, "opened")) opened = *tabs;
-    for (const json& file : JsonValue(probe, "downloads", json::array())) {
-      const std::string name = JsonValue(file, "name", "");
-      notes += JsonValue(file, "state", "") == "completed"
-                   ? "Downloaded " + name + " to downloads/" + name + ".\n"
-                   : "The download of " + name + " did not finish.\n";
-    }
     if (probe.contains("dialog")) break;
     const std::string state =
         JsonValue(probe, "doc", "") + "|" + JsonValue(probe, "sig", "");
@@ -441,8 +470,17 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
     if (quiet >= kQuietProbes) break;
     previous = state;
     if (std::chrono::steady_clock::now() >= deadline) {
-      notes += "The page was still changing after " +
-               std::to_string(kSettleMs / 1000) + " s.\n";
+      std::string going;
+      for (const json& name : JsonValue(probe, "downloading", json::array())) {
+        if (name.is_string()) {
+          going += (going.empty() ? "" : ", ") + name.get<std::string>();
+        }
+      }
+      notes += going.empty()
+                   ? "The page was still changing after " +
+                         std::to_string(kSettleMs / 1000) + " s.\n"
+                   : "Still downloading " + going +
+                         "; a later browser result tells when it is done.\n";
       break;
     }
     if (AbortRequested() || context.Expired()) break;
@@ -496,6 +534,17 @@ ToolResult Query(const BrowserAccess& access, const json& args,
     seen.elements.clear();
     seen.dialog.clear();
   }
+  if (action == "console" || action == "network") {
+    const size_t count = JsonValue(answer, "count", size_t{0});
+    const std::string what = action == "console"
+                                 ? " console messages and uncaught errors"
+                                 : " requests since this page began";
+    const std::string find = JsonValue(args, "find", "");
+    return ToolSuccess(std::to_string(count) + what +
+                       (find.empty() ? "" : " containing " + JsonDump(find)) +
+                       (count > 100 ? ", the latest 100" : "") +
+                       (count ? ":\n" + JsonValue(answer, "lines", "") : "."));
+  }
   return action == "read" ? Reading(answer, args, "", seen)
                           : ToolSuccess(JsonDump(answer));
 }
@@ -541,7 +590,7 @@ ToolResult Act(const BrowserAccess& access, const json& args,
       break;
     }
   }
-  done += Settle(access, context);
+  done += Settle(access, context) + std::exchange(access.news, "");
   // open may read the page it opened, once that has settled.
   if (action == "open" && whole &&
       (args.contains("find") || args.contains("offset"))) {
@@ -563,11 +612,17 @@ constexpr char kBrowserDescription[] =
     "browser=shared requests the persistent signed-in browser. Release any "
     "current research browser before switching to shared. open, click, type "
     "(into the "
-    "focused field), press, scroll and back wait for the page to settle "
+    "focused field), press, drag, scroll, back, forward and reload wait for "
+    "the page to settle "
     "and return it as text: its numbered elements, its text and a view_id. "
     "click takes element (a number from a result) and that result's "
     "view_id; a number stays good on the same page, so one look serves "
-    "several actions, such as filling a form in one step. Fill a field in "
+    "several actions, such as filling a form in one step. click takes "
+    "button=right for a context menu and count=2 for a double click. drag "
+    "holds the button from element (or x and y) to to_element (or to_x and "
+    "to_y), for sliders, sortable lists and drag-and-drop. press takes a key "
+    "name, or one character, after any of Control, Shift, Alt and Meta "
+    "joined by + (Control+A, Shift+Tab). Fill a field in "
     "one call: type with element and view_id clicks it first, replace=true "
     "overwrites what it holds, and key is pressed after. type sets a list "
     "to the option whose label it gives, and a date, time or color field "
@@ -588,7 +643,10 @@ constexpr char kBrowserDescription[] =
     "server (file:// URLs are refused, and its relative links do not "
     "load). upload with element, view_id and path gives a file of this "
     "conversation's folder to a file field, or to the chooser the element "
-    "opens; what a page downloads lands in its downloads folder. A page's "
+    "opens; what a page downloads lands in its downloads folder, and the "
+    "next result says when the download ended. console returns the page's "
+    "console messages and uncaught errors, network its requests since it "
+    "loaded; find narrows both. A page's "
     "alert, confirm or prompt dialog is reported in place "
     "of the page; answer it with press Enter or Escape. A result that says "
     "SUSPECTED BLOCK means a bot "
@@ -604,33 +662,39 @@ constexpr char kBrowserDescription[] =
 json BrowserParameters() {
   json names = json::array();
   for (const Action& action : kActions) names.push_back(action.name);
-  return {{"type", "object"},
-          {"properties",
-           {{"action", {{"type", "string"}, {"enum", std::move(names)}}},
-            {"browser", {{"type", "string"}, {"enum", {"auto", "shared"}}}},
-            {"url", {{"type", "string"}}},
-            {"path", {{"type", "string"}}},
-            {"target_id", {{"type", "string"}}},
-            {"view_id", {{"type", "string"}}},
-            {"element", {{"type", "integer"}}},
-            {"offset", {{"type", "integer"}}},
-            {"find", {{"type", "string"}}},
-            {"x", {{"type", "integer"}}},
-            {"y", {{"type", "integer"}}},
-            {"delta_y", {{"type", "integer"}}},
-            {"text", {{"type", "string"}}},
-            {"replace", {{"type", "boolean"}}},
-            {"new_tab", {{"type", "boolean"}}},
-            {"close", {{"type", "boolean"}}},
-            {"key",
-             {{"type", "string"},
-              {"enum",
-               {"Enter", "Tab", "Escape", "Backspace", "Delete", "Space",
-                "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp",
-                "PageDown", "Home", "End"}}}},
-            {"reason", {{"type", "string"}}}}},
-          {"required", {"action"}},
-          {"additionalProperties", false}};
+  return {
+      {"type", "object"},
+      {"properties",
+       {{"action", {{"type", "string"}, {"enum", std::move(names)}}},
+        {"browser", {{"type", "string"}, {"enum", {"auto", "shared"}}}},
+        {"url", {{"type", "string"}}},
+        {"path", {{"type", "string"}}},
+        {"target_id", {{"type", "string"}}},
+        {"view_id", {{"type", "string"}}},
+        {"element", {{"type", "integer"}}},
+        {"offset", {{"type", "integer"}}},
+        {"find", {{"type", "string"}}},
+        {"x", {{"type", "integer"}}},
+        {"y", {{"type", "integer"}}},
+        {"to_element", {{"type", "integer"}}},
+        {"to_x", {{"type", "integer"}}},
+        {"to_y", {{"type", "integer"}}},
+        {"button", {{"type", "string"}, {"enum", {"left", "right", "middle"}}}},
+        {"count", {{"type", "integer"}, {"minimum", 1}, {"maximum", 3}}},
+        {"delta_y", {{"type", "integer"}}},
+        {"text", {{"type", "string"}}},
+        {"replace", {{"type", "boolean"}}},
+        {"new_tab", {{"type", "boolean"}}},
+        {"close", {{"type", "boolean"}}},
+        {"key",
+         {{"type", "string"},
+          {"description",
+           "Enter, Tab, Escape, Backspace, Delete, Space, ArrowUp, "
+           "ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End "
+           "or one character"}}},
+        {"reason", {{"type", "string"}}}}},
+      {"required", {"action"}},
+      {"additionalProperties", false}};
 }
 }  // namespace
 
@@ -736,7 +800,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     }
     // Checking status and releasing never wait for a browser or start Chrome.
     if (action == "status" || action == "release") {
-      return Query(BrowserAccess{session_id, ""}, args, action, *seen);
+      return Query(BrowserAccess{session_id, "", {}}, args, action, *seen);
     }
     BrowserAccess access;
     ToolResult admission = Acquire(session_id, args, context, access);
@@ -746,16 +810,21 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     if (AbortRequested() || context.Expired()) {
       return ToolCancelled("Browser action interrupted before execution");
     }
+    // A download the browser told of on the way comes first.
+    const auto told = [&access](ToolResult result) {
+      result.output = std::exchange(access.news, "") + result.output;
+      return result;
+    };
     if (action == "request_human") {
-      return Handover(access,
-                      JsonValue(args, "reason", "Please finish in the browser"),
-                      ask);
+      return told(Handover(
+          access, JsonValue(args, "reason", "Please finish in the browser"),
+          ask));
     }
     if (action == "observe") {
-      return Observation(access, "", context, /*look=*/true, *seen);
+      return told(Observation(access, "", context, /*look=*/true, *seen));
     }
     const Action* row = FindAction(args);
-    if (!row || !row->acts) return Query(access, args, action, *seen);
+    if (!row || !row->acts) return told(Query(access, args, action, *seen));
     // Text typed while a prompt already shows, into no element, is its
     // staged answer; a type whose own click opened it typed nothing.
     bool answers = false;
@@ -764,7 +833,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       answers = action == "type" && !seen->dialog.empty() &&
                 !args.contains("element") && !args.contains("x");
     }
-    ToolResult result = Act(access, args, action, context, *seen);
+    ToolResult result = told(Act(access, args, action, context, *seen));
     if (answers && result.Ok()) {
       std::lock_guard lock(seen->mutex);
       seen->answer = JsonValue(args, "text", "");

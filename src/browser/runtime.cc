@@ -516,6 +516,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
         std::erase_if(sessions_,
                       [&](const auto& tab) { return tab.second == gone; });
         dialogs_.erase(gone);
+        requests_.erase(gone);
         if (gone == page_session_) page_session_.clear();
       }
       const std::string from = JsonValue(response, "sessionId", "");
@@ -546,6 +547,15 @@ json Runtime::Call(const std::string& method, const json& parameters,
         if (downloads_.contains(guid)) {
           downloads_[guid]["state"] = JsonValue(*params, "state", "");
         }
+      }
+      if (params && event.starts_with("Network.")) {
+        Requested(from, event, *params);
+      }
+      if (params && logged_ && from == page_session_) {
+        Logged(event, *params, *logged_);
+      }
+      if (params && event == "Input.dragIntercepted") {
+        dragged_ = JsonValue(*params, "data", json::object());
       }
       // What the page owed is never coming while the dialog is open; an
       // input it cut short has still happened.
@@ -646,6 +656,10 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
     error = installed;
     return false;
   }
+  // Its requests are kept for network to tell of; their bodies are not.
+  Call("Network.enable",
+       {{"maxTotalBufferSize", 0}, {"maxResourceBufferSize", 0}},
+       attached_session);
   page_session_ = sessions_[target_] = std::move(attached_session);
   return true;
 }
@@ -808,11 +822,16 @@ json Runtime::Execute(const json& command) {
   // A dialog that is open, or opens meanwhile, is what there is to report.
   if (OpenDialog() && op != "tabs") return Dialog(op, command);
   // Whatever failed meanwhile failed because the page could not answer.
+  // A download that ended is told with whatever answer comes next, since it
+  // may end long after the action that started it.
   const auto reported = [&](json result) {
     if (const json* open = OpenDialog()) {
       result.erase("error");
       result["ok"] = true;
       result["dialog"] = *open;
+    }
+    if (json ended = Finished(); !ended.empty()) {
+      result["downloads"] = std::move(ended);
     }
     return result;
   };
@@ -821,7 +840,7 @@ json Runtime::Execute(const json& command) {
   // is, not as it remembers it: keys and text go nowhere before that.
   // Only a look or an open that worked counts.
   if (moved_ && op != "observe" && op != "read" && op != "tabs" &&
-      op != "open") {
+      op != "open" && op != "console" && op != "network") {
     return {{"error",
              "another conversation used the browser since; open your page "
              "or observe before acting"}};
@@ -832,6 +851,8 @@ json Runtime::Execute(const json& command) {
     return reported(seen);
   }
   if (op == "read") return reported(Read(command));
+  if (op == "console") return reported(Console(command));
+  if (op == "network") return reported(Network(command));
   if (op == "tabs") {
     json pages = PageTargets();
     if (pages.contains("error")) return pages;

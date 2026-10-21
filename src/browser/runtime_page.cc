@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/browser/browser.h"
 #include "include/browser/runtime.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
+#include "include/core/strings.h"
 #include "src/browser/runtime_internal.h"
 
 namespace uagent::browser {
@@ -234,18 +236,16 @@ json Runtime::Probe() {
   result["ok"] = true;
   result["loading"] = loading_;
   result["opened"] = std::move(opened);
-  // Downloads that ended are told once; one still going keeps the page busy.
-  json ended = json::array();
-  for (auto it = downloads_.begin(); it != downloads_.end();) {
-    if (JsonValue(*it, "state", "") == "inProgress") {
-      result["loading"] = true;
-      ++it;
-    } else {
-      ended.push_back(*it);
-      it = downloads_.erase(it);
-    }
+  // A download still going keeps the page busy; which ones are named.
+  json going = json::array();
+  for (const json& file : downloads_) {
+    if (JsonValue(file, "state", "") == "inProgress")
+      going.push_back(file["name"]);
   }
-  if (!ended.empty()) result["downloads"] = std::move(ended);
+  if (!going.empty()) {
+    result["loading"] = true;
+    result["downloading"] = std::move(going);
+  }
   if (!switched.is_null()) result["switched"] = std::move(switched);
   return result;
 }
@@ -338,5 +338,169 @@ json Runtime::Observe(bool image) {
           {"view_id", observation_},
           {"width", view_width_},
           {"height", view_height_}};
+}
+
+namespace {
+// The most of a list that console and network give, the latest last.
+constexpr size_t kListedLines = 100;
+// The requests a tab keeps, and how much of an address or a message a line
+// holds.
+constexpr size_t kKeptRequests = 200;
+constexpr size_t kLineBytes = 500;
+
+// The lines that contain `find`, whatever their case, the latest
+// kListedLines of them, and how many there were.
+json Listed(const std::vector<std::string>& lines, const std::string& find) {
+  const std::string wanted = AsciiLower(find);
+  std::vector<std::string> kept;
+  for (const std::string& line : lines) {
+    if (wanted.empty() || AsciiLower(line).find(wanted) != std::string::npos) {
+      kept.push_back(line);
+    }
+  }
+  std::string text;
+  for (size_t at = kept.size() > kListedLines ? kept.size() - kListedLines : 0;
+       at < kept.size(); ++at) {
+    text += kept[at] + "\n";
+  }
+  return {{"ok", true}, {"lines", text}, {"count", kept.size()}};
+}
+
+// Where a console message or error came from: its script and line.
+std::string Source(const std::string& url, int line) {
+  return url.empty() ? "" : " (" + url + ":" + std::to_string(line + 1) + ")";
+}
+}  // namespace
+
+void Logged(const std::string& event, const json& params,
+            std::vector<std::string>& lines) {
+  std::string line;
+  if (event == "Runtime.consoleAPICalled") {
+    line = JsonValue(params, "type", "log") + ":";
+    for (const json& value : JsonValue(params, "args", json::array())) {
+      const json* held = value.contains("value") ? &value["value"] : nullptr;
+      line += " " + (held && held->is_string() ? held->get<std::string>()
+                     : held ? JsonDump(*held)
+                            : JsonValue(value, "description",
+                                        JsonValue(value, "type", "")));
+    }
+    const json* stack = JsonObject(params, "stackTrace");
+    const json* frames = stack ? JsonArray(*stack, "callFrames") : nullptr;
+    if (frames && !frames->empty()) {
+      line += Source(JsonValue((*frames)[0], "url", ""),
+                     JsonValue((*frames)[0], "lineNumber", 0));
+    }
+  } else if (event == "Runtime.exceptionThrown") {
+    const json* details = JsonObject(params, "exceptionDetails");
+    if (!details) return;
+    const json* thrown = JsonObject(*details, "exception");
+    const std::string said =
+        thrown ? JsonValue(*thrown, "description", "") : "";
+    line = "uncaught: " +
+           (said.empty() ? JsonValue(*details, "text", "")
+                         : said.substr(0, said.find('\n'))) +
+           Source(JsonValue(*details, "url", ""),
+                  JsonValue(*details, "lineNumber", 0));
+  } else {
+    return;
+  }
+  lines.push_back(Utf8Prefix(std::move(line), kLineBytes));
+}
+
+// Chrome replays what the page's console holds when its Runtime events are
+// turned on, so they are on only for this read: a page can notice them,
+// and a person's browser never has them on.
+json Runtime::Console(const json& command) {
+  std::vector<std::string> lines;
+  logged_ = &lines;
+  json enabled = Call("Runtime.enable", json::object(), page_session_);
+  Call("Runtime.disable", json::object(), page_session_);
+  logged_ = nullptr;
+  if (auto reason = CdError(enabled); !reason.empty()) {
+    return {{"error", reason}};
+  }
+  return Listed(lines, JsonValue(command, "find", ""));
+}
+
+json Runtime::Network(const json& command) {
+  std::vector<std::string> lines;
+  for (const json& request : requests_[page_session_]) {
+    const std::string failed = JsonValue(request, "failed", "");
+    const int status = JsonValue(request, "status", 0);
+    const int64_t bytes = JsonValue(request, "bytes", int64_t{-1});
+    lines.push_back(JsonValue(request, "method", "") + " " +
+                    (!failed.empty() ? "failed (" + failed + ")"
+                     : status        ? std::to_string(status)
+                                     : "pending") +
+                    " " + JsonValue(request, "type", "") + " " +
+                    JsonValue(request, "url", "") +
+                    (bytes >= 0 ? " " + std::to_string(bytes) + " B" : ""));
+  }
+  return Listed(lines, JsonValue(command, "find", ""));
+}
+
+// A new document of the tab's own starts its list again; a redirect gives
+// the request it ends its status before the next one starts.
+void Runtime::Requested(const std::string& session, const std::string& event,
+                        const json& params) {
+  if (session.empty()) return;
+  const std::string id = JsonValue(params, "requestId", "");
+  const auto latest = [&](std::vector<json>& list) -> json* {
+    for (auto it = list.rbegin(); it != list.rend(); ++it) {
+      if (JsonValue(*it, "id", "") == id) return &*it;
+    }
+    return nullptr;
+  };
+  if (event == "Network.requestWillBeSent") {
+    std::vector<json>& list = requests_[session];
+    const auto tab = std::ranges::find_if(
+        sessions_, [&](const auto& known) { return known.second == session; });
+    if (const json* moved = JsonObject(params, "redirectResponse")) {
+      if (json* was = latest(list)) {
+        (*was)["status"] = JsonValue(*moved, "status", 0);
+      }
+    } else if (JsonValue(params, "type", "") == "Document" &&
+               tab != sessions_.end() &&
+               JsonValue(params, "frameId", "") == tab->first) {
+      list.clear();
+    }
+    const json* request = JsonObject(params, "request");
+    list.push_back(
+        {{"id", id},
+         {"method", request ? JsonValue(*request, "method", "") : ""},
+         {"type", JsonValue(params, "type", "")},
+         {"url", Utf8Prefix(request ? JsonValue(*request, "url", "") : "",
+                            kLineBytes)}});
+    if (list.size() > kKeptRequests) list.erase(list.begin());
+    return;
+  }
+  const auto held = requests_.find(session);
+  json* request = held == requests_.end() ? nullptr : latest(held->second);
+  if (!request) return;
+  if (event == "Network.responseReceived") {
+    if (const json* response = JsonObject(params, "response")) {
+      (*request)["status"] = JsonValue(*response, "status", 0);
+    }
+  } else if (event == "Network.loadingFailed") {
+    (*request)["failed"] = JsonValue(params, "canceled", false)
+                               ? "canceled"
+                               : JsonValue(params, "errorText", "");
+  } else if (event == "Network.loadingFinished") {
+    (*request)["bytes"] =
+        static_cast<int64_t>(JsonValue(params, "encodedDataLength", 0.0));
+  }
+}
+
+json Runtime::Finished() {
+  json ended = json::array();
+  for (auto it = downloads_.begin(); it != downloads_.end();) {
+    if (JsonValue(*it, "state", "") == "inProgress") {
+      ++it;
+    } else {
+      ended.push_back(*it);
+      it = downloads_.erase(it);
+    }
+  }
+  return ended;
 }
 }  // namespace uagent::browser

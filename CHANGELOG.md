@@ -50,6 +50,13 @@
   starting background work no longer rewrites the prompt cache.
 - A panel's daily spend counts what threads from earlier days spend today,
   and warns when the route reports no cost.
+- `install.sh` says what it found and asks where µAgent runs: in the
+  container (recommended where Docker runs), or here, offering on Linux to
+  install Chrome, TigerVNC and the Chrome policy for the agent's browser.
+  `UAGENT_INSTALL=container|here` chooses without asking; a run without a
+  terminal installs here, as before.
+- The README compares µAgent's footprint with Claude Code, Codex CLI and omp;
+  `benchmarks/compare_agents.py` measures omp with `--omp`.
 
 ## v1.5.0 - 2026-10-20
 

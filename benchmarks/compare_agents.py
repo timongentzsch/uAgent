@@ -19,6 +19,7 @@ import pathlib
 import platform
 import pty
 import select
+import shutil
 import signal
 import statistics
 import struct
@@ -67,9 +68,10 @@ BARE_FLAGS = {
             for flag in ("--disable", feature)
         ],
     ],
+    "omp": ["--no-extensions", "--no-skills", "--no-rules", "--no-lsp", "--no-title"],
 }
 # Keys that ask each tool's interactive UI to quit.
-QUIT_KEYS = {"uagent": b"/quit\r", "claude": b"/exit\r", "codex": b"/exit\r"}
+QUIT_KEYS = {"uagent": b"/quit\r", "claude": b"/exit\r", "codex": b"/exit\r", "omp": b"/exit\r"}
 
 
 def cpu_seconds(value):
@@ -171,6 +173,10 @@ def alive(pid):
 def install_root(executable):
     """The resolved executable and what ships with it, as (files, description)."""
     real = executable.resolve()
+    # An npm package: the node_modules tree it was installed into.
+    modules = [p for p in real.parents if p.name == "node_modules"]
+    if modules:
+        return modules[-1], "node_modules"
     parent = real.parent
     if parent.name == "bin":
         prefix = parent.parent
@@ -204,19 +210,26 @@ def shared_libraries(binary):
 
 def own_markers(tool):
     root = install_root(tool["path"])[0]
-    return [str(tool["path"]), str(tool["path"].resolve()), str(root)]
+    markers = [str(tool["path"]), str(tool["path"].resolve()), str(root)]
+    # A script runs as its runtime: `bun /path/to/cli.js`.
+    if tool.get("runtime"):
+        markers += [str(tool["runtime"]), tool["runtime"].name + " "]
+    return markers
 
 
 def measure_size(tool):
     real = tool["path"].resolve()
     root, what = install_root(tool["path"])
     total, files = tree_size(root)
-    libraries = shared_libraries(real)
+    # A script counts with the runtime it needs, as a compiled tool carries its
+    # own (Claude Code embeds Bun).
+    runtime = tool["runtime"].resolve().stat().st_size if tool.get("runtime") else 0
+    libraries = shared_libraries(tool["runtime"].resolve() if tool.get("runtime") else real)
     return {
-        "executable_bytes": real.stat().st_size,
-        "install_bytes": total,
-        "install_files": files,
-        "install_counts": what,
+        "executable_bytes": real.stat().st_size + runtime,
+        "install_bytes": total + runtime,
+        "install_files": files + (1 if runtime else 0),
+        "install_counts": what + (" and " + tool["runtime"].name if runtime else ""),
         "non_system_libraries": None if libraries is None else len(libraries),
     }
 
@@ -267,7 +280,7 @@ def drain(master, state, terminal_replies=True):
 def measure_idle(tool, project):
     master, slave = pty.openpty()
     winsize(slave)
-    env = dict(os.environ, TERM="xterm-256color", COLUMNS="120", LINES="40")
+    env = dict(os.environ, **tool.get("env", {}), TERM="xterm-256color", COLUMNS="120", LINES="40")
     started = time.monotonic()
     process = spawn(
         [str(tool["path"]), *BARE_FLAGS[tool["name"]]],
@@ -335,6 +348,7 @@ def measure_headless(tool, project):
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        env=dict(os.environ, **tool.get("env", {})),
     )
     attribution = Attribution(process.pid, own_markers(tool))
     started = time.perf_counter()
@@ -448,8 +462,30 @@ def build_tools(args):
                 ],
             }
         )
+    if args.omp:
+        omp_model = ["--model", args.omp_model] if args.omp_model else []
+        runtime = shutil.which("bun")
+        if not runtime:
+            sys.exit("omp needs Bun on PATH")
+        tools.append(
+            {
+                "name": "omp",
+                "path": args.omp,
+                "runtime": pathlib.Path(runtime),
+                # Its provider settings, which Claude Code would read too.
+                "env": dict(item.split("=", 1) for item in args.omp_env),
+                "headless": [
+                    str(args.omp),
+                    *BARE_FLAGS["omp"],
+                    "--no-session",
+                    *omp_model,
+                    "-p",
+                    PROMPT,
+                ],
+            }
+        )
     if not tools:
-        sys.exit("give at least one of --uagent, --claude, --codex")
+        sys.exit("give at least one of --uagent, --claude, --codex, --omp")
     return tools
 
 
@@ -493,7 +529,7 @@ def table(tools, report):
     return header + "\n" + "\n".join(rows)
 
 
-DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex CLI"}
+DISPLAY_NAMES = {"uagent": "µAgent", "claude": "Claude Code", "codex": "Codex CLI", "omp": "omp"}
 CHART_STYLE = """
   .bg { fill: #ffffff; }
   text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
@@ -526,13 +562,18 @@ def panel_values(tools, report, metric, key, divisor):
 
 def chart_svg(tools, report):
     panels = (
-        ("Executable size, MB", panel_values(tools, report, "size", "executable_bytes", 1e6), 1),
+        ("Install on disk, MB", panel_values(tools, report, "size", "install_bytes", 1e6), 1),
         ("Idle session memory, MB", panel_values(tools, report, "idle", "rss_kib", 1024), 1),
         ("CPU per headless turn, ms", panel_values(tools, report, "headless", "cpu_ms", 1), 0),
-        ("Time to first screen, ms", panel_values(tools, report, "idle", "first_screen_ms", 1), 0),
+        (
+            "Peak memory per headless turn, MB",
+            panel_values(tools, report, "headless", "peak_rss_kib", 1024),
+            1,
+        ),
     )
-    width, height, panel_width, panel_height = 800, 300, 380, 120
-    label_width, bar_width = 84, 230
+    panel_width, panel_height = 380, 30 + 28 * len(tools)
+    width, height = 800, 2 * panel_height + 60
+    label_width, bar_width = 84, 220
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
         f'width="{width}" height="{height}" role="img" aria-label="Footprint of the agents">',
@@ -590,7 +631,12 @@ def main():
     parser.add_argument("--uagent", type=pathlib.Path, help="path to the uagent executable")
     parser.add_argument("--claude", type=pathlib.Path, help="path to the claude executable")
     parser.add_argument("--codex", type=pathlib.Path, help="path to the codex executable")
+    parser.add_argument("--omp", type=pathlib.Path, help="path to the omp executable (needs Bun)")
     parser.add_argument("--uagent-model", help="--model value for the uagent headless turn")
+    parser.add_argument("--omp-model", help="--model value for the omp headless turn")
+    parser.add_argument(
+        "--omp-env", action="append", default=[], help="KEY=VALUE set for omp only (repeatable)"
+    )
     parser.add_argument("--version-runs", type=int, default=30)
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--session-runs", type=int, default=5, help="idle and headless runs")

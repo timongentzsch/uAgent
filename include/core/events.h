@@ -32,6 +32,7 @@ enum class EventId : uint16_t {
   kTurnStarted,
   kTurnStopped,
   kTurnCompleted,
+  kTurnUsageAmended,
   kToolCall,
   kToolStarted,
   kToolResult,

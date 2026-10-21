@@ -444,6 +444,54 @@ void TestCommandReplies() {
         }).empty());
 }
 
+// /cost reads each route from its full usage. It once copied input, output
+// and cache reads only, so a route's hit rate left cache writes out of the
+// denominator: live, one route said "cache 99%" while the total said 42%.
+void TestCostRoutesCountCacheWrites() {
+  TestWorkspace workspace("cost-routes");
+  Observability observability;
+  AppContext context(RuntimeConfig{}, ConfigManager::Capture({}), Options{},
+                     observability, nullptr);
+  context.runtime.api.model = "test-model";
+  context.agent = std::make_unique<Agent>(
+      context.runtime.api, context.tools, context.runtime.processes,
+      context.runtime.side_usage,
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  SessionRecord record;
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = "test",
+                     .session_id = "cost",
+                     .turns = 1,
+                     .title = "cost"};
+  record.state.messages =
+      json::array({{{"role", "system"}, {"content", "sys"}}});
+  record.state.message_kinds = {MessageKind::kSystem};
+  Usage spent;
+  spent.input = 4;
+  spent.cache_read = 6000;
+  spent.cache_write = 8000;
+  spent.output = 200;
+  record.state.usage = spent;
+  record.state.route_usage["route"] = spent;
+  const std::string path = (workspace.root / "cost.json").string();
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  std::string error;
+  REQUIRE(context.agent->Load(path, CanonicalCwd(), error));
+  std::vector<Attachment> attachments;
+  std::string file;
+  uint64_t revision = 0;
+  AppSession session{context, attachments, file, revision};
+  CaptureStdout([&] {
+    const auto reply = RunSlashCommand(session, ParseSlashCommand("/cost"));
+    CHECK(reply.output.find("route · 4 in (+6k cached) (+8k cache write)") !=
+          std::string::npos);
+    CHECK(reply.output.find("cache 99%") == std::string::npos);
+    const size_t first = reply.output.find("cache 42%");
+    CHECK(first != std::string::npos);
+    CHECK(reply.output.find("cache 42%", first + 1) != std::string::npos);
+  });
+}
+
 void TestSavedHistoryInvalidation() {
   TestWorkspace workspace("history-cache");
   const std::string folder =

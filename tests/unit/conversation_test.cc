@@ -318,6 +318,19 @@ void TestConversation() {
   Conversation legacy;
   CHECK(legacy.Restore(resumed.Messages(), resumed.Kinds(), json::array(), 0));
 
+  // Oversized counters cost only themselves, never the resume.
+  json crowded_statistics = json::object();
+  for (int i = 0; i < 400; ++i) {
+    crowded_statistics["counter_" + std::to_string(i)] = i;
+  }
+  Conversation counted;
+  CHECK(counted.Restore(resumed.Messages(), resumed.Kinds(), json::array(), 0,
+                        {{"ids", json::array({uint64_t{1}, uint64_t{2}})},
+                         {"next", uint64_t{3}},
+                         {"facts", json::object()},
+                         {"statistics", crowded_statistics}}));
+  CHECK(counted.Statistics() == json({{"complete", false}}));
+
   Conversation browser;
   browser.Push({{"role", "system"}, {"content", "private system"}},
                MessageKind::kSystem);

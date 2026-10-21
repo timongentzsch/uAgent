@@ -38,6 +38,10 @@ constexpr EventPolicy kPolicies[] = {
      "turn.completed", EventRedaction::kPublicProjection},
     {EventId::kTurnCompleted, "turn.completed", "turn_end", "usage",
      "turn.completed", EventRedaction::kPublicProjection},
+    // Background work that finishes after its turn: the journal's turn record
+    // is written once, so what came later is recorded beside it.
+    {EventId::kTurnUsageAmended, "turn.usage_amended", "turn_usage_amended",
+     nullptr, "turn.usage_amended", EventRedaction::kPublicProjection},
     {EventId::kToolCall, "tool.call", "tool_call", "tool.call", "tool.call",
      EventRedaction::kPublicProjection},
     {EventId::kToolStarted, "tool.started", nullptr, nullptr, nullptr,
@@ -257,7 +261,10 @@ json JournalProjection(const Event& event) {
     case EventId::kTurnCompleted:
       copy({"turn", "outcome", "steps", "tool_calls", "duration_ms", "ttt_ms",
             "tokens_per_second", "generation_ms", "generated_tokens", "usage",
-            "session_usage", "messages", "context_tokens"});
+            "messages", "context_tokens"});
+      break;
+    case EventId::kTurnUsageAmended:
+      copy({"turn", "usage", "statistics"});
       break;
     case EventId::kToolCall:
       copy({"turn", "step", "occurrence_id", "name", "arguments_digest",

@@ -407,9 +407,12 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   auto deadline = request_timeout > 0
                       ? DeadlineAfter(started, request_timeout)
                       : std::chrono::steady_clock::time_point::max();
+  // Durations and first-token times describe the attempt that answered;
+  // retry backoff shows only in end_to_end_ms.
+  auto attempt_started = started;
   auto stamp = [&] {
     res.request_preparation_ms = preparation_ms;
-    res.duration_ms = ElapsedMs(started);
+    res.duration_ms = ElapsedMs(attempt_started);
     res.end_to_end_ms = ElapsedMs(overall_started);
   };
   for (int attempt = 1; attempt <= kChatAttempts; ++attempt) {
@@ -424,7 +427,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
       attempt_timeout =
           attempt_limit > 0 ? std::min(attempt_limit, remaining) : remaining;
     }
-    auto attempt_started = std::chrono::steady_clock::now();
+    attempt_started = std::chrono::steady_clock::now();
     json metadata = exchange_context;
     metadata.update(
         {{"method", "POST"},
@@ -443,11 +446,6 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     json recorded =
         exchange.Finish(res.http_status, res.interrupted, res.error);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
-    const double offset_ms =
-        std::chrono::duration<double, std::milli>(attempt_started - started)
-            .count();
-    if (res.first_event_ms >= 0) res.first_event_ms += offset_ms;
-    if (res.first_token_ms >= 0) res.first_token_ms += offset_ms;
     stamp();
     if (attempt == kChatAttempts || !SafeToRetry(res)) return res;
 

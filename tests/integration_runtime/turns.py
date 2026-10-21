@@ -360,7 +360,15 @@ def test_transient_stream_errors_retry_before_progress(root, home, *, binary):
             event({"content": "retry-ok"}),
         ]
     ) as server:
-        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
+        trace = root / "retry.jsonl"
+        result = run(
+            root, base_env(home, server.url), f"--debug={trace}", "-p", "reply", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "retry-ok", result.stdout)
         assert_true(len(server.requests) == 3, server.requests)
+        # The answering attempt's duration leaves the backoff before it out;
+        # only the end-to-end time carries it.
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        timing = next(r["data"] for r in records if r["event"] == "model_response")
+        assert_true(timing["duration_ms"] < 1000 <= timing["end_to_end_ms"], timing)

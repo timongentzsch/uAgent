@@ -713,7 +713,7 @@ void TestStatusBarDropsByPriority() {
   }
   CHECK(wide ==
         "anthropic/claude-sonnet-4-5 · Ask · 99% left · $0.4200 · "
-        "est. ctx 12k/1.3M · bg:1 · 12k in · 3.4k out · cache 33% · "
+        "est. ctx 12k/1.3M · bg:1 · 18k in · 3.4k out · cache 33% · "
         "full · /help for shortcuts");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the
@@ -738,7 +738,7 @@ void TestStatusBarDropsByPriority() {
   }
   CHECK(DisplayWidth(narrow) <= 40);
   CHECK(narrow.find("cache 33%") == std::string::npos);
-  CHECK(narrow.find("12k in") == std::string::npos);
+  CHECK(narrow.find("18k in") == std::string::npos);
 
   // Priority 0 is never dropped, even when it alone overflows: the row would
   // otherwise stop saying where the request goes.

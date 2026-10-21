@@ -1,4 +1,6 @@
 // Human-facing quantities only. Wire data, config values and raw captures stay exact.
+import type { Usage } from "./types.ts";
+
 function scaled(value: number, units: string[], separator = "") {
   let unit = 0;
   while (Math.abs(value) >= 999.95 && unit < units.length - 1) {
@@ -11,6 +13,14 @@ export const count = (value?: number) =>
   value !== undefined && Number.isFinite(value) && value >= 0
     ? scaled(value, ["", "k", "M", "B", "T", "P", "E"])
     : "Not recorded";
+// Every token a call processed: the buckets are disjoint, so cached and
+// cache-written input would otherwise go missing from the figure.
+export const tokens = (usage: Usage) =>
+  (usage.input || 0) +
+  (usage.cache_read || 0) +
+  (usage.cache_write || 0) +
+  (usage.output || 0) +
+  (usage.reasoning || 0);
 // "1 tool", "3 tools": a count with its noun, "searches" when named.
 export const plural = (value: number, noun: string, many = `${noun}s`) =>
   `${count(value)} ${value === 1 ? noun : many}`;

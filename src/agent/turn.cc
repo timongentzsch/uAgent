@@ -604,8 +604,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   }
   // The stored block already carries the full summary: the footer the live
   // turn prints and the one --resume replays read identical inputs.
-  summary.update({{"session_usage", UsageJson(session_usage_)},
-                  {"messages", conversation_.Size()},
+  summary.update({{"messages", conversation_.Size()},
                   {"context_tokens", ContextUsed()},
                   {"line_open", state.line_open}});
   json entry = {{"kind", "turn_summary"},

@@ -21,10 +21,25 @@
 
 namespace uagent {
 
-// Token counts as the status row and /cost both spell them. Cache is separate
-// so the status row can drop it independently when the terminal is narrow.
+// The status row's totals: the whole prompt in, everything generated out.
+// Cache is separate so a narrow terminal can drop it on its own.
 inline std::string TokenSummary(const Usage& usage) {
-  return FmtCount(usage.input) + " in · " + FmtCount(usage.output) + " out";
+  return FmtCount(usage.PromptTokens()) + " in · " +
+         FmtCount(usage.GeneratedTokens()) + " out";
+}
+
+// Every bucket, as a turn's footer and /cost spell them.
+inline std::string TokenSplit(const Usage& usage) {
+  std::string line = FmtCount(usage.input) + " in";
+  if (usage.cache_read) line += " (+" + FmtCount(usage.cache_read) + " cached)";
+  if (usage.cache_write) {
+    line += " (+" + FmtCount(usage.cache_write) + " cache write)";
+  }
+  line += " · " + FmtCount(usage.output) + " out";
+  if (usage.reasoning) {
+    line += " (+" + FmtCount(usage.reasoning) + " reasoning)";
+  }
+  return line;
 }
 
 inline std::string CacheSummary(const Usage& usage) {
@@ -89,7 +104,9 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   if (view.background) {
     add(3, "bg:" + FmtCount(static_cast<int64_t>(view.background)));
   }
-  if (usage.input || usage.output) add(4, TokenSummary(usage));
+  if (usage.PromptTokens() || usage.GeneratedTokens()) {
+    add(4, TokenSummary(usage));
+  }
   add(5, CacheSummary(usage));
   if (view.verbosity != "default") add(6, view.verbosity);
   add(7, "/help for shortcuts");

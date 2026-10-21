@@ -31,8 +31,9 @@ json UsedSince(const Agent& agent, const json& before) {
   const json routes_now = agent.RouteUsageJson();
   json routes = json::object();
   for (const auto& [route, used] : routes_now.items()) {
-    routes[route] =
+    json spent =
         since(used, JsonValue(before["routes"], route.c_str(), json::object()));
+    if (HasUsage(UsageFromJson(spent))) routes[route] = std::move(spent);
   }
   const json& statistics_now = agent.Statistics();
   json statistics = json::object();
@@ -59,12 +60,14 @@ json UsedSince(const Agent& agent, const json& before) {
 int Application::FinishHeadless(std::string answer, std::string error,
                                 int exit_code) {
   Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
-  // What this run of a child spent, for the parent that started it: written
-  // on every way out, after teardown has taken in what its own children
-  // spent.
-  if (used_before_.is_object()) {
+  // What this run spent, after teardown has taken in what its own children
+  // spent: the envelope reports it, and a child writes it for its parent on
+  // every way out.
+  const json used = used_before_.is_object() ? UsedSince(agent_, used_before_)
+                                             : json(nullptr);
+  if (used.is_object() && !EnvStr("UAGENT_INTERNAL_USAGE_FILE").empty()) {
     std::string failure;
-    json entry = UsedSince(agent_, used_before_);
+    json entry = used;
     entry["parent_turn"] = EnvLong("UAGENT_INTERNAL_PARENT_TURN", int64_t{0});
     if (!AppendPrivateLine(EnvStr("UAGENT_INTERNAL_USAGE_FILE"),
                            JsonDump(entry), failure)) {
@@ -77,10 +80,11 @@ int Application::FinishHeadless(std::string answer, std::string error,
       stop["reason"] = "turn_deadline";
       stop["detail"] = "time limit reached with work it started still running";
     }
-    json envelope =
-        HeadlessResult(std::move(answer), std::move(error),
-                       agent_.LatestToolTrace(), agent_.SessionUsage(),
-                       agent_.RouteUsageJson(), exit_code, std::move(stop));
+    json envelope = HeadlessResult(
+        std::move(answer), std::move(error), agent_.LatestToolTrace(),
+        used.is_object() ? UsageFromJson(used["usage"]) : agent_.SessionUsage(),
+        used.is_object() ? used["routes"] : agent_.RouteUsageJson(), exit_code,
+        std::move(stop));
     if (context_.options.json_stream) {
       Emit(Event{exit_code == 0 ? EventId::kAnswer : EventId::kError,
                  std::move(envelope)});
@@ -99,14 +103,16 @@ int Application::RunHeadless() {
   // Delegated children are durable conversations even though ordinary
   // one-shot `-p` calls remain ephemeral.
   persist_ = !session_file_.empty();
-  // A delegated child: it reports what it spends, stops when told to and
-  // keeps to its time limit as a whole, not only turn by turn.
+  // Spend is reported from here on: a continued conversation's envelope
+  // carries this run, not everything before it.
+  used_before_ = {{"usage", UsageJson(agent_.SessionUsage())},
+                  {"routes", agent_.RouteUsageJson()},
+                  {"statistics", agent_.Statistics()}};
+  // A delegated child stops when told to and keeps to its time limit as a
+  // whole, not only turn by turn.
   auto deadline = std::chrono::steady_clock::time_point::max();
   if (!EnvStr("UAGENT_INTERNAL_USAGE_FILE").empty()) {
     SetGracefulShutdown(true, /*stop_started=*/true);
-    used_before_ = {{"usage", UsageJson(agent_.SessionUsage())},
-                    {"routes", agent_.RouteUsageJson()},
-                    {"statistics", agent_.Statistics()}};
     if (api_.config.max_turn_seconds > 0) {
       deadline = DeadlineAfter(api_.config.max_turn_seconds);
     }

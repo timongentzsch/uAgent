@@ -1,3 +1,4 @@
+import fcntl
 import json
 import pathlib
 import stat
@@ -19,6 +20,7 @@ from integration_support import (
     tool_call,
     tool_calls,
     tool_results,
+    write_session,
     write_sse_sequence,
 )
 
@@ -381,6 +383,42 @@ def test_input_idle_background_completion_is_observational(root, home, *, binary
         assert_true(b"background-ui-only" in output, output)
         assert_true(b"background-leaked" not in output, output)
         assert_true(len(server.requests) == 3, server.requests)
+
+
+def test_continued_headless_json_reports_this_runs_usage(root, home, *, binary):
+    session = write_session(
+        home,
+        "continued-usage",
+        [{"role": "system", "content": "saved system"}],
+        cwd=root,
+        kinds=["system"],
+        usage={"input": 1000, "cache_write": 9000, "output": 50},
+        turns=0,
+    )
+    answer = event({"content": "continued"}, usage={"prompt_tokens": 5, "completion_tokens": 2})
+    with Server([answer]) as server:
+        result = run(root, base_env(home, server.url), "-c", "--json", "-p", "go on", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        envelope = json.loads(result.stdout)
+        # Only what this run spent, not the saved conversation's total.
+        assert_true(envelope["usage"]["input"] == 5, envelope)
+        assert_true(envelope["usage"]["cache_write"] == 0, envelope)
+        assert_true(envelope["usage"]["output"] == 2, envelope)
+        assert_true(len(envelope["routes"]) == 1, envelope)
+
+    # A conversation another runtime holds is refused with an envelope, not an
+    # empty stdout, and is left as it was.
+    before = session.read_bytes()
+    with open(f"{session}.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        result = run(
+            root, base_env(home, "http://127.0.0.1:9"), "-c", "--json", "-p", "go on", binary=binary
+        )
+    assert_true(result.returncode == 2, (result.stdout, result.stderr))
+    envelope = json.loads(result.stdout)
+    assert_true(envelope["exit_code"] == 2, envelope)
+    assert_true(envelope["error"].startswith("cannot resume: "), envelope)
+    assert_true(session.read_bytes() == before, "the held session was rewritten")
 
 
 def test_headless_json_envelope_contains_trace_usage_and_exit(root, home, *, binary):

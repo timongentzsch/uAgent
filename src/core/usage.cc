@@ -39,9 +39,12 @@ void Usage::Add(const json& value) {
       first({{nullptr, "prompt_tokens"}, {nullptr, "input_tokens"}}));
   int64_t output_tokens = Nonnegative(
       first({{nullptr, "completion_tokens"}, {nullptr, "output_tokens"}}));
+  // Messages usage carries no reasoning split; a gateway that adds one names
+  // it thinking_tokens, inside output_tokens like the others.
   int64_t reason =
       Nonnegative(first({{"completion_tokens_details", "reasoning_tokens"},
-                         {"output_tokens_details", "reasoning_tokens"}}));
+                         {"output_tokens_details", "reasoning_tokens"},
+                         {"output_tokens_details", "thinking_tokens"}}));
   // Chat Completions and Responses report cached tokens *inside* the prompt
   // total, so they must be subtracted out. Anthropic-style usage reports
   // them beside an input count that already excludes them — subtracting

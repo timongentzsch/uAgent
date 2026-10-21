@@ -94,15 +94,6 @@ std::string WritePinned(const std::string& folder, const json& pinned) {
   return WritePanelFile(folder, ".pinned", pinned);
 }
 
-// What the panel's own turns cost today: its session total at the last
-// request against the total when the day's first request began.
-double PanelCostToday(const std::string& folder) {
-  const json spend = JsonValue(ReadPinned(folder), "spend", json::object());
-  return JsonValue(spend, "day", "") == Today()
-             ? JsonValue(spend, "cost", 0.0) - JsonValue(spend, "baseline", 0.0)
-             : 0.0;
-}
-
 ToolResult State(const std::string& folder, const json& a) {
   const std::string action = JsonValue(a, "action", "");
   if (action == "show") {
@@ -192,15 +183,27 @@ bool Working(const SessionInfo& info) {
   return status == "working" || status == "needs you";
 }
 
+// Totals against the day's baselines (RecordPanelCost): the panel's own
+// session, and each thread from earlier days; a thread spawned today counts
+// in full.
 double SpentToday(const std::string& folder,
                   const std::vector<SessionInfo>& threads,
                   const std::vector<bool>& working) {
   const std::string today = Today();
-  double spent = PanelCostToday(folder);
+  json spend = JsonValue(ReadPinned(folder), "spend", json::object());
+  if (JsonValue(spend, "day", "") != today) spend = json::object();
+  double spent =
+      JsonValue(spend, "cost", 0.0) - JsonValue(spend, "baseline", 0.0);
+  const json baselines = JsonValue(spend, "threads", json::object());
   for (size_t i = 0; i < threads.size(); ++i) {
     const SessionInfo& info = threads[i];
-    if (JsonValue(info.thread, "day", "") != today) continue;
-    const double cost = info.cost;
+    double cost = info.cost;
+    if (const auto before = baselines.find(info.path);
+        before != baselines.end() && before->is_number()) {
+      cost = std::max(0.0, cost - before->get<double>());
+    } else if (JsonValue(info.thread, "day", "") != today) {
+      continue;
+    }
     spent += i < working.size() && working[i]
                  ? std::max(cost, ThreadBudget(info.thread))
                  : cost;
@@ -295,7 +298,14 @@ void RecordPanelCost(const std::string& folder, double cost) {
   json pinned = ReadPinned(folder);
   json spend = JsonValue(pinned, "spend", json::object());
   if (JsonValue(spend, "day", "") != Today()) {
-    spend = {{"day", Today()}, {"baseline", cost}};
+    // Threads from earlier days count today only for what they spend from now.
+    json threads = json::object();
+    for (const SessionInfo& info : OwnThreads(folder)) {
+      if (JsonValue(info.thread, "day", "") != Today()) {
+        threads[info.path] = info.cost;
+      }
+    }
+    spend = {{"day", Today()}, {"baseline", cost}, {"threads", threads}};
   } else if (JsonValue(spend, "cost", -1.0) == cost) {
     return;
   }

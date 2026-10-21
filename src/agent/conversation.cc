@@ -207,9 +207,11 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
       restored_ids.push_back(next_id++);
     }
   }
+  // Counters are a convenience: a damaged or oversized set is dropped and
+  // marked incomplete rather than costing the conversation its resume.
   json statistics = JsonValue(display, "statistics", json{{"complete", false}});
   if (!statistics.is_object() || JsonEstimatedBytes(statistics) > 4096) {
-    return false;
+    statistics = {{"complete", false}};
   }
   // Validate before adopting: a failed resume must leave the live session
   // intact.

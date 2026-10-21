@@ -372,9 +372,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   Usage usage;
   usage.Add(result.usage);
   json metrics = {{"model_calls", 1}, {"model_ms", result.duration_ms}};
-  if (result.usage.is_object() && !result.usage.empty()) {
-    metrics["usage_samples"] = 1;
-  }
   if (result.first_token_ms >= 0) {
     metrics["ttft_ms"] = result.first_token_ms;
     metrics["ttft_samples"] = 1;
@@ -456,9 +453,7 @@ std::string Agent::AnalyzeImageContent(const json& content,
   side_usage_.Add(RouteKey(vision.base_url, "image_analysis", vision.model,
                            vision.reasoning_effort),
                   usage, turn_id_,
-                  {{"model_calls", 1},
-                   {"model_ms", result.duration_ms},
-                   {"usage_samples", result.usage.empty() ? 0 : 1}});
+                  {{"model_calls", 1}, {"model_ms", result.duration_ms}});
   if (result.interrupted) {
     error = "image analysis was interrupted";
   } else if (!result.error.empty()) {

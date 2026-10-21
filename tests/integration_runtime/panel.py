@@ -493,6 +493,44 @@ def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
         assert_true("spend limit" in refusal, refusal)
 
 
+def test_panel_counts_what_older_threads_spend_today(root, home, *, binary):
+    """A thread spawned yesterday counts today for what it spent since the
+    day began, not for nothing: its spawn day alone would leave it out."""
+    panel_path = _panel_path(home, root)
+    panel = fnv1a64(str(panel_path))
+    yesterday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
+    thread = write_session(
+        home,
+        "thread-yesterday",
+        [{"role": "system", "content": "sys"}],
+        cwd=root,
+        usage={"cost": 1.5, "cost_reported": True},
+        kind="thread",
+        thread={"coordinator_id": panel, "folder": str(root.resolve()), "day": yesterday},
+    )
+    panel_path.parent.mkdir(parents=True, exist_ok=True)
+    # The day's baseline: the thread had spent $0.50 when today began.
+    pathlib.Path(f"{panel_path}.pinned").write_text(
+        json.dumps(
+            {
+                "spend": {
+                    "day": time.strftime("%Y-%m-%d"),
+                    "baseline": 0,
+                    "cost": 0,
+                    "threads": {str(thread): 0.5},
+                }
+            }
+        )
+    )
+    with Server([tool_call("thread", _spawn("More", "more")), event({"content": "ok"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"
+        result = run(root, env, "panel", "-p", "more", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        refusal = tool_results(server.requests[-1][1]["messages"])[0]
+        assert_true("spend limit" in refusal, refusal)
+
+
 def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root, home, *, binary):
 
     panel = fnv1a64(str(_panel_path(home, root)))

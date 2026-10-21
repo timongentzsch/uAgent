@@ -245,8 +245,9 @@ settle or passes them to you.
   `panel.environment=local`, or in a folder outside git such as a workspace,
   threads work in the folder itself.
 - **Limits.** Five threads at once (`panel.maxThreads`) and $20 of reported
-  cost a day for a panel and its threads (`panel.dailySpendUsd`); at the
-  limit, thread reports wait.
+  cost a day for a panel and its threads (`panel.dailySpendUsd`), counting
+  what threads from earlier days spend today; at the limit, thread reports
+  wait. A route that reports no cost cannot reach it, and the panel says so.
 - **Instructions.** Every moderator reads `PANEL.md` at start
   ([Instructions](INSTRUCTIONS.md)). Where no `PANEL.md` exists, it reads
   `COORDINATOR.md`, the file's former name.
@@ -307,8 +308,11 @@ uagent panel -p "status of the threads"             # ask the panel
 ```
 
 - `--json` prints one object with `schema` (`uagent.headless.v1`), `answer`,
-  `error`, `stop`, `usage`, `routes`, `trace` and `exit_code`. Nothing else
-  goes to stdout; problems go to stderr.
+  `error`, `stop`, `usage`, `routes`, `trace` and `exit_code`. `usage` and
+  `routes` are what this run spent, also when `-c` continues a conversation.
+  Nothing else goes to stdout; problems go to stderr, and a conversation that
+  cannot be continued still gets an envelope, with `error` set.
+- A plain `-p` run is not saved; `-c` and `--resume` continue saved ones.
 - `--json-stream` prints events as they happen, each
   `{"schema": "uagent.event.v2", "seq": N, "time": "…", "type": "…",
   "data": {…}}`. Types include `turn.started`, `usage.updated`, `notice`,

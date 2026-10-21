@@ -31,6 +31,7 @@ export function UsageRows({ usage }: { usage?: Usage }) {
         ["Reasoning tokens", count(usage?.reasoning)],
         ["Cache read tokens", count(usage?.cache_read)],
         ["Cache write tokens", count(usage?.cache_write)],
+        ["Web searches", count(usage?.web_searches)],
         ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
       ]}
     />

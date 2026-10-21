@@ -14,6 +14,7 @@
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
@@ -30,13 +31,10 @@ void Agent::RecordModelResponse(
   state.metrics.usage_reported =
       state.metrics.usage_reported ||
       (response.usage.is_object() && !response.usage.empty());
+  // The turn's TTFT is its first streamed request's: counted from the turn's
+  // start it would also hold approvals and tool runs before that request.
   if (state.metrics.ttt_ms < 0 && response.first_token_ms >= 0) {
-    state.metrics.ttt_ms =
-        std::max(0.0, std::chrono::duration<double, std::milli>(
-                          std::chrono::steady_clock::now() - state.started)
-                              .count() -
-                          response.duration_ms) +
-        response.first_token_ms;
+    state.metrics.ttt_ms = response.first_token_ms;
   }
   if ((state.limits.max_turn_tokens > 0 ||
        state.limits.session_token_budget > 0) &&
@@ -48,11 +46,16 @@ void Agent::RecordModelResponse(
                      "enforceable"));
     DebugLog("token_usage_unavailable", {{"route", ActiveRoute()}});
   }
-  if (state.limits.session_budget > 0 && response.usage.is_object() &&
-      !response_usage.cost_reported && !cost_warning_shown_) {
+  // Dollar limits read reported cost: the session's budget, and a panel's
+  // daily spend for itself and its threads.
+  if (response.usage.is_object() && !response_usage.cost_reported &&
+      !cost_warning_shown_ &&
+      (state.limits.session_budget > 0 ||
+       (JsonValue(session_role_, "kind", "") == kSessionKindPanel &&
+        DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD")) > 0))) {
     cost_warning_shown_ = true;
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "provider does not report cost; dollar budget is not "
+                     "provider does not report cost; dollar limits are not "
                      "enforceable"));
     DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
   }

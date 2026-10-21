@@ -63,7 +63,7 @@ void Agent::PushToolResultMessage(const ToolCall& call, json message) {
 
 void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
                              const ToolResult& original, double duration_ms) {
-  conversation_.AddStatistics({{"tool_results", 1}, {"tool_ms", duration_ms}});
+  conversation_.AddStatistics({{"tool_ms", duration_ms}});
   json facts = {
       {"name", call.name},
       {"status", CompletionStatusName(original.status)},

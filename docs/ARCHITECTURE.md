@@ -262,8 +262,16 @@ reasoning is replayed to the provider unchanged.
 
 Provider-reported partial usage is combined with the confirmed session total
 for live display; final usage replaces it through the normal accounting path.
-Unknown cost stays unknown. Turn statistics describe one turn; compaction has
-its own display record and never appears as another turn.
+Unknown cost stays unknown. Every model call is charged to a route keyed
+`authority|purpose-or-provider|model|effort`: the conversation's own calls
+under their provider, and titles, compaction, memory extraction, image
+analysis, web search and permission review under their purpose, so `/cost`
+names what each one spent. Turn statistics describe one turn; compaction has
+its own display record and never appears as another turn. Spend that a
+background child reports after its turn ended is added to that turn and
+journaled as `turn.usage_amended`, since `turn.completed` is written once.
+Durations and time to first token describe the attempt that answered; retry
+backoff shows only in the end-to-end time.
 
 `--json-stream` has its own redacted public contract. `--debug` is an opt-in,
 sensitive trace. The bounded journal records lifecycle and resource metadata,

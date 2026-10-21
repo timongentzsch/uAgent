@@ -223,7 +223,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   json retained_skills = CompactionSkillMessages();
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
   ChatResult r = Chat("compact", -1, json::array(), &compact_messages);
-  Usage compact_usage = AccountModelUsage(r.usage);
+  Usage compact_usage = AccountModelUsage(r.usage, "compaction");
   if (turn_usage) turn_usage->Merge(compact_usage);
   json runtime_context = HarnessMessage(RuntimeContextText());
   json summary = {

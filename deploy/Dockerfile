@@ -20,7 +20,8 @@ RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     bash ca-certificates curl git ripgrep tini tigervnc-standalone-server \
-    xauth fonts-liberation libcurl4 \
+    xauth fonts-liberation fonts-dejavu-core fonts-noto-core \
+    fonts-noto-color-emoji libcurl4 \
     && touch /etc/default/google-chrome \
     && curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb \
     && apt-get install -y --no-install-recommends /tmp/chrome.deb \

@@ -389,7 +389,13 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--hide-crash-restore-bubble",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
-      "--disable-component-update", no_downloads, "--disk-cache-size=67108864"};
+      "--disable-component-update", no_downloads, "--disk-cache-size=67108864",
+      // A person's browser, not a test runner: the debugging pipe would
+      // mark every page navigator.webdriver, and with no GPU Chrome offers
+      // pages no WebGL. Sites read both as a bot and refuse the user's
+      // own errands (searches, bookings).
+      "--disable-blink-features=AutomationControlled",
+      "--enable-unsafe-swiftshader"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome, nullptr, environment);
     if (chrome_pid_ < 0) {
@@ -560,6 +566,19 @@ json Runtime::Call(const std::string& method, const json& parameters,
   }
 }
 
+json Runtime::Evaluate(json parameters) {
+  // A page target's id is its main frame's; Chrome keeps one world of a name
+  // per frame, so what a look stored is there for the next call.
+  json world =
+      Call("Page.createIsolatedWorld",
+           {{"frameId", target_}, {"worldName", kWorld}}, page_session_);
+  const json* created = JsonObject(world, "result");
+  if (!created) return world;
+  parameters["contextId"] =
+      JsonValue(*created, "executionContextId", int64_t{0});
+  return Call("Runtime.evaluate", parameters, page_session_);
+}
+
 bool Runtime::SelectPage(std::string& error) {
   for (const json& item : Targets()) {
     if (JsonValue(item, "type", "") == "page") {
@@ -617,10 +636,11 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
     error = enabled;
     return false;
   }
-  if (auto installed =
-          CdError(Call("Page.addScriptToEvaluateOnNewDocument",
-                       {{"source", kSecretScript}, {"runImmediately", true}},
-                       attached_session));
+  if (auto installed = CdError(Call("Page.addScriptToEvaluateOnNewDocument",
+                                    {{"source", kSecretScript},
+                                     {"worldName", kWorld},
+                                     {"runImmediately", true}},
+                                    attached_session));
       !installed.empty()) {
     target_ = previous;
     error = installed;

@@ -20,6 +20,11 @@ constexpr const char* kHumanControls =
     "the user controls the browser. Call request_human to wait for their "
     "hand-back, or continue without the browser";
 
+// Every script of ours runs in a world of its own, as an extension's content
+// script does: the page sees none of its globals (the numbered elements, the
+// mask) and cannot replace them, only the DOM both share.
+constexpr const char* kWorld = "uagent";
+
 // Draws every password field as dots in every screenshot, including one a
 // site's reveal toggle has switched to text: an input that ever was a
 // password stays tagged. Autofill still works, since only drawing changes.
@@ -29,9 +34,8 @@ constexpr const char* kHumanControls =
 // new document and run once more before a capture, for a page that loaded
 // before the attach; that run looks again into open shadow roots and frames
 // of the site made since, since attaching a root is no mutation to observe.
-// The rerun is a property the page cannot replace. Not covered: closed
-// shadow roots, and frames of other sites, which run out of process and
-// would need Target.setAutoAttach to reach.
+// Not covered: closed shadow roots, and frames of other sites, which run out
+// of process and would need Target.setAutoAttach to reach.
 constexpr const char* kSecretScript =
     "(()=>{if(window.__uagentSecret)return window.__uagentSecret();"
     "const T='data-uagent-secret',P='-webkit-text-security';"

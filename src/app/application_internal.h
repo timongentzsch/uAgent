@@ -35,7 +35,8 @@ class Application {
   void Teardown(const char* reason);
   int FinishHeadless(std::string answer, std::string error, int exit_code);
   int RunHeadless();
-  bool ResumeAtStartup();
+  // Empty, or why the named conversation could not be continued.
+  std::string ResumeAtStartup();
   void SaveSession(bool force = false);
   void EnsureSessionPath();
   void ReportReplacedExecutable();
@@ -52,8 +53,8 @@ class Application {
   std::string session_file_;
   uint64_t saved_revision_;
   bool persist_ = false;
-  // What a delegated child's session had already used when this run of it
-  // began: a follow-up resumes the session, and its parent is owed only what
+  // What the session had already used when this headless run began: a
+  // continued conversation reports, and a child's parent is owed, only what
   // this run adds.
   json used_before_;
   // The settings problem last reported, so that one is said once.

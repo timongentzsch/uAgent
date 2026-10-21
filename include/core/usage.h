@@ -33,17 +33,20 @@ struct Usage {
   }
 
   // Input, cache reads and cache writes are disjoint parts of the prompt.
-  // Zero when nothing has been counted yet.
-  // A percentage of two token counts: double carries far more precision than
-  // the integer result needs.
+  int64_t PromptTokens() const {
+    return SaturatingNonnegativeAdd(SaturatingNonnegativeAdd(input, cache_read),
+                                    cache_write);
+  }
+
+  // Zero when nothing has been counted yet. Summed in double, which neither
+  // saturates nor needs more precision than the integer result carries.
   int64_t CacheHitPercent() const {
-    int64_t fresh = Nonnegative(input);
-    int64_t cached = Nonnegative(cache_read);
-    double prompt = static_cast<double>(fresh) + static_cast<double>(cached) +
-                    static_cast<double>(Nonnegative(cache_write));
+    const double cached = static_cast<double>(Nonnegative(cache_read));
+    const double prompt = static_cast<double>(Nonnegative(input)) + cached +
+                          static_cast<double>(Nonnegative(cache_write));
     if (prompt <= 0) return 0;
-    double percent = 100.0 * static_cast<double>(cached) / prompt;
-    return static_cast<int64_t>(std::clamp(percent, 0.0, 100.0));
+    return static_cast<int64_t>(
+        std::clamp(100.0 * cached / prompt, 0.0, 100.0));
   }
 
   void Merge(const Usage& other) {
@@ -112,6 +115,7 @@ Usage UsageDifference(const Usage& current, const Usage& prior);
 
 struct AccumulatedUsage {
   Usage unassigned;
+  json unassigned_statistics = json::object();
   RouteUsage routes;
   std::map<int64_t, Usage> turns;
   std::map<int64_t, json> turn_statistics;
@@ -141,6 +145,7 @@ class UsageAccumulator {
       MergeNumericStatistics(turn_statistics_[turn], statistics);
     } else {
       unassigned_.Merge(usage);
+      MergeNumericStatistics(unassigned_statistics_, statistics);
     }
     routes_[route].Merge(usage);
   }
@@ -150,6 +155,7 @@ class UsageAccumulator {
     Usage usage = unassigned_;
     for (const auto& [_, attributed] : turns_) usage.Merge(attributed);
     unassigned_ = {};
+    unassigned_statistics_ = json::object();
     turns_.clear();
     turn_statistics_.clear();
     return usage;
@@ -162,16 +168,19 @@ class UsageAccumulator {
     std::lock_guard<std::mutex> lock(mutex_);
     AccumulatedUsage result;
     result.unassigned = unassigned_;
+    result.unassigned_statistics.swap(unassigned_statistics_);
     result.routes.swap(routes_);
     result.turns.swap(turns_);
     result.turn_statistics.swap(turn_statistics_);
     unassigned_ = {};
+    unassigned_statistics_ = json::object();
     return result;
   }
 
  private:
   std::mutex mutex_;
   Usage unassigned_ UAGENT_GUARDED_BY(mutex_);
+  json unassigned_statistics_ UAGENT_GUARDED_BY(mutex_) = json::object();
   RouteUsage routes_ UAGENT_GUARDED_BY(mutex_);
   std::map<int64_t, Usage> turns_ UAGENT_GUARDED_BY(mutex_);
   std::map<int64_t, json> turn_statistics_ UAGENT_GUARDED_BY(mutex_);

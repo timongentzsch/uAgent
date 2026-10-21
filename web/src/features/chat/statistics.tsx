@@ -191,12 +191,12 @@ export function StatisticsContent({
             {!block && !stats?.complete
               ? "Older activity was not fully recorded. "
               : ""}
-            TTFT includes retries. Throughput uses total generation tokens
-            divided by measured request time. Totals come from native counters
-            and survive compaction. All-agent counts include background and
-            delegated work where labeled; parent and side durations stay
-            separate because concurrent times cannot be added into wall time.
-            Missing provider data stays unreported.
+            Throughput uses total generation tokens divided by measured request
+            time. Totals come from native counters and survive compaction.
+            All-agent counts include background and delegated work where
+            labeled; parent and side durations stay separate because concurrent
+            times cannot be added into wall time. Missing provider data stays
+            unreported.
           </p>
         </>
       )}

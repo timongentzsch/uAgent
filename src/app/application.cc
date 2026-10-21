@@ -71,7 +71,21 @@ int Application::Run() {
   if (attachment_status != 0) return attachment_status;
   if (!context_.options.prompt.empty() &&
       (context_.options.resume_latest || !session_file_.empty())) {
-    if (!ResumeAtStartup()) return 2;
+    if (std::string error = ResumeAtStartup(); !error.empty()) {
+      // No teardown: saving now would overwrite the conversation with this
+      // empty one. A headless run's stdout is its answer or its envelope.
+      error = "cannot resume: " + error;
+      context_.output.Restore();
+      if (context_.options.json) {
+        printf("%s\n", JsonDump(HeadlessResult("", error, json::array(), {},
+                                               json::object(), 2))
+                           .c_str());
+      } else {
+        fprintf(stderr, "%s\n", error.c_str());
+        Emit(Event{EventId::kError, {{"error", error}}});
+      }
+      return 2;
+    }
   }
   if (!context_.options.prompt.empty()) return RunHeadless();
   return channel_ ? RunChannel() : 2;
@@ -189,7 +203,7 @@ void Application::Teardown(const char* reason) {
   context_.observability.Flush();
 }
 
-bool Application::ResumeAtStartup() {
+std::string Application::ResumeAtStartup() {
   std::string previous_path = session_file_;
   std::string source = session_file_;
   if (source.empty() && context_.options.resume_latest) {
@@ -208,21 +222,16 @@ bool Application::ResumeAtStartup() {
     // saving.
     if (!channel_ && JsonValue(SessionHeader(source), kSessionHeaderKind, "") ==
                          kSessionKindThread) {
-      const std::string refusal =
-          "that session is a panel's thread; continue it in its "
-          "conversation, or name another session";
-      // On stderr: a headless run's stdout is the answer, and is silenced
-      // until there is one.
-      fprintf(stderr, "%s\n", refusal.c_str());
-      Emit(Event{EventId::kError, {{"error", "cannot resume: " + refusal}}});
-      return false;
+      return "that session is a panel's thread; continue it in its "
+             "conversation, or name another session";
     }
-    if (!ResumeInto(agent_, source, session_file_)) return false;
+    std::string error;
+    if (!ResumeInto(agent_, source, session_file_, error)) return error;
   }
   AppSession session = Session();
   LoadSessionJournal(session, previous_path);
   saved_revision_ = agent_.Revision();
-  return true;
+  return {};
 }
 
 void Application::SaveSession(bool force) {

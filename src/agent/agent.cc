@@ -175,7 +175,7 @@ void Agent::StartTitle(const std::string& user_input) {
         usage.Add(result.usage);
         side_usage_.Add(RouteKey(api.base_url, "session_title", api.model,
                                  api.reasoning_effort),
-                        usage);
+                        usage, 0, {{"model_calls", 1}});
         // Models still wrap titles in quotes or markdown; keep only the words.
         std::string title = FirstLine(Trim(result.content));
         const size_t first = title.find_first_not_of(" \t\"'`*#");

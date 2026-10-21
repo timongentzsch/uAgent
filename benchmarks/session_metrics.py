@@ -70,6 +70,13 @@ USAGE_FIELDS = (
 OK_STATUSES = {"ok", "succeeded", "success"}
 
 
+def add_usage(summary, usage):
+    if isinstance(usage, dict):
+        for field in USAGE_FIELDS:
+            summary["usage"][field] += int(usage.get(field) or 0)
+        summary["usage"]["cost"] += float(usage.get("cost") or 0)
+
+
 def transcript_text(journal):
     """Tool-result text from the transcript beside a journal, keyed by call id."""
     transcript = journal.with_name(journal.name[: -len(".events.jsonl")])
@@ -204,16 +211,16 @@ def journal_metrics(path):
                     summary["trajectory"]["activity_terminal"] += 1
                 summary["duration_ms"][name] += float(data.get("duration_ms") or 0)
                 summary["result_chars"][name] += int(data.get("result_chars") or 0)
+            elif event_type == "turn.usage_amended":
+                # Spend of background work that finished after its turn.
+                add_usage(summary, data.get("usage"))
             elif event_type == "turn.completed":
                 summary["outcomes"][str(data.get("outcome") or "unknown")] += 1
                 summary["turn_duration_ms"] += float(data.get("duration_ms") or 0)
                 usage = data.get("usage") or {}
-                if isinstance(usage, dict):
-                    for field in USAGE_FIELDS:
-                        summary["usage"][field] += int(usage.get(field) or 0)
-                    summary["usage"]["cost"] += float(usage.get("cost") or 0)
-                    if usage.get("cost_reported"):
-                        summary["usage"]["cost_reported_turns"] += 1
+                add_usage(summary, usage)
+                if isinstance(usage, dict) and usage.get("cost_reported"):
+                    summary["usage"]["cost_reported_turns"] += 1
                 if data.get("context_tokens") is not None:
                     summary["context_tokens"].append(int(data.get("context_tokens") or 0))
                 if data.get("messages") is not None:

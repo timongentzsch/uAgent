@@ -23,6 +23,7 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/conversation.h"
+#include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "include/ui/markdown.h"
 
@@ -124,13 +125,7 @@ void PrintMessageHeader() {
 std::string TurnStatsLine(const json& summary) {
   const json usage = JsonValue(summary, "usage", json::object());
   auto n = [&](const char* key) { return JsonValue(usage, key, int64_t{0}); };
-  std::string line = FmtCount(n("input")) + " in";
-  for (auto [key, label] : {std::pair{"cache_read", " cached"},
-                            std::pair{"cache_write", " cache write"}}) {
-    if (n(key)) line += " (+" + FmtCount(n(key)) + label + ")";
-  }
-  line += " · " + FmtCount(n("output")) + " out";
-  if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
+  const std::string line = TokenSplit(UsageFromJson(usage));
   const double rate = JsonValue(summary, "tokens_per_second", 0.0);
   const double first = JsonValue(summary, "ttt_ms", -1.0);
   auto counted = [](int64_t count, const char* unit) {

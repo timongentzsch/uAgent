@@ -208,13 +208,10 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                     {"reported", normalized.web_searches}});
         }
         if (response.body.is_object()) {
-          usage.Add(
-              RouteKey(active.base_url, "web_search", active.model,
-                       active.reasoning_effort),
-              normalized, context.turn_id,
-              {{"model_calls", 1},
-               {"model_ms", ElapsedMs(started)},
-               {"usage_samples", response.body.contains("usage") ? 1 : 0}});
+          usage.Add(RouteKey(active.base_url, "web_search", active.model,
+                             active.reasoning_effort),
+                    normalized, context.turn_id,
+                    {{"model_calls", 1}, {"model_ms", ElapsedMs(started)}});
         }
         if (context.Expired()) {
           return ToolTimedOut("error: search deadline reached");

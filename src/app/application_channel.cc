@@ -24,7 +24,8 @@
 
 namespace uagent {
 int Application::RunChannel() {
-  if (!ResumeAtStartup()) {
+  if (std::string error = ResumeAtStartup(); !error.empty()) {
+    Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
     Teardown("eof");
     return 2;
   }

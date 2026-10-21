@@ -81,7 +81,7 @@ constexpr FailureCategory kFailureCategories[] = {
       "unsupported model"}},
     {"provider rate limited the request", {"rate limited", "rate_limit"}},
     {"provider cost unavailable",
-     {"provider does not report cost", "dollar budget is not enforceable"}},
+     {"provider does not report cost", "dollar limits are not enforceable"}},
     {"session cost limit reached",
      {"session cost limit reached", "session budget"}},
     {"tool-call limit reached", {"max_tool_calls", "tool call limit"}},

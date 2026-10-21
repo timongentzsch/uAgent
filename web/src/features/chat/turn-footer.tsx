@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { duration } from "../../shared/duration.ts";
-import { cost, count, plural } from "../../shared/quantities.ts";
+import { cost, count, plural, tokens } from "../../shared/quantities.ts";
 import type { SessionRef, TurnSummary } from "../../shared/types.ts";
 import { Button, Deferred, Modal, Spinner } from "../../shared/ui.tsx";
 import { formatStat } from "../../shared/display.ts";
@@ -37,8 +37,7 @@ export function TurnFooter({
           <span class="sr-only">Turn statistics: </span>
           {summary.usage_reported !== false && (
             <span class="turn-tokens">
-              {count((summary.usage.input || 0) + (summary.usage.output || 0))}{" "}
-              tokens ·{" "}
+              {count(tokens(summary.usage))} tokens ·{" "}
             </span>
           )}
           <span>

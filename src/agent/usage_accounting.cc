@@ -17,14 +17,35 @@
 namespace uagent {
 
 // Every model response is billed the same way: parse the provider's usage
-// block once, then charge it to the session and to the active route.
-Usage Agent::AccountModelUsage(const json& reported) {
+// block once, then charge it to the session and to a route. Work that is not
+// the conversation itself (compaction, a memory extractor's whole run) names
+// its purpose in the provider's place, as titles and searches do.
+Usage Agent::AccountModelUsage(const json& reported,
+                               const std::string& purpose) {
   Usage usage;
   usage.Add(reported);
   MergeSessionUsage(usage);
-  route_usage_[ActiveRoute()].Merge(usage);
+  const std::string& tag = purpose.empty() ? usage_purpose_ : purpose;
+  route_usage_[tag.empty() ? ActiveRoute()
+                           : RouteKey(api_.base_url, tag, api_.model,
+                                      api_.reasoning_effort)]
+      .Merge(usage);
   return usage;
 }
+
+namespace {
+// What the statistics dialog shows of other agents' work; a child reports
+// every counter it keeps, and the rest would only fill the session file.
+json SideStatistics(const json& statistics) {
+  json shown = json::object();
+  const json flat = FlattenNumericStatistics(statistics, "side_");
+  for (const char* key :
+       {"recorded_turns", "tool_calls", "model_calls", "duration_ms"}) {
+    if (flat.contains(key)) shown[key] = flat[key];
+  }
+  return shown;
+}
+}  // namespace
 
 void Agent::DrainSubagentUsage() {
   std::string path = UsageLedger();
@@ -40,8 +61,8 @@ void Agent::DrainSubagentUsage() {
     if (entry.is_object() && entry.contains("usage")) {
       Usage child = UsageFromJson(entry["usage"]);
       const int64_t parent_turn = JsonValue(entry, "parent_turn", int64_t{0});
-      const json statistics = FlattenNumericStatistics(
-          JsonValue(entry, "statistics", json::object()), "side_");
+      const json statistics =
+          SideStatistics(JsonValue(entry, "statistics", json::object()));
       bool first = true;
       if (const json* routes = JsonObject(entry, "routes")) {
         for (const auto& [route, value] : routes->items()) {
@@ -69,6 +90,10 @@ void Agent::AccountSideUsage(Usage* current_turn) {
   for (const auto& [route, route_spent] : batch.routes) {
     route_usage_[route].Merge(route_spent);
   }
+  // Titles and memory extraction belong to no turn; the session still counts
+  // their calls.
+  conversation_.AddStatistics(
+      PrefixNumericStatistics(batch.unassigned_statistics, "side_"));
   for (const auto& [turn, attributed] : batch.turns) {
     total.Merge(attributed);
     const auto found = batch.turn_statistics.find(turn);
@@ -80,7 +105,8 @@ void Agent::AccountSideUsage(Usage* current_turn) {
       MergeNumericStatistics(turn_side_statistics_, statistics);
     }
   }
-  if (HasUsage(total) || !batch.turn_statistics.empty()) {
+  if (HasUsage(total) || !batch.turn_statistics.empty() ||
+      !batch.unassigned_statistics.empty()) {
     MergeSessionUsage(total);
   }
   for (const auto& [turn, attributed] : batch.turns) {
@@ -95,6 +121,10 @@ void Agent::AccountSideUsage(Usage* current_turn) {
 void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
                                 const json& statistics) {
   if (turn <= 0) return;
+  Emit(Event{EventId::kTurnUsageAmended,
+             {{"turn", turn},
+              {"usage", UsageJson(usage)},
+              {"statistics", statistics}}});
   for (const auto& [key, value] : conversation_.DisplayFacts().items()) {
     if (!value.is_object() || JsonValue(value, "kind", "") != "turn_summary") {
       continue;
@@ -114,7 +144,6 @@ void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
     summary["usage"] = UsageJson(updated);
     summary["usage_reported"] =
         JsonValue(summary, "usage_reported", false) || HasUsage(usage);
-    summary["session_usage"] = UsageJson(session_usage_);
     summary["background_statistics"] = side;
     summary["tool_calls"] =
         direct_tools + JsonValue(side, "tool_calls", int64_t{0});

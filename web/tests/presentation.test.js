@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/shared/format.ts";
 import { formatEventStream } from "../src/features/chat/raw-capture.ts";
-import { count, bytes } from "../src/shared/quantities.ts";
+import { count, bytes, tokens } from "../src/shared/quantities.ts";
 import {
   presentMessages,
   splitMentionTokens,
@@ -72,6 +72,21 @@ test("SSE projection preserves frames, metadata and lexical JSON without data pr
   assert.equal(formatEventStream(""), "");
   for (const text of ["", "not JSON\n", "{invalid}", "\u001b[31mraw bytes"])
     assert.equal(formatBody(text), text);
+});
+
+test("a turn's tokens add every disjoint usage bucket", () => {
+  // Live on Claude: 4 uncached + 17,600 cache write + 196 out, once shown as 200.
+  assert.equal(
+    tokens({
+      input: 4,
+      cache_read: 0,
+      cache_write: 17600,
+      output: 196,
+      cost: 0,
+    }),
+    17800,
+  );
+  assert.equal(tokens({ input: 3, reasoning: 2, cost: 0 }), 5);
 });
 
 test("compact quantities use decimal units and promote rounded thresholds", () => {

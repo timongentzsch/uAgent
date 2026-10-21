@@ -131,6 +131,10 @@ class Agent {
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
   // Panel/thread role ({kind, thread}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
+  // Bills every response under this purpose instead of the conversation.
+  void SetUsagePurpose(std::string purpose) {
+    usage_purpose_ = std::move(purpose);
+  }
   // Extra context rebuilt for every model request (a panel's clock,
   // pinned notes and board): appended to the request, never stored.
   void SetRuntimeContext(std::function<std::string()> extra) {
@@ -305,7 +309,8 @@ class Agent {
   std::string ApplyImageAnalysisFallback(json& messages, bool analyze = true,
                                          json* deliveries = nullptr);
 
-  Usage AccountModelUsage(const json& reported);
+  Usage AccountModelUsage(const json& reported,
+                          const std::string& purpose = {});
 
   void FailTurn(TurnExecution& state, std::string message);
   void FailBudget(TurnExecution& state, TurnStopReason reason,
@@ -531,6 +536,7 @@ class Agent {
   std::string attachment_warning_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
+  std::string usage_purpose_;
   KeepFile keep_tool_file_;
   // What a side question needs, captured on the turn thread so the side
   // thread never reads the live route or conversation.

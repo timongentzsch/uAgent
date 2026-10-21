@@ -126,6 +126,43 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home, *,
         assert_true(envelope["stop"]["session_generated_tokens"] == 4, envelope)
 
 
+def test_background_child_spend_after_its_turn_is_journaled(root, home, *, binary):
+    """The turn record is written once, before a background child finishes;
+    what the child spends afterwards is recorded beside it, not lost."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "slow-child"):
+            time.sleep(0.5)
+            return event(
+                {"content": "child-done"},
+                usage={"prompt_tokens": 1, "completion_tokens": 4},
+            )
+        if launched(tool_results(messages)):
+            return event({"content": "parent-answer"})
+        return tool_call("subagent", {"prompt": "slow-child", "background": True})
+
+    trace = root / "late-child.jsonl"
+    with Server([route]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            f"--debug={trace}",
+            "-p",
+            "delegate",
+            timeout=10,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        amended = [r["data"] for r in records if r["event"] == "turn_usage_amended"]
+        assert_true(len(amended) == 1, amended)
+        assert_true(amended[0]["turn"] == 1, amended)
+        assert_true(amended[0]["usage"]["output"] == 4, amended)
+        assert_true(amended[0]["statistics"]["model_calls"] == 1, amended)
+
+
 def test_subagent_inherits_only_remaining_session_token_budget(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]

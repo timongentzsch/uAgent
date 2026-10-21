@@ -110,15 +110,11 @@ inline std::string PickSession() {
 }
 
 // load `path` into the agent; on success the session continues in that file.
-// Nothing is printed: where this runs, a client draws the conversation.
+// Nothing is printed: the caller reports `error` where its output goes.
 inline bool ResumeInto(Agent& agent, const std::string& path,
-                       std::string& session_file) {
+                       std::string& session_file, std::string& error) {
   if (path.empty()) return false;
-  std::string error;
-  if (!agent.Load(path, CanonicalCwd(), error)) {
-    Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
-    return false;
-  }
+  if (!agent.Load(path, CanonicalCwd(), error)) return false;
   session_file = path;
   return true;
 }

@@ -567,6 +567,14 @@ void TestAttributedUsageAccumulator() {
   CHECK(batch.turn_statistics[7]["tool_calls"] == 4);
   CHECK(accumulator.TakeAll().routes.empty());
 
+  // A title call or memory extraction belongs to no turn; its calls still
+  // count instead of being dropped with the turn.
+  accumulator.Add("title", direct, 0, {{"model_calls", 1}});
+  batch = accumulator.TakeAll();
+  CHECK(batch.unassigned.input == 3);
+  CHECK(batch.unassigned_statistics["model_calls"] == 1);
+  CHECK(accumulator.TakeAll().unassigned_statistics.empty());
+
   json total = {{"model_calls", 2}, {"duration_ms", 1.5}};
   MergeNumericStatistics(
       total, {{"model_calls", 3}, {"duration_ms", 2.5}, {"complete", true}});

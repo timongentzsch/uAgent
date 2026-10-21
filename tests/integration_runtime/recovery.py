@@ -175,10 +175,16 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
 
     with Server([first, compact, finish, final]) as server:
         env = midturn_compaction_env(home, server.url)
-        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect", binary=binary)
+        result = run(
+            root, env, "--yolo", f"--debug={trace}", "--json", "-p", "inspect", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("midturn-finished-ok" in result.stdout, result.stdout)
         assert_true(len(server.requests) == 4, server.requests)
+        # Compaction is billed under its own purpose, not the conversation's.
+        routes = json.loads(result.stdout)["routes"]
+        compaction = [usage for route, usage in routes.items() if "|compaction|" in route]
+        assert_true(len(compaction) == 1 and compaction[0]["input"] == 20, routes)
         records = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
         turn_end = next(record for record in records if record["event"] == "turn_end")
         assert_true(turn_end["data"]["usage"]["input"] == 2090, turn_end)

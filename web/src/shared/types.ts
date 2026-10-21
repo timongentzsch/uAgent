@@ -32,6 +32,7 @@ export interface Usage {
   reasoning?: number;
   cache_read?: number;
   cache_write?: number;
+  web_searches?: number;
   cost: number;
   cost_reported?: boolean;
 }
@@ -123,7 +124,6 @@ export interface TurnSummary {
   turn_root?: string;
   generation_ms?: number;
   generated_tokens?: number;
-  session_usage?: Usage;
   messages?: number;
   context_tokens?: number;
   line_open?: boolean;

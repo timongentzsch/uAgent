@@ -471,6 +471,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
   context->agent->SetSessionRole(context->options.session);
+  if (memory_child) context->agent->SetUsagePurpose("memory_extract");
   if (context->options.Panel()) {
     context->chat.emplace(
         CanonicalCwd(), [agent = context->agent.get()](const std::string& note,

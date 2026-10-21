@@ -28,6 +28,8 @@ def session(path):
     events, _ = lines(path)
     name = os.path.basename(path).replace(".json.events.jsonl", "")
     turns = [e["data"] for e in events if e.get("type") == "turn.completed"]
+    # Spend of background work that finished after its turn is journaled apart.
+    spent = turns + [e["data"] for e in events if e.get("type") == "turn.usage_amended"]
     calls = collections.Counter()
     for e in events:
         if e.get("type") == "tool.call":
@@ -35,7 +37,7 @@ def session(path):
             calls[d.get("name") or d.get("tool") or "?"] += 1
 
     def use(k):
-        return sum(t.get("usage", {}).get(k, 0) for t in turns)
+        return sum(t.get("usage", {}).get(k, 0) for t in spent)
 
     times = [e.get("time") for e in events if e.get("time")]
     return {
@@ -48,6 +50,7 @@ def session(path):
         "input": use("input"),
         "output": use("output"),
         "cache_read": use("cache_read"),
+        "cache_write": use("cache_write"),
         "reasoning": use("reasoning"),
         "busy_s": round(sum(t.get("duration_ms", 0) for t in turns) / 1000, 1),
         "first": times[0] if times else "",
@@ -83,7 +86,7 @@ for run in sorted(glob.glob(E + "/runs/*-*")):
         "tool_calls": stop.get("tool_calls"),
         **{
             k: env.get("usage", {}).get(k, 0)
-            for k in ("input", "output", "cache_read", "reasoning")
+            for k in ("input", "output", "cache_read", "cache_write", "reasoning")
         },
     }
     r["routes"] = env.get("routes")
@@ -117,10 +120,20 @@ for run in sorted(glob.glob(E + "/runs/*-*")):
     results[name] = r
 
 json.dump(results, open(E + "/results.json", "w"), indent=1)
-fmt = "{:16} {:>5} {:>6} {:>10} {:>4} {:>5} {:>9} {:>7} {:>8}  {}"
+fmt = "{:16} {:>5} {:>6} {:>10} {:>4} {:>5} {:>9} {:>7} {:>8} {:>8}  {}"
 print(
     fmt.format(
-        "run", "exit", "wall", "reason", "sess", "steps", "input", "output", "cached", "sessions"
+        "run",
+        "exit",
+        "wall",
+        "reason",
+        "sess",
+        "steps",
+        "input",
+        "output",
+        "cached",
+        "written",
+        "sessions",
     )
 )
 for name, r in results.items():
@@ -143,6 +156,7 @@ for name, r in results.items():
             tot("input"),
             tot("output"),
             tot("cache_read"),
+            tot("cache_write"),
             " ".join(f"{x['kind']}:{x['steps']}st/{x['input'] // 1000}k" for x in s),
         )
     )

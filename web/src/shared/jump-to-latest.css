@@ -4,13 +4,11 @@
   right: 0;
   background: var(--raised);
   font-size: var(--font-small);
-  transition:
-    opacity var(--motion-base) var(--ease-out),
-    translate var(--motion-base) var(--ease-out);
+  transition: var(--enter);
 }
 @starting-style {
   .jump {
     opacity: 0;
-    translate: 0 calc(6rem / 14);
+    translate: 0 var(--rise);
   }
 }

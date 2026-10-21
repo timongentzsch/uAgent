@@ -40,7 +40,9 @@ class ActivityProjection {
   std::string part_, line_, excerpt_, reasoning_source_;
   bool long_line_ = false;
   std::map<std::string, Call> calls_;
-  std::set<std::string> searches_, decisions_;
+  std::set<std::string> decisions_;
+  // Tools the provider is running, by call: web_search, code_execution, ...
+  std::map<std::string, std::string> hosted_;
   json retry_ = nullptr;
   json status_ = nullptr;
 };

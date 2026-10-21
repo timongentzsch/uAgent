@@ -13,6 +13,7 @@ import {
 import ModelPicker from "../../../shared/model-picker.tsx";
 import {
   inherited,
+  itemized,
   raw,
   REDACTED,
   secret,
@@ -160,7 +161,7 @@ export function SettingField({
         />
       )}
     </SheetButton>
-  ) : setting.sensitivity === "composite-secret" ? null : (
+  ) : (
     <Input
       {...text}
       type={
@@ -181,6 +182,25 @@ export function SettingField({
       }}
     />
   );
+  const detail = error ? (
+    <span class="setting-error" role="alert">
+      {error}
+    </span>
+  ) : (
+    note || setting.purpose || setting.description
+  );
+  // A list of items is edited as a list of its own.
+  if (itemized(setting))
+    return (
+      <ProvidersField
+        label={setting.label}
+        footer={detail}
+        value={own}
+        error={error}
+        disabled={disabled}
+        save={set}
+      />
+    );
   return (
     <div
       class="setting-field"
@@ -191,18 +211,7 @@ export function SettingField({
         setting.type === "boolean" || setting.choices?.length ? undefined : ""
       }
     >
-      <Row
-        label={setting.label}
-        detail={
-          error ? (
-            <span class="setting-error" role="alert">
-              {error}
-            </span>
-          ) : (
-            note || setting.purpose || setting.description
-          )
-        }
-      >
+      <Row label={setting.label} detail={detail}>
         {/* Putting it back stands just before what it puts back. */}
         {!setting.locked && own !== undefined && (
           <IconButton
@@ -220,9 +229,6 @@ export function SettingField({
         )}
         {control}
       </Row>
-      {setting.sensitivity === "composite-secret" && !setting.locked && (
-        <ProvidersField value={own} disabled={disabled} save={set} />
-      )}
     </div>
   );
 }

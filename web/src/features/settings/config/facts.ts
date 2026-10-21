@@ -14,6 +14,11 @@ export const REDACTED = "••••••••";
 export const secret = (setting: ConfigSetting) =>
   setting.sensitivity !== "public";
 
+// A setting whose value is a list of items (the named providers), edited
+// as a list of its own unless something else decides it.
+export const itemized = (setting: ConfigSetting) =>
+  setting.sensitivity === "composite-secret" && !setting.locked;
+
 export const shown = (value?: JSONValue) =>
   value == null || value === ""
     ? ""

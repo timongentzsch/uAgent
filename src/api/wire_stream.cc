@@ -305,13 +305,15 @@ HostedToolPhase SearchStopPhase(std::string_view status) {
 // event neither doubles the request count nor the step the presenter sees.
 void MarkHostedTool(WireStreamDelta& delta, HostedToolState& state,
                     const std::string& key, std::string id,
-                    HostedToolPhase phase, int64_t source_count) {
+                    HostedToolPhase phase, int64_t source_count,
+                    const std::string& tool = "web_search") {
   HostedToolPhase& tracked = state.phases[key];
   if (HostedToolRank(phase) <= HostedToolRank(tracked)) return;
-  if (tracked == HostedToolPhase::kNone) ++state.web_searches;
+  if (tracked == HostedToolPhase::kNone && tool == "web_search") {
+    ++state.web_searches;
+  }
   tracked = phase;
-  delta.hosted_tool = HostedToolDelta{HostedTool::kWebSearch, phase,
-                                      std::move(id), source_count};
+  delta.hosted_tool = HostedToolDelta{tool, phase, std::move(id), source_count};
 }
 
 int64_t JsonArraySize(const json& value, const char* key) {
@@ -502,6 +504,15 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
                          ? HostedToolPhase::kStarted
                          : SearchStopPhase(JsonValue(*item, "status", "")),
                      action ? JsonArraySize(*action, "sources") : -1);
+    } else if (item_type.ends_with("_call") && item_type != "function_call") {
+      std::string id = JsonValue(*item, "id", "");
+      std::string key = HostedToolKey(id, ResponsesSlot(value, state, calls));
+      MarkHostedTool(delta, state.hosted, key, std::move(id),
+                     type.ends_with(".added")
+                         ? HostedToolPhase::kStarted
+                         : SearchStopPhase(JsonValue(*item, "status", "")),
+                     /*source_count=*/-1,
+                     item_type.substr(0, item_type.size() - 5));
     }
     delta.activity = true;
     return delta;
@@ -648,6 +659,22 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
                          ? HostedToolPhase::kFailed
                          : HostedToolPhase::kCompleted,
                      JsonArraySize(*started, "content"));
+    } else if (block_type == "server_tool_use") {
+      std::string id = JsonValue(*started, "id", "");
+      std::string key = HostedToolKey(id, index);
+      MarkHostedTool(delta, state.hosted, key, std::move(id),
+                     HostedToolPhase::kStarted, /*source_count=*/-1,
+                     JsonValue(*started, "name", ""));
+    } else if (block_type.ends_with("_tool_result")) {
+      const json* outcome = JsonObject(*started, "content");
+      std::string id = JsonValue(*started, "tool_use_id", "");
+      std::string key = HostedToolKey(id, index);
+      MarkHostedTool(
+          delta, state.hosted, key, std::move(id),
+          outcome && JsonValue(*outcome, "type", "").ends_with("_error")
+              ? HostedToolPhase::kFailed
+              : HostedToolPhase::kCompleted,
+          /*source_count=*/-1, block_type.substr(0, block_type.size() - 12));
     }
     delta.activity = true;
     return delta;
@@ -664,8 +691,15 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
         text = delta.content;
       }
     } else if (delta_type == "input_json_delta") {
-      delta.tool_arguments = true;
-      calls[index].args += JsonValue(*event_delta, "partial_json", "");
+      // Only the agent's own tool is a call to run here; a tool the provider
+      // runs streams its input too, which stays with its block.
+      std::string fragment = JsonValue(*event_delta, "partial_json", "");
+      if (JsonValue(block.block, "type", "") == "tool_use") {
+        delta.tool_arguments = true;
+        calls[index].args += fragment;
+      } else {
+        block.input += fragment;
+      }
     } else if (delta_type == "thinking_delta") {
       AddReasoningDelta(delta, "thinking/" + std::to_string(index), "reasoning",
                         JsonValue(*event_delta, "thinking", ""));
@@ -710,6 +744,9 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       }
       json parsed = json::parse(call.args, nullptr, false);
       if (!parsed.is_discarded()) block.block["input"] = std::move(parsed);
+    } else if (!block.input.empty()) {
+      json parsed = json::parse(block.input, nullptr, false);
+      if (!parsed.is_discarded()) block.block["input"] = std::move(parsed);
     }
     SetAnthropicReplay(state, result);
     delta.activity = true;
@@ -746,15 +783,7 @@ json HostedToolJson(const HostedToolDelta& delta) {
       phase = "failed";
       break;
   }
-  // Named rather than initialised to the same literal the switch assigns: a
-  // dead store there would hide a future enumerator that falls through.
-  const char* tool = nullptr;
-  switch (delta.tool) {
-    case HostedTool::kWebSearch:
-      tool = "web_search";
-      break;
-  }
-  json value = {{"tool", tool}, {"id", delta.id}, {"phase", phase}};
+  json value = {{"tool", delta.tool}, {"id", delta.id}, {"phase", phase}};
   if (delta.source_count >= 0) value["source_count"] = delta.source_count;
   return value;
 }

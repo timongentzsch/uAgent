@@ -1422,6 +1422,102 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         assert_true(len(sessions) == 1 and None not in sessions, sessions)
 
 
+def test_provider_defined_hosted_tool_is_sent_and_replayed(root, home, *, binary):
+    """A tool defined in hosted_tools is sent as written and its blocks replayed."""
+    code = {"type": "code_execution_20250825", "name": "code_execution"}
+
+    def first(handler, body):
+        assert_true(body["tools"][-1] == code, body["tools"])
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 5}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_1",
+                        "name": "code_execution",
+                        "input": {},
+                    },
+                },
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "input_json_delta", "partial_json": '{"code":"6*7"}'},
+                },
+                {"type": "content_block_stop", "index": 0},
+                {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {
+                        "type": "code_execution_tool_result",
+                        "tool_use_id": "srvtoolu_1",
+                        "content": {"type": "code_execution_result", "stdout": "42"},
+                    },
+                },
+                {"type": "content_block_stop", "index": 1},
+                {
+                    "type": "content_block_start",
+                    "index": 2,
+                    "content_block": {"type": "text", "text": "forty-two"},
+                },
+                {"type": "content_block_stop", "index": 2},
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"output_tokens": 3},
+                },
+                {"type": "message_stop"},
+            ],
+        )
+
+    def second(handler, body):
+        assistant = body["messages"][-2]
+        types = [block.get("type") for block in assistant["content"]]
+        assert_true(types == ["server_tool_use", "code_execution_tool_result", "text"], assistant)
+        assert_true(assistant["content"][0]["input"] == {"code": "6*7"}, assistant)
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 9}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": "replayed"},
+                },
+                {"type": "content_block_stop", "index": 0},
+                {"type": "message_delta", "delta": {"stop_reason": "end_turn"}},
+                {"type": "message_stop"},
+            ],
+        )
+
+    with Server([first, second]) as server:
+        env = base_env(home, server.url)
+        env.update(
+            {
+                "UAGENT_MODEL": "box/claude-test",
+                "UAGENT_PROVIDERS": json.dumps(
+                    {
+                        "box": {
+                            "base_url": server.url,
+                            "api_key": "box-key",
+                            "wire_api": "anthropic_messages",
+                            "hosted_tools": [code],
+                        }
+                    }
+                ),
+            }
+        )
+        # Two turns of one conversation: the second resends what the first ran.
+        result = run_dialog(root, env, "compute\nand?\n/q\n", "--yolo", binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true("forty-two" in result.stdout, result.stdout)
+        assert_true("replayed" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))
+
+
 def test_uagent_tool_reports_live_configuration(root, home, *, binary):
     """uagent inspection answers from the running binary and never leaks secrets."""
     save_settings(home, UAGENT_MAX_TOOL_CALLS=120)

@@ -85,6 +85,17 @@ bool HasHostedTool(const json& hosted_tools, HostedTool tool) {
   return false;
 }
 
+json HostedToolDefinitions(const json& hosted_tools) {
+  json definitions = json::array();
+  if (!hosted_tools.is_array()) return definitions;
+  for (const json& value : hosted_tools) {
+    if (value.is_object() && !JsonValue(value, "type", "").empty()) {
+      definitions.push_back(value);
+    }
+  }
+  return definitions;
+}
+
 void ProviderCapabilities::SetInputModalities(const json& modalities,
                                               WireApi wire_api) {
   if (!modalities.is_array() || modalities == input_modalities) return;

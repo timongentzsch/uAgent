@@ -104,9 +104,14 @@ json ActivityProjection::Project() const {
     source = call.source;
     occurrence = found->first;
     response = call.response;
-  } else if (!searches_.empty()) {
-    phase = "searching";
-    label = "Searching the web";
+  } else if (!hosted_.empty()) {
+    // A search reads as one; any other tool the provider runs is named.
+    auto other = std::ranges::find_if(hosted_, [](const auto& entry) {
+      return entry.second != "web_search";
+    });
+    phase = other == hosted_.end() ? "searching" : "tool";
+    label =
+        other == hosted_.end() ? "Searching the web" : "Using " + other->second;
   } else if (phase == "thinking") {
     label = "Thinking";
     if (!excerpt_.empty()) {
@@ -143,7 +148,7 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
     turn_ = JsonValue(data, "turn", int64_t{0});
     response_.clear();
     calls_.clear();
-    searches_.clear();
+    hosted_.clear();
     decisions_.clear();
     retry_ = nullptr;
     phase_ = "working";
@@ -166,7 +171,7 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         excerpt_.clear();
         long_line_ = false;
         retry_ = nullptr;
-        searches_.clear();
+        hosted_.clear();
         break;
       case EventId::kReasoningDelta: {
         const std::string previous = excerpt_;
@@ -207,9 +212,9 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         const std::string phase = JsonValue(data, "phase", "");
         const std::string key = JsonValue(data, "id", "");
         if (phase == "started" || phase == "searching") {
-          searches_.insert(key);
+          hosted_[key] = JsonValue(data, "tool", "web_search");
         } else {
-          searches_.erase(key);
+          hosted_.erase(key);
         }
         break;
       }
@@ -218,7 +223,7 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         break;
       case EventId::kResponseFinished:
         phase_ = "working";
-        searches_.clear();
+        hosted_.clear();
         break;
       case EventId::kApprovalRequested:
       case EventId::kInteractionRequested:
@@ -240,7 +245,7 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         active_ = false;
         calls_.clear();
         decisions_.clear();
-        searches_.clear();
+        hosted_.clear();
         retry_ = nullptr;
         phase_ = "finishing";
         break;

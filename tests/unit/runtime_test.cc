@@ -820,6 +820,7 @@ void TestChildEnvironmentPolicy() {
   route.wire_api = WireApi::kResponses;
   route.features = FeaturesOf({Feature::kHostedSearch, Feature::kPdfParser});
   route.options = {{"pdf_engine", "mistral-ocr"}};
+  route.hosted_tools = json::array({{{"type", "code_interpreter"}}});
   EnvironmentOverrides child_overrides = ChildAgentEnvironment(route);
   auto child_value = [&](std::string_view key) {
     auto found =
@@ -836,6 +837,8 @@ void TestChildEnvironmentPolicy() {
   CHECK(child_value("UAGENT_INTERNAL_FEATURES") == "hosted_search,pdf_parser");
   CHECK(child_value("UAGENT_INTERNAL_ENDPOINT_OPTIONS") ==
         R"({"pdf_engine":"mistral-ocr"})");
+  CHECK(child_value("UAGENT_INTERNAL_HOSTED_TOOLS") ==
+        R"([{"type":"code_interpreter"}])");
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
   CHECK(child.Contains("UAGENT_API_KEY"));
@@ -964,8 +967,14 @@ void TestNamedProviders() {
       {"static",
        {{"base_url", "https://static.test/v1"},
         {"wire_api", "responses"},
-        {"hosted_tools", json::array({"web_search"})},
-        {"models", {{"fast", "actual-model"}}}}},
+        {"hosted_tools", json::array({"web_search",
+                                      {{"type", "code_interpreter"},
+                                       {"container", {{"type", "auto"}}}},
+                                      {{"name", "no type"}}})},
+        {"models",
+         {{"fast", "actual-model"},
+          {"plain",
+           {{"id", "plain-model"}, {"hosted_tools", json::array()}}}}}}},
       {"bad-wire",
        {{"base_url", "https://bad-wire.test/v1"},
         {"wire_api", "model-name-is-not-a-wire-api"}}},
@@ -976,7 +985,7 @@ void TestNamedProviders() {
   setenv("UAGENT_PROVIDERS", JsonDump(configured).c_str(), 1);
   ProviderCatalog catalog = LoadProviderCatalog();
   CHECK(catalog.providers.size() == 2);
-  CHECK(catalog.models.size() == 1);
+  CHECK(catalog.models.size() == 2);
   const Endpoint* codex = FindEndpoint(catalog.providers, "codex-local");
   CHECK(codex != nullptr);
   CHECK(codex && codex->base_url == "http://127.0.0.1:8787/api/v1");
@@ -988,6 +997,20 @@ void TestNamedProviders() {
   const Endpoint* native = FindEndpoint(catalog.providers, "static");
   CHECK(native && native->wire_api == WireApi::kResponses);
   CHECK(native && native->features.Has(Feature::kHostedSearch));
+  // An object is a tool the endpoint runs, kept as written; one with no
+  // type is no tool. A model's own list replaces the provider's.
+  CHECK(native && native->hosted_tools ==
+                      json::array({{{"type", "code_interpreter"},
+                                    {"container", {{"type", "auto"}}}}}));
+  for (const Route& model : catalog.models) {
+    if (model.route_name == "static/fast") {
+      CHECK(model.hosted_tools.size() == 1);
+    }
+    if (model.route_name == "static/plain") {
+      CHECK(model.hosted_tools.empty());
+      CHECK(!model.features.Has(Feature::kHostedSearch));
+    }
+  }
 
   // Startup consumes the same selection grammar as interactive and side
   // routes. Suffixes configure policy and never leak into the provider model

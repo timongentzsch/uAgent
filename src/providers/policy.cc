@@ -53,6 +53,7 @@ EnvironmentOverrides RouteEnvironment(const Route& route) {
       {"UAGENT_INTERNAL_WIRE_API", WireApiName(route.wire_api)},
       {"UAGENT_INTERNAL_FEATURES", features},
       {"UAGENT_INTERNAL_ENDPOINT_OPTIONS", JsonDump(route.options)},
+      {"UAGENT_INTERNAL_HOSTED_TOOLS", JsonDump(route.hosted_tools)},
   };
 }
 
@@ -265,6 +266,8 @@ ProviderSetup ConfigureProvider(Api& api) {
     api.options =
         json::parse(EnvStr("UAGENT_INTERNAL_ENDPOINT_OPTIONS"), nullptr, false);
     if (api.options.is_discarded()) api.options = nullptr;
+    api.hosted_tools = HostedToolDefinitions(
+        json::parse(EnvStr("UAGENT_INTERNAL_HOSTED_TOOLS"), nullptr, false));
   }
   const json env_features =
       json::parse(EnvStr("UAGENT_INTERNAL_MODEL_FEATURES"), nullptr, false);

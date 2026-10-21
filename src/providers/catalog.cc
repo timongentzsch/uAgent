@@ -146,6 +146,7 @@ bool DeclareEndpoint(Endpoint& endpoint,
     endpoint.name = provider.name;
     endpoint.features = provider.features;
     endpoint.options = provider.options;
+    endpoint.hosted_tools = provider.hosted_tools;
     return true;
   }
   const KnownEndpoint* known = KnownEndpointForUrl(endpoint.base_url);
@@ -198,10 +199,11 @@ ProviderCatalog LoadProviderCatalog() {
         continue;
       }
     }
-    if (HasHostedTool(JsonValue(provider, "hosted_tools", json::array()),
-                      HostedTool::kWebSearch)) {
+    const json hosted = JsonValue(provider, "hosted_tools", json::array());
+    if (HasHostedTool(hosted, HostedTool::kWebSearch)) {
       endpoint.features.Add(Feature::kHostedSearch);
     }
+    endpoint.hosted_tools = HostedToolDefinitions(hosted);
     if (const json* options = JsonObject(provider, "options")) {
       if (!endpoint.options.is_object()) endpoint.options = json::object();
       endpoint.options.update(*options);
@@ -240,6 +242,7 @@ ProviderCatalog LoadProviderCatalog() {
           } else {
             route.features.Remove(Feature::kHostedSearch);
           }
+          route.hosted_tools = HostedToolDefinitions(spec["hosted_tools"]);
         }
       }
       if (!route.ctx_window) route.ctx_window = endpoint.context;

@@ -171,3 +171,32 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(measure)).toEqual([]);
   });
 }
+
+// A list's rows are parted by hairlines in every pane of Settings, whatever
+// the row primitive draws for itself.
+test("every row after a group's first is parted by a hairline in Settings", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const pane = page.locator(".settings-pane");
+  for (const [scope, loaded] of [
+    ["All conversations", pane.locator("[data-setting]").first()],
+    ["Host", pane.getByText("Paired devices")],
+  ]) {
+    await page
+      .locator(".settings-nav")
+      .getByRole("button", { name: scope, exact: true })
+      .click();
+    await expect(loaded).toBeVisible();
+    const borders = await pane.evaluate((el) =>
+      [...el.querySelectorAll(".group-rows > :not(:first-child)")].map(
+        (row) => getComputedStyle(row).borderTopWidth,
+      ),
+    );
+    expect(borders.length).toBeGreaterThan(0);
+    expect(new Set(borders)).toEqual(new Set(["1px"]));
+  }
+});

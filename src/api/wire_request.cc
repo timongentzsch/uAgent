@@ -305,6 +305,11 @@ json RequestTools(WireApi wire_api, const WireRequest& request) {
           {{"type", "web_search_20250305"}, {"name", "web_search"}});
     }
   }
+  // Tools the endpoint runs itself go with an agent's own; a request that
+  // offers none (a title, a summary) leaves them out too.
+  if (request.tool_schemas.is_array() && !request.tool_schemas.empty()) {
+    for (const json& tool : request.hosted_tools) tools.push_back(tool);
+  }
   return tools;
 }
 
@@ -373,6 +378,23 @@ json AnthropicSystem(std::string system) {
 }
 
 }  // namespace
+
+bool ReplayHoldsHostedTool(const json& replay) {
+  for (const char* list : {"items", "content"}) {
+    const json* entries = JsonArray(replay, list);
+    if (!entries) continue;
+    for (const json& entry : *entries) {
+      const std::string type = JsonValue(entry, "type", "");
+      const bool ran = type == "server_tool_use" ||
+                       type.ends_with("_tool_result") ||
+                       (type.ends_with("_call") && type != "function_call");
+      const std::string tool =
+          type == "server_tool_use" ? JsonValue(entry, "name", "") : type;
+      if (ran && !tool.starts_with("web_search")) return true;
+    }
+  }
+  return false;
+}
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool) {
   return tool == HostedTool::kWebSearch &&
@@ -452,8 +474,8 @@ json WireRequestCache::Encode(WireApi wire_api, const WireRequest& request) {
   if (!role.empty()) encoded_messages_ += "],\"role\":" + JsonDump(role) + "}";
   encoded_messages_ += ']';
 
-  json key =
-      json::array({request.native_web_search, request.function_web_search});
+  json key = json::array({request.native_web_search,
+                          request.function_web_search, request.hosted_tools});
   if (key != tool_key_ || schemas_ != request.tool_schemas) {
     encoded_tools_ = JsonDump(RequestTools(wire_api, request));
     tool_key_ = std::move(key);
@@ -532,6 +554,7 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
       .native_web_search = native_web,
       .function_web_search = allow_function_web,
       .include_web_search_sources = features.Has(Feature::kSearchSources),
+      .hosted_tools = hosted_tools,
       .reasoning_summary = capabilities.reasoning_summary,
       .adaptive_thinking = capabilities.adaptive_thinking};
   json body = cache ? cache->Encode(wire_api, request)

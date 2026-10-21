@@ -85,6 +85,9 @@ bool ParseFeatures(const json& names, FeatureSet& features,
 const char* WireApiName(WireApi wire_api);
 std::optional<WireApi> ParseWireApi(std::string_view wire_api);
 bool HasHostedTool(const json& hosted_tools, HostedTool tool);
+// The entries of a `hosted_tools` list that define a tool: objects with a
+// `type`, each as the endpoint's API takes it.
+json HostedToolDefinitions(const json& hosted_tools);
 
 // What one route has negotiated or learned on top of what its endpoint
 // declares. Built fresh whenever the route changes.

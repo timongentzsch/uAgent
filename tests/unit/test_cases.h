@@ -99,6 +99,7 @@ namespace uagent {
   X(TestWireAdapters)                             \
   X(TestWireStreams)                              \
   X(TestWireStreamHostedSearch)                   \
+  X(TestWireHostedToolDefinitions)                \
   X(TestWireStreamMalformedValues)                \
   X(TestBackgroundValidation)                     \
   X(TestSignalAndFileWatch)                       \

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <map>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -319,7 +320,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     // Context is the current request plus streamed content, not cumulative
     // billing tokens. Keep the same estimate when a provider reports no usage.
     int64_t context =
-        EstimatedTokens(SaturatingAdd(estimated_bytes, response_bytes));
+        ContextTokens(SaturatingAdd(estimated_bytes, response_bytes));
     Emit(Event{
         EventId::kUsageUpdated,
         {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
@@ -371,6 +372,12 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   Usage usage;
   usage.Add(result.usage);
+  // Only ever upward: bytes cannot show a provider's own prompt, while a
+  // report below the estimate says nothing the estimate should lose.
+  if (std::string_view(purpose) == "turn" && usage.PromptTokens() > 0) {
+    context_offset_ = std::max<int64_t>(
+        0, usage.PromptTokens() - EstimatedTokens(estimated_bytes));
+  }
   json metrics = {{"model_calls", 1}, {"model_ms", result.duration_ms}};
   if (result.first_token_ms >= 0) {
     metrics["ttft_ms"] = result.first_token_ms;
@@ -525,7 +532,7 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
 int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                                   int64_t* projected_tokens) const {
   size_t bytes = RequestContextBytes(schema_bytes);
-  int64_t used = EstimatedTokens(bytes);
+  int64_t used = ContextTokens(bytes);
   int64_t pending = EstimatedTokens(pending_bytes);
   if (api_.ctx_window > 0) {
     // An uncapped response can still only be budgeted by the ceiling.

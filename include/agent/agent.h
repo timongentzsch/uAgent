@@ -386,6 +386,9 @@ class Agent {
 
   size_t RequestContextBytes(size_t schema_bytes,
                              const json* messages = nullptr) const;
+  // Tokens a request of `bytes` holds: the byte estimate, corrected by what
+  // the provider last reported beyond it.
+  int64_t ContextTokens(size_t bytes) const;
   int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                              int64_t* projected_tokens = nullptr) const;
   bool ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
@@ -537,6 +540,10 @@ class Agent {
   json last_stop_;
   json turn_side_statistics_ = json::object();
   std::string usage_purpose_;
+  // What the last turn request's reported prompt held beyond its byte
+  // estimate: mostly the provider's own fixed overhead, such as its tool-use
+  // prompt, which a byte count cannot see. Re-measured by every turn request.
+  int64_t context_offset_ = 0;
   KeepFile keep_tool_file_;
   // What a side question needs, captured on the turn thread so the side
   // thread never reads the live route or conversation.

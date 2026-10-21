@@ -142,9 +142,11 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   children of one batch run together and share it equally. While a session
   budget is set, no child starts while a background one runs. Child usage is
   charged to the parent by delta, so follow-ups do not reset accounting.
-- Before a response reports usage, context size is estimated as serialized
-  request bytes divided by 4 and labelled `est. ctx`. The estimate drives
-  compaction and request guards, never billing.
+- Context size is estimated as serialized request bytes divided by 4, plus
+  what the last turn request's reported prompt held beyond its own estimate
+  (mostly the provider's fixed tool-use prompt, which bytes cannot show). It
+  is labelled `est. ctx`, drives compaction and request guards, never
+  billing, and is measured again after compaction or a model switch.
 - Compaction reserves a quarter of the context window for the response, or
   `UAGENT_MAX_TOKENS` when that is smaller.
 

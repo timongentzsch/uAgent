@@ -193,6 +193,40 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
         assert_true(len(folds) == 1, folds)
 
 
+def test_context_fill_follows_reported_prompt_tokens(root, home, *, binary):
+    """The provider's reported prompt counts tokens a byte estimate cannot see
+    (its own tool-use prompt), so a small conversation the provider reports as
+    nearly full is compacted instead of overflowing the window."""
+
+    def requests(reported):
+        first = tool_call(
+            "read_path",
+            {"path": "."},
+            call_id="small",
+            usage={"prompt_tokens": reported, "completion_tokens": 4},
+        )
+        compact = event({"content": "SUMMARY"}, usage={"prompt_tokens": 20, "completion_tokens": 5})
+        answer = event({"content": "done"}, usage={"prompt_tokens": 30, "completion_tokens": 3})
+        with Server([first, compact, answer]) as server:
+            # Large enough that the byte estimate alone stays below 40%.
+            env = midturn_compaction_env(home, server.url) | {"UAGENT_CONTEXT": "20000"}
+            result = run(
+                root,
+                env,
+                "--yolo",
+                "-p",
+                "look",
+                binary=binary,
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            return [body["messages"][-1].get("content", "") for _, body in server.requests]
+
+    small = requests(10)
+    assert_true(not any(str(m).startswith("Summarize the bounded") for m in small), small)
+    full = requests(9000)
+    assert_true(str(full[1]).startswith("Summarize the bounded transcript"), full)
+
+
 def test_absolute_compaction_ceiling(root, home, *, binary):
     write_session(
         home,

@@ -1191,7 +1191,18 @@ void TestBrowserToolSteps() {
     if (params.contains("text") && !params.contains("key")) {
       order.push_back("type " + params.value("text", ""));
     }
-    if (params.value("type", "") == "keyDown") order.emplace_back("Enter");
+    // Text is typed key by key: its characters gather into one entry.
+    if (params.value("type", "") == "keyDown") {
+      const std::string key = params.value("key", "");
+      if (key == "Enter") {
+        order.emplace_back("Enter");
+      } else {
+        if (order.empty() || !order.back().starts_with("type ")) {
+          order.emplace_back("type ");
+        }
+        order.back() += key;
+      }
+    }
   }
   CHECK(order ==
         std::vector<std::string>({"click", "select", "type kestrel", "Enter",

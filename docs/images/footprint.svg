@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 344" width="800" height="344" role="img" aria-label="Footprint of the agents">
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .title { font-size: 13px; font-weight: 600; }
+  .name { font-size: 12px; }
+  .value { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .note { font-size: 10px; fill: #656d76; }
+  .bar { fill: #b4bac1; }
+  .bar.uagent { fill: #0a69da; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #0d1117; }
+    text { fill: #e6edf3; }
+    .note { fill: #8b949e; }
+    .bar { fill: #4a525c; }
+    .bar.uagent { fill: #4493f8; }
+  }
+</style>
+<rect class="bg" width="800" height="344"/>
+<text class="title" x="20" y="32">Install on disk, MB</text>
+<text class="name" x="20" y="59">µAgent</text>
+<rect class="bar uagent" x="104" y="46" width="1.5" height="18" rx="2"/>
+<text class="value" x="111.5" y="59">7.4</text>
+<text class="name" x="20" y="87">Claude Code</text>
+<rect class="bar" x="104" y="74" width="53.7" height="18" rx="2"/>
+<text class="value" x="163.7" y="87">273.0</text>
+<text class="name" x="20" y="115">Codex CLI</text>
+<rect class="bar" x="104" y="102" width="67.1" height="18" rx="2"/>
+<text class="value" x="177.1" y="115">340.8</text>
+<text class="name" x="20" y="143">omp</text>
+<rect class="bar" x="104" y="130" width="220.0" height="18" rx="2"/>
+<text class="value" x="330.0" y="143">1117.7</text>
+<text class="title" x="420" y="32">Idle session memory, MB</text>
+<text class="name" x="420" y="59">µAgent</text>
+<rect class="bar uagent" x="504" y="46" width="20.1" height="18" rx="2"/>
+<text class="value" x="530.1" y="59">25.5</text>
+<text class="name" x="420" y="87">Claude Code</text>
+<rect class="bar" x="504" y="74" width="154.7" height="18" rx="2"/>
+<text class="value" x="664.7" y="87">195.9</text>
+<text class="name" x="420" y="115">Codex CLI</text>
+<rect class="bar" x="504" y="102" width="149.3" height="18" rx="2"/>
+<text class="value" x="659.3" y="115">189.0</text>
+<text class="name" x="420" y="143">omp</text>
+<rect class="bar" x="504" y="130" width="220.0" height="18" rx="2"/>
+<text class="value" x="730.0" y="143">278.5</text>
+<text class="title" x="20" y="189">CPU per headless turn, ms</text>
+<text class="name" x="20" y="216">µAgent</text>
+<rect class="bar uagent" x="104" y="203" width="9.1" height="18" rx="2"/>
+<text class="value" x="119.1" y="216">69</text>
+<text class="name" x="20" y="244">Claude Code</text>
+<rect class="bar" x="104" y="231" width="104.3" height="18" rx="2"/>
+<text class="value" x="214.3" y="244">793</text>
+<text class="name" x="20" y="272">Codex CLI</text>
+<rect class="bar" x="104" y="259" width="90.2" height="18" rx="2"/>
+<text class="value" x="200.2" y="272">685</text>
+<text class="name" x="20" y="300">omp</text>
+<rect class="bar" x="104" y="287" width="220.0" height="18" rx="2"/>
+<text class="value" x="330.0" y="300">1671</text>
+<text class="title" x="420" y="189">Peak memory per headless turn, MB</text>
+<text class="name" x="420" y="216">µAgent</text>
+<rect class="bar uagent" x="504" y="203" width="6.3" height="18" rx="2"/>
+<text class="value" x="516.3" y="216">12.5</text>
+<text class="name" x="420" y="244">Claude Code</text>
+<rect class="bar" x="504" y="231" width="143.8" height="18" rx="2"/>
+<text class="value" x="653.8" y="244">286.6</text>
+<text class="name" x="420" y="272">Codex CLI</text>
+<rect class="bar" x="504" y="259" width="101.4" height="18" rx="2"/>
+<text class="value" x="611.4" y="272">202.1</text>
+<text class="name" x="420" y="300">omp</text>
+<rect class="bar" x="504" y="287" width="220.0" height="18" rx="2"/>
+<text class="value" x="730.0" y="300">438.4</text>
+<text class="note" x="20" y="336">medians, Apple M1 Pro, 2026-10-21; see benchmarks/README.md</text>
+</svg>

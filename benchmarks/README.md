@@ -34,8 +34,9 @@ between the tools so background load affects all of them:
 
 - **Size:** the executable, and the installed tree (`cmake --install --strip`
   for µAgent: `bin/` and `share/uagent/`; the single versioned file for
-  Claude Code; the cask directory for Codex CLI). The download is that tree
-  compressed with `tar czf`.
+  Claude Code; the cask directory for Codex CLI; the `node_modules` tree for
+  omp). omp's sizes include the Bun runtime that runs it, as Claude Code's
+  executable embeds its own.
 - **`--version`:** 30 runs after 3 warm-ups; wall and CPU time.
 - **Idle session:** 10 s in a 120×40 pseudo-terminal after the screen settles,
   with the provider's model list cached, at the folder-trust prompt where a
@@ -44,8 +45,12 @@ between the tools so background load affects all of them:
   counts only Codex's own executables.
 - **Headless turn:** one one-word prompt against the tool's real provider.
   Claude Code runs with `--strict-mcp-config`, an empty MCP config and only
-  project settings; Codex CLI with `exec --ignore-user-config`.
+  project settings; Codex CLI with `exec --ignore-user-config`; omp without
+  extensions, skills, rules, LSP or a saved session, with its provider set
+  through `--omp-env`.
 
 Processes are attributed by PID: the started process, its descendants, and new
 detached processes started from the tool's executable. Idle memory varies
-between runs by tens of MB for the Node-based tools.
+between runs by tens of MB for the Node-based tools. Time to first screen ends
+at the first half second without output, so a startup animation (omp's logo)
+counts in full; the README's chart leaves it out.

@@ -55,6 +55,17 @@ flowchart LR
 [Architecture](docs/ARCHITECTURE.md) covers the layers, the runtime and its
 wire format.
 
+## Footprint
+
+![Bars comparing µAgent, Claude Code, Codex CLI and omp: install on disk 7.4, 273, 341 and 1118 MB; idle session memory 25, 196, 189 and 279 MB; CPU per headless turn 69, 793, 685 and 1671 ms; peak memory per headless turn 12, 287, 202 and 438 MB](docs/images/footprint.svg)
+
+Medians of five runs on an Apple M1 Pro on 2026-10-21, with µAgent 1.5.0,
+Claude Code 2.1.306, Codex CLI 0.163.0 and omp 18.12.5. Each headless turn
+answers a one-word prompt; µAgent and omp used Claude Haiku 5.5 through the
+same endpoint, Claude Code and Codex CLI their own. omp's install includes its
+`node_modules` and the Bun runtime it needs.
+[The method](benchmarks/README.md#footprint-comparison) has every metric.
+
 ## Install
 
 Linux and macOS. From a checkout:
@@ -63,10 +74,21 @@ Linux and macOS. From a checkout:
 ./install.sh
 ```
 
-This builds a Release binary in `build/release`, reusing a build already
-there, and installs `uagent` and the bundled skills under `~/.local`. Put
-`~/.local/bin` on your `PATH`. `UAGENT_PREFIX` and `UAGENT_BUILD_DIR` change
-the two locations.
+It says what it found and asks where µAgent should run:
+
+- **In a container** (recommended where Docker runs): the web interface, the
+  agent's browser and the terminal, isolated from this machine's files and
+  logins. See [The agent's browser](docs/BROWSER.md).
+- **Here:** a Release binary built in `build/release` (an existing build is
+  reused) and installed with the bundled skills under `~/.local`; put
+  `~/.local/bin` on your `PATH`. It includes the web interface when Node.js
+  is present, and with it on Linux the agent's browser, offering to install
+  Chrome and TigerVNC with `sudo` when they are missing. On macOS the agent's
+  browser runs only in the container.
+
+`UAGENT_INSTALL=container` or `here` chooses without asking; a run without a
+terminal installs here. `UAGENT_PREFIX` and `UAGENT_BUILD_DIR` change the two
+locations.
 
 Each tagged release also ships built archives:
 `uagent-<version>-linux-x86_64.tar.gz`, `-linux-arm64.tar.gz` and

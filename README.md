@@ -43,14 +43,7 @@ the web host attach to it over a private Unix socket, so neither has authority
 the other lacks and neither runs a second agent. A script (`-p --json`) runs
 its turn in its own process.
 
-```mermaid
-flowchart LR
-  T[Terminal] --> R
-  S["Script (-p --json)"] --> A
-  B[Browser] -->|HTTP and SSE| W[Web host] --> R
-  R["Session runtime<br/>one per conversation"] --> A["Agent turn loop<br/>and tools, sandboxed"]
-  A --> P[Provider adapters] --> M[Model endpoints]
-```
+![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; a script runs one turn in its own headless process; the runtime's agent loop runs tools in a sandbox (files, commands, MCP, the agent's Chrome, subagents) and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](docs/images/architecture.svg)
 
 [Architecture](docs/ARCHITECTURE.md) covers the layers, the runtime and its
 wire format.

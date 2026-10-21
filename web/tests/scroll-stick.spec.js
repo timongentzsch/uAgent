@@ -113,19 +113,30 @@ test("streaming stays pinned to the end while following", async ({
 
 // A line still being written may not yet decide its block (a table row,
 // a setext underline, a bare list marker). Shown early and then undone,
-// everything above the end would drop for a frame and rise again.
+// everything above the end would drop for a frame and rise again. Nor
+// does the reply's text move when its turn ends.
 test("streamed content only grows while pinned", async ({
   page,
   session,
   command,
 }) => {
   await startProbe(page, session, command, "Structured stream probe");
+  const reply = page.locator(".message.response").last();
+  const textTop = () =>
+    reply.evaluate(
+      (element) =>
+        element.querySelector(".markdown").getBoundingClientRect().top -
+        element.getBoundingClientRect().top,
+    );
+  await expect(reply.locator(".markdown[data-streaming]")).toBeVisible();
+  const streaming = await textTop();
   const frames = await framesUntilIdle(page);
   const shrinks = frames.filter(
     (frame, index) => index && frame.height < frames[index - 1].height,
   );
   expect(shrinks).toEqual([]);
   expect(frames.at(-1).gap).toBeLessThan(2);
+  expect(await textTop()).toBe(streaming);
 });
 
 test("scrolled-up reader is never yanked down by streaming", async ({

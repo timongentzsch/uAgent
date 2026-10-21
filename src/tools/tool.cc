@@ -156,10 +156,7 @@ std::string ToolCategory(const Tool& tool) {
   if (tool.name == "run" || tool.name == "scratch" || tool.name == "activity") {
     return "execute";
   }
-  if (tool.name == "uagent" || tool.name == "session" ||
-      tool.name == "adapt_system") {
-    return "system";
-  }
+  if (tool.name == "uagent" || tool.name == "session") return "system";
   return "workspace";
 }
 

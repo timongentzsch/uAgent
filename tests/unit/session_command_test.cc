@@ -183,7 +183,6 @@ void TestSessionCommandKinds() {
       {"config", session::SessionCommandKind::kConfig},
       {"context", session::SessionCommandKind::kContext},
       {"fork", session::SessionCommandKind::kFork},
-      {"self_directive", session::SessionCommandKind::kSelfDirective},
       {"submit", session::SessionCommandKind::kSubmit},
   };
   for (const auto& [kind, want] : cases) {
@@ -375,7 +374,7 @@ void TestHostCommandKinds() {
             ? 1
             : 0;
   }
-  CHECK(forwarded == 20);
+  CHECK(forwarded == 19);
   for (auto local : {session::SessionCommandKind::kClose,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,

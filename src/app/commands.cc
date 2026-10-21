@@ -276,7 +276,7 @@ CommandReply RunSlashCommand(AppSession& session,
       }
       break;
     case SlashCommandId::kInstructions:
-      HandleInstructions(session, command.argument, reply);
+      HandleInstructions(command.argument, reply);
       break;
     case SlashCommandId::kMemory:
     case SlashCommandId::kSkills:

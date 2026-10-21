@@ -17,7 +17,6 @@
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
 #include "include/core/tool_activity.h"
-#include "include/tools/adapt_system.h"
 #include "include/tools/ask.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
@@ -57,81 +56,6 @@ void TestToolExecutionPolicy() {
   for (size_t i = 2; i < activities.size(); ++i) {
     CHECK(!activities[i].contains("group"));
   }
-
-  AdaptiveSystemState adaptive;
-  Api adapt_api{RuntimeConfig{}};
-  std::vector<Tool> adapt_tools;
-  ProcessSupervisor adapt_processes;
-  UsageAccumulator adapt_usage;
-  Agent adapt_agent(
-      adapt_api, adapt_tools, adapt_processes, adapt_usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
-      {}, {}, {}, &adaptive);
-  Tool adapt = AdaptSystemTool(adaptive, [&adapt_agent](const json& request) {
-    return adapt_agent.SelfDirective(request);
-  });
-  CHECK(adapt.capabilities == Capability(ToolCapability::kMutate));
-  CHECK(adapt.description.find("exception, not a planning ritual") !=
-        std::string::npos);
-  CHECK(adapt.description.find("triggering observation") != std::string::npos);
-  CHECK(adapt.parameters["properties"]["reason"]["description"]
-            .get<std::string>()
-            .find("material strategy delta") != std::string::npos);
-  CHECK(!ToolMutates(adapt, {{"action", "set"},
-                             {"revision", "0"},
-                             {"text", "x"},
-                             {"reason", "phase"}}));
-  CHECK(adapt.max_calls_per_turn < 0);
-  CHECK(InvalidToolArgument(
-            adapt, {{"action", "set"},
-                    {"revision", "0"},
-                    {"text", std::string(kAdaptiveSystemBytes + 1, 'x')},
-                    {"reason", "too long"}})
-            .find("maximum length") != std::string::npos);
-  ToolContext adaptive_context{std::chrono::steady_clock::now() +
-                               std::chrono::seconds(30)};
-  ToolResult adapted = adapt.run({{"action", "set"},
-                                  {"revision", "0"},
-                                  {"text", "Inspect the full lifecycle."},
-                                  {"reason", "The issue is cross-cutting."}},
-                                 adaptive_context);
-  CHECK(adapted.Ok());
-  CHECK(adaptive.instructions == "Inspect the full lifecycle.");
-  CHECK(adaptive.revision == 1);
-  CHECK(!adapt
-             .run({{"action", "set"},
-                   {"revision", "0"},
-                   {"text", "Inspect the full lifecycle."},
-                   {"reason", "same"}},
-                  adaptive_context)
-             .Ok());
-  CHECK(adapt
-            .run({{"action", "set"},
-                  {"revision", "1"},
-                  {"text", "Validate the narrowed invariant."},
-                  {"reason", "Evidence localized the failure."}},
-                 adaptive_context)
-            .Ok());
-  CHECK(adaptive.revision == 2);
-  CHECK(adapt
-            .run({{"action", "reset"},
-                  {"revision", "2"},
-                  {"reason", "Specialization done."}},
-                 adaptive_context)
-            .Ok());
-  CHECK(adaptive.instructions.empty());
-  CHECK(adaptive.revision == 3);
-  CHECK(!adapt
-             .run({{"action", "set"},
-                   {"revision", "0"},
-                   {"text", "new"},
-                   {"reason", "   "}},
-                  adaptive_context)
-             .Ok());
-
-  CHECK(
-      InvalidToolArgument(adapt, {{"action", "set"}, {"instructions", "x"}}) ==
-      "unknown argument `instructions`");
 
   Tool tool;
   tool.name = "probe";
@@ -209,9 +133,10 @@ void TestToolExecutionPolicy() {
   std::vector<Tool> policies{bounded_tool, unbounded};
   json schemas = ToolSchemas(policies);
   ToolSchemaCache schema_cache;
-  json available = schema_cache.Get(policies, schemas, {{"bounded", 2}});
-  CHECK(available.size() == 1);
-  CHECK(available[0]["function"]["name"] == "unbounded");
+  // A tool at its per-turn limit stays offered: the limit is enforced when a
+  // call is made, and the tool array is part of the cached prompt.
+  json available = schema_cache.Get(policies, schemas);
+  CHECK(available.size() == 2);
 
   ToolSelection selection;
   std::string selection_error;
@@ -242,7 +167,7 @@ void TestToolExecutionPolicy() {
   CHECK(catalogue["active"] == 1);
   CHECK(catalogue["schema_bytes"] < catalogue["full_schema_bytes"]);
   schema_cache.Reset();
-  available = schema_cache.Get(policies, schemas, {}, {}, &restored_selection);
+  available = schema_cache.Get(policies, schemas, &restored_selection);
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "bounded");
 
@@ -312,23 +237,6 @@ void TestToolExecutionPolicy() {
   CHECK(FindTool(pinned, "read_path") != nullptr);
   CHECK(FindTool(pinned, "memory") != nullptr);
   CHECK(FindTool(pinned, "uagent") != nullptr);
-
-  Tool terminal_only = unbounded;
-  terminal_only.name = "terminal_only";
-  terminal_only.visibility = Tool::Visibility::kDetachedTerminal;
-  policies = {unbounded, terminal_only};
-  schemas = ToolSchemas(policies);
-  schema_cache.Reset();
-  available = schema_cache.Get(policies, schemas, {});
-  CHECK(available.size() == 1);
-  available =
-      schema_cache.Get(policies, schemas, {}, {.detached_terminal = true});
-  CHECK(available.size() == 2);
-  CHECK(available[1]["function"]["name"] == "terminal_only");
-  // Once listed it stays, even after the last process ends: the tool array
-  // is part of the cached prompt.
-  available = schema_cache.Get(policies, schemas, {});
-  CHECK(available.size() == 2);
 
   namespace fs = std::filesystem;
   fs::path log_root = fs::temp_directory_path() /

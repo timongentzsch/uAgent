@@ -23,7 +23,6 @@
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
-#include "include/tools/adapt_system.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
@@ -65,13 +64,6 @@ std::vector<Tool> BuildTools(AppContext& context,
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
   std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
-  if (BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM"))) {
-    // The agent exists by the time a tool runs.
-    tools.push_back(AdaptSystemTool(runtime.adaptive_system,
-                                    [app = &context](const json& request) {
-                                      return app->agent->SelfDirective(request);
-                                    }));
-  }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }

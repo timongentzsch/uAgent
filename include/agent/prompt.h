@@ -13,7 +13,6 @@
 #include <string_view>
 #include <vector>
 
-#include "include/agent/adaptive_system.h"
 #include "include/core/json.h"
 #include "include/tools/tool.h"
 
@@ -49,11 +48,10 @@ json PromptOverlay(std::string* digest);
 std::string CapabilityPrompt(const std::vector<Tool>& tools,
                              const ToolSelection* selection = nullptr);
 
-// What the model reads as its system message: the base, the conversation's
-// self-directive when it has one, then the context layers (host facts and
-// instructions), with each source kept for inspection. {effective, sources,
-// digest, bytes}, or {error} past 64 KiB.
-json ResolvePrompt(const std::string& base, const AdaptiveSystemState* self,
+// What the model reads as its system message: the base, then the context
+// layers (instructions), with each source kept for inspection. {effective,
+// sources, digest, bytes}, or {error} past 64 KiB.
+json ResolvePrompt(const std::string& base,
                    const json& context = json::array());
 
 // `sandbox` is SandboxWorkspaceRefusal(): said only when commands cannot write

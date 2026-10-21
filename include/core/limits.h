@@ -155,10 +155,8 @@ inline constexpr size_t kOccurrenceChars = 16;
 inline constexpr size_t kDetailChars = 24;
 inline constexpr size_t kAgentNameChars = 8;
 
-// Adaptive-prompt budgets shared by session persistence, the CLI editor and
-// the adapt_system tool. A receipt larger than this is truncated before it
-// is stored, so all three must agree.
-inline constexpr size_t kAdaptiveSystemBytes = size_t{64} * 1024;
+// The assembled system message, and what an external editor may return.
+inline constexpr size_t kSystemPromptBytes = size_t{64} * 1024;
 // Memory-event journal budgets: the append-only audit log is compacted past
 // this size, and a single event line beyond this is refused. The writer, the
 // readers and the retention policy must agree.

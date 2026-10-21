@@ -20,7 +20,6 @@
 #include "include/core/env.h"
 #include "include/core/runtime_config.h"
 #include "include/providers/providers.h"
-#include "include/tools/adapt_system.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
 #include "include/tools/subagent.h"
@@ -379,23 +378,10 @@ void TestRegistries() {
   CHECK(middle.find("## Tools\nUse tools.\n\n## Changes") != std::string::npos);
   CHECK(middle.find("Prefer a dedicated tool over run") == std::string::npos);
   CHECK(middle.find("Inquiries do not authorize") != std::string::npos);
-  capability_tools.push_back(MakeTool(
-      "adapt_system", "", json::object(),
-      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
-  std::string adaptive_prompt = CapabilityPrompt(capability_tools);
-  CHECK(adaptive_prompt.find("mutable part") != std::string::npos);
-  CHECK(adaptive_prompt.find("exception, not a planning ritual") ==
-        std::string::npos);
-  CHECK(adaptive_prompt.find("concrete observation") != std::string::npos);
-  CHECK(adaptive_prompt.find("stops earning its place") != std::string::npos);
   // Capability guidance is its own section, not a tail of the answer rules.
-  CHECK(adaptive_prompt.starts_with("\n\n## Capabilities\n"));
+  CHECK(
+      CapabilityPrompt(capability_tools).starts_with("\n\n## Capabilities\n"));
   CHECK(CapabilityPrompt({}).empty());
-
-  AdaptiveSystemState adaptive_state;
-  Tool adaptive = AdaptSystemTool(adaptive_state,
-                                  [](const json&) { return json::object(); });
-  CHECK(adaptive.parameters["required"] == json::array({"action"}));
 
   Api delegation_api(RuntimeConfig{});
   ProcessSupervisor delegation_processes;

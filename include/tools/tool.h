@@ -240,11 +240,6 @@ struct Tool {
   std::function<bool()> available;
   int64_t blocking_wait_default_ms =
       -1;  // >=0: wait_ms is intentional blocking
-  enum class Visibility {
-    kAlways,
-    kDetachedTerminal,
-  };
-  Visibility visibility = Visibility::kAlways;
 };
 
 // A session-local soft filter over the registry. Hard policy still decides
@@ -264,10 +259,6 @@ class ToolSelection {
   std::string profile_ = "default";
   std::optional<std::unordered_set<std::string>> only_;
   std::unordered_map<std::string, bool> overrides_;
-};
-
-struct ToolAvailability {
-  bool detached_terminal = false;
 };
 
 struct ToolPolicy {
@@ -368,11 +359,12 @@ class ToolSchemaCache {
  public:
   void Reset() { valid_ = false; }
 
-  // Availability selection lives in tools/policy.cc so every translation
-  // unit including this header does not compile it again.
+  // The tools offered depend on configuration alone (selection, route), never
+  // on turn progress: the tool array is part of the cached prompt, and a
+  // per-turn limit is enforced when a call is made. Defined in
+  // tools/policy.cc so every translation unit including this header does not
+  // compile it again.
   const json& Get(const std::vector<Tool>& tools, const json& schemas,
-                  const std::unordered_map<std::string, int64_t>& counts,
-                  ToolAvailability availability = {},
                   const ToolSelection* selection = nullptr);
 
   size_t Bytes() const { return bytes_; }
@@ -380,10 +372,6 @@ class ToolSchemaCache {
 
  private:
   bool valid_ = false;
-  // Once a detached terminal has existed, its tools stay listed: the tool
-  // array is part of the cached prompt, and dropping them when the last
-  // process ends would miss the cache once more.
-  bool detached_seen_ = false;
   size_t bytes_ = 0;
   std::vector<size_t> selected_;
   json available_ = json::array();

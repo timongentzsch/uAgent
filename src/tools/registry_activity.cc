@@ -136,7 +136,6 @@ void RegisterActivityTool(std::vector<Tool>& tools,
   };
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
-  activity.visibility = Tool::Visibility::kDetachedTerminal;
   activity.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     std::string operation = JsonValue(a, "operation", "");
     if ((operation == "poll" || operation == "write" || operation == "resize" ||

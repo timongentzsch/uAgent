@@ -222,23 +222,11 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
 
 // The person edits instruction files directly here, so no approval stands
 // between them and the file; an agent asks through uagent set_instructions.
-void HandleInstructions(AppSession& session, const std::string& argument,
-                        CommandReply& reply) {
+void HandleInstructions(const std::string& argument, CommandReply& reply) {
   std::istringstream words(argument);
   std::string action, audience, scope;
   words >> action >> audience >> scope;
   const std::string cwd = CanonicalCwd();
-  if (action == "clear") {
-    Agent& agent = session.ActiveAgent();
-    json shown = agent.SelfDirective({{"action", "show"}});
-    json cleared = agent.SelfDirective(
-        {{"action", "reset"}, {"revision", shown["item"]["revision"]}});
-    reply.Note(Tone::kNeutral,
-               cleared.contains("error")
-                   ? TerminalSafe(JsonValue(cleared, "error", ""))
-                   : "self-directive cleared");
-    return;
-  }
   if (action == "edit") {
     bool panel = false, project = false;
     if (!ParseInstructionTarget(audience, scope, panel, project)) {
@@ -267,7 +255,7 @@ void HandleInstructions(AppSession& session, const std::string& argument,
   if (!action.empty()) {
     reply.Print("%s",
                 "usage: /instructions [edit sessions|panel "
-                "user|project | clear]\n");
+                "user|project]\n");
     return;
   }
   // The stack in the order a session reads it, after the built-in base.
@@ -284,12 +272,6 @@ void HandleInstructions(AppSession& session, const std::string& argument,
   for (const json& also : stack["also_loaded"]) {
     reply.Print("also read: %s\n",
                 TerminalSafe(also.get<std::string>()).c_str());
-  }
-  const json self = session.ActiveAgent().SelfDirective({{"action", "show"}});
-  if (!JsonValue(self["item"], "text", "").empty()) {
-    reply.Print("%sself-directive%s (this conversation, %s)\n%s\n", BOLD(),
-                RST(), JsonValue(self["item"], "mode", "").c_str(),
-                TerminalSafe(JsonValue(self["item"], "text", "")).c_str());
   }
 }
 

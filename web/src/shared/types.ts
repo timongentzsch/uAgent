@@ -516,8 +516,6 @@ export interface State {
   turns?: number;
   usage?: Usage;
   system_prompt?: string;
-  // The agent's own conversation-scoped addition (adapt_system).
-  self_directive?: SelfDirective;
   // Why a panel holds its threads' events (today's spend limit).
   paused?: string;
   statistics?: Statistics;
@@ -829,11 +827,6 @@ export interface InstructionStack {
   also_loaded: string[];
   base: { sessions: string; panel: string; member: string };
 }
-export interface SelfDirective {
-  mode: "overlay" | "replace";
-  text: string;
-  revision: string;
-}
 export interface CommandResults {
   browser: {
     running?: boolean;
@@ -841,7 +834,6 @@ export interface CommandResults {
     created_profile_id?: string;
   };
   instructions: InstructionStack;
-  self_directive: { item: SelfDirective };
   memory: LibraryResult;
   skills: LibraryResult;
   import: ImportResult;

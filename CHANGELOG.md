@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Upgrade notes
+
+- **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem`
+  (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are
+  removed; it was off by default and unused. A saved conversation that still
+  carries one loads without it. The system message is the built-in base
+  followed by instruction files.
+- **Headless `--json` reports this run's usage.** `usage` and `routes` no
+  longer include what a continued conversation (`-c`, `--resume`) spent
+  before; a conversation another runtime holds gets an error envelope.
+
+### Changes
+
+- Statistics read the full usage everywhere: the web turn footer counts
+  cached and cache-written input, `/cost` shows cache writes and per-route
+  hit rates that agree with the total, and the status row's "in" is the
+  whole prompt. Titles, compaction and memory extraction are billed under
+  their own route, and their calls are counted.
+- Spend a background child reports after its turn is journaled as
+  `turn.usage_amended`. Durations and time to first token leave out retry
+  backoff and approval waits. Unused statistics are no longer stored.
+- The context estimate adds what the provider last reported beyond it, so
+  auto-compaction no longer waits for twice the intended size.
+- The agent reads the same memory store as the Library: every file is
+  listed, an oversized one is readable, project memories show their first
+  sentence, a get names the date it was saved, and a conversation run with
+  `--no-memory` is never extracted. The memory index goes only to sessions
+  with a memory tool.
+- The offered tools change only with configuration: `activity` is offered
+  from the first request and a tool at its per-turn limit stays offered, so
+  starting background work no longer rewrites the prompt cache.
+- A panel's daily spend counts what threads from earlier days spend today,
+  and warns when the route reports no cost.
+
 ## v1.5.0 - 2026-10-20
 
 ### Upgrade notes

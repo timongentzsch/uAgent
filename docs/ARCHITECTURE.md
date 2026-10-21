@@ -349,10 +349,9 @@ that need a restart.
 A browser's display preferences (appearance, motion, zoom, clock) are not host
 settings; that browser alone keeps them.
 
-Instruction files are layered, yours before the project's; only a
-conversation's self-directive can overlay or replace them. Their editors and
-the agent tool share revision checking and approval policy. Replacing prompt
-text does not replace tool permissions. [Instructions](INSTRUCTIONS.md)
+Instruction files are layered, yours before the project's, and only add to
+the built-in base. Their editors and the agent tool share revision checking
+and approval policy, and no prompt text changes tool permissions. [Instructions](INSTRUCTIONS.md)
 describes authoring; [Management](MANAGEMENT.md) covers memory, skills and
 scheduled tasks.
 

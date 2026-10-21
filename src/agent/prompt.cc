@@ -209,11 +209,6 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
           "single search.");
     }
   }
-  if (offered("adapt_system")) {
-    add("adapt_system revises the mutable part of this message. Call it on a "
-        "concrete observation not already reflected here, and clear it when "
-        "the specialization stops earning its place.");
-  }
   // Its own section: appended to the last one, this guidance would read as
   // part of how to write the final answer.
   return prompt.empty() ? prompt : "\n\n## Capabilities\n" + prompt;

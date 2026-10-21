@@ -257,7 +257,6 @@ struct Agent::StepState {
   int64_t acceptance_revision = 1;
   int64_t provider_continuations = 0;
   bool context_overflow_recovery_attempted = false;
-  bool detached_records_available = false;
   bool midturn_compaction_enabled = true;
   // What the harness has to tell the model about this step. It goes out as
   // the last message of the next request and is erased once answered, so a

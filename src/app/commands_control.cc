@@ -220,9 +220,6 @@ json SelectModelControl(AppSession& session, const json& request) {
 
 json SessionControl(AppSession& session, const json& request) {
   std::string kind = JsonValue(request, "kind", "");
-  if (kind == "self_directive") {
-    return session.ActiveAgent().SelfDirective(request);
-  }
   if (kind == "permissions") return PermissionControl(session.context, request);
   if (kind == "tools" &&
       JsonValue(request, "operation", "").starts_with("mcp_")) {

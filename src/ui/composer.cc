@@ -181,7 +181,7 @@ bool RawComposer::EditTextExternally(std::string& text) {
   region_.Clear();
   Stop();
   const bool edited =
-      EditExternalText(text, output_.TerminalFd(), kAdaptiveSystemBytes);
+      EditExternalText(text, output_.TerminalFd(), kSystemPromptBytes);
   Start();
   return edited;
 }

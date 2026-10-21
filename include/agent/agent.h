@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
 #include "include/agent/edit_journal.h"
 #include "include/agent/process.h"
@@ -61,15 +60,11 @@ class Agent {
         UsageAccumulator& side_usage, Approver approve,
         ToolRefresher refresh_tools = {},
         ProjectInstructions project_instructions = {},
-        std::vector<Skill> skills = {},
-        AdaptiveSystemState* adaptive_system = nullptr);
+        std::vector<Skill> skills = {});
 
   void Reset();
   // What the model reads now, with its sources.
   json PromptPreview() const;
-  // The conversation's self-directive (adapt_system): show, preview, set,
-  // edit (one exact replacement) or reset, guarded by its revision.
-  json SelfDirective(const json& request);
   const std::string& LastSentPrompt() const { return last_sent_prompt_; }
 
   const Usage& SessionUsage() const { return session_usage_; }
@@ -481,7 +476,6 @@ class Agent {
   ToolRefresher refresh_tools_;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
-  AdaptiveSystemState* adaptive_system_ = nullptr;
   mutable std::string prompt_error_;
   std::string last_sent_prompt_;
   Conversation conversation_;

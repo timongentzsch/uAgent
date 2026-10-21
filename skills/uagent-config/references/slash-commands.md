@@ -15,7 +15,7 @@
 | `/share` | export transcript as markdown |
 | `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change the approval mode, or this repository's remembered actions |
 | `/rename TITLE` | rename this conversation |
-| `/instructions [edit sessions|panel user|project | clear]` | show or edit instructions; clear this conversation's self-directive |
+| `/instructions [edit sessions|panel user|project]` | show or edit instructions |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |

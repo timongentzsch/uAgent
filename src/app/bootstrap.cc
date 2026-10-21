@@ -259,7 +259,6 @@ void LogReady(const AppContext& context) {
       {"auto_compact_tokens", AutoCompactTokens()},
       {"tool_result_chars", ToolResultCap()},
       {"tool_batch_result_chars", ToolBatchResultCap()},
-      {"adaptive_system", BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM"))},
       {"max_tokens", MaxOutputTokens()},
       {"prompt_overlay",
        overlay_digest.empty() ? json(nullptr) : json(overlay_digest)},
@@ -462,8 +461,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
-      std::move(instructions), std::move(skills),
-      &context->runtime.adaptive_system);
+      std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
   if (memory_child) context->agent->SetUsagePurpose("memory_extract");
   if (context->options.Panel()) {

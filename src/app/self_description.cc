@@ -24,7 +24,6 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/providers/providers.h"
-#include "include/tools/adapt_system.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"
@@ -327,8 +326,7 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out.update(
           ResolvePrompt(ApplyPromptOverlay(SystemPromptBase(),
                                            PromptOverlay(nullptr), nullptr) +
-                            CapabilityPrompt(inputs.tools),
-                        nullptr, json::array()));
+                        CapabilityPrompt(inputs.tools)));
       out["preview_kind"] =
           "Base prompt without active conversation or repository context.";
       break;
@@ -365,8 +363,7 @@ json PromptSurfaceJson() {
         [](const json&, const ToolContext&) { return ToolSuccess(""); });
   };
   json fragments = json::array();
-  for (const char* trigger :
-       {"activity", "web_search", "web_fetch", "adapt_system"}) {
+  for (const char* trigger : {"activity", "web_search", "web_fetch"}) {
     std::vector<Tool> probes = {probe(trigger)};
     fragments.push_back(
         {{"trigger", trigger}, {"text", CapabilityPrompt(probes)}});
@@ -393,16 +390,11 @@ json ToolSurfaceJson() {
   // the template, and the route- and catalogue-dependent parts a live session
   // splices in are reported by `/context` instead.
   ProcessSupervisor supervisor;
-  AdaptiveSystemState adaptive_system;
   Api api;
   UsageAccumulator usage;
   const std::string workspace = CanonicalAccessPath(".");
   std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
-  conditional.emplace_back(
-      AdaptSystemTool(adaptive_system,
-                      [](const json&) { return json::object(); }),
-      "UAGENT_ADAPT_SYSTEM");
   conditional.emplace_back(
       UagentTool([](SelfTopic, const std::string&) { return json::object(); },
                  [](ConfigProposalScope, const std::vector<ConfigChange>&) {
@@ -437,12 +429,8 @@ json ToolSurfaceJson() {
   };
   for (const Tool& tool : tools) {
     const char* when = "always";
-    if (tool.visibility == Tool::Visibility::kDetachedTerminal) {
-      when = "detached activity";
-    } else if (tool.memory_store) {
+    if (tool.memory_store) {
       when = "memory enabled";
-    } else if (tool.name == "adapt_system") {
-      when = "adapt_system enabled";
     }
     emit(tool, when);
   }

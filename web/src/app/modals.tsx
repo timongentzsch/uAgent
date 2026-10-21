@@ -118,11 +118,6 @@ export default function Modals({
       ? all[modal.session]?.state?.http
       : undefined,
   );
-  const self = useSnapshots(store, (all) =>
-    modal?.type === "instructions"
-      ? all[selected]?.state?.self_directive
-      : undefined,
-  );
   const mcp = useSnapshots(store, (all) =>
     modal?.type === "settings" ? all[selected]?.state?.mcp : undefined,
   );
@@ -336,7 +331,6 @@ export default function Modals({
             load={instructionsDialog}
             fallback={<Spinner label="Loading instructions…" surface />}
             session={session}
-            self={self}
             projects={projects}
             online={online}
             version={managementVersion}

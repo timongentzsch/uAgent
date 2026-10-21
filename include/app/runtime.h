@@ -3,7 +3,6 @@
 #ifndef UAGENT_INCLUDE_APP_RUNTIME_H_
 #define UAGENT_INCLUDE_APP_RUNTIME_H_
 
-#include "include/agent/adaptive_system.h"
 #include "include/agent/process.h"
 #include "include/api/client.h"
 #include "include/core/env.h"
@@ -36,7 +35,6 @@ struct AppRuntime {
   RuntimeConfig config;
   Api api;
   Api permission_api;
-  AdaptiveSystemState adaptive_system;
   ProcessSupervisor processes;
   UsageAccumulator side_usage;
   McpRuntime mcp;

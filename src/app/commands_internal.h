@@ -29,8 +29,7 @@ void HandleAttach(AppSession& session, const std::string& argument,
 void HandleCost(const AppSession& session, CommandReply& reply);
 void HandleContext(AppSession& session, CommandReply& reply);
 void HandleStatus(const AppSession& session, CommandReply& reply);
-void HandleInstructions(AppSession& session, const std::string& argument,
-                        CommandReply& reply);
+void HandleInstructions(const std::string& argument, CommandReply& reply);
 void HandleDebugConfig(const AppSession& session, const std::string& argument,
                        CommandReply& reply);
 void HandleConfig(AppSession& session, const std::string& argument,

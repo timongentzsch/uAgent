@@ -617,6 +617,13 @@ void TestWireHostedToolDefinitions() {
     // A request offering no tools of its own (a title) carries none.
     CHECK(!api.BuildRequestBody(messages, json::array(), "session")
                .contains("tools"));
+    // One named like an agent's own tool takes its place.
+    api.hosted_tools =
+        json::array({{{"type", "web_fetch_20250910"}, {"name", "read_path"}}});
+    json replaced = api.BuildRequestBody(messages, schemas, "session");
+    CHECK(replaced["tools"].size() == 1);
+    CHECK(replaced["tools"][0] == api.hosted_tools[0]);
+    api.hosted_tools = json::array({code});
   }
 
   ChatResult result;

@@ -305,9 +305,23 @@ json RequestTools(WireApi wire_api, const WireRequest& request) {
           {{"type", "web_search_20250305"}, {"name", "web_search"}});
     }
   }
-  // Tools the endpoint runs itself go with an agent's own; a request that
-  // offers none (a title, a summary) leaves them out too.
+  // Tools the endpoint runs itself join an agent's own, each in place of the
+  // agent's tool of its name (web_fetch); a request that offers none (a
+  // title, a summary) leaves them out too.
   if (request.tool_schemas.is_array() && !request.tool_schemas.empty()) {
+    const auto name = [](const json& tool) {
+      const json* function = JsonObject(tool, "function");
+      return JsonValue(function ? *function : tool, "name", "");
+    };
+    for (const json& hosted : request.hosted_tools) {
+      const std::string replaced = name(hosted);
+      if (replaced.empty()) continue;
+      json kept = json::array();
+      for (json& tool : tools) {
+        if (name(tool) != replaced) kept.push_back(std::move(tool));
+      }
+      tools = std::move(kept);
+    }
     for (const json& tool : request.hosted_tools) tools.push_back(tool);
   }
   return tools;

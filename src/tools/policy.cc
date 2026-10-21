@@ -385,25 +385,14 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
   });
 }
 
-const json& ToolSchemaCache::Get(
-    const std::vector<Tool>& tools, const json& schemas,
-    const std::unordered_map<std::string, int64_t>& counts,
-    ToolAvailability availability, const ToolSelection* selection) {
-  detached_seen_ = detached_seen_ || availability.detached_terminal;
+const json& ToolSchemaCache::Get(const std::vector<Tool>& tools,
+                                 const json& schemas,
+                                 const ToolSelection* selection) {
   std::vector<size_t> selected;
   for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
     const Tool& tool = tools[i];
     if (selection && !selection->Enabled(tool)) continue;
     if (tool.available && !tool.available()) continue;
-    if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
-        !detached_seen_) {
-      continue;
-    }
-    auto count = counts.find(tool.name);
-    if (tool.max_calls_per_turn >= 0 && count != counts.end() &&
-        count->second >= tool.max_calls_per_turn) {
-      continue;
-    }
     selected.push_back(i);
   }
   if (!valid_ || selected != selected_) {

@@ -42,7 +42,6 @@ enum class SessionCommandKind {
   kFork,
   kShare,
   kSide,
-  kSelfDirective,
   kSubmit,
   // A panel hands a thread's routed decision to the user.
   kEscalate,

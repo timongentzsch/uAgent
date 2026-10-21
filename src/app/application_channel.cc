@@ -129,13 +129,6 @@ void Application::PublishChannelState(bool checkpoint) {
     }
   }
   state["view_epoch"] = agent_.ViewEpoch();
-  // The agent's own self-directive, which the Instructions screen can clear.
-  if (!runtime_.adaptive_system.instructions.empty()) {
-    const AdaptiveSystemState& self = runtime_.adaptive_system;
-    state["self_directive"] = {{"mode", self.mode},
-                               {"text", self.instructions},
-                               {"revision", std::to_string(self.revision)}};
-  }
   state["usage"] = UsageJson(agent_.SessionUsage());
   state["route_usage"] = agent_.RouteUsageJson();
   state["statistics"] = agent_.Statistics();

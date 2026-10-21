@@ -198,13 +198,7 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
     return StepFlow::kEndTurn;
   }
   if (TurnCostExceeded(state)) return StepFlow::kEndTurn;
-  ToolAvailability availability{
-      .detached_terminal = processes_.PendingCount() > 0 ||
-                           processes_.DetachedCount() > 0 ||
-                           loop.detached_records_available,
-  };
-  available_schemas_.Get(tools_, schemas_, loop.tool_counts, availability,
-                         &tool_selection_);
+  available_schemas_.Get(tools_, schemas_, &tool_selection_);
   if (loop.step > 0 && loop.midturn_compaction_enabled) {
     MidturnCompact compacted =
         MaybeCompactDuringTurn(state.metrics.usage, state.start);
@@ -354,7 +348,6 @@ void Agent::Turn(const std::string& user_input, json user_content,
           ? DeadlineAfter(state.started, state.limits.max_turn_seconds)
           : std::chrono::steady_clock::time_point::max();
   active_deadline_ = state.deadline;
-  loop.detached_records_available = !DetachedRecords().empty();
 
   for (; state.limits.max_steps <= 0 || loop.step < state.limits.max_steps;
        ++loop.step) {

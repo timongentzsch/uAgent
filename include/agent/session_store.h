@@ -128,9 +128,6 @@ struct SessionState {
   Usage usage;
   RouteUsage route_usage;
   std::string last_sent_prompt;
-  std::string adaptive_system;
-  std::string adaptive_system_mode = "overlay";
-  uint64_t adaptive_system_revision = 0;
   json display = json::object();
   // Ids of the latest mailbox messages taken into the transcript, so one
   // delivered again after a crash is recognised (see core/mailbox.h).

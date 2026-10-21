@@ -402,20 +402,6 @@
           "description": "trust this workspace's .mcp.json",
           "x-env": "UAGENT_TRUST_PROJECT_CONFIG"
         },
-        "prompt.adaptSystem": {
-          "anyOf": [
-            {
-              "default": false,
-              "type": "boolean"
-            },
-            {
-              "pattern": "\\$",
-              "type": "string"
-            }
-          ],
-          "description": "expose adapt_system so the model may revise its directive",
-          "x-env": "UAGENT_ADAPT_SYSTEM"
-        },
         "providers": {
           "anyOf": [
             {

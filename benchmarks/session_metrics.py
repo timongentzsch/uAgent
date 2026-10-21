@@ -55,7 +55,6 @@ BEHAVIOR_FIELDS = (
     "auto_compact_tokens",
     "tool_result_chars",
     "tool_batch_result_chars",
-    "adaptive_system",
     "max_tokens",
     "prompt_overlay",
 )

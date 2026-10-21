@@ -314,7 +314,7 @@ def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
             reader.start()
             try:
                 assert catalog_started.wait(timeout=budget(5)), "catalog did not start"
-                queued = client.command("self_directive", session, action="show")
+                queued = client.command("context", session)
                 request_id = f"{client.sequence:032x}"
                 assert_true(queued.get("pending"), "control ran before catalog finished")
             finally:
@@ -326,7 +326,7 @@ def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
                 receipt = client.json(f"/api/receipts/{request_id}")[1]
                 if receipt.get("pending"):
                     return False
-                assert_true(receipt.get("accepted") and "effective" in receipt["result"], receipt)
+                assert_true(receipt.get("accepted") and "exchanges" in receipt["result"], receipt)
                 return True
 
             wait_until(completed, "queued prompt inspection did not complete")

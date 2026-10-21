@@ -614,13 +614,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "History kept"),
 
     // Behaviour switches.
-    registry::Named(
-        registry::Bul(
-            "prompt.adaptSystem",
-            "UAGENT_ADAPT_SYSTEM", {}, false, ReloadPolicy::kRestartRequired,
-            "behaviour",
-            "expose adapt_system so the model may revise its directive"),
-        "Self-directive tool"),
     registry::PerConversation(registry::Named(
         registry::Choice(
             registry::Str("approval.mode", "UAGENT_APPROVAL", "approval", "ask",

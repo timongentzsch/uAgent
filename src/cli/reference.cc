@@ -139,9 +139,8 @@ std::string PromptMarkdown() {
   out += kGenerated;
   out +=
       "This is the built-in behavioral prompt. Instruction files (AGENTS.md, "
-      "and PANEL.md for a panel) only add to it; the agent's "
-      "opt-in self-directive can change it for one conversation. Memory stays "
-      "outside the system message. Use `/instructions` or "
+      "and PANEL.md for a panel) only add to it. Memory stays outside the "
+      "system message. Use `/instructions` or "
       "`--show-system-prompt --json` to inspect the effective text and its "
       "sources.\n\n";
   out += "## Base (" +

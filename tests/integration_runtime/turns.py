@@ -6,6 +6,7 @@ from integration_support import (
     base_env,
     event,
     function_names,
+    has_message,
     run,
     tool_call,
     tool_results,
@@ -13,15 +14,30 @@ from integration_support import (
 
 
 def test_plain_turn(root, home, *, binary):
-    def reply(_, body):
-        names = function_names(body)
-        assert_true("activity" not in names, names)
-        return event({"content": "ok"}, usage={"prompt_tokens": 2, "completion_tokens": 1})
-
-    with Server([reply]) as server:
+    with Server([event({"content": "ok"})]) as server:
         result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
+
+
+def test_the_offered_tools_hold_while_background_work_starts(root, home, *, binary):
+    """The tool array is part of the cached prompt: starting background work
+    once added `activity` mid-turn and rewrote the cache (9.6k tokens live)."""
+    offered = []
+
+    def route(_, body):
+        if has_message(body["messages"], "user", "background-brief"):
+            return event({"content": "child-done"})
+        offered.append(sorted(function_names(body)))
+        if len(offered) == 1:
+            return tool_call("subagent", {"prompt": "background-brief", "background": True})
+        return event({"content": "parent-done"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true(len(offered) == 2 and offered[0] == offered[1], offered)
+    assert_true("activity" in offered[0], offered)
 
 
 def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
@@ -50,84 +66,6 @@ def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
         result = run(root, base_env(home, server.url), "panel", "-p", "hi", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "panel-ok", result.stdout)
-
-
-def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
-    def initial(_, body):
-        assert_true("adapt_system" in function_names(body), function_names(body))
-        assert_true("MUTABLE SELF-DIRECTIVE" not in body["messages"][0]["content"], body)
-        return tool_call(
-            "adapt_system",
-            {
-                "action": "set",
-                "revision": "0",
-                "text": "Inspect broadly and challenge the initial hypothesis.",
-                "reason": "The task is still ambiguous.",
-            },
-            call_id="adapt-1",
-        )
-
-    def replace(_, body):
-        system = body["messages"][0]["content"]
-        assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
-        assert_true("Inspect broadly and challenge" in system, system)
-        return tool_call(
-            "adapt_system",
-            {
-                "action": "set",
-                "revision": "1",
-                "text": "Stop broad exploration and validate the localized invariant.",
-                "reason": "New evidence localized the issue.",
-            },
-            call_id="adapt-2",
-        )
-
-    def clear(_, body):
-        system = body["messages"][0]["content"]
-        assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
-        assert_true("validate the localized invariant" in system, system)
-        assert_true("Inspect broadly and challenge" not in system, system)
-        return tool_call(
-            "adapt_system",
-            {"action": "reset", "revision": "2", "reason": "Specialized execution is complete."},
-            call_id="adapt-3",
-        )
-
-    def finish(_, body):
-        system = body["messages"][0]["content"]
-        assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
-        results = tool_results(body["messages"])
-        assert_true(any("Next model request" in result for result in results), results)
-        return event({"content": "adaptive-system-ok"})
-
-    with Server([initial, replace, clear, finish]) as server:
-        trace = root / "adaptive-system.jsonl"
-        env = base_env(home, server.url)
-        env["UAGENT_ADAPT_SYSTEM"] = "1"
-        result = run(
-            root, env, "--yolo", f"--debug={trace}", "-p", "adapt as needed", binary=binary
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip().endswith("adaptive-system-ok"), result.stdout)
-        records = [json.loads(line) for line in trace.read_text().splitlines()]
-        revisions = [
-            int(record["data"]["revision"])
-            for record in records
-            if record.get("event") == "prompt_changed"
-            and record["data"].get("scope") == "conversation"
-        ]
-        assert_true(revisions == [1, 2, 3], revisions)
-        snapshots = [record["data"] for record in records if record.get("event") == "model_request"]
-        assert_true([item["system_revision"] for item in snapshots] == [0, 1, 2, 3], snapshots)
-
-    def static_reply(_, body):
-        assert_true("adapt_system" not in function_names(body), function_names(body))
-        return event({"content": "static-system-ok"})
-
-    with Server([static_reply]) as server:
-        result = run(root, base_env(home, server.url), "-p", "work normally", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "static-system-ok", result.stdout)
 
 
 def test_stream_error_is_not_an_empty_response(root, home, *, binary):

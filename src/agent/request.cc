@@ -140,19 +140,17 @@ void Agent::DebugModelRequest(int64_t request, int64_t step,
                               const json* request_messages, bool projected) {
   // A full snapshot after any shrink plus per-step deltas reconstructs every
   // request without re-dumping the whole history on every step.
-  json record = {
-      {"request", request},
-      {"turn", turn_id_},
-      {"step", step},
-      {"purpose", purpose},
-      {"model", api_.model},
-      {"session_id", session_id_},
-      {"total_messages", conversation_.Size()},
-      {"tool_schemas", schemas.size()},
-      {"schema_bytes", schema_bytes},
-      {"parallel_tools", api_.capabilities.parallel_tools},
-      {"include_usage", api_.capabilities.stream_usage_option},
-      {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
+  json record = {{"request", request},
+                 {"turn", turn_id_},
+                 {"step", step},
+                 {"purpose", purpose},
+                 {"model", api_.model},
+                 {"session_id", session_id_},
+                 {"total_messages", conversation_.Size()},
+                 {"tool_schemas", schemas.size()},
+                 {"schema_bytes", schema_bytes},
+                 {"parallel_tools", api_.capabilities.parallel_tools},
+                 {"include_usage", api_.capabilities.stream_usage_option}};
   // An experiment that changed the prompt has to be visible in the same
   // record as the request it shaped, or a report cannot be attributed.
   std::string overlay_digest;
@@ -701,8 +699,7 @@ json Agent::PromptContext() const {
 }
 
 std::string Agent::SystemPrompt() const {
-  auto resolved =
-      ResolvePrompt(PromptBase(), adaptive_system_, PromptContext());
+  auto resolved = ResolvePrompt(PromptBase(), PromptContext());
   prompt_error_ = JsonValue(resolved, "error", "");
   if (!prompt_error_.empty()) {
     return conversation_.Empty()
@@ -713,74 +710,8 @@ std::string Agent::SystemPrompt() const {
 }
 
 json Agent::PromptPreview() const {
-  json result = ResolvePrompt(PromptBase(), adaptive_system_, PromptContext());
+  json result = ResolvePrompt(PromptBase(), PromptContext());
   if (!last_sent_prompt_.empty()) result["last_sent"] = last_sent_prompt_;
-  return result;
-}
-
-json Agent::SelfDirective(const json& request) {
-  if (!adaptive_system_) return {{"error", "No self-directive here."}};
-  AdaptiveSystemState& self = *adaptive_system_;
-  const std::string action = JsonValue(request, "action", "show");
-  auto item = [](const AdaptiveSystemState& state) {
-    return json{{"mode", state.mode},
-                {"text", state.instructions},
-                {"revision", std::to_string(state.revision)}};
-  };
-  if (action == "show") {
-    json shown = PromptPreview();
-    shown["item"] = item(self);
-    return shown;
-  }
-  if (action != "set" && action != "edit" && action != "reset") {
-    return {{"error", "Action must be show, set, edit or reset."}};
-  }
-  if (JsonValue(request, "revision", "") != std::to_string(self.revision)) {
-    return {{"error", "The self-directive changed. Show it again first."},
-            {"conflict", true}};
-  }
-  AdaptiveSystemState next = self;
-  if (action == "reset") {
-    next.Reset();
-  } else if (action == "edit") {
-    // One exact, unique replacement in the current text.
-    const std::string old = JsonValue(request, "old", "");
-    const size_t at =
-        old.empty() ? std::string::npos : next.instructions.find(old);
-    if (at == std::string::npos ||
-        next.instructions.find(old, at + 1) != std::string::npos) {
-      return {{"error", "edit needs text that appears exactly once."}};
-    }
-    next.instructions.replace(at, old.size(), JsonValue(request, "new", ""));
-  } else {
-    next.instructions = JsonValue(request, "text", "");
-    next.mode = JsonValue(request, "mode", self.mode);
-  }
-  if ((next.mode != "overlay" && next.mode != "replace") ||
-      next.instructions.size() > kAdaptiveSystemBytes) {
-    return {{"error", "Mode is overlay or replace, text at most 64 KiB."}};
-  }
-  if (next.instructions.empty()) next.mode = "overlay";
-  json result = ResolvePrompt(PromptBase(), &next, PromptContext());
-  if (result.contains("error")) return result;
-  result["diff"] =
-      ConfigUnifiedDiff(self.mode + "\n" + self.instructions,
-                        next.mode + "\n" + next.instructions, "self-directive");
-  result["applies"] =
-      "Next model request; requests already in flight are unchanged.";
-  result["item"] = item(next);
-  // A dry run shows what would change and commits nothing.
-  if (JsonValue(request, "dry_run", false) ||
-      (next.mode == self.mode && next.instructions == self.instructions)) {
-    return result;
-  }
-  next.revision = self.revision + 1;
-  self = std::move(next);
-  ++revision_;
-  Emit(Event{EventId::kPromptChanged,
-             {{"scope", "conversation"},
-              {"revision", std::to_string(self.revision)}}});
-  result["item"] = item(self);
   return result;
 }
 

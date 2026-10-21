@@ -35,7 +35,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
              UsageAccumulator& side_usage, Approver approve,
              ToolRefresher refresh_tools,
              ProjectInstructions project_instructions,
-             std::vector<Skill> skills, AdaptiveSystemState* adaptive_system)
+             std::vector<Skill> skills)
     : api_(api),
       tools_(tools),
       processes_(processes),
@@ -44,8 +44,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
       approve_(std::move(approve)),
       refresh_tools_(std::move(refresh_tools)),
       project_instructions_(std::move(project_instructions)),
-      skills_(std::move(skills)),
-      adaptive_system_(adaptive_system) {
+      skills_(std::move(skills)) {
   schema_bytes_ = JsonDump(schemas_).size();
   if (Debug().Enabled()) {
     json names = json::array();
@@ -231,7 +230,6 @@ void Agent::Reset() {
   writer_.Reset();
   DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                              {"prior_usage", UsageJson(session_usage_)}});
-  if (adaptive_system_) adaptive_system_->Reset();
   last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
   turn_search_trace_.Reset();
@@ -370,19 +368,13 @@ SessionRecord Agent::Snapshot() const {
                      .kind = JsonValue(session_role_, "kind", ""),
                      .thread = ThreadRole(session_role_),
                      .memory = api_.config.memory_enabled};
-  record.state = {
-      .context_tokens = ContextUsed(),
-      .context_window = api_.ctx_window,
-      .usage = session_usage_,
-      .route_usage = route_usage_,
-      .last_sent_prompt = last_sent_prompt_,
-      .adaptive_system = adaptive_system_ ? adaptive_system_->instructions : "",
-      .adaptive_system_mode =
-          adaptive_system_ ? adaptive_system_->mode : "overlay",
-      .adaptive_system_revision =
-          adaptive_system_ ? adaptive_system_->revision : 0,
-      .display = conversation_.DisplayMetadata(),
-      .delivered_mail = json::array()};
+  record.state = {.context_tokens = ContextUsed(),
+                  .context_window = api_.ctx_window,
+                  .usage = session_usage_,
+                  .route_usage = route_usage_,
+                  .last_sent_prompt = last_sent_prompt_,
+                  .display = conversation_.DisplayMetadata(),
+                  .delivered_mail = json::array()};
   return record;
 }
 
@@ -438,20 +430,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   conversation_ = std::move(restored);
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   delivered_mail_ = std::move(record.state.delivered_mail);
-  if (adaptive_system_) {
-    adaptive_system_->instructions = std::move(record.state.adaptive_system);
-    adaptive_system_->revision = record.state.adaptive_system_revision;
-    adaptive_system_->mode = std::move(record.state.adaptive_system_mode);
-    // A self-authored directive is the least supervised thing a resume can
-    // reinstate, so it is announced rather than silently reapplied.
-    if (!adaptive_system_->instructions.empty()) {
-      Emit(NoticeEvent(
-          PresentationStatus::kNeutral,
-          "self-directive revision " +
-              std::to_string(adaptive_system_->revision) +
-              " restored — /status to review, adapt_system to clear"));
-    }
-  }
   RefreshBaseline();
   context_offset_ = 0;
   session_usage_ = record.state.usage;

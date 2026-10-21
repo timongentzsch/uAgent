@@ -663,7 +663,6 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kRevert:
       case SessionCommandKind::kFork:
       case SessionCommandKind::kShare:
-      case SessionCommandKind::kSelfDirective:
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
       case SessionCommandKind::kSubmit:

@@ -37,7 +37,6 @@ struct GetterCheck {
 // default -- fails here rather than drifting quietly.
 constexpr const char* kBoolSettings[] = {
     "UAGENT_SANDBOX_NET",
-    "UAGENT_ADAPT_SYSTEM",
     "UAGENT_MARKDOWN",
     "UAGENT_TRUST_PROJECT_CONFIG",
 };

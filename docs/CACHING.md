@@ -33,10 +33,11 @@ and provider-native reasoning is replayed as received. These still change
 earlier input and can cost cache reuse:
 
 - compaction, attachment pruning and old tool-result pruning;
-- a changed self-directive (`adapt_system`), which rewrites the system
-  message;
-- tool-availability changes (`/tools`, an MCP server's list, a tool reaching
-  its per-turn cap) and effort changes;
+- tool-availability changes (`/tools`, an MCP server's list, a model switch
+  that changes whether `web_search` can run) and effort changes. Turn
+  progress never changes the offered tools: `activity` is offered from the
+  first request, and a tool at its per-turn limit stays offered and refuses
+  the call;
 - forks, which get a new session identity (resumed sessions keep theirs).
 
 A new day or a changed approval mode does not: the runtime note that carries

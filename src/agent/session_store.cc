@@ -85,9 +85,6 @@ constexpr Field kStateFields[] = {
     {"context_window", json::value_t::number_integer, false},
     {"usage", json::value_t::object, true},
     {"last_sent_prompt", json::value_t::string, false},
-    {"adaptive_system", json::value_t::string, false},
-    {"adaptive_system_revision", json::value_t::number_unsigned, false},
-    {"adaptive_system_mode", json::value_t::string, false},
     {"display", json::value_t::object, false},
     {"delivered_mail", json::value_t::array, false}};
 
@@ -106,10 +103,7 @@ bool ValidState(const SessionState& state,
          (conversation ? conversation->Kinds() : state.message_kinds).size() ==
              messages.size() &&
          (conversation ? conversation->Archive() : state.archive).is_array() &&
-         state.display.is_object() && state.delivered_mail.is_array() &&
-         state.adaptive_system.size() <= kAdaptiveSystemBytes &&
-         (state.adaptive_system_mode == "overlay" ||
-          state.adaptive_system_mode == "replace");
+         state.display.is_object() && state.delivered_mail.is_array();
 }
 
 bool ValidHeader(const json& header) {
@@ -149,9 +143,6 @@ std::string StateText(const SessionState& state,
       {"usage", UsageJson(state.usage)},
       {"route_usage", RouteUsageJson(state.route_usage)},
       {"last_sent_prompt", state.last_sent_prompt},
-      {"adaptive_system", state.adaptive_system},
-      {"adaptive_system_mode", state.adaptive_system_mode},
-      {"adaptive_system_revision", state.adaptive_system_revision},
       {"delivered_mail", state.delivered_mail}};
   // Serialize borrowed arrays directly: the live transcript stays in place.
   std::string text = JsonDump(value);
@@ -300,11 +291,6 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.route_usage =
       RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
   record.state.last_sent_prompt = JsonValue(state, "last_sent_prompt", "");
-  record.state.adaptive_system = JsonValue(state, "adaptive_system", "");
-  record.state.adaptive_system_mode =
-      JsonValue(state, "adaptive_system_mode", "overlay");
-  record.state.adaptive_system_revision =
-      JsonValue(state, "adaptive_system_revision", uint64_t{0});
   if (state.contains("display")) {
     record.state.display = std::move(state["display"]);
   }

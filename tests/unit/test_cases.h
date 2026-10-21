@@ -91,7 +91,7 @@ namespace uagent {
   X(TestStrictBooleanSettings)                    \
   X(TestSelfDescriptionSchemas)                   \
   X(TestNearestSlashCommand)                      \
-  X(TestSelfDirective)                            \
+  X(TestResolvedPrompt)                           \
   X(TestInstructionFiles)                         \
   X(TestPromptRequestParity)                      \
   X(TestSseFraming)                               \

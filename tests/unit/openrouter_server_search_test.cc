@@ -238,10 +238,10 @@ void TestOpenRouterServerSearch() {
       WebSearchTool(unnamed_api, unnamed_usage, {seeker})};
   ToolSchemaCache offered;
   const json unnamed_schemas = ToolSchemas(unnamed_tools);
-  CHECK(offered.Get(unnamed_tools, unnamed_schemas, {}).empty());
+  CHECK(offered.Get(unnamed_tools, unnamed_schemas).empty());
   CHECK(CapabilityPrompt(unnamed_tools).empty());
   unnamed_api.features = FeaturesOf({Feature::kSearchPlugin});
-  CHECK(offered.Get(unnamed_tools, unnamed_schemas, {}).size() == 1);
+  CHECK(offered.Get(unnamed_tools, unnamed_schemas).size() == 1);
   CHECK(!CapabilityPrompt(unnamed_tools).empty());
   unsetenv("UAGENT_PROVIDERS");
   // Without any configured search route, an OpenRouter conversation route is

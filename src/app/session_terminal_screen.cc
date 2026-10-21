@@ -139,7 +139,7 @@ bool Terminal::PresentDecision(const json& pending,
     std::string text = JsonValue(pending, "initial", "");
     bool edited =
         raw_ ? composer_.EditTextExternally(text)
-             : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
+             : EditExternalText(text, STDIN_FILENO, kSystemPromptBytes);
     Reply(decision, text, {{"cancelled", !edited}});
     return true;
   }

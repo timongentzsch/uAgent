@@ -4,7 +4,6 @@ import { useResource } from "../../shared/use-resource.ts";
 import type {
   InstructionFile,
   InstructionStack,
-  SelfDirective,
   Session,
 } from "../../shared/types.ts";
 import { command } from "../../state/api.ts";
@@ -30,15 +29,12 @@ const TITLES: Record<string, string> = {
 // restarted sessions, so the running ones keep their cached prefix.
 export default function Instructions({
   session,
-  self,
   projects,
   online,
   version,
   showRequest,
 }: {
   session?: Session;
-  // The conversation's own addition to its instructions.
-  self?: SelfDirective;
   projects: string[];
   online: boolean;
   version: number;
@@ -112,9 +108,6 @@ export default function Instructions({
           </>
         </Placeholder>
       )}
-      {self && session && (
-        <SelfDirectiveCard self={self} session={session} online={online} />
-      )}
       {showRequest && (
         <Actions>
           <Button variant="quiet" onClick={showRequest}>
@@ -132,45 +125,6 @@ function Base({ text, label }: { text?: string; label: string }) {
       <summary>{label}</summary>
       <pre>{text}</pre>
     </details>
-  );
-}
-
-// The agent's own directive for this conversation; only clearing it is
-// yours.
-function SelfDirectiveCard({
-  self,
-  session,
-  online,
-}: {
-  self: SelfDirective;
-  session: Session;
-  online: boolean;
-}) {
-  const { run, error } = useAction();
-  return (
-    <section class="instruction-card">
-      <header>
-        <strong>Self-directive · this conversation</strong>
-        <small class="muted">{self.mode}, written by the agent</small>
-      </header>
-      {error && <LoadError error={error} />}
-      <pre>{self.text}</pre>
-      <Actions>
-        <Button
-          disabled={!online}
-          onClick={() =>
-            void run(() =>
-              command("self_directive", session, {
-                action: "reset",
-                revision: self.revision,
-              }),
-            )
-          }
-        >
-          Clear
-        </Button>
-      </Actions>
-    </section>
   );
 }
 

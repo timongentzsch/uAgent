@@ -6,8 +6,7 @@ Instructions tell the agent how to work: `AGENTS.md` for every session,
 
 A session's system message is the built-in base followed by these
 instructions. Instructions only add; nothing a person or an agent writes
-replaces the base, except the agent's opt-in
-[self-directive](#self-directive). Host facts (date, working directory,
+replaces the base. Host facts (date, working directory,
 approval mode) and memory follow in a runtime note after the system message.
 When a host fact changes, a new note is appended and the earlier text stays,
 so the cached prefix holds; memory is read at start, so a memory saved now
@@ -50,17 +49,6 @@ not. Editors never write through a symbolic link.
 
 `uagent --show-system-prompt [--json]` prints what the model would read, without
 a model call; `/context` shows a live conversation's full request.
-
-## Self-directive
-
-With `UAGENT_ADAPT_SYSTEM=1` (off by default; applies after a restart) the
-agent gets `adapt_system`: text it adds to the base (overlay) or, with the
-user's approval, puts in its place (replace), for the current conversation
-only. An overlay needs no approval; a replace always needs a person. Writes
-carry the revision from `show` and a non-empty `reason`; an approval is bound
-to the exact previewed text, expires after five minutes and cannot be reused.
-`/instructions clear` and the web's Clear remove the directive. It is saved
-with the conversation and copied by forks.
 
 ## Limits and experiments
 

@@ -41,7 +41,6 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 
 | Setting | Environment | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- | --- |
-| `prompt.adaptSystem` | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
 | `approval.mode` | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
 | `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | string | empty | next-user-turn | [endpoint/]decision model used by auto permissions |
 | `approval.allowAbove` | `UAGENT_PERMISSION_ALLOW_ABOVE` | string | empty | next-user-turn | probability 0-1 of allow that auto permissions need |

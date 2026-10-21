@@ -497,8 +497,7 @@ void TestSavedTranscriptIndex() {
   record.state.message_kinds = conversation.Kinds();
   record.state.archive = conversation.Archive();
   record.state.display = conversation.DisplayMetadata();
-  record.state.adaptive_system = "preserve quotes \" and newlines\n";
-  record.state.adaptive_system_revision = 7;
+  record.state.last_sent_prompt = "preserve quotes \" and newlines\n";
   const std::string owned = (workspace.workspace / "owned.json").string();
   const std::string borrowed = (workspace.workspace / "borrowed.json").string();
   REQUIRE(SessionStore::Save(owned, record).Ok());

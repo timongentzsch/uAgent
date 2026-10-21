@@ -30,7 +30,7 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached | always |
 | `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
-| `activity` | list, poll, wait for, write to, resize or stop activities | once a command is still running or detached |
+| `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
@@ -41,7 +41,6 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
-| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [Instructions](INSTRUCTIONS.md#self-directive) |
 | `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, panel moderators and threads) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a panel or a lean child |
 

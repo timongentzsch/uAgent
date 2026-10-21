@@ -85,8 +85,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kRename, "/rename", "TITLE", "rename this conversation",
      kNoViewer},
     {SlashCommandId::kInstructions, "/instructions",
-     "[edit sessions|panel user|project | clear]",
-     "show or edit instructions; clear this conversation's self-directive"},
+     "[edit sessions|panel user|project]", "show or edit instructions"},
     {SlashCommandId::kHttp, "/http", "[INDEX [request|response]]",
      "inspect captured HTTP attempts (latest by default)"},
     {SlashCommandId::kDiff, "/diff", "",
@@ -325,7 +324,7 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
   } else if (request.kind == "editor") {
     ScopedCookedInput cooked_input;
     answer = request.initial;
-    *eof = !EditExternalText(answer, STDIN_FILENO, kAdaptiveSystemBytes);
+    *eof = !EditExternalText(answer, STDIN_FILENO, kSystemPromptBytes);
   } else {
     ScopedCookedInput cooked_input;
     fputs((TerminalSafe(DecisionPrompt(request.prompt, request.options)) + " ")

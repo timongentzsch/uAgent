@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 372" width="880" height="372" role="img" aria-label="µAgent's processes: the terminal and the web host attach to one session runtime per conversation over a Unix socket; a browser or phone reaches the web host over HTTP and SSE; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls model endpoints over HTTPS">
+<style>
+.bg { fill: #ffffff; }
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; fill: #1f2328; }
+.t { font-weight: 600; }
+.m { font-size: 11.5px; fill: #59636e; }
+.c { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; fill: #59636e; }
+.box { fill: #f6f8fa; stroke: #d1d9e0; }
+.key { fill: #ddf4ff; stroke: #0969da; }
+.sand { fill: none; stroke: #818b98; stroke-dasharray: 4 3; }
+.ln { fill: none; stroke: #818b98; stroke-width: 1.5; }
+.hd { fill: #818b98; }
+.lbl { paint-order: stroke; stroke: #ffffff; stroke-width: 4px; stroke-linejoin: round; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #0d1117; }
+  text { fill: #f0f6fc; }
+  .m, .c { fill: #9198a1; }
+  .box { fill: #151b23; stroke: #3d444d; }
+  .key { fill: #0d2a4d; stroke: #4493f8; }
+  .sand, .ln { stroke: #656c76; }
+  .hd { fill: #656c76; }
+  .lbl { stroke: #0d1117; }
+}
+</style>
+<defs><marker id="a" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="hd" d="M0 0L8 4L0 8z"/></marker></defs>
+<rect class="bg" width="880" height="372"/>
+<path class="ln" d="M164 68H438" marker-end="url(#a)"/>
+<path class="ln" d="M164 178H226" marker-end="url(#a)"/>
+<path class="ln" d="M368 178H438" marker-end="url(#a)"/>
+<path class="ln" d="M164 314H438" marker-end="url(#a)"/>
+<path class="ln" d="M672 148H714" marker-end="url(#a)"/>
+<path class="ln" d="M660 314H790V206" marker-end="url(#a)"/>
+<text class="m lbl" x="302" y="60" text-anchor="middle">Unix socket</text>
+<text class="m lbl" x="196" y="170" text-anchor="middle">HTTP, SSE</text>
+<text class="m lbl" x="404" y="170" text-anchor="middle">Unix socket</text>
+<text class="m lbl" x="694" y="140" text-anchor="middle">HTTPS</text>
+<rect class="box" x="24" y="40" width="140" height="56" rx="8"/>
+<text class="t" x="38" y="63">Terminal</text>
+<text class="c" x="38" y="82">uagent</text>
+<rect class="box" x="24" y="150" width="140" height="56" rx="8"/>
+<text class="t" x="38" y="173">Browser or phone</text>
+<text class="m" x="38" y="192">paired link or app</text>
+<rect class="box" x="24" y="286" width="140" height="56" rx="8"/>
+<text class="t" x="38" y="309">Script</text>
+<text class="c" x="38" y="328">uagent -p --json</text>
+<rect class="box" x="228" y="150" width="140" height="56" rx="8"/>
+<text class="t" x="242" y="173">Web host</text>
+<text class="c" x="242" y="192">uagent --web</text>
+<rect class="box" x="452" y="42" width="220" height="210" rx="10"/>
+<rect class="box" x="446" y="36" width="220" height="210" rx="10"/>
+<rect class="key" x="440" y="30" width="220" height="210" rx="10"/>
+<text class="t" x="456" y="54">Session runtime</text>
+<text class="m" x="456" y="72">one process per conversation</text>
+<rect class="box" x="456" y="86" width="188" height="36" rx="6"/>
+<text x="470" y="109">Agent turn loop</text>
+<rect class="sand" x="456" y="134" width="188" height="92" rx="6"/>
+<text x="470" y="155">Tools in the sandbox</text>
+<text class="m" x="470" y="175">files, commands, MCP</text>
+<text class="m" x="470" y="193">the agent's Chrome</text>
+<text class="m" x="470" y="211">subagents</text>
+<rect class="box" x="440" y="286" width="220" height="56" rx="8"/>
+<text class="t" x="456" y="309">Headless run</text>
+<text class="m" x="456" y="328">one turn in its own process</text>
+<rect class="box" x="716" y="92" width="148" height="112" rx="8"/>
+<text class="t" x="730" y="115">Model endpoints</text>
+<text class="m" x="730" y="137">Chat Completions</text>
+<text class="m" x="730" y="155">OpenAI Responses</text>
+<text class="m" x="730" y="173">Anthropic Messages</text>
+<text class="m" x="730" y="193">local or hosted</text>
+</svg>

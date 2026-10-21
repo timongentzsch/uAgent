@@ -7,5 +7,6 @@
     "devtools://*"
   ],
   "PasswordManagerEnabled": true,
-  "PasswordLeakDetectionEnabled": true
+  "PasswordLeakDetectionEnabled": true,
+  "AlwaysOpenPdfExternally": true
 }

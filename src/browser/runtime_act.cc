@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/browser/browser.h"
 #include "include/browser/runtime.h"
@@ -174,6 +175,27 @@ constexpr Key kKeys[] = {
     {"ArrowUp", 38, ""},    {"ArrowDown", 40, ""}, {"ArrowLeft", 37, ""},
     {"ArrowRight", 39, ""}, {"PageUp", 33, ""},    {"PageDown", 34, ""},
     {"Home", 36, ""},       {"End", 35, ""}};
+
+// Text is typed key by key, as a keyboard would: fields that listen for keys
+// (autocomplete, masked and code inputs) see each one, and with no pause
+// between keys a short field still fills at once. Longer text, and text with
+// a character no key types (a control, an emoji), goes in at once instead.
+constexpr size_t kKeyedChars = 256;
+std::vector<std::string> KeyedCharacters(const std::string& text) {
+  std::vector<std::string> keys;
+  if (text.size() > kKeyedChars) return {};
+  for (size_t at = 0; at < text.size();) {
+    const auto lead = static_cast<unsigned char>(text[at]);
+    const size_t width = lead < 0x80 ? 1 : lead >= 0xE0 ? 3 : 2;
+    if (lead < 0x20 || lead == 0x7F || (lead >= 0x80 && lead < 0xC2) ||
+        lead >= 0xF0 || at + width > text.size()) {
+      return {};
+    }
+    keys.push_back(text.substr(at, width));
+    at += width;
+  }
+  return keys;
+}
 
 bool Coordinate(const json& command, const char* name, int& result) {
   result = JsonValue(command, name, -1);
@@ -371,12 +393,10 @@ json Runtime::Act(const std::string& op, const json& command) {
     const std::string named = "element " + std::to_string(element);
     // Where the element is now, or why it cannot be clicked there.
     const auto locate = [&]() -> std::string {
-      json where = Call("Runtime.evaluate",
-                        {{"expression", std::string(kElementScript) + "(" +
-                                            Numbered(view, element) + ")"},
-                         {"returnByValue", true},
-                         {"awaitPromise", true}},
-                        page_session_);
+      json where = Evaluate({{"expression", std::string(kElementScript) + "(" +
+                                                Numbered(view, element) + ")"},
+                             {"returnByValue", true},
+                             {"awaitPromise", true}});
       const json* found = JsonObject(where, "result");
       found = found ? JsonObject(*found, "result") : nullptr;
       found = found ? JsonObject(*found, "value") : nullptr;
@@ -439,11 +459,9 @@ json Runtime::Act(const std::string& op, const json& command) {
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
-    json control = Call("Runtime.evaluate",
-                        {{"expression", std::string("(") + kControlScript +
-                                            ")(" + JsonDump(value) + ")"},
-                         {"returnByValue", true}},
-                        page_session_);
+    json control = Evaluate({{"expression", std::string("(") + kControlScript +
+                                                ")(" + JsonDump(value) + ")"},
+                             {"returnByValue", true}});
     const json* set = JsonObject(control, "result");
     set = set ? JsonObject(*set, "result") : nullptr;
     set = set ? JsonObject(*set, "value") : nullptr;
@@ -455,9 +473,7 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"ok", true}};
     }
     json secret =
-        Call("Runtime.evaluate",
-             {{"expression", kSecretFieldScript}, {"returnByValue", true}},
-             page_session_);
+        Evaluate({{"expression", kSecretFieldScript}, {"returnByValue", true}});
     const json* field = JsonObject(secret, "result");
     field = field ? JsonObject(*field, "result") : nullptr;
     const json verdict =
@@ -484,7 +500,29 @@ json Runtime::Act(const std::string& op, const json& command) {
         return {{"error", reason}};
       }
     }
-    reply = Call("Input.insertText", {{"text", value}}, page_session_);
+    const std::vector<std::string> keys = KeyedCharacters(value);
+    if (keys.empty()) {
+      reply = Call("Input.insertText", {{"text", value}}, page_session_);
+    }
+    for (const std::string& character : keys) {
+      // The key a US layout has for a letter, digit or space; 0 otherwise.
+      const char ascii = character.size() == 1 ? character[0] : '\0';
+      const int code = ascii >= 'a' && ascii <= 'z' ? ascii - 'a' + 'A'
+                       : (ascii >= 'A' && ascii <= 'Z') ||
+                               (ascii >= '0' && ascii <= '9') || ascii == ' '
+                           ? ascii
+                           : 0;
+      json event = {{"type", "keyDown"},
+                    {"key", character},
+                    {"text", character},
+                    {"windowsVirtualKeyCode", code}};
+      reply = Call("Input.dispatchKeyEvent", event, page_session_);
+      if (!CdError(reply).empty()) break;
+      event["type"] = "keyUp";
+      event.erase("text");
+      reply = Call("Input.dispatchKeyEvent", event, page_session_);
+      if (!CdError(reply).empty()) break;
+    }
   } else if (op == "fill_saved") {
     // The first login Chrome offers under the focused field. A look at the
     // page closes Chrome's list, so it is closed by now: Escape makes sure,
@@ -493,9 +531,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     // moves on, where Return would send the form. How long the field's text
     // is, before and after, says whether Chrome filled it; the text itself
     // is never read.
-    json field =
-        Call("Runtime.evaluate", {{"expression", "document.activeElement"}},
-             page_session_);
+    json field = Evaluate({{"expression", "document.activeElement"}});
     const json* held = JsonObject(field, "result");
     held = held ? JsonObject(*held, "result") : nullptr;
     const std::string id = held ? JsonValue(*held, "objectId", "") : "";
@@ -574,8 +610,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     // A file field takes the file itself; anything else is clicked, and the
     // file field whose chooser that opens takes it.
-    json held = Call("Runtime.evaluate",
-                     {{"expression", Numbered(view, element)}}, page_session_);
+    json held = Evaluate({{"expression", Numbered(view, element)}});
     const json* found = JsonObject(held, "result");
     found = found ? JsonObject(*found, "result") : nullptr;
     const std::string id = found ? JsonValue(*found, "objectId", "") : "";
@@ -596,7 +631,7 @@ json Runtime::Act(const std::string& op, const json& command) {
       }
       for (int waited = 0; !chooser_ && waited < 2000; waited += 100) {
         poll(nullptr, 0, 100);
-        Call("Runtime.evaluate", {{"expression", "0"}}, page_session_);
+        Evaluate({{"expression", "0"}});
       }
       if (!chooser_) {
         return {{"error", "element " + std::to_string(element) +

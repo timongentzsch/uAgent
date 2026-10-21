@@ -15,6 +15,13 @@
 
 ### Changes
 
+- The agent's Chrome no longer reads as a test browser: pages see no
+  `navigator.webdriver` and none of the agent's scripts (they run in an
+  isolated world), WebGL renders in software, text is typed key by key,
+  `TZ` and `LANGUAGE` reach Chrome, and the image carries common fonts.
+  Google searches and bahn.de bookings that answered "unusual traffic" or
+  "resembles a bot" now work. PDF links download instead of opening in
+  Chrome's viewer, so the agent can read them.
 - Settings lists each named provider on one line and edits it in a sheet:
   its name (a rename keeps a hidden key), address, key, protocol and hosted
   tools. A hosted tool is defined there as the endpoint's API documents it
@@ -23,7 +30,6 @@
   result on later turns. Lists in Settings have their dividers back.
 - A tool the provider runs no longer turns its streamed input into a
   nameless call on Anthropic Messages, which retried the step.
-
 - Statistics read the full usage everywhere: the web turn footer counts
   cached and cache-written input, `/cost` shows cache writes and per-route
   hit rates that agree with the total, and the status row's "in" is the

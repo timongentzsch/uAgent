@@ -239,8 +239,9 @@ json Runtime::Probe() {
   // A download still going keeps the page busy; which ones are named.
   json going = json::array();
   for (const json& file : downloads_) {
-    if (JsonValue(file, "state", "") == "inProgress")
+    if (JsonValue(file, "state", "") == "inProgress") {
       going.push_back(file["name"]);
+    }
   }
   if (!going.empty()) {
     result["loading"] = true;

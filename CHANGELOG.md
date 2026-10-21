@@ -59,6 +59,10 @@
   with a closing line. Providers that alternate roles merge it with the user
   message after it, which then read as the last memory entry's tail, and the
   model could decline the request as "only memory".
+- A client that joins a running conversation no longer replays older state
+  frames after its snapshot. One of them could say no question was pending
+  while one was, so a terminal joining to answer took the answer for a new
+  message, and the terminal showing the question waited on it.
 - A setting given in the environment resolves `$NAME` references as a saved
   one does, so `UAGENT_PROVIDERS` can name a key held elsewhere; a `$` that
   names nothing defined stays as written.

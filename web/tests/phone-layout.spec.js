@@ -93,6 +93,23 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       .click();
     await expect(drawer).toHaveCount(0);
   }
+  // The drawer lives in the shell and runs past it into the bottom inset:
+  // iOS scrolled the shell to reveal it on focus, and the whole interface
+  // stayed shifted up. Nothing may scroll the app's frame, whatever
+  // overflows it.
+  expect(
+    await page.evaluate(() =>
+      ["#app", ".shell"].map((selector) => {
+        const frame = document.querySelector(selector);
+        const tall = frame.appendChild(document.createElement("div"));
+        tall.style.height = "200vh";
+        frame.scrollTop = 34;
+        const top = frame.scrollTop;
+        tall.remove();
+        return top;
+      }),
+    ),
+  ).toEqual([0, 0]);
   await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   const geometry = await settings.evaluate((element) => {

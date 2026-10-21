@@ -212,7 +212,10 @@ html {
   container: app / size;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Clip, not hidden: the app's frame is never a scroll container, so a
+     focused surface (the drawer runs into the bottom inset) cannot make
+     iOS scroll it and leave the whole interface shifted. */
+  overflow: clip;
 }
 button,
 input,
@@ -675,7 +678,7 @@ pre code {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(var(--chat-min), 1fr);
-  overflow: hidden;
+  overflow: clip;
 }
 aside.sidebar {
   position: relative;

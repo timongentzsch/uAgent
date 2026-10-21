@@ -7,6 +7,7 @@ import Decision from "../../shared/decision.tsx";
 import { command } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
+import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { MessageRows } from "./message.tsx";
 import { MessageActions } from "./message-actions.ts";
 
@@ -27,8 +28,6 @@ export default function SideAnswer({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const transcript = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
   const started = useRef(false);
   // Watch a second conversation through the host's existing event stream.
   useEffect(() => {
@@ -37,10 +36,6 @@ export default function SideAnswer({
     void load(side.id).catch((failure) => report(failure, "inline"));
     return unwatch;
   }, [side.id, online, load, report, store]);
-  useEffect(() => {
-    if (following.current && transcript.current)
-      transcript.current.scrollTop = transcript.current.scrollHeight;
-  }, [snapshot]);
   const session = snapshot?.metadata;
   const pending = snapshot?.pending;
   const running = !!session?.turn_active;
@@ -52,6 +47,10 @@ export default function SideAnswer({
   if (first >= 0) started.current = true;
   // Once older turns leave the live window, every retained row is side work.
   const blocks = first >= 0 ? all.slice(first) : started.current ? all : [];
+  // Follows its end like the transcript (same hook): a reader who scrolls
+  // up stays put, and scrolling back down follows again.
+  const historyKey = `side:${side.id || ""}`;
+  const thread = useTranscriptHistory(() => {}, historyKey, blocks);
   async function send() {
     if (!draft.trim() || !session || !online || sending || pending) return;
     setSending(true);
@@ -93,42 +92,40 @@ export default function SideAnswer({
       </header>
       <div
         class="side-transcript dense"
-        ref={transcript}
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          following.current =
-            node.scrollHeight - node.scrollTop - node.clientHeight < 40;
-        }}
+        data-history-key={historyKey}
+        ref={thread.attachScroller}
       >
-        {!blocks.length && <p class="muted">{side.question}</p>}
-        {session && (
-          <MessageActions.Provider value={{ report }}>
-            <MessageRows blocks={blocks} online={online} session={session} />
-          </MessageActions.Provider>
-        )}
-        {session &&
-          pending &&
-          (pending.kind === "browser" ? (
-            <Button
-              onClick={() => {
-                void choose(session.id).then(() =>
-                  setModal({ type: "browser" }),
-                );
-              }}
-            >
-              Open browser
-            </Button>
-          ) : (
-            <Decision
-              key={pending.id}
-              pending={pending}
-              session={session.id}
-              cwd={session.cwd}
-              act={act}
-              online={online}
-              report={report}
-            />
-          ))}
+        <div ref={thread.attachContent}>
+          {!blocks.length && <p class="muted">{side.question}</p>}
+          {session && (
+            <MessageActions.Provider value={{ report }}>
+              <MessageRows blocks={blocks} online={online} session={session} />
+            </MessageActions.Provider>
+          )}
+          {session &&
+            pending &&
+            (pending.kind === "browser" ? (
+              <Button
+                onClick={() => {
+                  void choose(session.id).then(() =>
+                    setModal({ type: "browser" }),
+                  );
+                }}
+              >
+                Open browser
+              </Button>
+            ) : (
+              <Decision
+                key={pending.id}
+                pending={pending}
+                session={session.id}
+                cwd={session.cwd}
+                act={act}
+                online={online}
+                report={report}
+              />
+            ))}
+        </div>
       </div>
       {error && <p role="alert">{error}</p>}
       <form

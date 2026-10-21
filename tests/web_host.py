@@ -195,7 +195,9 @@ def answer(handler, body):
             handler, [event({"content": "Waiting for guidance. "}, finish=None)] * 200, delay=0.1
         )
         return None
+    step, delay = 80, 0.08
     if "Long continuity probe" in prompt:
+        delay = 0.02
         content = (
             "Stable opening paragraph for selection and node identity.\n\n"
             "```python\nprint('stable copy control')\n```\n\n"
@@ -205,6 +207,19 @@ def answer(handler, body):
             + "```text\nunfinished-looking content retained safely\n```\n\n"
             + "[continuity]: https://example.com/continuity\n"
         )
+    # Block structure decided by a later line (table rows, setext underlines,
+    # markers before their word), cut into deltas that end anywhere.
+    if "Structured stream probe" in prompt:
+        step, delay = 5, 0.02
+        content = (
+            "Here is what I found:\n- The **web** client streams\n- Each block parses\n"
+            "1. First point\n2. Second with `code`\n"
+            "Steps:\n- open the app\n- send a message\n\n"
+            "| File | Lines | Notes |\n| --- | --- | --- |\n| chat.tsx | 120 | transcript |\n"
+            "| style.css | 1788 | tokens |\n\n"
+            "### Details\nA paragraph long enough to wrap on a phone, so wrapping moves.\n"
+            "Another paragraph:\n---\nAfter a rule.\n\n> A quoted note\n> on two lines\n\n"
+        ) * 3
     write_sse_sequence(
         handler,
         [
@@ -218,11 +233,11 @@ def answer(handler, body):
                 },
             ),
             *[
-                event({"content": content[index : index + 80]}, finish=None)
-                for index in range(0, len(content), 80)
+                event({"content": content[index : index + step]}, finish=None)
+                for index in range(0, len(content), step)
             ],
         ],
-        delay=0.02 if "Long continuity probe" in prompt else 0.08,
+        delay=delay,
     )
     return None
 

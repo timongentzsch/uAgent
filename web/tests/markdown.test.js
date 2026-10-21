@@ -61,14 +61,27 @@ test("the unfinished tail of a stream renders formatted, never as raw syntax", (
     ["Para.\n\nNext **b", "Para.\n\nNext **b**"],
     // A marker just typed waits instead of showing up literally.
     ["done **", "done "],
-    // A half table row waits for its line to end.
+    // A table row waits for its line to end, even where a cell just did.
     ["| a | b |\n|---|---|\n| 1 ", "| a | b |\n|---|---|"],
+    ["| a | b |\n|---|---|\n| 1 |", "| a | b |\n|---|---|"],
+    ["| a | b |\n|---|---|\n| 1 | 2 |\n", "| a | b |\n|---|---|\n| 1 | 2 |"],
+    // A table waits for its delimiter row, so pipes never show as text.
+    ["Rows:\n\n| a | b |\n|--", "Rows:\n"],
+    ["Rows:\n\n| a | b |\n", "Rows:\n"],
+    // Bare markers wait for a word: until then they could still be a
+    // setext underline, a rule, an empty item or heading.
+    ["Steps:\n-", "Steps:"],
+    ["Title\n==", "Title"],
+    ["Text\n1.", "Text"],
+    ["Text\n## ", "Text"],
   ];
   for (const [input, healed] of cases) assert.equal(healTail(input), healed);
   // Left alone: bullets, word-internal underscores, prices, tildes and
   // anything inside an open code fence (markdown-it runs it to the end).
   for (const kept of [
     "* item one",
+    "Steps:\n- o",
+    "Title\n===\nNext",
     "user_name here",
     "cost $5 and",
     "20~25°C",

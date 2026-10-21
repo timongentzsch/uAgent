@@ -83,22 +83,28 @@
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-slow: 280ms;
-  /* Theme-independent: what dims the page behind a dialog. */
-  --scrim: rgb(0 0 0 / 0.6);
   /* Loops that say something is alive: status lights, skeletons. */
   --motion-pulse: 1.6s;
   /* Spinners and the working shimmer; reduced motion slows the spinner. */
   --motion-spin: 0.8s;
   --motion-spin-reduced: 2.4s;
   --motion-shimmer: 2s;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  /* A small surface (toast, menu, card, page) enters with a fade and a
+     short rise from the side it comes from, and leaves the same way. */
+  --rise: var(--space-4);
+  --enter:
+    opacity var(--motion-base) var(--ease-out),
+    translate var(--motion-base) var(--ease-out);
+  /* Theme-independent: what dims the page behind a dialog. */
+  --scrim: rgb(0 0 0 / 0.6);
   /* Stacking: a popover over its form, toasts over the app, the skip link
      over everything. */
   --z-popover: 5;
   --z-toast: 10;
   --z-skip-link: 20;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --dialog-width: calc(560rem / 14);
   --dialog-height: calc(680rem / 14);
   --gap: var(--space-4);
@@ -206,7 +212,10 @@ html {
   container: app / size;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Clip, not hidden: the app's frame is never a scroll container, so a
+     focused surface (the drawer runs into the bottom inset) cannot make
+     iOS scroll it and leave the whole interface shifted. */
+  overflow: clip;
 }
 button,
 input,
@@ -598,15 +607,13 @@ pre code {
   gap: var(--pad);
   font-size: var(--font-small);
   pointer-events: auto;
-  transition:
-    opacity var(--motion-base) var(--ease-out),
-    translate var(--motion-slow) var(--ease-out);
+  transition: var(--enter);
 }
 @starting-style {
   .error-banner,
   .update-banner {
     opacity: 0;
-    translate: 0 calc(-8rem / 14);
+    translate: 0 calc(-1 * var(--rise));
   }
 }
 .error-banner {
@@ -671,7 +678,7 @@ pre code {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(var(--chat-min), 1fr);
-  overflow: hidden;
+  overflow: clip;
 }
 aside.sidebar {
   position: relative;
@@ -791,9 +798,6 @@ dialog.sidebar:not([open]) {
   background: var(--live);
   border-color: var(--live);
 }
-.status-led.running {
-  animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
-}
 /* Failure is a square, not only a colour. */
 .status-led.failed {
   background: var(--removed);
@@ -811,9 +815,16 @@ dialog.sidebar:not([open]) {
   width: var(--space-3);
   height: var(--space-3);
 }
-@keyframes led-breathe {
+/* Alive: work under way, or content on its way in. */
+.status-led.running,
+.skeleton > div,
+.text-skeleton,
+.placeholder .text-control {
+  animation: pulse var(--motion-pulse) var(--ease-standard) infinite;
+}
+@keyframes pulse {
   50% {
-    opacity: 0.35;
+    opacity: 0.4;
   }
 }
 .connection {
@@ -1077,10 +1088,6 @@ details:not(.disclosure-row) > summary::before {
   background: currentColor;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
     center / contain no-repeat;
-  transition: transform var(--motion-fast) var(--ease-standard);
-}
-details[open]:not(.disclosure-row) > summary::before {
-  transform: rotate(90deg);
 }
 .decision {
   display: flex;
@@ -1092,15 +1099,12 @@ details[open]:not(.disclosure-row) > summary::before {
     calc(var(--viewport-height) * 0.65),
     calc(var(--viewport-height) - calc(100rem / 14))
   );
-  /* The one surface that enters: a short fade and a 4px rise. */
-  transition:
-    opacity 160ms var(--ease-out),
-    translate 160ms var(--ease-out);
+  transition: var(--enter);
 }
 @starting-style {
   .decision {
     opacity: 0;
-    translate: 0 calc(4rem / 14);
+    translate: 0 var(--rise);
   }
 }
 
@@ -1128,20 +1132,19 @@ details[open]:not(.disclosure-row) > summary::before {
   color: var(--text);
   overflow: auto;
   transition:
-    opacity var(--motion-base) var(--ease-out),
-    translate var(--motion-base) var(--ease-out),
+    var(--enter),
     display var(--motion-base) allow-discrete,
     overlay var(--motion-base) allow-discrete;
 }
 .menu-panel:not(:popover-open) {
   opacity: 0;
-  translate: 0 calc(-4rem / 14);
+  translate: 0 calc(-1 * var(--rise));
   transition-timing-function: var(--ease-in);
 }
 @starting-style {
   .menu-panel:popover-open {
     opacity: 0;
-    translate: 0 calc(-4rem / 14);
+    translate: 0 calc(-1 * var(--rise));
   }
 }
 .menu-panel button {
@@ -1360,13 +1363,6 @@ dialog section {
 .skeleton > div {
   display: grid;
   gap: var(--gap);
-  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
-    alternate;
-}
-@keyframes skeleton-pulse {
-  to {
-    opacity: 0.6;
-  }
 }
 .skeleton span {
   display: block;
@@ -1385,8 +1381,6 @@ dialog section {
 .text-skeleton {
   color: transparent;
   background: var(--placeholder);
-  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
-    alternate;
   user-select: none;
 }
 /* A view drawn from sample data (shared/placeholder.tsx): it lays out like
@@ -1396,8 +1390,6 @@ dialog section {
 }
 .placeholder .text-control {
   background: var(--placeholder);
-  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
-    alternate;
 }
 .placeholder ::placeholder {
   color: transparent;
@@ -1516,7 +1508,7 @@ dialog[open]::backdrop {
 }
 dialog[open][data-leaving] {
   opacity: 0;
-  translate: 0 calc(8rem / 14);
+  translate: 0 var(--rise);
   transition-timing-function: var(--ease-in);
   transition-duration: var(--motion-base);
 }
@@ -1534,7 +1526,7 @@ dialog.sidebar.drawer[open][data-leaving] {
 @starting-style {
   dialog[open] {
     opacity: 0;
-    translate: 0 calc(12rem / 14);
+    translate: 0 var(--rise);
   }
   dialog[open]::backdrop {
     opacity: 0;
@@ -1750,9 +1742,16 @@ details > summary::-webkit-details-marker {
 .row-chevron {
   flex-shrink: 0;
   color: var(--muted);
+}
+/* Every chevron turns down as what it heads opens. */
+.row-chevron,
+.disclosure-chevron,
+details:not(.disclosure-row) > summary::before {
   transition: rotate var(--motion-fast) var(--ease-standard);
 }
-.row[aria-expanded="true"] .row-chevron {
+.row[aria-expanded="true"] .row-chevron,
+.disclosure-row[open] > summary .disclosure-chevron,
+details[open]:not(.disclosure-row) > summary::before {
   rotate: 90deg;
 }
 .destructive-row .row-label {

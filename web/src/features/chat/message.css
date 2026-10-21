@@ -62,10 +62,6 @@
 .disclosure-chevron {
   width: var(--icon);
   height: var(--icon);
-  transition: transform var(--motion-fast) var(--ease-standard);
-}
-.disclosure-row[open] > summary .disclosure-chevron {
-  transform: rotate(90deg);
 }
 .disclosure-label {
   min-width: 0;
@@ -334,6 +330,7 @@
 .side-transcript {
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   overscroll-behavior: contain;
 }
 .side-answer > form {

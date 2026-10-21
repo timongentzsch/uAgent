@@ -310,6 +310,10 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
     member || panel || (userOwned || row || agentRow ? null : block.kind);
   const running = took == null && isRunningStatus(block.status);
   const assets = routes.assets(session.id);
+  // A reply's time and menu sit on its turn's last line: a line of its own
+  // only for a name or a status, else an empty row while it streams and a
+  // jump when the turn ends.
+  const header = !row && !footed && !(reply && !actor && !block.status);
   return (
     <article
       data-message-id={block.key || block.id}
@@ -319,7 +323,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
       <h3 class="sr-only" id={nameId}>
         {name}
       </h3>
-      {!row && !footed && (
+      {header && (
         <header>
           {member &&
             (seat ? <MemberAvatar item={seat} /> : <Avatar name={member} />)}

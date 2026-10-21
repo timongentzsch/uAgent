@@ -74,16 +74,14 @@ test("spacing, font sizes and line heights use the scale tokens", () => {
 // it appears. A hairline is 1px, and 0px is
 // zero where a math function needs a length rather than a number. A length
 // in em follows the element's own font size, which is the scale there, so em
-// is not flagged. Stacking and loop durations are tokens too: a literal
-// z-index or animation time is a layer or a speed one screen picked alone.
+// is not flagged. Stacking is a token too: a literal z-index is a layer one
+// screen picked alone.
 const SIZED =
   /^\s*(?:width|height|min-width|max-width|min-height|max-height|grid-template-columns|grid-template-rows)\s*:\s*([^;]*)/;
 const SIZE_LITERAL = /[\d.]+(?:px|rem)\b/;
 const STACKED = /^\s*z-index\s*:\s*([^;]*)/;
-const ANIMATED = /^\s*animation(?:-duration)?\s*:\s*([^;]*)/;
-const DURATION_LITERAL = /[\d.]+m?s\b/;
 
-test("sizes, stacking and animation times use the scale tokens", () => {
+test("sizes and stacking use the scale tokens", () => {
   const stray = [];
   const bare = (value) => value?.replace(/var\([^)]*\)/g, "");
   for (const path of sheets("src")) {
@@ -93,14 +91,32 @@ test("sizes, stacking and animation times use the scale tokens", () => {
       .entries()) {
       const size = bare(SIZED.exec(line)?.[1])?.replace(/\b[01]px\b/g, "");
       const layer = bare(STACKED.exec(line)?.[1]);
-      const time = bare(ANIMATED.exec(line)?.[1]);
-      if (
-        (size && SIZE_LITERAL.test(size)) ||
-        (layer && /\d/.test(layer)) ||
-        (time && DURATION_LITERAL.test(time))
-      )
+      if ((size && SIZE_LITERAL.test(size)) || (layer && /\d/.test(layer)))
         stray.push(`${path}:${index + 1}: ${line.trim()}`);
     }
+  }
+  assert.deepEqual(stray, []);
+});
+
+// Every animation and transition takes its times and curves from the motion
+// tokens, so one surface cannot move faster or differently from the rest;
+// `linear` is a keyword, not a tuned curve. A value may run over lines.
+const MOTION = /(?:^|[{;\s])(?:animation|transition)(?:-[a-z-]+)?\s*:([^;}]*)/g;
+const MOTION_LITERAL =
+  /[\d.]+m?s\b|cubic-bezier\(|steps\(|\bease(?:-in|-out|-in-out)?\b/;
+
+test("animations and transitions use the motion tokens", () => {
+  const stray = [];
+  for (const path of sheets("src")) {
+    const css = readFileSync(join("src", path), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      (comment) => comment.replace(/[^\n]/g, " "),
+    );
+    for (const match of css.matchAll(MOTION))
+      if (MOTION_LITERAL.test(match[1].replace(/var\([^)]*\)/g, "")))
+        stray.push(
+          `${path}:${css.slice(0, match.index).split("\n").length}: ${match[0].trim()}`,
+        );
   }
   assert.deepEqual(stray, []);
 });

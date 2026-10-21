@@ -166,8 +166,8 @@
   margin: auto;
 }
 /* New blocks of a streaming reply fade in; existing ones never re-animate
-   (they keep their element) and nothing animates height, so the transcript
-   keeps its scroll anchoring. */
+   (they keep their element and type, see healTail) and nothing animates
+   height, so the pinned transcript only ever grows. */
 .markdown[data-streaming] > div {
   transition: opacity var(--motion-base) var(--ease-out);
 }

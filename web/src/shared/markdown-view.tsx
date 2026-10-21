@@ -238,7 +238,9 @@ function RenderedMarkdown({
     env: Record<string, unknown>;
     offset: number;
   }>({ text: "", blocks: [], env: {}, offset: 0 });
-  // The last streamed frame stays on screen until the final parse lands.
+  // The last streamed frame stays on screen until the final parse lands,
+  // also when the final words arrive with the end of the stream: raw text
+  // in between would change the reply's height for a frame.
   const last = useRef<{ text: string; blocks: MarkdownBlock[] }>({
     text: "",
     blocks: [],
@@ -336,7 +338,9 @@ function RenderedMarkdown({
     (rendered.text === text && rendered.blocks.length
       ? rendered.blocks
       : null) ||
-    (last.current.text === text ? last.current.blocks : null);
+    (last.current.blocks.length && text.startsWith(last.current.text)
+      ? last.current.blocks
+      : null);
   // One container from the first token to the final render, so completion
   // swaps no element; `data-streaming` marks a reply still being written.
   // Blocks carry source-line anchors the history controller keeps in view.

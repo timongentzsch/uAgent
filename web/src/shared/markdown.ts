@@ -195,13 +195,20 @@ export function markdownBlocks(
 }
 
 const FENCE = /^[ \t]*(`{3,}|~{3,})/;
+const PIPE = /^\s*\|/;
+const DELIMITER = /^[\s|:]*-[\s|:-]*$/;
+// Nothing but list, heading, quote or rule markers and setext underlines.
+const MARKERS = /^\s*(?:(?:[-=*_+#>]+|\d+[.)]?)\s*)+$/;
 
 // Closes what a streaming reply has left open in its last block, for display
 // only, so it renders formatted instead of as raw syntax (the rules of
 // Vercel's remend): emphasis, strikethrough and inline code close; a half
-// link shows its text; a half image and a half table row wait; `$$` closes
-// while a single `$` stays literal (prices). Open code fences need nothing:
-// markdown-it already runs them to the end.
+// link shows its text; a half image waits; `$$` closes while a single `$`
+// stays literal (prices). Open code fences need nothing: markdown-it already
+// runs them to the end. What is shown only ever grows, though a line can
+// change what the lines above it are (a table row, a setext underline): a
+// table line waits for its end, a table for its delimiter row, and a line of
+// bare markers for its first word.
 export function healTail(text: string): string {
   const lines = text.split("\n");
   let open = "";
@@ -218,11 +225,13 @@ export function healTail(text: string): string {
   const head = cut < 0 ? "" : text.slice(0, cut + 1);
   let block = cut < 0 ? text : text.slice(cut + 1);
   const rows = block.split("\n");
-  const last = rows[rows.length - 1];
-  if (/^\s*\|/.test(last) && rows.length > 1 && !/\|\s*$/.test(last)) {
-    rows.pop();
-    block = rows.join("\n");
-  }
+  if (PIPE.test(rows.at(-1)!) || MARKERS.test(rows.at(-1)!)) rows.pop();
+  const end = rows.length - (rows.at(-1) === "" ? 1 : 0);
+  let table = end;
+  while (table > 0 && PIPE.test(rows[table - 1])) table--;
+  if (table < end && !DELIMITER.test(rows[table + 1] ?? ""))
+    rows.length = table;
+  block = rows.join("\n");
   // Links and images only outside code: `arr[i` inside backticks is code.
   const prose = (at: number) =>
     (block.slice(0, at).match(/`/g) || []).length % 2 === 0;

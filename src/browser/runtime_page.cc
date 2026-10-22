@@ -229,9 +229,7 @@ json Runtime::Probe() {
   }
   json state =
       Evaluate({{"expression", kProbeScript}, {"returnByValue", true}});
-  const json* response = JsonObject(state, "result");
-  const json* remote = response ? JsonObject(*response, "result") : nullptr;
-  const json* value = remote ? JsonObject(*remote, "value") : nullptr;
+  const json* value = RemoteValue(state);
   json result = value ? *value : json::object();
   result["ok"] = true;
   result["loading"] = loading_;
@@ -261,9 +259,7 @@ json Runtime::Read(const json& command) {
   if (auto reason = CdError(page); !reason.empty()) {
     return {{"error", reason}};
   }
-  const json* value = JsonObject(page, "result");
-  value = value ? JsonObject(*value, "result") : nullptr;
-  value = value ? JsonObject(*value, "value") : nullptr;
+  const json* value = RemoteValue(page);
   if (!value) return {{"error", "the page could not be read"}};
   moved_ = false;
   json read = *value;
@@ -320,12 +316,8 @@ json Runtime::Observe(bool image) {
   json page = Evaluate(
       {{"expression", PageScript() + "(0,\"\"," + JsonDump(observation_) + ")"},
        {"returnByValue", true}});
-  json details = json::object();
-  if (const json* response = JsonObject(page, "result")) {
-    if (const json* remote = JsonObject(*response, "result")) {
-      if (const json* value = JsonObject(*remote, "value")) details = *value;
-    }
-  }
+  const json* value = RemoteValue(page);
+  json details = value ? *value : json::object();
   // Another document holds none of the earlier looks' elements.
   if (JsonValue(details, "fresh", true)) looks_.clear();
   looks_.push_back(observation_);

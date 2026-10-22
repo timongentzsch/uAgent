@@ -96,32 +96,17 @@ std::atomic<ApprovalMode>& ApprovalModeState() {
   return mode;
 }
 
+// kApprovalModes lists the modes in the enum's order.
 const char* ApprovalModeName(ApprovalMode mode) {
-  switch (mode) {
-    case ApprovalMode::kAsk:
-      return "ask";
-    case ApprovalMode::kAuto:
-      return "auto";
-    case ApprovalMode::kYolo:
-      return "yolo";
-  }
-  return "ask";
+  return kApprovalModes[static_cast<size_t>(mode)].data();
 }
 
 bool ParseApprovalMode(std::string_view value, ApprovalMode& mode) {
-  if (value.empty() || value == "ask") {
-    mode = ApprovalMode::kAsk;
-    return true;
-  }
-  if (value == "auto") {
-    mode = ApprovalMode::kAuto;
-    return true;
-  }
-  if (value == "yolo") {
-    mode = ApprovalMode::kYolo;
-    return true;
-  }
-  return false;
+  if (value.empty()) value = kApprovalModes[0];
+  const auto found = std::ranges::find(kApprovalModes, value);
+  if (found == std::end(kApprovalModes)) return false;
+  mode = static_cast<ApprovalMode>(found - std::begin(kApprovalModes));
+  return true;
 }
 
 ApprovalMode CurrentApprovalMode() {

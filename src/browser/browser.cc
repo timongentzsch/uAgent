@@ -4,7 +4,6 @@
 
 #include <fcntl.h>
 #include <poll.h>
-#include <spawn.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -208,13 +207,6 @@ bool StartService(const std::string& executable, ServiceProcess& process,
     error = "cannot duplicate browser service owner pipe";
     return false;
   }
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_adddup2(&actions, child_source.Get(), 3);
-  posix_spawn_file_actions_addclose(&actions, child_source.Get());
-  posix_spawn_file_actions_addclose(&actions, parent.Get());
-  char* args[] = {const_cast<char*>(executable.c_str()),
-                  const_cast<char*>("--browser-service"), nullptr};
   std::vector<std::string> environment = {
       "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
       "HOME=" + DataDirectory(),
@@ -234,9 +226,10 @@ bool StartService(const std::string& executable, ServiceProcess& process,
   for (auto& setting : environment) envp.push_back(setting.data());
   envp.push_back(nullptr);
   pid_t pid = -1;
-  int result = posix_spawnp(&pid, executable.c_str(), &actions, nullptr, args,
-                            envp.data());
-  posix_spawn_file_actions_destroy(&actions);
+  int result = SpawnProcess({.argv = {executable, "--browser-service"},
+                             .environment = envp.data(),
+                             .fds = {{3, child_source.Get()}}},
+                            pid);
   if (result != 0) {
     error = std::string("cannot start browser service: ") + strerror(result);
     return false;

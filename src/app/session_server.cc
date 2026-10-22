@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 #include <fcntl.h>
 #include <poll.h>
-#include <spawn.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -157,22 +156,14 @@ Connection Open(const std::string& executable, const std::string& cwd,
                                  "--"});
     }
 #endif
-    std::vector<char*> argv;
-    argv.reserve(args.size() + 1);
-    for (auto& arg : args) argv.push_back(arg.data());
-    argv.push_back(nullptr);
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
-      posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", O_RDWR, 0);
-    }
     pid_t pid = -1;
     // This is the same application continuing in its session process. Keep
     // provider credential references and user limits; tool children apply
     // their separate, restricted environment policy when they are dispatched.
-    int status = posix_spawnp(&pid, args.front().c_str(), &actions, nullptr,
-                              argv.data(), ProcessEnvironment());
-    posix_spawn_file_actions_destroy(&actions);
+    int status = SpawnProcess(
+        {.argv = std::move(args),
+         .fds = {{STDIN_FILENO}, {STDOUT_FILENO}, {STDERR_FILENO}}},
+        pid);
     if (status) {
       unlink(launch.c_str());
       error = "cannot start session runtime: " + std::string(strerror(status));

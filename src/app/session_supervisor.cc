@@ -22,7 +22,6 @@
 #include "include/core/time.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
-#include "include/tools/files.h"
 
 namespace uagent::session {
 namespace {
@@ -130,14 +129,15 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
 
 bool SessionHost::WriteDraft(const HostSession& session,
                              const std::string& title, int64_t updated) const {
-  return ToolWritePrivateFile(
-             directory_ + "/" + kDraftsDir + "/" + session.id + ".json",
-             JsonDump({{"cwd", session.cwd},
-                       {"path", session.path},
-                       {"id", session.id},
-                       {"title", title},
-                       {"updated", updated}}))
-      .Ok();
+  std::string error;
+  return WritePrivateFile(
+      directory_ + "/" + kDraftsDir + "/" + session.id + ".json",
+      JsonDump({{"cwd", session.cwd},
+                {"path", session.path},
+                {"id", session.id},
+                {"title", title},
+                {"updated", updated}}),
+      error);
 }
 
 bool SessionHost::IsCurrentLocked(const HostSession* session) const {

@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/ui/editor.h"
 
-#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -24,18 +23,14 @@ bool EditExternalText(std::string& text, int terminal_fd, size_t limit) {
   std::string error;
   bool ok = WritePrivateFile(draft.Path(), text, error);
   if (ok) {
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    for (int target : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
-      posix_spawn_file_actions_adddup2(&actions, terminal_fd, target);
-    }
-    const auto command = std::string(editor) + " " + ShellQuote(draft.Path());
-    const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
     pid_t pid = 0;
-    const int spawned =
-        posix_spawnp(&pid, "sh", &actions, nullptr,
-                     const_cast<char* const*>(argv), ProcessEnvironment());
-    posix_spawn_file_actions_destroy(&actions);
+    const int spawned = SpawnProcess(
+        {.argv = {"sh", "-c",
+                  std::string(editor) + " " + ShellQuote(draft.Path())},
+         .fds = {{STDIN_FILENO, terminal_fd},
+                 {STDOUT_FILENO, terminal_fd},
+                 {STDERR_FILENO, terminal_fd}}},
+        pid);
     int status = 0;
     const pid_t waited = spawned == 0 ? WaitPid(pid, &status) : -1;
     std::string edited;

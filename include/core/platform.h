@@ -11,12 +11,37 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace uagent {
 
 // POSIX process environment. Kept behind one boundary so consumers do not
 // redeclare the platform symbol.
 char** ProcessEnvironment();
+
+// One child process, started with posix_spawnp. Each `fds` entry places a
+// descriptor at `target` in the child: the parent's `source`, else `path`
+// opened read-write, else /dev/null. A source that is not itself a target is
+// closed in the child once placed.
+struct SpawnFd {
+  int target = -1;
+  int source = -1;
+  std::string path = {};
+};
+struct SpawnSpec {
+  std::vector<std::string> argv = {};
+  // The child's environment; this process's when null.
+  char* const* environment = nullptr;
+  // A process group of its own (Ctrl+C at the terminal does not reach it),
+  // or a session of its own (no controlling terminal either).
+  enum class Group { kInherit, kOwn, kSession } group = Group::kInherit;
+  // Signals the child starts with at their default action, and nothing
+  // blocked; empty leaves both as inherited.
+  std::vector<int> default_signals = {};
+  std::vector<SpawnFd> fds = {};
+};
+// 0 with `pid` set, or the errno of the failed spawn.
+int SpawnProcess(const SpawnSpec& spec, pid_t& pid);
 
 // Write every byte or report failure. errno is left set for the caller.
 bool WriteAll(int fd, std::string_view data);

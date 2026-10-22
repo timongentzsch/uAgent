@@ -9,12 +9,15 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
+#include "include/app/commands.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
+#include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
@@ -299,6 +302,19 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
              {"turns", record.metadata.turns},
              {"statistics", conversation.Statistics()},
              {"http", LatestHttp(conversation.DisplayFacts())}};
+    // The model and approval mode it resumes with, read as its runtime
+    // will: its own choices over the settings of its folder.
+    ConfigManager config = ConfigManager::Capture({}, record.metadata.cwd);
+    RestoreChoices(JsonValue(conversation.DisplayFacts(), "session-settings",
+                             json::object()),
+                   config);
+    const EffectiveConfigSnapshot configured = config.Read();
+    const auto route = configured.values.find("UAGENT_MODEL");
+    state["route"] = route == configured.values.end() || route->second.empty()
+                         ? record.metadata.model
+                         : route->second;
+    state["permissions"] =
+        ApprovalState(configured, record.metadata.kind == kSessionKindThread);
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};
   }

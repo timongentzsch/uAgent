@@ -77,6 +77,8 @@
   row instead of staying below it as the answer.
 - Web: a running turn's state uses the status line's whole width, and a
   narrow tool row keeps its name beside its chevron.
+- A saved conversation's composer shows the model and approval mode it
+  resumes with, instead of "Select model" and the default mode.
 
 ## v1.5.0 - 2026-10-20
 

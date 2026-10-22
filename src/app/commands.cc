@@ -55,10 +55,8 @@ void CommandReply::Note(Tone tone, std::string_view text) {
   Print("%s", uagent::Note(tone, text).c_str());
 }
 
-void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
-  const json settings = session.ActiveAgent().SessionSettings();
-  // What the conversation chose for itself. A flag given for this run
-  // (--model, --yolo) was chosen later and stays.
+RuntimeConfig::Values RestoreChoices(const json& settings,
+                                     ConfigManager& manager) {
   json chosen = JsonValue(settings, "chosen", json(nullptr));
   if (!chosen.is_object()) {
     // Saved before choices were kept as settings.
@@ -68,8 +66,8 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     const std::string route = JsonValue(settings, "route", "");
     if (!route.empty()) chosen["UAGENT_MODEL"] = route;
   }
-  ConfigManager& manager = session.context.config_manager;
   const RuntimeConfig::Values flagged = manager.Conversation();
+  RuntimeConfig::Values taken;
   for (const auto& [key, value] : chosen.items()) {
     // Only what a conversation may choose, spelled as the setting allows:
     // the file is the session's, and is not taken on trust.
@@ -78,10 +76,18 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
         (setting->scopes & kScopeConversation) &&
         setting->Accepts(value.get<std::string>())) {
       manager.ChooseForConversation(key, value.get<std::string>());
+      taken[key] = value.get<std::string>();
     }
   }
-  const std::string route = JsonValue(chosen, "UAGENT_MODEL", "");
-  if (!route.empty() && !flagged.contains("UAGENT_MODEL")) {
+  return taken;
+}
+
+void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
+  const json settings = session.ActiveAgent().SessionSettings();
+  RuntimeConfig::Values taken =
+      RestoreChoices(settings, session.context.config_manager);
+  const std::string& route = taken["UAGENT_MODEL"];
+  if (!route.empty()) {
     if (SelectModel(session.ApiClient(), session.context.provider.routes,
                     session.context.provider.providers, route)
             .empty()) {

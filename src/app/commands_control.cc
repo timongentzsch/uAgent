@@ -27,10 +27,36 @@
 
 namespace uagent {
 
+// The mode is the approval setting; a conversation's own is that setting
+// chosen at its scope, and "default" takes the choice back.
+constexpr char kApprovalKey[] = "UAGENT_APPROVAL";
+
+json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread) {
+  // An unreadable value reads as asking.
+  auto parsed = [](const std::string& text) {
+    ApprovalMode value = ApprovalMode::kAsk;
+    if (!ParseApprovalMode(text, value)) value = ApprovalMode::kAsk;
+    return value;
+  };
+  const auto value = configured.values.find(kApprovalKey);
+  const bool chosen =
+      JsonValue(configured.sources, kApprovalKey, "") == "conversation";
+  ApprovalMode effective =
+      parsed(value == configured.values.end() ? "" : value->second);
+  ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
+  if (thread) {
+    inherited = ApprovalMode::kAuto;
+    if (!chosen || effective == ApprovalMode::kYolo) effective = inherited;
+  }
+  json result = {{"mode", chosen ? ApprovalModeName(effective) : "default"},
+                 {"effective", ApprovalModeName(effective)},
+                 {"default", ApprovalModeName(inherited)}};
+  // What no choice here can exceed, for the control that offers the modes.
+  if (thread) result["limit"] = ApprovalModeName(ApprovalMode::kAuto);
+  return result;
+}
+
 json PermissionControl(AppContext& context, const json& request) {
-  // The mode is the approval setting; a conversation's own is that setting
-  // chosen at its scope, and "default" takes the choice back.
-  const std::string key = "UAGENT_APPROVAL";
   // A thread works unattended for its panel: it reviews (Auto) unless
   // told to ask, and nothing puts it above that.
   const bool thread = context.options.Thread();
@@ -44,31 +70,12 @@ json PermissionControl(AppContext& context, const json& request) {
       return {{"error", "a thread's approval mode cannot be above auto"}};
     }
     context.config_manager.ChooseForConversation(
-        key, mode == "default" ? "" : ApprovalModeName(chosen));
+        kApprovalKey, mode == "default" ? "" : ApprovalModeName(chosen));
   }
-  const auto configured = context.config_manager.Read();
-  // An unreadable value reads as asking.
-  auto parsed = [](const std::string& text) {
-    ApprovalMode value = ApprovalMode::kAsk;
-    if (!ParseApprovalMode(text, value)) value = ApprovalMode::kAsk;
-    return value;
-  };
-  const auto value = configured.values.find(key);
-  const bool chosen =
-      JsonValue(configured.sources, key.c_str(), "") == "conversation";
-  ApprovalMode effective =
-      parsed(value == configured.values.end() ? "" : value->second);
-  ApprovalMode inherited = parsed(configured.Inherited(key));
-  if (thread) {
-    inherited = ApprovalMode::kAuto;
-    if (!chosen || effective == ApprovalMode::kYolo) effective = inherited;
-  }
+  json result = ApprovalState(context.config_manager.Read(), thread);
+  ApprovalMode effective = ApprovalMode::kAsk;
+  ParseApprovalMode(JsonValue(result, "effective", ""), effective);
   SetApprovalMode(effective);
-  json result = {{"mode", chosen ? ApprovalModeName(effective) : "default"},
-                 {"effective", ApprovalModeName(effective)},
-                 {"default", ApprovalModeName(inherited)}};
-  // What no choice here can exceed, for the control that offers the modes.
-  if (thread) result["limit"] = ApprovalModeName(ApprovalMode::kAuto);
   if (!mode.empty()) {
     Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});
   }

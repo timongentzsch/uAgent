@@ -17,6 +17,7 @@ import {
   shareTranscript,
 } from "../features/sidebar/sidebar.tsx";
 import { parseSlash } from "../features/composer/slash.ts";
+import { focusComposer } from "../shared/navigation.ts";
 
 type Page = "chat" | "library" | "scheduled";
 
@@ -328,7 +329,7 @@ export function useCommands({
         if (!session)
           throw new Error(`Open a conversation to use ${entry.command}`);
         setDraft({ ...draft, text: `${entry.command} ` });
-        requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+        focusComposer();
       } else if (!(await localCommand(entry.command))) {
         if (!session)
           throw new Error(`Open a conversation to run ${entry.command}`);

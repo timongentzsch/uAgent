@@ -62,6 +62,7 @@ import {
   permissionLabels,
 } from "../../shared/display.ts";
 import GuidanceQueue from "./guidance-queue.tsx";
+import { focusComposer } from "../../shared/navigation.ts";
 import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
@@ -267,7 +268,7 @@ function Composer({
   const decided = useRef(!!pending);
   useEffect(() => {
     if (!pending && decided.current && document.activeElement === document.body)
-      document.getElementById("prompt")?.focus({ preventScroll: true });
+      focusComposer();
     decided.current = !!pending;
   }, [pending]);
   const running = isRunning(session, online);

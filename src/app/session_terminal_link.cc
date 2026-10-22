@@ -106,6 +106,7 @@ void Terminal::ReceiveState(const json& frame) {
     }
     const json* view = JsonObject(state, "view");
     if (const json* blocks = view ? JsonArray(*view, "blocks") : nullptr) {
+      transcript_["view"] = *view;
       for (const auto& block : *blocks) {
         shown_.insert(JsonValue(block, "id", ""));
         presenter_.Block(block);
@@ -143,18 +144,25 @@ bool Terminal::ReceiveEvent(const json& frame) {
     std::lock_guard lock(mutex_);
     ApplySessionEvent(state_, type, data);
     wake_.Wake();
-  } else if (type == AppType(EventId::kMessageChanged)) {
-    const json* found = JsonObject(data, "block");
-    const json& block = found ? *found : kNone;
-    const auto block_kind = JsonValue(block, "kind", "");
-    bool echoed = false;
-    {
-      std::lock_guard lock(mutex_);
-      echoed = echoed_.erase(JsonValue(block, "request_id", "")) > 0;
+  } else if (type == AppType(EventId::kToolCall) ||
+             type == AppType(EventId::kMessageChanged)) {
+    // A call opens its tool row and the saved result completes it.
+    json patch;
+    ApplySessionEvent(transcript_, type, data, &patch);
+    if (const json* row = JsonObject(patch, "block");
+        row && JsonValue(*row, "kind", "") == "tool_result") {
+      presenter_.Block(*row);
     }
-    if (shown_.insert(JsonValue(block, "id", "")).second && !echoed &&
-        block_kind == "user") {
-      presenter_.Block(block);
+    if (const json* block = JsonObject(data, "block")) {
+      bool echoed = false;
+      {
+        std::lock_guard lock(mutex_);
+        echoed = echoed_.erase(JsonValue(*block, "request_id", "")) > 0;
+      }
+      if (shown_.insert(JsonValue(*block, "id", "")).second && !echoed &&
+          JsonValue(*block, "kind", "") == "user") {
+        presenter_.Block(*block);
+      }
     }
   } else if (type == AppType(EventId::kCommandCompleted) &&
              data.contains("output")) {

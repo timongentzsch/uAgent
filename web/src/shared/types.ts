@@ -239,9 +239,6 @@ export interface ToolBlock extends BlockBase, Answered {
   parts?: ToolPart[];
   // The end of a result whose text preview holds only its start.
   tail?: string;
-  // The call's and the result's rows as the live turn showed them.
-  call_replay?: unknown;
-  replay?: unknown;
   exchange_path?: string;
   // A retained result whose receipt is gone.
   artifact?: boolean;
@@ -631,11 +628,8 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   duration_ms?: number;
   activity?: ToolActivity;
   presentation?: {
-    change?: string;
     status?: string;
     title?: string;
-    summary?: string;
-    activity?: ToolActivity;
   };
   error?: string;
   activities?: Activity[];

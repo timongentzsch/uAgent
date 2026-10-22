@@ -101,12 +101,11 @@ constexpr EventPolicy kPolicies[] = {
      EventRedaction::kNone},
     {EventId::kResponseSources, "response.sources", nullptr, nullptr, nullptr,
      EventRedaction::kNone},
-    {EventId::kPresentation, "ui.presentation", nullptr, nullptr, nullptr,
-     EventRedaction::kNone},
 };
 
 constexpr bool ValidPolicies() {
-  if (std::size(kPolicies) != static_cast<size_t>(EventId::kPresentation) + 1) {
+  if (std::size(kPolicies) !=
+      static_cast<size_t>(EventId::kResponseSources) + 1) {
     return false;
   }
   for (size_t index = 0; index < std::size(kPolicies); ++index) {
@@ -172,41 +171,10 @@ const char* PresentationStatusName(PresentationStatus status) {
   return "neutral";
 }
 
-void AddArtifacts(json& value,
-                  const std::vector<PresentationArtifact>& artifacts) {
-  if (artifacts.empty()) return;
-  value["artifacts"] = json::array();
-  for (const PresentationArtifact& artifact : artifacts) {
-    value["artifacts"].push_back({{"kind", artifact.kind},
-                                  {"path", artifact.path},
-                                  {"bytes", artifact.bytes}});
-  }
-}
-
 json PresentationJson(const PresentationRecord& record) {
-  json value = {
-      {"id", record.id},
-      {"kind", record.kind == PresentationKind::kToolCall     ? "tool_call"
-               : record.kind == PresentationKind::kToolResult ? "tool_result"
-                                                              : "notice"},
-      {"multiline", record.multiline},
-      {"skill", record.skill},
-      {"poll", record.poll},
-      {"activity", record.activity},
-      {"title", record.title},
-      {"summary", record.summary},
-      {"status", PresentationStatusName(record.status)}};
-  if (!record.detail.empty()) {
-    value["detail"] = record.detail;
-  }
-  if (!record.change.empty()) {
-    value["change"] = record.change;
-  }
-  if (!record.change_path.empty()) value["change_path"] = record.change_path;
-  if (!record.output.empty()) value["output"] = record.output;
-  if (!record.view.is_null()) value["view"] = record.view;
+  json value = {{"title", record.title},
+                {"status", PresentationStatusName(record.status)}};
   if (record.minor) value["minor"] = true;
-  AddArtifacts(value, record.artifacts);
   return value;
 }
 
@@ -222,14 +190,6 @@ json AppProjection(const Event& event) {
     data["presentation"] = PresentationJson(*event.presentation);
   }
   return data;
-}
-
-json JournalPresentationJson(const PresentationRecord& record) {
-  json value = {{"id", record.id},
-                {"title", record.title},
-                {"status", PresentationStatusName(record.status)}};
-  AddArtifacts(value, record.artifacts);
-  return value;
 }
 
 json JournalProjection(const Event& event) {
@@ -295,7 +255,7 @@ json JournalProjection(const Event& event) {
       break;
   }
   if (event.presentation) {
-    data["presentation"] = JournalPresentationJson(*event.presentation);
+    data["presentation"] = PresentationJson(*event.presentation);
   }
   return data;
 }
@@ -473,11 +433,7 @@ void Observability::Unsubscribe(uint64_t subscription) {
 
 Event NoticeEvent(PresentationStatus status, std::string text, bool minor) {
   Event event{EventId::kNotice};
-  event.presentation = PresentationRecord{};
-  event.presentation->kind = PresentationKind::kNotice;
-  event.presentation->status = status;
-  event.presentation->minor = minor;
-  event.presentation->title = text;
+  event.presentation = PresentationRecord{status, text, minor};
   event.data = json{{"text", std::move(text)}};
   // Notices printed unconditionally before this existed, including headless.
   event.render = true;

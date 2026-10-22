@@ -40,7 +40,7 @@ struct CallTask {
   ToolResult result;
   std::optional<ToolArgumentIssue> issue;
   std::string trace_status;
-  std::string label, ordinal;
+  std::string label;
   double duration_ms = 0;
   bool execute = false;
   bool started = false;
@@ -61,9 +61,6 @@ std::vector<std::string> ModelFacingToolResults(
 
 json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
                     int64_t step);
-
-PresentationRecord ToolResultObservation(const CallTask& task,
-                                         const ToolCall& call);
 
 void EmitToolResultObservation(const CallTask& task, const ToolCall& call,
                                int64_t turn, int64_t step);

@@ -14,7 +14,6 @@
 #include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/session_view.h"
-#include "include/agent/tool_presentation.h"
 #include "include/core/activity.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -48,6 +47,12 @@ std::string NormalizedOperation(const json& arguments) {
     }
   }
   return {};
+}
+
+bool IsActivityPoll(const CallTask& task) {
+  return task.tool && task.tool->name == "activity" &&
+         JsonValue(task.args, "operation", "") == "poll" &&
+         JsonValue(task.args, "id", int64_t{0}) > 0;
 }
 
 }  // namespace
@@ -224,21 +229,17 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   task.activity["status_label"] =
       tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
            : ActivityLabel(call.name);
-  conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
+  json view = ToolView(task.tool, task.args);
+  // A rejected call shows the arguments it sent, not a confident headline.
+  if (task.issue) view.erase("verb");
+  conversation_.RecordDisplay(call.detail_id,
+                              {{"activity", task.activity}, {"view", view}});
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
   call_event.data["activity"] = task.activity;
+  call_event.data["view"] = std::move(view);
   if (task.issue) {
     call_event.data["issue_code"] = task.issue->code;
     call_event.data["issue_field"] = task.issue->field;
-  }
-  call_event.presentation = ToolCallPresentation(task, call);
-  if (call_event.presentation) {
-    call_event.data["view"] = call_event.presentation->view;
-    // --resume replays the row from facts: same title/summary/flags the
-    // live printer saw, so history matches execution exactly.
-    conversation_.RecordDisplay(
-        call.detail_id,
-        {{"call_replay", ToolReplayJson(*call_event.presentation)}});
   }
   Emit(std::move(call_event));
   if (valid) {
@@ -272,12 +273,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   rejections.clear();
   activity_polls.clear();
   for (size_t index = 0; index < calls.size(); ++index) {
-    const ToolCall& call = calls[index];
-    CallTask& task = tasks[index];
-    if (calls.size() > 1) {
-      task.ordinal = "[" + std::to_string(index + 1) + "] ";
-    }
-    PrepareCall(call, task, state, loop);
+    PrepareCall(calls[index], tasks[index], state, loop);
   }
 
   std::vector<size_t> runnable;
@@ -385,17 +381,6 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     tasks[index].activity = std::move(activities[index]);
     conversation_.RecordDisplay(calls[index].detail_id,
                                 {{"activity", tasks[index].activity}});
-    {
-      Event result_event{EventId::kPresentation};
-      result_event.presentation = ToolResultPresentation(
-          tasks[index], calls[index], model_results[index]);
-      if (result_event.presentation) {
-        conversation_.RecordDisplay(
-            calls[index].detail_id,
-            {{"result_replay", ToolReplayJson(*result_event.presentation)}});
-      }
-      Emit(std::move(result_event));
-    }
   }
   size_t original_chars = 0;
   size_t model_chars = 0;

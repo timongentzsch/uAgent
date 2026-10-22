@@ -12,7 +12,6 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/session_view.h"
-#include "include/agent/tool_presentation.h"
 #include "include/cli/options.h"
 #include "include/core/activity.h"
 #include "include/core/defaults.h"
@@ -81,186 +80,106 @@ class FixedWidth {
   int saved_in_ = -1;
 };
 
-Tool PollingActivityTool() {
-  Tool tool;
-  tool.name = "activity";
-  tool.mutates = [](const json& args) {
-    return JsonValue(args, "operation", "") == "write" ||
-           JsonValue(args, "operation", "") == "resize";
-  };
-  return tool;
+// A tool row as the transcript view holds it.
+json ToolBlock(const std::string& id, const std::string& name,
+               const std::string& status, const std::string& text) {
+  return {{"id", "t-" + id},
+          {"kind", "tool_result"},
+          {"call_id", id},
+          {"name", name},
+          {"status", status},
+          {"text", text},
+          {"activity", json::object()}};
 }
 
 }  // namespace
 
-// A poll costs exactly one scrollback line: "•" when nothing changed, the
-// ordinary result line when it did. These pin that split and the elapsed
-// clock, which only advances while an id stays quiet.
-void TestPollCollapse() {
+// A result row reads the same however its block arrived: a summary of the
+// output at the default level, the output itself at the full one, the diff
+// alone for a change, and the stored status, never the text, says failure.
+void TestToolResultRows() {
   const std::string failure_report = ChildAgentFailureReport(
       "provider/child @ child.example", ChildAgentFailureStage::kExecution,
       "connection error: Couldn't connect to server\n"
       "api_key=child-secret-must-not-enter-row");
-  PresentationRecord failed_child;
-  failed_child.kind = PresentationKind::kToolResult;
-  failed_child.status = PresentationStatus::kFailed;
-  failed_child.title = "subagent 1073741866";
-  failed_child.summary = FirstLine(failure_report);
-  std::string failed_row =
-      CaptureStdout([&] { PrintPresentation(failed_child); });
-  CHECK(failed_row.find(
-            "← subagent 1073741866: error: child execution: connection "
-            "error: Couldn't connect to server") != std::string::npos);
-  CHECK(failed_row.find("delegated child failed") == std::string::npos);
-  CHECK(failed_row.find("child-secret-must-not-enter-row") ==
-        std::string::npos);
+  auto drawn = [](const json& block, std::string_view level = "default") {
+    return CaptureStdout([&] {
+      TerminalPresenter presenter;
+      presenter.SetDetail(DetailFor(level));
+      presenter.Block(block);
+    });
+  };
+  std::string row =
+      drawn(ToolBlock("c1", "subagent", "failed", failure_report));
+  CHECK(row.find("← subagent: failed: error: child execution: connection "
+                 "error: Couldn't connect to server") != std::string::npos);
+  CHECK(row.find("child-secret-must-not-enter-row") == std::string::npos);
 
-  Tool tool = PollingActivityTool();
-  ToolCall call;
-  call.id = "call-1";
-  call.name = "activity";
+  // Output is arbitrary command text. Only recorded status establishes
+  // failure, and a missing receipt reads as neither.
+  for (const char* status : {"success", "complete"}) {
+    row = drawn(ToolBlock("c1", "run", status, "error: printed by command"));
+    CHECK(row.find("← run: error: printed by command") != std::string::npos);
+  }
+  CHECK(drawn(ToolBlock("c1", "run", "cancelled", "stopped"))
+            .find("← run: cancelled: stopped") != std::string::npos);
+  CHECK(drawn(ToolBlock("c1", "run", "timed_out", "late"))
+            .find("run: timed_out: late") != std::string::npos);
+  CHECK(drawn(ToolBlock("c1", "read_path", "success", ""))
+            .find("← read_path: (empty)") != std::string::npos);
 
-  CallTask quiet;
-  quiet.tool = &tool;
-  quiet.args = {{"operation", "poll"}, {"id", 4242}};
-  quiet.ordinal = "[1] ";
-  quiet.result = ToolSuccess("(no new output)");
-  quiet.result.no_change = true;
+  // A change is told entirely by its diff: no result row is drawn under it,
+  // and a failed call's change was never made.
+  json changed = ToolBlock("c1", "edit_file", "success", "edited a.txt");
+  changed["change"] = "Edited a.txt (+1 -1)\n-old\n+new";
+  row = drawn(changed);
+  CHECK(row.find("Edited a.txt (+1 -1)") != std::string::npos);
+  CHECK(row.find("+new") != std::string::npos);
+  CHECK(row.find("←") == std::string::npos);
+  changed["status"] = "failed";
+  row = drawn(changed);
+  CHECK(row.find("+new") == std::string::npos);
+  CHECK(row.find("edit_file: failed: edited a.txt") != std::string::npos);
 
-  CHECK(IsActivityPoll(quiet));
-  ClearPollAnchor(4242);
-
-  // The call line is withheld; the outcome is unknown until the result.
-  PresentationRecord call_record = ToolCallPresentation(quiet, call);
-  CHECK(call_record.poll);
-
-  PresentationRecord first = ToolResultPresentation(quiet, call, "");
-  CHECK(first.poll);
-  CHECK(first.summary.find("waited on activity 4242") != std::string::npos);
-  CHECK(first.detail.empty());
-
-  // A second quiet poll keeps the original anchor, so elapsed only grows.
-  auto before = PollElapsed(4242);
-  PresentationRecord second = ToolResultPresentation(quiet, call, "");
-  CHECK(second.poll);
-  CHECK(PollElapsed(4242) >= before);
-
-  // Real output ends the quiet spell and renders as an ordinary result.
-  CallTask productive = quiet;
-  productive.result = ToolSuccess("server ready");
-  PresentationRecord shown = ToolResultPresentation(productive, call, "");
-  CHECK(!shown.poll);
-  CHECK(shown.summary.find("waited on activity") == std::string::npos);
-
-  // Call arguments are history, not bounded result output. A long multiline
-  // call must survive both the live and replay presentation record intact.
-  std::string long_call = "first\n" + std::string(4096, 'x') + "\nlast";
-  PresentationRecord complete;
-  complete.kind = PresentationKind::kToolCall;
-  SetCallLabel(complete, long_call);
-  CHECK(complete.multiline);
-  CHECK(complete.detail == long_call);
-
-  // Sending input steers the activity, so it is never treated as a poll.
-  CallTask steering = quiet;
-  steering.args = {{"operation", "write"}, {"id", 4242}, {"chars", "y\n"}};
-  CHECK(!IsActivityPoll(steering));
-  CHECK(!ToolResultPresentation(steering, call, "").poll);
-
-  // A failed poll still collapses, but is not styled as success.
-  CallTask failed = quiet;
-  failed.result = ToolFailure(ToolErrorCode::kNotFound, "gone");
-  PresentationRecord failure = ToolResultPresentation(failed, call, "");
-  CHECK(!failure.poll);
-  CHECK(failure.status == PresentationStatus::kFailed);
-
-  // Output is arbitrary command text. Only recorded status establishes failure.
-  CHECK(StoredToolResultPresentation("run", "error: text printed by command")
-            .status == PresentationStatus::kNeutral);
-  CHECK(StoredToolResultPresentation("run", "error: text printed by command",
-                                     "", PresentationStatus::kSucceeded)
-            .status == PresentationStatus::kSucceeded);
-  CHECK(StoredToolResultPresentation("run", "stopped", "",
-                                     PresentationStatus::kCancelled)
-            .status == PresentationStatus::kCancelled);
-  PresentationRecord redrawn =
-      StoredToolResultPresentation("edit_file", "edited a.txt", "-old\n+new",
-                                   PresentationStatus::kSucceeded);
-  CHECK(redrawn.change == "-old\n+new");
-  CHECK(redrawn.detail.empty());
-  CHECK(!redrawn.multiline);
-  PresentationRecord ran = StoredToolResultPresentation(
-      "scratch", "[script: .uagent/scratch/x.py · wrote · executed]\n42\n", "",
-      PresentationStatus::kSucceeded);
-  CHECK(ran.change.empty());
-  CHECK(!ran.multiline);
-  CHECK(ran.summary.find("[script:") != std::string::npos);
-  CHECK(StoredToolResultPresentation("edit_file", "could not apply", "x",
-                                     PresentationStatus::kFailed)
-            .change.empty());
-
-  // A script that was written and then run summarises like every other
-  // reading tool: its header line, then the size of what it printed.
-  bool tty = g_tty;
-  g_tty = true;
-  CallTask script;
-  script.tool = &tool;
-  script.args = json::object();
-  script.ordinal = "[2] ";
-  std::string body;
+  // A script's output summarises as its first line and what follows; the
+  // full level prints it, indented under its row.
+  std::string body = "[script: .uagent/scratch/x.py · wrote]\n";
   for (int line = 1; line <= 30; ++line) body += std::to_string(line) + "\n";
-  script.result =
-      ToolSuccess("[script: .uagent/scratch/x.py · wrote]\n" + body);
-  PresentationRecord compact =
-      ToolResultPresentation(script, call, script.result.output);
-  CHECK(compact.change.empty());
-  CHECK(!compact.multiline);
-  CHECK(compact.summary.starts_with("[script: .uagent/scratch/x.py · wrote]"));
-  CHECK(compact.summary.find("+30 lines") != std::string::npos);
-  // The whole output travels with the row; the full level prints it.
-  CHECK(compact.output.find("\n30") != std::string::npos);
-  // Indented under its row.
-  CHECK(CaptureStdout([&] {
-          PrintPresentation(compact, DetailFor("full"));
-        }).find("\n    30") != std::string::npos);
-  std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
-  CHECK(drawn.find("← [2] activity") != std::string::npos);
-  CHECK(drawn.find("[script:") != std::string::npos);
-  // A file write is told entirely by its diff: no empty row is drawn under it.
-  CallTask wrote = script;
-  wrote.result = ToolSuccess("wrote 9 bytes to a.txt");
-  wrote.result.display = "Created a.txt\n+x";
-  PresentationRecord receipt =
-      ToolResultPresentation(wrote, call, wrote.result.output);
-  CHECK(receipt.detail.empty() && receipt.summary.empty());
-  CHECK(CaptureStdout([&] { PrintPresentation(receipt); }).find("←") ==
+  const json script = ToolBlock("c2", "scratch", "success", body);
+  row = drawn(script);
+  CHECK(row.find("← scratch: [script: .uagent/scratch/x.py · wrote] … · +30 "
+                 "lines") != std::string::npos);
+  CHECK(drawn(script, "full").find("\n    30") != std::string::npos);
+  // A command's last lines stay under its row; a long result's row holds its
+  // start and its end, and says only that there is more.
+  json command = ToolBlock("c3", "run", "success", "1\n2\n3…");
+  command["view"] = {{"output", "tail"}};
+  command["truncated"] = true;
+  command["tail"] = "99\n100\n";
+  row = drawn(command);
+  CHECK(row.find("← run: 1 … · more than ") != std::string::npos);
+  CHECK(row.find("    …99\n") != std::string::npos);
+  CHECK(row.find("    100\n") != std::string::npos);
+  CHECK(row.find("    2\n") == std::string::npos);
+  CHECK(drawn(command, "full").find("    3…\n    …99\n    100") !=
         std::string::npos);
-  // The shared record is independent of which client owns stdout.
-  g_tty = false;
-  PresentationRecord headless =
-      ToolResultPresentation(wrote, call, wrote.result.output);
-  CHECK(headless.change == receipt.change);
-  CHECK(headless.summary == receipt.summary);
-  g_tty = tty;
 
   // A terminal whose locale cannot decode UTF-8 gets the same rows in ASCII
   // rather than mojibake. Model/tool content must remain byte-preserved.
   bool prior_unicode = g_unicode;
   g_unicode = false;
-  std::string plain = CaptureStdout([&] { PrintPresentation(compact); });
-  CHECK(plain.find("<- [2]") != std::string::npos);
-  CHECK(plain.find("←") == std::string::npos);
-  compact.output = "model text: µ · ← …\nsecond";
-  CHECK(CaptureStdout([&] {
-          PrintPresentation(compact, DetailFor("full"));
-        }).find("    model text: µ · ← …\n    second") != std::string::npos);
+  row = drawn(script);
+  CHECK(row.find("<- scratch") != std::string::npos);
+  CHECK(row.find("←") == std::string::npos);
+  CHECK(drawn(ToolBlock("c4", "run", "success", "model text: µ · ← …\nsecond"),
+              "full")
+            .find("    model text: µ · ← …\n    second") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
 
   // Plain mode speaks each row's kind instead of drawing its glyph.
   g_plain = true;
-  compact.status = PresentationStatus::kFailed;
-  CHECK(CaptureStdout([&] { PrintPresentation(compact); }).find("failed: ") !=
+  CHECK(drawn(ToolBlock("c1", "run", "failed", "gone")).find("failed: ") !=
         std::string::npos);
   CHECK(Note(Tone::kError, "gone") == "error: gone\n");
   CHECK(Note(Tone::kNeutral, "compacted") == "compacted\n");
@@ -284,83 +203,78 @@ void TestPollCollapse() {
   std::setlocale(LC_CTYPE, "C");
   CHECK(EnsureUtf8Ctype());
   CHECK(DisplayWidth("\xe4\xb8\xad") == 2);
-
-  ClearPollAnchor(4242);
 }
 
-// --resume replays view blocks through the presenter: tool rows must read
-// exactly like the live event printer drew them, while blocks saved before
-// replay facts keep the legacy synthesis.
-void TestReplayBlocksMirrorLiveRows() {
-  TerminalPresenter presenter;
-  const json call_replay = {
-      {"title", "[1] read_path"}, {"summary", "a.txt"}, {"poll", false}};
-  // A call row: its recorded call line, and nothing more until it has a
-  // result. The assistant's text is a block of its own.
-  const json call = {{"kind", "tool_result"},
-                     {"call_id", "call-0"},
-                     {"name", "read_path"},
-                     {"activity", json::object({{"category", "explore"}})},
-                     {"call_replay", call_replay}};
-  std::string drawn = CaptureStdout([&] {
-    presenter.Block({{"kind", "assistant"}, {"text", "all three read"}});
-    presenter.Block(call);
+// A live row arrives as its call and again once it has finished; a resumed
+// one arrives finished. Each draws the call line and then the result once.
+void TestToolRowsDrawLiveAsResumed() {
+  json running = ToolBlock("c1", "read_path", "running", "");
+  running["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
+  running["activity"] = {{"label", "a.txt"}};
+  json finished = running;
+  finished["status"] = "success";
+  finished["text"] = "[a.txt lines 1-3 of 3]";
+  std::string live;
+  const std::string resumed = CaptureStdout([&] {
+    TerminalPresenter presenter;
+    presenter.Block(finished);
   });
-  CHECK(drawn.find("all three read\n") != std::string::npos);
-  CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
-  CHECK(drawn.find(" \u00b7 ") == std::string::npos);
-  // A view names the call the way the web row does: verb and target.
-  json with_view = call;
-  with_view["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
-  drawn = CaptureStdout([&] { presenter.Block(with_view); });
-  CHECK(drawn.find("Reading a.txt") != std::string::npos);
-  // Tool-only assistant blocks print no bare mark line, like live.
-  drawn = CaptureStdout(
-      [&] { presenter.Block({{"kind", "assistant"}, {"text", ""}}); });
-  CHECK(drawn.empty());
-  // Poll rows the live turn suppressed stay suppressed in replay.
-  json polled = call;
-  polled["call_replay"]["poll"] = true;
-  drawn = CaptureStdout([&] { presenter.Block(polled); });
-  CHECK(drawn.find("read_path") == std::string::npos);
+  {
+    TerminalPresenter presenter;
+    live = CaptureStdout([&] { presenter.Block(running); });
+    // A call that has not finished has no result line.
+    CHECK(live.find("→ Reading a.txt") != std::string::npos);
+    CHECK(live.find("←") == std::string::npos);
+    live += CaptureStdout([&] {
+      presenter.Block(finished);
+      presenter.Block(finished);
+    });
+  }
+  CHECK(live == resumed);
+  CHECK(resumed.find("← read_path: [a.txt lines 1-3 of 3]") !=
+        std::string::npos);
 
-  const json result_replay = {{"title", "[1] read_path"},
-                              {"summary", "[/a.txt entries 1-3 of 3]"},
-                              {"poll", false}};
-  drawn = CaptureStdout([&] {
-    presenter.Block({{"kind", "tool_result"},
-                     {"call_id", "call-0"},
-                     {"name", "read_path"},
-                     {"status", "success"},
-                     {"activity", json::object()},
-                     {"replay", result_replay}});
+  // Tool-only assistant blocks print no bare mark line, like live.
+  CHECK(CaptureStdout([] {
+          TerminalPresenter presenter;
+          presenter.Block({{"kind", "assistant"}, {"text", ""}});
+        }).empty());
+
+  // A rejected call has no verb: it shows the arguments it sent, and a
+  // multiline label (a script) is shown whole, never cut to a line.
+  json rejected = running;
+  rejected.erase("view");
+  rejected["activity"]["label"] = R"({"path":"visible-target"})";
+  const std::string script = "first\n" + std::string(4096, 'x') + "\nlast";
+  json multiline = running;
+  multiline["id"] = "t-c2";
+  multiline["activity"]["label"] = script;
+  std::string drawn = CaptureStdout([&] {
+    TerminalPresenter presenter;
+    presenter.Block(rejected);
+    presenter.Block(multiline);
   });
-  CHECK(drawn.find("[1] read_path: [/a.txt entries") != std::string::npos);
-  // The grouped result whose id opens the group draws the group label.
+  CHECK(drawn.find(R"(→ read_path({"path":"visible-target"}))") !=
+        std::string::npos);
+  CHECK(drawn.find("Reading\n" + script) != std::string::npos);
+
+  // The grouped result whose id opens the group draws the group label, and
+  // the rest of the group draws nothing more.
+  json grouped = finished;
+  grouped["activity"]["group"] = {{"id", "c1"},
+                                  {"label", "Explored · 2 calls\x1b[2J"}};
+  json member = grouped;
+  member["id"] = "t-c2";
+  member["call_id"] = "c2";
   drawn = CaptureStdout([&] {
-    presenter.Block(
-        {{"kind", "tool_result"},
-         {"call_id", "call-0"},
-         {"name", "read_path"},
-         {"status", "success"},
-         {"activity",
-          json::object(
-              {{"group",
-                json::object({{"id", "call-0"},
-                              {"label", "Explored \u00b7 3 calls\x1b[2J"}})}})},
-         {"replay", result_replay}});
+    TerminalPresenter presenter;
+    presenter.Block(grouped);
+    presenter.Block(member);
   });
-  CHECK(drawn.find("Explored") != std::string::npos);
+  CHECK(drawn.find("Explored") == drawn.rfind("Explored"));
+  CHECK(drawn.find("[a.txt lines") == std::string::npos);
   // A label is stored text: shown, never obeyed.
   CHECK(drawn.find("calls\\x1b[2J") != std::string::npos);
-  // Rows saved before replay facts are synthesized from name and output,
-  // as the stored-transcript printer always drew them.
-  drawn = CaptureStdout([&] {
-    presenter.Block({{"kind", "tool_result"},
-                     {"name", "read_path"},
-                     {"status", "success"}});
-  });
-  CHECK(drawn.find("read_path: (empty)") != std::string::npos);
 }
 
 // Every client renders one vocabulary; the shapes below are that contract.
@@ -369,17 +283,13 @@ void TestReplayBlocksMirrorLiveRows() {
 void TestVerbosityLevels() {
   auto result = [](const char* id, const char* status, const char* category,
                    json group = nullptr) {
-    json activity = {{"category", category}};
-    if (!group.is_null()) activity["group"] = std::move(group);
-    return json{{"kind", "tool_result"},
-                {"call_id", id},
-                {"name", "read_path"},
-                {"status", status},
-                {"text", std::string("body of ") + id + "\nsecond line"},
-                {"activity", std::move(activity)},
-                {"replay",
-                 {{"title", std::string("[") + id + "] read_path"},
-                  {"summary", std::string("summary of ") + id}}}};
+    json block = ToolBlock(id, "read_path", status,
+                           std::string("body of ") + id + "\nsecond line");
+    block["view"] = {{"verb", {"Reading", "Read"}},
+                     {"target", std::string(id) + ".txt"}};
+    block["activity"] = {{"category", category}};
+    if (!group.is_null()) block["activity"]["group"] = std::move(group);
+    return block;
   };
   const json group = {{"id", "a"}, {"label", "Explored · 2 calls"}};
   auto drawn = [&](std::string_view level) {
@@ -399,17 +309,19 @@ void TestVerbosityLevels() {
   const std::string minimal = drawn("minimal");
   CHECK(minimal.find("Worked · 3 steps · edited 1 file\n") !=
         std::string::npos);
-  CHECK(minimal.find("summary of a") == std::string::npos);
+  CHECK(minimal.find("body of a") == std::string::npos);
+  CHECK(minimal.find("Reading") == std::string::npos);
   CHECK(minimal.find("Explored") == std::string::npos);
-  CHECK(minimal.find("summary of d") != std::string::npos);
+  CHECK(minimal.find("body of d") != std::string::npos);
   CHECK(minimal.find("pondered") == std::string::npos);
   CHECK(minimal.find("done") != std::string::npos);
 
   const std::string standard = drawn("default");
   CHECK(standard.find("Worked") == std::string::npos);
+  CHECK(standard.find("→ Reading a.txt") != std::string::npos);
   CHECK(standard.find("Explored · 2 calls") != std::string::npos);
-  CHECK(standard.find("summary of a") == std::string::npos);
-  CHECK(standard.find("summary of c") != std::string::npos);
+  CHECK(standard.find("body of a") == std::string::npos);
+  CHECK(standard.find("body of c … · +1 lines") != std::string::npos);
   CHECK(standard.find("pondered") == std::string::npos);
   // An unknown level reads as the default one.
   CHECK(drawn("loud") == standard);

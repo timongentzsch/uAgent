@@ -142,7 +142,6 @@ void TestObservabilityEvents() {
   CHECK(notice.id == EventId::kNotice);
   CHECK(notice.render);
   REQUIRE(notice.presentation.has_value());
-  CHECK(notice.presentation->kind == PresentationKind::kNotice);
   CHECK(notice.presentation->status == PresentationStatus::kWarned);
   CHECK(notice.data["text"] == "interrupted");
   SessionJournal notices;

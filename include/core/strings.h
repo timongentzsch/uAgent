@@ -126,9 +126,6 @@ int64_t TerminalColumns();
 // Never zero: callers pass the result straight to a width-bounded formatter.
 size_t TerminalWidth(int64_t reserved = 0);
 
-std::string TerminalSummary(const std::string& text,
-                            size_t reserved_columns = 0);
-
 // Stable short digest for session and workspace identity.
 std::string HashHex(const std::string& data);
 

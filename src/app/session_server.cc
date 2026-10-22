@@ -139,8 +139,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
   for (;;) {
     const std::string launch =
         folder.string() + "/" + RandomToken(16) + ".json";
-    if (!AtomicWriteFile(launch, JsonDump(config), kPrivateFileMode, false,
-                         error)) {
+    if (!WritePrivateFile(launch, JsonDump(config), error)) {
       return {};
     }
     std::vector<std::string> args{executable, "--session-worker", cwd,

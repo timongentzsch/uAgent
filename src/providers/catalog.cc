@@ -379,10 +379,10 @@ std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable,
   if (models && !models->empty()) {
     const std::string identity = CatalogueIdentity(api);
     std::string error;
-    AtomicWriteFile(CataloguePath(identity),
-                    JsonDump({{"identity", identity},
-                              {"response", std::move(response.body)}}),
-                    kPrivateFileMode, false, error);
+    WritePrivateFile(CataloguePath(identity),
+                     JsonDump({{"identity", identity},
+                               {"response", std::move(response.body)}}),
+                     error);
   }
   return models;
 }

@@ -174,6 +174,9 @@ bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
 bool AtomicWriteFile(const std::string& path, const std::string& content,
                      mode_t create_mode, bool preserve_mode, std::string& error,
                      bool overwrite = true);
+// The same for agent-private state: owner-only, whatever mode it had.
+bool WritePrivateFile(const std::string& path, const std::string& content,
+                      std::string& error);
 
 // create_directories() applies the ambient umask, so hardening only the leaf
 // leaves every directory it had to create along the way world-traversable.

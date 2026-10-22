@@ -272,8 +272,7 @@ json ReadPanelFile(const std::string& folder, const char* suffix) {
 std::string WritePanelFile(const std::string& folder, const char* suffix,
                            const json& value) {
   std::string error;
-  AtomicWriteFile(PanelPath(folder) + suffix, JsonDump(value, 1),
-                  kPrivateFileMode, false, error);
+  WritePrivateFile(PanelPath(folder) + suffix, JsonDump(value, 1), error);
   return error;
 }
 

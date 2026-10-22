@@ -271,9 +271,8 @@ int Master::Run() {
                     {"url", origin_},
                     {"secret", secret_},
                     {"epoch", epoch_}};
-  auto written =
-      ToolWritePrivateFile(directory_ + "/discovery.json", JsonDump(discovery));
-  if (!written.Ok()) {
+  if (!WritePrivateFile(directory_ + "/discovery.json", JsonDump(discovery),
+                        error)) {
     fprintf(stderr, "cannot publish web discovery\n");
     return 1;
   }

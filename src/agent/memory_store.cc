@@ -193,8 +193,7 @@ bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
   if (receipt_path.empty()) return appended;
   std::string receipt_error;
   bool receipt =
-      AtomicWriteFile(receipt_path, serialized + "\n", kPrivateFileMode,
-                      /*preserve_mode=*/false, receipt_error);
+      WritePrivateFile(receipt_path, serialized + "\n", receipt_error);
   if (!receipt) {
     if (!error.empty()) error += "; ";
     error += "receipt: " + receipt_error;

@@ -209,9 +209,9 @@ PushKey LoadPushKey(const std::string& path) {
   }
   char* bytes = nullptr;
   auto count = BIO_get_mem_data(output.get(), &bytes);
-  if (count <= 0 || !ToolWritePrivateFile(
-                         path, std::string(bytes, static_cast<size_t>(count)))
-                         .Ok()) {
+  if (count <= 0 ||
+      !WritePrivateFile(path, std::string(bytes, static_cast<size_t>(count)),
+                        error)) {
     return {};
   }
   return key;

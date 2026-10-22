@@ -78,7 +78,8 @@ bool Master::SaveDevices() const {
                    {"name", device.name},
                    {"expires", device.expires}});
   }
-  return ToolWritePrivateFile(directory_ + "/devices.json", JsonDump(out)).Ok();
+  std::string error;
+  return WritePrivateFile(directory_ + "/devices.json", JsonDump(out), error);
 }
 std::string Master::DeviceId(const Request& request) const {
   std::string cookies = request.get_header_value("Cookie");

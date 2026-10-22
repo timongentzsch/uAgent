@@ -150,9 +150,9 @@ struct PushSender::Impl {
                        {"public_key", item.public_key},
                        {"auth", item.auth}});
     }
-    return ToolWritePrivateFile(directory + "/push-subscriptions.json",
-                                JsonDump(value))
-        .Ok();
+    std::string error;
+    return WritePrivateFile(directory + "/push-subscriptions.json",
+                            JsonDump(value), error);
   }
   bool Valid(const Subscription& subscription) const {
     return OpaqueId(subscription.device) &&

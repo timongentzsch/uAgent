@@ -469,6 +469,11 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
   }
   return true;
 }
+bool WritePrivateFile(const std::string& path, const std::string& content,
+                      std::string& error) {
+  return AtomicWriteFile(path, content, kPrivateFileMode,
+                         /*preserve_mode=*/false, error);
+}
 void CreatePrivateDirectories(const std::filesystem::path& dir) {
   namespace fs = std::filesystem;
   std::error_code ec;

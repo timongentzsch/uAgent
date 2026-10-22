@@ -255,8 +255,7 @@ void SettleMemoryClaim(bool extracted) {
     std::filesystem::remove(marker, failed);
     error = failed ? failed.message() : "";
   } else {
-    AtomicWriteFile(marker, "done\n", kPrivateFileMode,
-                    /*preserve_mode=*/false, error);
+    WritePrivateFile(marker, "done\n", error);
   }
   if (!error.empty()) {
     fprintf(stderr, "cannot settle memory claim: %s\n", error.c_str());

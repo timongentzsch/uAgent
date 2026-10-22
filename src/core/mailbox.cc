@@ -185,8 +185,8 @@ std::string SendMail(Mail mail) {
            mail.created_ms, static_cast<int>(getpid()),
            static_cast<uint64_t>(sequence.fetch_add(1) % 100000000));
   std::string error;
-  if (!AtomicWriteFile(dir + "/new/" + stamp + "-" + mail.id + ".json", content,
-                       kPrivateFileMode, false, error)) {
+  if (!WritePrivateFile(dir + "/new/" + stamp + "-" + mail.id + ".json",
+                        content, error)) {
     return error;
   }
   return "";

@@ -379,8 +379,7 @@ void WriteSchema() {
   const std::string text = JsonDump(SettingsSchema(), 2) + "\n";
   if (ReadFile(path, kSettingsBytes).value_or("") == text) return;
   std::string ignored;
-  AtomicWriteFile(path, text, kPrivateFileMode, /*preserve_mode=*/false,
-                  ignored);
+  WritePrivateFile(path, text, ignored);
 }
 
 std::string Joined(const std::vector<std::string>& problems) {

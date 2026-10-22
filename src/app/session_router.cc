@@ -102,8 +102,7 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
   std::string ignored;
   if (!EnsurePrivateDirectory(folder + "/" + kWorkspaceDir) ||
       (safe != name &&
-       !AtomicWriteFile(LabelFile(folder).string(), name + "\n",
-                        kPrivateFileMode, /*preserve_mode=*/false, ignored))) {
+       !WritePrivateFile(LabelFile(folder).string(), name + "\n", ignored))) {
     error = "the workspace could not be created";
     return "";
   }
@@ -159,8 +158,7 @@ std::string SessionHost::RenameSpace(const std::string& path,
   // As µAgent spells its own folder, which a link may lead to.
   const fs::path kept = fs::path(UagentDir(kSpacesDir)) / space->filename();
   if (!EnsurePrivateDirectory((kept / kWorkspaceDir).string()) ||
-      !AtomicWriteFile(LabelFile(kept).string(), name + "\n", kPrivateFileMode,
-                       /*preserve_mode=*/false, error)) {
+      !WritePrivateFile(LabelFile(kept).string(), name + "\n", error)) {
     return error.empty() ? "the workspace could not be renamed" : error;
   }
   return "";

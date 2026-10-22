@@ -90,8 +90,7 @@ void EditJournal::Record(int64_t turn, const FileEffect& effect) {
   if (entry.undoable && entry.existed) {
     std::string error;
     CreatePrivateDirectories(directory_);
-    entry.undoable = AtomicWriteFile(Blob(turn, effect.path), before,
-                                     kPrivateFileMode, false, error);
+    entry.undoable = WritePrivateFile(Blob(turn, effect.path), before, error);
     if (entry.undoable) stored_bytes_ += before.size();
   }
   entries.push_back(std::move(entry));
@@ -183,8 +182,8 @@ void EditJournal::Save() const {
   }
   std::string error;
   CreatePrivateDirectories(directory_);
-  AtomicWriteFile(directory_ + "/index.json", JsonDump({{"turns", index}}),
-                  kPrivateFileMode, false, error);
+  WritePrivateFile(directory_ + "/index.json", JsonDump({{"turns", index}}),
+                   error);
 }
 
 }  // namespace uagent

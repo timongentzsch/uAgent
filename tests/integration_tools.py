@@ -1132,11 +1132,11 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"Allow for this session"),
+                (b"go\n", b"Allow for this conversation"),
                 (
                     b"s\n",
                     b"rm -rf /tmp/uagent-nothing",
-                    b"Allow for this session",
+                    b"Allow for this conversation",
                     None,
                 ),
                 (b"use git log instead\n", b"approval-done"),

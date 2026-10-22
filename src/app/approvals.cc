@@ -59,10 +59,13 @@ struct ApprovalChoice {
 
 constexpr ApprovalChoice kApprovalChoices[] = {
     {ApprovalAnswer::kOnce, "y", "Allow once", {"y", "yes"}},
-    {ApprovalAnswer::kSession, "s", "Allow for this session", {"s", "session"}},
+    {ApprovalAnswer::kSession,
+     "s",
+     "Allow for this conversation",
+     {"s", "session"}},
     {ApprovalAnswer::kRepository,
      "a",
-     "Always in this repository",
+     "Always allow this exact action here",
      {"a", "always", "repository"}},
     {ApprovalAnswer::kDeny, "n", "Deny", {"n", "no"}},
     {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},

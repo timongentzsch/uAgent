@@ -106,6 +106,9 @@
 - Titles and workspace names are limited in characters (256 and 64), as the
   web's form counts them; the host counted bytes, so a title with accents or
   emoji could pass the form and then be refused.
+- An approval's choices read the same in the terminal and the web: "Allow
+  for this conversation" and "Always allow this exact action here", which
+  the web now takes from the host instead of its own copies.
 - A typed `/rename` keeps to the same rules as a rename from the web: the
   title rule, and in a panel's chat the rule for a name there, whose members
   are told; it used to accept any text.

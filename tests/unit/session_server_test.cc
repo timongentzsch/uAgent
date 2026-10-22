@@ -67,9 +67,7 @@ void TestCloseRuntimeWaitsForTheRuntime() {
   server->Publish(
       {{"v", session::kProtocol}, {"kind", "state"}, {"busy", false}});
   std::thread runtime([&] {
-    while (!closing) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
+    CHECK(WaitUntil([&] { return closing.load(); }, BudgetMs(5000)));
     server.reset();
   });
   CHECK(CloseRuntime(path).empty());

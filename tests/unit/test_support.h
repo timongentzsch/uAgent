@@ -19,6 +19,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -68,6 +69,26 @@ inline int64_t BudgetMs(int64_t milliseconds) {
     return milliseconds;
   }
   return static_cast<int64_t>(scaled);
+}
+
+// Polls `done` until it holds or `budget_ms` passes; returns whether it held.
+// Only for state that offers nothing to block on; pass a BudgetMs() deadline.
+template <typename Predicate>
+bool WaitUntil(Predicate done, int64_t budget_ms) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(budget_ms);
+  while (!done()) {
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return true;
+}
+
+// Writes `text` to `path`, creating its directories first.
+inline void WriteFile(const std::filesystem::path& path,
+                      const std::string& text) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream(path, std::ios::binary) << text;
 }
 
 class TestWorkspace {

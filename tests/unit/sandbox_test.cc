@@ -18,11 +18,6 @@
 namespace uagent {
 namespace {
 
-void WriteFile(const std::filesystem::path& path, const std::string& text) {
-  std::filesystem::create_directories(path.parent_path());
-  std::ofstream(path) << text;
-}
-
 bool HasRoot(const SandboxPolicy& policy, const std::string& root) {
   return std::find(policy.writable_roots.begin(), policy.writable_roots.end(),
                    root) != policy.writable_roots.end();

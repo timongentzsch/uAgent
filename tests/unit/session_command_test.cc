@@ -18,7 +18,6 @@
 #include <future>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -133,13 +132,7 @@ void TestScheduledPreparationDoesNotBlockHost() {
     bool recovered = false;
     auto preparing = std::async(std::launch::async,
                                 [&] { return host.RunSchedules(recovered); });
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::milliseconds(BudgetMs(5000));
-    while (!fs::exists(entered) &&
-           std::chrono::steady_clock::now() < deadline) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-    CHECK(fs::exists(entered));
+    CHECK(WaitUntil([&] { return fs::exists(entered); }, BudgetMs(5000)));
     auto catalogue =
         std::async(std::launch::async, [&] { return host.Catalogue(); });
     CHECK(catalogue.wait_for(std::chrono::milliseconds(BudgetMs(250))) ==

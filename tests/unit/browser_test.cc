@@ -505,7 +505,6 @@ void TestBrowserProfileSignIn() {
 // control, and an agent call made meanwhile fails at once instead of waiting.
 // An idle browser stops only while no human holds it.
 void TestBrowserHandBackOnClose() {
-  namespace fs = std::filesystem;
   FakeBrowser fake("handback");
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
@@ -887,7 +886,6 @@ void TestBrowserUploadsAndDownloads() {
 // A click can be right or double, a drag drops what the page held back, a
 // key can come with modifiers, and history goes forward as well as back.
 void TestBrowserConsoleNetworkAndPointer() {
-  namespace fs = std::filesystem;
   FakeRuntime fake("pointer");
   const auto profile = fake.data / "profile";
   CHECK(!fake.Act({{"op", "open"}, {"url", "https://example.com/"}})

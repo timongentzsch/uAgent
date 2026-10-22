@@ -246,8 +246,6 @@ struct Agent::StepState {
     std::unordered_map<std::string, int64_t> rejection_rounds;
     std::unordered_map<std::string, int64_t> edit_failures;
     std::string last_call;
-    std::string last_single_tool;
-    int64_t same_tool_rounds = 0;
     int64_t quiet_activity_id = 0;
     std::array<int64_t, static_cast<size_t>(Fault::kCount)> strikes{};
   };

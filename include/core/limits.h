@@ -105,7 +105,6 @@ inline constexpr int64_t kRepeatedCallDirectAfter = 6;
 inline constexpr int64_t kRepeatedCallStopAfter = 12;
 inline constexpr int64_t kRejectedCallStopAfter = 3;
 inline constexpr int64_t kFailedToolAdviseAfter = 3;
-inline constexpr int64_t kRepeatedToolRoundTraceAfter = 8;
 inline constexpr int64_t kActivityPollAdviseAfter = 2;
 inline constexpr int64_t kActivityPollDirectAfter = 4;
 inline constexpr int64_t kActivityPollStopAfter = 12;

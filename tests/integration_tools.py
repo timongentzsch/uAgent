@@ -446,30 +446,6 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         assert_true(b"demo-body-sentinel" in output, output)
 
 
-def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):
-    trace = root / "repeated-tools.jsonl"
-    source = root / "rounds.txt"
-    source.write_text("\n".join(str(i) for i in range(8)), encoding="utf-8")
-    with Server(
-        [
-            tool_call("read_path", {"path": str(source), "offset": i, "limit": 1})
-            for i in range(1, 9)
-        ]
-        + [event({"content": "rounds-finished"})]
-    ) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-        env["UAGENT_INTERNAL_AUTO_COMPACT_TOKENS"] = "0"
-        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect lines", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip().endswith("rounds-finished"), result.stdout)
-        records = [json.loads(line) for line in trace.read_text().splitlines()]
-        signals = [r for r in records if r["event"] == "repeated_tool_rounds"]
-        assert_true(len(signals) == 1, signals)
-        assert_true(signals[0]["data"]["tool"] == "read_path", signals)
-        assert_true(signals[0]["data"]["rounds"] == 8, signals)
-
-
 def test_invalid_tool_rejection_loop_stops_and_answers_from_what_it_has(root, home, *, binary):
     trace = root / "rejected-tools.jsonl"
     dimensions = [(0, 80), (24, 0), (1001, 80)]

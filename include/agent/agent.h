@@ -337,8 +337,6 @@ class Agent {
   void Advise(Fault fault, StepState& loop, const std::string& about = "");
   StepFlow HandleResponseStop(ChatResult& response, size_t tool_call_count,
                               TurnExecution& state, StepState& loop);
-  void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
-                                 StepState& loop);
   bool HandleActivityPollResults(const std::vector<ActivityPollResult>& polls,
                                  bool exclusive, TurnExecution& state,
                                  StepState& loop);

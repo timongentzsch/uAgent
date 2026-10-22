@@ -420,7 +420,6 @@ void Agent::Turn(const std::string& user_input, json user_content,
     if (!ToolCallsWithinLimits(calls, state, loop)) {
       break;
     }
-    RecordToolRoundRepetition(calls, loop);
     if (calls.empty() && response.content.empty()) {
       if (!Strike(Fault::kEmpty, state, loop,
                   state.metrics.tool_count > 0

@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import type { SessionRef, TurnFile } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { Actions, Button } from "../../shared/ui.tsx";
+import { useAction } from "../../shared/use-action.ts";
 import { command } from "../../state/api.ts";
 import { formatStat } from "../../shared/display.ts";
 
@@ -18,12 +19,11 @@ export default function TurnReview({
 }) {
   const [restored, setRestored] = useState<string[]>([]);
   const [kept, setKept] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const { run, busy, error } = useAction();
   const [note, setNote] = useState("");
-  const undo = async (path?: string) => {
-    setBusy(true);
+  const undo = (path?: string) => {
     setNote("");
-    try {
+    return run(async () => {
       const receipt = await command("revert", session, {
         turn,
         ...(path && { path }),
@@ -39,11 +39,7 @@ export default function TurnReview({
         ),
       }));
       if (!back.length && !conflicts.length) setNote("Nothing left to undo.");
-    } catch (error) {
-      setNote(failure(error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   const open = files.filter(
     (file) => file.undoable && !restored.includes(file.path),
@@ -83,7 +79,9 @@ export default function TurnReview({
           </li>
         ))}
       </ul>
-      {note && <p role="status">{note}</p>}
+      {(note || !!error) && (
+        <p role="status">{note || failure(error).message}</p>
+      )}
       <Actions>
         <Button
           variant="destructive"

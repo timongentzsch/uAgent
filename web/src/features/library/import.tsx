@@ -1,6 +1,6 @@
 import { manage } from "../../state/api.ts";
 import type { ImportItem } from "../../shared/types.ts";
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import {
   Button,
   DataText,
@@ -10,6 +10,7 @@ import {
   Spinner,
 } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
+import { useResource } from "../../shared/use-resource.ts";
 
 // What Claude Code and Codex keep that can come into µAgent's library.
 export default function ImportDialog({
@@ -22,26 +23,24 @@ export default function ImportDialog({
   close: () => void;
 }) {
   const only = kind === "skills" ? "skill" : "memory";
-  const [items, setItems] = useState<ImportItem[] | null>(null);
+  const list = () =>
+    manage("import", { cwd, action: "list", only }).then(
+      (result) => result.items || [],
+    );
+  // An import's own answer is the list read after it.
+  const {
+    value: items,
+    error,
+    setValue,
+    setError,
+  } = useResource(list, [cwd, only]);
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState<unknown>(null);
-  const load = useCallback(async () => {
-    try {
-      const result = await manage("import", { cwd, action: "list", only });
-      setItems(result.items || []);
-    } catch (failure) {
-      setError(failure);
-    }
-  }, [cwd, only]);
-  useEffect(() => {
-    void load();
-  }, [load]);
   async function run(item: ImportItem) {
     setBusy(item.key);
     setError(null);
     try {
       await manage("import", { cwd, action: "run", only, key: item.key });
-      await load();
+      setValue(await list());
     } catch (failure) {
       setError(failure);
     } finally {

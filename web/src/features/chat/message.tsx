@@ -24,6 +24,7 @@ import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
 import { formatMoment } from "../../shared/time.ts";
 import { devicePrefs } from "../../shared/device-prefs.ts";
 import { useStored } from "../../shared/storage.ts";
+import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 import { Mail, Minimize2, X } from "lucide-preact";
 import {
@@ -207,17 +208,18 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
     session.id,
     retry,
   ]);
-  // A long diff arrives as its opening; the row shows the stored whole.
-  const [change, setChange] = useState<string>();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reads the stored diff once per session and retry
-  useEffect(() => {
-    if (!online || !call?.change_path) return;
-    const abort = new AbortController();
-    load(call.detail_id || `t-${call.call_id}`, false, abort.signal)
-      .then((page) => setChange(page.text))
-      .catch((error) => abort.signal.aborted || setLoadError(error));
-    return () => abort.abort();
-  }, [online, call?.change_path, session.id, retry]);
+  // A long diff arrives as its opening; the row shows the stored whole,
+  // read once per session and retry.
+  const diff = useResource(
+    (signal) =>
+      online && call?.change_path
+        ? load(call.detail_id || `t-${call.call_id}`, false, signal).then(
+            (page) => page.text,
+          )
+        : undefined,
+    [online, call?.change_path, session.id, retry],
+  );
+  const change = diff.value;
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
@@ -373,7 +375,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
               output={output}
               text={text}
               expanding={expanding}
-              loadError={loadError}
+              loadError={loadError || diff.error}
               retry={() => setRetry(retry + 1)}
               online={online}
               inspect={inspect}

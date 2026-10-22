@@ -1,6 +1,7 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import mermaid from "mermaid";
 import { Button, CodeCopy, Modal } from "./ui.tsx";
+import { useResource } from "./use-resource.ts";
 import {
   maxDiagramCacheEntries,
   maxDiagramEdges,
@@ -80,9 +81,20 @@ export default function Diagram({ source }: { source: string }) {
   const [dark, setDark] = useState(
     document.documentElement.dataset.theme === "dark",
   );
-  const [url, setURL] = useState("");
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [error, setError] = useState("");
+  const rendered = useResource(() => diagram(source, dark), [source, dark]);
+  const url = useMemo(
+    () =>
+      rendered.value && !rendered.error
+        ? URL.createObjectURL(
+            new Blob([rendered.value.svg], { type: "image/svg+xml" }),
+          )
+        : "",
+    [rendered.value, rendered.error],
+  );
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  const size = rendered.value || { width: 0, height: 0 };
+  const error =
+    rendered.error && "Diagram could not be rendered. Source is shown below.";
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     const observer = new MutationObserver(() =>
@@ -94,31 +106,6 @@ export default function Diagram({ source }: { source: string }) {
     });
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {
-    let active = true;
-    let objectURL = "";
-    setError("");
-    diagram(source, dark)
-      .then((value) => {
-        if (active) {
-          objectURL = URL.createObjectURL(
-            new Blob([value.svg], { type: "image/svg+xml" }),
-          );
-          setSize({ width: value.width, height: value.height });
-          setURL(objectURL);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setURL("");
-          setError("Diagram could not be rendered. Source is shown below.");
-        }
-      });
-    return () => {
-      active = false;
-      if (objectURL) URL.revokeObjectURL(objectURL);
-    };
-  }, [source, dark]);
   return (
     <div class="diagram">
       <div class="diagram-preview">

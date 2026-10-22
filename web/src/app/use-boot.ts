@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import type { InstallPrompt, Report } from "../shared/types.ts";
-import { stored, useStored } from "../shared/storage.ts";
+import { stored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import { idlePreloadMs } from "../shared/limits.ts";
 import { preloadDeferred } from "../shared/ui.tsx";
@@ -10,6 +10,7 @@ import { prefetchMarkdown } from "../shared/markdown-view.tsx";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
 import { trackViewport } from "../shared/layout.ts";
 import { useLatest } from "../shared/use-latest.ts";
+import { useResource } from "../shared/use-resource.ts";
 import { api, routes } from "../state/api.ts";
 import {
   libraryModule,
@@ -44,22 +45,20 @@ export function useBoot({
   authenticated: boolean | null;
   online: boolean;
 }) {
-  const [browserAvailable, setBrowserAvailable] = useStored(browserKept);
+  const browserAvailable = !!useResource(
+    (signal) =>
+      authenticated === true && online
+        ? api(routes.browserStatus, undefined, { signal }).then(
+            () => true,
+            () => false,
+          )
+        : undefined,
+    [authenticated, online],
+    browserKept.read,
+  ).value;
+  useEffect(() => browserKept.write(browserAvailable), [browserAvailable]);
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
-  useEffect(() => {
-    if (authenticated !== true || !online) return;
-    let active = true;
-    const known = (available: boolean) => {
-      if (active) setBrowserAvailable(available);
-    };
-    api(routes.browserStatus)
-      .then(() => known(true))
-      .catch(() => known(false));
-    return () => {
-      active = false;
-    };
-  }, [authenticated, online]);
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
     // fetch it immediately at boot (not idle: on mobile the idle callback

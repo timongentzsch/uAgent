@@ -38,14 +38,14 @@ export default function ModelPicker({
     error: loadError,
     retry,
   } = useResource(
-    async (live) => {
+    async (signal) => {
       const response = save
         ? await command("models", null, { cwd: session.cwd })
         : await command("model", session, { operation: "catalog" });
       if (response.pending)
         throw new Error("Catalog is still loading. Try again shortly.");
       // A session opened meanwhile has its own choice.
-      if (!live()) return response.result;
+      if (signal.aborted) return response.result;
       const chosen = response.result.models
         .filter(
           (item) =>

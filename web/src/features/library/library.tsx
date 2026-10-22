@@ -34,6 +34,7 @@ import ImportDialog from "./import.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { useResource } from "../../shared/use-resource.ts";
 
 type Draft = {
   item: LibraryItem;
@@ -207,30 +208,26 @@ export default function Library({
     }
   }
   // Paths the importer can take; an item is offered only if it is one.
-  const [importPaths, setImportPaths] = useState<string[]>([]);
-  useEffect(() => {
-    setImportPaths([]);
-    if (!cwd || !online) return;
-    let current = true;
-    manage("import", {
-      cwd,
-      action: "list",
-      only: kind === "skills" ? "skill" : "memory",
-    })
-      .then((result) => {
-        if (current)
-          setImportPaths(
+  const importPaths = useResource(
+    (signal) =>
+      cwd && online
+        ? manage(
+            "import",
+            {
+              cwd,
+              action: "list",
+              only: kind === "skills" ? "skill" : "memory",
+            },
+            { signal },
+          ).then((result) =>
             (result.items || [])
               .filter((entry) => !entry.blocked && !entry.collides)
               .map((entry) => entry.path),
-          );
-      })
-      .catch(() => {});
-    return () => {
-      current = false;
-    };
-  }, [kind, cwd, version, online]);
-  const importable = !!item && importPaths.includes(item.path);
+          )
+        : undefined,
+    [kind, cwd, version, online],
+  );
+  const importable = !!item && !!importPaths.value?.includes(item.path);
   async function importItem() {
     if (!item) return;
     setBusy(true);

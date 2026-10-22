@@ -2,6 +2,8 @@ import { ExternalLink, X } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Act } from "../../shared/types.ts";
 import { Button, IconButton } from "../../shared/ui.tsx";
+import { useAction } from "../../shared/use-action.ts";
+import { failure } from "../../shared/types.ts";
 import MessageInput from "../../shared/message-input.tsx";
 import Decision from "../../shared/decision.tsx";
 import { command } from "../../state/api.ts";
@@ -26,8 +28,7 @@ export default function SideAnswer({
     side.id ? all[side.id] : undefined,
   );
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
+  const { run, busy: sending, error } = useAction();
   const started = useRef(false);
   // Watch a second conversation through the host's existing event stream.
   useEffect(() => {
@@ -53,17 +54,11 @@ export default function SideAnswer({
   const thread = useTranscriptHistory(() => {}, historyKey, blocks);
   async function send() {
     if (!draft.trim() || !session || !online || sending || pending) return;
-    setSending(true);
-    setError("");
-    try {
+    await run(async () => {
       await act("submit", { text: draft, queue: running });
       setDraft("");
       await load(session.id);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      setSending(false);
-    }
+    });
   }
   return (
     <aside class="side-answer" aria-label="Side conversation">
@@ -127,7 +122,7 @@ export default function SideAnswer({
             ))}
         </div>
       </div>
-      {error && <p role="alert">{error}</p>}
+      {!!error && <p role="alert">{failure(error).message}</p>}
       <form
         onSubmit={(event) => {
           event.preventDefault();

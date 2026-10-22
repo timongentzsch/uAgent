@@ -28,6 +28,7 @@ import {
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../../shared/model-picker.tsx";
+import { useResource } from "../../shared/use-resource.ts";
 import { ProjectField } from "../../shared/project-field.tsx";
 import { formatMoment } from "../../shared/time.ts";
 import { devicePrefs } from "../../shared/device-prefs.ts";
@@ -89,8 +90,7 @@ export default function Scheduled({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [confirm, setConfirm] = useState(false);
-  const [times, setTimes] = useState<number[] | null>(null);
-  const [previewError, setPreviewError] = useState<unknown>(null);
+
   const current = scheduled?.tasks?.find((entry) => entry.id === task?.id);
   const changed =
     !!task?.id && (!current || task.revision !== current.revision);
@@ -114,28 +114,30 @@ export default function Scheduled({
     if (task && dirty) drafts.keep(task.id, task);
     else drafts.open.write(task);
   }, [task]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: previews when the schedule's value changes, not on edits to other fields
-  useEffect(() => {
-    let active = true;
-    setTimes(null);
-    setPreviewError(null);
-    if (!task || !online) return;
-    const timer = setTimeout(
-      () =>
-        manage("schedule", { action: "preview", schedule: task.schedule })
-          .then((result) => {
-            if (active) setTimes(result.times || []);
-          })
-          .catch((failure) => {
-            if (active) setPreviewError(failure);
-          }),
-      schedulePreviewDebounceMs,
-    );
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [scheduleKey, online]);
+  // Previews when the schedule's value changes, not on edits to other
+  // fields; a preview of another schedule is not shown.
+  const preview = useResource(
+    (signal) =>
+      task && online
+        ? new Promise((done) => setTimeout(done, schedulePreviewDebounceMs))
+            .then(() =>
+              signal.aborted
+                ? undefined
+                : manage("schedule", {
+                    action: "preview",
+                    schedule: task.schedule,
+                  }),
+            )
+            .then((result) => ({ scheduleKey, times: result?.times || [] }))
+        : undefined,
+    [scheduleKey, online],
+  );
+  const times =
+    (online &&
+      preview.value?.scheduleKey === scheduleKey &&
+      preview.value?.times) ||
+    null;
+  const previewError = preview.error;
   function chooseTask(value: ScheduledTask | null) {
     setTask(value && (drafts.read(value.id) || value));
     setError(null);

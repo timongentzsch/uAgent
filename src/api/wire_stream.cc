@@ -376,8 +376,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   }
   const std::string type = JsonValue(value, "type", "");
   if (type == "error") {
-    ApplyStreamError(value.contains("error") ? value["error"] : value, result,
-                     "response stream failed");
+    ApplyStreamError(value, result, "response stream failed");
     return delta;
   }
   if (type == "response.failed") {

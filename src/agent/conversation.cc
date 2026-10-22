@@ -187,7 +187,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
     const json* ids = JsonArray(display, "ids");
     const json* facts = JsonObject(display, "facts");
     if (!ids || ids->size() != messages.size() || !facts ||
-        JsonEstimatedBytes(*facts) > size_t{4} * 1024 * 1024) {
+        JsonEstimatedBytes(*facts) > MiB(4)) {
       return false;
     }
     next_id = JsonValue(display, "next", uint64_t{0});
@@ -242,7 +242,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   announced_deliveries_ = json::object();
   const json announced = JsonValue(display, "announced", json::object());
   if (announced.is_object() && announced.size() <= size_t{1024} &&
-      JsonEstimatedBytes(announced) <= size_t{64} * 1024) {
+      JsonEstimatedBytes(announced) <= KiB(64)) {
     announced_deliveries_ = announced;
   }
   arrivals_.clear();
@@ -303,9 +303,9 @@ json Conversation::RecordEntry(json facts) {
 }
 
 void Conversation::RecordDisplay(const std::string& key, json facts) {
-  constexpr size_t kFactBytes = size_t{64} * 1024;
+  constexpr size_t kFactBytes = KiB(64);
   constexpr size_t kFactCount = 4096;
-  constexpr size_t kDisplayBytes = size_t{4} * 1024 * 1024;
+  constexpr size_t kDisplayBytes = MiB(4);
   // Below this size a fact is control data (delivery receipts, links), not
   // pressure: the count bound still needs a victim when only tiny facts are
   // left, and then the oldest key goes as before.

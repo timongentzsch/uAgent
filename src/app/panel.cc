@@ -265,7 +265,7 @@ std::string PanelBoard(const std::string& folder) {
 }
 
 json ReadPanelFile(const std::string& folder, const char* suffix) {
-  json held = ReadJsonFile(PanelPath(folder) + suffix, size_t{64} * 1024);
+  json held = ReadJsonFile(PanelPath(folder) + suffix, KiB(64));
   return held.is_object() ? held : json::object();
 }
 

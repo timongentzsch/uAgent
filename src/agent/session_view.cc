@@ -25,7 +25,7 @@
 
 namespace uagent {
 namespace {
-constexpr size_t kViewBytes = size_t{384} * 1024;
+constexpr size_t kViewBytes = KiB(384);
 constexpr size_t kViewBlocks = 64;
 using Entry = TranscriptEntry;
 bool Visible(const Entry& entry) {

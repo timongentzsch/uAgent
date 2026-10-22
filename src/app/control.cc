@@ -75,7 +75,7 @@ json ControlProcess(const json& request) {
 }
 int ControlMain(const std::string& argument) {
   std::string bytes = argument;
-  if (argument == "-" && ReadBounded(std::cin, size_t{1024} * 1024, bytes)) {
+  if (argument == "-" && ReadBounded(std::cin, MiB(1), bytes)) {
     printf("{\"error\":\"control request exceeds limit\"}\n");
     return 2;
   }
@@ -112,7 +112,7 @@ json ManagementCommand(const std::string& kind, const std::string& argument) {
     request = {{"action", action}, {"key", key}};
     if (action == "set" && value.starts_with("@")) {
       std::string body, error;
-      if (!ReadRegularFile(value.substr(1), size_t{512} * 1024, body, error)) {
+      if (!ReadRegularFile(value.substr(1), KiB(512), body, error)) {
         return {{"error", error}};
       }
       request["content"] = body;

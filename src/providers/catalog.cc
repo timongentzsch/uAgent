@@ -79,7 +79,7 @@ void Declare(Endpoint& endpoint, const KnownEndpoint& known) {
 }
 
 constexpr std::chrono::hours kCatalogueLife{24};
-constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
+constexpr size_t kCatalogueCacheBytes = MiB(8);
 
 // What a catalogue answers for: the endpoint and the way it is asked. The
 // credential is no part of it, so nothing derived from one is written down.

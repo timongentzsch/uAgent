@@ -129,7 +129,7 @@ int ScopedTempFile::ReleaseFd() {
 bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   // Grows with what is actually there, not with the cap.
   out.clear();
-  char chunk[64 * 1024];
+  char chunk[KiB(64)];
   while (out.size() <= cap && input.read(chunk, sizeof chunk).gcount() > 0) {
     out.append(chunk, std::min(static_cast<size_t>(input.gcount()),
                                cap + 1 - out.size()));
@@ -567,7 +567,7 @@ bool TakePrivateText(const std::string& path, std::string& content,
     error = strerror(errno);
     return false;
   }
-  constexpr size_t kMaxBytes = size_t{16} * 1024 * 1024;
+  constexpr size_t kMaxBytes = MiB(16);
   char buffer[4096];
   bool ok = true;
   for (;;) {

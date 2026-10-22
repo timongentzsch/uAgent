@@ -172,7 +172,7 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
   int64_t segment = std::max(int64_t{512}, max_bytes / 2);
   Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode));
   if (!fd) return 1;
-  std::array<char, size_t{64} * 1024> buffer{};
+  std::array<char, KiB(64)> buffer{};
   int64_t written = 0;
   for (;;) {
     ssize_t count = read(STDIN_FILENO, buffer.data(), buffer.size());

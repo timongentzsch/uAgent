@@ -35,7 +35,7 @@
 
 namespace uagent::browser {
 namespace {
-constexpr size_t kMaxPacket = size_t{12} * 1024 * 1024;
+constexpr size_t kMaxPacket = MiB(12);
 
 bool Transfer(int fd, char* bytes, size_t count, bool write, int timeout_ms) {
   while (count) {

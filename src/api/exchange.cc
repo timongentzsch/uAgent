@@ -84,7 +84,7 @@ void HttpExchange::Headers(std::string_view bytes, bool outgoing) {
   }
   auto& value = metadata_[outgoing ? "request_headers" : "response_headers"];
   std::string prior = value.get<std::string>();
-  if (prior.size() + clean.size() <= size_t{16} * 1024) {
+  if (prior.size() + clean.size() <= KiB(16)) {
     value = prior + clean;
   } else {
     metadata_["headers_complete"] = false;
@@ -92,7 +92,7 @@ void HttpExchange::Headers(std::string_view bytes, bool outgoing) {
 }
 void HttpExchange::Body(std::string_view bytes) {
   if (!Enabled()) return;
-  constexpr size_t kBodyLimit = size_t{64} * 1024 * 1024;
+  constexpr size_t kBodyLimit = MiB(64);
   if (bytes.size() > kBodyLimit - bytes_ ||
       !WriteFully(response_.Get(), bytes)) {
     metadata_["complete"] = false;

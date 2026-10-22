@@ -58,7 +58,7 @@ inline ToolResult OpenSkill(const Skill& skill,
 
 inline std::string SkillCatalogue(const std::vector<Skill>& skills,
                                   std::string_view query) {
-  constexpr size_t kCatalogueChars = size_t{8} * 1024;
+  constexpr size_t kCatalogueChars = KiB(8);
   constexpr std::string_view kMore = "\n[more matches; narrow query]";
   bool descriptions = !Trim(std::string(query)).empty();
   std::string out;

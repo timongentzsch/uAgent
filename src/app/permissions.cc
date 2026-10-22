@@ -19,7 +19,7 @@ namespace uagent {
 namespace {
 
 constexpr int64_t kPermissionStoreVersion = 1;
-constexpr size_t kPermissionStoreBytes = size_t{1024} * 1024;
+constexpr size_t kPermissionStoreBytes = MiB(1);
 constexpr size_t kStoredPreviewBytes = 4096;
 constexpr size_t kReviewerPreviewBytes = 16384;
 constexpr int64_t kReviewerTimeoutSeconds = 15;

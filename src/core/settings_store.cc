@@ -21,7 +21,7 @@
 namespace uagent {
 namespace {
 
-constexpr size_t kSettingsBytes = size_t{4} * 1024 * 1024;
+constexpr size_t kSettingsBytes = MiB(4);
 constexpr int kFormat = 3;
 constexpr char kVariables[] = "variables";
 

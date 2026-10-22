@@ -37,11 +37,11 @@ namespace fs = std::filesystem;
 // (~/.claude/skills/synced/<id>/<name>), so the search goes a little deeper
 // than a flat directory.
 constexpr int kImportSkillDepth = 4;
-constexpr size_t kImportReadBytes = size_t{512} * 1024;
+constexpr size_t kImportReadBytes = KiB(512);
 // A listing is one JSON line the control process must pass on within its 1 MiB
 // output limit; the walk stops at either bound, however many roots it spans.
 constexpr size_t kMaxImportItems = 512;
-constexpr size_t kMaxImportBytes = size_t{512} * 1024;
+constexpr size_t kMaxImportBytes = KiB(512);
 constexpr size_t kMaxImportEntries = 16384;
 
 // What one listing may still visit and return, across every root: each

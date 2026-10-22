@@ -97,8 +97,7 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
         if (errno != EAGAIN) eof = true;
         break;
       }
-      if (result.output.size() + static_cast<size_t>(count) >
-          size_t{1024} * 1024) {
+      if (result.output.size() + static_cast<size_t>(count) > MiB(1)) {
         result.error = "helper output exceeds limit";
         eof = true;
         break;

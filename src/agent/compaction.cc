@@ -35,7 +35,7 @@ json Agent::CompactionMessages() const {
                                   transcript_bytes);
   }
   constexpr const char* kToolFallbackName = "tool";
-  constexpr size_t kProseBytes = size_t{8} * 1024;
+  constexpr size_t kProseBytes = KiB(8);
   constexpr size_t kEvidenceBytes = 1024;
   HeadTailBuffer transcript(transcript_bytes);
   std::unordered_map<std::string, std::string> tool_names;

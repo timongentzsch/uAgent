@@ -22,8 +22,8 @@ constexpr size_t kSearchSessions = 50;
 constexpr size_t kReadBlocks = 12;
 constexpr size_t kReadTextChars = 1200;
 constexpr size_t kToolTextChars = 160;
-constexpr size_t kDetailBytes = size_t{16} * 1024;
-constexpr size_t kReportBytes = size_t{8} * 1024;
+constexpr size_t kDetailBytes = KiB(16);
+constexpr size_t kReportBytes = KiB(8);
 
 // Transcripts are other sessions' words: evidence, never instructions.
 std::string AsData(const std::string& session_id, const std::string& body) {

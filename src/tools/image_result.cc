@@ -33,7 +33,7 @@ ToolResult ToolImageResult(const json& content, std::string source_call_id,
   int64_t limit_mb = AttachmentLimitMb();
   std::string bytes;
   if (!Base64Decode(content["data"].get_ref<const std::string&>(), bytes,
-                    static_cast<size_t>(limit_mb) * 1024 * 1024)) {
+                    MiB(static_cast<size_t>(limit_mb)))) {
     return ToolFailure(ToolErrorCode::kRemoteError,
                        std::string(source) + " image is invalid or exceeds " +
                            std::to_string(limit_mb) + " MB");

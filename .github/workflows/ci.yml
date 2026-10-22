@@ -331,17 +331,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  python:
+  lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.28"
           enable-cache: true
-      - run: uv run --frozen ruff check .github tests benchmarks skills
-      - run: uv run --frozen ruff format --check .github tests benchmarks skills
+      - run: .github/lint.sh
       - uses: ./.github/actions/native-setup
       - name: Source and Python contracts
         run: |
@@ -435,32 +434,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  cpp-style:
-    needs: changes
-    if: needs.changes.outputs.native == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          version: "0.11.28"
-          enable-cache: true
-      - name: Check formatting
-        run: >-
-          uvx --from clang-format==22.1.8 clang-format
-          --dry-run --Werror include/*/*.h src/*.cc src/*/*.cc
-          tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
-      - name: Check Google style
-        run: >-
-          uvx --from cpplint==2.0.2 cpplint
-          --recursive --exclude=third_party --exclude=tests/fixtures
-          --extensions=h,cc
-          --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check
-          include src tests benchmarks
-
   # The scan is the longest check, so its translation units are dealt round
   # robin to three runners. The generated web bundle source is not scanned.
   # A pull request that changes only translation units has those read, in
@@ -493,19 +466,7 @@ jobs:
         env:
           UNITS: ${{ needs.changes.outputs.tidy }}
         run: |
-          files=$(python3 - ${{ matrix.shard }} <<'PYTHON'
-          import json, os, re, sys
-          entries = json.load(open("build/tidy/compile_commands.json"))
-          files = sorted({e["file"] for e in entries if re.search(r"/(src|tests|benchmarks)/", e["file"]) and "/build/" not in e["file"]})
-          units = os.environ["UNITS"]
-          if units == "all":
-              files = files[int(sys.argv[1])::3]
-          else:
-              # A changed unit this build does not compile is not in the list.
-              files = [f for f in files if any(f.endswith("/" + unit) for unit in units.split())]
-          print(" ".join(re.escape(f) + "$" for f in files))
-          PYTHON
-          )
+          files=$(python3 .github/changes.py --tidy-files build/tidy "$UNITS" ${{ matrix.shard }}/3)
           test -n "$files" || exit 0
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py -p build/tidy \
             -header-filter='.*/(include|src|tests|benchmarks)/.*' $files
@@ -513,7 +474,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, clang-tidy, web, web-browser]
+    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, fuzzers, coverage, lint, clang-tidy, web, web-browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

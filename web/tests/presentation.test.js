@@ -553,6 +553,26 @@ test("full folds nothing and keeps routine rows", () => {
     );
 });
 
+test("a tool row is the same row while its reply streams", () => {
+  const reply = { id: "r", kind: "assistant", response_id: "r", text: "a" };
+  const call = { id: "t", kind: "tool_result", response_id: "r", call_id: "c" };
+  const shot = {
+    id: "s",
+    kind: "attachment",
+    origin: "tool",
+    source_call_ids: ["c"],
+    files: [{ id: "f", name: "shot.png" }],
+  };
+  const before = presentMessages([reply, call, shot], FULL);
+  const after = presentMessages([{ ...reply, text: "ab" }, call, shot], FULL);
+  assert.notEqual(after[0], before[0]);
+  assert.equal(after[1], before[1]);
+  assert.equal(after[1].files.length, 1);
+  // What the row shows of its reply still counts.
+  const timed = presentMessages([{ ...reply, time: "t1" }, call, shot], FULL);
+  assert.notEqual(timed[1], before[1]);
+});
+
 test("a streamed row refolds only the last fold", () => {
   const blocks = [
     grouped("a1", "explore", "a1", "Explored · 2 calls"),

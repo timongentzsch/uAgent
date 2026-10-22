@@ -63,7 +63,7 @@ fi
 # the container image installs.
 if [ "$(uname)" = Linux ] && [ "$web" = yes ] && [ "$browser" = no ] && has apt-get &&
    ask "Install Chrome and TigerVNC for the agent's browser, with sudo? [y/N]"; then
-  deb=/tmp/google-chrome-stable.deb
+  deb=$(mktemp --suffix=.deb)
   curl -fsSL -o "$deb" \
     "https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb"
   sudo apt-get install -y tigervnc-standalone-server xauth fonts-noto-core \
@@ -80,9 +80,10 @@ if [ "$node" = yes ] && ! node "$root/web/scripts/build-state.js" check; then
   fi
   npm run build --prefix "$root/web"
 fi
-if [ ! -f "$build/CMakeCache.txt" ]; then
-  cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-fi
+# Configured on every run: a tree first built without the web UI gains it
+# once Node.js or a built web/dist is here.
+cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+  -DUAGENT_WEB="$([ "$web" = yes ] && echo ON || echo OFF)"
 cmake --build "$build" --target uagent --parallel "$build_jobs"
 cmake --install "$build" --prefix "$prefix" --strip
 # Chrome reads managed policy only from a root-owned directory.

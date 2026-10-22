@@ -28,7 +28,6 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
-#include "include/core/private_store.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -230,7 +229,13 @@ std::optional<json> LoadDetachedRecord(const std::filesystem::path& path,
                                        std::filesystem::file_time_type cutoff) {
   namespace fs = std::filesystem;
   // A record holds one command, which a tool argument bounds well below this.
-  json record = ReadJsonFile(path.string(), MiB(1));
+  // Only a record that reads but does not parse is corrupt; one that cannot be
+  // read now (a race, no descriptors) may still name a live command.
+  std::string bytes, error;
+  if (!ReadRegularFile(path.string(), MiB(1), bytes, error)) {
+    return std::nullopt;
+  }
+  json record = json::parse(bytes, nullptr, false);
   std::error_code ec;
   if (record.is_discarded()) {
     fs::remove(path, ec);

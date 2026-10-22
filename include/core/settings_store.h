@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_SETTINGS_STORE_H_
 #define UAGENT_INCLUDE_CORE_SETTINGS_STORE_H_
 // The host's settings: one private JSON document,
-// {"format": 2, "all": {...}, "projects": {"<folder>": {...}}}. A scope names
+// {"format": 3, "all": {...}, "projects": {"<folder>": {...}}}. A scope names
 // each setting as the registry's `key` does and holds its value in its own
 // type: {"model": "x", "limits.maxSteps": 40, "sandbox.enabled": false}.
 // "variables" in a scope holds what a value may refer to as $NAME, kept and

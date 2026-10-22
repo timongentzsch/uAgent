@@ -59,13 +59,13 @@ The app targets WCAG 2.2 AA, checked with axe-core on every surface a person
 meets.
 
 - **Zoom and contrast.** The viewport never forbids zoom, and Settings → This
-  browser → Zoom scales the interface from 50 to 200%. Field, switch and
-  option edges have a 3:1 or better border (`--field-border`), and muted text
-  is at least 4.5:1 on every surface it sits on. `prefers-contrast: more`
-  switches to a higher-contrast palette. In forced colours (Windows High
-  Contrast), switches, the current item, pressed buttons and status lights
-  keep their meaning through system colours and shape: a failed light is
-  square.
+  browser → Zoom scales the interface in steps from 50 to 200%. Field,
+  switch and option edges have a 3:1 or better border (`--field-border`), and
+  muted text is at least 4.5:1 on every surface it sits on.
+  `prefers-contrast: more` switches to a higher-contrast palette. In forced
+  colours (Windows High Contrast), switches, the current item, pressed
+  buttons and status lights keep their meaning through system colours and
+  shape: a failed light is square.
 - **Announcements.** A screen reader hears the edges of a turn
   ("Responding", "Needs your input", "Response complete"), never each
   streamed token. The transcript is a log that is busy while a turn runs. A

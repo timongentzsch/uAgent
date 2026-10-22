@@ -56,10 +56,9 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
   reading does too when that model accepts images; otherwise it uses the
   first model of the same endpoint that does, or tells you to set
   `image.model`.
-- Web search uses the conversation's route when it has hosted search, else
-  the first endpoint that declares a search plugin (OpenRouter does), with
-  the model `webSearch.model` names. With neither, it is off, and when only
-  that model is missing you are told once to set it.
+- Web search needs hosted search on the conversation's route, or an
+  endpoint with a search plugin (OpenRouter has one) and `webSearch.model`;
+  see [Tools](TOOLS.md#web).
 - The `auto` approval reviewer needs an endpoint that declares `decisions`
   (OpenRouter does). With none, Auto mode asks you.
 
@@ -184,7 +183,6 @@ else that always asks: those go to you.
   `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove`
   override them; `approval.reviewerModel` (`[endpoint/]model`) chooses
   another decision model.
-- With no endpoint that declares `decisions`, Auto mode says so and asks.
 
 `/changes` lists the files the last turn changed and `/undo` puts them back
 (in the web, Undo under the turn). Changes a shell command made are not

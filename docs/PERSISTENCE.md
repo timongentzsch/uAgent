@@ -57,11 +57,10 @@ to change, export and import it. On disk:
 - µAgent writes `config/settings.json` under a lock and keeps
   `config/settings.schema.json` beside it for editors.
 - A document that cannot be parsed is refused, never read as empty: the error
-  names the file to fix or remove, and nothing is saved over it. An entry
-  that cannot be taken is reported and skipped; the rest applies.
-- The current format is 3. A document of an earlier format (1 or 2) is
-  rewritten in format 3 the first time it is read, and
-  `uagent config import` accepts all three.
+  names the file to fix or remove, and nothing is saved over it.
+- The current format is 3. A format-2 document is rewritten in format 3 the
+  first time it is read, and `uagent config import` accepts both. Format 1
+  (before v1.4.0) is not read.
 
 ## Sessions
 
@@ -87,7 +86,6 @@ name the user chose.
 - A successful, untruncated file read stores `_uagent_read_range`
   (`[path, first_line, last_line]`) in its tool message; wire requests omit
   it.
-- Changes made by shell commands are not in the undo journal.
 
 The event journal (`uagent.session.event.v1`) keeps at most 512 records or
 256 KiB of turn, tool, capability, configuration, presentation and artifact
@@ -95,11 +93,10 @@ metadata. It never holds prompts, reasoning, answer text or full tool
 results, is not replay authority, and a missing or corrupt journal does not
 block loading.
 
-The snapshot is the only replay authority. `--debug` writes a separate,
-sensitive trace from which the exchange can be reconstructed. Interactive
-model calls also keep private HTTP request and response captures in
-`artifacts/` for `/http`; credential headers are redacted, prompts and tool
-output are not.
+`--debug` writes a separate, sensitive trace from which the exchange can be
+reconstructed. Interactive model calls also keep private HTTP request and
+response captures in `artifacts/` for `/http`; credential headers are
+redacted, prompts and tool output are not.
 
 ## Activities and delegated children
 

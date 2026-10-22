@@ -15,13 +15,8 @@ cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure
 ```
 
-While iterating, run one case instead ([Testing](docs/TESTING.md) has the
-rest):
-
-```sh
-build/debug/uagent_tests -k Activity
-python3 tests/integration.py build/debug/uagent -k compaction
-```
+While iterating, run one case instead; [Testing](docs/TESTING.md#common-cases)
+shows how.
 
 Before a commit, run what CI checks on every change:
 
@@ -99,9 +94,8 @@ Docker is given.
 - Keep persistence versioned, and validate complete temporary state before
   replacing live state.
 
-Cover local behavior with a focused unit test and externally visible behavior
-with one hermetic integration path; do not test one contract at several
-layers. Parser changes must preserve chunk-boundary equivalence.
+Test as [Testing](docs/TESTING.md#guidelines) says. Parser changes must
+preserve chunk-boundary equivalence.
 
 ## Code conventions
 
@@ -111,9 +105,9 @@ layers. Parser changes must preserve chunk-boundary equivalence.
   (`include/tools/tool.h`). Only the wire boundary builds an `{"error": ...}`
   JSON object: the `*Control(const json&)` handlers, such as `SkillControl`
   and `ScheduleControl`, and the per-action functions they dispatch to.
-- Public headers in `include/<module>/` mirror `src/<module>/`. Declarations
-  shared inside one module live in `src/<module>/*_internal.h`.
-  `tests/boundary_test.py` enforces the layer order.
+- Keep headers and includes in the layer order
+  [Architecture](docs/ARCHITECTURE.md#build-layers) describes;
+  `tests/boundary_test.py` enforces it.
 - Web features (`web/src/features/<name>/`) import from `shared/` and
   `state/`, not from each other. Every request to the host goes through
   `web/src/state/api.ts`.

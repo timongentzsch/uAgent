@@ -177,9 +177,8 @@ When the connection drops or the page reloads:
   reason, **Retry** and **Return to composer**. A failed decision reply stays
   on the decision with **Retry**.
 
-Session cost follows provider-reported usage and is never invented. The
-context counter estimates the current request size and is separate from
-billing totals.
+Cost and the context counter work as in the terminal; see
+[Budgets and accounting](OPERATIONS.md#budgets-and-accounting).
 
 ## Conversation controls
 
@@ -198,11 +197,11 @@ waiting on you are counted once, across every folder:
 An approval opens above the input, which stays in place, read-only, until it
 is answered; the **Approval** control stays usable. The card shows what the
 call would do (the command, or the change as a diff that scrolls past about
-six lines), the folder and its risks, with **Deny**, **Allow for session**
-and **Allow once** in one row. Under **More options**, **Always allow this
-exact action here** makes Allow once a rule for the repository, listed under
-Settings → This project → *Allowed actions*, and **+ guidance** answers in
-words instead. Numbered choices are cards.
+six lines), the folder and its risks, with **Deny**, **Allow for this
+conversation** and **Allow once** in one row. Under **More options**,
+**Always allow this exact action here** makes Allow once a rule for the
+repository, listed under Settings → This project → *Allowed actions*, and
+**+ guidance** answers in words instead. Numbered choices are cards.
 
 The agent's questions are answered a page at a time. The steps above the page
 show which are answered and lead back to any already seen. A tap on a single
@@ -238,9 +237,8 @@ before Submit.
   tracked.
 - Tool calls that read as one step fold into one row ("Explored · 4 calls")
   that expands to the calls. **Detail** in the conversation menu sets how
-  much work is shown (`UAGENT_VERBOSITY`) for every conversation and the
-  terminal. Minimal shows the answer and one "Worked · N steps" row per turn,
-  with failures and prompts on rows of their own.
+  much work is shown, for every conversation and the terminal;
+  [Tools](TOOLS.md#presentation) lists the levels.
 - Message menus expose retained tool input and output and HTTP request and
   response captures. Credential headers are redacted; bodies can contain
   sensitive workspace content.
@@ -326,8 +324,8 @@ own editors; see [Memory, skills and scheduled tasks](MANAGEMENT.md) and
 
 The page stays pinch-zoomable; inside the browser viewer a pinch zooms the
 remote display instead. Settings → This browser → Zoom scales the whole
-interface in steps from 50 to 200%, applied when one is chosen. A reduced-motion preference, or Animations: Off,
-disables animation. See [Accessibility](ACCESSIBILITY.md).
+interface; [Accessibility](ACCESSIBILITY.md) covers zoom, contrast and
+motion.
 
 ## Attachments
 

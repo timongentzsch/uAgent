@@ -84,13 +84,6 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
   return entry;
 }
 
-std::string FlagInvocation(const FlagSpec& spec) {
-  std::string invocation(spec.flag);
-  if (!spec.value) return invocation;
-  return spec.optional_value ? invocation + "[=" + spec.value + "]"
-                             : invocation + " " + spec.value;
-}
-
 json FlagJson(const FlagSpec& spec) {
   json entry = {{"flag", spec.flag},
                 {"usage", FlagInvocation(spec)},

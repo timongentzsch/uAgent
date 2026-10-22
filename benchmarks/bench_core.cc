@@ -357,9 +357,94 @@ void BenchmarkFrameBuffer() {
          }));
 }
 
+// A saved conversation of a long working session, as each model call, each
+// save and each checkpoint handles it whole. Built unless `--session PATH`
+// names a saved one: 250 tool rounds (a call and a result of about 1 KB, one
+// round in eight 8 KB) between 30 user messages.
+void BenchmarkLongConversation(std::string path) {
+  char directory[] = "/tmp/uagent-bench-XXXXXX";
+  if (!mkdtemp(directory)) {
+    perror("cannot create benchmark directory");
+    return;
+  }
+  Api api(RuntimeConfig{});
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  Agent agent(api, tools, processes, usage,
+              [](const Tool&, const json&, int64_t) { return "denied"; });
+  std::string error;
+  if (path.empty()) {
+    path = std::string(directory) + "/built.json";
+    if (!agent.Save(path, error)) {
+      std::cerr << "cannot save benchmark conversation: " << error << '\n';
+      return;
+    }
+    std::ifstream saved(path);
+    std::string header;
+    std::getline(saved, header);
+    json body = json::parse(saved, nullptr, false);
+    for (size_t round = 0; round < 250; ++round) {
+      if (round % 8 == 0) {
+        body["messages"].push_back(
+            {{"role", "user"}, {"content", std::string(400, 'u')}});
+        body["message_kinds"].push_back("user");
+      }
+      const std::string id = "call-" + std::to_string(round);
+      const size_t result_bytes = round % 8 == 7 ? KiB(8) : KiB(1);
+      body["messages"].push_back(
+          {{"role", "assistant"},
+           {"content", std::string(200, 'a')},
+           {"tool_calls",
+            {{{"id", id},
+              {"type", "function"},
+              {"function",
+               {{"name", "run"},
+                {"arguments",
+                 JsonDump({{"command", std::string(600, 'c')}})}}}}}}});
+      body["message_kinds"].push_back("assistant");
+      body["messages"].push_back({{"role", "tool"},
+                                  {"tool_call_id", id},
+                                  {"content", std::string(result_bytes, 'r')}});
+      body["message_kinds"].push_back("tool_result");
+    }
+    body["display"] = json::object();
+    std::ofstream(path) << header << '\n' << JsonDump(body);
+  }
+  std::ifstream saved(path);
+  std::string header;
+  std::getline(saved, header);
+  if (!agent.Load(path,
+                  JsonValue(json::parse(header, nullptr, false), "cwd", ""),
+                  error)) {
+    std::cerr << "cannot load " << path << ": " << error << '\n';
+    return;
+  }
+  constexpr size_t kRepeats = 10;
+  size_t request_bytes = 0, saved_bytes = 0, view_bytes = 0;
+  Report("long conversation request", kRepeats, Measure(kRepeats, [&] {
+           request_bytes = JsonDump(agent.ModelRequest()).size();
+           return request_bytes;
+         }));
+  const std::string copy = std::string(directory) + "/saved.json";
+  Report("long conversation save", kRepeats, Measure(kRepeats, [&] {
+           agent.Save(copy, error);
+           saved_bytes = std::filesystem::file_size(copy);
+           return saved_bytes;
+         }));
+  Report("long conversation view", kRepeats, Measure(kRepeats, [&] {
+           view_bytes = JsonDump(agent.DisplaySnapshot()).size();
+           return view_bytes;
+         }));
+  std::cout << "long conversation            " << agent.MessageCount()
+            << " messages; request " << request_bytes << " bytes, save "
+            << saved_bytes << " bytes, view " << view_bytes << " bytes\n";
+  std::filesystem::remove_all(directory);
+}
+
 }  // namespace
 
-int RunBenchmarks() {
+int RunBenchmarks(const std::string& session) {
   constexpr size_t kIterations = 10000;
   const std::string hostile = "normal text\n\x1b]52;c;payload\x07\tmore text\n";
   const std::string large(24000, 'x');
@@ -384,6 +469,7 @@ int RunBenchmarks() {
   BenchmarkTerminalPaint(false);
   BenchmarkTerminalPaint(true);
   BenchmarkFrameBuffer();
+  BenchmarkLongConversation(session);
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {
@@ -471,4 +557,9 @@ int RunBenchmarks() {
 
 }  // namespace uagent
 
-int main() { return uagent::RunBenchmarks(); }
+// `uagent_bench [--session PATH]`: PATH is a saved conversation to measure
+// instead of the built one.
+int main(int argc, char** argv) {
+  const bool session = argc == 3 && std::string(argv[1]) == "--session";
+  return uagent::RunBenchmarks(session ? argv[2] : "");
+}

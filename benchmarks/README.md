@@ -21,7 +21,7 @@ live runs, the cost authority and the other options.
 | `audit.py`, `session_metrics.py` | Request-size report and a summary of real sessions from their journals |
 | `compare_agents.py` | Footprint of µAgent beside other coding-agent CLIs: a JSON report and, with `--chart`, an SVG chart |
 | `web.py` | Native web host footprint with disposable state and a mock provider |
-| `bench_core.cc` | Source of `uagent_bench`, built with `UAGENT_BUILD_BENCHMARKS=ON` |
+| `bench_core.cc` | Source of `uagent_bench`, built with `UAGENT_BUILD_BENCHMARKS=ON`; `--session PATH` measures a saved conversation in place of the built long one |
 | `scenarios/` | One declarative JSON file per evaluation scenario |
 | `baselines/` | Committed results: `hermetic.json` gates `eval.py`; `web.json` and `delegation.json` are reference measurements |
 | `browser/` | One prompt through the `browser` tool of a web host ([README](browser/README.md)) |

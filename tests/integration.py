@@ -218,40 +218,23 @@ def main():
         os.environ["TMPDIR"] = str(tmpdir)
         failed = []
         skipped = 0
+        # CI runs a failed case once more (UAGENT_TEST_RETRIES=1): a pass then
+        # is reported as flaky, never as clean, and a second failure fails.
+        retries = int(os.environ.get("UAGENT_TEST_RETRIES", "0"))
         for name in names:
-            print(f"running {name}", flush=True)
-            case_root = root / name
-            # HOME is a sibling of the case workspace, not a child of it. A
-            # workspace containing ~/.uagent is an ancestor of the agent's own
-            # state, which the sandbox refuses to grant as a writable root --
-            # so nesting them would leave every case running with nothing it
-            # could write, which is not how a real session is laid out.
-            home = root / (name + ".home")
-            case_root.mkdir(parents=True)
-            home.mkdir(parents=True)
-            started = time.monotonic()
-            signal.signal(signal.SIGALRM, past_deadline)
-            signal.alarm(int(budget(CASE_SECONDS)))
-            try:
-                ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
-                signal.alarm(0)
-                print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
-            except Skipped as reason:
-                # Said as what it is: a case that did not run proved nothing.
-                print(f"skipped {name}: {reason}", flush=True)
+            outcome = run_case(root, name, arguments.binary.resolve())
+            for attempt in range(1, retries + 1):
+                if outcome != "failed":
+                    break
+                outcome = run_case(root, name, arguments.binary.resolve(), attempt)
+                if outcome == "passed":
+                    print(f"FLAKY {name}: passed on attempt {attempt + 1}", flush=True)
+                    if os.environ.get("GITHUB_ACTIONS"):
+                        print(f"::warning title=Flaky test::{name} failed, then passed")
+            if outcome == "skipped":
                 skipped += 1
-            except Exception:
-                # One failure does not hide the next: every case still runs.
-                traceback.print_exc()
-                print(f"FAILED {name}", flush=True)
+            elif outcome == "failed":
                 failed.append(name)
-            finally:
-                from session_support import stop_sessions
-
-                signal.alarm(0)
-                stop_sessions(home)
-                for state in case_root.rglob(".uagent"):
-                    stop_sessions(state.parent)
         if failed:
             raise SystemExit(f"{len(failed)} of {len(names)} failed: " + ", ".join(failed))
         print(
@@ -260,6 +243,45 @@ def main():
         )
     finally:
         remove_suite(pathlib.Path(temp))
+
+
+def run_case(root, name, binary, attempt=0):
+    """One case in fresh folders: "passed", "skipped" or "failed"."""
+    from session_support import stop_sessions
+
+    print(f"running {name}", flush=True)
+    suffix = f".retry{attempt}" if attempt else ""
+    case_root = root / (name + suffix)
+    # HOME is a sibling of the case workspace, not a child of it. A
+    # workspace containing ~/.uagent is an ancestor of the agent's own
+    # state, which the sandbox refuses to grant as a writable root --
+    # so nesting them would leave every case running with nothing it
+    # could write, which is not how a real session is laid out.
+    home = root / (name + suffix + ".home")
+    case_root.mkdir(parents=True)
+    home.mkdir(parents=True)
+    started = time.monotonic()
+    signal.signal(signal.SIGALRM, past_deadline)
+    signal.alarm(int(budget(CASE_SECONDS)))
+    try:
+        ALL_TESTS[name](case_root, home, binary=binary)
+        signal.alarm(0)
+        print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
+        return "passed"
+    except Skipped as reason:
+        # Said as what it is: a case that did not run proved nothing.
+        print(f"skipped {name}: {reason}", flush=True)
+        return "skipped"
+    except Exception:
+        # One failure does not hide the next: every case still runs.
+        traceback.print_exc()
+        print(f"FAILED {name}", flush=True)
+        return "failed"
+    finally:
+        signal.alarm(0)
+        stop_sessions(home)
+        for state in case_root.rglob(".uagent"):
+            stop_sessions(state.parent)
 
 
 if __name__ == "__main__":

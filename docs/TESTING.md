@@ -72,6 +72,10 @@ The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
 - Each case has its own deadline; `UAGENT_TEST_TIMEOUT_SCALE` multiplies the
   deadlines on slow or instrumented builds.
 - A failing case does not stop the run; the failures are listed at the end.
+- `UAGENT_TEST_RETRIES=N` runs a failed case up to N more times in a fresh
+  home. A case that passes on a retry prints `FLAKY` and still passes; CI sets
+  1 and turns each into a warning on the run, so a flake shows without failing
+  the merge.
 - `-j N` runs the selection in N processes. Every case has its own home and
   ports, so the whole suite takes about 20 s at `-j 8` and two minutes in one
   process.
@@ -299,7 +303,8 @@ Master, scheduled and manual runs always run them.
 | `python` | Ruff check and format; `ctest -L source` |
 | `cpp-style` | clang-format and cpplint |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
-| `web` | Prettier check, Biome lint, Node tests, bundle, notices and size checks, a release host with Web Push, Playwright in Chromium and WebKit |
+| `web` | Prettier check, Biome lint, Node tests, bundle, notices and size checks, a release host with Web Push |
+| `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a

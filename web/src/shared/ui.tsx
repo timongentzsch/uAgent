@@ -41,8 +41,6 @@ import { formatFullMoment, formatMoment, useNow } from "./time.ts";
 import { devicePrefs } from "./device-prefs.ts";
 import { useStored } from "./storage.ts";
 
-// Every timestamp in the app: formatted by the viewer's time preferences,
-// with the full moment on hover. `value` is an ISO string or epoch ms.
 // Whether any prop changed identity: the update check of a view whose
 // parent renders more often than its props change.
 export const propsChanged = (prior: object, next: object) =>
@@ -75,6 +73,8 @@ export function updateChecked<P extends object>(
   };
 }
 
+// Every timestamp in the app: formatted by the viewer's time preferences,
+// with the full moment on hover. `value` is an ISO string or epoch ms.
 export function Time({ value }: { value?: string | number }) {
   const [prefs] = useStored(devicePrefs.time);
   const now = useNow(prefs.style !== "absolute");

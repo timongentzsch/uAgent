@@ -84,8 +84,8 @@ void Terminal::ReceiveState(const json& frame) {
   {
     std::lock_guard lock(mutex_);
     for (const char* field :
-         {"activity", "route", "usage", "turn_active", "turn_started_ms",
-          "context_tokens", "context_window", "activities", "permissions"}) {
+         {"activity", "route", "usage", "turn_started_ms", "context_tokens",
+          "context_window", "activities", "permissions"}) {
       if (state.contains(field)) state_[field] = state[field];
     }
     pending_ = JsonValue(frame, "pending", json(nullptr));

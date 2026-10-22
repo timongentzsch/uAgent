@@ -156,18 +156,10 @@ void Application::RunTurns(const std::string& input, json content,
   }
   search_unnamed_ = unnamed;
   PermissionControl(context_, json::object());
-  struct TurnGuard {
-    bool& flag_;
-    explicit TurnGuard(bool& flag) : flag_(flag) { flag_ = true; }
-    ~TurnGuard() { flag_ = false; }
-  };
   // Publish lifecycle boundaries even when no model response is produced.
-  {
-    TurnGuard guard(turn_active_);
-    if (channel_ || !session_file_.empty()) PublishChannelState(false);
-    agent_.Turn(input, std::move(content), images, request_id_, origin_);
-    SteeringState().Take();
-  }
+  if (channel_ || !session_file_.empty()) PublishChannelState(false);
+  agent_.Turn(input, std::move(content), images, request_id_, origin_);
+  SteeringState().Take();
 #ifdef UAGENT_BROWSER
   // The turn is over: the shared browser is free for the next conversation.
   if (!context_.browser_lease.empty()) {

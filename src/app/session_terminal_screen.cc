@@ -26,7 +26,7 @@ namespace uagent::session {
 namespace {
 // The pinned row from the worker's state frame: the working row while a turn
 // runs, the session row otherwise -- the same renderers presentation_test pins.
-std::string StatusRow(const json& state, bool interrupting,
+std::string StatusRow(const json& state, bool running, bool interrupting,
                       std::string_view verbosity) {
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
   const int64_t window = JsonValue(state, "context_window", int64_t{0});
@@ -49,7 +49,7 @@ std::string StatusRow(const json& state, bool interrupting,
       }
     }
   }
-  if (JsonValue(state, "turn_active", false)) {
+  if (running) {
     // The worker's clock, so a terminal attached mid-turn counts from the
     // turn's start and not from its own.
     const int64_t now = NowMillis();
@@ -184,13 +184,15 @@ void Terminal::Absorb() {
 void Terminal::Paint() {
   Absorb();
   json state;
+  bool running = false;
   {
     std::lock_guard lock(mutex_);
     state = state_;
+    running = running_;
   }
-  if (!JsonValue(state, "turn_active", false)) interrupting_ = false;
+  if (!running) interrupting_ = false;
   region_.SetStatus(
-      StatusBarLine(StatusRow(state, interrupting_, Detail().level)));
+      StatusBarLine(StatusRow(state, running, interrupting_, Detail().level)));
   const RawComposer::Layout draft = composer_.View();
   region_.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
   region_.Flush();

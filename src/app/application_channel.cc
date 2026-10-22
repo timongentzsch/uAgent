@@ -138,7 +138,6 @@ void Application::PublishChannelState(bool checkpoint) {
     }
   }
   state["turns"] = agent_.UserTurns();
-  state["turn_active"] = turn_active_;
   state["chat_re"] = agent_.ChatRe();
   state["activities"] = runtime_.processes.ActivityViews();
   state["agents"] = AgentSummaries(runtime_.processes);

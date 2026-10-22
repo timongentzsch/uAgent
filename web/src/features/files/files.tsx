@@ -68,10 +68,12 @@ export default function Files({
   );
   const search = query.trim();
   const found = useResource<Found | undefined>(
-    (live) =>
+    (signal) =>
       search
         ? new Promise((done) => setTimeout(done, SEARCH_DELAY_MS)).then(() =>
-            live() ? api<Found>(routes.files(id, "find", search)) : undefined,
+            signal.aborted
+              ? undefined
+              : api<Found>(routes.files(id, "find", search)),
           )
         : undefined,
     [id, search],

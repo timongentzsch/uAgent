@@ -21,7 +21,10 @@ import type {
   ToolRowBlock,
 } from "../../shared/types.ts";
 import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
-import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
+import { formatMoment } from "../../shared/time.ts";
+import { devicePrefs } from "../../shared/device-prefs.ts";
+import { useStored } from "../../shared/storage.ts";
+import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 import { Mail, Minimize2, X } from "lucide-preact";
 import {
@@ -96,7 +99,7 @@ function MentionFile({
 // Who wrote a row and when, e.g. "You, 10:32": the row's accessible name
 // and its menu's. Smart and absolute styles only, so it needs no ticking.
 function useRowName(who: string, time?: string) {
-  const prefs = useContext(TimePrefsContext);
+  const [prefs] = useStored(devicePrefs.time);
   const date = time ? new Date(time) : null;
   if (!date || Number.isNaN(date.getTime())) return who;
   const style = prefs.style === "absolute" ? "absolute" : "smart";
@@ -205,17 +208,18 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
     session.id,
     retry,
   ]);
-  // A long diff arrives as its opening; the row shows the stored whole.
-  const [change, setChange] = useState<string>();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reads the stored diff once per session and retry
-  useEffect(() => {
-    if (!online || !call?.change_path) return;
-    const abort = new AbortController();
-    load(call.detail_id || `t-${call.call_id}`, false, abort.signal)
-      .then((page) => setChange(page.text))
-      .catch((error) => abort.signal.aborted || setLoadError(error));
-    return () => abort.abort();
-  }, [online, call?.change_path, session.id, retry]);
+  // A long diff arrives as its opening; the row shows the stored whole,
+  // read once per session and retry.
+  const diff = useResource(
+    (signal) =>
+      online && call?.change_path
+        ? load(call.detail_id || `t-${call.call_id}`, false, signal).then(
+            (page) => page.text,
+          )
+        : undefined,
+    [online, call?.change_path, session.id, retry],
+  );
+  const change = diff.value;
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
@@ -371,7 +375,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
               output={output}
               text={text}
               expanding={expanding}
-              loadError={loadError}
+              loadError={loadError || diff.error}
               retry={() => setRetry(retry + 1)}
               online={online}
               inspect={inspect}

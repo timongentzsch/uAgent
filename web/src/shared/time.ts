@@ -1,6 +1,5 @@
 // One owner for how moments read. Every timestamp renders through <Time>,
 // which formats with these preferences.
-import { createContext } from "preact";
 import { useEffect, useState } from "preact/hooks";
 
 export interface TimePrefs {
@@ -11,7 +10,6 @@ export interface TimePrefs {
   style: "smart" | "relative" | "absolute";
 }
 export const defaultTimePrefs: TimePrefs = { clock: "system", style: "smart" };
-export const TimePrefsContext = createContext<TimePrefs>(defaultTimePrefs);
 
 export function normalizeTimePrefs(value: unknown): TimePrefs {
   const prefs = (value || {}) as Partial<TimePrefs>;

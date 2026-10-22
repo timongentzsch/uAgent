@@ -1,8 +1,14 @@
-import { tabStorage } from "../../shared/storage.ts";
+import { tabDrafts } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { Plus, ChevronDown, Pencil, ChevronLeft } from "lucide-preact";
 import {
   Actions,
@@ -21,7 +27,6 @@ import {
   Time,
 } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
-import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { useLibrary, ScopeField } from "./management.tsx";
 import { ProjectField } from "../../shared/project-field.tsx";
@@ -29,6 +34,7 @@ import ImportDialog from "./import.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { useResource } from "../../shared/use-resource.ts";
 
 type Draft = {
   item: LibraryItem;
@@ -94,31 +100,31 @@ export default function Library({
   );
   const [rename, setRename] = useState("");
   const generation = useRef(0);
-  const storage = storageKeys.library(kind, cwd);
+  const drafts = useMemo(
+    () => tabDrafts<Draft>(storageKeys.library(kind, cwd)),
+    [kind, cwd],
+  );
   const dirty = !!item && (!item.key || content !== item.content);
   useLayoutEffect(() => {
     generation.current++;
     setError(null);
     setLoading(false);
-    const key = tabStorage.getItem(`${storage}-last`);
-    const saved = key ? readStored<Draft | null>(tabStorage, key, null) : null;
+    const saved = drafts.open.read();
     setItem(saved?.item || null);
     setContent(saved?.content || "");
     setName(saved?.name || "");
     setNewScope(saved?.scope || "project");
     setEditing(!!saved);
-  }, [storage]);
+  }, [drafts]);
   // Persist before navigation can unmount the editor ahead of the next paint.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new folder or kind resets the item above first; writing the old item under the new key would be wrong
   useLayoutEffect(() => {
     if (!item || !dirty) return;
-    const key = `${storage}-${item.key || "new"}`;
-    writeStored(tabStorage, key, { item, content, name, scope: newScope });
-    tabStorage.setItem(`${storage}-last`, key);
+    drafts.keep(item.key, { item, content, name, scope: newScope });
   }, [item, content, name, newScope]);
   function clearDraft() {
-    tabStorage.removeItem(`${storage}-${item?.key || "new"}`);
-    tabStorage.removeItem(`${storage}-last`);
+    drafts.forget(item?.key);
+    drafts.open.write(null);
   }
   useEffect(
     () => () => {
@@ -134,11 +140,7 @@ export default function Library({
       const result = await manage(kind, { cwd, action: "get", key: entry.key });
       if (generation.current !== current || !result.item) return;
       if (result.item.error) throw new Error(result.item.error);
-      const saved = readStored<Draft | null>(
-        tabStorage,
-        `${storage}-${entry.key}`,
-        null,
-      );
+      const saved = drafts.read(entry.key);
       setItem(saved?.item || result.item);
       setName(result.item.name);
       setNewScope(result.item.scope);
@@ -206,30 +208,26 @@ export default function Library({
     }
   }
   // Paths the importer can take; an item is offered only if it is one.
-  const [importPaths, setImportPaths] = useState<string[]>([]);
-  useEffect(() => {
-    setImportPaths([]);
-    if (!cwd || !online) return;
-    let current = true;
-    manage("import", {
-      cwd,
-      action: "list",
-      only: kind === "skills" ? "skill" : "memory",
-    })
-      .then((result) => {
-        if (current)
-          setImportPaths(
+  const importPaths = useResource(
+    (signal) =>
+      cwd && online
+        ? manage(
+            "import",
+            {
+              cwd,
+              action: "list",
+              only: kind === "skills" ? "skill" : "memory",
+            },
+            { signal },
+          ).then((result) =>
             (result.items || [])
               .filter((entry) => !entry.blocked && !entry.collides)
               .map((entry) => entry.path),
-          );
-      })
-      .catch(() => {});
-    return () => {
-      current = false;
-    };
-  }, [kind, cwd, version, online]);
-  const importable = !!item && importPaths.includes(item.path);
+          )
+        : undefined,
+    [kind, cwd, version, online],
+  );
+  const importable = !!item && !!importPaths.value?.includes(item.path);
   async function importItem() {
     if (!item) return;
     setBusy(true);

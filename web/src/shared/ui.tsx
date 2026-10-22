@@ -37,12 +37,9 @@ import { Input, Select } from "./form-controls.tsx";
 import { cleanText } from "./display.ts";
 import { useResource } from "./use-resource.ts";
 export { cleanText };
-import {
-  TimePrefsContext,
-  formatFullMoment,
-  formatMoment,
-  useNow,
-} from "./time.ts";
+import { formatFullMoment, formatMoment, useNow } from "./time.ts";
+import { devicePrefs } from "./device-prefs.ts";
+import { useStored } from "./storage.ts";
 
 // Every timestamp in the app: formatted by the viewer's time preferences,
 // with the full moment on hover. `value` is an ISO string or epoch ms.
@@ -79,7 +76,7 @@ export function updateChecked<P extends object>(
 }
 
 export function Time({ value }: { value?: string | number }) {
-  const prefs = useContext(TimePrefsContext);
+  const [prefs] = useStored(devicePrefs.time);
   const now = useNow(prefs.style !== "absolute");
   if (value == null || value === "") return null;
   const date = new Date(value);

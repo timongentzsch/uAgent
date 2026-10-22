@@ -1,5 +1,5 @@
 import { render } from "preact";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Plus, Wrench } from "lucide-preact";
 import {
   Actions,
@@ -67,9 +67,9 @@ const SETTINGS = [
 ];
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
-import { applyMotion, applyTheme, applyZoom } from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
-import { devicePrefs } from "./shared/device-prefs.ts";
+import { applyDevicePrefs, devicePrefs } from "./shared/device-prefs.ts";
+import { useStored } from "./shared/storage.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
 import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
@@ -220,22 +220,12 @@ function DelayedContent() {
 }
 
 function Showcase() {
-  const [theme, setTheme] = useState(devicePrefs.theme.read);
-  const [zoom, setZoom] = useState(devicePrefs.zoom.read);
+  const [theme, setTheme] = useStored(devicePrefs.theme);
+  const [zoom, setZoom] = useStored(devicePrefs.zoom);
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
     "example" | "confirm" | "browser" | "loading" | "image" | null
   >(null);
-
-  useEffect(() => {
-    devicePrefs.theme.write(theme);
-    return applyTheme(theme);
-  }, [theme]);
-  useLayoutEffect(() => applyMotion(devicePrefs.motion.read()), []);
-  useEffect(() => {
-    devicePrefs.zoom.write(zoom);
-    applyZoom(zoom);
-  }, [zoom]);
 
   return (
     <main class="showcase">
@@ -639,4 +629,5 @@ function Showcase() {
   );
 }
 
+applyDevicePrefs();
 render(<Showcase />, document.getElementById("app")!);

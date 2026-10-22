@@ -1,4 +1,4 @@
-import { storage, tabStorage } from "../shared/storage.ts";
+import { stored, tabStorage, useStored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import type {
   JSONValue,
@@ -19,15 +19,8 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import {
-  retainedViews,
-  readStored,
-  writeStored,
-  hasContent,
-  patchCatalogue,
-} from "./store.ts";
+import { retainedViews, hasContent, patchCatalogue } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
-import { usePersisted } from "./use-persisted.ts";
 import { api, manage, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
@@ -40,6 +33,46 @@ import {
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
 import { needsYou } from "./attention.ts";
+
+// What this device keeps of the host's state. A draft is saved once typing
+// pauses, not per key; an upload still in flight when the page went away
+// never finishes, and its chip would have no id the host knows.
+const kept = {
+  catalogue: stored<Catalogue["sessions"]>(storageKeys.catalogue, []),
+  drafts: stored<Record<string, Draft>>(
+    storageKeys.drafts,
+    {},
+    (value) =>
+      Object.fromEntries(
+        Object.entries(
+          (value && typeof value === "object" ? value : {}) as Record<
+            string,
+            Draft
+          >,
+        ).map(([id, draft]) => [
+          id,
+          { ...draft, files: draft.files.filter((file) => !file.pending) },
+        ]),
+      ),
+    {
+      delay: draftSaveDelayMs,
+      kept: (value) =>
+        Object.fromEntries(
+          Object.entries(value).filter(([, draft]) => hasContent(draft)),
+        ),
+    },
+  ),
+  unread: stored(
+    storageKeys.unread,
+    new Set<string>(),
+    (value) => new Set(Array.isArray(value) ? (value as string[]) : []),
+    { kept: (value) => [...value] },
+  ),
+  outgoing: stored<Outgoing[]>(storageKeys.outgoing, [], undefined, {
+    where: tabStorage,
+  }),
+  read: stored<Record<string, number>>(storageKeys.read, {}),
+};
 
 // What the sidebar lists: conversations, not scheduled runs or their tasks.
 function listedSessions({
@@ -90,36 +123,18 @@ export function useHost(
   // The last list this device saw paints the sidebar, title and composer
   // from the first frame of a reload; the host's answer replaces it, and
   // everything stays inert until then (`online` is false).
-  const [catalogue, setCatalogue] = useState<Catalogue>(() => {
-    const sessions = readStored<Catalogue["sessions"]>(
-      storage,
-      storageKeys.catalogue,
-      [],
-    );
-    return { sessions, capabilities: {}, devices: [] };
-  });
+  const [catalogue, setCatalogue] = useState<Catalogue>(() => ({
+    sessions: kept.catalogue.read(),
+    capabilities: {},
+    devices: [],
+  }));
   const [snapshots] = useState(snapshotStore);
   const [selected, setSelected] = useState(selectedFromURL);
   // Unsent drafts survive an evicted or reloaded app; logout clears them.
-  // An upload still in flight when the page went away never finishes; its
-  // chip would have no id the host knows.
-  const [drafts, setDrafts] = useState(() =>
-    Object.fromEntries(
-      Object.entries(
-        readStored<Record<string, Draft>>(storage, storageKeys.drafts, {}),
-      ).map(([id, draft]) => [
-        id,
-        { ...draft, files: draft.files.filter((file) => !file.pending) },
-      ]),
-    ),
-  );
+  const [drafts, setDrafts] = useStored(kept.drafts);
   const [error, setError] = useState("");
-  const [unread, setUnread] = useState(
-    () => new Set(readStored<string[]>(storage, storageKeys.unread, [])),
-  );
-  const [outgoing, setOutgoing] = useState(() =>
-    readStored<Outgoing[]>(tabStorage, storageKeys.outgoing, []),
-  );
+  const [unread, setUnread] = useStored(kept.unread);
+  const [outgoing, setOutgoing] = useStored(kept.outgoing);
   const [following, setFollowing] = useState(true);
   const stream = useRef<EventSource | undefined>(undefined);
   const reconnecting = useRef(false);
@@ -141,9 +156,7 @@ export function useHost(
   const notifications = useRef(false);
   const subscribed = useRef(false);
   const reading = useRef(false);
-  const readCounts = useRef(
-    readStored<Record<string, number>>(storage, storageKeys.read, {}),
-  );
+  const readCounts = useRef(kept.read.read());
   const outgoingRef = useRef(outgoing);
   const localRequests = useRef(new Set<string>());
   subscribed.current = !!catalogue.capabilities.subscribed;
@@ -228,7 +241,7 @@ export function useHost(
     revoked.current = true;
     catalogueRef.current = undefined;
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
-    storage.removeItem(storageKeys.catalogue);
+    kept.catalogue.write([]);
     setDrafts({});
     setAuthenticated(false);
     live.current = {};
@@ -613,7 +626,7 @@ export function useHost(
     [catalogue.sessions, catalogue.scheduled],
   );
   useEffect(() => {
-    if (authenticated) writeStored(storage, storageKeys.catalogue, listed);
+    if (authenticated) kept.catalogue.write(listed);
   }, [authenticated, listed]);
   // The tab title and the installed app's badge count what needs you;
   // written only when that count changes.
@@ -626,19 +639,6 @@ export function useHost(
         : navigator.clearAppBadge()
       ).catch(() => {});
   }, [attention]);
-  usePersisted(storage, storageKeys.unread, unread, (value) => [...value]);
-  usePersisted(tabStorage, storageKeys.outgoing, outgoing);
-  // Saved once typing pauses, not per key.
-  usePersisted(
-    storage,
-    storageKeys.drafts,
-    drafts,
-    (value) =>
-      Object.fromEntries(
-        Object.entries(value).filter(([, draft]) => hasContent(draft)),
-      ),
-    draftSaveDelayMs,
-  );
   // Reading the conversation marks each of its snapshots read.
   useEffect(() => {
     if (!readingConversation || !following) return;
@@ -648,7 +648,7 @@ export function useHost(
       const incoming = snapshot.metadata?.incoming || 0;
       if ((readCounts.current[selected] || 0) < incoming) {
         readCounts.current[selected] = incoming;
-        writeStored(storage, storageKeys.read, readCounts.current);
+        kept.read.write(readCounts.current);
       }
       setUnread((prior) => {
         if (!prior.has(selected)) return prior;

@@ -1,7 +1,7 @@
 import type { CommandResults } from "../../shared/types.ts";
-import { useEffect, useRef, useState } from "preact/hooks";
 import { manage } from "../../state/api.ts";
 import { Field, Select } from "../../shared/ui.tsx";
+import { useResource } from "../../shared/use-resource.ts";
 import "./management.css";
 
 export function useLibrary(
@@ -11,41 +11,21 @@ export function useLibrary(
   online: boolean,
 ) {
   const key = `${kind}:${cwd}`;
-  const [result, setResult] = useState<{
-    key: string;
-    data?: CommandResults["memory"];
-    error?: unknown;
-  }>();
-  const [attempt, setAttempt] = useState(0);
-  const generation = useRef(0);
-  useEffect(() => {
-    const current = ++generation.current;
-    const controller = new AbortController();
-    setResult((value) =>
-      value?.error ? { ...value, error: undefined } : value,
-    );
-    if (cwd && online)
-      manage(kind, { cwd, action: "list" }, { signal: controller.signal })
-        .then((value) => {
-          if (generation.current === current) setResult({ key, data: value });
-        })
-        .catch((error) => {
-          if (generation.current === current)
-            setResult((value) => ({
-              key,
-              data: value?.key === key ? value.data : undefined,
-              error,
-            }));
-        });
-    return () => {
-      ++generation.current;
-      controller.abort();
-    };
-  }, [key, kind, cwd, version, attempt, online]);
+  // Another kind or folder shows nothing of the last one's list.
+  const list = useResource<{ key: string; data: CommandResults["memory"] }>(
+    (signal) =>
+      cwd && online
+        ? manage(kind, { cwd, action: "list" }, { signal }).then((data) => ({
+            key,
+            data,
+          }))
+        : undefined,
+    [key, version, online],
+  );
   return {
-    data: result?.key === key ? result.data || null : null,
-    error: result?.key === key ? result.error : null,
-    refresh: () => setAttempt((value) => value + 1),
+    data: list.value?.key === key ? list.value.data : null,
+    error: list.error,
+    refresh: list.retry,
   };
 }
 export function ScopeField({

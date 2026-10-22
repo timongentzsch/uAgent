@@ -1,4 +1,4 @@
-import { tabStorage } from "../shared/storage.ts";
+import { stored, tabStorage } from "../shared/storage.ts";
 // Where each transcript was left: following its end, or a message (and the
 // paragraph inside it) with its offset. Kept in browser storage for this tab.
 import { maxTranscriptBookmarks } from "../shared/limits.ts";
@@ -11,40 +11,25 @@ export type Bookmark = {
   offset?: number;
 };
 
-const SAVE_MS = 500;
-export const bookmarks = new Map<string, Bookmark>();
-try {
-  for (const [key, value] of Object.entries(
-    JSON.parse(tabStorage.getItem(storageKeys.bookmarks) || "{}"),
-  ).slice(-maxTranscriptBookmarks)) {
-    if (typeof (value as Bookmark)?.follow === "boolean")
-      bookmarks.set(key, value as Bookmark);
-  }
-} catch {
-  // Private browsing can deny session storage. In-memory bookmarks still work.
-}
-
 // Bookmarks change on every scroll frame; storage only needs the last one
-// before the page goes away, so writes trail by SAVE_MS and flush on hide.
-let saving: ReturnType<typeof setTimeout> | undefined;
-function saveBookmarks() {
-  clearTimeout(saving);
-  saving = undefined;
-  try {
-    tabStorage.setItem(
-      storageKeys.bookmarks,
-      JSON.stringify(Object.fromEntries(bookmarks)),
-    );
-  } catch {
-    // In-memory restoration still works when storage is unavailable.
-  }
-}
-addEventListener("pagehide", () => saving && saveBookmarks());
+// before the page goes away, so writes wait for scrolling to pause.
+const kept = stored(
+  storageKeys.bookmarks,
+  new Map<string, Bookmark>(),
+  (value) =>
+    new Map(
+      Object.entries(value && typeof value === "object" ? value : {})
+        .filter(([, bookmark]) => typeof bookmark?.follow === "boolean")
+        .slice(-maxTranscriptBookmarks),
+    ),
+  { where: tabStorage, delay: 500, kept: Object.fromEntries },
+);
+export const bookmarks = kept.read();
 
 export function storeBookmark(key: string, value: Bookmark) {
   bookmarks.delete(key);
   bookmarks.set(key, value);
   while (bookmarks.size > maxTranscriptBookmarks)
     bookmarks.delete(bookmarks.keys().next().value!);
-  saving ??= setTimeout(saveBookmarks, SAVE_MS);
+  kept.write(bookmarks);
 }

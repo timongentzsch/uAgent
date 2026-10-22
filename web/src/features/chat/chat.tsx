@@ -4,7 +4,8 @@ import type {
   SessionRef,
   Snapshot,
 } from "../../shared/types.ts";
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import {
   LoadError,
   Placeholder,
@@ -69,21 +70,18 @@ function Chat({
 }: ChatProps) {
   const { online, load: loadSnapshot, report } = useHostContext();
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [preparedKey, setPreparedKey] = useState("");
+  // Prepares the history once its snapshot arrives, not on every streamed
+  // frame.
+  const { value: preparedKey } = useResource(
+    () =>
+      snapshot
+        ? prepareHistoryBlocks(snapshot.state?.view?.blocks || [])
+            .catch(() => {}) // The message renderer shows its own retryable error.
+            .then(() => selected)
+        : undefined,
+    [selected, !!snapshot],
+  );
   const prepared = !!snapshot && preparedKey === selected;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: prepares the history once its snapshot arrives, not on every streamed frame
-  useEffect(() => {
-    if (!snapshot) return;
-    let active = true;
-    prepareHistoryBlocks(snapshot.state?.view?.blocks || [])
-      .catch(() => {}) // The message renderer shows its own retryable error.
-      .finally(() => {
-        if (active) setPreparedKey(selected);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selected, !!snapshot]);
   async function loadOlder() {
     if (loadingOlder) return;
     setLoadingOlder(true);

@@ -1,6 +1,7 @@
 import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
-import { useEffect, useId, useMemo, useState } from "preact/hooks";
+import { useId, useMemo, useState } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import { Download } from "lucide-preact";
 import { downloadRevokeMs } from "../../shared/limits.ts";
 import {
@@ -32,30 +33,23 @@ export default function Raw({
   const [attempt, setAttempt] = useState(
     Math.max(0, (exchanges?.length || 1) - 1),
   );
-  const [loaded, setBody] = useState<JSONValue>();
-  const body = value === undefined ? loaded : value;
   const [tab, setTab] = useState<"request" | "response">(part);
   const [source, setSource] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const [retry, setRetry] = useState(0);
-  const [metadata, setMetadata] = useState<Exchange>();
   const prefix = useId();
   const selectedExchange = captured[attempt];
   const exchange =
     latest?.find((item) => item.id === selectedExchange?.id) ||
     selectedExchange;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reads again for a new target, a retry or the exchange's state, not for each new exchange object
-  useEffect(() => {
-    if (value !== undefined) return;
-    const abort = new AbortController();
-    setBody(undefined);
-    setMetadata(undefined);
-    setError(null);
-    const read = async () => {
+  // Reads again for a new target or the exchange's state, not for each new
+  // exchange object; what was read for another shows nothing meanwhile.
+  const target = [id, exchange?.id, exchange?.state, http && tab].join();
+  const read = useResource(
+    async (signal) => {
+      if (value !== undefined) return;
       if (http && !exchange) {
         if (!prepare) throw new Error("This HTTP exchange was not captured.");
         const result = await command("context", prepare);
-        if (abort.signal.aborted) return;
+        if (signal.aborted) return;
         if (result.pending || !result.result?.exchanges?.length)
           throw new Error("Context is not available yet. Try again shortly.");
         setCaptured(result.result.exchanges);
@@ -65,25 +59,21 @@ export default function Raw({
       const query = http
         ? `http=${encodeURIComponent(exchange!.id)}&part=${tab}`
         : `detail=${encodeURIComponent(id || "")}&raw=1`;
-      const page = await readPages(
-        routes.session(session!, query),
-        abort.signal,
-      );
-      if (abort.signal.aborted) return;
-      setMetadata(page.exchange);
-      setBody(
-        http
+      const page = await readPages(routes.session(session!, query), signal);
+      return {
+        target,
+        metadata: page.exchange,
+        body: (http
           ? page.text
           : id?.startsWith("t-")
             ? JSON.parse(page.text)
-            : { output: page.text },
-      );
-    };
-    read().catch((failure) => {
-      if (!abort.signal.aborted) setError(failure);
-    });
-    return () => abort.abort();
-  }, [session, id, value, exchange?.id, exchange?.state, http && tab, retry]);
+            : { output: page.text }) as JSONValue,
+      };
+    },
+    [session, id, value, exchange?.id, exchange?.state, http && tab],
+  );
+  const loaded = read.value?.target === target ? read.value : undefined;
+  const body = value === undefined ? loaded?.body : value;
   const object =
     body && typeof body === "object" && !Array.isArray(body) ? body : undefined;
   const tool = !http && !!object && "request" in object;
@@ -92,7 +82,7 @@ export default function Raw({
     typeof selected === "string"
       ? selected
       : JSON.stringify(selected, null, 2) || "";
-  const info = metadata || exchange;
+  const info = loaded?.metadata || exchange;
   const headers = info?.[`${tab}_headers`];
   const stream =
     http &&
@@ -195,8 +185,8 @@ export default function Raw({
             <pre>{headers}</pre>
           </details>
         )}
-        {error ? (
-          <LoadError error={error} retry={() => setRetry(retry + 1)} />
+        {read.error ? (
+          <LoadError error={read.error} retry={read.retry} />
         ) : body === undefined ? (
           <Spinner label="Loading full body…" surface />
         ) : !text.trim() ? (

@@ -15,7 +15,6 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/media/attachments.h"
-#include "include/tools/files.h"
 
 namespace uagent::web {
 namespace {

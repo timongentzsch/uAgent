@@ -36,7 +36,6 @@
 #include "include/core/signals.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/verbosity.h"
-#include "include/tools/files.h"
 #include "include/web/assets.h"
 #include "include/web/browser_viewer.h"
 #include "include/web/protocol.h"

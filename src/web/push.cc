@@ -26,7 +26,6 @@
 #include "include/core/private_store.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
-#include "include/tools/files.h"
 #include "include/web/protocol.h"
 #include "include/web/push_crypto.h"
 

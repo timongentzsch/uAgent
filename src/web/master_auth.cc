@@ -15,7 +15,6 @@
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
-#include "include/tools/files.h"
 #include "include/web/protocol.h"
 #include "src/web/master_internal.h"
 

@@ -87,7 +87,7 @@
   align-items: stretch;
   gap: var(--space-2);
 }
-/* Deny · Allow for session · Allow once: one row of equal buttons. */
+/* Deny · Allow for this conversation · Allow once: one row of equal buttons. */
 .decision-answers {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);

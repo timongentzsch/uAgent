@@ -4568,7 +4568,7 @@ maintained libraries used by this software which have their own
 licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
-## lucide-preact@1.55.0
+## lucide-preact@1.59.0
 
 ISC License
 
@@ -4734,7 +4734,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
-## mermaid@12.1.0
+## mermaid@12.2.0
 
 The MIT License (MIT)
 

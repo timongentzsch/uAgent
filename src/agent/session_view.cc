@@ -524,13 +524,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                     {"status", JsonValue(detail, "status", "running")},
                     {"activity", JsonValue(detail, "activity", json::object())},
                     {"text", ""}};
-        // Kept receipts replay the exact live row and its view.
-        if (detail.contains("call_replay")) {
-          row["call_replay"] = detail["call_replay"];
-          if (const json* view = JsonObject(detail["call_replay"], "view")) {
-            row["view"] = *view;
-          }
-        }
+        if (detail.contains("view")) row["view"] = detail["view"];
         if (detail.contains("exchange_path")) {
           row["exchange_path"] = detail["exchange_path"];
         }
@@ -568,9 +562,6 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
       block["tail"] = text.substr(Utf8BoundaryAfter(text, text.size() - 512));
     }
     block["artifact"] = detail.contains("artifact");
-    if (detail.contains("result_replay")) {
-      block["replay"] = detail["result_replay"];
-    }
     if (detail.contains("exchange_path")) {
       block["exchange_path"] = detail["exchange_path"];
     }

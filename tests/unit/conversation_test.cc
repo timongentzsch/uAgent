@@ -805,7 +805,8 @@ void TestToolResultHealsMissingMetadata() {
                                          {"response_id", "r-1"},
                                          {"occurrence_id", "r-1:abc"},
                                          {"detail_id", "t-hash1"},
-                                         {"activity", {{"label", "$ ls"}}}});
+                                         {"activity", {{"label", "$ ls"}}},
+                                         {"view", {{"target", "ls"}}}});
   // … but the result message lost its id metadata (only Push's time).
   conversation.Push(
       {{"role", "tool"}, {"tool_call_id", "call-1"}, {"content", "out"}},
@@ -818,9 +819,10 @@ void TestToolResultHealsMissingMetadata() {
   CHECK(result["duration_ms"] == 12.5);
   CHECK(result["detail_id"] == "t-hash1");
   // The call and its result are one row: the result keeps its place and
-  // takes the call's arguments.
+  // takes the call's arguments and the view it is drawn with.
   CHECK(view["blocks"].size() == 2);
   CHECK(result["arguments"] == "{\"command\":\"ls\"}");
+  CHECK(result["view"]["target"] == "ls");
   // A message with neither metadata nor facts reads complete, never a
   // forever-"running" ghost.
   conversation.Push(

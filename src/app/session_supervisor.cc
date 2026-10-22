@@ -477,11 +477,6 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   }
   if (kind != "event") return true;
   const std::string type = JsonValue(frame, "type", "");
-  // Terminal renderings of what the transcript rows already show; terminals
-  // read them from the worker, browsers never do.
-  if (type == AppType(EventId::kPresentation)) {
-    return false;
-  }
   RecordRunEvent(session, type, frame);
   json patch;
   ApplySessionEvent(session.state, type, frame["data"], &patch);

@@ -61,17 +61,10 @@ enum class EventId : uint16_t {
   kHttpExchange,
   kUsageUpdated,
   kResponseSources,
-  kPresentation,
 };
 
 enum class EventRedaction : uint8_t { kNone, kPublicProjection };
 
-enum class PresentationKind : uint8_t {
-  kNone,
-  kToolCall,
-  kToolResult,
-  kNotice,
-};
 enum class PresentationStatus : uint8_t {
   kNeutral,
   kSucceeded,
@@ -80,50 +73,13 @@ enum class PresentationStatus : uint8_t {
   kWarned,
 };
 
-struct PresentationArtifact {
-  std::string kind;
-  std::string path;
-  uint64_t bytes = 0;
-};
-
-// Provider-independent terminal/replay data. Producers decide semantics once;
-// presenters decide only layout, color, and verbosity.
+// A notice as every client shows it: one line, its severity, and whether it
+// is routine detail a client shows only when asked for the full picture.
 struct PresentationRecord {
-  PresentationKind kind = PresentationKind::kNone;
   PresentationStatus status = PresentationStatus::kNeutral;
-  std::string id;
-  json activity = json::object();
   std::string title;
-  std::string summary;
-  std::string detail;
-  bool multiline = false;
-  // A +/- change receipt drawn above the result row. A file write is fully
-  // told by its diff, but a script that was written and then run also has
-  // something to say, so `change` and `detail` can both be set.
-  std::string change;
-  // Where a diff longer than the opening `change` carries is kept whole.
-  std::string change_path;
-  // Opening a skill changes how the whole turn proceeds, so it is marked in
-  // the scrollback rather than reading as one more tool row.
-  bool skill = false;
-  bool poll = false;  // bare activity-tool check, no interaction sent
-  // A call's ToolView: how its input reads, and how to render its result.
-  json view = nullptr;
-  // Routine detail a client shows only when asked for the full picture.
   bool minor = false;
-  // The result text the model received, for a client that expands results.
-  // Live events only: retained history already holds it as the tool message.
-  std::string output;
-  std::vector<PresentationArtifact> artifacts;
 };
-
-// What the agent decided to do is shown in full; results carry a one-line
-// summary and their output, and each client picks one. A label with newlines
-// becomes detail so the row stays one line.
-inline void SetCallLabel(PresentationRecord& record, std::string label) {
-  record.multiline = label.find('\n') != std::string::npos;
-  (record.multiline ? record.detail : record.summary) = std::move(label);
-}
 
 // What `UAGENT_INTERNAL_HEADLESS_PROGRESS` prefixes every echoed line with. A
 // parent reading a child's stream tells progress from the child's final answer

@@ -15,7 +15,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
@@ -89,14 +88,6 @@ void PrintCitationSources(const json& annotations) {
   }
 }
 
-// Shared by the poll and plain tool-result ladders. The notice ladder above
-// maps kWarned instead of kCancelled and stays separate on purpose.
-const char* ResultStyle(PresentationStatus status) {
-  if (status == PresentationStatus::kFailed) return RED();
-  if (status == PresentationStatus::kCancelled) return YEL();
-  return DIM();
-}
-
 // A command's output as this row shows it: its own colouring (ls --color, a
 // test runner) is dropped, since TerminalSafe would spell each escape out.
 std::string OutputText(std::string_view text) {
@@ -161,40 +152,217 @@ std::string TurnStatsLine(const json& summary) {
        FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
 }
 
-// The inverse of PresentationJson: a record as the event stream carries it.
+// The inverse of PresentationJson: a notice as the event stream carries it.
 PresentationRecord PresentationFromJson(const json& value) {
-  PresentationRecord record;
-  auto kind = JsonValue(value, "kind", "");
-  record.kind = kind == "tool_call"     ? PresentationKind::kToolCall
-                : kind == "tool_result" ? PresentationKind::kToolResult
-                                        : PresentationKind::kNotice;
-  auto status = JsonValue(value, "status", "");
-  record.status = status == "succeeded"   ? PresentationStatus::kSucceeded
-                  : status == "failed"    ? PresentationStatus::kFailed
-                  : status == "cancelled" ? PresentationStatus::kCancelled
-                  : status == "warned"    ? PresentationStatus::kWarned
-                                          : PresentationStatus::kNeutral;
-  record.title = JsonValue(value, "title", "");
-  record.summary = JsonValue(value, "summary", "");
-  record.detail = JsonValue(value, "detail", "");
-  record.change = JsonValue(value, "change", "");
-  record.change_path = JsonValue(value, "change_path", "");
-  record.multiline = JsonValue(value, "multiline", false);
-  record.id = JsonValue(value, "id", "");
-  record.skill = JsonValue(value, "skill", false);
-  record.poll = JsonValue(value, "poll", false);
-  record.minor = JsonValue(value, "minor", false);
-  record.output = JsonValue(value, "output", "");
-  record.view = JsonValue(value, "view", json(nullptr));
-  record.activity = JsonValue(value, "activity", json::object());
-  if (const json* artifacts = JsonArray(value, "artifacts")) {
-    for (const auto& artifact : *artifacts) {
-      record.artifacts.push_back({JsonValue(artifact, "kind", ""),
-                                  JsonValue(artifact, "path", ""),
-                                  JsonValue(artifact, "bytes", size_t{0})});
+  const std::string status = JsonValue(value, "status", "");
+  return {status == "succeeded"   ? PresentationStatus::kSucceeded
+          : status == "failed"    ? PresentationStatus::kFailed
+          : status == "cancelled" ? PresentationStatus::kCancelled
+          : status == "warned"    ? PresentationStatus::kWarned
+                                  : PresentationStatus::kNeutral,
+          JsonValue(value, "title", ""), JsonValue(value, "minor", false)};
+}
+
+// Whether a call's stored status is a failure; a cancellation is not one.
+bool Failed(std::string_view status) {
+  return status == "failed" || status == "timed_out";
+}
+
+// The terminal spelling of a ToolView's input parts, the same vocabulary the
+// browser renders: a command after "$", code as-is, fields as "label: value".
+std::string InputPartsText(const json& view) {
+  std::string text;
+  const json* parts = JsonArray(view, "input");
+  if (!parts) return text;
+  for (const json& part : *parts) {
+    const std::string kind = JsonValue(part, "kind", "");
+    if (kind == "command") {
+      text += "$ " + JsonValue(part, "text", "") + "\n";
+    } else if (kind == "code") {
+      const std::string label = JsonValue(part, "label", "");
+      if (!label.empty()) text += label + ":\n";
+      text += JsonValue(part, "text", "") + "\n";
+    } else if (const json* rows = JsonArray(part, "rows")) {
+      for (const json& row : *rows) {
+        if (row.is_array() && row.size() == 2) {
+          text += row[0].get<std::string>() + ": " + row[1].get<std::string>() +
+                  "\n";
+        }
+      }
     }
   }
-  return record;
+  return text;
+}
+
+// "→ Editing src/a.ts": the view's verb and target, as the web row reads
+// while the call runs. A call without a verb was rejected, so it shows the
+// arguments it sent; a multiline label (a script) is shown whole.
+std::string CallRow(const json& block, bool open) {
+  const json view = JsonValue(block, "view", json(nullptr));
+  const json* activity = JsonObject(block, "activity");
+  const std::string label =
+      activity ? JsonValue(*activity, "label", "") : std::string();
+  const std::string name = JsonValue(block, "name", "tool");
+  // A skill is a procedure the rest of the turn follows, so it is worth
+  // finding in the scrollback later; ◆ already marks that class of event.
+  if (name == "skill" && !label.empty()) {
+    return std::string(BOLD()) + RowMark(Mark::kSkill) + TerminalSafe(label) +
+           RST() + "\n";
+  }
+  const json* verb = JsonArray(view, "verb");
+  std::string body =
+      RowMark(Mark::kCall) + (verb && !verb->empty() && (*verb)[0].is_string()
+                                  ? TerminalSafe((*verb)[0].get<std::string>())
+                                  : TerminalSafe(name));
+  const std::string target = JsonValue(view, "target", "");
+  if (label.find('\n') != std::string::npos) {
+    body += '\n' + TerminalSafe(label);
+  } else if (verb && !target.empty()) {
+    body += ' ' + TerminalSafe(FirstLine(target));
+  } else if (!label.empty()) {
+    body += '(' + TerminalSafe(label) + ')';
+  }
+  std::string row = StyledBlock(body, BOLD());
+  if (const std::string input = InputPartsText(view); open && !input.empty()) {
+    row += StyledBlock(Indented(TerminalSafe(input), kDetailIndent), DIM());
+  }
+  return row;
+}
+
+// The output a row holds: all of it, or the start and the end of a long one,
+// each marked where it was cut.
+std::string ResultText(const json& block) {
+  std::string text = JsonValue(block, "text", "");
+  if (JsonValue(block, "truncated", false)) {
+    text += "\n" + AsciiGlyphs("…") + JsonValue(block, "tail", "");
+  }
+  return text;
+}
+
+// A result in one line: its first line and how much follows, after the
+// status of a call that did not succeed.
+std::string ResultSummary(const json& block, std::string_view status) {
+  const std::string text = JsonValue(block, "text", "");
+  std::string summary = text.empty() ? "(empty)" : FirstLine(text);
+  const size_t lines = static_cast<size_t>(std::ranges::count(text, '\n')) +
+                       (text.empty() || text.back() == '\n' ? 0 : 1);
+  // The first line is shown, so the count reports what is elided. A row
+  // holds only the start of a long result, so of that it can say only that
+  // there is more.
+  if (JsonValue(block, "truncated", false)) {
+    summary += " … · more than " + FmtCount(static_cast<int64_t>(text.size())) +
+               " chars";
+  } else if (lines > 1) {
+    summary += " … · +" + std::to_string(lines - 1) + " lines · " +
+               FmtCount(static_cast<int64_t>(text.size())) + " chars";
+  }
+  if (Failed(status) || status == "cancelled") {
+    summary = std::string(status) + ": " + summary;
+  }
+  return summary;
+}
+
+// What stays visible under a result row: a command's last output lines
+// (already printed in full when output is open) and the parts the call
+// produced.
+std::string ResultExtras(const json& block, bool open) {
+  std::string text;
+  if (!open && JsonValue(JsonValue(block, "view", json(nullptr)), "output",
+                         "") == "tail") {
+    std::vector<std::string> lines;
+    std::istringstream input(ResultText(block));
+    for (std::string line; std::getline(input, line);) {
+      if (!Trim(line).empty()) lines.push_back(line);
+    }
+    constexpr size_t kTailLines = 3;
+    for (size_t i = lines.size() > kTailLines ? lines.size() - kTailLines : 0;
+         i < lines.size(); ++i) {
+      text += std::string(DIM()) +
+              Indented(OutputText(lines[i]), kDetailIndent) + RST() + "\n";
+    }
+  }
+  if (const json* parts = JsonArray(block, "parts")) {
+    for (const json& part : *parts) {
+      const std::string kind = JsonValue(part, "kind", "");
+      std::string line;
+      if (kind == "file") {
+        line = JsonValue(part, "name", "") + " · " +
+               FmtBytes(JsonValue(part, "bytes", int64_t{0})) +
+               " · open it in the web app";
+      } else if (kind == "link") {
+        const std::string to = JsonValue(part, "to", "");
+        const std::string id = part.contains("id") && part["id"].is_string()
+                                   ? part["id"].get<std::string>()
+                                   : JsonDump(part.value("id", json()));
+        line = to == "agent"      ? "/agents " + id
+               : to == "activity" ? "/ps " + id
+                                  : "memory " + id;
+      }
+      if (!line.empty()) {
+        text +=
+            std::string(DIM()) +
+            Indented(AsciiGlyphs("↳ " + TerminalSafe(line)), kDetailIndent) +
+            RST() + "\n";
+      }
+    }
+  }
+  return text;
+}
+
+// A finished call as the level lays it out: its group's row, its diff, or
+// its name with the output or a summary of it.
+std::string ResultRow(const json& block, const DetailPolicy& detail) {
+  const std::string status = JsonValue(block, "status", "");
+  const json* activity = JsonObject(block, "activity");
+  if (const json* group = activity ? JsonObject(*activity, "group") : nullptr;
+      group && detail.work != WorkRows::kCalls) {
+    // A run of like calls is one row, drawn where the run starts.
+    if (JsonValue(*group, "id", "") != JsonValue(block, "call_id", "")) {
+      return "";
+    }
+    return StyledBlock(
+        Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
+        DIM());
+  }
+  // A change is told entirely by its diff, so the receipt is the whole row.
+  // A long diff is kept whole: both sides, each line a marker longer.
+  if (const std::string change = JsonValue(block, "change", "");
+      status == "success" && !change.empty()) {
+    std::istringstream input(
+        ReadFile(JsonValue(block, "change_path", ""), 4 * kEditFileBytes)
+            .value_or(change));
+    std::string line, output;
+    if (std::getline(input, line)) {
+      output = std::string(DIM()) + RowMark(Mark::kChange) + RST() + BOLD() +
+               TerminalSafe(line) + RST() + "\n";
+    }
+    while (std::getline(input, line)) {
+      const char* style = DiffLineStyle(line);
+      if (!*style) style = DIM();
+      if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
+      output += std::string(style) +
+                Indented(TerminalSafe(line), kDetailIndent) + RST() + "\n";
+    }
+    return output;
+  }
+  const bool failed = Failed(status);
+  const char* style = failed ? RED() : status == "cancelled" ? YEL() : DIM();
+  const std::string prefix =
+      std::string(style) +
+      Indented(RowMark(failed ? Mark::kFailed : Mark::kResult) +
+                   TerminalSafe(JsonValue(block, "name", "tool")),
+               kRowIndent);
+  const std::string output = ResultText(block);
+  const std::string extras = ResultExtras(block, detail.open);
+  if (detail.open && output.find('\n') != std::string::npos) {
+    return prefix + RST() + "\n" + Indented(OutputText(output), kDetailIndent) +
+           "\n" + extras;
+  }
+  if (detail.open && !output.empty()) {
+    return prefix + ": " + OutputText(output) + RST() + "\n" + extras;
+  }
+  return prefix + ": " + AsciiGlyphs(OutputText(ResultSummary(block, status))) +
+         RST() + "\n" + extras;
 }
 
 }  // namespace
@@ -382,16 +550,21 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       Finish();
       break;
     default:
-      if (event.render && event.presentation) {
+      if (const auto& notice = event.presentation;
+          event.render && notice && (detail_->minor || !notice->minor)) {
         if (spinner_) spinner_->Stop();
-        Present(*event.presentation);
+        WriteTerminalRecord(Note(
+            notice->status == PresentationStatus::kFailed   ? Tone::kError
+            : notice->status == PresentationStatus::kWarned ? Tone::kWarn
+                                                            : Tone::kNeutral,
+            TerminalSafe(notice->title)));
       }
       break;
   }
 }
 
 void TerminalPresenter::Consume(const AppEvent& received) noexcept {
-  for (int index = 0; index <= static_cast<int>(EventId::kPresentation);
+  for (int index = 0; index <= static_cast<int>(EventId::kResponseSources);
        ++index) {
     auto id = static_cast<EventId>(index);
     if (received.type != PolicyFor(id).app_type) continue;
@@ -454,76 +627,40 @@ void TerminalPresenter::Block(const json& block) {
       WriteTerminalRecord(Note(Tone::kNeutral, text));
     }
   } else if (kind == "tool_result") {
-    // One row per call: the recorded call line, then its result.
-    if (const json* replay = JsonObject(block, "call_replay")) {
-      PresentationRecord record;
-      record.kind = PresentationKind::kToolCall;
-      record.id = JsonValue(block, "call_id", "");
-      record.activity = JsonValue(block, "activity", json::object());
-      record.title = JsonValue(*replay, "title", "");
-      record.summary = JsonValue(*replay, "summary", "");
-      record.detail = JsonValue(*replay, "detail", "");
-      record.multiline = JsonValue(*replay, "multiline", false);
-      record.skill = JsonValue(block, "name", "") == "skill";
-      record.poll = JsonValue(*replay, "poll", false);
-      record.view = JsonValue(block, "view", json(nullptr));
-      Present(record);
-      // A call that never finished has no result line.
-      if (JsonValue(block, "status", "running") == "running") return;
-    }
-    // Same row the live printer drew: recorded title/summary plus the
-    // block's activity (groups), change (diffs) and final status. A row whose
-    // replay facts were evicted is synthesized from its name and output.
-    const std::string status = JsonValue(block, "status", "");
-    const PresentationStatus final =
-        status == "success"     ? PresentationStatus::kSucceeded
-        : status == "cancelled" ? PresentationStatus::kCancelled
-        : status == "failed" || status == "timed_out"
-            ? PresentationStatus::kFailed
-            : PresentationStatus::kNeutral;
-    const json* replay = JsonObject(block, "replay");
-    PresentationRecord record =
-        replay ? PresentationRecord{}
-               : StoredToolResultPresentation(
-                     JsonValue(block, "name", ""), JsonValue(block, "text", ""),
-                     JsonValue(block, "change", ""), final);
-    if (replay) {
-      record.kind = PresentationKind::kToolResult;
-      record.title =
-          JsonValue(*replay, "title", JsonValue(block, "name", "tool"));
-      record.summary = JsonValue(*replay, "summary", "");
-      record.output = JsonValue(block, "text", "");
-      record.change = JsonValue(block, "change", "");
-      record.view = {{"parts", JsonValue(block, "parts", json::array())}};
-      record.status = final;
-    }
-    record.id = JsonValue(block, "call_id", "");
-    record.activity = JsonValue(block, "activity", json::object());
-    record.change_path = JsonValue(block, "change_path", "");
-    Present(record);
+    ToolRow(block);
   }
 }
 
-void TerminalPresenter::Present(const PresentationRecord& record) {
-  if (detail_->work == WorkRows::kTurn &&
-      record.kind != PresentationKind::kNotice &&
-      record.status != PresentationStatus::kFailed) {
-    if (record.kind == PresentationKind::kToolCall) {
-      targets_[record.id] = JsonValue(record.view, "target", "");
-    } else if (record.kind == PresentationKind::kToolResult && !record.poll) {
-      ++steps_;
-      if (JsonValue(record.activity, "category", "") == "edit") {
-        // Files, not edits: two edits of one file are one file.
-        const std::string& target = targets_[record.id];
-        edited_.insert(target.empty() ? record.id : target);
-      }
+void TerminalPresenter::ToolRow(const json& block) {
+  if (spinner_) spinner_->Stop();
+  const std::string id = JsonValue(block, "id", "");
+  const std::string status = JsonValue(block, "status", "running");
+  // Where a turn's work is one row, what succeeded is counted instead of
+  // printed and only a failure keeps its row.
+  const bool counted = detail_->work == WorkRows::kTurn;
+  // A live row arrives as its call and again once it finished; each half is
+  // drawn once, so the scrollback reads as the same row from history does.
+  const auto [row, called] = rows_.try_emplace(id, false);
+  if (called && !counted) WriteTerminalRecord(CallRow(block, detail_->open));
+  if (status == "running" || std::exchange(row->second, true)) return;
+  if (counted && !Failed(status)) {
+    ++steps_;
+    if (const json* activity = JsonObject(block, "activity");
+        activity && JsonValue(*activity, "category", "") == "edit") {
+      // Files, not edits: two edits of one file are one file.
+      const std::string target =
+          JsonValue(JsonValue(block, "view", json(nullptr)), "target", "");
+      edited_.insert(target.empty() ? id : target);
     }
     return;
   }
-  PrintPresentation(record, *detail_);
+  if (const std::string drawn = ResultRow(block, *detail_); !drawn.empty()) {
+    WriteTerminalRecord(drawn);
+  }
 }
 
 std::string TerminalPresenter::WorkLine() {
+  rows_.clear();
   if (!steps_) return "";
   std::string line =
       "Worked · " + std::to_string(steps_) + (steps_ == 1 ? " step" : " steps");
@@ -533,7 +670,6 @@ std::string TerminalPresenter::WorkLine() {
   }
   steps_ = 0;
   edited_.clear();
-  targets_.clear();
   return StyledBlock(Indented(AsciiGlyphs(line), kRowIndent), DIM());
 }
 
@@ -542,185 +678,6 @@ void TerminalPresenter::Finish() noexcept {
   if (!state_) return;
   state_->Finish();
   state_.reset();
-}
-
-namespace {
-// The terminal spelling of a ToolView's input parts, the same vocabulary the
-// browser renders: a command after "$", code as-is, fields as "label: value".
-std::string InputPartsText(const json& view) {
-  std::string text;
-  const json* parts = JsonArray(view, "input");
-  if (!parts) return text;
-  for (const json& part : *parts) {
-    const std::string kind = JsonValue(part, "kind", "");
-    if (kind == "command") {
-      text += "$ " + JsonValue(part, "text", "") + "\n";
-    } else if (kind == "code") {
-      const std::string label = JsonValue(part, "label", "");
-      if (!label.empty()) text += label + ":\n";
-      text += JsonValue(part, "text", "") + "\n";
-    } else if (const json* rows = JsonArray(part, "rows")) {
-      for (const json& row : *rows) {
-        if (row.is_array() && row.size() == 2) {
-          text += row[0].get<std::string>() + ": " + row[1].get<std::string>() +
-                  "\n";
-        }
-      }
-    }
-  }
-  return text;
-}
-// What stays visible under a result row: a command's last output lines
-// (already printed in full when output is open) and the parts the call
-// produced.
-std::string ResultExtras(const PresentationRecord& record, bool open) {
-  std::string text;
-  if (!open && JsonValue(record.view, "output", "") == "tail") {
-    std::vector<std::string> lines;
-    std::istringstream input(record.output);
-    for (std::string line; std::getline(input, line);) {
-      if (!Trim(line).empty()) lines.push_back(line);
-    }
-    constexpr size_t kTailLines = 3;
-    for (size_t i = lines.size() > kTailLines ? lines.size() - kTailLines : 0;
-         i < lines.size(); ++i) {
-      text += std::string(DIM()) +
-              Indented(OutputText(lines[i]), kDetailIndent) + RST() + "\n";
-    }
-  }
-  if (const json* parts = JsonArray(record.view, "parts")) {
-    for (const json& part : *parts) {
-      const std::string kind = JsonValue(part, "kind", "");
-      std::string line;
-      if (kind == "file") {
-        line = JsonValue(part, "name", "") + " · " +
-               FmtBytes(JsonValue(part, "bytes", int64_t{0})) +
-               " · open it in the web app";
-      } else if (kind == "link") {
-        const std::string to = JsonValue(part, "to", "");
-        const std::string id = part.contains("id") && part["id"].is_string()
-                                   ? part["id"].get<std::string>()
-                                   : JsonDump(part.value("id", json()));
-        line = to == "agent"      ? "/agents " + id
-               : to == "activity" ? "/ps " + id
-                                  : "memory " + id;
-      }
-      if (!line.empty()) {
-        text +=
-            std::string(DIM()) +
-            Indented(AsciiGlyphs("↳ " + TerminalSafe(line)), kDetailIndent) +
-            RST() + "\n";
-      }
-    }
-  }
-  return text;
-}
-}  // namespace
-
-void PrintPresentation(const PresentationRecord& record,
-                       const DetailPolicy& detail) noexcept {
-  if (record.kind == PresentationKind::kNotice) {
-    if (record.minor && !detail.minor) return;
-    WriteTerminalRecord(
-        Note(record.status == PresentationStatus::kFailed   ? Tone::kError
-             : record.status == PresentationStatus::kWarned ? Tone::kWarn
-                                                            : Tone::kNeutral,
-             TerminalSafe(record.title)));
-    return;
-  }
-  if (record.kind == PresentationKind::kToolCall) {
-    // A skill is a procedure the rest of the turn follows, so it is worth
-    // finding in the scrollback later; ◆ already marks that class of event.
-    if (record.skill && !record.summary.empty()) {
-      WriteTerminalRecord(std::string(BOLD()) + RowMark(Mark::kSkill) +
-                          TerminalSafe(record.summary) + RST() + "\n");
-      return;
-    }
-    if (record.poll) return;
-    // "→ Editing src/a.ts": the view's verb and target, like the web row.
-    const json* verb = JsonArray(record.view, "verb");
-    std::string body = RowMark(Mark::kCall) +
-                       (verb && !verb->empty() && (*verb)[0].is_string()
-                            ? TerminalSafe((*verb)[0].get<std::string>())
-                            : TerminalSafe(record.title));
-    if (record.multiline && !record.detail.empty()) {
-      body += '\n' + TerminalSafe(record.detail);
-    } else if (const std::string target = JsonValue(record.view, "target", "");
-               verb && !target.empty()) {
-      body += ' ' + TerminalSafe(FirstLine(target));
-    } else if (!record.summary.empty()) {
-      body += '(' + TerminalSafe(record.summary) + ')';
-    }
-    WriteTerminalRecord(StyledBlock(body, BOLD()));
-    if (detail.open) {
-      const std::string input = InputPartsText(record.view);
-      if (!input.empty()) {
-        WriteTerminalRecord(
-            StyledBlock(Indented(TerminalSafe(input), kDetailIndent), DIM()));
-      }
-    }
-    return;
-  }
-  if (record.kind != PresentationKind::kToolResult) return;
-
-  if (const auto group = record.activity.find("group");
-      detail.work != WorkRows::kCalls && group != record.activity.end()) {
-    if (JsonValue(*group, "id", "") == record.id) {
-      WriteTerminalRecord(StyledBlock(
-          Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
-          DIM()));
-    }
-    return;
-  }
-
-  if (record.poll) {
-    const char* style = ResultStyle(record.status);
-    WriteTerminalRecord(std::string(style) + RowMark(Mark::kStatus) +
-                        AsciiGlyphs(OutputText(record.summary)) + RST() + "\n");
-    return;
-  }
-
-  if (!record.change.empty()) {
-    // A long diff is kept whole: both sides, each line a marker longer.
-    std::istringstream input(ReadFile(record.change_path, 4 * kEditFileBytes)
-                                 .value_or(record.change));
-    std::string line;
-    if (std::getline(input, line)) {
-      std::string output = std::string(DIM()) + RowMark(Mark::kChange) + RST() +
-                           BOLD() + TerminalSafe(line) + RST() + "\n";
-      while (std::getline(input, line)) {
-        const char* style = DiffLineStyle(line);
-        if (!*style) style = DIM();
-        if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
-        output += std::string(style) +
-                  Indented(TerminalSafe(line), kDetailIndent) + RST() + "\n";
-      }
-      WriteTerminalRecord(output);
-    }
-    if (record.summary.empty() && record.detail.empty()) return;
-  }
-
-  const char* style = ResultStyle(record.status);
-  std::string prefix = Indented(
-      RowMark(record.status == PresentationStatus::kFailed ? Mark::kFailed
-                                                           : Mark::kResult) +
-          TerminalSafe(record.title),
-      kRowIndent);
-  if (detail.open && record.output.find('\n') != std::string::npos) {
-    WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
-                        Indented(OutputText(record.output), kDetailIndent) +
-                        "\n" + ResultExtras(record, detail.open));
-    return;
-  }
-  if (detail.open && !record.output.empty()) {
-    WriteTerminalRecord(std::string(style) + prefix + ": " +
-                        OutputText(record.output) + RST() + "\n" +
-                        ResultExtras(record, detail.open));
-    return;
-  }
-  WriteTerminalRecord(std::string(style) + prefix + ": " +
-                      AsciiGlyphs(OutputText(record.summary)) + RST() + "\n" +
-                      ResultExtras(record, detail.open));
 }
 
 }  // namespace uagent

@@ -24,6 +24,12 @@
 
 ### Changes
 
+- The terminal draws a tool row from the transcript row the web shows, live
+  and on resume alike: a resumed command keeps its last output lines, a long
+  result shows its start and end, result rows lose the `[2]` batch ordinal,
+  and an activity poll is an ordinary call and result instead of a "waited
+  on activity" line. Calls saved before this show their tool's name where
+  the headline was.
 - The agent's Chrome no longer reads as a test browser: pages see no
   `navigator.webdriver` and none of the agent's scripts (they run in an
   isolated world), WebGL renders in software, text is typed key by key,

@@ -15,7 +15,7 @@ layer.
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
 | `src/app/panel*.cc`, `chat.cc`, `thread_link.cc`, `launch.cc` | A folder's panel (board, history, threads, `panel -p`), its chat with members, and where a launched session runs |
-| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and observation records |
+| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
@@ -44,7 +44,7 @@ above it:
 | `uagent_core_base` | `src/core/`, `src/transport/` (leaf) |
 | `uagent_api` | `src/api/` |
 | `uagent_toolcore` | Tool vocabulary (`src/tools/tool.cc`), `src/media/` and `src/providers/`; no agent, tool or app dependency |
-| `uagent_agent` | `src/agent/`: turn loop, persistence, supervision services, memory store, observation records |
+| `uagent_agent` | `src/agent/`: turn loop, persistence, supervision services, memory store, transcript view |
 | `uagent_tools` | Tool surface and `src/mcp/`, consuming agent services; `src/browser/` when `UAGENT_BROWSER=ON` (the default with the web UI) |
 | `uagent_app` | `src/app/`, `src/ui/`, `src/cli/` |
 | `uagent_web` | `src/web/` and the embedded bundle; built when `UAGENT_WEB=ON` (default) |

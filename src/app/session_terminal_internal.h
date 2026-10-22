@@ -164,6 +164,9 @@ class Terminal {
   std::atomic<bool> input_blocked_{true}, interaction_{false};
   std::set<std::string> shown_;
   std::set<std::string> own_requests_, echoed_;
+  // The transcript view as history and events build it, so a live tool row
+  // is drawn from the same block a resumed one is.
+  json transcript_ = json::object();
 };
 
 }  // namespace uagent::session

@@ -166,7 +166,6 @@ void Agent::DeliverActivityCompletions(
 
     const bool succeeded = ExitedOk(completion.status);
     PresentationRecord record;
-    record.kind = PresentationKind::kNotice;
     record.status = succeeded ? PresentationStatus::kSucceeded
                               : PresentationStatus::kFailed;
     record.title = completion.kind == ActivityKind::kSubagent
@@ -175,14 +174,13 @@ void Agent::DeliverActivityCompletions(
     std::string label = completion.display_label.empty()
                             ? FirstLine(completion.command)
                             : completion.display_label;
-    if (!label.empty())
+    if (!label.empty()) {
       record.title += " · " + Utf8Trunc(label, kActivityLabelBytes);
-    record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
+    }
     const json completion_activity = {
         {"category",
          completion.kind == ActivityKind::kSubagent ? "delegate" : "run"},
         {"label", record.title}};
-    record.activity = completion_activity;
     std::string text = record.title + (succeeded ? " completed" : " failed");
     if (!completion.output.empty()) text += "\n" + completion.output;
     const bool agent = completion.kind == ActivityKind::kSubagent &&

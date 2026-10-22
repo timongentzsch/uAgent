@@ -24,7 +24,6 @@ inline constexpr size_t MiB(size_t n) { return n * kMiB; }
 // grow the others.
 inline constexpr size_t kPreviewChars = 4096;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
-inline constexpr size_t kTraceSummaryChars = 512;
 // The opening of a change/diff that a tool-result fact and its live event
 // carry. A longer diff is kept whole in a private artifact the row names.
 inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
@@ -32,11 +31,6 @@ inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
 // largest dimension kept for vision payloads.
 inline constexpr size_t kAttachmentCacheBytes = size_t{16} * 1024 * 1024;
 inline constexpr int kMaxImageDimension = 2048;
-// Kept-receipt detail cap: compact rows record title/summary/flags, and only
-// multiline rows carry a bounded detail body.
-inline constexpr size_t kReplayDetailChars = 2048;
-// Terminal columns reserved beside a record title when truncating its summary.
-inline constexpr size_t kRecordTitleReserveChars = 6;
 // Maximum entries held in a session/asset catalogue scan. Distinct from the
 // byte budgets above: raising retention must not raise preview windows.
 inline constexpr size_t kMaxCatalogueEntries = 4096;

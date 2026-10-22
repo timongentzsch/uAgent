@@ -93,7 +93,8 @@ panel's threads differ.
 
 `run` waits 10 s and then returns a still-running command as an activity.
 `yield_ms` of 250–30,000 overrides the wait and `0` waits until the command
-exits. Set `tty=true` only when the process needs interactive input; a PTY
+exits. Guidance sent meanwhile moves the command to the background, as it
+ends an `activity` wait. Set `tty=true` only when the process needs interactive input; a PTY
 keeps merged output, writable input, interruption and resize. `detach=true`
 keeps the command running after the session ends, with a rotating log.
 

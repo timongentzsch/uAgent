@@ -83,6 +83,9 @@
   instead of blocking on a wait, and the result is not lost when it does.
   The tool tells the agent so when work goes to the background. Headless runs
   (`-p`) still answer once.
+- Guidance sent while `run` waits for a command (`yield_ms: 0`) moves the
+  command to the background and reaches the agent at once, as it already did
+  for an `activity` wait, instead of waiting for the command to exit.
 - A saved conversation's composer shows the model and approval mode it
   resumes with, instead of "Select model" and the default mode.
 - Web statistics show input tokens (cached and cache-written included, as

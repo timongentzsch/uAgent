@@ -265,6 +265,34 @@ def test_session_title_replaces_initial_greeting(root, home, *, binary):
         assert_true("investigate browser efficiency" not in journal.read_text(), records)
 
 
+def test_input_steering_moves_a_foreground_run_to_the_background(root, home, *, binary):
+    def route(_, body):
+        messages = body["messages"]
+        results = tool_results(messages)
+        if has_message(messages, "user", "change course"):
+            moved = any("moved to background" in result for result in results)
+            return event({"content": "steering-run-ok" if moved else "steering-run-bad"})
+        return tool_call("run", {"command": "sleep 30", "yield_ms": 0})
+
+    with Server([route]) as server:
+        started = time.monotonic()
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"start\n", b"sleep 30"),
+                (b"change course\n", b"steering-run-ok"),
+                b"/q\n",
+            ],
+            args=("--yolo",),
+            timeout=8,
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"steering-run-ok" in output, output)
+        assert_true(time.monotonic() - started < 20, "the run held the conversation")
+
+
 def test_input_steering_yields_activity_wait(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]

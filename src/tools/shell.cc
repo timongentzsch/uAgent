@@ -34,6 +34,7 @@
 #include "include/core/sandbox.h"
 #include "include/core/sandbox_watch.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
@@ -482,6 +483,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       handed_off = false;
       break;
     }
+    // Guidance is read now, as a wait yields to it: the command carries on
+    // in the background.
+    if (!exited && SteeringYieldRequested()) handed_off = true;
     if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
       break;
     }

@@ -75,6 +75,7 @@ int Application::RunChannel() {
     agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
     request_id_ = input->request_id;
+    origin_ = input->origin;
     json result;
     if (input->title) {
       agent_.Rename(std::move(*input->title));

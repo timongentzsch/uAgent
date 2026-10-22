@@ -149,6 +149,7 @@ int Application::RunHeadless() {
                    deadline - std::chrono::steady_clock::now())
                    .count());
       }
+      origin_ = next->origin;
       RunTurns(next->text);
       SaveSession();
     }

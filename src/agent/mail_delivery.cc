@@ -100,9 +100,11 @@ bool Agent::DeliverMail(bool hold) {
     const std::string author = JsonValue(mail.body, "author", "");
     const std::string sender = JsonValue(mail.body, "sender", "");
     if (JsonValue(mail.body, "quiet", false)) {
-      // Read, not answered: it joins the conversation where it stands.
-      NotFromUser(text, author, mail.id, std::nullopt, sender);
-      Say(text, "");
+      // Read, not answered: it joins the conversation where it stands, and
+      // nothing is an answer to it.
+      arriving_mail_.push_back(mail.id);
+      Say(text, "",
+          {{"author", author}, {"sender", sender}, {"mail", mail.id}});
     } else {
       // Mail wakes its recipient: an idle one starts a turn on it.
       Arrive(text, JsonValue(mail.body, "re", json()), author, mail.id, sender);

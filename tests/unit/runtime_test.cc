@@ -712,7 +712,7 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
     const auto next = SteeringState().TakeNextAutoStart();
     CHECK(next && next->text == "the thread finished");
     // Its turn has the text now, so this save holds the mail for good.
-    restarted.Say("the thread finished", "");
+    restarted.Say(next->text, "", next->origin);
     CHECK(restarted.Save(path, error));
   }
   Agent again(api, tools, processes, usage, denied);
@@ -720,6 +720,34 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   RecoverMail(own);
   CHECK(!again.DeliverMail());
   CHECK(!SteeringState().TakeNextAutoStart().has_value());
+}
+
+// Who wrote a message travels with it, not with its words: the person typing
+// what a queued mail says keeps their own message, and the mail its author.
+void TestMailKeepsItsAuthorBesideTheSameWords() {
+  Api api(RuntimeConfig{});
+  api.model = "test";
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  const auto denied = [](const Tool&, const json&, int64_t) {
+    return std::string("denied");
+  };
+  Agent agent(api, tools, processes, usage, denied);
+  agent.Arrive("same words", json(), "alice", "mail-1", "session-1");
+  agent.Say("same words", "");
+  const auto next = SteeringState().TakeNextAutoStart();
+  CHECK(next && next->text == "same words");
+  agent.Say(next->text, "", next->origin);
+  const json view = agent.DisplaySnapshot();
+  std::vector<json> rows;
+  for (const json& block : view.at("blocks")) {
+    if (JsonValue(block, "kind", "") == "user") rows.push_back(block);
+  }
+  CHECK(rows.size() == 2);
+  CHECK(!rows[0].contains("author") && !rows[0].contains("origin"));
+  CHECK(JsonValue(rows[1], "author", "") == "alice");
+  CHECK(JsonValue(rows[1], "origin", "") == "mail");
 }
 
 void TestAgentConfigAllowlist() {

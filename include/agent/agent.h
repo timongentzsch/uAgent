@@ -203,18 +203,6 @@ class Agent {
   // interrupt stops the running turn after queueing its text. With `hold`,
   // wake messages stay pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
-  // Text about to arrive as input that another session or the harness wrote:
-  // its row is shown as an event, not as the person's message, under its
-  // `author` when it has one, whose session is `sender`. `mail` names the
-  // mail that brought it. `re`
-  // is what an answer to it is an answer to (app/chat.h); none for a
-  // message that is read without a turn.
-  void NotFromUser(const std::string& text, const std::string& author = "",
-                   const std::string& mail = "",
-                   std::optional<json> re = json(),
-                   const std::string& sender = "") {
-    not_user_.push_back({text, author, mail, std::move(re), sender});
-  }
   // The same, taken as a turn: an idle session starts one on it, a working
   // one reads it at its next step.
   void Arrive(const std::string& text, json re = json(),
@@ -222,9 +210,11 @@ class Agent {
               const std::string& sender = "");
   // What the message this session last took a turn on came with.
   const json& ChatRe() const { return chat_re_; }
-  // The person's message, written into the conversation without a turn.
-  void Say(const std::string& text, const std::string& request_id) {
-    PushUserInput(text, false, json(), request_id);
+  // The person's message, or with an `origin` another's (Arrive), written
+  // into the conversation without a turn.
+  void Say(const std::string& text, const std::string& request_id,
+           const json& origin = nullptr) {
+    PushUserInput(text, false, json(), request_id, origin);
   }
   // Whether this session is one of a chat's participants: its panel, or
   // a member. And whether its last answer was only to pass or to wait.
@@ -269,9 +259,11 @@ class Agent {
   void StartTitle(const std::string& user_input);
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
+  // `origin` as on a queued message (Steering::Message): who wrote the
+  // input when not the person.
   void Turn(const std::string& user_input, json user_content = nullptr,
             const json& images = json::array(),
-            const std::string& request_id = "");
+            const std::string& request_id = "", const json& origin = nullptr);
 
  private:
   struct TurnExecution;
@@ -329,7 +321,8 @@ class Agent {
   // what the loop should do next.
   void PushSkillContext(std::string skill);
   void PushUserInput(json content, bool attachment, const json& images,
-                     const std::string& request_id);
+                     const std::string& request_id,
+                     const json& origin = nullptr);
   void PushStepNote(StepState& loop, const std::string& note);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
@@ -503,16 +496,11 @@ class Agent {
   // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
   // ids of the latest delivered, so one delivered again is recognised.
   mutable std::vector<std::string> unacked_mail_;
-  // Text on its way into the conversation. Mail that brought some is only
-  // saved as delivered, and acknowledged, once its text is there: until
-  // then a restart receives it again.
-  struct Arriving {
-    std::string text, author, mail;
-    std::optional<json> re;
-    std::string sender;
-  };
+  // Mail whose text is on its way into the conversation. It is only saved
+  // as delivered, and acknowledged, once its text is there: until then a
+  // restart receives it again.
+  std::vector<std::string> arriving_mail_;
   json chat_re_;
-  std::vector<Arriving> not_user_;
   std::function<json(const std::string&)> chat_said_;
   std::function<void(Mail&)> chat_heard_;
   json delivered_mail_ = json::array();

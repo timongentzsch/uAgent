@@ -359,7 +359,8 @@ class WorkerChannel final : public ApplicationChannel {
       NormalizeAbortWake();
       if (auto next = SteeringState().TakeNextAutoStart()) {
         input_ = ApplicationInput{.text = std::move(next->text),
-                                  .request_id = std::move(next->request_id)};
+                                  .request_id = std::move(next->request_id),
+                                  .origin = std::move(next->origin)};
         for (const json& item : next->attachments) {
           input_->attachments.push_back(AttachmentFromJson(item));
         }

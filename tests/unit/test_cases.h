@@ -140,6 +140,7 @@ namespace uagent {
   X(TestSharedPanelHelpers)                       \
   X(TestThreadRestartsInARow)                     \
   X(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) \
+  X(TestMailKeepsItsAuthorBesideTheSameWords)     \
   X(TestAgentConfigAllowlist)                     \
   X(TestEffectiveConfigReload)                    \
   X(TestChildEnvironmentPolicy)                   \

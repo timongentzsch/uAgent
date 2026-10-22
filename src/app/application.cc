@@ -158,7 +158,7 @@ void Application::RunTurns(const std::string& input, json content,
   PermissionControl(context_, json::object());
   // Publish lifecycle boundaries even when no model response is produced.
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
-  agent_.Turn(input, std::move(content), images, request_id_);
+  agent_.Turn(input, std::move(content), images, request_id_, origin_);
   SteeringState().Take();
 #ifdef UAGENT_BROWSER
   // The turn is over: the shared browser is free for the next conversation.

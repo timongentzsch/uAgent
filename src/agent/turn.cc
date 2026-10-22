@@ -84,7 +84,7 @@ void Agent::PushSkillContext(std::string skill) {
 
 // The person's message, with the files the transcript shows for it.
 void Agent::PushUserInput(json content, bool attachment, const json& images,
-                          const std::string& request_id) {
+                          const std::string& request_id, const json& origin) {
   // With files, the text part: the message and where each file is.
   const std::string text = content.is_string() ? content.get<std::string>()
                            : content.is_array() && !content.empty()
@@ -97,13 +97,16 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"files", images}});
   }
-  if (const auto mail = std::ranges::find(not_user_, text, &Arriving::text);
-      mail != not_user_.end()) {
+  // Another's message shows as an event under its author, not as the
+  // person's; an answer to it is an answer to its `re` (app/chat.h).
+  if (origin.is_object()) {
     json facts = {{"origin", "mail"}};
-    if (!mail->author.empty()) facts["author"] = mail->author;
-    if (!mail->sender.empty()) facts["sender"] = mail->sender;
-    if (mail->re) chat_re_ = *mail->re;
-    not_user_.erase(mail);
+    for (const char* key : {"author", "sender"}) {
+      const std::string value = JsonValue(origin, key, "");
+      if (!value.empty()) facts[key] = value;
+    }
+    if (origin.contains("re")) chat_re_ = origin["re"];
+    std::erase(arriving_mail_, JsonValue(origin, "mail", ""));
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 std::move(facts));
   } else if (chat_said_) {
@@ -136,8 +139,7 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
     std::string& input = message.text;
     // Mail and chat observations use the same queue, but do not revise the
     // person's acceptance criteria merely by arriving.
-    acceptance_changed |=
-        std::ranges::find(not_user_, input, &Arriving::text) == not_user_.end();
+    acceptance_changed |= message.origin.is_null();
     for (std::string& skill : ExplicitSkillContext(input)) {
       PushSkillContext(std::move(skill));
     }
@@ -151,13 +153,15 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
           ComposeSteeredContent(input, message.attachments, error);
       if (error.empty()) {
         PushUserInput(std::move(content), attachment,
-                      attachment ? message.images : json(), message.request_id);
+                      attachment ? message.images : json(), message.request_id,
+                      message.origin);
         continue;
       }
       DebugLog("steering_attachments_failed",
                {{"turn", turn_id_}, {"error", error}});
     }
-    PushUserInput(std::move(input), false, json(), message.request_id);
+    PushUserInput(std::move(input), false, json(), message.request_id,
+                  message.origin);
   }
   loop.recovery = {};
   if (acceptance_changed) {
@@ -270,7 +274,8 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
 }
 
 void Agent::Turn(const std::string& user_input, json user_content,
-                 const json& images, const std::string& request_id) {
+                 const json& images, const std::string& request_id,
+                 const json& origin) {
   last_error_.clear();
   // A new turn owns its outcome: clients must never re-report the
   // previous turn's stop from a boundary publish before this one ends.
@@ -323,7 +328,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   }
   if (SteeringState().Requested() && SteeringState().SteerCount() == 0) {
     PushUserInput(attachment ? std::move(user_content) : json(user_input),
-                  attachment, images, request_id);
+                  attachment, images, request_id, origin);
     Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
@@ -337,7 +342,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   state.start = conversation_.Size();  // user message and prune_* start
   for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
   PushUserInput(attachment ? std::move(user_content) : json(user_input),
-                attachment, images, request_id);
+                attachment, images, request_id, origin);
   turn_search_trace_.Reset();
   // Slices the budget block out of the config: a turn-boundary reload may
   // replace api_.config mid-session, and the limits this turn is judged

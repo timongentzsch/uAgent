@@ -34,6 +34,9 @@ class Steering {
     // and no wait yields to it; the turn's end starts it as a turn of its
     // own, in arrival order with everything else that may start one.
     bool after_turn = false;
+    // Who wrote it when not the person (Agent::Arrive): {author, sender,
+    // mail, re}. Null for the person's own message.
+    json origin = nullptr;
   };
   bool Requested() const { return requested_; }
 

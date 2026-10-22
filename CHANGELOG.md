@@ -91,6 +91,11 @@
 - Web statistics show input tokens (cached and cache-written included, as
   providers bill them), output tokens (reasoning included) and the cache hit
   rate, in place of the separate buckets.
+- A long conversation no longer forgets its chosen model, approval mode and
+  fork origin: under display-metadata pressure they could be evicted with
+  the transcript's row data, which sorted after them.
+- A mail's author travels with it: the person typing the same words as a
+  queued mail, or two mails saying the same thing, no longer swap authors.
 
 ## v1.5.0 - 2026-10-20
 

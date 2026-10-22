@@ -50,8 +50,7 @@ std::string LiveStatus(const SessionInfo& info) {
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
   if (!connection.status.empty()) return connection.status;
-  // One that has said nothing yet, or started from an older binary: its
-  // first state says it.
+  // One still starting has said nothing yet: its first state says it.
   std::string status = "idle";
   session::ReadFrames(
       connection.socket.Get(), -1, session::kFrameBytes,

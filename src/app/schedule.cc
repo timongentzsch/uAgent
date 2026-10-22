@@ -291,10 +291,7 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
   const std::string name = Trim(JsonValue(task, "name", ""));
   const std::string prompt = Trim(JsonValue(task, "prompt", ""));
   const auto environment = JsonValue(task, "environment", "worktree");
-  // The approval modes, by their own names; a task saved as "prompt"
-  // asks.
-  std::string permissions = JsonValue(task, "permissions", "ask");
-  if (permissions == "prompt") permissions = "ask";
+  const std::string permissions = JsonValue(task, "permissions", "ask");
   task["permissions"] = permissions;
   if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
       prompt.size() > kSchedulePromptChars ||

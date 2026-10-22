@@ -186,7 +186,7 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
         name="Review",
         prompt="Review the repository.",
         cwd=str(root),
-        permissions="prompt",
+        permissions="ask",
         environment="local",
         schedule=dict(type="interval", seconds=3600),
     )

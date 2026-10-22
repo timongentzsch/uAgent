@@ -4,6 +4,12 @@
 
 ### Upgrade notes
 
+- **Settings and tasks from v1.3.1 or earlier are no longer read.** A
+  settings file in format 1, a conversation whose model and approval mode
+  were saved before they were kept as settings, and a scheduled task saved
+  with `"permissions": "prompt"` need one run of v1.4 or v1.5 first, which
+  rewrites them; otherwise the settings file is reported unreadable and the
+  others start from the defaults.
 - **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem`
   (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are
   removed; it was off by default and unused. A saved conversation that still

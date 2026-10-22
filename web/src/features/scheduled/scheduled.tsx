@@ -456,10 +456,7 @@ export default function Scheduled({
                   >
                     <Select
                       aria-label="Approval"
-                      // A task saved before the modes had one name asks.
-                      value={
-                        task.permissions === "prompt" ? "ask" : task.permissions
-                      }
+                      value={task.permissions}
                       onChange={(event) =>
                         edit({
                           permissions: event.currentTarget

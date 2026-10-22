@@ -57,15 +57,7 @@ void CommandReply::Note(Tone tone, std::string_view text) {
 
 RuntimeConfig::Values RestoreChoices(const json& settings,
                                      ConfigManager& manager) {
-  json chosen = JsonValue(settings, "chosen", json(nullptr));
-  if (!chosen.is_object()) {
-    // Saved before choices were kept as settings.
-    chosen = json::object();
-    const std::string mode = JsonValue(settings, "permissions", "");
-    if (!mode.empty() && mode != "default") chosen["UAGENT_APPROVAL"] = mode;
-    const std::string route = JsonValue(settings, "route", "");
-    if (!route.empty()) chosen["UAGENT_MODEL"] = route;
-  }
+  const json chosen = JsonValue(settings, "chosen", json::object());
   const RuntimeConfig::Values flagged = manager.Conversation();
   RuntimeConfig::Values taken;
   for (const auto& [key, value] : chosen.items()) {

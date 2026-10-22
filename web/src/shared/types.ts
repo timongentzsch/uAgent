@@ -1027,8 +1027,7 @@ export interface ScheduledTask {
   prompt: string;
   cwd: string;
   model: string;
-  // An approval mode; "prompt" is how "ask" was saved before.
-  permissions: "ask" | "auto" | "yolo" | "prompt";
+  permissions: "ask" | "auto" | "yolo";
   environment: "local" | "worktree";
   schedule: ScheduleRule;
   enabled: boolean;

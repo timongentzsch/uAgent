@@ -103,6 +103,9 @@
 - A long conversation no longer forgets its chosen model, approval mode and
   fork origin: under display-metadata pressure they could be evicted with
   the transcript's row data, which sorted after them.
+- A typed `/rename` keeps to the same rules as a rename from the web: the
+  title rule, and in a panel's chat the rule for a name there, whose members
+  are told; it used to accept any text.
 - A mail's author travels with it: the person typing the same words as a
   queued mail, or two mails saying the same thing, no longer swap authors.
 

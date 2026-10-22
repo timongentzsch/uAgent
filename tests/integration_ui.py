@@ -1678,7 +1678,8 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
                 "/config user UAGENT_MCP_TIMEOUT=100\n"
                 "/config user UAGENT_MAX_TOKENS=321\n/config\n"
                 "First turn\n/restart\nSecond turn\n"
-                "/config user reset\n/rename Parity check\n/permissions rules\n/q\n",
+                "/config user reset\n/rename " + "x" * 300 + "\n/rename Parity check\n"
+                "/permissions rules\n/q\n",
                 binary=binary,
             )
         output = result.stdout
@@ -1693,6 +1694,8 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true("history kept" in output, output)
         assert_true("mcp.timeout" not in saved_settings(home), "reset")
         assert_true("no remembered actions for this repository" in output, output)
+        # A typed rename keeps to the rule a title has everywhere else.
+        assert_true("title must be 1" in output, output)
         assert_true(
             any("Parity check" in path.read_text() for path in session_files(home)),
             "rename not saved",

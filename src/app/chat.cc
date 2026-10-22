@@ -272,6 +272,18 @@ std::string ChatName(const std::string& folder, const std::string& path) {
              : JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
 }
 
+std::string ChatFolder(bool panel, const json& thread) {
+  return panel                        ? CanonicalCwd()
+         : ChatMember(thread).empty() ? ""
+                                      : JsonValue(thread, "folder", "");
+}
+
+std::string RenameProblem(const std::string& chat, const std::string& title,
+                          const std::string& path) {
+  if (!ValidSessionTitle(title)) return InvalidSessionTitleMessage();
+  return chat.empty() ? "" : ChatNameProblem(chat, title, path);
+}
+
 void ChatRenamed(const std::string& folder, const std::string& path,
                  const std::string& old, const std::string& now) {
   const bool moderator = path == PanelPath(folder);

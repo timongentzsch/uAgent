@@ -9,8 +9,10 @@
 #include <sstream>
 #include <string>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/chat.h"
 #include "include/app/control.h"
 #include "include/app/self_description.h"
 #include "include/core/config_registry.h"
@@ -179,14 +181,24 @@ CommandReply RunSlashCommand(AppSession& session,
       }
       result = PermissionControl(session.context, {{"mode", command.argument}});
       return reply;
-    case SlashCommandId::kRename:
-      if (Trim(command.argument).empty()) {
+    case SlashCommandId::kRename: {
+      const std::string title = Trim(command.argument);
+      const Options& options = session.context.options;
+      const std::string chat =
+          ChatFolder(options.Panel(), ThreadRole(options.session));
+      const std::string& path = session.session_file;
+      if (title.empty()) {
         result = {{"error", "usage: /rename TITLE"}};
+      } else if (std::string problem = RenameProblem(chat, title, path);
+                 !problem.empty()) {
+        result = {{"error", problem}};
       } else {
-        session.ActiveAgent().Rename(Trim(command.argument));
-        result = {{"title", Trim(command.argument)}};
+        if (!chat.empty()) ChatRenamed(chat, path, ChatName(chat, path), title);
+        session.ActiveAgent().Rename(title);
+        result = {{"title", title}};
       }
       return reply;
+    }
     case SlashCommandId::kConfig:
       HandleConfig(session, command.argument, reply);
       return reply;

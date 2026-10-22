@@ -25,6 +25,14 @@ std::string ChatNameProblem(const std::string& folder, const std::string& name,
                             const std::string& path);
 // What the session at `path` is called in the folder's chat.
 std::string ChatName(const std::string& folder, const std::string& path);
+// The folder whose chat a session takes part in: its own as a panel, its
+// panel's as a named member; empty for any other session.
+std::string ChatFolder(bool panel, const json& thread);
+// Why the session at `path` cannot be titled `title`: the rule for every
+// title, and in a chat (`chat` non-empty) the rule for a name there. Empty
+// when it can; the caller tells the chat with ChatRenamed once it is.
+std::string RenameProblem(const std::string& chat, const std::string& title,
+                          const std::string& path);
 // The session at `path` went from `old` to `now`: a message that opens with
 // the old name still reaches it, and the members are told.
 void ChatRenamed(const std::string& folder, const std::string& path,

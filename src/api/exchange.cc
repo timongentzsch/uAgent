@@ -25,7 +25,7 @@ std::string CaptureUrl(std::string url) {
 }
 std::string PrivateBody(std::string_view body) {
   ScopedTempFile file(UagentDir(kArtifactsDir) + "/http-XXXXXX");
-  if (file && WriteFully(file.Get(), body)) return file.Release();
+  if (file && WriteAll(file.Get(), body)) return file.Release();
   return {};
 }
 }  // namespace
@@ -84,7 +84,7 @@ void HttpExchange::Headers(std::string_view bytes, bool outgoing) {
   }
   auto& value = metadata_[outgoing ? "request_headers" : "response_headers"];
   std::string prior = value.get<std::string>();
-  if (prior.size() + clean.size() <= size_t{16} * 1024) {
+  if (prior.size() + clean.size() <= KiB(16)) {
     value = prior + clean;
   } else {
     metadata_["headers_complete"] = false;
@@ -92,9 +92,8 @@ void HttpExchange::Headers(std::string_view bytes, bool outgoing) {
 }
 void HttpExchange::Body(std::string_view bytes) {
   if (!Enabled()) return;
-  constexpr size_t kBodyLimit = size_t{64} * 1024 * 1024;
-  if (bytes.size() > kBodyLimit - bytes_ ||
-      !WriteFully(response_.Get(), bytes)) {
+  constexpr size_t kBodyLimit = MiB(64);
+  if (bytes.size() > kBodyLimit - bytes_ || !WriteAll(response_.Get(), bytes)) {
     metadata_["complete"] = false;
     response_.Reset();
     return;

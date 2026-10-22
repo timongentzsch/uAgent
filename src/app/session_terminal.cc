@@ -18,7 +18,6 @@
 #include "include/cli/cli.h"
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
-#include "include/core/limits.h"
 #include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -39,9 +38,8 @@ constexpr auto kPaintInterval = std::chrono::milliseconds(16);
 }  // namespace
 
 const DetailPolicy& ConfiguredDetail(const RuntimeConfig::Values& overrides) {
-  const auto values = ConfigManager::Capture(overrides).Read().values;
-  const auto found = values.find(std::string(kVerbositySetting));
-  return DetailFor(found == values.end() ? "" : found->second);
+  return DetailFor(ConfigManager::Capture(overrides).Read().Get(
+      std::string(kVerbositySetting)));
 }
 
 int Terminal::Run(const std::vector<std::string>& attachments) {
@@ -274,10 +272,9 @@ int Terminal::Detach(const std::vector<std::string>& files, int exit_code) {
   if (!files.empty()) {
     // Staged via /attach but never submitted (EOF/quit/compose-cancel):
     // say so instead of dropping them silently.
-    const std::string dropped = Note(
-        Tone::kNeutral, std::to_string(files.size()) + " staged attachment" +
-                            (files.size() == 1 ? "" : "s") +
-                            " discarded: nothing was submitted");
+    const std::string dropped =
+        Note(Tone::kNeutral, Plural(files.size(), "staged attachment") +
+                                 " discarded: nothing was submitted");
     if (raw_) {
       region_.Commit(dropped);
     } else {
@@ -317,7 +314,7 @@ void Welcome() {
   const std::string marker = UagentDir(kConfigDir) + "/welcomed";
   if (PathExists(marker)) return;
   std::string error;
-  if (!AtomicWriteFile(marker, "", kPrivateFileMode, false, error)) return;
+  if (!WritePrivateFile(marker, "", error)) return;
   fputs(AsciiGlyphs("Welcome to µAgent. Try \"explain this repository\", "
                     "\"fix the failing test\" or /help.\n"
                     "Enter sends · Esc stops a turn · / lists commands · "

@@ -20,7 +20,7 @@ namespace {
 
 // An overlay is a small declarative document, not a second prompt source: it is
 // bounded, parsed strictly, and ignored when absent or malformed.
-constexpr size_t kPromptOverlayBytes = size_t{64} * 1024;
+constexpr size_t kPromptOverlayBytes = KiB(64);
 
 // Lean base prompt — tool semantics live in the tool schemas, which are sent
 // anyway. Sectioned because a constraint buried mid-paragraph is the one a

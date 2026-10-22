@@ -18,7 +18,6 @@
 #include "include/core/activity.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
-#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/ui/presentation.h"
 
@@ -355,8 +354,7 @@ bool SessionJournal::Flush(const std::string& path, std::string& error) const {
     content.reserve(bytes_);
     for (const std::string& line : lines_) content += line + '\n';
   }
-  if (!AtomicWriteFile(path, content, kPrivateFileMode,
-                       /*preserve_mode=*/false, error)) {
+  if (!WritePrivateFile(path, content, error)) {
     return false;
   }
   std::lock_guard lock(mutex_);

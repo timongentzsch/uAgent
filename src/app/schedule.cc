@@ -81,7 +81,7 @@ json Mutate(const std::function<json(json&)>& change) {
   if (bytes.size() > kStoreBytes) {
     return {{"error", "scheduled task storage is full"}};
   }
-  if (!AtomicWriteFile(SchedulePath(), bytes, kPrivateFileMode, false, error)) {
+  if (!WritePrivateFile(SchedulePath(), bytes, error)) {
     return {{"error", error}};
   }
   return result;

@@ -37,7 +37,7 @@ bool InteractiveOutput::Start() {
   // printf and rely on them reaching the pipe when the line ends; only the
   // mid-line streaming path (flushed once per received frame) and Stop() need
   // explicit flushes.
-  static char buffer[64 * 1024];
+  static char buffer[KiB(64)];
   setvbuf(stdout, buffer, _IOLBF, sizeof buffer);
   return true;
 }
@@ -68,7 +68,7 @@ InteractiveOutputUpdate InteractiveOutput::Read(bool finish) {
 }
 
 void InteractiveOutput::Write(const std::string& text) const {
-  (void)WriteAll(saved_.Get(), text.data(), text.size());
+  (void)WriteAll(saved_.Get(), text);
 }
 
 }  // namespace uagent

@@ -156,7 +156,7 @@ void Agent::DeliverActivityCompletions(
       completions.begin(), completions.end(), [](const auto& completion) {
         return completion.kind != ActivityKind::kMemory;
       }));
-  constexpr size_t kAutomaticBatchBytes = size_t{12} * 1024;
+  constexpr size_t kAutomaticBatchBytes = KiB(12);
   std::string batch = "[completed background tasks; bounded]\n";
   size_t reduced = 0;
   bool first = true;

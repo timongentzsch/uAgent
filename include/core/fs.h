@@ -113,9 +113,6 @@ inline constexpr const char* kSessionEditsSuffix = ".edits";
 // Remembered approval rules under kConfigDir; they grant future authority.
 inline constexpr const char* kPermissionStoreFile = "permissions.json";
 
-// Write every byte or report why not; errno is left set for the caller.
-bool WriteFully(int fd, std::string_view data);
-
 // mkstemp over a pattern string. `path` always receives the expanded template,
 // including on failure — callers name it in their error message.
 int CreateTempFile(const std::string& pattern, std::string& path);
@@ -177,6 +174,9 @@ bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
 bool AtomicWriteFile(const std::string& path, const std::string& content,
                      mode_t create_mode, bool preserve_mode, std::string& error,
                      bool overwrite = true);
+// The same for agent-private state: owner-only, whatever mode it had.
+bool WritePrivateFile(const std::string& path, const std::string& content,
+                      std::string& error);
 
 // create_directories() applies the ambient umask, so hardening only the leaf
 // leaves every directory it had to create along the way world-traversable.

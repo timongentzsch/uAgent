@@ -128,6 +128,10 @@
   and the activity viewer's header have been running counts up each second,
   in whole seconds under a minute, where it stood still until something
   else redrew it.
+- The project trust store is read within the 16 MiB cap its writer keeps
+  to, and only as a regular file: a larger one, or a link in its place,
+  trusts no project. Session links, memory receipts, detached-job records
+  and mail are read with the same bound.
 
 ## v1.5.0 - 2026-10-20
 

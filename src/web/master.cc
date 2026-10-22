@@ -36,7 +36,6 @@
 #include "include/core/signals.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/verbosity.h"
-#include "include/tools/files.h"
 #include "include/web/assets.h"
 #include "include/web/browser_viewer.h"
 #include "include/web/protocol.h"
@@ -271,9 +270,8 @@ int Master::Run() {
                     {"url", origin_},
                     {"secret", secret_},
                     {"epoch", epoch_}};
-  auto written =
-      ToolWritePrivateFile(directory_ + "/discovery.json", JsonDump(discovery));
-  if (!written.Ok()) {
+  if (!WritePrivateFile(directory_ + "/discovery.json", JsonDump(discovery),
+                        error)) {
     fprintf(stderr, "cannot publish web discovery\n");
     return 1;
   }
@@ -609,10 +607,9 @@ const std::string* Master::ExpectedOrigin(const Request& request) const {
 }
 // The configured level, by a name the policy table knows.
 std::string Master::ConfiguredVerbosity() {
-  const auto values = ConfigManager::Capture({}, "").Read().values;
-  const auto found = values.find(std::string(kVerbositySetting));
-  return std::string(
-      DetailFor(found == values.end() ? "" : found->second).level);
+  const auto settings = ConfigManager::Capture({}, "").Read();
+  const std::string level = settings.Get(std::string(kVerbositySetting));
+  return std::string(DetailFor(level).level);
 }
 // Tells every browser that what is saved is no longer what they read, and
 // the level with it: display state they all share.

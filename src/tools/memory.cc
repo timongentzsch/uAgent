@@ -450,7 +450,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
                                                : scope},
                   {"source", writable ? "uAgent" : scope},
                   {"writable", writable}};
-    if (!ReadRegularFile(entry.path, size_t{512} * 1024, content, error)) {
+    if (!ReadRegularFile(entry.path, KiB(512), content, error)) {
       value["error"] = error;
       return value;
     }
@@ -519,8 +519,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   }
   std::string previous;
   const bool exists = PathExists(path.string());
-  if (exists &&
-      !ReadRegularFile(path.string(), size_t{512} * 1024, previous, error)) {
+  if (exists && !ReadRegularFile(path.string(), KiB(512), previous, error)) {
     return {{"error", error}};
   }
   if (!request.contains("revision") ||

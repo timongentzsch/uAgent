@@ -25,10 +25,10 @@
 
 namespace uagent::panel {
 namespace {
-constexpr size_t kMessageBytes = size_t{8} * 1024;
+constexpr size_t kMessageBytes = KiB(8);
 // Members one panel's chat may have.
 constexpr int64_t kChatMembers = 16;
-constexpr size_t kDiffBytes = size_t{16} * 1024;
+constexpr size_t kDiffBytes = KiB(16);
 
 std::string Brief(const json& brief) {
   std::string text = "Objective: " + JsonValue(brief, "objective", "");

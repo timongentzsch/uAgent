@@ -21,7 +21,7 @@
 namespace uagent {
 namespace {
 
-constexpr size_t kSettingsBytes = size_t{4} * 1024 * 1024;
+constexpr size_t kSettingsBytes = MiB(4);
 constexpr int kFormat = 3;
 constexpr char kVariables[] = "variables";
 
@@ -379,8 +379,7 @@ void WriteSchema() {
   const std::string text = JsonDump(SettingsSchema(), 2) + "\n";
   if (ReadFile(path, kSettingsBytes).value_or("") == text) return;
   std::string ignored;
-  AtomicWriteFile(path, text, kPrivateFileMode, /*preserve_mode=*/false,
-                  ignored);
+  WritePrivateFile(path, text, ignored);
 }
 
 std::string Joined(const std::vector<std::string>& problems) {

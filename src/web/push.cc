@@ -26,7 +26,6 @@
 #include "include/core/private_store.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
-#include "include/tools/files.h"
 #include "include/web/protocol.h"
 #include "include/web/push_crypto.h"
 
@@ -150,9 +149,9 @@ struct PushSender::Impl {
                        {"public_key", item.public_key},
                        {"auth", item.auth}});
     }
-    return ToolWritePrivateFile(directory + "/push-subscriptions.json",
-                                JsonDump(value))
-        .Ok();
+    std::string error;
+    return WritePrivateFile(directory + "/push-subscriptions.json",
+                            JsonDump(value), error);
   }
   bool Valid(const Subscription& subscription) const {
     return OpaqueId(subscription.device) &&

@@ -22,7 +22,7 @@ bool EditExternalText(std::string& text, int terminal_fd, size_t limit) {
   if (!draft) return false;
   draft.Close();
   std::string error;
-  bool ok = AtomicWriteFile(draft.Path(), text, kPrivateFileMode, false, error);
+  bool ok = WritePrivateFile(draft.Path(), text, error);
   if (ok) {
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);

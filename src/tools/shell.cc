@@ -226,13 +226,13 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
   if (!spec.sandbox) return {};
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kRefused) {
-    return "error: the sandbox cannot be enforced: " + status.reason +
+    return "the sandbox cannot be enforced: " + status.reason +
            ". Set UAGENT_SANDBOX=off to run commands unconfined";
   }
   if (status.mode != SandboxMode::kEnforced) return {};
   *wrapper = SandboxWrapperArgv(status);
   if (wrapper->empty()) {
-    return "error: the sandbox policy is too large to enforce (" +
+    return "the sandbox policy is too large to enforce (" +
            std::to_string(status.policy.writable_roots.size()) +
            " writable roots); remove entries from UAGENT_SANDBOX_WRITE";
   }

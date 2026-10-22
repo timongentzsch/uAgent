@@ -79,7 +79,7 @@ void Declare(Endpoint& endpoint, const KnownEndpoint& known) {
 }
 
 constexpr std::chrono::hours kCatalogueLife{24};
-constexpr size_t kCatalogueCacheBytes = size_t{8} * 1024 * 1024;
+constexpr size_t kCatalogueCacheBytes = MiB(8);
 
 // What a catalogue answers for: the endpoint and the way it is asked. The
 // credential is no part of it, so nothing derived from one is written down.
@@ -379,10 +379,10 @@ std::optional<std::vector<ModelInfo>> QueryModels(Api& api, bool abortable,
   if (models && !models->empty()) {
     const std::string identity = CatalogueIdentity(api);
     std::string error;
-    AtomicWriteFile(CataloguePath(identity),
-                    JsonDump({{"identity", identity},
-                              {"response", std::move(response.body)}}),
-                    kPrivateFileMode, false, error);
+    WritePrivateFile(CataloguePath(identity),
+                     JsonDump({{"identity", identity},
+                               {"response", std::move(response.body)}}),
+                     error);
   }
   return models;
 }

@@ -309,10 +309,8 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
                              json::object()),
                    config);
     const EffectiveConfigSnapshot configured = config.Read();
-    const auto route = configured.values.find("UAGENT_MODEL");
-    state["route"] = route == configured.values.end() || route->second.empty()
-                         ? record.metadata.model
-                         : route->second;
+    const std::string route = configured.Get("UAGENT_MODEL");
+    state["route"] = route.empty() ? record.metadata.model : route;
     state["permissions"] =
         ApprovalState(configured, record.metadata.kind == kSessionKindThread);
   } else if (PathExists(session->path)) {

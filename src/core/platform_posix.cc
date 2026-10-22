@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -35,13 +36,12 @@ namespace uagent {
 
 char** ProcessEnvironment() { return environ; }
 
-bool WriteAll(int fd, const void* data, size_t size) {
-  const auto* bytes = static_cast<const char*>(data);
-  for (size_t offset = 0; offset < size;) {
-    ssize_t written = write(fd, bytes + offset, size - offset);
+bool WriteAll(int fd, std::string_view data) {
+  while (!data.empty()) {
+    ssize_t written = write(fd, data.data(), data.size());
     if (written < 0 && errno == EINTR) continue;
     if (written <= 0) return false;
-    offset += static_cast<size_t>(written);
+    data.remove_prefix(static_cast<size_t>(written));
   }
   return true;
 }
@@ -113,6 +113,17 @@ bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout) {
     if (wait_ms <= 0) return false;
     (void)poll(nullptr, 0, wait_ms);
   }
+}
+
+bool StopProcess(pid_t pid, bool group, std::chrono::milliseconds grace,
+                 int* status) {
+  const pid_t target = group ? -pid : pid;
+  if (grace.count() > 0) {
+    kill(target, SIGTERM);
+    if (ReapPidFor(pid, status, grace)) return true;
+  }
+  kill(target, SIGKILL);
+  return ReapPidFor(pid, status, std::chrono::seconds(1));
 }
 
 std::optional<ProcStat> ParseProcStat(std::string_view record) {

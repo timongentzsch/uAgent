@@ -4,12 +4,10 @@
 
 #include <fcntl.h>
 #include <poll.h>
-#include <signal.h>
 #include <spawn.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -37,7 +35,7 @@
 
 namespace uagent::browser {
 namespace {
-constexpr size_t kMaxPacket = size_t{12} * 1024 * 1024;
+constexpr size_t kMaxPacket = MiB(12);
 
 bool Transfer(int fd, char* bytes, size_t count, bool write, int timeout_ms) {
   while (count) {
@@ -173,12 +171,7 @@ ServiceProcess::~ServiceProcess() {
     return;
   }
   // One that does not heed the request is not waited for without end.
-  kill(pid, SIGTERM);
-  if (!ReapPidFor(pid, nullptr,
-                  std::chrono::milliseconds(kChildShutdownGraceMs))) {
-    kill(pid, SIGKILL);
-    WaitPid(pid, nullptr);
-  }
+  StopProcess(pid, false, std::chrono::milliseconds(kChildShutdownGraceMs));
 }
 
 json Request(const json& command, int timeout_ms) {

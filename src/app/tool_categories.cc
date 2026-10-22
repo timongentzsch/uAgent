@@ -16,7 +16,7 @@ namespace uagent {
 namespace {
 
 constexpr int64_t kToolCategoryStoreVersion = 1;
-constexpr size_t kToolCategoryStoreBytes = size_t{256} * 1024;
+constexpr size_t kToolCategoryStoreBytes = KiB(256);
 constexpr size_t kCategoryNameChars = 64;
 constexpr size_t kCategoryIdChars = 16;
 constexpr char kToolCategoryStoreFile[] = "tool-categories.json";

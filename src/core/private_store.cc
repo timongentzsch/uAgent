@@ -68,8 +68,7 @@ bool PrivateJsonStore::Save(std::string& error) const {
     error = "private settings exceed the storage limit";
     return false;
   }
-  return AtomicWriteFile(path_, bytes, kPrivateFileMode,
-                         /*preserve_mode=*/false, error);
+  return WritePrivateFile(path_, bytes, error);
 }
 
 json ReadPrivateArtifact(const std::string& path, size_t offset) {

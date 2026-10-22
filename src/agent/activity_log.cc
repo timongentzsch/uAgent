@@ -14,7 +14,6 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <limits>
 #include <optional>
 #include <string>
@@ -40,8 +39,7 @@ void BgTrackSignal(pid_t pid, bool add, bool agent) {
 }
 
 void KillProcess(pid_t pid) {
-  SignalProcessGroup(pid, SIGKILL);
-  if (!ReapPidFor(pid, nullptr, std::chrono::milliseconds(500))) {
+  if (!StopProcess(pid, true, {})) {
     DebugLog("child_reap_deferred", {{"pid", pid}});
   }
 }
@@ -173,7 +171,7 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
   int64_t segment = std::max(int64_t{512}, max_bytes / 2);
   Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode));
   if (!fd) return 1;
-  std::array<char, size_t{64} * 1024> buffer{};
+  std::array<char, KiB(64)> buffer{};
   int64_t written = 0;
   for (;;) {
     ssize_t count = read(STDIN_FILENO, buffer.data(), buffer.size());
@@ -230,9 +228,14 @@ std::filesystem::file_time_type DetachedRecordCutoff() {
 std::optional<json> LoadDetachedRecord(const std::filesystem::path& path,
                                        std::filesystem::file_time_type cutoff) {
   namespace fs = std::filesystem;
-  std::ifstream input(path);
-  if (!input) return std::nullopt;
-  json record = json::parse(input, nullptr, false);
+  // A record holds one command, which a tool argument bounds well below this.
+  // Only a record that reads but does not parse is corrupt; one that cannot be
+  // read now (a race, no descriptors) may still name a live command.
+  std::string bytes, error;
+  if (!ReadRegularFile(path.string(), MiB(1), bytes, error)) {
+    return std::nullopt;
+  }
+  json record = json::parse(bytes, nullptr, false);
   std::error_code ec;
   if (record.is_discarded()) {
     fs::remove(path, ec);

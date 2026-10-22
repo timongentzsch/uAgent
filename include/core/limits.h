@@ -26,10 +26,10 @@ inline constexpr size_t kPreviewChars = 4096;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
 // The opening of a change/diff that a tool-result fact and its live event
 // carry. A longer diff is kept whole in a private artifact the row names.
-inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
+inline constexpr size_t kChangePreviewChars = KiB(16);
 // Cap of the encoded attachments kept for the model calls of a turn, and the
 // largest dimension kept for vision payloads.
-inline constexpr size_t kAttachmentCacheBytes = size_t{16} * 1024 * 1024;
+inline constexpr size_t kAttachmentCacheBytes = MiB(16);
 inline constexpr int kMaxImageDimension = 2048;
 // Maximum entries held in a session/asset catalogue scan. Distinct from the
 // byte budgets above: raising retention must not raise preview windows.
@@ -154,11 +154,11 @@ inline constexpr size_t kDetailChars = 24;
 inline constexpr size_t kAgentNameChars = 8;
 
 // The assembled system message, and what an external editor may return.
-inline constexpr size_t kSystemPromptBytes = size_t{64} * 1024;
+inline constexpr size_t kSystemPromptBytes = KiB(64);
 // Memory-event journal budgets: the append-only audit log is compacted past
 // this size, and a single event line beyond this is refused. The writer, the
 // readers and the retention policy must agree.
-inline constexpr size_t kMemoryEventJournalBytes = size_t{256} * 1024;
+inline constexpr size_t kMemoryEventJournalBytes = KiB(256);
 inline constexpr size_t kMemoryEventLineBytes = 4096;
 
 // Agent-private artifacts (sessions, logs, memories, config). Owner-only, so a

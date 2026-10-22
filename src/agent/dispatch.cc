@@ -197,14 +197,13 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   Emit(Event{EventId::kToolStarted, std::move(start)});
   // Decided again now that the calls before it in the batch have run: one of
   // them can have made its path a link to something only a person may touch.
-  task.result =
-      RequiredApproval(*task.tool, task.args) > task.required ||
-              (!task.outside && task.tool->needs_approval &&
-               task.tool->needs_approval(task.args))
-          ? ToolFailure(ToolErrorCode::kPermissionDenied,
-                        "error: what this call reaches changed after it was "
-                        "approved; ask for it again")
-          : task.tool->run(task.args, call_context);
+  task.result = RequiredApproval(*task.tool, task.args) > task.required ||
+                        (!task.outside && task.tool->needs_approval &&
+                         task.tool->needs_approval(task.args))
+                    ? ToolFailure(ToolErrorCode::kPermissionDenied,
+                                  "what this call reaches changed after it was "
+                                  "approved; ask for it again")
+                    : task.tool->run(task.args, call_context);
   task.result.output = CapResult(task.result.output, ResultCharLimit(task));
   // A hint pulled to its bound is still a reduced request. Leading the result
   // with the reduction keeps it out of reach of the cap that trims the tail.

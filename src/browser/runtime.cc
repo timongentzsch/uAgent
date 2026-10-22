@@ -31,7 +31,7 @@
 
 namespace uagent::browser {
 namespace {
-constexpr size_t kProfilesBytes = size_t{64} * 1024;
+constexpr size_t kProfilesBytes = KiB(64);
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr,
              const std::vector<std::string>& environment = {}) {
@@ -71,12 +71,7 @@ pid_t Launch(const std::vector<std::string>& arguments,
 }
 void Terminate(pid_t& pid) {
   if (pid <= 0) return;
-  kill(-pid, SIGTERM);
-  if (!ReapPidFor(pid, nullptr,
-                  std::chrono::milliseconds(kChildShutdownGraceMs))) {
-    kill(-pid, SIGKILL);
-    waitpid(pid, nullptr, 0);
-  }
+  StopProcess(pid, true, std::chrono::milliseconds(kChildShutdownGraceMs));
   // Whatever the leader left behind.
   kill(-pid, SIGKILL);
   pid = -1;
@@ -562,7 +557,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       if (held && OpenDialog()) return {{"dialog", true}};
       continue;
     }
-    if (cdp_buffer_.size() > size_t{16} * 1024 * 1024) {
+    if (cdp_buffer_.size() > MiB(16)) {
       return {{"error", "Chrome response exceeded limit"}};
     }
     pollfd ready{cdp_out_.Get(), POLLIN, 0};

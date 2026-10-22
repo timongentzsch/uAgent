@@ -86,11 +86,6 @@ std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
   return cwd / kWorkspaceDir;
 }
 
-// Write every byte or report why not; errno is left set for the caller.
-bool WriteFully(int fd, std::string_view data) {
-  return WriteAll(fd, data.data(), data.size());
-}
-
 // mkstemp over a pattern string. `path` always receives the expanded template,
 // including on failure - callers name it in their error message.
 int CreateTempFile(const std::string& pattern, std::string& path) {
@@ -129,7 +124,7 @@ int ScopedTempFile::ReleaseFd() {
 bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   // Grows with what is actually there, not with the cap.
   out.clear();
-  char chunk[64 * 1024];
+  char chunk[KiB(64)];
   while (out.size() <= cap && input.read(chunk, sizeof chunk).gcount() > 0) {
     out.append(chunk, std::min(static_cast<size_t>(input.gcount()),
                                cap + 1 - out.size()));
@@ -446,7 +441,7 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
                     ? st.st_mode & 07777
                     : create_mode;
   if (fchmod(fd.Get(), mode) != 0) return fail(strerror(errno));
-  if (!WriteFully(fd.Get(), content)) {
+  if (!WriteAll(fd.Get(), content)) {
     return fail("write to " + path + " failed: " + strerror(errno));
   }
   // A deferred write can still fail in close(2), so the commit is fsync plus
@@ -473,6 +468,11 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
     return false;
   }
   return true;
+}
+bool WritePrivateFile(const std::string& path, const std::string& content,
+                      std::string& error) {
+  return AtomicWriteFile(path, content, kPrivateFileMode,
+                         /*preserve_mode=*/false, error);
 }
 void CreatePrivateDirectories(const std::filesystem::path& dir) {
   namespace fs = std::filesystem;
@@ -549,7 +549,7 @@ bool AppendPrivateLine(const std::string& path, const std::string& line,
     error = strerror(errno);
     return false;
   }
-  const bool written = WriteFully(fd.Get(), line + "\n");
+  const bool written = WriteAll(fd.Get(), line + "\n");
   if (!written) error = strerror(errno);
   flock(fd.Get(), LOCK_UN);
   return written;
@@ -567,7 +567,7 @@ bool TakePrivateText(const std::string& path, std::string& content,
     error = strerror(errno);
     return false;
   }
-  constexpr size_t kMaxBytes = size_t{16} * 1024 * 1024;
+  constexpr size_t kMaxBytes = MiB(16);
   char buffer[4096];
   bool ok = true;
   for (;;) {

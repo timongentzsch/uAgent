@@ -91,8 +91,7 @@ inline std::optional<ToolArgumentIssue> RefuseHidden(const json& args) {
 inline Tool::Run RefusingHidden(Tool::Run run) {
   return [run = std::move(run)](const json& args, const ToolContext& context) {
     if (auto refused = RefuseHidden(args)) {
-      return ToolFailure(ToolErrorCode::kPermissionDenied,
-                         "error: " + refused->message);
+      return ToolFailure(ToolErrorCode::kPermissionDenied, refused->message);
     }
     return run(args, context);
   };
@@ -126,7 +125,7 @@ inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
   namespace fs = std::filesystem;
   if (path.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: path must not be empty");
+                       "path must not be empty");
   }
 
   std::error_code link_error;
@@ -135,12 +134,11 @@ inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
       link.type() == fs::file_type::not_found) {
     if (target == PathTarget::kWritableFile) return std::nullopt;
     return ToolFailure(ToolErrorCode::kNotFound,
-                       "error: path does not exist: " + path);
+                       "path does not exist: " + path);
   }
   if (link_error) {
-    return ToolFailure(
-        ToolErrorCode::kInternal,
-        "error: cannot inspect " + path + ": " + link_error.message());
+    return ToolFailure(ToolErrorCode::kInternal,
+                       "cannot inspect " + path + ": " + link_error.message());
   }
 
   std::error_code status_error;
@@ -149,7 +147,7 @@ inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
     if (link.type() == fs::file_type::symlink &&
         status_error == std::errc::no_such_file_or_directory) {
       return ToolFailure(ToolErrorCode::kPermissionDenied,
-                         "error: refusing dangling symlink: " + path);
+                         "refusing dangling symlink: " + path);
     }
     return ToolFailure(
         status_error == std::errc::permission_denied
@@ -160,11 +158,11 @@ inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
   if (target == PathTarget::kDirectory) {
     if (fs::is_directory(status)) return std::nullopt;
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: not a directory: " + path);
+                       "not a directory: " + path);
   }
   if (fs::is_regular_file(status)) return std::nullopt;
   return ToolFailure(ToolErrorCode::kPermissionDenied,
-                     "error: refusing non-regular file: " + path);
+                     "refusing non-regular file: " + path);
 }
 
 }  // namespace uagent

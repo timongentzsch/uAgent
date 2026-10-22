@@ -135,9 +135,7 @@ bool WriteTrustRecord(const std::string& root, json record,
 }
 
 json ReadTrustStore() {
-  std::ifstream file(TrustStorePath());
-  if (!file) return json::object();
-  json value = json::parse(file, nullptr, false);
+  json value = ReadJsonFile(TrustStorePath(), kTrustStoreBytes);
   return value.is_object() ? value : json::object();
 }
 

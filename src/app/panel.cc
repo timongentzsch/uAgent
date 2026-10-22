@@ -265,15 +265,14 @@ std::string PanelBoard(const std::string& folder) {
 }
 
 json ReadPanelFile(const std::string& folder, const char* suffix) {
-  json held = ReadJsonFile(PanelPath(folder) + suffix, size_t{64} * 1024);
+  json held = ReadJsonFile(PanelPath(folder) + suffix, KiB(64));
   return held.is_object() ? held : json::object();
 }
 
 std::string WritePanelFile(const std::string& folder, const char* suffix,
                            const json& value) {
   std::string error;
-  AtomicWriteFile(PanelPath(folder) + suffix, JsonDump(value, 1),
-                  kPrivateFileMode, false, error);
+  WritePrivateFile(PanelPath(folder) + suffix, JsonDump(value, 1), error);
   return error;
 }
 

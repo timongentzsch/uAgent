@@ -129,8 +129,7 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   for (const std::string& unavailable : search.unavailable) {
     reply.Note(Tone::kWarn, TerminalSafe(unavailable) + " catalog unavailable");
   }
-  reply.Note(Tone::kNeutral, std::to_string(search.matches.size()) + " model" +
-                                 (search.matches.size() == 1 ? "" : "s"));
+  reply.Note(Tone::kNeutral, Plural(search.matches.size(), "model"));
   if (search.matches.empty()) return std::nullopt;
 
   bool cancelled = false;

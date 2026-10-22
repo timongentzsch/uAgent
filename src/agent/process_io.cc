@@ -469,7 +469,7 @@ json ProcessSupervisor::InspectActivity(int64_t id) const {
     std::lock_guard lock(job->session->mutex);
     result["output"] = job->session->transcript.Snapshot();
   } else {
-    result["output"] = ReadLogTail(job->log, static_cast<int64_t>(64 * 1024));
+    result["output"] = ReadLogTail(job->log, static_cast<int64_t>(KiB(64)));
   }
   return result;
 }
@@ -696,7 +696,7 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
             log_fd = session->log_fd.Get();
             notify = true;
           }
-          if (log_fd >= 0) (void)WriteAll(log_fd, bytes.data(), keep);
+          if (log_fd >= 0) (void)WriteAll(log_fd, chunk.substr(0, keep));
         }
       }
 

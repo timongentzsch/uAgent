@@ -19,7 +19,7 @@ namespace uagent {
 char** ProcessEnvironment();
 
 // Write every byte or report failure. errno is left set for the caller.
-bool WriteAll(int fd, const void* data, size_t size);
+bool WriteAll(int fd, std::string_view data);
 
 // The same for a nonblocking descriptor: each chunk waits at most
 // `timeout_ms` for the peer to drain, so a stuck reader cannot hang us.
@@ -36,6 +36,10 @@ pid_t WaitPid(pid_t pid, int* status, int flags = 0);
 // Poll for one child without ever turning process teardown into an unbounded
 // wait. ECHILD is success because another owner already reaped it.
 bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout);
+// SIGTERM a child (its group when `group`) and reap it within `grace`, else
+// SIGKILL and reap within a second; zero grace kills at once. True if reaped.
+bool StopProcess(pid_t pid, bool group, std::chrono::milliseconds grace,
+                 int* status = nullptr);
 
 // A wait status that says the process exited, and with code 0.
 inline bool ExitedOk(int status) {

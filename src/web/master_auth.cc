@@ -15,7 +15,6 @@
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
-#include "include/tools/files.h"
 #include "include/web/protocol.h"
 #include "src/web/master_internal.h"
 
@@ -78,7 +77,8 @@ bool Master::SaveDevices() const {
                    {"name", device.name},
                    {"expires", device.expires}});
   }
-  return ToolWritePrivateFile(directory_ + "/devices.json", JsonDump(out)).Ok();
+  std::string error;
+  return WritePrivateFile(directory_ + "/devices.json", JsonDump(out), error);
 }
 std::string Master::DeviceId(const Request& request) const {
   std::string cookies = request.get_header_value("Cookie");

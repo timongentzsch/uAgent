@@ -12,8 +12,7 @@ namespace uagent {
 std::string LibraryChangePath() { return UagentDir("library") + "/changed"; }
 void LibraryChanged() {
   std::string error;
-  AtomicWriteFile(LibraryChangePath(), MakeSessionId(), kPrivateFileMode, false,
-                  error);
+  WritePrivateFile(LibraryChangePath(), MakeSessionId(), error);
 }
 bool LibraryName(const std::string& name) {
   return !name.empty() && name.size() <= kLibraryNameChars && name != "." &&

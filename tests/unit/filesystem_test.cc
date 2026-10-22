@@ -485,6 +485,14 @@ void TestFileTools() {
             ApprovalClass::kMandatoryHuman);
     }
     CHECK(SelfConfigurationPath(SettingsPath() + ".lock"));
+    // Trust is read within the cap its writer keeps to.
+    const std::string trusted = R"({"/project":{}})";
+    CHECK(ToolWriteFile(TrustStorePath(), trusted).Ok());
+    CHECK(ReadTrustStore().contains("/project"));
+    CHECK(ToolWriteFile(TrustStorePath(),
+                        trusted + std::string(kTrustStoreBytes, ' '))
+              .Ok());
+    CHECK(ReadTrustStore().empty());
     CHECK(ToolWriteFile(TrustStorePath(), "{}\n").Ok());
     CHECK(SelfConfigurationPath(TrustStorePath()));
     CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kRead) ==

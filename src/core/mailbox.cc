@@ -18,6 +18,7 @@
 
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 
@@ -44,8 +45,7 @@ std::vector<fs::path> Messages(const fs::path& dir) {
 }
 
 bool ReadMail(const fs::path& path, Mail& mail) {
-  auto text = ReadFile(path.string(), 2 * kMailBytes);
-  return text && MailFromJson(json::parse(*text, nullptr, false), mail);
+  return MailFromJson(ReadJsonFile(path.string(), 2 * kMailBytes), mail);
 }
 
 // Pending messages in mailbox `dir` with their files, unreadable ones set
@@ -185,8 +185,8 @@ std::string SendMail(Mail mail) {
            mail.created_ms, static_cast<int>(getpid()),
            static_cast<uint64_t>(sequence.fetch_add(1) % 100000000));
   std::string error;
-  if (!AtomicWriteFile(dir + "/new/" + stamp + "-" + mail.id + ".json", content,
-                       kPrivateFileMode, false, error)) {
+  if (!WritePrivateFile(dir + "/new/" + stamp + "-" + mail.id + ".json",
+                        content, error)) {
     return error;
   }
   return "";

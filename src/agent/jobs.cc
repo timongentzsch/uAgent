@@ -162,8 +162,7 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
     return done(std::move(tail), captured);
   }
   const WaitWindow window(wait_ms, context.deadline);
-  HeadTailBuffer collected(cap > 0 ? static_cast<size_t>(cap)
-                                   : size_t{1024} * 1024);
+  HeadTailBuffer collected(cap > 0 ? static_cast<size_t>(cap) : MiB(1));
   std::optional<std::chrono::steady_clock::time_point> quiet_deadline;
   {
     std::lock_guard<std::mutex> lock(job.session->mutex);
@@ -481,7 +480,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
                                std::to_string(id) + ": " +
                                std::strerror(interrupt_error));
       }
-    } else if (!WriteAll(input.Get(), chars.data(), chars.size())) {
+    } else if (!WriteAll(input.Get(), chars)) {
       int write_error = errno;
       return ToolFailure(ToolErrorCode::kProcessFailed,
                          "could not write activity " + std::to_string(id) +

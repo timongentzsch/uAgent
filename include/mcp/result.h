@@ -31,18 +31,18 @@ namespace uagent {
 inline ToolResult McpResultText(const McpServer& s, const json& resp,
                                 const std::string& source_call_id = {}) {
   if (!resp.contains("result")) {
-    return ToolFailure(ToolErrorCode::kRemoteError,
-                       "error: mcp(" + s.name +
-                           "): " + JsonErrorMessage(resp, "unknown error"));
+    return ToolFailure(
+        ToolErrorCode::kRemoteError,
+        "mcp(" + s.name + "): " + JsonErrorMessage(resp, "unknown error"));
   }
   const json& r = resp["result"];
   if (!r.is_object()) {
     return ToolFailure(ToolErrorCode::kRemoteError,
-                       "error: mcp(" + s.name + "): result must be an object");
+                       "mcp(" + s.name + "): result must be an object");
   }
   if (JsonValue(r, "resultType", "complete") != "complete") {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: MCP request requires unsupported input or "
+                       "MCP request requires unsupported input or "
                        "exceeded continuation limits");
   }
   std::string text;

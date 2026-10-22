@@ -24,6 +24,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -172,11 +173,11 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
       tail.erase(0, first_line + 1);
     }
     if (ftruncate(fd.Get(), 0) != 0 || lseek(fd.Get(), 0, SEEK_SET) < 0 ||
-        !WriteFully(fd.Get(), tail)) {
+        !WriteAll(fd.Get(), tail)) {
       return fail(strerror(errno));
     }
   }
-  if (!WriteFully(fd.Get(), line + "\n")) return fail(strerror(errno));
+  if (!WriteAll(fd.Get(), line + "\n")) return fail(strerror(errno));
   flock(fd.Get(), LOCK_UN);
   if (fd.Close() != 0) {
     error = strerror(errno);
@@ -192,8 +193,7 @@ bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
   if (receipt_path.empty()) return appended;
   std::string receipt_error;
   bool receipt =
-      AtomicWriteFile(receipt_path, serialized + "\n", kPrivateFileMode,
-                      /*preserve_mode=*/false, receipt_error);
+      WritePrivateFile(receipt_path, serialized + "\n", receipt_error);
   if (!receipt) {
     if (!error.empty()) error += "; ";
     error += "receipt: " + receipt_error;
@@ -203,12 +203,7 @@ bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
 
 bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
                        std::string& error) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    error = "receipt not found";
-    return false;
-  }
-  json value = json::parse(input, nullptr, false);
+  json value = ReadJsonFile(path, kMemoryEventLineBytes);
   if (value.is_discarded() || !ParseMemoryEvent(value, event)) {
     error = "invalid memory receipt";
     return false;

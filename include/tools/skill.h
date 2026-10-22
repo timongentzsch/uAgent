@@ -58,7 +58,7 @@ inline ToolResult OpenSkill(const Skill& skill,
 
 inline std::string SkillCatalogue(const std::vector<Skill>& skills,
                                   std::string_view query) {
-  constexpr size_t kCatalogueChars = size_t{8} * 1024;
+  constexpr size_t kCatalogueChars = KiB(8);
   constexpr std::string_view kMore = "\n[more matches; narrow query]";
   bool descriptions = !Trim(std::string(query)).empty();
   std::string out;
@@ -195,7 +195,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
         if (catalogue.empty()) {
           return ToolFailure(
               ToolErrorCode::kNotFound,
-              "error: no installed skill matches: " + TerminalSafe(query) +
+              "no installed skill matches: " + TerminalSafe(query) +
                   "; call skill with {} to list installed "
                   "names");
         }

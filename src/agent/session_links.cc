@@ -3,7 +3,6 @@
 #include "include/agent/session_links.h"
 
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -16,6 +15,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/transport/session.h"
 
@@ -32,6 +32,7 @@ namespace {
 
 constexpr int kSessionLinkFormat = 1;
 constexpr size_t kSessionLinkMembers = 32;
+constexpr size_t kSessionLinkBytes = KiB(256);
 
 // A panel and its threads work together, so they are linked by where
 // they live, whatever mode each runs in: one history folder holds
@@ -98,8 +99,7 @@ bool HasMember(const json& members, const std::string& id) {
 // did not give it. Nor is a session whose saved header cannot be read, which
 // could be one.
 json LinkMembers() {
-  std::ifstream input(AutoLinkPath());
-  const json link = json::parse(input, nullptr, false);
+  const json link = ReadJsonFile(AutoLinkPath(), kSessionLinkBytes);
   json own = json::array();
   if (JsonValue(link, "format", int64_t{0}) != kSessionLinkFormat) return own;
   for (json& member : JsonValue(link, "members", json::array())) {

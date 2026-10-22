@@ -3,7 +3,6 @@
 
 #include <fcntl.h>
 #include <poll.h>
-#include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -98,8 +97,7 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
         if (errno != EAGAIN) eof = true;
         break;
       }
-      if (result.output.size() + static_cast<size_t>(count) >
-          size_t{1024} * 1024) {
+      if (result.output.size() + static_cast<size_t>(count) > MiB(1)) {
         result.error = "helper output exceeds limit";
         eof = true;
         break;
@@ -111,8 +109,7 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
   if (!eof || !result.error.empty() ||
       !ReapPidFor(child, &status,
                   std::chrono::milliseconds(PollTimeoutMs(deadline)))) {
-    kill(-child, SIGKILL);
-    ReapPidFor(child, &status, std::chrono::seconds(1));
+    StopProcess(child, true, {}, &status);
     if (result.error.empty()) result.error = "helper timed out";
   }
   result.status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;

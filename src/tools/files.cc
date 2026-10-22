@@ -101,7 +101,7 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
 
 ToolResult FileOpenFailure(const std::string& path) {
   std::error_code error(errno, std::generic_category());
-  return ToolFailure(FileToolError(error), "error: cannot open " + path);
+  return ToolFailure(FileToolError(error), "cannot open " + path);
 }
 
 // Scan skipped lines without retaining them; never allocate a complete giant
@@ -546,20 +546,16 @@ ToolResult ToolEditFile(const std::string& path,
   }
   if (run.replacements == 0) {
     return ToolSuccess("already applied " + path + " (" +
-                       std::to_string(run.already_applied) +
-                       (run.already_applied == 1 ? " edit)" : " edits)"));
+                       Plural(run.already_applied, "edit") + ")");
   }
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (!write.Ok()) return write;
-  ToolResult result =
-      ToolSuccess("edited " + path + " (" + std::to_string(run.replacements) +
-                  (run.replacements == 1 ? " replacement across "
-                                         : " replacements across ") +
-                  std::to_string(edits.size()) +
-                  (edits.size() == 1 ? " edit; " : " edits; ") +
-                  std::to_string(original_size) + " -> " +
-                  std::to_string(data.size()) + " bytes)");
+  ToolResult result = ToolSuccess(
+      "edited " + path + " (" + Plural(run.replacements, "replacement") +
+      " across " + Plural(edits.size(), "edit") + "; " +
+      std::to_string(original_size) + " -> " + std::to_string(data.size()) +
+      " bytes)");
   result.display = DiffReceipt("Edited", path, run.display);
   result.effect = FileEffect{CanonicalAccessPath(path).string(), true,
                              std::move(original), HashHex(data), original_mode};
@@ -664,7 +660,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
   std::error_code ec;
   if (!std::filesystem::remove(path, ec)) {
     if (ec) {
-      return ToolFailure(FileToolError(ec), "error: cannot delete " + path);
+      return ToolFailure(FileToolError(ec), "cannot delete " + path);
     }
     return ToolFailure(ToolErrorCode::kNotFound,
                        "path does not exist: " + path);
@@ -764,7 +760,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     entries.push_back(e.path().filename().string() + (directory ? "/" : ""));
   }
   if (ec) {
-    return ToolFailure(FileToolError(ec), "error: cannot open directory " + p);
+    return ToolFailure(FileToolError(ec), "cannot open directory " + p);
   }
   std::sort(entries.begin(), entries.end());
   if (entries.empty()) return ToolSuccess("(empty directory)");

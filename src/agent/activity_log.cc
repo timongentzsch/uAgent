@@ -61,7 +61,7 @@ std::string FmtExit(int status, bool show_ok) {
 }
 
 ToolResult ProcessResult(std::string output, int status) {
-  if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+  if (ExitedOk(status)) {
     return ToolSuccess(std::move(output));
   }
   return ToolFailure(ToolErrorCode::kProcessFailed, std::move(output));

@@ -4,6 +4,7 @@
 #define UAGENT_INCLUDE_CORE_PLATFORM_H_
 
 #include <sys/types.h>
+#include <sys/wait.h>
 
 #include <chrono>
 #include <cstddef>
@@ -35,6 +36,11 @@ pid_t WaitPid(pid_t pid, int* status, int flags = 0);
 // Poll for one child without ever turning process teardown into an unbounded
 // wait. ECHILD is success because another owner already reaped it.
 bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout);
+
+// A wait status that says the process exited, and with code 0.
+inline bool ExitedOk(int status) {
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
 
 // The fields of a Linux /proc/<pid>/stat record that matter here. Nothing
 // when the record is malformed.

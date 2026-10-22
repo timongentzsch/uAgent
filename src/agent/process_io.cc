@@ -440,9 +440,8 @@ json ProcessSupervisor::ActivityViews() const {
       if (ActivityTerminal(job.session->state) && job.session->wait_status) {
         int status = *job.session->wait_status;
         row["status"] = job.session->stop_requested ? "stopped"
-                        : WIFEXITED(status) && WEXITSTATUS(status) == 0
-                            ? "completed"
-                            : "failed";
+                        : ExitedOk(status)          ? "completed"
+                                                    : "failed";
         row["exit_code"] = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
       }
       if (job.session->wait_status) {

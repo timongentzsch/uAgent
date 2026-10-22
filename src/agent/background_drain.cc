@@ -25,6 +25,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/output_buffer.h"
+#include "include/core/platform.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "include/tools/tool.h"
@@ -34,8 +35,7 @@ namespace uagent {
 // One finished extraction: its receipt decides what the memory event records,
 // and only a change or a failure is worth a line on screen.
 void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
-  bool success =
-      WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
+  bool success = ExitedOk(completion.status);
   MemoryEvent event;
   std::string receipt_error;
   bool receipt_exists =
@@ -163,8 +163,7 @@ void Agent::DeliverActivityCompletions(
     if (completion.kind == ActivityKind::kMemory) continue;
     std::string header = BgResultHeader(completion);
 
-    const bool succeeded =
-        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
+    const bool succeeded = ExitedOk(completion.status);
     PresentationRecord record;
     record.kind = PresentationKind::kNotice;
     record.status = succeeded ? PresentationStatus::kSucceeded

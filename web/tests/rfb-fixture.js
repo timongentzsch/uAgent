@@ -145,7 +145,7 @@ export async function serveFramebuffer(page) {
 // The server's pointer (Cursor pseudo-encoding -239): an opaque 12x16 block
 // with its hotspot at (2, 3), so a client drawing it can be told apart from
 // any local stand-in.
-export const cursor = { width: 12, height: 16, hotX: 2, hotY: 3 };
+const cursor = { width: 12, height: 16, hotX: 2, hotY: 3 };
 const cursorRect = () => {
   const header = Buffer.alloc(12);
   header.writeUInt16BE(cursor.hotX, 0);

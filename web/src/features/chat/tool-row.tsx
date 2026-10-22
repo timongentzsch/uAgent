@@ -21,7 +21,7 @@ import type {
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
-import { duration } from "../../shared/duration.ts";
+import { useElapsed } from "../../shared/time.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { coarsePointer } from "../../shared/layout.ts";
 import { active } from "../../shared/activity-status.tsx";
@@ -162,17 +162,11 @@ export function ToolRow({
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
   const live = useLive(block);
+  const elapsed = useElapsed(!!live, live?.started_ms);
   const call = block.kind === "tool_result" ? block : undefined;
   // Work the call started keeps the row in the present tense until it ends.
   let { title, subtitle } = getToolRow(block, running || !!live);
-  if (live) {
-    subtitle = [
-      live.status,
-      live.started_ms && duration(Math.max(0, Date.now() - live.started_ms)),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }
+  if (live) subtitle = [live.status, elapsed].filter(Boolean).join(" · ");
   const failed = isFailedStatus(block.status);
   // Short one-line arguments read as facts beside the tool's name; long or
   // multi-line ones stay blocks below.

@@ -1,6 +1,7 @@
 // One owner for how moments read. Every timestamp renders through <Time>,
 // which formats with these preferences.
 import { useEffect, useState } from "preact/hooks";
+import { duration } from "./duration.ts";
 
 export interface TimePrefs {
   // System follows the locale; 12 and 24 force the clock either way.
@@ -99,18 +100,21 @@ export function formatFullMoment(value: Date, prefs: TimePrefs): string {
   return format(value, prefs, { dateStyle: "full", timeStyle: "long" });
 }
 
-// The whole seconds since `started`, counted while `live`.
-export function useElapsedSeconds(live: boolean, started?: number) {
+// How long since `started`, ticking each second while `live`: whole seconds
+// below a minute (a tenth that only moves once a second reads as a stuck
+// clock), then as duration() has it. Nothing started, nothing ticks.
+export function useElapsed(live: boolean, started?: number) {
   const [now, setNow] = useState(Date.now);
+  const ticking = live && !!started;
   useEffect(() => {
-    if (!live) return;
+    if (!ticking) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [live]);
-  return live && started
-    ? Math.max(0, Math.floor((now - started) / 1000))
-    : undefined;
+  }, [ticking]);
+  if (!ticking || !started) return "";
+  const seconds = Math.max(0, Math.floor((now - started) / 1000));
+  return seconds < 60 ? `${seconds}s` : duration(seconds * 1000);
 }
 
 // One shared minute tick for every stamp whose text can change on its own.

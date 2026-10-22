@@ -9,6 +9,7 @@ import {
 import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
 import { useDismiss } from "../../shared/dismiss.ts";
 import { duration } from "../../shared/duration.ts";
+import { useElapsed } from "../../shared/time.ts";
 import type {
   Activity,
   ActivityDetail,
@@ -430,6 +431,7 @@ function DetailBody({
 }) {
   const isAgent = !!detail.agent_id && !detail.memory;
   const isLive = active(current);
+  const elapsed = useElapsed(current.duration_ms == null, current.started_ms);
   // Thread follows the live edge exactly like the transcript (same
   // hook, keyed by agent): growth pins while sticky, any upward move
   // breaks, and the jump button below re-pins.
@@ -556,11 +558,9 @@ function DetailBody({
   const meta = [
     current.status,
     detail.route || detail.model,
-    current.started_ms
-      ? duration(
-          Math.max(0, current.duration_ms ?? Date.now() - current.started_ms),
-        )
-      : "",
+    current.started_ms && current.duration_ms != null
+      ? duration(current.duration_ms)
+      : elapsed,
   ].filter(Boolean);
 
   return (

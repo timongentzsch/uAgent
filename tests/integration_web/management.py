@@ -503,7 +503,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                         for row in value["state"].get("activities", [])
                     )
                     and any(
-                        "[subagent finished" in json.dumps(body["messages"])
+                        "[background work finished" in json.dumps(body["messages"])
                         for _, body in provider.requests
                     )
                 ),

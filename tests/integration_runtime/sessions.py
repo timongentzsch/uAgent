@@ -348,19 +348,22 @@ def test_steer_then_escape_resumes_without_interrupt_notice(root, home, *, binar
         assert_true("· interrupted" not in output.decode("utf-8", "replace"), output)
 
 
-def test_input_idle_background_completion_is_observational(root, home, *, binary):
+def test_input_idle_background_completion_starts_a_turn(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         results = tool_results(messages)
-        if any(
-            message.get("role") == "user" and message.get("content") == "next"
-            for message in messages
-        ):
-            leaked = any(
-                "[Background result:" in str(message.get("content", "")) for message in messages
+        sent = json.dumps(messages)
+        if "[background work finished" in sent:
+            # The command's result reaches the model with the note.
+            batch = next(
+                str(message.get("content"))
+                for message in messages
+                if "[completed background tasks" in str(message.get("content", ""))
             )
-            return event({"content": "background-leaked" if leaked else "background-ui-only"})
+            assert_true("\nnotified" in batch, batch)
+            return event({"content": "background-turn-ok"})
         if any("[running] activity" in result for result in results):
+            assert_true("even after this turn" in results[-1], results[-1])
             return event({"content": "background-launched"})
         return tool_call("run", {"command": "sleep 0.8; printf notified", "yield_ms": 250})
 
@@ -370,8 +373,7 @@ def test_input_idle_background_completion_is_observational(root, home, *, binary
             base_env(home, server.url),
             [
                 (b"start\n", b"background-launched"),
-                (b"", b"notified completed"),
-                (b"next\n", b"background-ui-only"),
+                (b"", b"background-turn-ok"),
                 b"/q\n",
             ],
             args=("--yolo",),
@@ -379,9 +381,7 @@ def test_input_idle_background_completion_is_observational(root, home, *, binary
             binary=binary,
         )
         assert_true(code == 0, output)
-        assert_true(b"notified" in output, output)
-        assert_true(b"background-ui-only" in output, output)
-        assert_true(b"background-leaked" not in output, output)
+        assert_true(b"background-turn-ok" in output, output)
         assert_true(len(server.requests) == 3, server.requests)
 
 

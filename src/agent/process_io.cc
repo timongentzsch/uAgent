@@ -585,6 +585,11 @@ void ProcessSupervisor::SetNotifyFd(int fd) {
   WakeDescriptor(notify_fd_);
 }
 
+bool ProcessSupervisor::WakesSession() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return notify_fd_ >= 0;
+}
+
 void ProcessSupervisor::Wake() {
   int wake_fd = -1;
   {

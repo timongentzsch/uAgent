@@ -148,7 +148,7 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
 }
 
 // Everything that is not a memory extraction: a notice and a presentation
-// record each, and one bounded batch message for delegated children.
+// record each, and one bounded batch message for the model.
 void Agent::DeliverActivityCompletions(
     const std::vector<BackgroundCompletion>& completions) {
   const size_t delivered = static_cast<size_t>(std::count_if(
@@ -157,7 +157,6 @@ void Agent::DeliverActivityCompletions(
       }));
   constexpr size_t kAutomaticBatchBytes = size_t{12} * 1024;
   std::string batch = "[completed background tasks; bounded]\n";
-  size_t child_count = 0;
   size_t reduced = 0;
   bool first = true;
   for (const BackgroundCompletion& completion : completions) {
@@ -221,8 +220,6 @@ void Agent::DeliverActivityCompletions(
     display.presentation = std::move(record);
     Emit(std::move(display));
 
-    if (completion.kind != ActivityKind::kSubagent) continue;
-    ++child_count;
     std::string note = header + "\n" + completion.output +
                        FmtExit(completion.status, /*show_ok=*/true);
     size_t separator = first ? 0 : 2;
@@ -239,17 +236,15 @@ void Agent::DeliverActivityCompletions(
     first = false;
     batch += note;
   }
-  if (child_count > 0) {
+  if (delivered > 0) {
     conversation_.Push(HarnessMessage(std::move(batch)),
                        MessageKind::kInternal);
   }
   DebugLog("background_results_delivered",
-           {{"count", delivered},
-            {"model_visible_children", child_count},
-            {"reduced", reduced}});
+           {{"count", delivered}, {"reduced", reduced}});
 }
 
-bool Agent::DrainBackground(bool* children_finished) {
+bool Agent::DrainBackground(bool start_turn) {
   bool changed = false;
   // Take one snapshot. A memory child can become drainable at any instant; two
   // separate takes let the generic pass steal a child that completed just
@@ -269,11 +264,8 @@ bool Agent::DrainBackground(bool* children_finished) {
     DeliverActivityCompletions(completions);
     changed = true;
   }
-  if (children_finished) {
-    *children_finished = std::any_of(
-        completions.begin(), completions.end(), [](const auto& completion) {
-          return completion.kind == ActivityKind::kSubagent;
-        });
+  if (delivered && start_turn) {
+    Arrive(HarnessNote("background work finished", "Its result is above."));
   }
   if (DrainAttachments()) changed = true;
   {

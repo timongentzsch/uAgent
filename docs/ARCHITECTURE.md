@@ -290,8 +290,8 @@ The process supervisor owns spawn, PTY and pipe I/O, output retention,
 foreground handoff and reaping. Waiters wake on process and signal
 notifications. Queued guidance ends passive waits without cancelling the
 activity behind them; explicit interruption uses the cancellation path. A
-background completion is observed at the next natural model call and never
-starts a turn just to announce a finished command.
+background result is added to the next model call; one that arrives while
+the conversation is idle starts that call as a turn.
 
 Turn time, model and tool calls, generated tokens and reported spend have
 optional caps; individual operations, output, processes and context have

@@ -77,6 +77,12 @@
   row instead of staying below it as the answer.
 - Web: a running turn's state uses the status line's whole width, and a
   narrow tool row keeps its name beside its chevron.
+- A background command's result now reaches the model, bounded and once,
+  as a subagent's always has. If the conversation is idle when a command or
+  subagent finishes, its result starts a turn, so the agent can end its turn
+  instead of blocking on a wait, and the result is not lost when it does.
+  The tool tells the agent so when work goes to the background. Headless runs
+  (`-p`) still answer once.
 - A saved conversation's composer shows the model and approval mode it
   resumes with, instead of "Select model" and the default mode.
 - Web statistics show input tokens (cached and cache-written included, as

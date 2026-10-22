@@ -190,8 +190,9 @@ class Agent {
 
   // Report finished background jobs to the user and hand them to the model.
   // The drain reaps and deletes each log, so its caller owns the only copy.
-  // `children_finished` says whether a delegated child was among them.
-  bool DrainBackground(bool* children_finished = nullptr);
+  // With `start_turn`, a result handed to the model also starts a turn: an
+  // idle session takes up its background work's result as it arrives.
+  bool DrainBackground(bool start_turn = false);
   void ReportMemoryCompletion(BackgroundCompletion& completion);
   void DeliverActivityCompletions(
       const std::vector<BackgroundCompletion>& completions);

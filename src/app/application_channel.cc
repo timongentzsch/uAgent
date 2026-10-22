@@ -69,13 +69,9 @@ int Application::RunChannel() {
   if (agent_.DeliverMail(channel_->HoldMail())) SaveSession(false);
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
-    // A child's result arrives on its own; an idle session also takes it up
-    // at once, as a turn, since it delegated in order to hear back.
-    bool children_finished = false;
-    agent_.DrainBackground(&children_finished);
-    if (children_finished && input->wake) {
-      agent_.Arrive(HarnessNote("subagent finished", "Its result is above."));
-    }
+    // Background work's result arrives on its own; an idle session also
+    // takes it up at once, as a turn, since it started the work to hear back.
+    agent_.DrainBackground(input->wake);
     agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
     request_id_ = input->request_id;

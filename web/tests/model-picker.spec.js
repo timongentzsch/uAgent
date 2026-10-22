@@ -7,8 +7,7 @@ for (const width of [390, 1280]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await withoutServiceWorker(page);
-    let release;
-    const gate = new Promise((resolve) => (release = resolve));
+    const { promise: gate, resolve: release } = Promise.withResolvers();
     await page.route("**/api/command", async (route) => {
       const body = route.request().postDataJSON();
       if (body.kind !== "model" || body.operation !== "catalog")

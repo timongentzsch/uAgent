@@ -3,6 +3,7 @@ import {
   expect,
   withoutServiceWorker,
   headerAction,
+  selectProbeModel,
 } from "./fixtures.js";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -14,8 +15,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     localStorage.setItem("uagent-theme", "light");
     localStorage.setItem("uagent-zoom", "50");
   });
-  let release;
-  const startup = new Promise((resolve) => (release = resolve));
+  const { promise: startup, resolve: release } = Promise.withResolvers();
   await page.route("**/assets/index-*.js", async (route) => {
     await startup;
     await route.continue();
@@ -167,14 +167,14 @@ test("fresh conversation reload keeps one stable loading state", async ({
   page,
   session,
 }) => {
-  let releaseCatalogue;
-  let releaseSnapshot;
-  const catalogueGate = new Promise((resolve) => (releaseCatalogue = resolve));
-  const snapshotGate = new Promise((resolve) => (releaseSnapshot = resolve));
-  let catalogueRequested;
-  let snapshotRequested;
-  const sawCatalogue = new Promise((resolve) => (catalogueRequested = resolve));
-  const sawSnapshot = new Promise((resolve) => (snapshotRequested = resolve));
+  const { promise: catalogueGate, resolve: releaseCatalogue } =
+    Promise.withResolvers();
+  const { promise: snapshotGate, resolve: releaseSnapshot } =
+    Promise.withResolvers();
+  const { promise: sawCatalogue, resolve: catalogueRequested } =
+    Promise.withResolvers();
+  const { promise: sawSnapshot, resolve: snapshotRequested } =
+    Promise.withResolvers();
 
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
@@ -486,17 +486,7 @@ test("a long agent state truncates instead of wrapping the phone status line", a
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   const line = page.locator(".composer .status-line");

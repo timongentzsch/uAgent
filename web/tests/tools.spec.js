@@ -1,4 +1,4 @@
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, selectProbeModel } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("tool catalogue shows its schema size and persists selection", async ({
@@ -48,17 +48,7 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const prompt = page.getByLabel("Message or guidance");
@@ -120,17 +110,7 @@ test("a long diff shows whole on its row, live and after a reload", async ({
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const prompt = page.getByLabel("Message or guidance");
@@ -151,17 +131,7 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   const pixel = Buffer.from(

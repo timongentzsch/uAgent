@@ -1,7 +1,7 @@
 // Finding your way without knowing where things are: the command palette,
 // the shortcuts sheet, conversations by keyboard, the home screen, and pairing
 // by link.
-import { test, expect } from "./fixtures.js";
+import { test, expect, selectProbeModel } from "./fixtures.js";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -138,12 +138,7 @@ test("the tips of an empty conversation go with its first message", async ({
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   const tips = page.locator(".transcript .tips dd");
   await expect(tips).toHaveCount(3);

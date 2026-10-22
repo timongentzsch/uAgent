@@ -8,6 +8,7 @@ import {
   expect,
   SHOWCASE_URL,
   headerAction,
+  selectProbeModel,
 } from "./fixtures.js";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
@@ -38,15 +39,6 @@ async function violations(page, scope) {
   );
   return found;
 }
-
-// The mock provider answers as model-b.
-const answeringModel = (command, session) =>
-  command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
 
 // The host's content security policy forbids injected scripts.
 test.use({ bypassCSP: true });
@@ -186,7 +178,7 @@ test("a conversation with a reply has no violations", async ({
   session,
   command,
 }) => {
-  await answeringModel(command, session);
+  await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Hello there");
@@ -201,7 +193,7 @@ test("an approval decision has no violations and takes focus", async ({
   session,
   command,
 }) => {
-  await answeringModel(command, session);
+  await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   await page.getByLabel("Message or guidance").fill("request approval");
   await page.getByRole("button", { name: "Send", exact: true }).click();

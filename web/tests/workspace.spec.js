@@ -1,5 +1,12 @@
-import { test, expect, online, newFolder, headerAction } from "./fixtures.js";
-import { mkdir, writeFile } from "node:fs/promises";
+import {
+  test,
+  expect,
+  online,
+  headerAction,
+  saveHistory,
+  startInFolder,
+} from "./fixtures.js";
+import { writeFile } from "node:fs/promises";
 
 test("appearance and configuration remain usable at large scales", async ({
   page,
@@ -185,11 +192,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true });
   const originalHash = await page.evaluate(() => location.hash);
-  await newFolder(page, fixture.project);
-  await page
-    .getByRole("button", { name: "Start conversation", exact: true })
-    .click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await startInFolder(page, fixture.project);
   await model.click();
   await page.getByLabel("Model", { exact: true }).fill("model-b");
   await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
@@ -345,34 +348,17 @@ test("retained history stays bounded and merges overlapping pages once", async (
 }, testInfo) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await mkdir(`${fixture.home}/.uagent/history`, { recursive: true });
   const messages = Array.from({ length: 2000 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content:
       `Retained message ${index}. ` + "Bounded history rendering. ".repeat(30),
   }));
-  const header = {
-    format: 3,
-    cwd: fixture.project,
-    model: "test",
-    session_id: "large-history",
+  await saveHistory(fixture, "large.json", {
+    id: "large-history",
     title: "Large retained history",
     turns: 1000,
-  };
-  const state = {
     messages,
-    message_kinds: messages.map((item) => item.role),
-    archive: [],
-    archive_dropped_segments: 0,
-    context_tokens: 0,
-    usage: {},
-    tool_displays: {},
-  };
-  await writeFile(
-    `${fixture.home}/.uagent/history/large.json`,
-    JSON.stringify(header) + "\n" + JSON.stringify(state),
-    { mode: 0o600 },
-  );
+  });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
     page.getByRole("button", { name: /Large retained history/ }),
@@ -386,10 +372,8 @@ test("retained history stays bounded and merges overlapping pages once", async (
     JSON.stringify({ messages: 2000, visible: 64, open_ms: openMs }),
   );
   // Resolve two reads of the same older page in reverse order. It is merged once.
-  let releasePage;
-  const pageGate = new Promise((resolve) => (releasePage = resolve));
-  let pageFinished;
-  const pageDone = new Promise((resolve) => (pageFinished = resolve));
+  const { promise: pageGate, resolve: releasePage } = Promise.withResolvers();
+  const { promise: pageDone, resolve: pageFinished } = Promise.withResolvers();
   let pageRequests = 0;
   const olderRoute = async (route) => {
     const first = ++pageRequests === 1;
@@ -465,33 +449,16 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await mkdir(`${fixture.home}/.uagent/history`, { recursive: true });
   const messages = Array.from({ length: 300 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content: `Retained message ${index}. ` + "History anchor. ".repeat(20),
   }));
-  await writeFile(
-    `${fixture.home}/.uagent/history/large.json`,
-    JSON.stringify({
-      format: 3,
-      cwd: fixture.project,
-      model: "test",
-      session_id: "anchor-history",
-      title: "Anchor history",
-      turns: 150,
-    }) +
-      "\n" +
-      JSON.stringify({
-        messages,
-        message_kinds: messages.map((item) => item.role),
-        archive: [],
-        archive_dropped_segments: 0,
-        context_tokens: 0,
-        usage: {},
-        tool_displays: {},
-      }),
-    { mode: 0o600 },
-  );
+  await saveHistory(fixture, "large.json", {
+    id: "anchor-history",
+    title: "Anchor history",
+    turns: 150,
+    messages,
+  });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: /Anchor history/ }).click();
   const older = page.getByRole("button", {
@@ -520,8 +487,7 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
   const firstId = first?.id;
   const firstOffset = first?.offset || 0;
   // Gate the older page: the button must go stateful while loading.
-  let releasePage;
-  const pageGate = new Promise((resolve) => (releasePage = resolve));
+  const { promise: pageGate, resolve: releasePage } = Promise.withResolvers();
   const olderRoute = async (route) => {
     const response = await route.fetch();
     await pageGate;

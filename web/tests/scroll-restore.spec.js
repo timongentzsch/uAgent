@@ -1,36 +1,14 @@
 // Session return restores the saved position unfollowed: switching away
 // and back must neither pin to the bottom nor strand the reader. Seeded
 // histories keep this deterministic (no streaming or backend timing).
-import { test, expect } from "./fixtures.js";
-import { mkdir, writeFile } from "node:fs/promises";
+import { test, expect, saveHistory } from "./fixtures.js";
 
-async function seed(home, project, file, id, title) {
+function seed(host, file, id, title) {
   const messages = Array.from({ length: 60 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content: `Seeded ${id} message ${index}. ` + "Filler text here. ".repeat(8),
   }));
-  await writeFile(
-    `${home}/.uagent/history/${file}`,
-    JSON.stringify({
-      format: 3,
-      cwd: project,
-      model: "test",
-      session_id: id,
-      title,
-      turns: 30,
-    }) +
-      "\n" +
-      JSON.stringify({
-        messages,
-        message_kinds: messages.map((item) => item.role),
-        archive: [],
-        archive_dropped_segments: 0,
-        context_tokens: 0,
-        usage: {},
-        tool_displays: {},
-      }),
-    { mode: 0o600 },
-  );
+  return saveHistory(host, file, { id, title, turns: 30, messages });
 }
 
 test("returning to a session restores its position unfollowed", async ({
@@ -39,9 +17,8 @@ test("returning to a session restores its position unfollowed", async ({
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await mkdir(`${fixture.home}/.uagent/history`, { recursive: true });
-  await seed(fixture.home, fixture.project, "a.json", "restore-a", "Restore A");
-  await seed(fixture.home, fixture.project, "b.json", "restore-b", "Restore B");
+  await seed(fixture, "a.json", "restore-a", "Restore A");
+  await seed(fixture, "b.json", "restore-b", "Restore B");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: /Restore A/ }).click();
   const box = page.locator(".transcript");

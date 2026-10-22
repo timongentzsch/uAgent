@@ -1,18 +1,10 @@
 // A turn's controls: deciding an approval, queueing the next message,
 // stopping and continuing, retrying a send that failed, and undoing the
 // files a turn changed.
-import { test, expect } from "./fixtures.js";
+import { test, expect, selectProbeModel } from "./fixtures.js";
 import { access, realpath } from "node:fs/promises";
 
-// The mock provider answers as model-b.
-test.beforeEach(({ command, session }) =>
-  command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  }),
-);
+test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
 const exists = (path) =>
   access(path).then(

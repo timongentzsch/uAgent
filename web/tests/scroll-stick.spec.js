@@ -1,7 +1,7 @@
 // Follow-tail guarantees under live streaming growth: while pinned the
 // transcript never detaches from the end, and a reader who scrolled up
 // mid-stream is never yanked back down.
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 async function startProbe(
   page,
@@ -12,12 +12,7 @@ async function startProbe(
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
   await online(page);
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await prompt.fill(probe);
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
@@ -62,8 +57,7 @@ test("progressive rendering retains text while syntax highlighting loads", async
   session,
   command,
 }) => {
-  let release;
-  const loading = new Promise((resolve) => (release = resolve));
+  const { promise: loading, resolve: release } = Promise.withResolvers();
   await page.route("**/assets/highlight-*.js", async (route) => {
     await loading;
     await route.continue();

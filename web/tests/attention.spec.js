@@ -3,7 +3,7 @@
 // decision itself, and a panel's threads nest under its header.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { test, expect } from "./fixtures.js";
+import { test, expect, selectProbeModel } from "./fixtures.js";
 
 // A conversation in its own folder that asks to save a memory, in Ask mode.
 async function waitingElsewhere(host, command, request) {
@@ -11,12 +11,7 @@ async function waitingElsewhere(host, command, request) {
   await mkdir(cwd, { recursive: true });
   let { session } = await command("create", { cwd });
   ({ session } = await command("activate", { session_id: session.id }));
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await command("submit", {
     session_id: session.id,
     generation: session.generation,

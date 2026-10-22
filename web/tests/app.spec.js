@@ -1,4 +1,4 @@
-import { test, expect, newFolder } from "./fixtures.js";
+import { test, expect, startInFolder } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 test.use({ paired: false });
@@ -19,11 +19,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
-  await newFolder(page, fixture.project);
-  await page
-    .getByRole("button", { name: "Start conversation", exact: true })
-    .click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await startInFolder(page, fixture.project);
   const model = page.getByRole("button", {
     name: "Model and effort",
     exact: true,
@@ -255,9 +251,8 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   // The native host accepts the send while its HTTP acknowledgement is held.
   // Editing the next draft in that interval must not erase the new text.
-  let release, acknowledged;
-  const held = new Promise((resolve) => (release = resolve));
-  const reached = new Promise((resolve) => (acknowledged = resolve));
+  const { promise: held, resolve: release } = Promise.withResolvers();
+  const { promise: reached, resolve: acknowledged } = Promise.withResolvers();
   await page.route("**/api/command", async (route) => {
     if (route.request().postDataJSON()?.text !== "Delayed acknowledgement")
       return route.continue();

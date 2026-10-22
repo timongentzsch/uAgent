@@ -1,7 +1,6 @@
 // Rewinding never loses work: it continues in a fork cut before the message,
 // with that message back in the composer, and the original stays.
-import { test, expect } from "./fixtures.js";
-import { mkdir, writeFile } from "node:fs/promises";
+import { test, expect, saveHistory } from "./fixtures.js";
 
 test("edit from a message continues in a fork with the message to edit", async ({
   page,
@@ -9,34 +8,18 @@ test("edit from a message continues in a fork with the message to edit", async (
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await mkdir(`${host.home}/.uagent/history`, { recursive: true });
   const messages = [
     { role: "user", content: "First request" },
     { role: "assistant", content: "First answer" },
     { role: "user", content: "Second request to edit" },
     { role: "assistant", content: "Second answer" },
   ];
-  await writeFile(
-    `${host.home}/.uagent/history/rewind.json`,
-    JSON.stringify({
-      format: 3,
-      cwd: host.project,
-      model: "test",
-      session_id: "rewind-source",
-      title: "Rewind source",
-      turns: 2,
-    }) +
-      "\n" +
-      JSON.stringify({
-        messages,
-        message_kinds: messages.map((message) => message.role),
-        archive: [],
-        archive_dropped_segments: 0,
-        context_tokens: 0,
-        usage: {},
-        tool_displays: {},
-      }),
-  );
+  await saveHistory(host, "rewind.json", {
+    id: "rewind-source",
+    title: "Rewind source",
+    turns: 2,
+    messages,
+  });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: /Rewind source/ }).click();
   const second = page

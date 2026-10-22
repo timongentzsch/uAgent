@@ -1,6 +1,6 @@
 // Transcript must not statically import lazy dialog chunks: holding every
 // dialog chunk must not block message or turn-footer rendering.
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, selectProbeModel } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 test("transcript renders while dialog chunks are held", async ({
@@ -21,8 +21,7 @@ test("transcript renders while dialog chunks are held", async ({
   expect(chunks.length).toBeGreaterThan(5);
   const gates = {};
   for (const [source, chunk] of chunks) {
-    let release;
-    const gate = new Promise((resolve) => (release = resolve));
+    const { promise: gate, resolve: release } = Promise.withResolvers();
     gates[
       source
         .split("/")
@@ -41,17 +40,7 @@ test("transcript renders while dialog chunks are held", async ({
   const prompt = page.getByLabel("Message or guidance");
   await online(page);
 
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
   // Dialog chunks (statistics included) are still held: the tool rows

@@ -1,13 +1,6 @@
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
-test.beforeEach(({ command, session }) =>
-  command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  }),
-);
+test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
 async function start(page, session) {
   await page.goto(`/#session=${session.id}`);

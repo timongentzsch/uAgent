@@ -3,6 +3,7 @@ import os
 import pathlib
 import re
 import shlex
+import threading
 import time
 
 from integration_support import (
@@ -24,8 +25,10 @@ from integration_support import (
 
 
 def test_first_event_timeout(root, home, *, binary):
+    finished = threading.Event()
+
     def stall(handler, _):
-        time.sleep(2)
+        finished.wait(budget(12))
         try:
             data = sse(event({"content": "late"}))
             handler.send_response(200)
@@ -41,6 +44,7 @@ def test_first_event_timeout(root, home, *, binary):
         started = time.monotonic()
         result = run(root, env, "-p", "probe", binary=binary)
         elapsed = time.monotonic() - started
+        finished.set()
         assert_true(result.returncode == 1, result.returncode)
         assert_true("no event within 1s" in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)

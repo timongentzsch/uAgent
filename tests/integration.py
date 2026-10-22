@@ -70,6 +70,7 @@ for _group, _top in TEST_MODULES:
                 and callable(_test)
                 and getattr(_test, "__module__", None) == _mod.__name__
             ):
+                assert _name not in ALL_TESTS, f"{_name} is defined twice"
                 ALL_TESTS[_name] = _test
                 TEST_GROUPS[_name] = _group
 ORDERED_TESTS = tuple(ALL_TESTS)

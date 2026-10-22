@@ -3,6 +3,7 @@ import re
 import signal
 import sys
 import termios
+import threading
 import time
 import unicodedata
 
@@ -10,6 +11,7 @@ from integration_support import (
     Server,
     assert_true,
     base_env,
+    budget,
     event,
     run,
     run_dialog,
@@ -650,8 +652,10 @@ def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
 
 
 def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home, *, binary):
+    finished = threading.Event()
+
     def delayed(_, __):
-        time.sleep(2)
+        finished.wait(budget(8))
         return event({"content": "too-late"})
 
     with Server([delayed]) as server:
@@ -662,6 +666,7 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home, 
             timeout=8,
             binary=binary,
         )
+        finished.set()
         assert_true(code == 0, output)
         assert_true(b"\xc2\xb7 interrupted" in output, output)
         assert_true(b"too-late" not in output, output)
@@ -1379,8 +1384,10 @@ def test_input_slash_menu_moves_with_arrows(root, home, *, binary):
 def test_status_row_names_mode_and_turn_keys(root, home, *, binary):
     """The idle row names the approval mode; a running turn names its keys."""
 
+    shown = threading.Event()
+
     def delayed(_, __):
-        time.sleep(0.7)
+        shown.wait(budget(8))
         return event({"content": "status-keys-ok"})
 
     with Server([delayed]) as server:
@@ -1389,7 +1396,7 @@ def test_status_row_names_mode_and_turn_keys(root, home, *, binary):
             base_env(home, server.url),
             [
                 (b"work\n", b"Esc stop \xc2\xb7 Ctrl+B background"),
-                (b"", b"status-keys-ok", b"Ready", None),
+                (lambda _: shown.set(), b"status-keys-ok", b"Ready", None),
                 b"/q\n",
             ],
             columns=160,

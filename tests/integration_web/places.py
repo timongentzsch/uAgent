@@ -112,9 +112,10 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
     project.mkdir()
     active = threading.Event()
     finish = threading.Event()
+    held = threading.Event()
 
     def slow(_, _body):
-        time.sleep(1.5)
+        held.wait(budget(20))
         return event({"content": "Slow answer"})
 
     def through_restart(_, _body):
@@ -171,6 +172,7 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             client.command("submit", session, text="Take your time")
             client.until(session, lambda value: value["metadata"]["turn_active"])
             result = client.command("restart_conversations")["result"]
+            held.set()
             assert_true(result == {"restarting": 0, "deferred": 1}, result)
             value = client.until(
                 session,

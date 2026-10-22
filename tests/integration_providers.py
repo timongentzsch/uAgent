@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time
 
 from integration_support import (
@@ -575,11 +576,13 @@ def test_web_search_retries_respect_turn_deadline(root, home, *, binary):
 
 
 def test_web_search_slow_response_respects_turn_deadline(root, home, *, binary):
+    finished = threading.Event()
+
     def retry(handler, _):
         write_json_response(handler, {"error": {"message": "retry once"}}, status=503)
 
     def busy(handler, _):
-        time.sleep(budget(8))
+        finished.wait(budget(8))
         try:
             write_json_response(handler, {"choices": []})
         except (BrokenPipeError, ConnectionResetError):
@@ -614,6 +617,7 @@ def test_web_search_slow_response_respects_turn_deadline(root, home, *, binary):
             )
             started = time.monotonic()
             result = run(root, env, "--yolo", "-p", "search", timeout=8, binary=binary)
+            finished.set()
             assert_true(result.returncode == 0, (result.stdout, result.stderr))
             assert_true(result.stdout.strip() == "search-budget-ok", result.stdout)
             assert_true(len(search_server.requests) == 2, search_server.requests)

@@ -189,10 +189,9 @@ start, what outlives the conversation and how results are delivered.
 ## Images
 
 When the main route cannot read an image, µAgent sends it once to the image
-route, removes the image bytes from the conversation and keeps the textual
-description. The image route is `UAGENT_IMAGE_MODEL`, or by default the first
-model of the same endpoint that accepts images; if there is none, µAgent says
-to set `UAGENT_IMAGE_MODEL`.
+route ([Models and providers](GUIDE.md#models-and-providers) says which),
+removes the image bytes from the conversation and keeps the textual
+description.
 
 ## MCP
 

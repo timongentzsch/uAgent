@@ -54,15 +54,10 @@ every approval mode.
 
 Reading and searching inside the workspace needs no approval. Calls that
 change files, run commands, use the network or touch a path outside the
-workspace follow the approval mode, set with `/permissions ask|auto|yolo` and
-saved as the default with `UAGENT_APPROVAL`:
-
-- `ask` (the default): you approve each call.
-- `auto`: a decision model decides. It needs an endpoint that declares
-  `decisions` (OpenRouter, with `OPENROUTER_API_KEY`);
-  `UAGENT_PERMISSION_MODEL` chooses the model.
-- `yolo` (also `/yolo` or `--yolo`): calls run unasked; commands stay
-  sandboxed.
+workspace follow the approval mode: `ask` (the default), `auto` or `yolo`
+(also `/yolo` or `--yolo`), set with `/permissions` and saved as the default
+with `UAGENT_APPROVAL`. The [guide](GUIDE.md#approvals-and-the-sandbox)
+explains the modes; none of them turns the sandbox off.
 
 `/permissions rules` lists remembered approvals and
 `/permissions forget N|all` removes them.
@@ -94,9 +89,10 @@ panel's threads differ.
 `run` waits 10 s and then returns a still-running command as an activity.
 `yield_ms` of 250–30,000 overrides the wait and `0` waits until the command
 exits. Guidance sent meanwhile moves the command to the background, as it
-ends an `activity` wait. Set `tty=true` only when the process needs interactive input; a PTY
-keeps merged output, writable input, interruption and resize. `detach=true`
-keeps the command running after the session ends, with a rotating log.
+ends an `activity` wait. Set `tty=true` only when the process needs
+interactive input; a PTY keeps merged output, writable input, interruption
+and resize. `detach=true` keeps the command running after the session ends,
+with a rotating log.
 
 Every `activity` call names one `operation`:
 

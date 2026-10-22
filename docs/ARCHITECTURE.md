@@ -60,8 +60,7 @@ points up this order; its `KNOWN` set lists the remaining exceptions.
 The web host embeds the built `web/dist` (`npm ci && npm run build` in `web/`,
 or CI's `web-dist` artifact). Text assets are gzipped at build time and served
 with `Content-Encoding: gzip`, or inflated for a client that does not accept
-it. A first configure without `web/dist` builds CLI-only and says how to add
-the UI.
+it. [Contributing](../CONTRIBUTING.md) says how to build it.
 
 ## Session runtime and clients
 
@@ -327,17 +326,10 @@ bounds, sensitivity, activation timing and the scopes it may be saved in.
 Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and the
 generated skill references all read that source.
 
-A value comes from one of these scopes, the later winning:
-
-| Scope | Affects | Kept in |
-| --- | --- | --- |
-| Default | everything | the registry |
-| All conversations | every conversation, browser and terminal of this user | `all` in `~/.uagent/config/settings.json` |
-| This project | conversations in one folder | `projects[<folder>]` in the same document |
-| Environment | one process and those it starts | `UAGENT_*` variables |
-| Command line | one run | flags |
-| This conversation | one conversation | its session |
-
+A value comes from the registry's default or one of the scopes
+[Operations](OPERATIONS.md#settings) lists, the later winning: all
+conversations and this project (both in `~/.uagent/config/settings.json`),
+the environment, the command line and this conversation (its session).
 Only the model (`UAGENT_MODEL`, with its effort) and the approval mode
 (`UAGENT_APPROVAL`) can be set for one conversation: `/model`, `/effort`,
 `/permissions` and `/yolo` set them there, and `--model` or `--yolo` sets them

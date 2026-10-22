@@ -7,10 +7,9 @@ Instructions tell the agent how to work: `AGENTS.md` for every session,
 A session's system message is the built-in base followed by these
 instructions. Instructions only add; nothing a person or an agent writes
 replaces the base. Host facts (date, working directory,
-approval mode) and memory follow in a runtime note after the system message.
-When a host fact changes, a new note is appended and the earlier text stays,
-so the cached prefix holds; memory is read at start, so a memory saved now
-reaches new sessions.
+approval mode) and memory follow in a runtime note after the system message;
+[Caching](CACHING.md#what-changes-the-prefix) says how a change to them keeps
+the cached prefix.
 
 ## Instruction files
 
@@ -25,9 +24,9 @@ directory it takes `AGENTS.override.md`, else `AGENTS.md`, else `CLAUDE.md`
 when `UAGENT_OTHER_AGENTS` names `claude`; the editors below open whichever
 file a level uses. A panel then reads its `PANEL.md` files, yours first.
 
-Together the files are bounded to 32 KiB. They are read once when a session
-starts and stay in the cached prefix, so an edit reaches new and restarted
-sessions (`/restart`), not a running one.
+Together the files are bounded to 32 KiB. They and memory are read once
+when a session starts, so an edit or a saved memory reaches new and
+restarted sessions (`/restart`), not a running one.
 
 A project's `AGENTS.md` and `.uagent/PANEL.md` are ordinary repository
 files. Writing yours (`PANEL.md` or any of the three names in

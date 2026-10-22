@@ -75,6 +75,8 @@
   `benchmarks/compare_agents.py` measures omp with `--omp`.
 - Minimal detail: a reply with calls after it folds into the turn's work
   row instead of staying below it as the answer.
+- Web: a running turn's state uses the status line's whole width, and a
+  narrow tool row keeps its name beside its chevron.
 
 ## v1.5.0 - 2026-10-20
 

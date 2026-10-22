@@ -417,8 +417,9 @@ json ProcessSupervisor::ActivityViews() const {
     // the 160-char label, and inspect fails once a finished job leaves the
     // retained set, so the command travels here (bounded like transcript
     // blocks) instead of degrading to the abbreviated label.
-    if (!job.cmd.empty())
+    if (!job.cmd.empty()) {
       row["command"] = Utf8Trunc(job.cmd, kActivityCommandBytes);
+    }
     row["started_ms"] = job.started_ms;
     row["status"] = "running";
     if (job.session) {

@@ -186,10 +186,9 @@ void TestSettingsStore() {
   // setting under the name it had as a coordinator's is read as the panel's.
   {
     TestWorkspace handed_over("settings-store-handed");
-    const json now = {
-        {"format", 3},
-        {"all", {{"model", "old"}, {"limits.maxSteps", 9}}},
-        {"projects", {{"/p", {{"sandbox.level", "false"}}}}}};
+    const json now = {{"format", 3},
+                      {"all", {{"model", "old"}, {"limits.maxSteps", 9}}},
+                      {"projects", {{"/p", {{"sandbox.level", "false"}}}}}};
     AllSettings handed;
     std::string why;
     CHECK(ParseSettings(now, handed, why) && handed.projects.count("/p"));

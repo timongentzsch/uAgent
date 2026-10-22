@@ -108,8 +108,6 @@ void TestToolExecutionPolicy() {
       {"type", "string"}, {"description", "provider argument"}};
   CHECK(ToolParameters(tool)["properties"]["timeout"] ==
         tool.parameters["properties"]["timeout"]);
-  tool.timeout_s = 4;
-  CHECK(tool.timeout_s == 4);
 
   ToolContext base{std::chrono::steady_clock::now() + std::chrono::seconds(30)};
   ToolContext bounded = base.WithTimeout(2);

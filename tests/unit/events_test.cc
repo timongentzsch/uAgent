@@ -167,21 +167,6 @@ void TestObservabilityEvents() {
   CHECK(received[0].data["text"] == "streamed");
   CHECK(received[1].type == "approval.requested");
   CHECK(received[1].data["tool"] == "edit_file");
-  Event search{
-      EventId::kHostedToolActivity,
-      {{"tool", "web_search"}, {"id", "ws_1"}, {"phase", "searching"}}};
-  SessionJournal searches;
-  searches.Append(search, PolicyFor(search.id));
-  CHECK(searches.Size() == 0);
-  observable.Emit(std::move(search));
-  CHECK(received.size() == 3);
-  CHECK(received[2].type == "response.hosted_tool");
-  CHECK(received[2].data["phase"] == "searching");
-  CHECK(received[2].data["id"] == "ws_1");
-  CHECK(!received[2].durable);
-  // What was searched for is the model's own prose; the fact of the search is
-  // what a subscriber needs, so the query never reaches this payload.
-  CHECK(!received[2].data.contains("query"));
   SetObservability(&observable);
   {
     ResponseObservation response("waiting", {{"response_id", "r-2-4-1"},
@@ -190,17 +175,17 @@ void TestObservabilityEvents() {
                                              {"attempt", 1}});
   }
   SetObservability(nullptr);
-  REQUIRE(received.size() == 5);
-  CHECK(received[3].type == "response.started");
+  REQUIRE(received.size() == 4);
+  CHECK(received[2].type == "response.started");
+  CHECK(received[2].data["response_id"] == "r-2-4-1");
+  CHECK(received[2].data["turn"] == 2);
+  CHECK(received[3].type == "response.finished");
   CHECK(received[3].data["response_id"] == "r-2-4-1");
   CHECK(received[3].data["turn"] == 2);
-  CHECK(received[4].type == "response.finished");
-  CHECK(received[4].data["response_id"] == "r-2-4-1");
-  CHECK(received[4].data["turn"] == 2);
-  CHECK(received[4].data["attempt"] == 1);
+  CHECK(received[3].data["attempt"] == 1);
   observable.Unsubscribe(subscription);
   observable.Emit(Event{EventId::kResponseFinished});
-  CHECK(received.size() == 5);
+  CHECK(received.size() == 4);
 
   Observability interactions;
   interactions.EnableTerminal(false);

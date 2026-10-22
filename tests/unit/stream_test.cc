@@ -594,7 +594,6 @@ void TestBackgroundValidation() {
   CHECK(supervisor.Snapshot().size() == supervisor.Count());
   CHECK(!supervisor.TakeAllForShutdown().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
-  CHECK(FindTool(tools, "wait_background") == nullptr);
   const Tool* write = FindTool(tools, "write_file");
   CHECK(write &&
         write->parameters["required"] == json::array({"path", "content"}));

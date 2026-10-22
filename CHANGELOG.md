@@ -73,6 +73,8 @@
   terminal installs here, as before.
 - The README compares µAgent's footprint with Claude Code, Codex CLI and omp;
   `benchmarks/compare_agents.py` measures omp with `--omp`.
+- Minimal detail: a reply with calls after it folds into the turn's work
+  row instead of staying below it as the answer.
 
 ## v1.5.0 - 2026-10-20
 

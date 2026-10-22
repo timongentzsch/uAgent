@@ -467,6 +467,22 @@ test("minimal folds a turn's work into one row before its answer", () => {
   assert.equal(rows[1].label, "Worked · 4 steps · edited 2 files · 1m 12s");
   assert.equal(rows[7].label, "Worked · 1 step");
   assert.equal(rows[4].text, "Done.");
+  // A reply with calls after it is work, not the answer, while it runs too.
+  assert.deepEqual(
+    shape(
+      presentMessages(
+        [
+          { id: "u1", kind: "user", text: "go" },
+          call("x1", "explore"),
+          { id: "m1", kind: "assistant", text: "Building." },
+          call("r1", "run"),
+          call("r2", "run", "running"),
+        ],
+        MINIMAL,
+      ),
+    ),
+    ["u1", ["x1", "m1", "r1", "r2"]],
+  );
   // A turn with nothing but an answer has no work row.
   assert.deepEqual(
     shape(

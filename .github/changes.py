@@ -47,8 +47,7 @@ def build_matrix(with_arm):
         {"target": "linux-arm64", "runner": "ubuntu-24.04-arm", "arch": "aarch64"},
         {"target": "macos-arm64", "runner": "macos-15", "arch": "arm64"},
     ]
-    include = [{**leg, "build_type": "Release"} for leg in legs]
-    return json.dumps({"include": include if with_arm else [include[0], include[2]]})
+    return json.dumps({"include": legs if with_arm else [legs[0], legs[2]]})
 
 
 def tidy(paths):

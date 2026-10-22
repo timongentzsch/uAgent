@@ -44,9 +44,8 @@ jobs:
           # The trap cache is saved from master only and took 878 MB of the
           # repository's 10 GB cache quota, which the compiler caches need.
           trap-caching: false
-      - name: Install dependencies
-        if: steps.changes.outputs.native == 'true'
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
+      - if: steps.changes.outputs.native == 'true'
+        uses: ./.github/actions/native-setup
       # CodeQL reads the compiler invocations, not the binary, so an unoptimised
       # build without the release link-time optimisation is enough.
       - name: Configure

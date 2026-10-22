@@ -1,0 +1,85 @@
+name: Native setup
+description: >
+  What a native build needs after checkout: the libraries it links, the web
+  UI it embeds and the compiler cache. The cache is restored everywhere and
+  saved only from master, so a pull request starts from what master last
+  built and the cache is not filled with one entry per push. The precompiled
+  header needs the sloppiness and the compiler flag below to be cacheable at
+  all (with GCC, 145 of 152 units were refused without them; with them a warm
+  Release build of uagent took 62 s instead of 304 s on two cores). The
+  counts start at zero in every run, so `ccache --show-stats` after a build
+  says what that build found.
+inputs:
+  web-dist:
+    description: >
+      "true" to embed the web UI the web-dist job builds once for every
+      native build; the job then needs web-dist.
+    default: "false"
+  packages:
+    description: Further apt packages.
+    default: ""
+  ccache:
+    description: >
+      What is built, to keep differently built objects apart; empty for no
+      compiler cache.
+    default: ""
+  ccache-save:
+    description: >
+      Whether a master run saves what it built. "false" for a job that builds
+      part of what another job with the same name builds whole.
+    default: "true"
+  ccache-size:
+    description: >
+      Upper bound of the cache. A cache that fills evicts its oldest objects,
+      so one that is rebuilt whole by a change to a common header needs room
+      for the whole build. The sum over all names, saved once per master push,
+      has to stay well under the repository's 10 GB cache quota or the newest
+      entries push each other out.
+    default: 400M
+runs:
+  using: composite
+  steps:
+    - if: inputs.web-dist == 'true'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: web-dist
+        path: web/dist
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        CCACHE: ${{ inputs.ccache }}
+        CCACHE_SIZE: ${{ inputs.ccache-size }}
+      run: |
+        if [ "$RUNNER_OS" = macOS ]; then
+          [ -z "$CCACHE" ] || brew install --quiet ccache
+          flags="-Xclang -fno-pch-timestamp"
+        else
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcurl4-openssl-dev zlib1g-dev libssl-dev \
+            $PACKAGES ${CCACHE:+ccache}
+          flags="-fpch-preprocess"
+        fi
+        [ -n "$CCACHE" ] || exit 0
+        {
+          echo "CCACHE_DIR=$HOME/.cache/ccache"
+          echo "CCACHE_MAXSIZE=$CCACHE_SIZE"
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros"
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          echo "CXXFLAGS=$flags"
+        } >> "$GITHUB_ENV"
+    - if: inputs.ccache != '' && github.ref == 'refs/heads/master' && inputs.ccache-save == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+        restore-keys: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-
+    - if: inputs.ccache != '' && (github.ref != 'refs/heads/master' || inputs.ccache-save != 'true')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+        restore-keys: ccache-${{ inputs.ccache }}-${{ runner.os }}-${{ runner.arch }}-
+    - if: inputs.ccache != ''
+      shell: bash
+      run: ccache --zero-stats

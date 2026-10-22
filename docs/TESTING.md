@@ -280,7 +280,7 @@ one job; when it changes a header, the build files or the rules, it reads
 all of them, as `master` always does.
 
 The Linux build jobs reuse compiled objects through ccache
-(`.github/actions/ccache`), restored in every run and saved only from
+(`.github/actions/native-setup`), restored in every run and saved only from
 `master`. A newer push to a pull request cancels the older run; runs on
 `master` are never cancelled, so each merge is tested as it landed.
 

@@ -36,20 +36,23 @@ json OutcomeStore::SendCommand(const std::shared_ptr<HostSession>& session,
     if (auto found = outcomes_.find(worker_request); found != outcomes_.end()) {
       receipt = found->second;
     } else {
-      if (outcomes_.size() >= kMaxOutcomes) {
+      if (order_.size() >= kMaxOutcomes) {
         auto completed = std::find_if(
-            outcomes_.begin(), outcomes_.end(), [](const auto& entry) {
-              return !JsonValue(*entry.second, "pending", false);
+            order_.begin(), order_.end(),
+            [&](const std::string& id) UAGENT_REQUIRES(mutex_) {
+              return !JsonValue(*outcomes_.at(id), "pending", false);
             });
-        if (completed == outcomes_.end()) {
+        if (completed == order_.end()) {
           return {{"request_id", client_request},
                   {"accepted", false},
                   {"error", "too many unacknowledged worker commands"}};
         }
-        outcomes_.erase(completed);
+        outcomes_.erase(*completed);
+        order_.erase(completed);
       }
       receipt = std::make_shared<json>();
       outcomes_[worker_request] = receipt;
+      order_.push_back(worker_request);
     }
     *receipt = {
         {"request_id", client_request}, {"accepted", true}, {"pending", true}};

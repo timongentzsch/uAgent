@@ -9,6 +9,7 @@
 // fails: absent fields read as empty. Bodies live in
 // src/app/session_command.cc.
 
+#include <deque>
 #include <map>
 #include <mutex>
 #include <string>
@@ -95,6 +96,7 @@ class ReceiptLog {
   std::mutex mutex_;
   std::map<std::string, std::pair<json, json>> receipts_
       UAGENT_GUARDED_BY(mutex_);
+  std::deque<std::string> order_ UAGENT_GUARDED_BY(mutex_);
 };
 
 }  // namespace uagent::session

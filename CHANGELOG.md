@@ -132,6 +132,10 @@
   to, and only as a regular file: a larger one, or a link in its place,
   trusts no project. Session links, memory receipts, detached-job records
   and mail are read with the same bound.
+- A full receipt table (256 commands per runtime, 512 per host) evicts its
+  oldest completed command, as intended, instead of the one whose random id
+  sorted first: a retry of a command that just completed replays its
+  outcome instead of possibly running it again.
 
 ## v1.5.0 - 2026-10-20
 

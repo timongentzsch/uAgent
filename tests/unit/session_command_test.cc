@@ -360,6 +360,28 @@ void TestReceiptLogBackpressure() {
         session::ReceiptVerdict::kNew);
 }
 
+// A full log evicts its oldest completed receipt, whatever the ids sort as,
+// so a retry of a recent command still replays.
+void TestReceiptLogEvictsOldest() {
+  session::ReceiptLog log;
+  json previous;
+  auto completed = [&](const std::string& id) {
+    json command = CommandEnvelope("submit");
+    command["request_id"] = id;
+    CHECK(log.Check(command, id, previous) == session::ReceiptVerdict::kNew);
+    log.Record({{"kind", "outcome"},
+                {"request_id", id},
+                {"accepted", true},
+                {"pending", false}});
+    return command;
+  };
+  for (int i = 0; i < 255; ++i) completed("f" + std::to_string(1000 + i));
+  json recent = completed("0000000000000000");
+  completed("e000000000000000");
+  CHECK(log.Check(recent, "0000000000000000", previous) ==
+        session::ReceiptVerdict::kReplay);
+}
+
 void TestHostCommandKinds() {
   // The host runs close and saved-session management itself and
   // forwards everything else; a new kind must choose one explicitly.

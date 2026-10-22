@@ -32,7 +32,7 @@ void Terminal::Reply(const std::string& id, json text, const json& extra) {
 void Terminal::Send(json command) {
   std::lock_guard lock(send_mutex_);
   if (JsonValue(command, "kind", "") == "reply") interaction_ = false;
-  StampFrame(command, HashHex(path_), connection_.generation);
+  StampFrame(command, SessionIdFor(path_), connection_.generation);
   command["request_id"] = RandomToken(16);
   command["client_request_id"] = command["request_id"];
   {

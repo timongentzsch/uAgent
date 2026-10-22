@@ -247,7 +247,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const bool panel = JsonValue(command, "panel", false);
     auto path = panel ? PanelPath(cwd.string())
                       : HistoryPath(cwd.string(), "web-" + RandomToken(16));
-    if (auto known = sessions_.find(HashHex(path)); known != sessions_.end()) {
+    if (auto known = sessions_.find(SessionIdFor(path));
+        known != sessions_.end()) {
       result.outcome["session"] = Metadata(*known->second);
       return result;
     }

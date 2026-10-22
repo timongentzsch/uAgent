@@ -164,7 +164,7 @@ ToolResult Unavailable(const std::string& error) {
 std::optional<SessionInfo> FindSession(const std::string& folder,
                                        const std::string& id) {
   for (SessionInfo& info : FolderSessions(folder)) {
-    if (HashHex(info.path) == id) return std::move(info);
+    if (SessionIdFor(info.path) == id) return std::move(info);
   }
   return std::nullopt;
 }
@@ -220,7 +220,7 @@ std::vector<SessionInfo> OwnThreads(const std::string& folder) {
 }
 
 std::string PanelId(const std::string& folder) {
-  return HashHex(PanelPath(folder));
+  return SessionIdFor(PanelPath(folder));
 }
 
 double ThreadBudget(const json& thread) {
@@ -246,7 +246,7 @@ std::string PanelBoard(const std::string& folder) {
   size_t shown = 0;
   for (const SessionInfo& info : sessions) {
     std::string line =
-        HashHex(info.path) + " " + LiveStatus(info) + " · " +
+        SessionIdFor(info.path) + " " + LiveStatus(info) + " · " +
         (!ChatMember(info.thread).empty()  ? "member "
          : info.kind == kSessionKindThread ? "↳ "
                                            : "") +

@@ -410,7 +410,7 @@ json Chat::Deliver(const ChatRoster& roster, const std::set<std::string>& opens,
   // is called later.
   const SessionInfo* writer = roster.Find(from);
   const std::string sender = from == kSelf ? PanelId(folder_)
-                             : writer      ? HashHex(writer->path)
+                             : writer      ? SessionIdFor(writer->path)
                                            : "";
   const Mail chat = MailFrom(PanelPath(folder_), "", kMailChat, json());
   std::vector<SessionInfo> started;
@@ -598,7 +598,7 @@ void Chat::Heard(Mail& mail) {
     if (read->second != kNothing) {
       mail.body["quiet"] = read->second == kQuiet;
       mail.body["author"] = name;
-      mail.body["sender"] = HashHex(sender->path);
+      mail.body["sender"] = SessionIdFor(sender->path);
       mail.body["text"] = name + ": " + text;
     }
   }

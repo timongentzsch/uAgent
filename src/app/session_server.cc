@@ -50,7 +50,7 @@ json GapFrame(const std::string& id, const std::string& generation) {
 }
 }  // namespace
 std::string SocketPath(const std::string& path) {
-  return SocketPathForId(HashHex(path));
+  return SocketPathForId(SessionIdFor(path));
 }
 
 Connection Connect(const std::string& path) {
@@ -85,7 +85,7 @@ Connection Connect(const std::string& path) {
       result.binary = JsonValue(hello, "binary", "");
       result.status = JsonValue(hello, "status", "");
       if (JsonValue(hello, "v", 0) == kProtocol &&
-          JsonValue(hello, "session_id", "") == HashHex(path) &&
+          JsonValue(hello, "session_id", "") == SessionIdFor(path) &&
           OpaqueId(result.generation) && result.pid > 0) {
         return result;
       }
@@ -144,7 +144,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
       return {};
     }
     std::vector<std::string> args{executable, "--session-worker", cwd,
-                                  path,       HashHex(path),      title,
+                                  path,       SessionIdFor(path), title,
                                   launch};
 #ifdef __linux__
     // A service restart kills its cgroup even after setsid(). Give the
@@ -153,7 +153,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
     if (getenv("INVOCATION_ID")) {
       args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
                                  "--collect", "--expand-environment=no",
-                                 "--unit=uagent-session-" + HashHex(path) +
+                                 "--unit=uagent-session-" + SessionIdFor(path) +
                                      "-" + RandomToken(4),
                                  "--"});
     }
@@ -418,7 +418,7 @@ int Server::Start(const std::string& path, const std::string& generation,
                   std::function<bool(const json&)> command) {
   auto& state = *state_;
   state.path = SocketPath(path);
-  state.id = HashHex(path);
+  state.id = SessionIdFor(path);
   state.generation = generation;
   state.binary = FileIdentity(ExecutablePath());
   state.command = std::move(command);

@@ -183,7 +183,7 @@ std::string Terminal::MatchFolderSession(const std::string& argument) const {
   const std::string wanted = AsciiLower(Trim(argument));
   if (wanted.empty()) return "";
   return UniqueSession(FolderSessions(Folder()), [&](const SessionInfo& info) {
-    return HashHex(info.path).starts_with(wanted) ||
+    return SessionIdFor(info.path).starts_with(wanted) ||
            AsciiLower(info.title).find(wanted) != std::string::npos;
   });
 }

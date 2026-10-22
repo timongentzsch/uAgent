@@ -43,7 +43,7 @@ struct PanelRequest {
   Usage before, after;
 
   bool Send(json command) const {
-    StampFrame(command, HashHex(path), connection.generation);
+    StampFrame(command, SessionIdFor(path), connection.generation);
     command["request_id"] = command.value("request_id", NewRequestId());
     return WriteFrame(connection.socket.Get(), command);
   }
@@ -189,7 +189,7 @@ int PrintAnswer(const PanelRequest& panel, const std::string& answer) {
   const Options& options = panel.options;
   if (options.json) {
     printf("%s\n", JsonDump({{"answer", answer},
-                             {"session_id", HashHex(panel.path)},
+                             {"session_id", SessionIdFor(panel.path)},
                              {"usage", UsageJson(UsageDifference(
                                            panel.after, panel.before))},
                              {"stop", panel.stop}})

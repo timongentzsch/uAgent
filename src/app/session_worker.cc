@@ -850,7 +850,7 @@ class WorkerChannel final : public ApplicationChannel {
 }  // namespace
 
 int WorkerMain(int argc, char** argv) {
-  if (argc != 7 || !OpaqueId(argv[4]) || HashHex(argv[3]) != argv[4]) {
+  if (argc != 7 || !OpaqueId(argv[4]) || SessionIdFor(argv[3]) != argv[4]) {
     return kWorkerBadLaunch;
   }
   (void)setsid();

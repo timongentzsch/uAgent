@@ -115,7 +115,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   auto session = std::make_shared<HostSession>();
   session->cwd = cwd;
   session->path = path;
-  session->id = HashHex(path);
+  session->id = SessionIdFor(path);
   session->title = title.empty() ? "New conversation" : title;
   session->draft_title = title;
   session->status = SessionStatus::kDraft;

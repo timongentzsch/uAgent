@@ -137,7 +137,7 @@ json ForkOrShare(AppSession& session, const json& request) {
     if (rewound.contains("error")) return rewound;
     if (!session.Save(error)) return {{"error", error}};
     rewound["rewound"] = true;
-    rewound["id"] = HashHex(session.session_file);
+    rewound["id"] = SessionIdFor(session.session_file);
     rewound["path"] = session.session_file;
     rewound["cwd"] = CanonicalCwd();
     return rewound;

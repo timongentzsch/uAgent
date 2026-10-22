@@ -102,7 +102,7 @@ json Run(const json& task, int64_t at, const std::string& status) {
           {"cwd", cwd},
           {"project", project},
           {"session_path", path},
-          {"session_id", HashHex(path)},
+          {"session_id", SessionIdFor(path)},
           {"definition", task}};
 }
 bool Busy(const json& store, const std::string& task) {

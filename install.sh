@@ -80,10 +80,13 @@ if [ "$node" = yes ] && ! node "$root/web/scripts/build-state.js" check; then
   fi
   npm run build --prefix "$root/web"
 fi
-# Configured on every run: a tree first built without the web UI gains it
-# once Node.js or a built web/dist is here.
-cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-  -DUAGENT_WEB="$([ "$web" = yes ] && echo ON || echo OFF)"
+if [ ! -f "$build/CMakeCache.txt" ]; then
+  cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+fi
+# Every run says whether the web UI is built: a tree first configured without
+# it gains it once Node.js or a built web/dist is here, and a tree configured
+# by hand keeps its other choices.
+cmake -S "$root" -B "$build" -DUAGENT_WEB="$([ "$web" = yes ] && echo ON || echo OFF)"
 cmake --build "$build" --target uagent --parallel "$build_jobs"
 cmake --install "$build" --prefix "$prefix" --strip
 # Chrome reads managed policy only from a root-owned directory.

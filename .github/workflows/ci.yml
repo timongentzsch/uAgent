@@ -92,26 +92,17 @@ jobs:
       UAGENT_TEST_REQUIRE_SANDBOX: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      # The web UI is built once (web-dist) and embedded by every native build.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: ./.github/actions/native-setup
         with:
-          name: web-dist
-          path: web/dist
-      - uses: ./.github/actions/ccache
-        with:
-          name: release
-          size: 800M
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
-      # Release archives ship Web Push. macOS links Homebrew's libcrypto
-      # statically so the archive runs on hosts without Homebrew.
+          web-dist: true
+          ccache: release
+          ccache-size: 800M
+      # Release archives ship Web Push (the ci-release preset). macOS links
+      # Homebrew's libcrypto statically so the archive runs on hosts without
+      # Homebrew.
       - name: Configure
         run: >-
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DUAGENT_WARNINGS_AS_ERRORS=ON
-          -DUAGENT_WEB_PUSH=ON
+          cmake --preset ci-release -B build
           ${{ runner.os == 'macOS' && '-DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3 -DOPENSSL_USE_STATIC_LIBS=TRUE' || '' }}
       - name: Build
         # Bounded to the cores actually present. `--parallel` with no count
@@ -125,7 +116,7 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure -j 3 -LE source
       - name: Check generated skill references
-        if: matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
+        if: matrix.target == 'linux-x86_64'
         run: |
           set -euo pipefail
           generated=$(mktemp -d)
@@ -137,7 +128,6 @@ jobs:
             exit 1
           fi
       - name: Package
-        if: matrix.build_type == 'Release'
         shell: bash
         run: |
           version=$(sed -nE 's/^project\(uagent VERSION ([^ ]+).*/\1/p' CMakeLists.txt)
@@ -157,7 +147,6 @@ jobs:
           python3 tests/package_contents.py "dist/$archive"
           (cd dist && cmake -E sha256sum "$archive" > "$archive.sha256")
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: matrix.build_type == 'Release'
         with:
           name: release-${{ matrix.target }}
           path: dist/*
@@ -186,16 +175,10 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      # The web UI is built once (web-dist) and embedded by every native build.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: ./.github/actions/native-setup
         with:
-          name: web-dist
-          path: web/dist
-      - uses: ./.github/actions/ccache
-        with:
-          name: variant-${{ matrix.name }}
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
+          web-dist: true
+          ccache: variant-${{ matrix.name }}
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -216,17 +199,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "6"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      # The web UI is built once (web-dist) and embedded by every native build.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: ./.github/actions/native-setup
         with:
-          name: web-dist
-          path: web/dist
-      - uses: ./.github/actions/ccache
-        with:
-          name: sanitize
-          size: 1G
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
+          web-dist: true
+          ccache: sanitize
+          ccache-size: 1G
       - name: Configure ASan and UBSan
         run: cmake --preset sanitize
       - name: Build
@@ -250,17 +227,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "6"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      # The web UI is built once (web-dist) and embedded by every native build.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: ./.github/actions/native-setup
         with:
-          name: web-dist
-          path: web/dist
-      - uses: ./.github/actions/ccache
-        with:
-          name: tsan
-          size: 1G
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
+          web-dist: true
+          ccache: tsan
+          ccache-size: 1G
       - name: Configure TSan
         run: cmake --preset tsan
       # The races worth finding are between the supervisor, its per-job I/O
@@ -284,8 +255,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang libcurl4-openssl-dev zlib1g-dev
+      - uses: ./.github/actions/native-setup
+        with:
+          packages: clang
       - name: Configure fuzzers
         env:
           CC: clang
@@ -317,16 +289,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      # The web UI is built once (web-dist) and embedded by every native build.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: ./.github/actions/native-setup
         with:
-          name: web-dist
-          path: web/dist
-      - uses: ./.github/actions/ccache
-        with:
-          name: coverage
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev zlib1g-dev
+          web-dist: true
+          ccache: coverage
+          packages: gcovr
       - name: Configure coverage
         run: cmake --preset coverage
       # Most of src/app, src/ui and src/tools is only reached by driving the
@@ -364,20 +331,19 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  python:
+  lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.28"
           enable-cache: true
-      - run: uv run --frozen ruff check .github tests benchmarks skills
-      - run: uv run --frozen ruff format --check .github tests benchmarks skills
+      - run: .github/lint.sh
+      - uses: ./.github/actions/native-setup
       - name: Source and Python contracts
         run: |
-          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
           cmake --preset debug
           ctest --preset debug -L source
 
@@ -409,15 +375,14 @@ jobs:
       # the native suites against the same Web Push build. Configured exactly
       # as there, in the same directory, so the objects that job cached are
       # the ones asked for here: differently, every unit was compiled again.
-      - uses: ./.github/actions/ccache
+      - uses: ./.github/actions/native-setup
         with:
-          name: release
-          save: "false"
-          size: 800M
+          ccache: release
+          ccache-save: false
+          ccache-size: 800M
       - name: Build native push host
         run: |
-          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON
+          cmake --preset ci-release -B build
           cmake --build build --target uagent --parallel 4 && ccache --show-stats
       # Some specs read the bundle's files, .vite/manifest.json among them.
       - name: Hand the host and bundle to the browser shards
@@ -469,32 +434,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  cpp-style:
-    needs: changes
-    if: needs.changes.outputs.native == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          version: "0.11.28"
-          enable-cache: true
-      - name: Check formatting
-        run: >-
-          uvx --from clang-format==22.1.8 clang-format
-          --dry-run --Werror include/*/*.h src/*.cc src/*/*.cc
-          tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
-      - name: Check Google style
-        run: >-
-          uvx --from cpplint==2.0.2 cpplint
-          --recursive --exclude=third_party --exclude=tests/fixtures
-          --extensions=h,cc
-          --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check
-          include src tests benchmarks
-
   # The scan is the longest check, so its translation units are dealt round
   # robin to three runners. The generated web bundle source is not scanned.
   # A pull request that changes only translation units has those read, in
@@ -514,36 +453,20 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      # The web UI is built once (web-dist) and embedded by every native build.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: ./.github/actions/native-setup
         with:
-          name: web-dist
-          path: web/dist
+          web-dist: true
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.28"
           enable-cache: true
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
       - name: Configure clang-tidy
         run: cmake --preset tidy
       - name: Check C++ semantics and naming
         env:
           UNITS: ${{ needs.changes.outputs.tidy }}
         run: |
-          files=$(python3 - ${{ matrix.shard }} <<'PYTHON'
-          import json, os, re, sys
-          entries = json.load(open("build/tidy/compile_commands.json"))
-          files = sorted({e["file"] for e in entries if re.search(r"/(src|tests|benchmarks)/", e["file"]) and "/build/" not in e["file"]})
-          units = os.environ["UNITS"]
-          if units == "all":
-              files = files[int(sys.argv[1])::3]
-          else:
-              # A changed unit this build does not compile is not in the list.
-              files = [f for f in files if any(f.endswith("/" + unit) for unit in units.split())]
-          print(" ".join(re.escape(f) + "$" for f in files))
-          PYTHON
-          )
+          files=$(python3 .github/changes.py --tidy-files build/tidy "$UNITS" ${{ matrix.shard }}/3)
           test -n "$files" || exit 0
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py -p build/tidy \
             -header-filter='.*/(include|src|tests|benchmarks)/.*' $files
@@ -551,7 +474,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, clang-tidy, web, web-browser]
+    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, fuzzers, coverage, lint, clang-tidy, web, web-browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -269,8 +269,8 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 
 | Changed paths | Jobs |
 | --- | --- |
-| only `docs/`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | `python` |
-| those and `web/` | `python`, `web` |
+| only `docs/`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | `lint` |
+| those and `web/` | `lint`, `web` |
 | anything else | every job |
 
 A pull request that touches native code runs what a push to `master` runs,
@@ -280,7 +280,7 @@ one job; when it changes a header, the build files or the rules, it reads
 all of them, as `master` always does.
 
 The Linux build jobs reuse compiled objects through ccache
-(`.github/actions/ccache`), restored in every run and saved only from
+(`.github/actions/native-setup`), restored in every run and saved only from
 `master`. A newer push to a pull request cancels the older run; runs on
 `master` are never cancelled, so each merge is tested as it landed.
 
@@ -300,8 +300,7 @@ Master, scheduled and manual runs always run them.
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `fuzzers` | SSE and input-decoder smoke runs |
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
-| `python` | Ruff check and format; `ctest -L source` |
-| `cpp-style` | clang-format and cpplint |
+| `lint` | `.github/lint.sh` (clang-format, cpplint, Ruff); `ctest -L source` |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
 | `web` | Prettier check, Biome lint, Node tests, bundle, notices and size checks, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |

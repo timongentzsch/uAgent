@@ -282,11 +282,6 @@ add_library(
   src/ui/presentation.cc)
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 
-# Umbrella preserves the existing `uagent_core` link name for tests, benches,
-# fuzzers and the web lib while the DAG above does the real work.
-add_library(uagent_core INTERFACE)
-target_link_libraries(uagent_core INTERFACE uagent_app)
-
 add_executable(uagent src/main.cc)
 # The web UI is built, not checked in (`npm ci && npm run build` in web/, or
 # CI's web-dist artifact). A first configure without it builds CLI-only rather
@@ -311,7 +306,7 @@ if(UAGENT_WEB)
                          src/web/master_command.cc src/web/master_files.cc
                          src/web/master_stream.cc "${_web_generated}")
   find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
-  target_link_libraries(uagent_web PUBLIC uagent_core ZLIB::ZLIB)
+  target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
   # leave the browser unreferenced and the linker drops it.
@@ -344,7 +339,7 @@ if(UAGENT_WEB)
 elseif(UAGENT_WEB_PUSH)
   message(FATAL_ERROR "UAGENT_WEB_PUSH requires UAGENT_WEB")
 else()
-  target_link_libraries(uagent PRIVATE uagent_core)
+  target_link_libraries(uagent PRIVATE uagent_app)
 endif()
 
 # `third_party/json.hpp` is 25k lines and reaches 82 of the ~90 translation
@@ -370,7 +365,7 @@ foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
 endforeach()
 
 # Link-time optimization has to cover the libraries: main.cc is a few lines
-# and every code path lives in the layered static libs behind uagent_core.
+# and every code path lives in the layered static libs behind uagent_app.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
@@ -417,11 +412,13 @@ if(BUILD_TESTING)
     tests/unit/test_main.cc
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
-  target_link_libraries(uagent_tests PRIVATE uagent_core)
+  # uagent_web brings uagent_app; linking both lists it twice.
   if(UAGENT_BROWSER)
-    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc
-                                        src/web/rfb_filter.cc)
+    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc)
+    target_link_libraries(uagent_tests PRIVATE uagent_web)
     target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
+  else()
+    target_link_libraries(uagent_tests PRIVATE uagent_app)
   endif()
   # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
   # and a reused header has to have been built with the same command line.
@@ -433,20 +430,16 @@ if(BUILD_TESTING)
   # at the job's limit.
   set_tests_properties(core PROPERTIES TIMEOUT 600)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  set(_groups runtime tools ui providers mcp delegation sandbox)
   if(UAGENT_WEB)
-    add_test(NAME integration_web COMMAND ${Python3_EXECUTABLE}
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:uagent> --group web)
-    set_tests_properties(integration_web PROPERTIES TIMEOUT 180)
-    add_test(NAME integration_management COMMAND ${Python3_EXECUTABLE}
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:uagent> --group management)
-    set_tests_properties(integration_management PROPERTIES TIMEOUT 120)
+    list(APPEND _groups web management)
     if(UAGENT_WEB_PUSH)
       add_executable(uagent_push_tests tests/unit/web_push_test.cc)
       target_link_libraries(uagent_push_tests PRIVATE uagent_web)
       add_test(NAME web_push COMMAND uagent_push_tests)
     endif()
   endif()
-  foreach(group IN ITEMS runtime tools ui providers mcp delegation sandbox)
+  foreach(group IN LISTS _groups)
     # By far the longest group (80 s of 190 s in all), so it alone decided
     # how long a parallel run takes: dealt to three runners, and counted as three.
     set(_runners)
@@ -495,7 +488,7 @@ endif()
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
 if(UAGENT_BUILD_BENCHMARKS)
   add_executable(uagent_bench benchmarks/bench_core.cc)
-  target_link_libraries(uagent_bench PRIVATE uagent_core)
+  target_link_libraries(uagent_bench PRIVATE uagent_app)
   # Registered so the benchmark cannot silently stop compiling or running.
   if(BUILD_TESTING)
     add_test(NAME benchmarks COMMAND uagent_bench)

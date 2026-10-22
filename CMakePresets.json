@@ -30,6 +30,14 @@
       }
     },
     {
+      "name": "ci-release",
+      "inherits": "release",
+      "description": "What CI builds, tests and packages; the web job builds its host the same way so the two share compiled objects.",
+      "cacheVariables": {
+        "UAGENT_WEB_PUSH": "ON"
+      }
+    },
+    {
       "name": "sanitize",
       "inherits": "debug",
       "cacheVariables": {
@@ -44,6 +52,7 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "UAGENT_BUILD_BENCHMARKS": "ON",
+        "UAGENT_WEB_PUSH": "ON",
         "CMAKE_DISABLE_PRECOMPILE_HEADERS": "ON"
       }
     },

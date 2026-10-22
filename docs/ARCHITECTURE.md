@@ -49,8 +49,8 @@ above it:
 | `uagent_app` | `src/app/`, `src/ui/`, `src/cli/` |
 | `uagent_web` | `src/web/` and the embedded bundle; built when `UAGENT_WEB=ON` (default) |
 
-`uagent_core` is an INTERFACE umbrella over `uagent_app`; tests, benchmarks,
-fuzzers and `uagent_web` link it.
+Tests, benchmarks and `uagent_web` link `uagent_app`; the fuzzers link only
+`uagent_core_base` and the source they fuzz.
 
 Public headers live in `include/<module>/`, mirroring `src/<module>/`.
 Declarations shared only inside one module stay in `src/<module>/*_internal.h`.

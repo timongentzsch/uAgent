@@ -21,11 +21,7 @@ shows how.
 Before a commit, run what CI checks on every change:
 
 ```sh
-uvx --from clang-format==22.1.8 clang-format --dry-run --Werror \
-  include/*/*.h src/*.cc src/*/*.cc \
-  tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
-uv run --frozen ruff check .github tests benchmarks skills
-uv run --frozen ruff format --check .github tests benchmarks skills
+.github/lint.sh    # clang-format, cpplint and Ruff; needs uv
 git diff --check
 ```
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 changes = runpy.run_path(str(Path(__file__).resolve().parents[1] / ".github/changes.py"))
 classify, heavy, tidy = changes["classify"], changes["heavy"], changes["tidy"]
-build_matrix = changes["build_matrix"]
+build_matrix, tidy_files = changes["build_matrix"], changes["tidy_files"]
 
 
 class ChangeSelectionTest(unittest.TestCase):
@@ -41,6 +41,17 @@ class ChangeSelectionTest(unittest.TestCase):
         for path in ("include/app/chat.h", ".clang-tidy", "CMakeLists.txt", ".github/changes.py"):
             with self.subTest(path=path):
                 self.assertEqual(tidy(["src/app/chat.cc", path]), "all")
+
+    def test_clang_tidy_patterns_name_first_party_units_of_the_build(self):
+        entries = [
+            {"file": f"/r/{path}"}
+            for path in ("src/a.cc", "src/b.cc", "tests/unit/c_test.cc", "build/tidy/web_assets.cc")
+        ]
+        self.assertEqual(tidy_files(entries, "src/b.cc src/gone.cc"), r"/r/src/b\.cc$")
+        self.assertEqual(
+            tidy_files(entries, "all"), r"/r/src/a\.cc$ /r/src/b\.cc$ /r/tests/unit/c_test\.cc$"
+        )
+        self.assertEqual(tidy_files(entries, "all", "1/2"), r"/r/src/b\.cc$")
 
     def test_slow_legs_run_on_a_pull_request_only_where_they_matter(self):
         texts = {

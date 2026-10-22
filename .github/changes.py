@@ -2,7 +2,9 @@
 
 import json
 import os
+import re
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -47,8 +49,7 @@ def build_matrix(with_arm):
         {"target": "linux-arm64", "runner": "ubuntu-24.04-arm", "arch": "aarch64"},
         {"target": "macos-arm64", "runner": "macos-15", "arch": "arm64"},
     ]
-    include = [{**leg, "build_type": "Release"} for leg in legs]
-    return json.dumps({"include": include if with_arm else [include[0], include[2]]})
+    return json.dumps({"include": legs if with_arm else [legs[0], legs[2]]})
 
 
 def tidy(paths):
@@ -69,12 +70,40 @@ def tidy(paths):
     return "all" if wide else " ".join(units)
 
 
-if __name__ == "__main__":
+def tidy_files(entries, units, shard="0/1"):
+    """The run-clang-tidy.py patterns for what tidy() chose, from the entries
+    of compile_commands.json. "all" deals the first-party units round robin
+    and keeps the `shard` ("index/count") share; a changed unit this build
+    does not compile is not in the list."""
+    files = sorted(
+        {
+            entry["file"]
+            for entry in entries
+            if re.search(r"/(src|tests|benchmarks)/", entry["file"])
+            and "/build/" not in entry["file"]
+        }
+    )
+    if units == "all":
+        index, count = map(int, shard.split("/"))
+        files = files[index::count]
+    else:
+        files = [file for file in files if any(file.endswith("/" + unit) for unit in units.split())]
+    return " ".join(re.escape(file) + "$" for file in files)
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--tidy-files"]:
+    # --tidy-files BUILD_DIR UNITS [INDEX/COUNT]
+    build, units, *shard = sys.argv[2:]
+    entries = json.loads((Path(build) / "compile_commands.json").read_text())
+    print(tidy_files(entries, units, *shard))
+elif __name__ == "__main__":
     base = os.environ.get("CI_BASE_SHA")
     if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and base:
         # No rename detection: both the old and the new path are listed.
+        # Against the working tree, which in CI is HEAD and before a push
+        # (.github/ci-local.sh) includes what is not committed yet.
         changed = subprocess.check_output(
-            ["git", "diff", "--name-only", "--no-renames", "-z", base, "HEAD"]
+            ["git", "diff", "--name-only", "--no-renames", "-z", base]
         )
         paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
 

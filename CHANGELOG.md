@@ -79,6 +79,9 @@
   narrow tool row keeps its name beside its chevron.
 - A saved conversation's composer shows the model and approval mode it
   resumes with, instead of "Select model" and the default mode.
+- Web statistics show input tokens (cached and cache-written included, as
+  providers bill them), output tokens (reasoning included) and the cache hit
+  rate, in place of the separate buckets.
 
 ## v1.5.0 - 2026-10-20
 

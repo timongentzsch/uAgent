@@ -136,6 +136,9 @@
   oldest completed command, as intended, instead of the one whose random id
   sorted first: a retry of a command that just completed replays its
   outcome instead of possibly running it again.
+- A folder on a watched path that appears while the host sets up its file
+  watches (a project's `.uagent/` made just then) is noticed: a file created
+  in it, such as an instructions file, no longer waits for the next wake.
 
 ## v1.5.0 - 2026-10-20
 

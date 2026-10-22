@@ -103,6 +103,9 @@
 - A long conversation no longer forgets its chosen model, approval mode and
   fork origin: under display-metadata pressure they could be evicted with
   the transcript's row data, which sorted after them.
+- Titles and workspace names are limited in characters (256 and 64), as the
+  web's form counts them; the host counted bytes, so a title with accents or
+  emoji could pass the form and then be refused.
 - A typed `/rename` keeps to the same rules as a rename from the web: the
   title rule, and in a panel's chat the rule for a name there, whose members
   are told; it used to accept any text.

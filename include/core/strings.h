@@ -5,6 +5,7 @@
 // String, UTF-8, and display-width helpers, plus the terminal-safe and
 // human-readable formatters shared by the REPL and the tool trace.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -65,6 +66,14 @@ std::string Utf8Trunc(std::string s, size_t cap);
 // starts with none or an incomplete one. The one definition every parser of
 // the terminal's own output uses, so none ends a sequence elsewhere.
 size_t CsiSpan(std::string_view text);
+
+// Characters in UTF-8 text: what a person counts, and never more than the
+// UTF-16 units a browser's maxLength counts. Continuation bytes are skipped.
+inline size_t Utf8Chars(std::string_view text) {
+  return static_cast<size_t>(std::count_if(
+      text.begin(), text.end(),
+      [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
+}
 
 // Terminal column width for valid UTF-8 in the active locale. Invalid or
 // incomplete sequences degrade to one column rather than breaking rendering.

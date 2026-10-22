@@ -68,6 +68,7 @@ namespace uagent {
   X(TestSavedTranscriptIndex)                     \
   X(TestSessionPersistence)                       \
   X(TestSessionCatalogueCache)                    \
+  X(TestTitlesCountCharacters)                    \
   X(TestCommandReplies)                           \
   X(TestCostRoutesCountCacheWrites)               \
   X(TestSessionFramePartitions)                   \

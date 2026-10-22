@@ -51,7 +51,7 @@ std::string InvalidSpaceNameMessage() {
 }
 
 bool ValidSpaceName(const std::string& name) {
-  return ValidSessionTitle(name) && name.size() <= kSpaceNameChars &&
+  return ValidSessionTitle(name) && Utf8Chars(name) <= kSpaceNameChars &&
          name.find('/') == std::string::npos;
 }
 

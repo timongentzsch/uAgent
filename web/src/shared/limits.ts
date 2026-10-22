@@ -44,7 +44,8 @@ export const maxScheduleMinutes = 525_600;
 export const schedulePreviewDebounceMs = 200;
 
 // A session's title and a workspace's name are bounded as on the host
-// (kUserTitleBytes, kSpaceNameChars).
+// (kUserTitleChars, kSpaceNameChars), in characters; maxLength counts UTF-16
+// units, never fewer, so the form is never laxer than the host.
 export const maxTitleChars = 256;
 export const maxSpaceNameChars = 64;
 

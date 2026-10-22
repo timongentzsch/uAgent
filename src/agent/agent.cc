@@ -138,7 +138,7 @@ json Agent::SideConversation(const std::string& source,
   const std::string title =
       question.empty()
           ? "Side conversation"
-          : Utf8Prefix("Btw: " + FirstLine(Trim(question)), kUserTitleBytes);
+          : Utf8Prefix("Btw: " + FirstLine(Trim(question)), kUserTitleChars);
   return SessionStore::Fork(source, title, true, 0, "", &snapshot);
 }
 
@@ -361,7 +361,7 @@ SessionRecord Agent::Snapshot() const {
                      .model = api_.model,
                      .session_id = session_id_,
                      .turns = UserTurns(),
-                     .title = Utf8Prefix(FirstUserText(), kUserTitleBytes),
+                     .title = Utf8Prefix(FirstUserText(), kUserTitleChars),
                      .custom_title = custom_title_,
                      .parent_session_id = parent_session_id_,
                      .forked_at_turn = forked_at_turn_,

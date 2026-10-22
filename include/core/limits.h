@@ -67,8 +67,10 @@ inline constexpr size_t kGenericTitleReplacementMinChars = 12;
 inline constexpr size_t kTitleInputChars = 2000;
 inline constexpr size_t kTitleChars = 80;
 // The longest title a user (or a fork) may give a session, and the longest
-// workspace name. The web form mirrors both (web/src/shared/limits.ts).
-inline constexpr size_t kUserTitleBytes = 256;
+// workspace name, in characters; a generated title is cut to as many bytes,
+// which is never more characters. The web form mirrors both
+// (web/src/shared/limits.ts).
+inline constexpr size_t kUserTitleChars = 256;
 inline constexpr size_t kSpaceNameChars = 64;
 inline constexpr int64_t kTitleTimeoutSeconds = 30;
 // Upload and subsequent claim validation must accept the same display names.

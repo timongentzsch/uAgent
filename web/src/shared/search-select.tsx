@@ -4,6 +4,7 @@ import { Field, Input } from "./ui.tsx";
 import { SuggestionList } from "./suggestion-list.tsx";
 import "./search-select.css";
 import { matches } from "./fuzzy.ts";
+import { nextIndex, plainKey } from "./listbox-nav.ts";
 
 export type SearchOption = { value: string; label: string; detail?: string };
 
@@ -76,30 +77,22 @@ export function SearchSelect({
             setIndex(0);
           }}
           onKeyDown={(event) => {
-            if (event.isComposing) return;
+            if (event.isComposing || !plainKey(event)) return;
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
               setOpen(true);
               setIndex(
-                open
-                  ? Math.max(
-                      0,
-                      Math.min(
-                        shown.length - 1,
-                        active + (event.key === "ArrowDown" ? 1 : -1),
-                      ),
-                    )
+                open && shown.length
+                  ? nextIndex(active, event.key, shown.length)
                   : 0,
               );
             } else if (open && event.key === "Enter") {
-              event.preventDefault();
               if (shown[active]) pick(shown[active]);
             } else if (open && event.key === "Escape") {
-              event.preventDefault();
               event.stopPropagation();
               setOpen(false);
               setQuery("");
-            }
+            } else return;
+            event.preventDefault();
           }}
         />
       </Field>

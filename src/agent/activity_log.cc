@@ -40,8 +40,7 @@ void BgTrackSignal(pid_t pid, bool add, bool agent) {
 }
 
 void KillProcess(pid_t pid) {
-  SignalProcessGroup(pid, SIGKILL);
-  if (!ReapPidFor(pid, nullptr, std::chrono::milliseconds(500))) {
+  if (!StopProcess(pid, true, {})) {
     DebugLog("child_reap_deferred", {{"pid", pid}});
   }
 }

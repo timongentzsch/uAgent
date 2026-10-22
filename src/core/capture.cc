@@ -3,7 +3,6 @@
 
 #include <fcntl.h>
 #include <poll.h>
-#include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -111,8 +110,7 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
   if (!eof || !result.error.empty() ||
       !ReapPidFor(child, &status,
                   std::chrono::milliseconds(PollTimeoutMs(deadline)))) {
-    kill(-child, SIGKILL);
-    ReapPidFor(child, &status, std::chrono::seconds(1));
+    StopProcess(child, true, {}, &status);
     if (result.error.empty()) result.error = "helper timed out";
   }
   result.status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;

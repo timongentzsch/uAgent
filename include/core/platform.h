@@ -36,6 +36,10 @@ pid_t WaitPid(pid_t pid, int* status, int flags = 0);
 // Poll for one child without ever turning process teardown into an unbounded
 // wait. ECHILD is success because another owner already reaped it.
 bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout);
+// SIGTERM a child (its group when `group`) and reap it within `grace`, else
+// SIGKILL and reap within a second; zero grace kills at once. True if reaped.
+bool StopProcess(pid_t pid, bool group, std::chrono::milliseconds grace,
+                 int* status = nullptr);
 
 // A wait status that says the process exited, and with code 0.
 inline bool ExitedOk(int status) {

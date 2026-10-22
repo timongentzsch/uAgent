@@ -71,12 +71,7 @@ pid_t Launch(const std::vector<std::string>& arguments,
 }
 void Terminate(pid_t& pid) {
   if (pid <= 0) return;
-  kill(-pid, SIGTERM);
-  if (!ReapPidFor(pid, nullptr,
-                  std::chrono::milliseconds(kChildShutdownGraceMs))) {
-    kill(-pid, SIGKILL);
-    waitpid(pid, nullptr, 0);
-  }
+  StopProcess(pid, true, std::chrono::milliseconds(kChildShutdownGraceMs));
   // Whatever the leader left behind.
   kill(-pid, SIGKILL);
   pid = -1;

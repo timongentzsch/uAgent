@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -113,6 +114,17 @@ bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout) {
     if (wait_ms <= 0) return false;
     (void)poll(nullptr, 0, wait_ms);
   }
+}
+
+bool StopProcess(pid_t pid, bool group, std::chrono::milliseconds grace,
+                 int* status) {
+  const pid_t target = group ? -pid : pid;
+  if (grace.count() > 0) {
+    kill(target, SIGTERM);
+    if (ReapPidFor(pid, status, grace)) return true;
+  }
+  kill(target, SIGKILL);
+  return ReapPidFor(pid, status, std::chrono::seconds(1));
 }
 
 std::optional<ProcStat> ParseProcStat(std::string_view record) {

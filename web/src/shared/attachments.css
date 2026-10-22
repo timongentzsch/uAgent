@@ -78,7 +78,7 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--surface);
   cursor: zoom-in;
 }
@@ -95,7 +95,7 @@
   width: min(var(--pane), 100%);
   height: var(--thumb);
   padding: 0 var(--space-4);
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
   color: inherit;
   text-decoration: none;

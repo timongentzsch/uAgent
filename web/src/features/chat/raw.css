@@ -13,7 +13,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--line);
+  border: var(--border);
   background: var(--surface);
 }
 .raw-content footer {
@@ -32,6 +32,6 @@
 }
 .raw-body details {
   padding: var(--gap) var(--pad);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
   font-size: var(--font-small);
 }

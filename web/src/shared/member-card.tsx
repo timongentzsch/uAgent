@@ -153,9 +153,9 @@ export function MemberAvatar({ item }: { item: Session }) {
           later(false, 0);
       }}
     >
-      <button
-        type="button"
-        ref={anchor}
+      <Button
+        variant="quiet"
+        buttonRef={anchor}
         class="avatar-button"
         aria-label={label}
         aria-haspopup="dialog"
@@ -167,7 +167,7 @@ export function MemberAvatar({ item }: { item: Session }) {
         }}
       >
         <Avatar name={name} />
-      </button>
+      </Button>
       {open && (
         <div
           ref={card}

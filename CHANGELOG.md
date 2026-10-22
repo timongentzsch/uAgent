@@ -124,6 +124,10 @@
   are told; it used to accept any text.
 - A mail's author travels with it: the person typing the same words as a
   queued mail, or two mails saying the same thing, no longer swap authors.
+- Web: the time a tool row's background work, an entry in the activity list
+  and the activity viewer's header have been running counts up each second,
+  in whole seconds under a minute, where it stood still until something
+  else redrew it.
 
 ## v1.5.0 - 2026-10-20
 

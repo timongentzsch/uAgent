@@ -32,7 +32,7 @@ dialog.settings-view {
   padding: var(--pad) var(--inset-x) var(--space-12);
 }
 .settings-nav {
-  border-right: 1px solid var(--line);
+  border-right: var(--border);
 }
 .settings-nav .group {
   margin-bottom: var(--pad);

@@ -30,7 +30,7 @@
 .tools-busy {
   padding: var(--space-3);
   background: var(--raised);
-  border: 1px solid var(--line);
+  border: var(--border);
 }
 
 .tools-search {
@@ -55,7 +55,7 @@
   gap: var(--space-2);
   padding: var(--space-3);
   background: var(--raised);
-  border: 1px solid var(--line);
+  border: var(--border);
 }
 
 .tool-toggle {

@@ -29,8 +29,7 @@ import {
 import { SheetButton } from "./sheet.tsx";
 import { command } from "../state/api.ts";
 import { useAction } from "./use-action.ts";
-import { duration } from "./duration.ts";
-import { useElapsedSeconds } from "./time.ts";
+import { useElapsed } from "./time.ts";
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 // Supervised activities plus child agents not already listed as one.
@@ -87,17 +86,9 @@ export function ActivityStatus({
   // a response starts, needs input or ends.
   const responded = useRef(false);
   if (running) responded.current = true;
-  const elapsed = useElapsedSeconds(!!running, started);
+  const detail = useElapsed(!!running, started);
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
-  // Whole seconds below a minute: a tenth that only moves once a second
-  // reads as a stuck clock.
-  const detail =
-    elapsed === undefined
-      ? ""
-      : elapsed < 60
-        ? `${elapsed}s`
-        : duration(elapsed * 1000);
   const announcement = pending
     ? "Needs your input"
     : running
@@ -273,6 +264,7 @@ function ActivityRow({
 }) {
   const name =
     item.kind === "agent" ? item.name || item.label : item.label || "Command";
+  const elapsed = useElapsed(active(item), item.started_ms);
   return (
     <li class="activity-row">
       <Button
@@ -286,9 +278,7 @@ function ActivityRow({
           <strong>{cleanText(name || "")}</strong>
           <small>
             {item.status}
-            {item.started_ms &&
-              active(item) &&
-              ` · ${duration(Math.max(0, Date.now() - item.started_ms))}`}
+            {elapsed && ` · ${elapsed}`}
             {item.progress && ` · ${cleanText(item.progress)}`}
           </small>
         </span>

@@ -302,8 +302,11 @@ interface Presented {
   // A folded row's own line: the host's group label, or a turn's work.
   label?: string;
   key?: string;
-  // The reply that made a tool call.
-  source?: AssistantBlock;
+  // The reply that made a tool call, as much of it as the row shows.
+  source?: Pick<
+    AssistantBlock,
+    "kind" | "id" | "response_id" | "time" | "http"
+  >;
   result_loaded?: boolean;
 }
 export type PresentedBlock = (Block | GroupBlock) & Presented;

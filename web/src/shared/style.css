@@ -150,6 +150,11 @@
   --accent-active: #ccc;
   --on-accent: #000;
   --knob: #a3a3a3;
+  /* Edges and the focus ring, made here so each palette's colours fill
+     them: a divider, a control's edge. */
+  --border: 1px solid var(--line);
+  --border-field: 1px solid var(--field-border);
+  --focus-ring: 2px solid var(--accent);
 }
 :root[data-theme="light"],
 [data-theme="dark"] .message.user,
@@ -177,6 +182,9 @@
   --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
   --knob: #fff;
+  --border: 1px solid var(--line);
+  --border-field: 1px solid var(--field-border);
+  --focus-ring: 2px solid var(--accent);
 }
 * {
   box-sizing: border-box;
@@ -275,7 +283,7 @@ input[type="radio"] {
   height: var(--control-s);
   min-height: var(--control-s);
   margin: 0;
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard);
@@ -398,8 +406,9 @@ summary:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
-[tabindex]:not([tabindex="-1"]):focus-visible {
-  outline: 2px solid var(--accent);
+[tabindex]:not([tabindex="-1"]):focus-visible,
+.file-button:focus-within {
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 ::placeholder {
@@ -494,7 +503,7 @@ pre {
   line-height: var(--leading-prose);
   padding: var(--space-6);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: var(--border);
   margin: var(--space-4) 0;
 }
 code {
@@ -538,8 +547,7 @@ pre code {
   color: var(--muted);
 }
 .muted,
-.small,
-.metrics {
+.small {
   color: var(--muted);
 }
 .small {
@@ -599,7 +607,7 @@ pre code {
 .update-banner {
   padding: var(--space-3) var(--space-6);
   /* What floats over the page is set apart by its edge alone. */
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
   display: flex;
   align-items: center;
@@ -687,7 +695,7 @@ aside.sidebar {
   max-width: 100%;
 }
 .sidebar {
-  border-right: 1px solid var(--line);
+  border-right: var(--border);
   background: var(--surface);
   display: flex;
   flex-direction: column;
@@ -721,7 +729,7 @@ dialog.sidebar:not([open]) {
   width: 1.7em;
   height: 1.7em;
   margin-right: var(--space-2);
-  border: 1px solid var(--line);
+  border: var(--border);
   border-radius: 50%;
   color: var(--muted);
   font-size: var(--font-small);
@@ -856,7 +864,7 @@ dialog.sidebar:not([open]) {
   flex-shrink: 0;
   min-height: var(--touch);
   padding: var(--space-2) var(--pad);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
 }
 .conversation-head > div:first-of-type {
   flex: 1;
@@ -920,7 +928,7 @@ dialog.sidebar:not([open]) {
   width: fit-content;
   margin: var(--space-12) auto 0;
   padding-top: var(--space-6);
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
   text-align: left;
   font-size: var(--font-small);
 }
@@ -938,7 +946,7 @@ dialog.sidebar:not([open]) {
 }
 .tips kbd {
   padding: 0 var(--space-1);
-  border: 1px solid var(--line);
+  border: var(--border);
   font: inherit;
   font-weight: 400;
 }
@@ -986,10 +994,6 @@ dialog.sidebar:not([open]) {
   cursor: pointer;
   padding: 0;
 }
-.file-button:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 /* Swapped feedback icons (Copy → Check) cross in rather than blink. */
 @starting-style {
   .swap-feedback > svg {
@@ -1024,7 +1028,7 @@ dialog.sidebar:not([open]) {
 /* Not connected: a tag, so the state reads apart from a turn's phase. */
 .connection-pill {
   padding: 0 var(--space-4);
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
   color: var(--text);
 }
@@ -1067,6 +1071,7 @@ dialog.sidebar:not([open]) {
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
+  color: var(--muted);
   font-size: var(--font-small);
 }
 .metrics > button {
@@ -1127,7 +1132,7 @@ details:not(.disclosure-row) > summary::before {
   margin: 0;
   min-width: var(--pane-s);
   padding: var(--space-2);
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--surface);
   color: var(--text);
   overflow: auto;
@@ -1198,7 +1203,7 @@ dialog {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  border: 1px solid var(--line);
+  border: var(--border);
   padding: 0;
   width: min(
     var(--dialog-width),
@@ -1305,7 +1310,7 @@ dialog > header {
   align-items: center;
   justify-content: space-between;
   gap: var(--pad);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
   padding: var(--inset-x);
   flex-shrink: 0;
   /* Reserve the same native scrollbar space as the body on every platform. */
@@ -1472,7 +1477,6 @@ dialog section {
     scrollbar-gutter: auto;
   }
   .metrics {
-    font-size: var(--font-small);
     margin-left: auto;
   }
   .raw-view {
@@ -1675,7 +1679,7 @@ dialog > header .icon-button {
 }
 /* More specific than a row's own `border: 0` below, so the line shows. */
 .group-rows > :not(:first-child) {
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
 }
 @media (hover: hover) and (pointer: fine) {
   button.row:enabled:hover {

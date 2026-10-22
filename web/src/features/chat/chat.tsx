@@ -4,7 +4,7 @@ import type {
   SessionRef,
   Snapshot,
 } from "../../shared/types.ts";
-import { useState } from "preact/hooks";
+import { useAction } from "../../shared/use-action.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import {
   LoadError,
@@ -69,7 +69,7 @@ function Chat({
   preserveWhile,
 }: ChatProps) {
   const { online, load: loadSnapshot, report } = useHostContext();
-  const [loadingOlder, setLoadingOlder] = useState(false);
+  const olderPage = useAction();
   // Prepares the history once its snapshot arrives, not on every streamed
   // frame.
   const { value: preparedKey } = useResource(
@@ -82,15 +82,6 @@ function Chat({
     [selected, !!snapshot],
   );
   const prepared = !!snapshot && preparedKey === selected;
-  async function loadOlder() {
-    if (loadingOlder) return;
-    setLoadingOlder(true);
-    try {
-      await preserveWhile(older);
-    } finally {
-      setLoadingOlder(false);
-    }
-  }
   const view = snapshot?.state?.view;
   const retry = () => loadSnapshot(selected).catch(() => {});
   return (
@@ -116,8 +107,8 @@ function Chat({
         <HistoryStart
           view={view}
           online={online}
-          loading={loadingOlder}
-          load={() => loadOlder().catch(report)}
+          loading={olderPage.busy}
+          load={() => olderPage.run(() => preserveWhile(older).catch(report))}
         />
         {snapshot?.live_truncated && (
           <p class="retention">

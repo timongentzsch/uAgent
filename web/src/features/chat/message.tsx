@@ -12,7 +12,6 @@ import {
 } from "../../shared/message-view.ts";
 import type {
   ActivityTarget,
-  AssistantBlock,
   PresentedBlock,
   Block,
   Asset,
@@ -136,15 +135,11 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
     prompt,
   } = useContext(MessageActions);
   const { policy } = useContext(DetailContext);
-  const [full, setFull] = useState<string | null>(null);
-  const [expanding, setExpanding] = useState(false);
   // A level that shows output opens the row on the preview it holds.
   const [expanded, setExpanded] = useState(policy.open);
   // The full text loads when asked for: by opening the row, or from a row
-  // or output box that is already open.
+  // or output box that is already open, or by Show full message.
   const [wantFull, setWantFull] = useState(false);
-  const [loadError, setLoadError] = useState<unknown>(null);
-  const [retry, setRetry] = useState(0);
   // A chat member's message: shown under its name, without the name its
   // text opens with for the model ("Ada: …").
   const mail =
@@ -154,11 +149,6 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
   // follows. One that has left keeps the name it wrote under.
   const seat = team?.find((item) => item.id === mail?.sender);
   const member = author && (seat?.member || author);
-  const whole = full ?? block.text ?? "";
-  const text =
-    author && whole.startsWith(`${author}: `)
-      ? whole.slice(author.length + 2)
-      : whole;
   const call = block.kind === "tool_result" ? block : undefined;
   const tool = !!call;
   const reply = block.kind === "assistant" ? block : undefined;
@@ -169,45 +159,40 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
     "unavailable_images" in block ? block.unavailable_images : undefined;
   const took = "duration_ms" in block ? block.duration_ms : undefined;
   const load = useBlockReader(session, read);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: loads when asked for (wantFull, retry); the finished load (full) must not abort itself by re-running
+  const fullText = useResource(
+    (signal) =>
+      online && wantFull && block.truncated
+        ? load(
+            call?.detail_id || (call ? `t-${call.call_id}` : block.id),
+            tool,
+            signal,
+          ).then((page): string =>
+            tool ? JSON.parse(page.text).response : page.text,
+          )
+        : undefined,
+    [
+      online,
+      wantFull,
+      block.truncated,
+      call?.detail_id,
+      call?.call_id,
+      session.id,
+    ],
+  );
+  const full = wantFull ? (fullText.value ?? null) : null;
+  const expanding =
+    online && wantFull && !!block.truncated && full === null && !fullText.error;
+  // A row shows why its whole text did not load; a message reports it.
+  const row = block.kind === "tool_result" || block.kind === "activity";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reports each failure once
   useEffect(() => {
-    if (
-      !online ||
-      (!tool && block.kind !== "activity") ||
-      !wantFull ||
-      !block.truncated ||
-      full !== null
-    )
-      return;
-    const abort = new AbortController();
-    setExpanding(true);
-    setLoadError(null);
-    load(
-      call?.detail_id || (call ? `t-${call.call_id}` : block.id),
-      tool,
-      abort.signal,
-    )
-      .then((page) => {
-        if (!abort.signal.aborted)
-          setFull(tool ? JSON.parse(page.text).response : page.text);
-      })
-      .catch((error) => {
-        if (!abort.signal.aborted) setLoadError(error);
-      })
-      .finally(() => {
-        if (!abort.signal.aborted) setExpanding(false);
-      });
-    return () => abort.abort();
-  }, [
-    online,
-    tool,
-    wantFull,
-    block.truncated,
-    call?.detail_id,
-    call?.call_id,
-    session.id,
-    retry,
-  ]);
+    if (!row && fullText.error) report(fullText.error);
+  }, [fullText.error]);
+  const whole = full ?? block.text ?? "";
+  const text =
+    author && whole.startsWith(`${author}: `)
+      ? whole.slice(author.length + 2)
+      : whole;
   // A long diff arrives as its opening; the row shows the stored whole,
   // read once per session and retry.
   const diff = useResource(
@@ -217,7 +202,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
             (page) => page.text,
           )
         : undefined,
-    [online, call?.change_path, session.id, retry],
+    [online, call?.change_path, session.id],
   );
   const change = diff.value;
   const output = useMemo(
@@ -227,7 +212,6 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
   // Attribution, not authorship: the user's bar and agent rows carry no
   // label; only other kinds name themselves.
   // Receipts (memory saves, finished background work) read as tool rows.
-  const row = block.kind === "tool_result" || block.kind === "activity";
   const userOwned =
     (block.kind === "user" && !member) ||
     (block.kind === "attachment" && block.origin !== "tool");
@@ -375,8 +359,8 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
               output={output}
               text={text}
               expanding={expanding}
-              loadError={loadError || diff.error}
-              retry={() => setRetry(retry + 1)}
+              loadError={fullText.error || diff.error}
+              retry={fullText.error ? fullText.retry : diff.retry}
               online={online}
               inspect={inspect}
               open={policy.open}
@@ -464,24 +448,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
         />
       )}
       {!row && block.truncated && (
-        <Button
-          disabled={expanding}
-          onClick={async () => {
-            if (full !== null) {
-              setFull(null);
-              return;
-            }
-            setExpanding(true);
-            try {
-              const page = await load(block.id, false);
-              setFull(page.text);
-            } catch (error) {
-              report(error);
-            } finally {
-              setExpanding(false);
-            }
-          }}
-        >
+        <Button disabled={expanding} onClick={() => setWantFull(full === null)}>
           {expanding
             ? "Loading…"
             : full !== null
@@ -513,67 +480,21 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
   );
 }
 
-// A tool row shows its model message's time, HTTP log and ids, never its
-// text, so the reply streaming beside it does not re-render it.
-function sourceEqual(a?: AssistantBlock, b?: AssistantBlock) {
-  return (
-    a?.id === b?.id &&
-    a?.time === b?.time &&
-    (a?.http?.length || 0) === (b?.http?.length || 0)
-  );
-}
-
-// Every block field counts, so a new field can never be silently ignored.
-// Only arrays the projection rebuilds on each pass compare by their entries.
-function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
-  if (x === y) return true;
-  const a = x as unknown as Record<string, unknown>;
-  const b = y as unknown as Record<string, unknown>;
-  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (a[key] === b[key]) continue;
-    if (key === "source") {
-      if (!sourceEqual(x.source, y.source)) return false;
-      continue;
-    }
-    const before = (a[key] || []) as PresentedBlock[];
-    const after = (b[key] || []) as PresentedBlock[];
-    if (key === "children") {
-      if (
-        before.length !== after.length ||
-        !before.every((step, index) => blockEqual(step, after[index]))
-      )
-        return false;
-    } else if (key !== "files" && key !== "http") return false;
-    // Rebuilt arrays of the same entries: a changed entry still counts.
-    else if (
-      before.length !== after.length ||
-      before.some((item, index) => item !== after[index])
-    )
-      return false;
-  }
-  return true;
-}
-
-function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
-  return (
-    before.online === after.online &&
-    before.footed === after.footed &&
-    (before.answer === after.answer ||
-      (!!before.answer &&
-        !!after.answer &&
-        blockEqual(before.answer, after.answer))) &&
-    before.session.id === after.session.id &&
-    (before.session.generation || "") === (after.session.generation || "") &&
-    blockEqual(before.block, after.block)
-  );
-}
-
-// Outer class skips re-render when fields are equal, so a streaming delta
-// updates 1-2 rows instead of reconciling all 256. Inner view keeps hooks
-// (expanded/full) and disclosure state.
+// Rows stay the same objects while their blocks do (see presentMessages),
+// so a streamed frame renders the 1-2 rows it touched instead of
+// reconciling all 256. The inner view keeps hooks (expanded/full) and
+// disclosure state.
 class Message extends Component<MessageProps> {
   shouldComponentUpdate(next: MessageProps) {
-    return !messagePropsEqual(this.props, next);
+    const prior = this.props;
+    return (
+      next.block !== prior.block ||
+      next.answer !== prior.answer ||
+      next.online !== prior.online ||
+      next.footed !== prior.footed ||
+      next.session.id !== prior.session.id ||
+      next.session.generation !== prior.session.generation
+    );
   }
   render(props: MessageProps) {
     return (

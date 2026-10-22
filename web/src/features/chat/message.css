@@ -77,7 +77,7 @@
   margin-left: auto;
 }
 .disclosure-body {
-  border-left: 1px solid var(--line);
+  border-left: var(--border);
   margin-left: var(--gap);
   padding-left: var(--space-6);
 }
@@ -318,7 +318,7 @@
   max-height: calc(var(--viewport-height) * 0.5);
   margin-bottom: var(--gap);
   padding: var(--space-2) var(--space-4) var(--space-4);
-  border: 1px solid var(--line);
+  border: var(--border);
   background: var(--surface);
 }
 .side-answer > header {
@@ -399,7 +399,7 @@
 .tool-file > iframe {
   width: 100%;
   height: var(--pane);
-  border: 1px solid var(--line);
+  border: var(--border);
   background: var(--surface);
 }
 .tool-file > figcaption {

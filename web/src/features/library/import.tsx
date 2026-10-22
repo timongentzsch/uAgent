@@ -3,10 +3,10 @@ import type { ImportItem } from "../../shared/types.ts";
 import { useState } from "preact/hooks";
 import {
   Button,
-  DataText,
   EmptyState,
   LoadError,
   Modal,
+  Row,
   Spinner,
 } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
@@ -58,14 +58,11 @@ export default function ImportDialog({
             (item.collides && "Already in µAgent") ||
             (item.needs_model && "Needs a model: invoke $import in a chat");
           return (
-            <div class="import-row" key={item.key}>
-              <span>
-                <DataText>{item.name}</DataText>
-                <small>
-                  {item.source} · {bytes(item.bytes)}
-                  {note ? ` · ${note}` : ""}
-                </small>
-              </span>
+            <Row
+              key={item.key}
+              label={item.name}
+              detail={`${item.source} · ${bytes(item.bytes)}${note ? ` · ${note}` : ""}`}
+            >
               {!note && (
                 <Button
                   disabled={!!busy}
@@ -75,7 +72,7 @@ export default function ImportDialog({
                   Import
                 </Button>
               )}
-            </div>
+            </Row>
           );
         })
       ) : (

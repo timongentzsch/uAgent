@@ -11,7 +11,7 @@
 }
 .composer > form {
   gap: 0;
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
 }
 .composer > form > .message-input {
@@ -24,7 +24,7 @@
 }
 /* The draft and its controls are one box, so the box takes the ring. */
 .composer > form:has(> .message-input > textarea:focus-visible) {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 .composer > form > .message-input > textarea:focus-visible {
@@ -183,7 +183,7 @@
 /* A bounded tray in the composer keeps pending input above the keyboard,
    independent of transcript scrolling. Text and actions have their own rows. */
 .guidance-queue {
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
   margin-bottom: var(--space-2);
   min-width: 0;
@@ -191,7 +191,7 @@
 .queue-heading {
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-small);
-  border-bottom: 1px solid var(--field-border);
+  border-bottom: var(--border-field);
 }
 .queue-items {
   max-height: min(calc(var(--viewport-height) * 0.25), var(--pane));
@@ -203,7 +203,7 @@
   min-width: 0;
 }
 .queue-item + .queue-item {
-  border-top: 1px solid var(--field-border);
+  border-top: var(--border-field);
 }
 .queue-text {
   margin: 0;

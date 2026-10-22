@@ -37,6 +37,23 @@ test("colour literals stay in the palettes", () => {
   assert.deepEqual(stray, []);
 });
 
+// A divider, a control's edge and the focus ring are --border,
+// --border-field and --focus-ring, which each palette makes from its own
+// colours.
+const EDGE =
+  /1px solid var\(--(?:line|field-border)\)|outline:.*var\(--accent\)/;
+
+test("edges and focus rings use their tokens", () => {
+  const stray = [];
+  for (const path of sheets("src"))
+    for (const [index, line] of readFileSync(join("src", path), "utf8")
+      .split("\n")
+      .entries())
+      if (!/^\s*--/.test(line) && EDGE.test(line))
+        stray.push(`${path}:${index + 1}: ${line.trim()}`);
+  assert.deepEqual(stray, []);
+});
+
 // Spacing, type and line height come from the scales at the top of
 // style.css, so a screen cannot drift a pixel from its neighbours. The
 // scales' own definitions (custom properties) are the only place a length

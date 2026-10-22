@@ -39,7 +39,7 @@
   align-items: center;
 }
 .activity-row + .activity-row {
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
 }
 
 .activity-open {
@@ -126,7 +126,7 @@
   flex: none;
   max-height: min(calc(var(--viewport-height) * 0.32), var(--pane));
   overflow: auto;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
   padding-bottom: var(--space-2);
 }
 
@@ -230,7 +230,7 @@
   display: grid;
   gap: var(--gap);
   flex: none;
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
   padding-top: var(--gap);
 }
 

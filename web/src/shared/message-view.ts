@@ -10,25 +10,44 @@ import type {
 } from "./types.ts";
 import { defaultDetail } from "./verbosity.ts";
 
-// A block the host did not change keeps its row object, so a streamed
-// frame presents only the rows it touched and the rest compare by identity.
-const presented = new WeakMap<Block, PresentedBlock>();
+// A row is kept while what it was made from is the same objects, so a
+// streamed frame makes only the rows it touched and the transcript skips
+// every other row by identity.
+function keep<K extends object>() {
+  const made = new WeakMap<K, { from: unknown[]; row: PresentedBlock }>();
+  return (key: K, from: unknown[], make: () => PresentedBlock) => {
+    const prior = made.get(key);
+    if (
+      prior?.from.length === from.length &&
+      prior.from.every((part, index) => part === from[index])
+    )
+      return prior.row;
+    const row = make();
+    made.set(key, { from, row });
+    return row;
+  };
+}
 
-function present(block: Block, source?: AssistantBlock): PresentedBlock {
-  const prior = presented.get(block);
-  if (prior && prior.source === source) return prior;
-  const row: PresentedBlock =
+// A tool row keeps of the reply that made it only what it shows (its time
+// and HTTP log), so the reply streaming beside it does not make it anew.
+const presented = keep<Block>();
+const present = (block: Block, source?: AssistantBlock) =>
+  presented(block, [source?.id, source?.time, source?.http], () =>
     block.kind === "tool_result"
       ? {
           ...block,
           key: block.id,
-          source,
+          source: source && {
+            kind: source.kind,
+            id: source.id,
+            response_id: source.response_id,
+            time: source.time,
+            http: source.http,
+          },
           result_loaded: !isRunningStatus(block.status),
         }
-      : { ...block, key: block.id };
-  presented.set(block, row);
-  return row;
-}
+      : { ...block, key: block.id },
+  );
 
 // What a message of yours shows until the host's own row replaces it.
 export const outgoingStatus = {
@@ -122,6 +141,7 @@ export function presentMessages(
 
 // Files a tool added to context (a browser screenshot, a read image) belong
 // on the row of the call that produced them, not in a row of their own.
+const joined = keep<PresentedBlock>();
 function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
   const byCall = new Map<string, number>();
   const kept: PresentedBlock[] = [];
@@ -137,10 +157,12 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
       row.origin === "tool" &&
       owner !== undefined
     ) {
-      const files = assetsOf(row.files);
       const call = kept[owner];
       if (call.kind === "tool_result")
-        kept[owner] = { ...call, files: [...(call.files || []), ...files] };
+        kept[owner] = joined(call, [row], () => ({
+          ...call,
+          files: [...(call.files || []), ...assetsOf(row.files)],
+        }));
       continue;
     }
     if (row.kind === "tool_result" && row.call_id)
@@ -150,31 +172,20 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
   return kept;
 }
 
-// Each fold by its first row: a fold whose rows are unchanged keeps its
-// group, so as rows stream only the last one is refolded (and re-rendered).
-const folds = new WeakMap<PresentedBlock, PresentedBlock>();
-
 // Rows as one row that opens to them. It takes its first row's key, so the
-// transcript keeps its place when rows fold.
+// transcript keeps its place when rows fold; while its rows are unchanged it
+// is the same row, so as rows stream only the last fold is made anew.
+const folds = keep<PresentedBlock>();
 function fold(children: PresentedBlock[], label: string): PresentedBlock {
   const first = children[0];
-  const prior = folds.get(first);
-  if (
-    prior?.label === label &&
-    prior.children?.length === children.length &&
-    prior.children.every((row, index) => row === children[index])
-  )
-    return prior;
   const key = first.key || first.id;
-  const group: PresentedBlock = {
+  return folds(first, [label, ...children], () => ({
     id: `group-${key}`,
     key,
     kind: "group",
     label,
     children,
-  };
-  folds.set(first, group);
-  return group;
+  }));
 }
 
 // The host names the calls that read as one ("Explored · 4 calls"): adjacent

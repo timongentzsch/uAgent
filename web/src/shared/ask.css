@@ -94,7 +94,7 @@
   align-items: start;
   gap: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--raised);
   cursor: pointer;
   transition: border-color var(--motion-fast) var(--ease-standard);
@@ -104,7 +104,7 @@
 }
 /* The whole row shows focus; the small native control inside does not. */
 .ask-option:has(:focus-visible) {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 .ask-option input:focus-visible {

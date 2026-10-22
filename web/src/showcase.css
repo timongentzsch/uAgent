@@ -37,7 +37,7 @@ body {
   justify-content: space-between;
   gap: var(--pad);
   padding-bottom: calc(2 * var(--pad));
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
 }
 
 .showcase-title {
@@ -77,7 +77,7 @@ body {
   min-width: 0;
   padding: var(--pad);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: var(--border);
 }
 
 .showcase-row {
@@ -103,11 +103,11 @@ body {
 .token > span {
   width: var(--control);
   height: var(--control);
-  border: 1px solid var(--line);
+  border: var(--border);
 }
 
 .showcase-banner {
-  border: 1px solid var(--line);
+  border: var(--border);
 }
 
 .status-sample {

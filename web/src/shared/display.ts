@@ -30,9 +30,12 @@ export const capitalize = (text: string) =>
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 
-// Lines added and removed in a change receipt: its first line is the
-// summary, the rest the diff with its own +/- lines.
+// Lines added and removed in a change receipt. Its first line is the host's
+// summary, "Edited path (+N -M)", which stays exact when the diff below it
+// is cut short; a diff without one is counted line by line.
 export function diffCounts(change = ""): [number, number] {
+  const stated = change.split("\n", 1)[0].match(/\(\+(\d+) -(\d+)\)$/);
+  if (stated) return [Number(stated[1]), Number(stated[2])];
   let added = 0;
   let removed = 0;
   for (const line of change.split("\n").slice(1)) {

@@ -1,9 +1,10 @@
 import { contextSummary } from "../src/state/context-summary.ts";
 import { duration } from "../src/shared/duration.ts";
 import {
+  diffCounts,
+  diffLineClass,
   isRunningStatus,
   statusLine,
-  diffLineClass,
 } from "../src/shared/display.ts";
 import { getToolRow } from "../src/features/chat/tool-preview.ts";
 import { test } from "node:test";
@@ -600,4 +601,12 @@ test("a chat participant's pass or wait never has a row, not even while it strea
   assert.equal(shown(reply("PASS on the rewrite, patch instead.")), 1);
   // Outside a chat an answer is an answer.
   assert.equal(shown(reply("PASS"), false), 1);
+});
+
+test("an edit's counts come from its receipt, also when the diff is cut", () => {
+  // The host cuts a long diff's body; its first line keeps the totals.
+  const cut = "Edited a.ts (+812 -40)\n@@ -1,3 +1,3 @@\n-old\n+new\n";
+  assert.deepEqual(diffCounts(cut), [812, 40]);
+  // A diff without the host's summary is counted line by line.
+  assert.deepEqual(diffCounts("diff\n+a\n+b\n-c\n--- x\n+++ y"), [2, 1]);
 });

@@ -225,9 +225,6 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
   return values;
 }
 
-constexpr std::string_view kEfforts[] = {"none", "minimal", "low", "medium",
-                                         "high", "xhigh",   "max"};
-
 // The text setting `key` of a scope, when it is text that names no variable.
 const std::string* PlainText(const json& scope, const char* key) {
   auto held = scope.find(key);
@@ -291,9 +288,10 @@ void FoldVariant(json& scope) {
   if (held && !variant->empty()) {
     std::string model = *held;
     const size_t colon = model.rfind(':');
-    const bool effort = colon != std::string::npos &&
-                        std::ranges::find(kEfforts, model.substr(colon + 1)) !=
-                            std::end(kEfforts);
+    const bool effort =
+        colon != std::string::npos &&
+        std::ranges::find(kReasoningEfforts, model.substr(colon + 1)) !=
+            std::end(kReasoningEfforts);
     const std::string suffix = ":" + *variant;
     if (std::string* id =
             AliasId(scope, model.substr(0, effort ? colon : model.size()))) {

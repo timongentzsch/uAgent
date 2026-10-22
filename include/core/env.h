@@ -51,6 +51,7 @@ int64_t HistoryDays();
 // Approval mode is the one setting a running session can toggle, so it cannot
 // live in environ: spawning a child iterates environ on another thread while
 // /yolo would be rewriting it. Children receive it as an explicit override.
+// The modes are in kApprovalModes' order.
 enum class ApprovalMode { kAsk, kAuto, kYolo };
 const char* ApprovalModeName(ApprovalMode mode);
 bool ParseApprovalMode(std::string_view value, ApprovalMode& mode);

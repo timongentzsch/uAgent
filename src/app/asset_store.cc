@@ -18,7 +18,6 @@
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
-#include "include/tools/files.h"
 
 namespace uagent::session {
 namespace {
@@ -124,7 +123,8 @@ void UnclaimLocked(std::vector<std::pair<std::string, json>>& claims,
                    size_t count) {
   for (size_t i = 0; i < count && i < claims.size(); ++i) {
     claims[i].second["committed"] = false;
-    ToolWritePrivateFile(claims[i].first, JsonDump(claims[i].second));
+    std::string error;
+    WritePrivateFile(claims[i].first, JsonDump(claims[i].second), error);
   }
 }
 
@@ -204,20 +204,20 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       mime = kOctetStreamMime;
     }
   }
-  std::string id = RandomToken(16), stem = folder + "/" + id;
-  if (id.empty() || !ToolWritePrivateFile(stem + ".data", bytes).Ok()) {
+  std::string id = RandomToken(16), stem = folder + "/" + id, error;
+  if (id.empty() || !WritePrivateFile(stem + ".data", bytes, error)) {
     return {{}, "cannot persist upload", 500};
   }
   bytes_ += bytes.size();
-  if (!ToolWritePrivateFile(stem + ".json",
-                            JsonDump({{"mime", mime},
-                                      {"name", name},
-                                      {"image", image},
-                                      {"extension", ".data"},
-                                      {"bytes", bytes.size()},
-                                      {"committed", committed},
-                                      {"tool_copy", tool_copy}}))
-           .Ok()) {
+  if (!WritePrivateFile(stem + ".json",
+                        JsonDump({{"mime", mime},
+                                  {"name", name},
+                                  {"image", image},
+                                  {"extension", ".data"},
+                                  {"bytes", bytes.size()},
+                                  {"committed", committed},
+                                  {"tool_copy", tool_copy}}),
+                        error)) {
     return {{}, "cannot persist upload metadata", 500};
   }
   return {{{"id", id},
@@ -280,9 +280,10 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
     return "message and resolved attachments exceed the command limit";
   }
   size_t committed = 0;
+  std::string error;
   for (auto& [path, asset] : claims) {
     asset["committed"] = true;
-    if (!ToolWritePrivateFile(path, JsonDump(asset)).Ok()) {
+    if (!WritePrivateFile(path, JsonDump(asset), error)) {
       UnclaimLocked(claims, committed);
       return "cannot claim attachment";
     }

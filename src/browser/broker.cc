@@ -16,7 +16,6 @@
 #include "include/core/lease.h"
 #include "include/core/private_store.h"
 #include "include/core/thread_annotations.h"
-#include "include/tools/files.h"
 #include "include/transport/session.h"
 
 namespace uagent::browser {
@@ -176,9 +175,10 @@ json Broker::Execute(const json& command) {
       if (capacity < 0 || capacity > kMaxResearch) {
         return {{"error", "parallel browser capacity must be between 0 and 4"}};
       }
-      if (!ToolWritePrivateFile(s.directory + "/scheduler.json",
-                                JsonDump({{"parallel_capacity", capacity}}))
-               .Ok()) {
+      std::string error;
+      if (!WritePrivateFile(s.directory + "/scheduler.json",
+                            JsonDump({{"parallel_capacity", capacity}}),
+                            error)) {
         return {{"error", "cannot save browser scheduling settings"}};
       }
       s.capacity = capacity;

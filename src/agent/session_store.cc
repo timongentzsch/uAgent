@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "include/agent/conversation.h"
-#include "include/agent/file_services.h"
 #include "include/agent/session_role.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
@@ -197,8 +196,10 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
     return Error(SessionStoreError::kInvalid,
                  "session exceeds readable storage limits");
   }
-  ToolResult result = ToolWritePrivateFile(path, header_text + "\n" + body);
-  if (!result.Ok()) return Error(SessionStoreError::kIo, result.output);
+  std::string error;
+  if (!WritePrivateFile(path, header_text + "\n" + body, error)) {
+    return Error(SessionStoreError::kIo, error);
+  }
   return {};
 }
 
@@ -683,9 +684,10 @@ json SessionStore::Share(const std::string& path) {
     sibling.resize(sibling.size() - suffix.size());
   }
   sibling += ".share.md";
-  ToolResult written =
-      ToolWritePrivateFile(sibling, ShareMarkdown(*loaded.record));
-  if (!written.Ok()) return {{"error", written.output}};
+  std::string error;
+  if (!WritePrivateFile(sibling, ShareMarkdown(*loaded.record), error)) {
+    return {{"error", error}};
+  }
   return {{"shared", true}, {"path", sibling}};
 }
 

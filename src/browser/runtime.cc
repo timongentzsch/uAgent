@@ -24,7 +24,6 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/private_store.h"
-#include "include/tools/files.h"
 #include "include/transport/session.h"
 #include "src/browser/runtime_internal.h"
 
@@ -221,8 +220,9 @@ bool Runtime::SaveProfiles() const {
   }
   std::string bytes =
       JsonDump({{"selected", selected_profile_}, {"profiles", entries}});
+  std::string error;
   return bytes.size() <= kProfilesBytes &&
-         ToolWritePrivateFile(directory_ + "/profiles.json", bytes).Ok();
+         WritePrivateFile(directory_ + "/profiles.json", bytes, error);
 }
 
 std::string Runtime::ProfilePath() const {
@@ -235,10 +235,11 @@ std::string Runtime::ProfilePath() const {
 bool Runtime::SaveHandover() const {
   std::string path = directory_ + "/handover.json";
   if (interaction_.empty()) return unlink(path.c_str()) == 0 || errno == ENOENT;
-  return ToolWritePrivateFile(path,
-                              JsonDump({{"session_id", agent_session_},
-                                        {"interaction_id", interaction_}}))
-      .Ok();
+  std::string error;
+  return WritePrivateFile(path,
+                          JsonDump({{"session_id", agent_session_},
+                                    {"interaction_id", interaction_}}),
+                          error);
 }
 
 void Runtime::Stop(bool preserve_lease) {

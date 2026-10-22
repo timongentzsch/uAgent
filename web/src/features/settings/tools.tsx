@@ -1,6 +1,7 @@
 import "./tools.css";
 import { useCallback, useMemo, useState } from "preact/hooks";
 import type {
+  CommandInputs,
   Session,
   ToolCategories,
   ToolCatalogue,
@@ -96,12 +97,7 @@ export default function Tools({
   } = useAction();
   const error = toolError ?? categoryError;
 
-  const update = async (fields: {
-    operation: string;
-    name?: string;
-    active?: boolean;
-    profile?: string;
-  }) => {
+  const update = async (fields: CommandInputs["tools"]) => {
     setError(null);
     setSaving(fields.name || fields.profile || fields.operation);
     try {
@@ -117,11 +113,7 @@ export default function Tools({
     }
   };
 
-  const updateCategories = (fields: {
-    action: string;
-    name?: string;
-    category_id?: string;
-  }) =>
+  const updateCategories = (fields: CommandInputs["tool_categories"]) =>
     saveCategories(async () => {
       const response = await command("tool_categories", null, fields);
       if (response.pending)

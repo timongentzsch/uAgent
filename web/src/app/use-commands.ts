@@ -113,7 +113,7 @@ export function useCommands({
   // the composer.
   async function forkAndOpen(
     target: Session | undefined,
-    fields: CommandFields = {},
+    fields: CommandFields<"fork"> = {},
     edit = false,
   ) {
     const result = await command("fork", target, fields);

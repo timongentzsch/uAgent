@@ -38,7 +38,10 @@ export function McpServers({
         <Row label="Open a conversation to see its MCP servers" />
       </Group>
     );
-  const control = async (name: string, fields: Record<string, unknown>) => {
+  const control = async (
+    name: string,
+    fields: { operation: string; enabled?: boolean },
+  ) => {
     setBusy(name);
     await run(() => command("tools", session, { name, ...fields }));
     setBusy("");

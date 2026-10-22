@@ -131,11 +131,11 @@ export function receiveOutcome(outcome: Outcome) {
 export async function command<K extends CommandKind>(
   kind: K,
   session?: SessionRef | null,
-  fields: CommandFields = {},
+  fields?: CommandFields<K>,
   options: { signal?: AbortSignal } = {},
 ): Promise<CommandReceipt<K>> {
   options.signal?.throwIfAborted();
-  const request_id = fields.request_id || requestId();
+  const request_id = fields?.request_id || requestId();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abort: (() => void) | undefined;
   const receipt = new Promise<Outcome>((resolve) => {
@@ -178,7 +178,7 @@ export async function command<K extends CommandKind>(
 // error here, so callers handle one outcome.
 export async function manage<K extends CommandKind>(
   kind: K,
-  fields: CommandFields = {},
+  fields?: CommandFields<K>,
   {
     session = null,
     signal,

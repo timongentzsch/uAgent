@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { ConfigChange, Configuration } from "../../../shared/types.ts";
+import type {
+  CommandInputs,
+  ConfigChange,
+  Configuration,
+} from "../../../shared/types.ts";
 import { manage } from "../../../state/api.ts";
 import type { SavedScope } from "./facts.ts";
 
@@ -39,7 +43,7 @@ export function useConfiguration(
   const [failed, setFailed] = useState<{ key: string; error: unknown }>();
   // Collected while settings are open, so several saves offer one restart.
   const [restart, setRestart] = useState<string[]>([]);
-  const run = async (key: string, fields: Record<string, unknown>) => {
+  const run = async (key: string, fields: CommandInputs["config"]) => {
     setBusy((count) => count + 1);
     setFailed(undefined);
     const request = ++asked.current;

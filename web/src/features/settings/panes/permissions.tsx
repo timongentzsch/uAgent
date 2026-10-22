@@ -31,7 +31,7 @@ export function PermissionsPane() {
   const edit = useAction();
   const [confirm, setConfirm] = useState(false);
   // Forgetting one rule or all of them answers with the rules left.
-  const forget = (fields: CommandFields) =>
+  const forget = (fields: CommandFields<"permission_rules">) =>
     edit.run(async () =>
       setValue(await manage("permission_rules", { ...fields, cwd })),
     );

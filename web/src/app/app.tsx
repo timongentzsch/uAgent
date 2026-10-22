@@ -221,10 +221,10 @@ function App() {
     focus(10);
   }
   const act: Act = useCallback(
-    async <K extends CommandKind>(kind: K, fields: CommandFields = {}) => {
+    async <K extends CommandKind>(kind: K, fields?: CommandFields<K>) => {
       if (!online)
         throw new Error("Reconnect and refresh before sending commands.");
-      if (fields.request_id) correlate(fields.request_id);
+      if (fields?.request_id) correlate(fields.request_id);
       return command(kind, session, fields);
     },
     [online, session, correlate],

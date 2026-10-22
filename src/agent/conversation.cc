@@ -331,7 +331,12 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   // (attachment deliveries) survive pressure that used to delete them by
   // key order and re-trigger their notices on every later step. The fact
   // just written never goes: a fresh response would otherwise lose the id
-  // that rejoins its live row.
+  // that rejoins its live row. Nor does what the conversation is rather
+  // than shows: its chosen settings and where it was forked from.
+  const auto evictable = [&key](const std::string& name) {
+    return name != key && name != "session-settings" && name != "fork-origin" &&
+           name != "side-origin";
+  };
   const auto stored_bytes = [this](const std::string& name, const json& value) {
     const auto sized = fact_bytes_.find(name);
     return sized != fact_bytes_.end() ? sized->second : FactBytes(name, value);
@@ -340,7 +345,7 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     auto victim = display_facts_.end();
     size_t victim_bytes = 0;
     for (auto it = display_facts_.begin(); it != display_facts_.end(); ++it) {
-      if (it.key() == key) continue;
+      if (!evictable(it.key())) continue;
       const size_t candidate = stored_bytes(it.key(), *it);
       if (victim == display_facts_.end() || candidate > victim_bytes ||
           (candidate == victim_bytes && it.key() < victim.key())) {
@@ -351,7 +356,7 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     if (victim == display_facts_.end()) break;
     if (victim_bytes <= kTinyFactBytes && display_bytes_ <= kDisplayBytes) {
       victim = display_facts_.begin();
-      if (victim.key() == key) ++victim;
+      while (!evictable(victim.key())) ++victim;
       victim_bytes = stored_bytes(victim.key(), *victim);
     }
     display_bytes_ -= std::min(display_bytes_, victim_bytes);

@@ -924,10 +924,23 @@ void TestDisplayFactEvictionKeepsSmallReceipts() {
   Conversation crowded;
   crowded.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                 {MessageKind::kSystem});
+  // What the conversation chose and where it was forked from are not cache:
+  // they sort before every row key, and neither pressure takes them.
+  crowded.RecordDisplay("fork-origin", {{"turn", 3}});
+  crowded.RecordDisplay("session-settings",
+                        {{"chosen", {{"UAGENT_APPROVAL", "yolo"}}}});
   for (size_t i = 0; i < 4100; ++i) {
     crowded.RecordDisplay("k-" + std::to_string(i), {{"n", i}});
   }
   CHECK(crowded.DisplayFacts().size() <= size_t{4096});
+  for (size_t i = 0; i < 120; ++i) {
+    crowded.RecordDisplay("t-flood-" + std::to_string(i), {{"activity", bulk}});
+  }
+  CHECK(crowded.DisplayFacts().contains("fork-origin"));
+  const json chosen = {{"UAGENT_APPROVAL", "yolo"}};
+  CHECK(JsonValue(JsonValue(crowded.DisplayFacts(), "session-settings",
+                            json::object()),
+                  "chosen", json::object()) == chosen);
 }
 
 // CLI history shows the prompt without the stored "Attached:" path trailer

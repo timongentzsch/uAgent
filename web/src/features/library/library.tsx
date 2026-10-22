@@ -35,6 +35,7 @@ import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { useResource } from "../../shared/use-resource.ts";
+import { matches } from "../../shared/fuzzy.ts";
 
 type Draft = {
   item: LibraryItem;
@@ -258,9 +259,7 @@ export default function Library({
     (entry) =>
       (scope === "all" ||
         entry.scope === (projectFilter ? "project" : scope)) &&
-      `${entry.name} ${entry.description || ""}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
+      matches(query, entry.name, entry.description),
   );
   function rows(group?: string) {
     if (listError) return null;

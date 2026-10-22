@@ -20,6 +20,7 @@ import { useAction } from "../../shared/use-action.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { matches } from "../../shared/fuzzy.ts";
 
 const labels: Record<string, string> = {
   workspace: "Workspace",
@@ -130,15 +131,18 @@ export default function Tools({
   );
   const groups = useMemo(() => {
     const found = new Map<string, ToolCatalogueItem[]>();
-    const needle = query.trim().toLowerCase();
     for (const tool of (catalogue ?? SAMPLE).tools) {
       const category =
         categories.assignments[tool.name] || tool.category || "workspace";
       if (
-        needle &&
-        !`${tool.name} ${tool.title} ${tool.description} ${tool.provider} ${categoryLabel(category)}`
-          .toLowerCase()
-          .includes(needle)
+        !matches(
+          query,
+          tool.name,
+          tool.title,
+          tool.description,
+          tool.provider,
+          categoryLabel(category),
+        )
       )
         continue;
       if (!found.has(category)) found.set(category, []);

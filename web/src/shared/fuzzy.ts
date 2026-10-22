@@ -29,3 +29,14 @@ export function fuzzy<T>(items: T[], query: string, text: (item: T) => string) {
     .sort((a, b) => a.score - b.score || a.index - b.index)
     .map((entry) => entry.item);
 }
+
+// Whether every word of `query` occurs in one of `fields`, ignoring case; an
+// empty query matches everything.
+export function matches(query: string, ...fields: (string | undefined)[]) {
+  const text = fields.join(" ").toLocaleLowerCase();
+  return query
+    .toLocaleLowerCase()
+    .trim()
+    .split(/\s+/)
+    .every((word) => text.includes(word));
+}

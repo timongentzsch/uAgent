@@ -41,6 +41,7 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
 import { collapsed, useFolding } from "./folding.ts";
 import "./sidebar.css";
+import { matches } from "../../shared/fuzzy.ts";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
   const result = await command("share", item);
@@ -259,25 +260,23 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
     return groups.get(path)!;
   };
   const names = new Map(spaces.map((space) => [space.path, space.name]));
-  const matches = (text: string) =>
-    text.toLowerCase().includes(search.toLowerCase());
   for (const item of [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   )) {
     const path = folderOf(item);
     // A panel is listed with its place, whatever the search shows of it.
     if (item.kind === "panel") {
-      if (!search || matches(`${names.get(path) || ""} ${path}`))
-        place(path).panel = item;
+      if (matches(search, names.get(path), path)) place(path).panel = item;
     } else if (item.member) {
       seated.set(path, [...(seated.get(path) || []), item]);
-    } else if (matches(`${item.title} ${names.get(path) || ""} ${item.cwd}`)) {
+    } else if (matches(search, item.title, names.get(path), item.cwd)) {
       (item.kind === "thread" ? place(path).threads : place(path).others).push(
         item,
       );
     }
   }
-  for (const space of spaces) if (matches(space.name)) place(space.path);
+  for (const space of spaces)
+    if (matches(search, space.name)) place(space.path);
   // In a steady order, which the avatars keep as the members speak.
   for (const [path, group] of groups)
     group.members = (seated.get(path) || []).sort((a, b) =>

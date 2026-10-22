@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-preact";
 import { Field, Input } from "./ui.tsx";
 import { SuggestionList } from "./suggestion-list.tsx";
 import "./search-select.css";
+import { matches } from "./fuzzy.ts";
 
 export type SearchOption = { value: string; label: string; detail?: string };
 
@@ -27,15 +28,10 @@ export function SearchSelect({
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const selected = options.find((option) => option.value === value);
-  const words = query.toLocaleLowerCase().trim().split(/\s+/);
-  const matches = options.filter((option) =>
-    words.every((word) =>
-      `${option.label} ${option.value} ${option.detail || ""}`
-        .toLocaleLowerCase()
-        .includes(word),
-    ),
+  const shown = options.filter((option) =>
+    matches(query, option.label, option.value, option.detail),
   );
-  const active = Math.min(index, matches.length - 1);
+  const active = Math.min(index, shown.length - 1);
   const pick = (option: SearchOption) => {
     change(option.value);
     setOpen(false);
@@ -89,7 +85,7 @@ export function SearchSelect({
                   ? Math.max(
                       0,
                       Math.min(
-                        matches.length - 1,
+                        shown.length - 1,
                         active + (event.key === "ArrowDown" ? 1 : -1),
                       ),
                     )
@@ -97,7 +93,7 @@ export function SearchSelect({
               );
             } else if (open && event.key === "Enter") {
               event.preventDefault();
-              if (matches[active]) pick(matches[active]);
+              if (shown[active]) pick(shown[active]);
             } else if (open && event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
@@ -114,7 +110,7 @@ export function SearchSelect({
             id={id}
             label={`${label} options`}
             prefix={`${id}-option`}
-            items={matches}
+            items={shown}
             index={active}
             pick={pick}
             keyOf={(option) => option.value}
@@ -127,7 +123,7 @@ export function SearchSelect({
               </span>
             )}
           </SuggestionList>
-          {!matches.length && <p role="status">No matching options.</p>}
+          {!shown.length && <p role="status">No matching options.</p>}
         </div>
       )}
     </div>

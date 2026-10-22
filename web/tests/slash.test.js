@@ -5,7 +5,7 @@ import {
   slashCompletion,
   parseSlash,
 } from "../src/features/composer/slash.ts";
-import { fuzzy, fuzzyScore } from "../src/shared/fuzzy.ts";
+import { fuzzy, fuzzyScore, matches } from "../src/shared/fuzzy.ts";
 const commands = [
   { command: "/help", aliases: ["/commands"], argument: "" },
   { command: "/model", aliases: [], argument: "NAME" },
@@ -51,4 +51,10 @@ test("fuzzy matching ranks a prefix, then a word start, then a subsequence", () 
   );
   assert.equal(fuzzyScore("xyz", "Tools"), -1);
   assert.equal(fuzzyScore("", "Tools"), 0);
+});
+test("a filter matches when every word occurs in some field", () => {
+  assert.ok(matches("", "anything"));
+  assert.ok(matches("  Web  PORT ", "UAGENT_WEB_PORT", "Web port"));
+  assert.ok(matches("port web", "Web", undefined, "port"));
+  assert.ok(!matches("web host", "Web port"));
 });

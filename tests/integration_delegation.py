@@ -205,10 +205,13 @@ def test_a_batch_never_hands_a_child_an_unlimited_token_share(root, home, *, bin
 
 
 def test_subagent_auto_join_continues_turn(root, home, *, binary):
+    waiting = threading.Event()
+
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child"):
-            time.sleep(2)
+            # Answers only once the parent waits for it, so the result joins.
+            waiting.wait(budget(4))
             return event({"content": "child-result"})
         has_result = any(
             isinstance(message.get("content"), str) and "[Background result:" in message["content"]
@@ -217,6 +220,7 @@ def test_subagent_auto_join_continues_turn(root, home, *, binary):
         if has_result:
             return event({"content": "late-task-ok"})
         if launched(str(message.get("content", "")) for message in messages):
+            waiting.set()
             return wait_round()
         return tool_call("subagent", {"prompt": "child", "background": True})
 
@@ -632,10 +636,12 @@ def test_subagent_interrupt_reaps_child(root, home, *, binary):
         ]
     )
 
+    stopped = threading.Event()
+
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "slow-child"):
-            time.sleep(5)
+            stopped.wait(budget(10))
             return event({"content": "too-late"})
         if any(message.get("role") == "tool" for message in messages):
             return event({"content": "unexpected-continuation"})
@@ -687,6 +693,7 @@ def test_subagent_interrupt_reaps_child(root, home, *, binary):
         if process is not None and process.poll() is None:
             process.kill()
             process.wait()
+        stopped.set()
         server.close()
 
 
@@ -1057,10 +1064,12 @@ def test_a_childs_time_limit_covers_what_it_left_running(root, home, *, binary):
     """A child that answered is not kept alive past limits.seconds by a child
     of its own that is still working."""
 
+    finished = threading.Event()
+
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "grandchild"):
-            time.sleep(20)
+            finished.wait(budget(20))
             return event({"content": "too-late"})
         if has_message(messages, "user", "child"):
             if tool_results(messages):
@@ -1079,6 +1088,7 @@ def test_a_childs_time_limit_covers_what_it_left_running(root, home, *, binary):
         result = run(
             root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
         )
+        finished.set()
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "limit-held", result.stdout)
         assert_true(time.monotonic() - started < budget(12), "the child outlived its limit")

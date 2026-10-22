@@ -1,6 +1,23 @@
-import { test, expect, SHOWCASE_URL, headerAction } from "./fixtures.js";
+import {
+  test,
+  expect,
+  SHOWCASE_URL,
+  headerAction,
+  selectProbeModel,
+} from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
+// Sets this browser's zoom in Settings, and leaves Settings open.
+const zoomTo = async (page, zoom) => {
+  await headerAction(page, "Settings");
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "This browser", exact: true })
+    .click();
+  await settings.getByLabel("Zoom", { exact: true }).selectOption(String(zoom));
+  return settings;
+};
 const geometry = (locator) =>
   locator.evaluate((node) => {
     const { x, y, width, height } = node.getBoundingClientRect();
@@ -77,11 +94,10 @@ for (const width of [390, 1280]) {
     const manifest = JSON.parse(
       await readFile(new URL("../dist/.vite/manifest.json", import.meta.url)),
     );
-    let releaseCode, releaseData;
-    const code = new Promise((resolve) => (releaseCode = resolve));
-    const data = new Promise((resolve) => (releaseData = resolve));
-    let reachedData;
-    const dataRequested = new Promise((resolve) => (reachedData = resolve));
+    const { promise: code, resolve: releaseCode } = Promise.withResolvers();
+    const { promise: data, resolve: releaseData } = Promise.withResolvers();
+    const { promise: dataRequested, resolve: reachedData } =
+      Promise.withResolvers();
     let holdData = false;
     await page.route(
       `**/${manifest["src/features/chat/statistics.tsx"].file}`,
@@ -156,9 +172,8 @@ test("browser shell keeps its bounds through cold code and data loading", async 
   const manifest = JSON.parse(
     await readFile(new URL("../dist/.vite/manifest.json", import.meta.url)),
   );
-  let releaseCode, releaseData;
-  const code = new Promise((resolve) => (releaseCode = resolve));
-  const data = new Promise((resolve) => (releaseData = resolve));
+  const { promise: code, resolve: releaseCode } = Promise.withResolvers();
+  const { promise: data, resolve: releaseData } = Promise.withResolvers();
   await page.route(
     `**/${manifest["src/features/browser/browser.tsx"].file}`,
     async (route) => {
@@ -346,18 +361,7 @@ test.describe("touch interaction", () => {
     await page.goto(`/#session=${session.id}`);
     const input = page.getByRole("combobox", { name: "Message or guidance" });
     for (const zoom of [50, 75, 100, 150]) {
-      await headerAction(page, "Settings");
-      const settings = page.getByRole("dialog", {
-        name: "Settings",
-        exact: true,
-      });
-      await settings
-        .locator(".settings-nav")
-        .getByRole("button", { name: "This browser", exact: true })
-        .click();
-      await settings
-        .getByLabel("Zoom", { exact: true })
-        .selectOption(String(zoom));
+      const settings = await zoomTo(page, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
       await input.fill("Zoom and wrapping proof. ".repeat(12));
       await input.tap();
@@ -455,18 +459,7 @@ test.describe("touch interaction", () => {
       session,
     }, testInfo) => {
       await page.goto(`/#session=${session.id}`);
-      await headerAction(page, "Settings");
-      const settings = page.getByRole("dialog", {
-        name: "Settings",
-        exact: true,
-      });
-      await settings
-        .locator(".settings-nav")
-        .getByRole("button", { name: "This browser", exact: true })
-        .click();
-      await settings
-        .getByLabel("Zoom", { exact: true })
-        .selectOption(String(zoom));
+      const settings = await zoomTo(page, zoom);
       // A phone shows one section at a time: back to the list first.
       const back = settings.getByRole("button", { name: "Back", exact: true });
       if (await back.isVisible()) await back.click();
@@ -569,8 +562,7 @@ test("phone header keeps its buttons in place from loading to ready", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => localStorage.setItem("uagent-browser", "1"));
-  let release;
-  const gate = new Promise((resolve) => (release = resolve));
+  const { promise: gate, resolve: release } = Promise.withResolvers();
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
     await gate;
@@ -610,12 +602,7 @@ test("user message metadata has a line of its own above the text", async ({
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   const text =
     "Add a panel of four political experts as chat members, let them discuss, and rate the performance of Angela Merkel. Give me a detailed report.";

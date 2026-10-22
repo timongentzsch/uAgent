@@ -95,7 +95,7 @@ void TestLocalAbortIsolation() {
   CHECK(!AbortRequested());
 }
 
-void TestRuntimeOwnershipHelpers() {
+void TestBudgetMsScaling() {
   {
     ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "6");
     CHECK(BudgetMs(2) == 12);
@@ -110,7 +110,9 @@ void TestRuntimeOwnershipHelpers() {
     ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "9223372036854775808");
     CHECK(BudgetMs(1) == 1);
   }
+}
 
+void TestRouteKeysAndShutdown() {
   std::ifstream contract(std::string(UAGENT_TEST_SOURCE_DIR) +
                          "/tests/fixtures/route_contract.json");
   json route_contract = json::parse(contract, nullptr, false);
@@ -130,7 +132,9 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(RunCancellable([] {}));
   CHECK(AbortRequested());
   ClearAbort();
+}
 
+void TestUsageAccounting() {
   UsageAccumulator accumulator;
   accumulator.Add(json{{"prompt_tokens", 5},
                        {"completion_tokens", 2},
@@ -191,7 +195,9 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(lines == 200);
   CHECK(std::filesystem::file_size(ledger) == 0);
   std::filesystem::remove(ledger);
+}
 
+void TestRuntimeConfigAndRequests() {
   // One table drives the set and the clear, so the two cannot drift apart.
   static constexpr std::pair<const char*, const char*> kRuntimeEnv[] = {
       {"UAGENT_MAX_STEPS", "0"},
@@ -356,25 +362,6 @@ void TestRuntimeOwnershipHelpers() {
   api.PreserveAssistantReasoning(deepseek_assistant, reasoning_result);
   CHECK(deepseek_assistant.value("reasoning_content", "") == "reasoning state");
 
-  ChatResult retryable;
-  retryable.retryable = true;
-  retryable.semantic_progress = true;
-  retryable.reasoning = "partial reasoning";
-  CHECK(SafeToRetry(retryable));
-  retryable.usage = {{"prompt_tokens", 1}};
-  CHECK(!SafeToRetry(retryable));
-  retryable.usage = nullptr;
-  retryable.annotations.push_back({{"url", "https://example.test"}});
-  CHECK(!SafeToRetry(retryable));
-  retryable.annotations.clear();
-  retryable.content = "visible answer";
-  CHECK(!SafeToRetry(retryable));
-  json routed_error = {
-      {"type", "api_error"},
-      {"metadata", {{"error_type", "timeout"}, {"provider_code", "slow"}}}};
-  CHECK(RemoteErrorType(routed_error) == "timeout");
-  CHECK(RemoteErrorCode(routed_error) == "slow");
-
   Api generic_api(config), router_api(config);
   UseEndpoint(generic_api, "http://127.0.0.1:8080/v1");
   UseOpenRouterDialect(router_api);
@@ -442,6 +429,27 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "This model does not support tool calling";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);
+}
+
+void TestRetrySafety() {
+  ChatResult retryable;
+  retryable.retryable = true;
+  retryable.semantic_progress = true;
+  retryable.reasoning = "partial reasoning";
+  CHECK(SafeToRetry(retryable));
+  retryable.usage = {{"prompt_tokens", 1}};
+  CHECK(!SafeToRetry(retryable));
+  retryable.usage = nullptr;
+  retryable.annotations.push_back({{"url", "https://example.test"}});
+  CHECK(!SafeToRetry(retryable));
+  retryable.annotations.clear();
+  retryable.content = "visible answer";
+  CHECK(!SafeToRetry(retryable));
+  json routed_error = {
+      {"type", "api_error"},
+      {"metadata", {{"error_type", "timeout"}, {"provider_code", "slow"}}}};
+  CHECK(RemoteErrorType(routed_error) == "timeout");
+  CHECK(RemoteErrorCode(routed_error) == "slow");
 }
 
 void TestPermissionAndToolCategoryPolicy() {

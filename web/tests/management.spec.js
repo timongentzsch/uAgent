@@ -18,8 +18,7 @@ for (const surface of [
       session,
     }) => {
       await page.setViewportSize(viewport);
-      let release;
-      const gate = new Promise((resolve) => (release = resolve));
+      const { promise: gate, resolve: release } = Promise.withResolvers();
       await page.route(`**/assets/${surface.chunk}-*.js`, async (route) => {
         await gate;
         await route.continue();

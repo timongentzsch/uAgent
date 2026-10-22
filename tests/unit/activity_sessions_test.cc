@@ -13,6 +13,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -254,13 +255,17 @@ void TestSignalAndFileWatch() {
   char byte = 0;
   CHECK(read(catalogue_wake[0], &byte, 1) == 1);
 
+  // The stamp taken before the watcher starts counts a write that beats it.
+  const std::map<std::string, FileStamp> absent = {
+      {prompt, SnapshotFile(prompt)}};
   FileWaitResult prompt_changed = FileWaitResult::kTimedOut;
   std::thread prompt_watcher([&] {
-    prompt_changed = WaitForAnyFileChange(
-        {prompt}, std::chrono::steady_clock::now() + std::chrono::seconds(2),
-        catalogue_wake[0]);
+    prompt_changed =
+        WaitForAnyFileChange({prompt},
+                             std::chrono::steady_clock::now() +
+                                 std::chrono::milliseconds(BudgetMs(2000)),
+                             catalogue_wake[0], absent);
   });
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
   CreatePrivateDirectories(std::filesystem::path(prompt).parent_path());
   std::ofstream(prompt) << R"({"prompt":"changed externally"})";
   prompt_watcher.join();
@@ -694,12 +699,8 @@ void TestActivityDescriptorAndInputPolicy() {
     // The supervisor closes them as it reaps, which an instrumented build can
     // lag a few milliseconds behind, so the count is given time to come back
     // down. A real leak never does, and still fails here.
-    size_t open_now = open_descriptors();
-    for (int attempt = 0; attempt < 500 && open_now > settled + 2; ++attempt) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      open_now = open_descriptors();
-    }
-    CHECK(open_now <= settled + 2);
+    CHECK(WaitUntil([&] { return open_descriptors() <= settled + 2; },
+                    BudgetMs(5000)));
   }
 
   ProcessSupervisor non_tty;
@@ -1098,11 +1099,8 @@ void TestDetachedActivityOwnership() {
     const BgJob& job = detached_jobs.front();
     int status = 0;
     CHECK(WaitPid(job.pid, &status) == job.pid);
-    for (int attempt = 0; attempt < 100 && ProcessGroupAlive(job.pid);
-         ++attempt) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    CHECK(!ProcessGroupAlive(job.pid));
+    CHECK(
+        WaitUntil([&] { return !ProcessGroupAlive(job.pid); }, BudgetMs(1000)));
     errno = 0;
     CHECK(WaitPid(job.pid, &status) < 0);
     CHECK(errno == ECHILD);

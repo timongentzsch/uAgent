@@ -1,7 +1,7 @@
 import { test as base, expect } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 export { expect };
@@ -26,6 +26,15 @@ export async function newFolder(page, path) {
   await page.getByLabel("Folder on the host").fill(path);
 }
 
+// newFolder, then starts the conversation and waits for its runtime.
+export async function startInFolder(page, path) {
+  await newFolder(page, path);
+  await page
+    .getByRole("button", { name: "Start conversation", exact: true })
+    .click();
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+}
+
 // Opens a session's folder's panel from the place's name in the list, and
 // returns the panel's id.
 export async function openPanel(page, session) {
@@ -43,6 +52,66 @@ export async function openPanel(page, session) {
       .or(page.getByRole("button", { name: /^Board/ })),
   ).toBeVisible();
   return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
+}
+
+// Puts a session on the model the host's scripted provider answers as
+// (tests/web_host.py); with `yolo`, its tools run without asking.
+export async function selectProbeModel(
+  command,
+  session,
+  { yolo = false } = {},
+) {
+  const target = { session_id: session.id, generation: session.generation };
+  await command("model", {
+    ...target,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  if (yolo) await command("permissions", { ...target, mode: "yolo" });
+}
+
+// openPanel, with the panel on the probe model once its runtime is up.
+export async function openProbePanel(page, session, command, request) {
+  const id = await openPanel(page, session);
+  let panel;
+  await expect
+    .poll(async () => {
+      panel = (await (await request.get(`/api/sessions/${id}`)).json())
+        .metadata;
+      return panel.generation;
+    })
+    .toBeTruthy();
+  await selectProbeModel(command, panel);
+  return id;
+}
+
+// Saves a conversation the way the host keeps one, for the list to show;
+// returns its file.
+export async function saveHistory(host, file, { id, title, turns, messages }) {
+  const directory = `${host.home}/.uagent/history`;
+  await mkdir(directory, { recursive: true });
+  const header = {
+    format: 3,
+    cwd: host.project,
+    model: "test",
+    session_id: id,
+    title,
+    turns,
+  };
+  const state = {
+    messages,
+    message_kinds: messages.map((message) => message.role),
+    archive: [],
+    archive_dropped_segments: 0,
+    context_tokens: 0,
+    usage: {},
+    tool_displays: {},
+  };
+  const path = `${directory}/${file}`;
+  await writeFile(path, `${JSON.stringify(header)}\n${JSON.stringify(state)}`, {
+    mode: 0o600,
+  });
+  return path;
 }
 
 // What a wider header shows as a button beside the title (Settings, Files,

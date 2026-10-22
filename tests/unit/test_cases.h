@@ -135,7 +135,11 @@ namespace uagent {
   X(TestMemoryOneView)                            \
   X(TestEarlyTurnInterruption)                    \
   X(TestLocalAbortIsolation)                      \
-  X(TestRuntimeOwnershipHelpers)                  \
+  X(TestBudgetMsScaling)                          \
+  X(TestRouteKeysAndShutdown)                     \
+  X(TestUsageAccounting)                          \
+  X(TestRuntimeConfigAndRequests)                 \
+  X(TestRetrySafety)                              \
   X(TestPermissionAndToolCategoryPolicy)          \
   X(TestPermissionReview)                         \
   X(TestAttributedUsageAccumulator)               \

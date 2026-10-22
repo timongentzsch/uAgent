@@ -1,4 +1,10 @@
-import { test, expect, online, withoutServiceWorker } from "./fixtures.js";
+import {
+  test,
+  expect,
+  online,
+  withoutServiceWorker,
+  selectProbeModel,
+} from "./fixtures.js";
 
 test("late snapshots and retired streams cannot replace current session state", async ({
   page,
@@ -48,10 +54,8 @@ test("late snapshots and retired streams cannot replace current session state", 
     };
   });
   await withoutServiceWorker(page);
-  let release;
-  const held = new Promise((resolve) => (release = resolve));
-  let requested;
-  const reached = new Promise((resolve) => (requested = resolve));
+  const { promise: held, resolve: release } = Promise.withResolvers();
+  const { promise: reached, resolve: requested } = Promise.withResolvers();
   let holdB = true;
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -178,17 +182,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   await online(page);
@@ -337,12 +331,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   });
   await page.goto(fixture.origin);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   await expect(page).toHaveURL(new RegExp(session.id));
   await expect(page.locator(".conversation-head h1")).toBeVisible();
@@ -514,17 +503,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
-  await command("permissions", {
-    session_id: session.id,
-    generation: session.generation,
-    mode: "yolo",
-  });
+  await selectProbeModel(command, session, { yolo: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   await page.evaluate(() => {
@@ -542,18 +521,14 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   // the refresh that follows it, to see it land on a follow-up being typed.
   // The refresh forces a retained older page, whose control shows that it
   // was applied and must share the thread's scroll.
-  let releaseFirst, releaseRefresh;
-  const held = [
-    new Promise((resolve) => (releaseFirst = resolve)),
-    new Promise((resolve) => (releaseRefresh = resolve)),
-  ];
+  const held = [Promise.withResolvers(), Promise.withResolvers()];
   let loads = 0;
   await page.route("**/api/command", async (route) => {
     const body = route.request().postDataJSON();
     if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
       return route.continue();
     const load = loads++;
-    await held[load];
+    await held[load]?.promise;
     const response = await route.fetch();
     const value = await response.json();
     if (load && value.result?.conversation) {
@@ -584,7 +559,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
       ),
     );
   const loadingPlace = await place();
-  releaseFirst();
+  held[0].resolve();
   await expect(detail.locator(".child-thread .message").first()).toBeVisible();
   expect(await place()).toEqual(loadingPlace);
   await expect(detail.getByText("Process output")).toHaveCount(0);
@@ -603,7 +578,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     exact: true,
   });
   await expect(older).toHaveCount(0);
-  releaseRefresh();
+  held[1].resolve();
   await expect(older).toHaveCount(1);
   expect(await followUpNode?.evaluate((element) => element.isConnected)).toBe(
     true,
@@ -780,12 +755,7 @@ test("denied browser storage keeps the conversation usable in memory", async ({
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await page.addInitScript(() => {
     for (const name of ["localStorage", "sessionStorage"])
       Object.defineProperty(globalThis, name, {

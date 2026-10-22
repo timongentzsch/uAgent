@@ -4,16 +4,17 @@
 #include <openssl/evp.h>
 
 #include <atomic>
-#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <string>
-#include <thread>
 
 #include "include/core/fs.h"
 #include "include/web/push.h"
 #include "include/web/push_crypto.h"
+#include "tests/unit/test_support.h"
 
+// This binary has no Check() to report through; a failure ends the run.
+#undef REQUIRE
 #define REQUIRE(value)                                                \
   do {                                                                \
     if (!(value)) {                                                   \
@@ -139,13 +140,12 @@ int TestPush() {
         error));
     REQUIRE(sender.Notify("test:1", std::string(32, 'b'), device));
     REQUIRE(!sender.Notify("test:1", std::string(32, 'b'), device));
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-    while (JsonValue(sender.Capabilities(device), "subscribed", false) &&
-           std::chrono::steady_clock::now() < deadline) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
+    REQUIRE(WaitUntil(
+        [&] {
+          return !JsonValue(sender.Capabilities(device), "subscribed", true);
+        },
+        BudgetMs(3000)));
     REQUIRE(deliveries == 1 && private_payload);
-    REQUIRE(!JsonValue(sender.Capabilities(device), "subscribed", true));
   }
   std::filesystem::remove_all(temporary);
   std::puts(

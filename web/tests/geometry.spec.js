@@ -4,6 +4,7 @@ import {
   expect,
   online,
   SHOWCASE_URL,
+  selectProbeModel,
 } from "./fixtures.js";
 
 // Geometry comes from style.css alone: a control or row centres its content
@@ -150,12 +151,7 @@ for (const width of [1280, 390]) {
     command,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    await command("model", {
-      session_id: session.id,
-      generation: session.generation,
-      operation: "select",
-      model: "mock/model-b",
-    });
+    await selectProbeModel(command, session);
     await page.goto(`/#session=${session.id}`);
     await online(page);
     await page

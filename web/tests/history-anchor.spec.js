@@ -1,5 +1,4 @@
-import { test, expect } from "./fixtures.js";
-import { mkdir, writeFile } from "node:fs/promises";
+import { test, expect, saveHistory } from "./fixtures.js";
 
 test("reading a paragraph survives offsetting changes inside one message", async ({
   page,
@@ -7,7 +6,6 @@ test("reading a paragraph survives offsetting changes inside one message", async
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await mkdir(`${host.home}/.uagent/history`, { recursive: true });
   const messages = Array.from({ length: 46 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content:
@@ -19,27 +17,12 @@ test("reading a paragraph survives offsetting changes inside one message", async
           ).join("\n\n")
         : `History message ${index}. ` + "Ordinary text. ".repeat(12),
   }));
-  await writeFile(
-    `${host.home}/.uagent/history/anchor.json`,
-    JSON.stringify({
-      format: 3,
-      cwd: host.project,
-      model: "test",
-      session_id: "paragraph-anchor",
-      title: "Paragraph anchor",
-      turns: 23,
-    }) +
-      "\n" +
-      JSON.stringify({
-        messages,
-        message_kinds: messages.map((message) => message.role),
-        archive: [],
-        archive_dropped_segments: 0,
-        context_tokens: 0,
-        usage: {},
-        tool_displays: {},
-      }),
-  );
+  await saveHistory(host, "anchor.json", {
+    id: "paragraph-anchor",
+    title: "Paragraph anchor",
+    turns: 23,
+    messages,
+  });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: /Paragraph anchor/ }).click();
   const box = page.locator(".transcript");

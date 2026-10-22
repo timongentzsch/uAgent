@@ -3,7 +3,6 @@
 #include "include/browser/browser.h"
 
 #include <fcntl.h>
-#include <poll.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -215,14 +214,24 @@ void TestBrowserProfiles() {
 }
 
 namespace {
-// The fake X server, VNC and Chrome from tests/fixtures, put on `bin` and
-// found first, with the browser's data in `data` and no display of the
-// machine's own.
+// The fake X server, VNC and Chrome from tests/fixtures, put on PATH first in
+// a workspace of their own, with no display of the machine's own. The
+// browser's data lives in a short directory, so the display's socket fits an
+// address on every platform, and goes with the fake.
 struct FakeBrowser {
-  FakeBrowser(const std::filesystem::path& bin,
-              const std::filesystem::path& data)
-      : configured("UAGENT_BROWSER_DATA", data.string()),
-        search("PATH", Install(bin) + ":" + getenv("PATH")) {}
+  explicit FakeBrowser(const std::string& name)
+      : workspace("browser-" + name),
+        data(std::filesystem::canonical("/tmp") /
+             ("uagent-" + name + "-" + std::to_string(getpid()))),
+        configured("UAGENT_BROWSER_DATA", data.string()),
+        search("PATH", Install(workspace.root / "bin") + ":" + getenv("PATH")) {
+  }
+  ~FakeBrowser() {
+    std::error_code ignored;
+    std::filesystem::remove_all(data, ignored);
+  }
+  FakeBrowser(const FakeBrowser&) = delete;
+  FakeBrowser& operator=(const FakeBrowser&) = delete;
   static std::string Install(const std::filesystem::path& bin) {
     namespace fs = std::filesystem;
     fs::create_directory(bin);
@@ -235,7 +244,23 @@ struct FakeBrowser {
     }
     return bin.string();
   }
+  TestWorkspace workspace;
+  std::filesystem::path data;
   ScopedEnv configured, search, display{"DISPLAY"}, authority{"XAUTHORITY"};
+};
+
+// A runtime in front of the fake, and the one conversation that acts on it.
+struct FakeRuntime : FakeBrowser {
+  using FakeBrowser::FakeBrowser;
+  json Act(json command) {
+    command["session_id"] = "cccccccccccccccccccccccccccccccc";
+    return runtime.Execute(command);
+  }
+  // The look an action names its element by.
+  std::string View() {
+    return Act({{"op", "observe"}, {"image", false}}).value("view_id", "");
+  }
+  browser::Runtime runtime;
 };
 }  // namespace
 
@@ -323,10 +348,8 @@ void TestBrowserScheduling() {
 
 void TestBrowserParallelScheduling() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-parallel");
-  const auto directory =
-      fs::canonical("/tmp") / ("uagent-bp-" + std::to_string(getpid()));
-  FakeBrowser fake(workspace.root / "bin", directory);
+  FakeBrowser fake("bp");
+  const auto& directory = fake.data;
   CHECK(browser::EnsureDataDirectory(directory.string()));
   browser::Broker broker(directory.string());
   CHECK(broker.Execute({{"op", "configure"}, {"parallel_capacity", 5}})
@@ -367,12 +390,9 @@ void TestBrowserParallelScheduling() {
   std::ofstream(directory / "p1/profile/pause-navigation").close();
   auto paused =
       std::async(std::launch::async, [&] { return open(kSessionA, one); });
-  for (int wait = 0;
-       wait < 100 && !fs::exists(directory / "p1/profile/navigation-paused");
-       ++wait) {
-    poll(nullptr, 0, 10);
-  }
-  CHECK(fs::exists(directory / "p1/profile/navigation-paused"));
+  CHECK(WaitUntil(
+      [&] { return fs::exists(directory / "p1/profile/navigation-paused"); },
+      BudgetMs(1000)));
   for (int heartbeat = 0; heartbeat < 20; ++heartbeat) {
     auto viewer = broker.Execute({{"op", "viewer"}, {"instance_id", "1"}});
     CHECK(viewer.value("ok", false));
@@ -423,15 +443,12 @@ void TestBrowserParallelScheduling() {
   CHECK(restored.Execute({{"op", "status"}}).value("parallel_capacity", 0) ==
         2);
   restored.Shutdown();
-  fs::remove_all(directory);
 }
 
 void TestBrowserProfileSignIn() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-signin");
-  const auto directory = fs::canonical(workspace.root) / "browser";
-  const auto bin = workspace.root / "bin";
-  FakeBrowser fake(bin, directory);
+  FakeBrowser fake("signin");
+  const auto& directory = fake.data;
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   constexpr const char* kOther = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   browser::Runtime runtime;
@@ -462,13 +479,8 @@ void TestBrowserProfileSignIn() {
   CHECK(setup.value("viewer", "") == kDevice);
   CHECK(!setup.contains("url"));
   const auto profile = directory / "profile";
-  const auto deadline = std::chrono::steady_clock::now() +
-                        std::chrono::milliseconds(BudgetMs(3000));
-  while (!fs::exists(profile / "manual-ready") &&
-         std::chrono::steady_clock::now() < deadline) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  CHECK(fs::exists(profile / "manual-ready"));
+  CHECK(WaitUntil([&] { return fs::exists(profile / "manual-ready"); },
+                  BudgetMs(3000)));
   CHECK(runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
             .contains("error"));
   CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
@@ -493,10 +505,7 @@ void TestBrowserProfileSignIn() {
 // control, and an agent call made meanwhile fails at once instead of waiting.
 // An idle browser stops only while no human holds it.
 void TestBrowserHandBackOnClose() {
-  namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-handback");
-  const auto bin = workspace.root / "bin";
-  FakeBrowser fake(bin, fs::canonical(workspace.root) / "browser");
+  FakeBrowser fake("handback");
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
   browser::Runtime runtime;
@@ -551,8 +560,7 @@ void TestBrowserHandBackOnClose() {
   CHECK(!runtime.Execute({{"op", "release"}, {"session_id", kSession}})
              .contains("error"));
   std::vector<std::string> closed_tabs;
-  std::ifstream cdp(fs::canonical(workspace.root) / "browser" / "profile" /
-                    "cdp.jsonl");
+  std::ifstream cdp(fake.data / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(cdp, line);) {
     const json command = json::parse(line);
     if (command.value("method", "") == "Target.closeTarget") {
@@ -571,24 +579,16 @@ void TestBrowserHandBackOnClose() {
 // back refuses a history entry the agent could not open by URL.
 void TestBrowserSecretMaskAndBack() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-secrets");
-  const auto bin = workspace.root / "bin";
-  // Short, so the display's socket fits an address on every platform.
-  const auto directory =
-      fs::canonical("/tmp") / ("uagent-browser-" + std::to_string(getpid()));
-  FakeBrowser fake(bin, directory);
-  constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
-  browser::Runtime runtime;
+  FakeRuntime fake("secrets");
   // Whoever takes the browser looks before acting on it.
-  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
+  CHECK(fake.Act({{"op", "back"}})
             .value("error", "")
             .starts_with("another conversation used the browser since"));
-  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
-             .contains("error"));
-  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
-            .value("error", "") == "the previous page is not HTTP(S)");
+  CHECK(!fake.Act({{"op", "tabs"}}).contains("error"));
+  CHECK(fake.Act({{"op", "back"}}).value("error", "") ==
+        "the previous page is not HTTP(S)");
   bool masked = false, navigated = false;
-  std::ifstream log(directory / "profile" / "cdp.jsonl");
+  std::ifstream log(fake.data / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
     const json command = json::parse(line);
     const std::string method = command.value("method", "");
@@ -604,36 +604,33 @@ void TestBrowserSecretMaskAndBack() {
   CHECK(!navigated);
   // A tab closed by hand leaves nothing attached: the next action attaches
   // a page again instead of failing on the one that is gone.
-  std::ofstream(directory / "profile" / "close-tab").close();
-  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
-            .value("error", "") == "the previous page is not HTTP(S)");
+  std::ofstream(fake.data / "profile" / "close-tab").close();
+  CHECK(fake.Act({{"op", "back"}}).value("error", "") ==
+        "the previous page is not HTTP(S)");
   // A key reaches Chrome whole, with its code and what it types: by name
   // alone Enter sends no form. replace selects what the field holds first.
   // A new tab leaves the open page alone, and a tab that is not the current
   // one can be closed.
-  const auto act = [&](json command) {
-    command["session_id"] = kSession;
-    return runtime.Execute(command);
-  };
-  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
-  CHECK(act({{"op", "press"}, {"key", "F5"}}).value("error", "") ==
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  CHECK(fake.Act({{"op", "press"}, {"key", "F5"}}).value("error", "") ==
         "unsupported key");
-  CHECK(!act({{"op", "type"}, {"text", "new"}, {"replace", true}})
+  CHECK(!fake.Act({{"op", "type"}, {"text", "new"}, {"replace", true}})
              .contains("error"));
-  CHECK(
-      !act({{"op", "open"}, {"url", "https://example.com/"}, {"new_tab", true}})
-           .contains("error"));
-  CHECK(act({{"op", "tabs"}, {"target_id", "left-open"}, {"close", true}})
+  CHECK(!fake.Act({{"op", "open"},
+                   {"url", "https://example.com/"},
+                   {"new_tab", true}})
+             .contains("error"));
+  CHECK(fake.Act({{"op", "tabs"}, {"target_id", "left-open"}, {"close", true}})
             .value("closed", "") == "left-open");
   // A look without its picture takes no screenshot, and what it numbered
   // can be clicked by number: where that element is now is where the mouse
   // goes. A number the page no longer has is refused, not guessed.
-  json looked = act({{"op", "observe"}, {"image", false}});
+  json looked = fake.Act({{"op", "observe"}, {"image", false}});
   CHECK(looked.value("image", "x").empty());
   const std::string view = looked.value("view_id", "");
-  CHECK(act({{"op", "click"}, {"element", 2}, {"view_id", view}})
+  CHECK(fake.Act({{"op", "click"}, {"element", 2}, {"view_id", view}})
             .value("error", "") == "that element is gone; look again");
-  CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+  CHECK(!fake.Act({{"op", "click"}, {"element", 1}, {"view_id", view}})
              .contains("error"));
   // An earlier look at the same page still names its elements, so one look
   // serves several actions; a point needs the latest look, and another page
@@ -641,26 +638,26 @@ void TestBrowserSecretMaskAndBack() {
   // A look is kept by use: a batch of more actions on it than looks are
   // kept, each followed by the look its result brings, never pushes it out.
   for (int action = 0; action < 10; ++action) {
-    CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
-    CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+    CHECK(fake.Act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+    CHECK(!fake.Act({{"op", "click"}, {"element", 1}, {"view_id", view}})
                .contains("error"));
   }
-  CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
-  CHECK(act({{"op", "click"}, {"x", 5}, {"y", 5}, {"view_id", view}})
+  CHECK(fake.Act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+  CHECK(fake.Act({{"op", "click"}, {"x", 5}, {"y", 5}, {"view_id", view}})
             .value("error", "") ==
         "click needs view_id from the latest observe");
-  CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
+  CHECK(!fake.Act({{"op", "open"}, {"url", "https://example.com/"}})
              .contains("error"));
-  CHECK(act({{"op", "observe"}, {"image", false}}).contains("view_id"));
-  CHECK(act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+  CHECK(fake.Act({{"op", "observe"}, {"image", false}}).contains("view_id"));
+  CHECK(fake.Act({{"op", "click"}, {"element", 1}, {"view_id", view}})
             .value("error", "") ==
         "click needs view_id from a look at this page");
-  CHECK(act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
-  CHECK(act({{"op", "read"}, {"find", "clip"}}).value("text", "") ==
+  CHECK(fake.Act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
+  CHECK(fake.Act({{"op", "read"}, {"find", "clip"}}).value("text", "") ==
         "Clip one");
   bool pictured = false, pointed = false;
   bool entered = false, selected = false, created = false, closed = false;
-  std::ifstream acted(directory / "profile" / "cdp.jsonl");
+  std::ifstream acted(fake.data / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(acted, line);) {
     const json command = json::parse(line);
     const std::string method = command.value("method", "");
@@ -688,14 +685,13 @@ void TestBrowserSecretMaskAndBack() {
   // A saved login is taken with keys on the display itself, where Chrome's
   // own list listens: Escape, Down, Down, Tab, each pressed and let go. A
   // field that stays as long as it was had nothing saved for it.
-  CHECK(runtime.Execute({{"op", "fill_saved"}, {"session_id", kSession}})
+  CHECK(fake.Act({{"op", "fill_saved"}})
             .value("error", "")
             .starts_with("Chrome filled nothing"));
-  std::ofstream(directory / "profile" / "saved-login-here").close();
-  fs::remove(directory / "display.sock.keys");
-  CHECK(!runtime.Execute({{"op", "fill_saved"}, {"session_id", kSession}})
-             .contains("error"));
-  std::ifstream keys(directory / "display.sock.keys");
+  std::ofstream(fake.data / "profile" / "saved-login-here").close();
+  fs::remove(fake.data / "display.sock.keys");
+  CHECK(!fake.Act({{"op", "fill_saved"}}).contains("error"));
+  std::ifstream keys(fake.data / "display.sock.keys");
   const std::string pressed((std::istreambuf_iterator<char>(keys)),
                             std::istreambuf_iterator<char>());
   CHECK(pressed ==
@@ -704,15 +700,12 @@ void TestBrowserSecretMaskAndBack() {
   // One browser, one conversation at a time: another waits for the turn of
   // the one that holds it to end.
   constexpr const char* kOther = "dddddddddddddddddddddddddddddddd";
-  CHECK(runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
+  CHECK(fake.runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
             .value("error", "")
             .starts_with("another conversation is using the browser"));
-  CHECK(!runtime.Execute({{"op", "release"}, {"session_id", kSession}})
+  CHECK(!fake.Act({{"op", "release"}}).contains("error"));
+  CHECK(!fake.runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
              .contains("error"));
-  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
-             .contains("error"));
-  runtime.Shutdown();
-  fs::remove_all(directory);
 }
 
 // A page's dialog holds the page until it is answered: the click that opened
@@ -723,80 +716,73 @@ void TestBrowserSecretMaskAndBack() {
 // list or a date field is set, never typed into, or says what it takes.
 void TestBrowserDialogsAndPasswordFields() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-dialogs");
-  const auto directory =
-      fs::canonical("/tmp") / ("uagent-dialog-" + std::to_string(getpid()));
-  FakeBrowser fake(workspace.root / "bin", directory);
-  const auto profile = directory / "profile";
-  browser::Runtime runtime;
-  const auto act = [&](json command) {
-    command["session_id"] = "cccccccccccccccccccccccccccccccc";
-    return runtime.Execute(command);
-  };
+  FakeRuntime fake("dialog");
+  const auto profile = fake.data / "profile";
   const auto click = [&] {
-    const std::string view =
-        act({{"op", "observe"}, {"image", false}}).value("view_id", "");
-    return act({{"op", "click"}, {"element", 1}, {"view_id", view}});
+    return fake.Act(
+        {{"op", "click"}, {"element", 1}, {"view_id", fake.View()}});
   };
-  CHECK(!act({{"op", "tabs"}}).contains("error"));
+  CHECK(!fake.Act({{"op", "tabs"}}).contains("error"));
   std::ofstream(profile / "dialog-on-click") << "confirm";
   const auto started = std::chrono::steady_clock::now();
   CHECK(!click().contains("error"));
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(3));
-  const json shown = act({{"op", "observe"}});
+  const json shown = fake.Act({{"op", "observe"}});
   CHECK(
       shown.value("dialog", json::object()) ==
       json({{"type", "confirm"}, {"message", "Really confirm?"}, {"url", ""}}));
-  CHECK(act({{"op", "back"}})
+  CHECK(fake.Act({{"op", "back"}})
             .value("error", "")
             .starts_with("a confirm dialog is open"));
-  CHECK(!act({{"op", "tabs"}, {"target_id", "left-open"}}).contains("error"));
-  CHECK(act({{"op", "observe"}}).contains("view_id"));
-  CHECK(!act({{"op", "tabs"}, {"target_id", "tab"}}).contains("error"));
-  CHECK(act({{"op", "observe"}}).contains("dialog"));
-  CHECK(!act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
-  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  CHECK(!fake.Act({{"op", "tabs"}, {"target_id", "left-open"}})
+             .contains("error"));
+  CHECK(fake.Act({{"op", "observe"}}).contains("view_id"));
+  CHECK(!fake.Act({{"op", "tabs"}, {"target_id", "tab"}}).contains("error"));
+  CHECK(fake.Act({{"op", "observe"}}).contains("dialog"));
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
+  CHECK(fake.Act({{"op", "observe"}}).contains("view_id"));
   std::ofstream(profile / "dialog-on-click") << "prompt";
   CHECK(!click().contains("error"));
-  CHECK(!act({{"op", "type"}, {"text", "Ada"}}).contains("error"));
-  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  CHECK(!fake.Act({{"op", "type"}, {"text", "Ada"}}).contains("error"));
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
   std::ofstream(profile / "dialog-on-click") << "beforeunload";
   CHECK(!click().contains("error"));
-  CHECK(act({{"op", "observe"}}).contains("dialog"));
-  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  CHECK(fake.Act({{"op", "observe"}}).contains("dialog"));
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
   std::ofstream(profile / "dialog-on-navigate") << "beforeunload";
-  CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
+  CHECK(!fake.Act({{"op", "open"}, {"url", "https://example.com/"}})
              .contains("error"));
-  CHECK(act({{"op", "observe"}}).contains("view_id"));
+  CHECK(fake.Act({{"op", "observe"}}).contains("view_id"));
   // A dialog on the press, or while the page is looked at, is reported in
   // place of what was asked, never as a failure of it.
   std::ofstream(profile / "dialog-on-press") << "confirm";
   CHECK(!click().contains("error"));
-  CHECK(act({{"op", "observe"}}).contains("dialog"));
-  CHECK(!act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
+  CHECK(fake.Act({{"op", "observe"}}).contains("dialog"));
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Escape"}}).contains("error"));
   std::ofstream(profile / "dialog-on-look") << "alert";
-  CHECK(act({{"op", "observe"}}).value("dialog", json()).value("type", "") ==
-        "alert");
-  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  CHECK(
+      fake.Act({{"op", "observe"}}).value("dialog", json()).value("type", "") ==
+      "alert");
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
   // On a page that is no web site, a call runs on the look it was approved
   // on, not after a newer one.
-  CHECK(act({{"op", "observe"}}).contains("view_id"));
-  CHECK(act({{"op", "press"}, {"key", "Tab"}, {"look", "older"}})
+  CHECK(fake.Act({{"op", "observe"}}).contains("view_id"));
+  CHECK(fake.Act({{"op", "press"}, {"key", "Tab"}, {"look", "older"}})
             .value("error", "")
             .starts_with("the page changed since the look"));
   std::ofstream(profile / "password-focused").close();
-  CHECK(act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
+  CHECK(fake.Act({{"op", "type"}, {"text", "hunter2"}}).value("error", "") ==
         "this is a password field: use fill_saved, or request_human");
   std::ofstream(profile / "password-focused") << "frame";
-  CHECK(act({{"op", "type"}, {"text", "hunter2"}})
+  CHECK(fake.Act({{"op", "type"}, {"text", "hunter2"}})
             .value("error", "")
             .starts_with("the field is in another site's frame"));
   fs::remove(profile / "password-focused");
   std::ofstream(profile / "control-focused") << R"({"set": true})";
-  CHECK(!act({{"op", "type"}, {"text", "2027-03-12"}}).contains("error"));
+  CHECK(!fake.Act({{"op", "type"}, {"text", "2027-03-12"}}).contains("error"));
   std::ofstream(profile / "control-focused")
       << R"({"error": "a date field takes YYYY-MM-DD"})";
-  CHECK(act({{"op", "type"}, {"text", "03/12/2027"}})
+  CHECK(fake.Act({{"op", "type"}, {"text", "03/12/2027"}})
             .value("error", "")
             .starts_with("a date field takes YYYY-MM-DD"));
   fs::remove(profile / "control-focused");
@@ -824,8 +810,6 @@ void TestBrowserDialogsAndPasswordFields() {
                                       {{"accept", true}}}));
   CHECK(attached == 1);
   CHECK(!typed);
-  runtime.Shutdown();
-  fs::remove_all(directory);
 }
 
 // A file field takes a file; a button's chooser is held back and its field
@@ -833,40 +817,29 @@ void TestBrowserDialogsAndPasswordFields() {
 // in the folder the action names and is told when it ends.
 void TestBrowserUploadsAndDownloads() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-files");
-  const auto directory =
-      fs::canonical("/tmp") / ("uagent-files-" + std::to_string(getpid()));
-  FakeBrowser fake(workspace.root / "bin", directory);
-  const auto profile = directory / "profile";
-  browser::Runtime runtime;
-  const auto act = [&](json command) {
-    command["session_id"] = "cccccccccccccccccccccccccccccccc";
-    return runtime.Execute(command);
-  };
-  const auto view = [&] {
-    return act({{"op", "observe"}, {"image", false}}).value("view_id", "");
-  };
-  CHECK(!act({{"op", "tabs"}}).contains("error"));
+  FakeRuntime fake("files");
+  const auto profile = fake.data / "profile";
+  CHECK(!fake.Act({{"op", "tabs"}}).contains("error"));
   std::ofstream(profile / "file-input").close();
-  CHECK(!act({{"op", "upload"},
-              {"element", 1},
-              {"view_id", view()},
-              {"file", "/work/report.pdf"}})
+  CHECK(!fake.Act({{"op", "upload"},
+                   {"element", 1},
+                   {"view_id", fake.View()},
+                   {"file", "/work/report.pdf"}})
              .contains("error"));
   fs::remove(profile / "file-input");
   std::ofstream(profile / "chooser-on-click").close();
-  CHECK(!act({{"op", "upload"},
-              {"element", 1},
-              {"view_id", view()},
-              {"file", "/work/photo.png"}})
+  CHECK(!fake.Act({{"op", "upload"},
+                   {"element", 1},
+                   {"view_id", fake.View()},
+                   {"file", "/work/photo.png"}})
              .contains("error"));
-  CHECK(act({{"op", "click"}, {"element", 1}, {"view_id", view()}})
+  CHECK(fake.Act({{"op", "click"}, {"element", 1}, {"view_id", fake.View()}})
             .value("chooser", false));
   fs::remove(profile / "chooser-on-click");
-  CHECK(act({{"op", "upload"},
-             {"element", 1},
-             {"view_id", view()},
-             {"file", "/work/photo.png"}})
+  CHECK(fake.Act({{"op", "upload"},
+                  {"element", 1},
+                  {"view_id", fake.View()},
+                  {"file", "/work/photo.png"}})
             .value("error", "")
             .starts_with("element 1 opened no file chooser"));
   // A download is told with the answer that sees it end: the click's own,
@@ -874,19 +847,19 @@ void TestBrowserUploadsAndDownloads() {
   const json done =
       json::array({{{"name", "report.pdf"}, {"state", "completed"}}});
   std::ofstream(profile / "download-on-click").close();
-  CHECK(act({{"op", "click"},
-             {"element", 1},
-             {"view_id", view()},
-             {"downloads", "/work/downloads"}})
+  CHECK(fake.Act({{"op", "click"},
+                  {"element", 1},
+                  {"view_id", fake.View()},
+                  {"downloads", "/work/downloads"}})
             .value("downloads", json()) == done);
   std::ofstream(profile / "download-on-click") << "later";
-  CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view()}})
+  CHECK(!fake.Act({{"op", "click"}, {"element", 1}, {"view_id", fake.View()}})
              .contains("downloads"));
-  const json busy = act({{"op", "probe"}});
+  const json busy = fake.Act({{"op", "probe"}});
   CHECK(busy.value("loading", false) &&
         busy.value("downloading", json()) == json::array({"report.pdf"}));
   std::ofstream(profile / "download-done").close();
-  CHECK(act({{"op", "network"}}).value("downloads", json()) == done);
+  CHECK(fake.Act({{"op", "network"}}).value("downloads", json()) == done);
   std::vector<json> files;
   std::string into;
   std::ifstream log(profile / "cdp.jsonl");
@@ -905,8 +878,6 @@ void TestBrowserUploadsAndDownloads() {
   CHECK(files[1]["files"] == json::array({"/work/photo.png"}) &&
         files[1].value("backendNodeId", 0) == 7);
   CHECK(into == "/work/downloads");
-  runtime.Shutdown();
-  fs::remove_all(directory);
 }
 
 // The site an approval covers: scheme and host as a browser compares them.
@@ -915,65 +886,55 @@ void TestBrowserUploadsAndDownloads() {
 // A click can be right or double, a drag drops what the page held back, a
 // key can come with modifiers, and history goes forward as well as back.
 void TestBrowserConsoleNetworkAndPointer() {
-  namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-pointer");
-  const auto directory =
-      fs::canonical("/tmp") / ("uagent-pointer-" + std::to_string(getpid()));
-  FakeBrowser fake(workspace.root / "bin", directory);
-  const auto profile = directory / "profile";
-  browser::Runtime runtime;
-  const auto act = [&](json command) {
-    command["session_id"] = "cccccccccccccccccccccccccccccccc";
-    return runtime.Execute(command);
-  };
-  const auto view = [&] {
-    return act({{"op", "observe"}, {"image", false}}).value("view_id", "");
-  };
-  CHECK(!act({{"op", "open"}, {"url", "https://example.com/"}})
+  FakeRuntime fake("pointer");
+  const auto profile = fake.data / "profile";
+  CHECK(!fake.Act({{"op", "open"}, {"url", "https://example.com/"}})
              .contains("error"));
-  const json console = act({{"op", "console"}});
+  const json console = fake.Act({{"op", "console"}});
   CHECK(console.value("count", 0) == 2);
   CHECK(console.value("lines", "") ==
         "log: hello 42 (https://example.com/app.js:3)\n"
         "uncaught: Error: boom (https://example.com/app.js:9)\n");
-  CHECK(act({{"op", "console"}, {"find", "BOOM"}}).value("count", 0) == 1);
-  const json requests = act({{"op", "network"}});
+  CHECK(fake.Act({{"op", "console"}, {"find", "BOOM"}}).value("count", 0) == 1);
+  const json requests = fake.Act({{"op", "network"}});
   CHECK(requests.value("lines", "") ==
         "GET 200 Document https://example.com/ 1234 B\n"
         "GET 404 Script https://example.com/app.js\n"
         "POST failed (net::ERR_FAILED) Fetch https://api.example.com/items\n");
   // Another document of the tab starts its list again.
-  CHECK(!act({{"op", "open"}, {"url", "https://example.com/next"}})
+  CHECK(!fake.Act({{"op", "open"}, {"url", "https://example.com/next"}})
              .contains("error"));
-  CHECK(act({{"op", "network"}, {"find", "/next"}}).value("count", 0) == 1);
-  CHECK(act({{"op", "network"}}).value("count", 0) == 3);
+  CHECK(fake.Act({{"op", "network"}, {"find", "/next"}}).value("count", 0) ==
+        1);
+  CHECK(fake.Act({{"op", "network"}}).value("count", 0) == 3);
 
-  CHECK(!act({{"op", "click"},
-              {"element", 1},
-              {"view_id", view()},
-              {"button", "right"},
-              {"count", 2}})
+  CHECK(!fake.Act({{"op", "click"},
+                   {"element", 1},
+                   {"view_id", fake.View()},
+                   {"button", "right"},
+                   {"count", 2}})
              .contains("error"));
-  CHECK(act({{"op", "click"},
-             {"element", 1},
-             {"view_id", view()},
-             {"button", "side"}})
+  CHECK(fake.Act({{"op", "click"},
+                  {"element", 1},
+                  {"view_id", fake.View()},
+                  {"button", "side"}})
             .value("error", "")
             .starts_with("click takes button"));
   std::ofstream(profile / "drag-intercept").close();
-  CHECK(!act({{"op", "drag"},
-              {"element", 1},
-              {"to_element", 1},
-              {"view_id", view()}})
+  CHECK(!fake.Act({{"op", "drag"},
+                   {"element", 1},
+                   {"to_element", 1},
+                   {"view_id", fake.View()}})
              .contains("error"));
-  CHECK(act({{"op", "drag"}, {"element", 1}, {"view_id", view()}})
+  CHECK(fake.Act({{"op", "drag"}, {"element", 1}, {"view_id", fake.View()}})
             .value("error", "")
             .starts_with("drag ends at to_element"));
-  CHECK(!act({{"op", "press"}, {"key", "Control+a"}}).contains("error"));
-  CHECK(act({{"op", "press"}, {"key", "Hyper+a"}}).value("error", "") ==
+  CHECK(!fake.Act({{"op", "press"}, {"key", "Control+a"}}).contains("error"));
+  CHECK(fake.Act({{"op", "press"}, {"key", "Hyper+a"}}).value("error", "") ==
         "unsupported key");
-  CHECK(act({{"op", "forward"}}).value("error", "") == "there is no next page");
-  CHECK(!act({{"op", "reload"}}).contains("error"));
+  CHECK(fake.Act({{"op", "forward"}}).value("error", "") ==
+        "there is no next page");
+  CHECK(!fake.Act({{"op", "reload"}}).contains("error"));
 
   std::vector<json> clicks, drops, keys;
   std::vector<std::string> console_events;
@@ -1006,8 +967,6 @@ void TestBrowserConsoleNetworkAndPointer() {
   CHECK(!keys.empty() && keys[0].value("modifiers", 0) == 2 &&
         keys[0].value("code", "") == "KeyA" && !keys[0].contains("text"));
   CHECK(reloaded);
-  runtime.Shutdown();
-  fs::remove_all(directory);
 }
 
 void TestBrowserOrigin() {
@@ -1033,17 +992,13 @@ void TestBrowserOrigin() {
 // is only read. The service runs here, in front of the stand-in Chrome.
 void TestBrowserToolQueue() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-tool-queue");
-  const auto directory =
-      fs::canonical("/tmp") / ("uagent-bq-" + std::to_string(getpid()));
-  FakeBrowser fake(workspace.root / "bin", directory);
+  FakeBrowser fake("bq");
   int owner[2];
   CHECK(pipe(owner) == 0);
   CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
   std::thread service([&] { browser::ServiceMain(owner[0]); });
-  for (int wait = 0; wait < 500 && !fs::exists(browser::SocketPath()); ++wait) {
-    poll(nullptr, 0, 10);
-  }
+  CHECK(WaitUntil([] { return fs::exists(browser::SocketPath()); },
+                  BudgetMs(5000)));
   constexpr const char* kSessionA = "aaaaaaaaaaaaaaaa";
   constexpr const char* kSessionB = "bbbbbbbbbbbbbbbb";
   const auto acquire = [&] {
@@ -1061,23 +1016,20 @@ void TestBrowserToolQueue() {
   CHECK(!tool.run({{"action", "open"}, {"url", "https://example.com/"}}, timed)
              .Ok());
   CHECK(browser::Request({{"op", "status"}})["queue"].empty());
-  CHECK(!fs::exists(directory / "profile"));
+  CHECK(!fs::exists(fake.data / "profile"));
+  const auto queued = [] {
+    return !browser::Request({{"op", "status"}})["queue"].empty();
+  };
   std::atomic<bool> abort{false};
   auto cancelled = std::async(std::launch::async, [&] {
     LocalAbort local(abort);
     return tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   });
-  for (int wait = 0; wait < 100; ++wait) {
-    if (!browser::Request({{"op", "status"}})["queue"].empty()) {
-      break;
-    }
-    poll(nullptr, 0, 10);
-  }
-  CHECK(!browser::Request({{"op", "status"}})["queue"].empty());
+  CHECK(WaitUntil(queued, BudgetMs(1000)));
   abort = true;
   CHECK(!cancelled.get().Ok());
   CHECK(browser::Request({{"op", "status"}})["queue"].empty());
-  CHECK(!fs::exists(directory / "profile"));
+  CHECK(!fs::exists(fake.data / "profile"));
   // The tool waits below the model loop: one call eventually performs one
   // navigation, with an observable queued state and no retry by the model.
   ToolContext context(std::chrono::steady_clock::now() +
@@ -1088,13 +1040,7 @@ void TestBrowserToolQueue() {
     return tool.run({{"action", "open"}, {"url", "https://example.com/"}},
                     context);
   });
-  for (int wait = 0; wait < 100; ++wait) {
-    if (!browser::Request({{"op", "status"}})["queue"].empty()) {
-      break;
-    }
-    poll(nullptr, 0, 10);
-  }
-  CHECK(!browser::Request({{"op", "status"}})["queue"].empty());
+  CHECK(WaitUntil(queued, BudgetMs(1000)));
   CHECK(pending.wait_for(std::chrono::milliseconds(0)) !=
         std::future_status::ready);
   CHECK(!browser::Request({{"op", "release"}, {"session_id", kSessionA}})
@@ -1104,7 +1050,7 @@ void TestBrowserToolQueue() {
   CHECK(labels.front().starts_with("Waiting for browser"));
   CHECK(labels.back() == "Using browser");
   int navigations = 0;
-  std::ifstream log(directory / "profile/cdp.jsonl");
+  std::ifstream log(fake.data / "profile/cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
     if (json::parse(line).value("method", "") == "Page.navigate") {
       ++navigations;
@@ -1115,24 +1061,18 @@ void TestBrowserToolQueue() {
   close(owner[1]);
   service.join();
   close(owner[0]);
-  fs::remove_all(directory);
 }
 
 void TestBrowserToolSteps() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-tool");
-  const auto bin = workspace.root / "bin";
-  const auto directory = fs::canonical("/tmp") /
-                         ("uagent-browser-tool-" + std::to_string(getpid()));
-  FakeBrowser fake(bin, directory);
+  FakeBrowser fake("tool");
   int owner[2];
   CHECK(pipe(owner) == 0);
   // Chrome must not inherit the end whose closing stops the service.
   CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
   std::thread service([&] { browser::ServiceMain(owner[0]); });
-  for (int wait = 0; wait < 500 && !fs::exists(browser::SocketPath()); ++wait) {
-    poll(nullptr, 0, 10);
-  }
+  CHECK(WaitUntil([] { return fs::exists(browser::SocketPath()); },
+                  BudgetMs(5000)));
   const Tool tool = BrowserTool("cccccccccccccccccccccccccccccccc",
                                 [](const std::string&, const std::string&,
                                    bool*) { return std::string(); });
@@ -1205,7 +1145,7 @@ void TestBrowserToolSteps() {
              .Ok());
   // A click that opens a dialog is done, and the look after it is the
   // dialog: the page behind it cannot be read until it is answered.
-  std::ofstream(directory / "profile" / "dialog-on-click") << "confirm";
+  std::ofstream(fake.data / "profile" / "dialog-on-click") << "confirm";
   ToolResult asked = tool.run(
       {{"action", "click"}, {"element", 1}, {"view_id", view(filled.output)}},
       {});
@@ -1217,7 +1157,7 @@ void TestBrowserToolSteps() {
   CHECK(answered.Ok());
   // A field whose click opens a prompt keeps what was meant for it: the call
   // stops at the dialog, and nothing is typed or pressed into it.
-  std::ofstream(directory / "profile" / "dialog-on-click") << "prompt";
+  std::ofstream(fake.data / "profile" / "dialog-on-click") << "prompt";
   ToolResult stopped = tool.run({{"action", "type"},
                                  {"element", 1},
                                  {"view_id", view(answered.output)},
@@ -1244,22 +1184,22 @@ void TestBrowserToolSteps() {
   // A page the agent wrote opens from its file with no server: its markup
   // is written into a blank page. A file:// URL stays refused, and so does
   // any file that is not a page, or that lies in the browser's own profile.
-  const fs::path page = workspace.root / "chart.html";
+  const fs::path page = fake.workspace.root / "chart.html";
   std::ofstream(page) << "<p>CHART_MARKUP</p>";
   CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {}).Ok());
   CHECK(!tool.run({{"action", "open"}, {"url", "file://" + page.string()}}, {})
              .Ok());
-  const fs::path notes = workspace.root / "notes.txt";
+  const fs::path notes = fake.workspace.root / "notes.txt";
   std::ofstream(notes) << "plain";
   ToolResult plain =
       tool.run({{"action", "open"}, {"path", notes.string()}}, {});
   CHECK(!plain.Ok() && plain.output.find(".html or .svg") != std::string::npos);
   CHECK(tool.validate({{"action", "open"},
-                       {"path", (directory / "profile" / "x.html").string()}})
+                       {"path", (fake.data / "profile" / "x.html").string()}})
             .has_value());
   // What a click downloads is told, in the conversation's folder; only a
   // file of that folder is uploaded.
-  std::ofstream(directory / "profile" / "download-on-click").close();
+  std::ofstream(fake.data / "profile" / "download-on-click").close();
   ToolResult again =
       tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   ToolResult fetched = tool.run(
@@ -1303,7 +1243,7 @@ void TestBrowserToolSteps() {
   close(owner[0]);
   std::vector<std::string> order;
   bool blank = false, written = false;
-  std::ifstream log(directory / "profile" / "cdp.jsonl");
+  std::ifstream log(fake.data / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
     const json params = json::parse(line).value("params", json::object());
     blank = blank || params.value("url", "") == "about:blank";
@@ -1334,7 +1274,6 @@ void TestBrowserToolSteps() {
         std::vector<std::string>({"click", "select", "type kestrel", "Enter",
                                   "click", "click", "click"}));
   CHECK(written);
-  fs::remove_all(directory);
 }
 
 }  // namespace uagent

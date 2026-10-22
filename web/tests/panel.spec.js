@@ -2,7 +2,14 @@
 // and what it started beside the chat, and slides in from the right on a
 // phone. What it started lists under the place's name in the sidebar, and
 // its members show as avatars on it, each with a card.
-import { test, expect, openPanel, headerAction } from "./fixtures.js";
+import {
+  test,
+  expect,
+  openPanel,
+  headerAction,
+  selectProbeModel,
+  openProbePanel,
+} from "./fixtures.js";
 
 const VIEWPORTS = [
   ["desktop", { width: 1440, height: 900 }],
@@ -102,21 +109,7 @@ for (const [name, viewport] of VIEWPORTS) {
     browserName,
   }) => {
     await page.setViewportSize(viewport);
-    const id = await openPanel(page, session);
-    let meta;
-    await expect
-      .poll(async () => {
-        meta = (await (await request.get(`/api/sessions/${id}`)).json())
-          .metadata;
-        return meta.generation;
-      })
-      .toBeTruthy();
-    await command("model", {
-      session_id: id,
-      generation: meta.generation,
-      operation: "select",
-      model: "mock/model-b",
-    });
+    await openProbePanel(page, session, command, request);
     const prompt = page.getByLabel("Message or guidance");
     for (const [index, text] of ["first", "second", "third"].entries()) {
       await prompt.fill(text);
@@ -165,12 +158,7 @@ for (const [name, viewport] of VIEWPORTS) {
   }) => {
     await page.setViewportSize(viewport);
     // A conversation in the folder asks to save a memory, in Ask mode.
-    await command("model", {
-      session_id: session.id,
-      generation: session.generation,
-      operation: "select",
-      model: "mock/model-b",
-    });
+    await selectProbeModel(command, session);
     await command("submit", {
       session_id: session.id,
       generation: session.generation,
@@ -207,20 +195,7 @@ test("a member joins the chat, is addressed by name and answers under its name",
   request,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const id = await openPanel(page, session);
-  let meta;
-  await expect
-    .poll(async () => {
-      meta = (await (await request.get(`/api/sessions/${id}`)).json()).metadata;
-      return meta.generation;
-    })
-    .toBeTruthy();
-  await command("model", {
-    session_id: id,
-    generation: meta.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  const id = await openProbePanel(page, session, command, request);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Chat probe");
   await prompt.press("Enter");

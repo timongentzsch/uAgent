@@ -3,8 +3,9 @@ import {
   expect,
   online,
   withoutServiceWorker,
-  newFolder,
   headerAction,
+  selectProbeModel,
+  startInFolder,
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -14,11 +15,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await newFolder(page, fixture.project);
-  await page
-    .getByRole("button", { name: "Start conversation", exact: true })
-    .click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await startInFolder(page, fixture.project);
   const composer = page.getByLabel("Message or guidance");
   await composer.fill("/instructions");
   await composer.press("Enter");
@@ -126,8 +123,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.setViewportSize({ width: 1440, height: 1000 });
   // Held from the start: the app loads this code by itself two seconds in,
   // and the loading state below is only there to see while it is held.
-  let releaseSettings;
-  const settingsGate = new Promise((resolve) => (releaseSettings = resolve));
+  const { promise: settingsGate, resolve: releaseSettings } =
+    Promise.withResolvers();
   // The dialog's chunk; settings-nav-* and settings-scopes-* belong to the shell and must load.
   await page.route(
     /\/assets\/settings-(?!nav-|scopes-)[^/]+\.js$/,
@@ -139,11 +136,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
-  await newFolder(page, fixture.project);
-  await page
-    .getByRole("button", { name: "Start conversation", exact: true })
-    .click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await startInFolder(page, fixture.project);
   const prompt = page.getByLabel("Message or guidance");
   const model = page.getByRole("button", {
     name: "Model and effort",
@@ -422,8 +415,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.setViewportSize({ width: 390, height: 450 });
   await measure("short-mobile");
   expect(metrics["short-mobile"].transcript.height).toBeGreaterThan(180);
-  let releaseHistory;
-  const historyGate = new Promise((resolve) => (releaseHistory = resolve));
+  const { promise: historyGate, resolve: releaseHistory } =
+    Promise.withResolvers();
   const sessionId = await page.evaluate(() =>
     new URLSearchParams(location.hash.slice(1)).get("session"),
   );
@@ -470,12 +463,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   session,
   command,
 }) => {
-  await command("model", {
-    session_id: session.id,
-    generation: session.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  await selectProbeModel(command, session);
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
@@ -548,14 +536,13 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
       );
     }),
   ).toBe(true);
-  let releaseRaw;
-  const rawGate = new Promise((resolve) => (releaseRaw = resolve));
+  const { promise: rawGate, resolve: releaseRaw } = Promise.withResolvers();
   await page.route("**/assets/raw-*.js", async (route) => {
     await rawGate;
     await route.continue();
   });
-  let releaseRawBody;
-  const bodyGate = new Promise((resolve) => (releaseRawBody = resolve));
+  const { promise: bodyGate, resolve: releaseRawBody } =
+    Promise.withResolvers();
   await page.route("**/api/sessions/*?http=*", async (route) => {
     await bodyGate;
     await route.continue();
@@ -675,15 +662,14 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.route(`**/api/sessions/${session.id}`, (route) =>
     route.fulfill({ json: snapshot }),
   );
-  let releaseModel;
-  const modelGate = new Promise((resolve) => (releaseModel = resolve));
+  const { promise: modelGate, resolve: releaseModel } = Promise.withResolvers();
   await page.route("**/assets/model-picker-*.js", async (route) => {
     await modelGate;
     await route.continue();
   });
-  let requests = 0,
-    releaseOutput;
-  const outputGate = new Promise((resolve) => (releaseOutput = resolve));
+  let requests = 0;
+  const { promise: outputGate, resolve: releaseOutput } =
+    Promise.withResolvers();
   const full = JSON.stringify({
     request: { query: "a test query" },
     response: "retained output ".repeat(1500) + "END OF FULL RESULT",

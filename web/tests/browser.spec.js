@@ -18,10 +18,29 @@ const browserStatus = async (page, initial) => {
   );
   return status;
 };
+
 const openBrowser = async (page, session) => {
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Open browser");
   return page.getByRole("dialog", { name: "Browser", exact: true });
+};
+// Opens the browser dialog on a served framebuffer, the user in control.
+const openControlled = async (page, session) => {
+  const { serveFramebuffer } = await import("./rfb-fixture.js");
+  const remote = await serveFramebuffer(page);
+  await browserStatus(page, {
+    mode: "human",
+    running: true,
+    controller: true,
+    leased: true,
+  });
+  await page.goto(`/#session=${session.id}`);
+  await remote.prepare();
+  await headerAction(page, "Open browser");
+  return {
+    remote,
+    dialog: page.getByRole("dialog", { name: "Browser", exact: true }),
+  };
 };
 const rect = async (locator) => {
   const box = await locator.boundingBox();
@@ -183,18 +202,8 @@ test.describe("phone browser sheet", () => {
     page,
     session,
   }) => {
-    const { serveFramebuffer, touch } = await import("./rfb-fixture.js");
-    const remote = await serveFramebuffer(page);
-    await browserStatus(page, {
-      mode: "human",
-      running: true,
-      controller: true,
-      leased: true,
-    });
-    await page.goto(`/#session=${session.id}`);
-    await remote.prepare();
-    await headerAction(page, "Open browser");
-    const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+    const { touch } = await import("./rfb-fixture.js");
+    const { remote, dialog } = await openControlled(page, session);
     const viewport = dialog.getByLabel("Browser viewport");
     const canvas = dialog.locator(".browser-rfb canvas");
     await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
@@ -286,18 +295,7 @@ test.describe("phone browser sheet", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "needs CDP text insertion");
-    const { serveFramebuffer } = await import("./rfb-fixture.js");
-    const remote = await serveFramebuffer(page);
-    await browserStatus(page, {
-      mode: "human",
-      running: true,
-      controller: true,
-      leased: true,
-    });
-    await page.goto(`/#session=${session.id}`);
-    await remote.prepare();
-    await headerAction(page, "Open browser");
-    const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+    const { remote, dialog } = await openControlled(page, session);
     await dialog.getByRole("button", { name: "Keyboard" }).click();
     await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
     await expect(dialog.getByLabel("Browser viewport")).toBeInViewport();
@@ -468,18 +466,7 @@ test("desktop Copy and Paste carry text between Chrome and the device", async ({
 }) => {
   test.skip(browserName !== "chromium", "clipboard permissions");
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const { serveFramebuffer } = await import("./rfb-fixture.js");
-  const remote = await serveFramebuffer(page);
-  await browserStatus(page, {
-    mode: "human",
-    running: true,
-    controller: true,
-    leased: true,
-  });
-  await page.goto(`/#session=${session.id}`);
-  await remote.prepare();
-  await headerAction(page, "Open browser");
-  const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+  const { remote, dialog } = await openControlled(page, session);
   await expect(dialog.getByRole("button", { name: "Keyboard" })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
 

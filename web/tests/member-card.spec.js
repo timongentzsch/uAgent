@@ -1,6 +1,6 @@
 // A member's avatar answers who it is: a card on hover or focus with a
 // pointer, the same in a sheet on a touch screen.
-import { test, expect, openPanel } from "./fixtures.js";
+import { test, expect, openProbePanel } from "./fixtures.js";
 
 async function shot(page, name) {
   if (process.env.UAGENT_SCREENSHOTS) {
@@ -12,20 +12,7 @@ async function shot(page, name) {
 
 // Opens the panel and has Ada join its chat.
 async function seatAda(page, session, command, request) {
-  const id = await openPanel(page, session);
-  let meta;
-  await expect
-    .poll(async () => {
-      meta = (await (await request.get(`/api/sessions/${id}`)).json()).metadata;
-      return meta.generation;
-    })
-    .toBeTruthy();
-  await command("model", {
-    session_id: id,
-    generation: meta.generation,
-    operation: "select",
-    model: "mock/model-b",
-  });
+  const id = await openProbePanel(page, session, command, request);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Chat probe");
   await page.getByRole("button", { name: "Send", exact: true }).click();

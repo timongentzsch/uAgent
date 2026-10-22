@@ -243,6 +243,9 @@ FileWaitResult WaitForAnyFileChange(
       !watch.Wake(wake_fd)) {
     return WaitHostFallback(deadline, wake_fd);
   }
+  // A folder on the way that appeared while the watches were set up has no
+  // watch, and nothing created in it would be seen: the caller looks again.
+  if (WatchTargets(paths) != targets) return FileWaitResult::kChanged;
   for (size_t i = 0; i < paths.size(); ++i) {
     if (SnapshotFile(paths[i]) != observed[i]) return FileWaitResult::kChanged;
   }

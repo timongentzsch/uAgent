@@ -14,11 +14,6 @@
 namespace uagent {
 namespace {
 
-void Put(const std::filesystem::path& path, const std::string& text) {
-  std::filesystem::create_directories(path.parent_path());
-  std::ofstream(path) << text;
-}
-
 std::string Set(const std::string& folder, const std::string& name,
                 const std::string& value) {
   return ChangeSettings(folder, [&](SettingValues& scope) {
@@ -95,12 +90,12 @@ void TestSettingsStore() {
   // save keeps what the author wrote.
   {
     TestWorkspace edited("settings-store-edited");
-    Put(SettingsPath(),
-        R"({"format": 3, "projects": {}, "all": {"model": "kept",)"
-        R"( "limits.maxSteps": "many", "limits.maxToolCalls": -4,)"
-        R"( "limits.maxTurnSeconds": false, "title.model": 7,)"
-        R"( "sandbox.enabled": "off", "memory.enabled": 1,)"
-        R"( "sandbox.enabld": true, "variables": {"A": 1}}})");
+    WriteFile(SettingsPath(),
+              R"({"format": 3, "projects": {}, "all": {"model": "kept",)"
+              R"( "limits.maxSteps": "many", "limits.maxToolCalls": -4,)"
+              R"( "limits.maxTurnSeconds": false, "title.model": 7,)"
+              R"( "sandbox.enabled": "off", "memory.enabled": 1,)"
+              R"( "sandbox.enabld": true, "variables": {"A": 1}}})");
     SavedSettings read = ReadSettings("");
     CHECK(read.error.empty());
     // A value spelled as text is taken as written.
@@ -130,8 +125,9 @@ void TestSettingsStore() {
   // are the levels default and off, and a save writes the new name.
   {
     TestWorkspace switched("settings-store-sandbox-switch");
-    Put(SettingsPath(), R"({"format": 3, "all": {"sandbox.enabled": false},)"
-                        R"( "projects": {"/p": {"sandbox.enabled": true}}})");
+    WriteFile(SettingsPath(),
+              R"({"format": 3, "all": {"sandbox.enabled": false},)"
+              R"( "projects": {"/p": {"sandbox.enabled": true}}})");
     const SavedSettings read = ReadSettings("/p");
     CHECK(read.warning.empty());
     CHECK(read.all.at("UAGENT_SANDBOX") == "off");
@@ -151,7 +147,7 @@ void TestSettingsStore() {
     const std::string edited =
         R"({"format": 3, "projects": {}, "all": {"model": "by hand"}})";
     const std::string refused = ChangeSettings("", [&](SettingValues& scope) {
-      Put(SettingsPath(), edited);
+      WriteFile(SettingsPath(), edited);
       scope["UAGENT_MAX_STEPS"] = "5";
       return std::string();
     });
@@ -167,7 +163,8 @@ void TestSettingsStore() {
   // defined nowhere, and then nothing is set.
   {
     TestWorkspace referring("settings-store-referring");
-    Put(SettingsPath(),
+    WriteFile(
+        SettingsPath(),
         R"({"format": 3, "projects": {}, "all": {"limits.maxSteps": "$COUNT",)"
         R"( "limits.maxToolCalls": "$CALLS", "limits.maxTurnSeconds": "$NONE",)"
         R"( "variables": {"COUNT": "many", "CALLS": "7"}}})");
@@ -199,7 +196,7 @@ void TestSettingsStore() {
     CHECK(why.find("no.such.setting is not a setting") != std::string::npos);
     json spelled = now;
     spelled["all"]["coordinator.chatTurns"] = 2;
-    Put(SettingsPath(), JsonDump(spelled));
+    WriteFile(SettingsPath(), JsonDump(spelled));
     CHECK(ReadSettings("").all.at("UAGENT_PANEL_CHAT_TURNS") == "2");
   }
 
@@ -207,7 +204,8 @@ void TestSettingsStore() {
   // settings without disturbing the rest of either scope.
   {
     TestWorkspace earlier("settings-store-review-address");
-    Put(SettingsPath(),
+    WriteFile(
+        SettingsPath(),
         R"({"format":3,"all":{"approval.reviewerUrl":"https://old.test/alpha",)"
         R"("model":"keep"},"projects":{"/p":{"approval.reviewerUrl":)"
         R"("https://project.test/alpha","limits.maxSteps":7}}})");
@@ -225,7 +223,8 @@ void TestSettingsStore() {
   // variant joins the model id before its effort.
   {
     TestWorkspace endpoints("settings-store-endpoints");
-    Put(SettingsPath(),
+    WriteFile(
+        SettingsPath(),
         R"({"format": 2, "all": {"openrouter.provider": "streamlake",)"
         R"( "approval.reviewerUrl": "https://x.test/alpha",)"
         R"( "openrouter.variant": "nitro", "model": "vendor/m:high",)"
@@ -283,7 +282,8 @@ void TestSettingsStore() {
   // reference to a variable cannot take it, and the variant stays, reported.
   {
     TestWorkspace aliased("settings-store-alias-variant");
-    Put(SettingsPath(),
+    WriteFile(
+        SettingsPath(),
         R"({"format": 2, "all": {"model": "gw/fast:low",)"
         R"( "openrouter.variant": "floor", "providers": {"gw":)"
         R"( {"base_url": "https://gw.test", "protocol": "openrouter",)"
@@ -303,7 +303,7 @@ void TestSettingsStore() {
   }
   // A document that cannot be read is reported and never saved over.
   for (const char* broken : {"{\"format\": 1, \"all\": [", "null"}) {
-    Put(SettingsPath(), broken);
+    WriteFile(SettingsPath(), broken);
     CHECK(!ReadSettings(folder).error.empty());
     CHECK(!Set("", "UAGENT_MODEL", "m4").empty());
     CHECK(ReadFile(SettingsPath(), 1024).value_or("") == broken);

@@ -419,11 +419,15 @@ jobs:
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON
           cmake --build build --target uagent --parallel 4 && ccache --show-stats
-      - name: Hand the host to the browser shards
+      # Some specs read the bundle's files, .vite/manifest.json among them.
+      - name: Hand the host and bundle to the browser shards
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-host
-          path: build/uagent
+          path: |
+            build/uagent
+            web/dist
+          include-hidden-files: true
           retention-days: 1
       # The browser shards run in Playwright's image for this version, which
       # carries the browsers and the system libraries they need: no download
@@ -448,7 +452,6 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-host
-          path: build
       - run: chmod +x build/uagent && npm ci --prefix web
       - name: Browser integration against native host
         working-directory: web

@@ -13,6 +13,7 @@
 #include "include/app/schedule.h"
 #include "include/app/session.h"
 #include "include/app/session_host.h"
+#include "include/core/activity.h"
 #include "include/core/capture.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -176,7 +177,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   session.status = SessionStatus::kSaved;
   session.error.clear();
   // A saved conversation is read from disk.
-  session.state = {{"activity", "Ready"}};
+  session.state = {{"activity", kIdleActivity}};
   PublishLifecycle(session, {{"kind", "deactivated"}});
 }
 
@@ -459,7 +460,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     return true;
   }
   if (kind == "activity") {
-    session.state["activity"] = JsonValue(frame, "activity", "Ready");
+    session.state["activity"] = JsonValue(frame, "activity", kIdleActivity);
     session.state["phase"] = JsonValue(frame, "phase", "working");
     session.turn_active = JsonValue(frame, "busy", false);
     session.status = LiveStatus(session);

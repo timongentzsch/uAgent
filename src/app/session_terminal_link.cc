@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "include/agent/session_view.h"
+#include "include/core/activity.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -62,7 +63,7 @@ void Terminal::Receive(const json& frame) {
   } else if (kind == "activity") {
     presenter_.Consume(AppEvent{0, "", "activity.status", frame, false});
     std::lock_guard lock(mutex_);
-    state_["activity"] = JsonValue(frame, "activity", "Ready");
+    state_["activity"] = JsonValue(frame, "activity", kIdleActivity);
     wake_.Wake();
   } else if (kind == "event") {
     if (!ReceiveEvent(frame)) return;

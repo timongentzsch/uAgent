@@ -28,6 +28,7 @@
 #include "include/app/thread_link.h"
 #include "include/app/transient_batcher.h"
 #include "include/cli/cli.h"
+#include "include/core/activity.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
@@ -319,7 +320,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::string InitialTitle() const override { return title_; }
   void PublishState(const json& state, bool checkpoint) override {
     std::lock_guard lock(mutex_);
-    std::string activity = JsonValue(state_, "activity", "Ready");
+    std::string activity = JsonValue(state_, "activity", kIdleActivity);
     std::string phase = JsonValue(state_, "phase", "idle");
     int64_t started = JsonValue(state_, "turn_started_ms", int64_t{0});
     state_ = state;
@@ -348,7 +349,7 @@ class WorkerChannel final : public ApplicationChannel {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
-      state_["activity"] = "Ready";
+      state_["activity"] = kIdleActivity;
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();

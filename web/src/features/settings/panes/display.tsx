@@ -1,6 +1,6 @@
 import { plural } from "../../../shared/quantities.ts";
 import { Group, Row, ValueSelect } from "../../../shared/ui.tsx";
-import { ZoomSlider } from "../../../shared/zoom-slider.tsx";
+import { ZoomSelect } from "../../../shared/zoom-select.tsx";
 import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
 import { devicePrefs } from "../../../shared/device-prefs.ts";
 import { useStored } from "../../../shared/storage.ts";
@@ -94,11 +94,7 @@ export function DisplayPane() {
         label="Zoom"
         detail="Scales the entire interface, conversation included — like browser zoom."
       >
-        <ZoomSlider
-          zoom={zoom}
-          change={setZoom}
-          reset={() => setZoom(zoomPref.fallback)}
-        />
+        <ZoomSelect zoom={zoom} change={setZoom} />
       </Row>
       <Row
         label="Reset display"

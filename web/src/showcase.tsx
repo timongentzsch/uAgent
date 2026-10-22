@@ -67,7 +67,7 @@ const SETTINGS = [
 ];
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
-import { ZoomSlider } from "./shared/zoom-slider.tsx";
+import { ZoomSelect } from "./shared/zoom-select.tsx";
 import { applyDevicePrefs, devicePrefs } from "./shared/device-prefs.ts";
 import { useStored } from "./shared/storage.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
@@ -263,12 +263,8 @@ function Showcase() {
           </div>
           <div class="showcase-card">
             <Group>
-              <Row label="Zoom" detail="The value returns to 100% when tapped.">
-                <ZoomSlider
-                  zoom={zoom}
-                  change={setZoom}
-                  reset={() => setZoom(100)}
-                />
+              <Row label="Zoom" detail="Each step rescales once.">
+                <ZoomSelect zoom={zoom} change={setZoom} />
               </Row>
               <Row label="Locked setting" detail="Locked">
                 <Switch

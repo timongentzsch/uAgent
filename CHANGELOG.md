@@ -112,6 +112,8 @@
 - Titles and workspace names are limited in characters (256 and 64), as the
   web's form counts them; the host counted bytes, so a title with accents or
   emoji could pass the form and then be refused.
+- Zoom in Settings → This browser is a list of steps (50 to 200%) instead of
+  a slider, which rescaled the page under the finger at its first touch.
 - A diagram whose renderer fails to load says so and offers Retry, instead
   of showing "Rendering diagram…" for good.
 - An approval's choices read the same in the terminal and the web: "Allow

@@ -359,7 +359,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .locator(".settings-nav")
     .getByRole("button", { name: "This browser", exact: true })
     .click();
-  await settings.getByLabel("Zoom", { exact: true }).fill("200");
+  await settings.getByLabel("Zoom", { exact: true }).selectOption("200");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -405,7 +405,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .locator(".settings-nav")
     .getByRole("button", { name: "This browser", exact: true })
     .click();
-  await settings.getByRole("button", { name: /^Zoom .*reset$/ }).click();
+  await settings.getByLabel("Zoom", { exact: true }).selectOption("100");
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
   await measure("landscape");

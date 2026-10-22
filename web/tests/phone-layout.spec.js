@@ -422,7 +422,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .locator(".settings-nav")
       .getByRole("button", { name: "This browser", exact: true })
       .tap();
-    await settings.getByLabel("Zoom", { exact: true }).fill("50");
+    await settings.getByLabel("Zoom", { exact: true }).selectOption("50");
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
       .locator(".settings-nav")
@@ -435,7 +435,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .locator(".settings-nav")
       .getByRole("button", { name: "This browser", exact: true })
       .tap();
-    await settings.getByRole("button", { name: /^Zoom .*reset$/ }).tap();
+    await settings.getByLabel("Zoom", { exact: true }).selectOption("100");
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
       .tap();

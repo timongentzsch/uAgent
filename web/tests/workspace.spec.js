@@ -42,7 +42,7 @@ test("appearance and configuration remain usable at large scales", async ({
       padding: parseFloat(style.paddingInlineStart),
     };
   });
-  await page.getByLabel("Zoom", { exact: true }).fill("50");
+  await page.getByLabel("Zoom", { exact: true }).selectOption("50");
   await expect(page.locator("html")).toHaveCSS("--zoom", "0.5");
   await composer.focus();
   expect(
@@ -65,7 +65,7 @@ test("appearance and configuration remain usable at large scales", async ({
   });
   expect(smallControl.height).toBeLessThan(normalControl.height * 0.7);
   expect(smallControl.padding).toBeLessThan(normalControl.padding * 0.7);
-  await page.getByLabel("Zoom", { exact: true }).fill("110");
+  await page.getByLabel("Zoom", { exact: true }).selectOption("110");
   await expect(page.locator("html")).toHaveCSS("--zoom", "1.1");
   // One dial moves type and spacing together: conversation and chrome
   // type both grow, unlike the composer staying put before.
@@ -74,14 +74,14 @@ test("appearance and configuration remain usable at large scales", async ({
     "font-size",
     interfaceText,
   );
-  await page.getByLabel("Zoom", { exact: true }).fill("200");
+  await page.getByLabel("Zoom", { exact: true }).selectOption("200");
   await expect(page.locator("html")).toHaveCSS("--zoom", "2");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByLabel("Zoom", { exact: true }).fill("100");
+  await page.getByLabel("Zoom", { exact: true }).selectOption("100");
   await expect(page.locator("html")).toHaveCSS("--zoom", "1");
   await expect(composer).toHaveCSS("font-size", originalText);
   await page.getByRole("button", { name: "Back", exact: true }).click();

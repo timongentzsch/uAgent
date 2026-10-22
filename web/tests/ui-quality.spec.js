@@ -355,7 +355,9 @@ test.describe("touch interaction", () => {
         .locator(".settings-nav")
         .getByRole("button", { name: "This browser", exact: true })
         .click();
-      await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+      await settings
+        .getByLabel("Zoom", { exact: true })
+        .selectOption(String(zoom));
       await settings.getByRole("button", { name: "Close settings" }).click();
       await input.fill("Zoom and wrapping proof. ".repeat(12));
       await input.tap();
@@ -462,7 +464,9 @@ test.describe("touch interaction", () => {
         .locator(".settings-nav")
         .getByRole("button", { name: "This browser", exact: true })
         .click();
-      await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+      await settings
+        .getByLabel("Zoom", { exact: true })
+        .selectOption(String(zoom));
       // A phone shows one section at a time: back to the list first.
       const back = settings.getByRole("button", { name: "Back", exact: true });
       if (await back.isVisible()) await back.click();
@@ -529,7 +533,7 @@ test.describe("touch interaction", () => {
           contentType: "image/png",
         });
       await page.goto(SHOWCASE_URL);
-      await page.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+      await page.getByLabel("Zoom", { exact: true }).selectOption(String(zoom));
       await scaledFields(page, zoom);
       await page
         .getByRole("textbox", { name: "Long text", exact: true })

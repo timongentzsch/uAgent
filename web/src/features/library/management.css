@@ -191,14 +191,3 @@
     flex: none;
   }
 }
-.import-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--gap);
-  padding: var(--space-3) 0;
-}
-.import-row small {
-  display: block;
-  color: var(--muted);
-}

@@ -28,7 +28,7 @@
   width: var(--popover);
   max-width: calc(100% - 2 * var(--gap));
   padding: 0;
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--surface);
   color: var(--text);
   overflow: auto;
@@ -78,7 +78,7 @@
   display: flex;
   align-items: center;
   gap: var(--gap);
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
   padding-top: var(--pad);
 }
 /* The menu keeps to the end of the row. */

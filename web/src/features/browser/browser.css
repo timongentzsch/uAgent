@@ -86,7 +86,7 @@ dialog.browser-view[data-layout="sheet"] {
   display: flex;
   gap: var(--space-1);
   padding: var(--space-1);
-  border: 1px solid var(--line);
+  border: var(--border);
   background: var(--surface);
   color: var(--text);
 }
@@ -97,7 +97,7 @@ dialog.browser-view[data-layout="sheet"] {
   display: grid;
   gap: var(--gap);
   padding: var(--pad);
-  border: 1px solid var(--line);
+  border: var(--border);
   background: var(--surface);
   color: var(--text);
 }
@@ -139,7 +139,7 @@ dialog.browser-view[data-layout="sheet"] {
   min-width: 0;
   height: calc(var(--control) + 2 * var(--gap));
   padding: var(--gap) var(--inset-x);
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
   background: var(--bg);
 }
 .browser-status-menu {

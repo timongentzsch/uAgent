@@ -3,7 +3,7 @@
   align-items: end;
   gap: var(--gap);
   padding: var(--pad);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
 }
 .management-toolbar > .field {
   flex: 1;
@@ -22,7 +22,7 @@
   flex: 0 0 15rem;
   padding: var(--pad);
   overflow: auto;
-  border-right: 1px solid var(--line);
+  border-right: var(--border);
 }
 .management-list > .text-control {
   margin-bottom: var(--gap);
@@ -50,7 +50,7 @@
   display: none;
 }
 .run-history {
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
   padding-top: var(--pad);
 }
 .run-history h2 {
@@ -134,7 +134,7 @@
 }
 .run-row {
   display: flex;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
   align-items: center;
 }
 .run-row > button:first-child {

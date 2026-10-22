@@ -9,7 +9,7 @@
   max-height: min(var(--pane), calc(var(--viewport-height) * 0.4));
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--surface);
 }
 .suggestions button {

@@ -68,6 +68,6 @@
   align-self: center;
   margin: var(--space-4) 0 calc(var(--space-4) + var(--safe-bottom));
   padding: var(--space-2);
-  border: 1px solid var(--line);
+  border: var(--border);
   background: var(--raised);
 }

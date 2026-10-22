@@ -34,7 +34,7 @@
 .keys kbd {
   min-width: 1.6em;
   padding: 0 var(--space-1);
-  border: 1px solid var(--line);
+  border: var(--border);
   font: inherit;
   font-size: var(--font-small);
   text-align: center;

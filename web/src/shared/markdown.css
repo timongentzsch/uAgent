@@ -62,7 +62,7 @@
 }
 .markdown th,
 .markdown td {
-  border: 1px solid var(--line);
+  border: var(--border);
   padding: var(--space-2) var(--space-4);
   /* Preserve intrinsic word widths; wide tables scroll in their wrapper. */
   overflow-wrap: normal;

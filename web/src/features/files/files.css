@@ -6,7 +6,7 @@
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  border-left: 1px solid var(--line);
+  border-left: var(--border);
   background: var(--bg);
 }
 .files-sheet > .dialog-body {
@@ -26,7 +26,7 @@
   gap: var(--space-2);
   min-height: var(--touch);
   padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border);
 }
 .files-title {
   flex: 1;
@@ -79,7 +79,7 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
-  border-right: 1px solid var(--line);
+  border-right: var(--border);
   background: var(--surface);
 }
 .files-crumbs {
@@ -159,7 +159,7 @@
   cursor: zoom-in;
 }
 .files-cut {
-  border-top: 1px solid var(--line);
+  border-top: var(--border);
 }
 
 /* One row per line: the number column sizes to the longest number and
@@ -200,7 +200,7 @@
 }
 .files-image img {
   max-width: 100%;
-  border: 1px solid var(--line);
+  border: var(--border);
 }
 .files-binary {
   display: flex;

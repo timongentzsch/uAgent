@@ -21,7 +21,7 @@
   max-height: min(var(--pane), calc(var(--viewport-height) * 0.35));
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--field-border);
+  border: var(--border-field);
   background: var(--surface);
 }
 .search-select-list button > span {

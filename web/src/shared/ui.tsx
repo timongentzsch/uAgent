@@ -43,7 +43,7 @@ import { useStored } from "./storage.ts";
 
 // Whether any prop changed identity: the update check of a view whose
 // parent renders more often than its props change.
-export const propsChanged = (prior: object, next: object) =>
+const propsChanged = (prior: object, next: object) =>
   Object.entries(next).some(
     ([key, value]) => (prior as Record<string, unknown>)[key] !== value,
   );

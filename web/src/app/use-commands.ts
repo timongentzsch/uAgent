@@ -12,10 +12,7 @@ import { command, requestId } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import { outgoingStatus } from "../shared/message-view.ts";
 import { folderOf } from "../shared/display.ts";
-import {
-  restartConversation,
-  shareTranscript,
-} from "../features/sidebar/sidebar.tsx";
+import { restartConversation, shareTranscript } from "./menus.tsx";
 import { parseSlash } from "../features/composer/slash.ts";
 import { focusComposer } from "../shared/navigation.ts";
 

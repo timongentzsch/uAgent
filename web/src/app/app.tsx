@@ -18,10 +18,8 @@ import { Modal, Deferred, Spinner, ErrorBoundary } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
-import Sidebar, {
-  ConversationMenu,
-  sessionOrder,
-} from "../features/sidebar/sidebar.tsx";
+import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
+import { ConversationMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById, threadsOf } from "../state/attention.ts";

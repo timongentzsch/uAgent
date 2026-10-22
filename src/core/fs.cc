@@ -86,11 +86,6 @@ std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
   return cwd / kWorkspaceDir;
 }
 
-// Write every byte or report why not; errno is left set for the caller.
-bool WriteFully(int fd, std::string_view data) {
-  return WriteAll(fd, data.data(), data.size());
-}
-
 // mkstemp over a pattern string. `path` always receives the expanded template,
 // including on failure - callers name it in their error message.
 int CreateTempFile(const std::string& pattern, std::string& path) {
@@ -446,7 +441,7 @@ bool AtomicWriteFile(const std::string& path, const std::string& content,
                     ? st.st_mode & 07777
                     : create_mode;
   if (fchmod(fd.Get(), mode) != 0) return fail(strerror(errno));
-  if (!WriteFully(fd.Get(), content)) {
+  if (!WriteAll(fd.Get(), content)) {
     return fail("write to " + path + " failed: " + strerror(errno));
   }
   // A deferred write can still fail in close(2), so the commit is fsync plus
@@ -549,7 +544,7 @@ bool AppendPrivateLine(const std::string& path, const std::string& line,
     error = strerror(errno);
     return false;
   }
-  const bool written = WriteFully(fd.Get(), line + "\n");
+  const bool written = WriteAll(fd.Get(), line + "\n");
   if (!written) error = strerror(errno);
   flock(fd.Get(), LOCK_UN);
   return written;

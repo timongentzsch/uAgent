@@ -696,7 +696,7 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
             log_fd = session->log_fd.Get();
             notify = true;
           }
-          if (log_fd >= 0) (void)WriteAll(log_fd, bytes.data(), keep);
+          if (log_fd >= 0) (void)WriteAll(log_fd, chunk.substr(0, keep));
         }
       }
 

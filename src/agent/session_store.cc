@@ -536,7 +536,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
             if (count == 0) break;
             if (count < 0 ||
                 static_cast<size_t>(count) > kSessionReadBytes - copied ||
-                !WriteFully(
+                !WriteAll(
                     copy.Get(),
                     std::string_view(buffer, static_cast<size_t>(count)))) {
               ec = std::make_error_code(std::errc::io_error);

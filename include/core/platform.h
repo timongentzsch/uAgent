@@ -19,7 +19,7 @@ namespace uagent {
 char** ProcessEnvironment();
 
 // Write every byte or report failure. errno is left set for the caller.
-bool WriteAll(int fd, const void* data, size_t size);
+bool WriteAll(int fd, std::string_view data);
 
 // The same for a nonblocking descriptor: each chunk waits at most
 // `timeout_ms` for the peer to drain, so a stuck reader cannot hang us.

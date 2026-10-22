@@ -28,7 +28,7 @@ namespace {
 // share a trace, and their lines must not run into each other.
 void WriteJsonLine(FILE* file, const json& record) {
   const std::string line = JsonDump(record) + "\n";
-  (void)WriteAll(fileno(file), line.data(), line.size());
+  (void)WriteAll(fileno(file), line);
 }
 
 std::string DefaultDebugPath() {

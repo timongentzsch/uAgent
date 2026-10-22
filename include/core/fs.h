@@ -113,9 +113,6 @@ inline constexpr const char* kSessionEditsSuffix = ".edits";
 // Remembered approval rules under kConfigDir; they grant future authority.
 inline constexpr const char* kPermissionStoreFile = "permissions.json";
 
-// Write every byte or report why not; errno is left set for the caller.
-bool WriteFully(int fd, std::string_view data);
-
 // mkstemp over a pattern string. `path` always receives the expanded template,
 // including on failure — callers name it in their error message.
 int CreateTempFile(const std::string& pattern, std::string& path);

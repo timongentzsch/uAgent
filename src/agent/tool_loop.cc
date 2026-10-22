@@ -87,7 +87,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
         {"complete", true}};
     std::string body = JsonDump(exchange);
     ScopedTempFile file(UagentDir(kArtifactsDir) + "/exchange-XXXXXX");
-    if (file && WriteFully(file.Get(), body)) {
+    if (file && WriteAll(file.Get(), body)) {
       facts["exchange_path"] = file.Release();
     }
   }
@@ -362,7 +362,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
       ScopedTempFile file(edits_.Directory().empty()
                               ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
                               : edits_.Directory() + "/diff-XXXXXX");
-      if (file && WriteFully(file.Get(), diff)) {
+      if (file && WriteAll(file.Get(), diff)) {
         task.result.display_path = file.Release();
       }
       diff = Utf8Prefix(std::move(diff), kChangePreviewChars);

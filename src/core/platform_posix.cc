@@ -36,13 +36,12 @@ namespace uagent {
 
 char** ProcessEnvironment() { return environ; }
 
-bool WriteAll(int fd, const void* data, size_t size) {
-  const auto* bytes = static_cast<const char*>(data);
-  for (size_t offset = 0; offset < size;) {
-    ssize_t written = write(fd, bytes + offset, size - offset);
+bool WriteAll(int fd, std::string_view data) {
+  while (!data.empty()) {
+    ssize_t written = write(fd, data.data(), data.size());
     if (written < 0 && errno == EINTR) continue;
     if (written <= 0) return false;
-    offset += static_cast<size_t>(written);
+    data.remove_prefix(static_cast<size_t>(written));
   }
   return true;
 }

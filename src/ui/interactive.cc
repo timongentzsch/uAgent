@@ -68,7 +68,7 @@ InteractiveOutputUpdate InteractiveOutput::Read(bool finish) {
 }
 
 void InteractiveOutput::Write(const std::string& text) const {
-  (void)WriteAll(saved_.Get(), text.data(), text.size());
+  (void)WriteAll(saved_.Get(), text);
 }
 
 }  // namespace uagent

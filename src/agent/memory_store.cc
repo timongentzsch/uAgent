@@ -173,11 +173,11 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
       tail.erase(0, first_line + 1);
     }
     if (ftruncate(fd.Get(), 0) != 0 || lseek(fd.Get(), 0, SEEK_SET) < 0 ||
-        !WriteFully(fd.Get(), tail)) {
+        !WriteAll(fd.Get(), tail)) {
       return fail(strerror(errno));
     }
   }
-  if (!WriteFully(fd.Get(), line + "\n")) return fail(strerror(errno));
+  if (!WriteAll(fd.Get(), line + "\n")) return fail(strerror(errno));
   flock(fd.Get(), LOCK_UN);
   if (fd.Close() != 0) {
     error = strerror(errno);

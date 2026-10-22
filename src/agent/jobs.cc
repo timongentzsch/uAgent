@@ -480,7 +480,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
                                std::to_string(id) + ": " +
                                std::strerror(interrupt_error));
       }
-    } else if (!WriteAll(input.Get(), chars.data(), chars.size())) {
+    } else if (!WriteAll(input.Get(), chars)) {
       int write_error = errno;
       return ToolFailure(ToolErrorCode::kProcessFailed,
                          "could not write activity " + std::to_string(id) +

@@ -126,14 +126,12 @@ def rebuild_fanout() -> dict[str, int]:
     iteration slow.
     """
     counts: collections.Counter[str] = collections.Counter()
-    directories = sorted(
-        {path.parent for path in (ROOT / "build").glob("*/CMakeFiles/uagent_core.dir")}
-    )
+    directories = sorted((ROOT / "build").glob("*/CMakeFiles/uagent_app.dir"))
     if not directories:
         return {}
     # One build directory, and each header counted once per translation unit:
     # the number has to mean "objects rebuilt", not "lines in depfiles".
-    for depfile in directories[0].rglob("*.o.d"):
+    for depfile in directories[0].parent.rglob("*.o.d"):
         text = depfile.read_text(errors="replace").replace("\\\n", " ")
         _, _, dependencies = text.partition(":")
         seen: set[str] = set()

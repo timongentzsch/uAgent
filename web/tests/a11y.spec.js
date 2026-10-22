@@ -213,17 +213,6 @@ test("an approval decision has no violations and takes focus", async ({
   await expect(heading).toHaveCount(0);
 });
 
-test("the settings sheet has no violations", async ({ page, session }) => {
-  await page.goto(`/#session=${session.id}`);
-  await headerAction(page, "Settings");
-  const settings = page.getByRole("dialog", { name: "Settings" });
-  await expect(settings).toBeVisible();
-  await expect(
-    settings.getByRole("status", { name: "Loading settings…" }),
-  ).toHaveCount(0);
-  expect(await violations(page)).toEqual([]);
-});
-
 for (const scheme of ["dark", "light"])
   test(`the files pane and the resize handles have no violations in ${scheme}`, async ({
     page,

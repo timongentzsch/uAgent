@@ -346,14 +346,19 @@ void TestAudioVideoAttachments() {
   CHECK(capabilities.video_input);
   CHECK(!capabilities.image_input);
   CHECK(!capabilities.file_input);
-  error.clear();
-  CHECK(InspectAttachment(song.string(), attachment, error));
-  json request = json::array(
-      {{{"role", "user"},
-        {"content", AttachmentContent("transcribe", {attachment}, error)}}});
   json deliveries;
-  CHECK(PrepareAttachments(request, capabilities, false, "hearing", error,
-                           &deliveries));
+  auto prepare = [&](const fs::path& path, const char* label) {
+    error.clear();
+    CHECK(InspectAttachment(path.string(), attachment, error));
+    json prepared = json::array(
+        {{{"role", "user"},
+          {"content", AttachmentContent("take this", {attachment}, error)}}});
+    deliveries = json();
+    CHECK(PrepareAttachments(prepared, capabilities, false, label, error,
+                             &deliveries));
+    return prepared;
+  };
+  json request = prepare(song, "hearing");
   CHECK(error.empty());
   CHECK(deliveries[0]["delivery"] == "Audio");
   const json* audio = JsonObject(request[0]["content"][1], "input_audio");
@@ -361,11 +366,7 @@ void TestAudioVideoAttachments() {
   CHECK(JsonValue(*audio, "format", "") == "mp3");
   CHECK(!JsonValue(*audio, "data", "").empty());
   // An MP4 audio container is m4a on the wire, not mp3.
-  CHECK(InspectAttachment(memo.string(), attachment, error));
-  request = json::array(
-      {{{"role", "user"},
-        {"content", AttachmentContent("transcribe", {attachment}, error)}}});
-  CHECK(PrepareAttachments(request, capabilities, false, "memo", error));
+  request = prepare(memo, "memo");
   CHECK(JsonValue(request[0]["content"][1]["input_audio"], "format", "") ==
         "m4a");
   // Responses and Anthropic Messages have no speech or video parts, so a
@@ -376,14 +377,7 @@ void TestAudioVideoAttachments() {
     other.SetInputModalities(json::array({"text", "audio", "video"}), dialect);
     CHECK(!other.audio_input && !other.video_input);
   }
-  error.clear();
-  CHECK(InspectAttachment(clip.string(), attachment, error));
-  request = json::array(
-      {{{"role", "user"},
-        {"content", AttachmentContent("watch", {attachment}, error)}}});
-  deliveries = json();
-  CHECK(PrepareAttachments(request, capabilities, false, "seeing", error,
-                           &deliveries));
+  request = prepare(clip, "seeing");
   CHECK(error.empty());
   CHECK(deliveries[0]["delivery"] == "Video");
   CHECK(JsonValue(request[0]["content"][1]["video_url"], "url", "")
@@ -391,14 +385,7 @@ void TestAudioVideoAttachments() {
   // Without the flags both kinds degrade to file paths, like images.
   capabilities.SetInputModalities(json::array({"text"}),
                                   WireApi::kChatCompletions);
-  error.clear();
-  CHECK(InspectAttachment(song.string(), attachment, error));
-  request = json::array(
-      {{{"role", "user"},
-        {"content", AttachmentContent("transcribe", {attachment}, error)}}});
-  deliveries = json();
-  CHECK(PrepareAttachments(request, capabilities, false, "deaf", error,
-                           &deliveries));
+  request = prepare(song, "deaf");
   CHECK(deliveries[0]["delivery"] == "File reference");
   CHECK(JsonDump(request).find("input_audio") == std::string::npos);
   CHECK(std::string(ModelAudioInputInstruction(false))

@@ -30,6 +30,7 @@ from integration_support import (
     session_files,
     signal_process_group,
     tool_call,
+    tool_calls,
     tool_results,
     wait_until,
 )
@@ -597,23 +598,11 @@ def test_parallel_run_overlaps(root, home, *, binary):
     # from the commands themselves, not from how long the run took. Whole
     # seconds are enough beside a four-second sleep.
     stamp = "date +%s"
-    batch = event(
-        {
-            "tool_calls": [
-                {
-                    "index": i,
-                    "id": f"call-{i}",
-                    "function": {
-                        "name": "run",
-                        "arguments": json.dumps(
-                            {"command": f"{stamp} > begin{i}; sleep 4; {stamp} > end{i}"}
-                        ),
-                    },
-                }
-                for i in range(count)
-            ]
-        },
-        finish="tool_calls",
+    batch = tool_calls(
+        [
+            (f"call-{i}", "run", {"command": f"{stamp} > begin{i}; sleep 4; {stamp} > end{i}"})
+            for i in range(count)
+        ]
     )
     with Server([batch, event({"content": "parallel-run-ok"})]) as server:
         result = run(

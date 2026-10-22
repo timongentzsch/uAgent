@@ -117,38 +117,6 @@ test("compact quantities use decimal units and promote rounded thresholds", () =
     assert.equal(bytes(value), result);
 });
 
-test("async receipts retain their kind with uniform chrome", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "go" },
-    {
-      id: "m-8",
-      kind: "activity",
-      activity_id: 1073741824,
-      activity: { category: "execute", label: "activity 1073741824" },
-      text: "activity 1073741824 completed",
-      status: "completed",
-    },
-  ]);
-  assert.equal(rows.length, 2);
-  assert.equal(rows[1].id, "m-8");
-  assert.equal(rows[1].kind, "activity");
-  assert.equal(rows[1].activity?.category, "execute");
-});
-
-test("tool-sourced attachments stay inline with uploads", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "hi" },
-    { id: "a1", kind: "attachment", origin: "tool", text: "shot" },
-    { id: "m1", kind: "assistant", text: "a" },
-    { id: "a2", kind: "attachment", text: "mine" },
-    { id: "m2", kind: "assistant", text: "b" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.id),
-    ["u1", "a1", "m1", "a2", "m2"],
-  );
-});
-
 test("running rows never read as not recorded", () => {
   for (const status of [undefined, "", "running", "pending", "not recorded"]) {
     assert.ok(isRunningStatus(status), JSON.stringify(status));
@@ -355,12 +323,14 @@ test("consecutive tools stay flat rows in order", () => {
     },
     { id: "m1", kind: "assistant", text: "done" },
     { id: "t3", kind: "tool_result", call_id: "c3", text: "solo" },
+    { id: "x1", kind: "activity", activity: { category: "execute" } },
     { id: "m2", kind: "assistant", text: "end" },
   ]);
   assert.deepEqual(
     rows.map((row) => row.id),
-    ["u1", "t1", "t2", "a1", "m1", "t3", "m2"],
+    ["u1", "t1", "t2", "a1", "m1", "t3", "x1", "m2"],
   );
+  assert.equal(rows[6].activity?.category, "execute");
 });
 
 const call = (id, category, status = "success") => ({

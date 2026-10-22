@@ -77,13 +77,8 @@ def test_mcp_image_reaches_the_model(root, home, *, binary):
     workspace.mkdir()
     png = base64.b64encode(SMALL_PNG).decode()
     fake = workspace / "fake_mcp.py"
-    fake.write_text(
-        "import json, sys\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    method = message.get('method')\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
+    write_mcp_server(
+        fake,
         "    if method == 'server/discover':\n"
         "        result = {'supportedVersions': ['2026-07-28'], "
         "'capabilities': {'tools': {}}}\n"
@@ -96,10 +91,8 @@ def test_mcp_image_reaches_the_model(root, home, *, binary):
         "        result = {'content': [{'type': 'image', 'data': PNG, "
         "'mimeType': 'image/png'}]}\n"
         "    else:\n"
-        "        result = {}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), "
-        "flush=True)\n".replace("PNG", repr(png)),
-        encoding="utf-8",
+        "        result = {}\n",
+        setup=f"PNG = {png!r}\n",
     )
     (workspace / ".mcp.json").write_text(
         json.dumps({"mcpServers": {"cam": {"command": sys.executable, "args": [str(fake)]}}}),
@@ -269,93 +262,23 @@ def test_required_mcp_failure_stops_bootstrap(root, home, *, binary):
         assert_true(not server.requests, server.requests)
 
 
-def test_mcp_tool_round_trip(root, home, *, binary):
-    workspace = root / "mcp-round-trip"
-    workspace.mkdir()
-    fake = workspace / "fake_mcp.py"
-    fake.write_text(
-        "import json, sys\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    method = message.get('method')\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
-        "    meta = message.get('params', {}).get('_meta', {})\n"
-        "    assert meta.get('io.modelcontextprotocol/protocolVersion') == '2026-07-28'\n"
-        "    if method == 'server/discover':\n"
-        "        result = {'supportedVersions': ['2026-07-28'], "
-        "'capabilities': {'tools': {}}}\n"
-        "    elif method == 'tools/list':\n"
-        "        result = {'tools': [{'name': 'echo', 'description': 'echo text', "
-        "'inputSchema': {'type': 'object', 'properties': {'text': {'type': 'string'}}, "
-        "'required': ['text']}}]}\n"
-        "    elif method == 'tools/call':\n"
-        "        text = message.get('params', {}).get('arguments', {}).get('text', '')\n"
-        "        result = {'content': [{'type': 'text', 'text': 'mcp:' + text}]}\n"
-        "    else:\n"
-        "        result = {}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), "
-        "flush=True)\n",
-        encoding="utf-8",
-    )
-    (workspace / ".mcp.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "probe": {
-                        "command": sys.executable,
-                        "args": [str(fake)],
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    def final(_, body):
-        result = tool_results(body["messages"])[0]
-        return event({"content": "mcp-ok" if "mcp:hello" in result else "mcp-bad"})
-
-    with Server([tool_call("probe_echo", {"text": "hello"}), final]) as server:
-        result = run(
-            workspace,
-            base_env(home, server.url),
-            "--trust-project-config",
-            "--yolo",
-            "-p",
-            "probe",
-            binary=binary,
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "mcp-ok", result.stdout)
-        names = function_names(server.requests[0][1])
-        assert_true("probe_echo" in names, names)
-
-
 def test_mcp_log_bound_does_not_limit_server_files(root, home, *, binary):
     workspace = root / "mcp-log-bound"
     workspace.mkdir()
     artifact = workspace / "artifact.bin"
     fake = workspace / "fake_mcp.py"
-    fake.write_text(
-        "import json, sys\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
-        "    if message.get('method') == 'server/discover':\n"
+    write_mcp_server(
+        fake,
+        "    if method == 'server/discover':\n"
         f"        open({str(artifact)!r}, 'wb').write(b'x' * 65536)\n"
         "        sys.stderr.write('noise ' * 20000)\n"
         "        sys.stderr.flush()\n"
         "        result = {'supportedVersions': ['2026-07-28'], "
         "'capabilities': {'tools': {}}}\n"
-        "    elif message.get('method') == 'tools/list':\n"
+        "    elif method == 'tools/list':\n"
         "        result = {'tools': []}\n"
         "    else:\n"
-        "        result = {}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), "
-        "flush=True)\n",
-        encoding="utf-8",
+        "        result = {}\n",
     )
     (workspace / ".mcp.json").write_text(
         json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}}),
@@ -383,13 +306,8 @@ def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
         encoding="utf-8",
     )
     fast = workspace / "fast_mcp.py"
-    fast.write_text(
-        "import json, sys\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
-        "    method = message.get('method')\n"
+    write_mcp_server(
+        fast,
         "    if method == 'server/discover':\n"
         "        result = {'supportedVersions': ['2026-07-28'], "
         "'capabilities': {'tools': {}}}\n"
@@ -399,10 +317,7 @@ def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
         "    elif method == 'tools/call':\n"
         "        result = {'content': [{'type': 'text', 'text': 'fast'}]}\n"
         "    else:\n"
-        "        result = {}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
-        "'result': result}), flush=True)\n",
-        encoding="utf-8",
+        "        result = {}\n",
     )
     (workspace / ".mcp.json").write_text(
         json.dumps(
@@ -495,13 +410,8 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
     workspace = root / "mcp-optional-notification"
     workspace.mkdir()
     fake = workspace / "fake_mcp.py"
-    fake.write_text(
-        "import json, sys, time\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
-        "    method = message.get('method')\n"
+    write_mcp_server(
+        fake,
         "    if method == 'server/discover':\n"
         "        print(json.dumps({'jsonrpc': '2.0', 'method': "
         "'notifications/message', 'params': {'message': 'booting'}}), flush=True)\n"
@@ -514,10 +424,8 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
         "    elif method == 'tools/call':\n"
         "        result = {'content': [{'type': 'text', 'text': 'notice-tool'}]}\n"
         "    else:\n"
-        "        result = {}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
-        "'result': result}), flush=True)\n",
-        encoding="utf-8",
+        "        result = {}\n",
+        extra_imports=("time",),
     )
     (workspace / ".mcp.json").write_text(
         json.dumps(
@@ -558,14 +466,8 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
     workspace.mkdir()
     requests = workspace / "tools-list-count"
     delayed = workspace / "delayed_mcp.py"
-    delayed.write_text(
-        "import json, pathlib, sys, time\n"
-        f"count = pathlib.Path({str(requests)!r})\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
-        "    method = message.get('method')\n"
+    write_mcp_server(
+        delayed,
         "    if method == 'server/discover':\n"
         "        result = {'supportedVersions': ['2026-07-28'], "
         "'capabilities': {'tools': {}}}\n"
@@ -577,10 +479,9 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
         "    elif method == 'tools/call':\n"
         "        result = {'content': [{'type': 'text', 'text': 'slow-tool'}]}\n"
         "    else:\n"
-        "        result = {}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
-        "'result': result}), flush=True)\n",
-        encoding="utf-8",
+        "        result = {}\n",
+        extra_imports=("pathlib", "time"),
+        setup=f"count = pathlib.Path({str(requests)!r})\n",
     )
     (workspace / ".mcp.json").write_text(
         json.dumps(

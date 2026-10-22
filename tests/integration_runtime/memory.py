@@ -84,8 +84,7 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
         )
         return event({"content": "isolated-ok" if valid else "isolated-bad"})
 
-    server = Server([verify, verify_isolated])
-    try:
+    with Server([verify, verify_isolated]) as server:
         env = base_env(home, server.url)
         result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
@@ -93,10 +92,6 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
         elsewhere = run(other, env, "-p", "reply", binary=binary)
         assert_true(elsewhere.returncode == 0, elsewhere.stderr)
         assert_true(elsewhere.stdout.strip() == "isolated-ok", elsewhere.stdout)
-    finally:
-        server.close()
-        # HOME is shared by every test; a global memory would join them all.
-        (global_dir / "style.md").unlink(missing_ok=True)
 
 
 def test_configured_redaction_keywords_apply(root, home, *, binary):
@@ -128,18 +123,13 @@ def test_configured_redaction_keywords_apply(root, home, *, binary):
         )
         return event({"content": "redact-ok" if valid else "redact-bad"})
 
-    server = Server([verify])
-    try:
+    with Server([verify]) as server:
         env = base_env(home, server.url)
         # ".*" must be treated as a literal keyword, not a pattern.
         env["UAGENT_MEMORY_REDACT_KEYWORDS"] = "db_dsn, .*"
         result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "redact-ok", result.stdout)
-    finally:
-        server.close()
-        # HOME is shared by every test; a global memory would join them all.
-        (global_dir / "creds.md").unlink(missing_ok=True)
 
 
 def test_memory_background_extractor_is_bounded(root, home, *, binary):
@@ -245,11 +235,9 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         assert_true(code == 0 and len(server.requests) == 5 and states() == ["done"], output)
 
 
-def test_memory_off_conversations_are_never_extracted(root, _home, *, binary):
+def test_memory_off_conversations_are_never_extracted(root, home, *, binary):
     """--no-memory leaves no trace in memory: neither recall nor, six idle
     hours later, a lesson distilled from that conversation."""
-    # Its own home: other tests leave claim markers in the shared one.
-    home = root / "memory-off-home"
     workspace = root / "memory-off-workspace"
     workspace.mkdir()
     session = write_session(
@@ -466,16 +454,12 @@ def test_no_memory_hides_index_and_tool(root, home, *, binary):
         )
         return event({"content": "no-memory-ok" if clean else "no-memory-bad"})
 
-    server = Server([verify])
-    try:
+    with Server([verify]) as server:
         result = run(
             workspace, base_env(home, server.url), "--no-memory", "-p", "inspect", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "no-memory-ok", result.stdout)
-    finally:
-        server.close()
-        (global_dir / "global.md").unlink(missing_ok=True)
 
 
 def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
@@ -503,13 +487,9 @@ def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
             return tool_call("subagent", {"prompt": "child-brief"})
         return event({"content": "parent-done"})
 
-    try:
-        with Server([route]) as server:
-            result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(seen.get("parent") is True, seen)
-        assert_true(seen.get("child") == (False, False), seen)
-        assert_true("memory context truncated" not in result.stderr, result.stderr)
-    finally:
-        for name in ("first", "second", "third"):
-            (global_dir / f"{name}.md").unlink(missing_ok=True)
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+    assert_true(result.returncode == 0, result.stderr)
+    assert_true(seen.get("parent") is True, seen)
+    assert_true(seen.get("child") == (False, False), seen)
+    assert_true("memory context truncated" not in result.stderr, result.stderr)

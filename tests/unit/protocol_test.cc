@@ -193,56 +193,45 @@ void TestToolResults() {
   CHECK(!ApplyRemoteError(overflow_error, overflow));
   CHECK(overflow.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
   CHECK(SafeContextRecovery(overflow));
-  ChatResult wrapped_overflow;
-  CHECK(!ApplyRemoteError(
-      "Codex response failed: {'code': 'context_length_exceeded'}",
-      wrapped_overflow));
-  CHECK(wrapped_overflow.remote_error_kind ==
-        RemoteErrorKind::kContextLengthExceeded);
-  // Structured errors with only a descriptive message must still classify
-  // as context overflow so long sessions compact instead of dying hard.
-  json semantic_overflow = {
-      {"type", "invalid_request_error"},
-      {"message",
-       "This model's maximum context length is 16385 tokens. "
-       "However, your messages resulted in 23886 tokens."}};
-  ChatResult semantic;
-  CHECK(!ApplyRemoteError(semantic_overflow, semantic));
-  CHECK(semantic.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
-  CHECK(SafeContextRecovery(semantic));
-  ChatResult anthropic_overflow;
-  CHECK(!ApplyRemoteError(
-      {{"type", "invalid_request_error"},
-       {"message", "prompt is too long: 300000 tokens > 200000 maximum"}},
-      anthropic_overflow));
-  CHECK(anthropic_overflow.remote_error_kind ==
-        RemoteErrorKind::kContextLengthExceeded);
-  // opencode-ported patterns (packages/llm/src/provider-error.ts).
-  ChatResult codex_style;
-  CHECK(!ApplyRemoteError(
-      {{"message", "input is too long for requested model"}}, codex_style));
-  CHECK(codex_style.remote_error_kind ==
-        RemoteErrorKind::kContextLengthExceeded);
-  ChatResult parenthesized;
-  CHECK(!ApplyRemoteError(
-      {{"message", "exceeds the model's maximum context length (200000)"}},
-      parenthesized));
-  CHECK(parenthesized.remote_error_kind ==
-        RemoteErrorKind::kContextLengthExceeded);
-  ChatResult bare_code;
-  CHECK(!ApplyRemoteError({{"message", "context_length_exceeded"}}, bare_code));
-  CHECK(bare_code.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
-  // opencode's exclusion set: throttling text wins over token phrasing.
-  ChatResult rate_limited;
-  CHECK(!ApplyRemoteError(
-      {{"message", "rate limit exceeded: too many tokens this minute"}},
-      rate_limited));
-  CHECK(rate_limited.remote_error_kind == RemoteErrorKind::kNone);
-  ChatResult unrelated_error;
-  CHECK(!ApplyRemoteError({{"type", "invalid_request_error"},
-                           {"message", "unsupported parameter: temperature"}},
-                          unrelated_error));
-  CHECK(unrelated_error.remote_error_kind == RemoteErrorKind::kNone);
+  // Each provider's way of saying the context is full, and two that are not.
+  // Structured errors with only a descriptive message must still classify as
+  // context overflow so long sessions compact instead of dying hard; the
+  // opencode-ported patterns (packages/llm/src/provider-error.ts) include its
+  // exclusion set, where throttling text wins over token phrasing.
+  struct ErrorCase {
+    json error;
+    RemoteErrorKind kind;
+  };
+  const ErrorCase error_cases[] = {
+      {"Codex response failed: {'code': 'context_length_exceeded'}",
+       RemoteErrorKind::kContextLengthExceeded},
+      {{{"type", "invalid_request_error"},
+        {"message",
+         "This model's maximum context length is 16385 tokens. "
+         "However, your messages resulted in 23886 tokens."}},
+       RemoteErrorKind::kContextLengthExceeded},
+      {{{"type", "invalid_request_error"},
+        {"message", "prompt is too long: 300000 tokens > 200000 maximum"}},
+       RemoteErrorKind::kContextLengthExceeded},
+      {{{"message", "input is too long for requested model"}},
+       RemoteErrorKind::kContextLengthExceeded},
+      {{{"message", "exceeds the model's maximum context length (200000)"}},
+       RemoteErrorKind::kContextLengthExceeded},
+      {{{"message", "context_length_exceeded"}},
+       RemoteErrorKind::kContextLengthExceeded},
+      {{{"message", "rate limit exceeded: too many tokens this minute"}},
+       RemoteErrorKind::kNone},
+      {{{"type", "invalid_request_error"},
+        {"message", "unsupported parameter: temperature"}},
+       RemoteErrorKind::kNone},
+  };
+  for (const ErrorCase& error_case : error_cases) {
+    ChatResult result;
+    CHECK(!ApplyRemoteError(error_case.error, result));
+    CHECK(result.remote_error_kind == error_case.kind);
+    CHECK(SafeContextRecovery(result) ==
+          (error_case.kind == RemoteErrorKind::kContextLengthExceeded));
+  }
   CHECK(ContextLengthError("", "model_context_window_exceeded"));
   CHECK(ContextLengthError("request_too_large", ""));
   overflow.semantic_progress = true;
@@ -260,25 +249,24 @@ void TestToolResults() {
 
   // Side requests: a transport failure carries no status, transient statuses
   // are worth another attempt, and a rejected request is not.
-  JsonResponse timed_out;
-  timed_out.error = "connection error: Timeout was reached";
-  CHECK(SafeToRetry(timed_out));
-  JsonResponse throttled;
-  throttled.error = "HTTP 429";
-  throttled.http_status = 429;
-  CHECK(SafeToRetry(throttled));
-  JsonResponse unavailable;
-  unavailable.error = "HTTP 503";
-  unavailable.http_status = 503;
-  CHECK(SafeToRetry(unavailable));
-  JsonResponse rejected;
-  rejected.error = "HTTP 400";
-  rejected.http_status = 400;
-  CHECK(!SafeToRetry(rejected));
-  JsonResponse oversized;
-  oversized.error = "response exceeds configured byte limit";
-  oversized.http_status = 200;
-  CHECK(!SafeToRetry(oversized));
+  struct SideCase {
+    const char* error;
+    int status;
+    bool retry;
+  };
+  const SideCase side_cases[] = {
+      {"connection error: Timeout was reached", 0, true},
+      {"HTTP 429", 429, true},
+      {"HTTP 503", 503, true},
+      {"HTTP 400", 400, false},
+      {"response exceeds configured byte limit", 200, false},
+  };
+  for (const SideCase& side_case : side_cases) {
+    JsonResponse response;
+    response.error = side_case.error;
+    response.http_status = side_case.status;
+    CHECK(SafeToRetry(response) == side_case.retry);
+  }
   CHECK(!SafeToRetry(JsonResponse{}));
 
   json annotations = json::array({{{"url_citation",

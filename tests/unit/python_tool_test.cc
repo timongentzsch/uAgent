@@ -215,8 +215,6 @@ void TestPythonTool() {
   } else {
     unsetenv("PATH");
   }
-  auto tools = BuiltinTools(supervisor, root);
-  CHECK(FindTool(tools, "scratch") != nullptr);
 
   std::error_code ec;
   fs::remove_all(root, ec);

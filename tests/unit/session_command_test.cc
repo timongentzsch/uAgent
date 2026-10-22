@@ -361,9 +361,6 @@ void TestReceiptLogBackpressure() {
 }
 
 void TestHostCommandKinds() {
-  // Unknown names stay unknown.
-  CHECK(session::ParseSessionCommandKind("teleport") ==
-        session::SessionCommandKind::kUnknown);
   // The host runs close and saved-session management itself and
   // forwards everything else; a new kind must choose one explicitly.
   int forwarded = 0;

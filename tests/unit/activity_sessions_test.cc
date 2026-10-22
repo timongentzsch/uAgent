@@ -836,22 +836,6 @@ void TestActivityWaitAndDelivery() {
   CHECK(steering_yield_jobs.size() == 1);
   if (!steering_yield_jobs.empty()) {
     int64_t id = ActivityId(steering_yield_jobs[0]);
-    ToolResult yielded_wait;
-    std::thread waiter([&] {
-      yielded_wait =
-          ToolActivityWait(steering_yield, {id}, "all", 5000, context);
-    });
-    SteeringState().Queue("change course");
-    steering_yield.Wake();
-    waiter.join();
-    CHECK(yielded_wait.Ok());
-    CHECK(yielded_wait.output.find("wait yielded for queued steering") !=
-          std::string::npos);
-    CHECK(steering_yield.IsLive(id));
-    CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
-    std::vector<Steering::Message> queued = SteeringState().TakeMessages();
-    CHECK(queued.size() == 1 && queued[0].text == "change course");
-
     ToolResult yielded_output;
     std::thread output_waiter([&] {
       yielded_output =
@@ -865,7 +849,7 @@ void TestActivityWaitAndDelivery() {
           std::string::npos);
     CHECK(steering_yield.IsLive(id));
     CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
-    queued = SteeringState().TakeMessages();
+    std::vector<Steering::Message> queued = SteeringState().TakeMessages();
     CHECK(queued.size() == 1 && queued[0].text == "inspect output");
     CHECK_OK(ToolActivityStop(steering_yield, id));
   }

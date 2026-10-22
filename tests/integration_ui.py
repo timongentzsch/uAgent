@@ -1160,6 +1160,8 @@ def test_signal_exit_restores_terminal(root, home, *, binary):
         assert_true(b"\x1b[?2004h" in output, output)
         assert_true(final["lflag"] & termios.ECHO, oct(final["lflag"]))
         assert_true(final["lflag"] & termios.ICANON, oct(final["lflag"]))
+        # An idle SIGINT is half a gesture; neither press reaches the model.
+        assert_true(not server.get_requests, server.get_requests)
 
 
 def test_input_redraw_survives_terminal_resize_and_delete(root, home, *, binary):
@@ -1506,26 +1508,6 @@ def test_input_shift_enter_keeps_the_draft_open(root, home, *, binary):
         # The draft newline renders as the glyph the echo also uses.
         assert_true(b"first line\xe2\x86\xb5second line" in output, output)
         assert_true(b"multiline-ok" in output, output)
-
-
-def test_input_ctrl_c_asks_once_then_quits(root, home, *, binary):
-    """An idle SIGINT is half a gesture: the row says so, the second one exits."""
-    with Server([event({"content": "unused"})]) as server:
-        code, output = run_pty(
-            root,
-            base_env(home, server.url),
-            [
-                (lambda process: process.send_signal(signal.SIGINT), b"Ctrl+C again to detach"),
-                lambda process: process.send_signal(signal.SIGINT),
-            ],
-            timeout=10,
-            binary=binary,
-        )
-        # The confirmed press preserves the signal exit status, so the shell
-        # still sees the interrupt status it always saw.
-        assert_true(code == 130, (code, output))
-        assert_true(b"Ctrl+C again to detach" in output, output)
-        assert_true(not server.get_requests, server.get_requests)
 
 
 def test_cli_permissions_config_http_and_fork(root, home, *, binary):

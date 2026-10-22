@@ -34,6 +34,7 @@
 #include "include/core/sandbox.h"
 #include "include/core/sandbox_watch.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
@@ -482,6 +483,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       handed_off = false;
       break;
     }
+    // Guidance is read now, as a wait yields to it: the command carries on
+    // in the background.
+    if (!exited && SteeringYieldRequested()) handed_off = true;
     if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
       break;
     }
@@ -572,9 +576,12 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (is_subagent) {
     ToolResult started = ToolSuccess(
         kStartedSubagentMarker + std::to_string(activity_id) +
-        "; completion is added to the next natural model call without "
-        "starting one; inspect activity output for progress/readiness, or "
-        "wait when the next step is blocked");
+        (supervisor.WakesSession()
+             ? "; its result reaches you when it ends, even after this turn; "
+               "inspect activity output for progress"
+             : "; completion is added to the next natural model call without "
+               "starting one; inspect activity output for progress/readiness, "
+               "or wait when the next step is blocked"));
     started.parts =
         json::array({LinkPart("activity", activity_id, "Open activity")});
     return {std::move(started), std::nullopt, /*launched=*/true};
@@ -588,8 +595,12 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   std::string output = kRunningActivityMarker + std::to_string(activity_id) +
                        (handed_off ? " moved to background; " : "; ") +
-                       "it keeps running while you work; poll or wait on it "
-                       "for output";
+                       (supervisor.WakesSession()
+                            ? "it keeps running while you work, and its "
+                              "result reaches you when it ends, even after "
+                              "this turn"
+                            : "it keeps running while you work; poll or wait "
+                              "on it for output");
   if (!initial_output.empty()) output += "\n" + initial_output;
   ToolResult running = ToolSuccess(std::move(output));
   running.parts =

@@ -313,23 +313,13 @@ test("closing a view aborts its pending command wait", async () => {
   }
 });
 
-test("activity status retains its provenance", () => {
-  const detail = {
-    source: "model_intent",
-    label: "Running · Checking tests",
-    active_tools: 2,
-  };
+test("an activity event sets the phase and its caption", () => {
   const next = applySessionEvent(
     { cursor: 0, metadata: { id: "s" } },
-    {
-      kind: "activity",
-      phase: "tool",
-      activity: detail.label,
-      activity_detail: detail,
-    },
+    { kind: "activity", phase: "tool", activity: "Running · Checking tests" },
   );
   assert.equal(next.state.phase, "tool");
-  assert.deepEqual(next.state.activity_detail, detail);
+  assert.equal(next.state.activity, "Running · Checking tests");
 });
 
 test("a state frame without the view keeps the last view, HTTP log and prompt", () => {

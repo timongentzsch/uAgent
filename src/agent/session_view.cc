@@ -306,7 +306,6 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     if (!response_id.empty()) {
       changed(
           MergeDisplayBlock(state["view"], {{"id", response_id},
-                                            {"row_id", response_id},
                                             {"response_id", response_id},
                                             {"kind", "assistant"},
                                             {"streaming", true},
@@ -454,7 +453,6 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                           "tokens_per_second",
                           "turn_root",
                           "reply_to",
-                          "reply_excerpt",
                           "http",
                           "files",
                           "summary",
@@ -481,7 +479,6 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                           "detail_id"}) {
     if (metadata.contains(key)) block[key] = metadata[key];
   }
-  block["retained_text_bytes"] = text.size();
   block["text_bytes"] = JsonValue(block, "text", "").size();
   block["content_complete"] = !JsonValue(block, "truncated", false);
   std::vector<json> rows;
@@ -489,10 +486,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
     const std::string response_id = JsonValue(metadata, "response_id", "");
     // The live row streamed under the response id; the retained one is the
     // same row.
-    if (!response_id.empty()) {
-      block["id"] = response_id;
-      block["row_id"] = response_id;
-    }
+    if (!response_id.empty()) block["id"] = response_id;
     if (!block.contains("content_revision")) block["content_revision"] = 1;
     if (!block.contains("content_complete")) {
       block["content_complete"] = text.size() <= 4096;
@@ -504,9 +498,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                             JsonValue(message, "reasoning", ""));
     }
     block["reasoning"] = Utf8Trunc(reasoning, kPreviewChars - 3);
-    block["reasoning_available"] = !reasoning.empty();
     if (!block.contains("reasoning_revision")) block["reasoning_revision"] = 1;
-    block["retained_reasoning_bytes"] = reasoning.size();
     block["reasoning_bytes"] = JsonValue(block, "reasoning", "").size();
     block["reasoning_complete"] = reasoning.size() <= kPreviewChars;
     if (const json* calls = JsonArray(message, "tool_calls")) {
@@ -561,7 +553,6 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
     block["name"] = JsonValue(detail, "name", "tool");
     block["status"] =
         JsonValue(detail, "status", receipt_missing ? "complete" : "running");
-    if (receipt_missing) block["receipt_missing"] = true;
     if (detail.contains("duration_ms")) {
       block["duration_ms"] = detail["duration_ms"];
     }

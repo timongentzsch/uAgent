@@ -122,7 +122,6 @@ for (const labels of [false, true])
                   {
                     phase: "tool",
                     activity: `Running · Reviewing module ${action} · +1 tools`,
-                    activity_detail: { source: "tool", active_tools: 2 },
                   },
                   "activity",
                 );

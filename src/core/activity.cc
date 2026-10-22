@@ -55,10 +55,7 @@ void ActivityProjection::Reasoning(const json& data) {
   auto finish = [&] {
     if (!long_line_) {
       std::string label = ActivityLabel(line_);
-      if (!label.empty()) {
-        excerpt_ = std::move(label);
-        reasoning_source_ = JsonValue(data, "reasoning_kind", "reasoning");
-      }
+      if (!label.empty()) excerpt_ = std::move(label);
     }
     line_.clear();
     long_line_ = false;
@@ -78,8 +75,7 @@ void ActivityProjection::Reasoning(const json& data) {
 }
 
 json ActivityProjection::Project() const {
-  std::string phase = phase_, label, source = "lifecycle", occurrence;
-  std::string response = response_;
+  std::string phase = phase_, label;
   size_t running = 0;
   for (const auto& [id, call] : calls_) {
     if (call.running) ++running;
@@ -101,9 +97,6 @@ json ActivityProjection::Project() const {
     phase = call.running ? "tool" : "preparing";
     label = (call.running ? "Running · " : "Preparing · ") + call.label;
     if (running > 1) label += " · +" + std::to_string(running - 1) + " tools";
-    source = call.source;
-    occurrence = found->first;
-    response = call.response;
   } else if (!hosted_.empty()) {
     // A search reads as one; any other tool the provider runs is named.
     auto other = std::ranges::find_if(hosted_, [](const auto& entry) {
@@ -114,10 +107,7 @@ json ActivityProjection::Project() const {
         other == hosted_.end() ? "Searching the web" : "Using " + other->second;
   } else if (phase == "thinking") {
     label = "Thinking";
-    if (!excerpt_.empty()) {
-      label += " · " + excerpt_;
-      source = reasoning_source_;
-    }
+    if (!excerpt_.empty()) label += " · " + excerpt_;
   } else {
     label = phase == "waiting"      ? "Waiting for model"
             : phase == "preparing"  ? "Preparing tool call"
@@ -126,16 +116,7 @@ json ActivityProjection::Project() const {
             : phase == "idle"       ? "Ready"
                                     : "Working";
   }
-  json detail = {{"source", source},
-                 {"label", label},
-                 {"turn", turn_},
-                 {"response_id", response},
-                 {"occurrence_id", occurrence},
-                 {"active_tools", running}};
-  if (retry_.is_object()) detail["retry"] = retry_;
-  return {{"phase", phase},
-          {"activity", label},
-          {"activity_detail", std::move(detail)}};
+  return {{"phase", phase}, {"activity", label}};
 }
 
 bool ActivityProjection::Consume(EventId id, const json& data) {
@@ -175,12 +156,8 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         break;
       case EventId::kReasoningDelta: {
         const std::string previous = excerpt_;
-        const std::string source = reasoning_source_;
         Reasoning(data);
-        if (phase_ == "thinking" && previous == excerpt_ &&
-            source == reasoning_source_) {
-          return false;
-        }
+        if (phase_ == "thinking" && previous == excerpt_) return false;
         phase_ = "thinking";
         break;
       }
@@ -199,8 +176,6 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         Call& call = calls_[key];
         call.label = ActivityLabel(JsonValue(activity, "status_label",
                                              JsonValue(data, "name", "tool")));
-        call.source = JsonValue(activity, "label_source", "tool");
-        call.response = response;
         call.running = call.running || id == EventId::kToolStarted;
         phase_ = "working";
         break;

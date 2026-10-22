@@ -255,7 +255,6 @@ void Agent::PushAssistantMessage(ChatResult& response,
   conversation_.RecordDisplay(
       conversation_.LastDisplayId(),
       {{"reasoning", Utf8Trunc(response.reasoning, kPreviewChars)},
-       {"reasoning_available", !response.reasoning.empty()},
        {"reasoning_revision", 1},
        {"reasoning_complete", true},
        {"reasoning_bytes", response.reasoning.size()}});

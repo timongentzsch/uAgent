@@ -269,7 +269,6 @@ add_library(
   src/app/session_terminal_commands.cc
   src/app/session_terminal_link.cc
   src/app/session_terminal_screen.cc
-  src/ui/conversation.cc
   src/ui/input_decoder.cc
   src/ui/ask_picker.cc
   src/ui/interactive.cc

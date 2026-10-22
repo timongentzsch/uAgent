@@ -18,6 +18,10 @@ namespace uagent {
 // Unified-diff line styling shared by change receipts and approval previews.
 std::string ColorizeDiffLines(std::string_view text);
 
+// One dim "name · delivery" row per recorded attachment delivery, as the web
+// shows a message's files. Empty when there is nothing to show.
+std::string AttachmentDeliveryRows(const json& deliveries);
+
 class TerminalSpinner;
 
 class TerminalPresenter {

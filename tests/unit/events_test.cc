@@ -46,14 +46,11 @@ void TestActivityProjection() {
   emit(EventId::kReasoningDelta,
        {{"text", "\n"}, {"reasoning_kind", "summary"}});
   CHECK(projection.Status()["activity"] == "Thinking · Checking sources");
-  CHECK(projection.Status()["activity_detail"]["source"] == "summary");
   emit(EventId::kToolArguments);
   CHECK(projection.Status()["phase"] == "preparing");
-  json first = {
-      {"occurrence_id", "a"},
-      {"response_id", "r1"},
-      {"activity",
-       {{"status_label", "Running tests"}, {"label_source", "model_intent"}}}};
+  json first = {{"occurrence_id", "a"},
+                {"response_id", "r1"},
+                {"activity", {{"status_label", "Running tests"}}}};
   json second = {
       {"occurrence_id", "b"}, {"response_id", "r1"}, {"name", "read_path"}};
   emit(EventId::kToolCall, first);
@@ -65,15 +62,17 @@ void TestActivityProjection() {
   emit(EventId::kInteractionResolved, {{"id", "same"}});
   emit(EventId::kToolStarted, first);
   emit(EventId::kToolStarted, second);
-  CHECK(projection.Status()["activity_detail"]["active_tools"] == 2);
+  const json both = "Running · Running tests · +1 tools";
+  CHECK(projection.Status()["activity"] == both);
   emit(EventId::kToolCall, first);  // Duplicate preparation cannot un-start it.
-  CHECK(projection.Status()["activity_detail"]["active_tools"] == 2);
+  CHECK(projection.Status()["activity"] == both);
   emit(EventId::kToolResult, first);
   CHECK(projection.Status()["activity"] == "Running · read_path");
   emit(EventId::kToolResult, second);
   emit(EventId::kResponseRetry,
        {{"attempt", 2}, {"max_attempts", 3}, {"retry_at_ms", 123}});
   CHECK(projection.Status()["phase"] == "retrying");
+  CHECK(projection.Status()["activity"] == "Retrying model · attempt 2/3");
   emit(EventId::kResponseStarted, {{"response_id", "r2"}});
   CHECK(!emit(EventId::kReasoningDelta,
               {{"response_id", "r1"}, {"text", "stale\n"}}));

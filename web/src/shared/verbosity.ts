@@ -1,8 +1,8 @@
 import { createContext } from "preact";
 import type { DetailPolicy, Verbosity } from "./types.ts";
 
-// The host's table says what each level shows; this is only what a host too
-// old to send one gets, the default level's row.
+// The host's table says what each level shows; until the catalogue that
+// carries it has loaded, the default level's row stands in.
 const FALLBACK: DetailPolicy = {
   work: "groups",
   reasoning: "closed",

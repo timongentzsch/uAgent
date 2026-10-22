@@ -64,7 +64,6 @@ export function ActivityStatus({
   phase = "Ready",
   running,
   started,
-  items = [],
   pending,
   stopped,
   announce = false,
@@ -75,7 +74,6 @@ export function ActivityStatus({
   running?: boolean;
   // When the running turn started: its time so far follows the caption.
   started?: number;
-  items?: Activity[];
   pending?: Pending | boolean | null;
   // Why the last turn stopped short ("Stopped"): shown and announced in
   // place of the phase until something new is sent.
@@ -94,13 +92,12 @@ export function ActivityStatus({
     return <ConnectionStatus phase={connection} />;
   // Whole seconds below a minute: a tenth that only moves once a second
   // reads as a stuck clock.
-  const detail = [
-    elapsed !== undefined &&
-      (elapsed < 60 ? `${elapsed}s` : duration(elapsed * 1000)),
-    activityLabel(items),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const detail =
+    elapsed === undefined
+      ? ""
+      : elapsed < 60
+        ? `${elapsed}s`
+        : duration(elapsed * 1000);
   const announcement = pending
     ? "Needs your input"
     : running

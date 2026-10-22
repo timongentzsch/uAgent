@@ -552,6 +552,8 @@ export interface SlashCommand {
   // Listed only at a terminal: this page has its own control for it. Typed
   // here it still runs, and its aliases still resolve.
   terminal?: boolean;
+  // Navigation a client performs itself; a runtime refuses it.
+  client_only?: boolean;
 }
 // What one verbosity level shows, as the host's table states it (see
 // DetailPolicy in verbosity.h): how tool work is laid out, and what is shown

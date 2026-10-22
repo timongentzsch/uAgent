@@ -20,5 +20,9 @@ export function parseSlash(commands: SlashCommand[], text: string) {
   const spec = commands.find(
     (entry) => entry.command === name || entry.aliases.includes(name),
   );
-  return { name: spec?.command || name, argument };
+  return {
+    name: spec?.command || name,
+    argument,
+    clientOnly: !!spec?.client_only,
+  };
 }

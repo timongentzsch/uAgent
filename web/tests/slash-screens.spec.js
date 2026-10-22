@@ -39,6 +39,12 @@ test("bare slash commands open their screens", async ({ page, session }) => {
     await expect(composer).toBeEnabled();
   }
 
+  // A client-only command the page cannot run never reaches the runtime.
+  await run("/clear");
+  await expect(
+    page.getByText("/clear works only in a terminal."),
+  ).toBeVisible();
+
   // On a wide screen the list is already beside the conversation.
   await run("/sessions");
   await expect(page.getByLabel("Find a conversation")).toBeFocused();

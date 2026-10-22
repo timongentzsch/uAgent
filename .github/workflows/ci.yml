@@ -21,6 +21,12 @@ concurrency:
 permissions:
   contents: read
 
+# An integration case that fails runs once more; one that then passes is
+# reported as flaky (a warning on the run), never as clean. Playwright's own
+# retry does the same for the browser suite (web/playwright.config.js).
+env:
+  UAGENT_TEST_RETRIES: "1"
+
 jobs:
   changes:
     runs-on: ubuntu-24.04
@@ -380,6 +386,8 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    outputs:
+      playwright: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -411,19 +419,40 @@ jobs:
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libssl-dev
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON
           cmake --build build --target uagent --parallel 4 && ccache --show-stats
-      # The browsers are a download keyed by the locked Playwright version;
-      # their system libraries still come from apt on every run.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Hand the host to the browser shards
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
-      # Its own step and limit: a download that stalls fails in minutes and
-      # is told apart from a test that hangs.
-      - name: Install browsers
-        timeout-minutes: 6
-        run: npm exec --prefix web -- playwright install --with-deps chromium webkit
+          name: web-host
+          path: build/uagent
+          retention-days: 1
+      # The browser shards run in Playwright's image for this version, which
+      # carries the browsers and the system libraries they need: no download
+      # from the package mirror, which stalled for minutes at a time.
+      - id: playwright
+        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' web/package-lock.json)" >> "$GITHUB_OUTPUT"
+
+  web-browser:
+    needs: [changes, web]
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.web.outputs.playwright }}-noble
+      options: --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-host
+          path: build
+      - run: chmod +x build/uagent && npm ci --prefix web
       - name: Browser integration against native host
-        run: npm run test:browser --prefix web
+        working-directory: web
+        run: npx playwright test --shard=${{ matrix.shard }}/3
         env:
           UAGENT_TEST_BINARY: ../build/uagent
       # Also when a retry passed: what the failed attempt left is the only
@@ -432,7 +461,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: browser-failure
+          name: browser-failure-${{ matrix.shard }}
           path: web/test-results
           if-no-files-found: ignore
           retention-days: 3
@@ -519,7 +548,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, clang-tidy, web]
+    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, clang-tidy, web, web-browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

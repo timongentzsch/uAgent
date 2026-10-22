@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -35,6 +36,64 @@ extern char** environ;
 namespace uagent {
 
 char** ProcessEnvironment() { return environ; }
+
+int SpawnProcess(const SpawnSpec& spec, pid_t& pid) {
+  std::vector<char*> argv;
+  argv.reserve(spec.argv.size() + 1);
+  for (const std::string& word : spec.argv) {
+    argv.push_back(const_cast<char*>(word.c_str()));
+  }
+  argv.push_back(nullptr);
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  for (const SpawnFd& fd : spec.fds) {
+    if (fd.source >= 0) {
+      posix_spawn_file_actions_adddup2(&actions, fd.source, fd.target);
+    } else {
+      posix_spawn_file_actions_addopen(
+          &actions, fd.target, fd.path.empty() ? "/dev/null" : fd.path.c_str(),
+          O_RDWR, 0);
+    }
+  }
+  for (auto fd = spec.fds.begin(); fd != spec.fds.end(); ++fd) {
+    auto same = [&](const SpawnFd& other) {
+      return other.source == fd->source;
+    };
+    auto at = [&](const SpawnFd& other) { return other.target == fd->source; };
+    if (fd->source >= 0 && std::none_of(spec.fds.begin(), fd, same) &&
+        std::none_of(spec.fds.begin(), spec.fds.end(), at)) {
+      posix_spawn_file_actions_addclose(&actions, fd->source);
+    }
+  }
+  short flags = 0;  // NOLINT: POSIX types posix_spawnattr_setflags' `short`.
+  posix_spawnattr_t attributes;
+  posix_spawnattr_init(&attributes);
+  posix_spawnattr_setpgroup(&attributes, 0);
+  if (spec.group == SpawnSpec::Group::kOwn) flags |= POSIX_SPAWN_SETPGROUP;
+#ifdef POSIX_SPAWN_SETSID
+  if (spec.group == SpawnSpec::Group::kSession) flags |= POSIX_SPAWN_SETSID;
+#else
+  if (spec.group == SpawnSpec::Group::kSession) flags |= POSIX_SPAWN_SETPGROUP;
+#endif
+  if (!spec.default_signals.empty()) {
+    sigset_t defaults, mask;
+    sigemptyset(&defaults);
+    for (int signal_number : spec.default_signals) {
+      sigaddset(&defaults, signal_number);
+    }
+    sigemptyset(&mask);
+    posix_spawnattr_setsigdefault(&attributes, &defaults);
+    posix_spawnattr_setsigmask(&attributes, &mask);
+    flags |= POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK;
+  }
+  posix_spawnattr_setflags(&attributes, flags);
+  const int error =
+      posix_spawnp(&pid, argv.front(), &actions, &attributes, argv.data(),
+                   spec.environment ? spec.environment : ProcessEnvironment());
+  posix_spawnattr_destroy(&attributes);
+  posix_spawn_file_actions_destroy(&actions);
+  return error;
+}
 
 bool WriteAll(int fd, std::string_view data) {
   while (!data.empty()) {

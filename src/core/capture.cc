@@ -3,7 +3,6 @@
 
 #include <fcntl.h>
 #include <poll.h>
-#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -40,26 +39,13 @@ CapturedProcess CaptureProcess(const std::vector<std::string>& arguments,
   fcntl(source.Get(), F_SETFL, fcntl(source.Get(), F_GETFL) & ~O_NONBLOCK);
   // The child writes normally; only the parent reader is nonblocking.
   fcntl(output.Get(), F_SETFL, fcntl(output.Get(), F_GETFL) & ~O_NONBLOCK);
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_adddup2(&actions, output.Get(), STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, output.Get(), STDERR_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, source.Get(), STDIN_FILENO);
-  std::vector<char*> argv;
-  argv.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argv.push_back(const_cast<char*>(argument.c_str()));
-  }
-  argv.push_back(nullptr);
   pid_t child = -1;
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
-  posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETPGROUP);
-  posix_spawnattr_setpgroup(&attributes, 0);
-  const int spawned = posix_spawnp(&child, argv.front(), &actions, &attributes,
-                                   argv.data(), ProcessEnvironment());
-  posix_spawnattr_destroy(&attributes);
-  posix_spawn_file_actions_destroy(&actions);
+  const int spawned = SpawnProcess({.argv = arguments,
+                                    .group = SpawnSpec::Group::kOwn,
+                                    .fds = {{STDOUT_FILENO, output.Get()},
+                                            {STDERR_FILENO, output.Get()},
+                                            {STDIN_FILENO, source.Get()}}},
+                                   child);
   output.Reset();
   source.Reset();
   if (spawned != 0) {

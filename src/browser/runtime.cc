@@ -3,7 +3,6 @@
 #include "include/browser/runtime.h"
 
 #include <signal.h>
-#include <spawn.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -33,20 +32,8 @@ namespace uagent::browser {
 namespace {
 constexpr size_t kProfilesBytes = KiB(64);
 pid_t Launch(const std::vector<std::string>& arguments,
-             posix_spawn_file_actions_t* actions = nullptr,
+             std::vector<SpawnFd> fds = {},
              const std::vector<std::string>& environment = {}) {
-  std::vector<char*> argv;
-  argv.reserve(arguments.size() + 1);
-  for (const auto& argument : arguments) {
-    argv.push_back(const_cast<char*>(argument.c_str()));
-  }
-  argv.push_back(nullptr);
-  // Its own process group: Chrome's renderers and helpers stop with it.
-  posix_spawnattr_t group;
-  posix_spawnattr_init(&group);
-  posix_spawnattr_setflags(&group, POSIX_SPAWN_SETPGROUP);
-  posix_spawnattr_setpgroup(&group, 0);
-  pid_t pid = -1;
   std::vector<std::string> values;
   for (char** at = ProcessEnvironment(); *at; ++at) {
     std::string value(*at);
@@ -64,10 +51,15 @@ pid_t Launch(const std::vector<std::string>& arguments,
   envp.reserve(values.size() + 1);
   for (auto& value : values) envp.push_back(value.data());
   envp.push_back(nullptr);
-  const int status =
-      posix_spawnp(&pid, argv[0], actions, &group, argv.data(), envp.data());
-  posix_spawnattr_destroy(&group);
-  return status == 0 ? pid : -1;
+  // Its own process group: Chrome's renderers and helpers stop with it.
+  pid_t pid = -1;
+  return SpawnProcess({.argv = arguments,
+                       .environment = envp.data(),
+                       .group = SpawnSpec::Group::kOwn,
+                       .fds = std::move(fds)},
+                      pid) == 0
+             ? pid
+             : -1;
 }
 void Terminate(pid_t& pid) {
   if (pid <= 0) return;
@@ -319,7 +311,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   unlink(authority.c_str());
   pid_t xauth = Launch({"xauth", "-f", authority, "add", display, ".", cookie});
   int xauth_status = 0;
-  if (xauth < 0 || waitpid(xauth, &xauth_status, 0) < 0 ||
+  if (xauth < 0 || WaitPid(xauth, &xauth_status) < 0 ||
       !WIFEXITED(xauth_status) || WEXITSTATUS(xauth_status) != 0) {
     error = "cannot create X authorization";
     return false;
@@ -392,7 +384,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--disable-blink-features=AutomationControlled",
       "--enable-unsafe-swiftshader"};
   if (profile_setup) {
-    chrome_pid_ = Launch(chrome, nullptr, environment);
+    chrome_pid_ = Launch(chrome, {}, environment);
     if (chrome_pid_ < 0) {
       error = "cannot launch Google Chrome Stable";
       Stop(true);
@@ -430,20 +422,14 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     Stop(true);
     return false;
   }
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_adddup2(&actions, child_read.Get(), 3);
-  posix_spawn_file_actions_adddup2(&actions, child_write.Get(), 4);
-  posix_spawn_file_actions_addclose(&actions, child_read.Get());
-  posix_spawn_file_actions_addclose(&actions, child_write.Get());
-  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
-                                   O_RDONLY, 0);
-  posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null",
-                                   O_WRONLY, 0);
   // Chrome's sandbox stays enabled. This is a private profile.
   chrome.emplace_back("--remote-debugging-pipe");
-  chrome_pid_ = Launch(chrome, &actions, environment);
-  posix_spawn_file_actions_destroy(&actions);
+  chrome_pid_ = Launch(chrome,
+                       {{3, child_read.Get()},
+                        {4, child_write.Get()},
+                        {STDIN_FILENO},
+                        {STDOUT_FILENO}},
+                       environment);
   chrome_read.Reset();
   chrome_write.Reset();
   if (chrome_pid_ < 0) {

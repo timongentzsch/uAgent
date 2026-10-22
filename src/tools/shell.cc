@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
-#include <spawn.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -42,28 +41,6 @@
 namespace uagent {
 namespace {
 
-// POSIX specifies `short` for posix_spawnattr_setflags; fixed-width types are
-// not guaranteed to have that ABI.
-using PosixSpawnFlags = short;  // NOLINT: required by the POSIX ABI.
-
-void ConfigureShellSpawn(posix_spawnattr_t& attributes,
-                         PosixSpawnFlags group_flag) {
-  if (group_flag == POSIX_SPAWN_SETPGROUP) {
-    posix_spawnattr_setpgroup(&attributes, 0);
-  }
-  sigset_t defaults, mask;
-  sigemptyset(&defaults);
-  for (int signal_number : {SIGINT, SIGTERM, SIGHUP, SIGPIPE}) {
-    sigaddset(&defaults, signal_number);
-  }
-  sigemptyset(&mask);
-  posix_spawnattr_setsigdefault(&attributes, &defaults);
-  posix_spawnattr_setsigmask(&attributes, &mask);
-  posix_spawnattr_setflags(&attributes, static_cast<PosixSpawnFlags>(
-                                            group_flag | POSIX_SPAWN_SETSIGDEF |
-                                            POSIX_SPAWN_SETSIGMASK));
-}
-
 // The shell that `bash` means on this host. Only needed under a sandbox
 // wrapper: there the spawn resolves the wrapper, so a missing shell surfaces
 // as the wrapper's own failure rather than as an errno the retry below could
@@ -78,30 +55,25 @@ std::string ResolveShellExecutable(const std::string& shell) {
 }
 
 // `program` is the argv to run: `shell -c command`, or a program run directly.
+// It gets its own process group (or session), the default signal dispositions
+// and `fds`. Returns the posix_spawnp errno; `pid` is set on 0.
 int SpawnShellWithFallback(const std::vector<std::string>& program,
                            const std::vector<std::string>& wrapper,
-                           const posix_spawn_file_actions_t& actions,
-                           PosixSpawnFlags group_flag, char* const* environment,
-                           pid_t& pid) {
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
-  ConfigureShellSpawn(attributes, group_flag);
+                           std::vector<SpawnFd> fds, bool session,
+                           char* const* environment, pid_t& pid) {
+  SpawnSpec spec{
+      .environment = environment,
+      .group = session ? SpawnSpec::Group::kSession : SpawnSpec::Group::kOwn,
+      .default_signals = {SIGINT, SIGTERM, SIGHUP, SIGPIPE},
+      .fds = std::move(fds)};
   const std::string& shell = program.front();
   auto spawn = [&](const std::string& executable) {
-    std::vector<char*> argv;
-    argv.reserve(wrapper.size() + program.size() + 1);
-    for (const std::string& word : wrapper) {
-      argv.push_back(const_cast<char*>(word.c_str()));
-    }
-    argv.push_back(const_cast<char*>(executable.c_str()));
-    for (size_t i = 1; i < program.size(); ++i) {
-      argv.push_back(const_cast<char*>(program[i].c_str()));
-    }
-    argv.push_back(nullptr);
     // The program is the wrapper when there is one; the shell is then just its
     // first argument, and the rest stays unwrapped either way.
-    return posix_spawnp(&pid, argv[0], &actions, &attributes, argv.data(),
-                        environment);
+    spec.argv = wrapper;
+    spec.argv.push_back(executable);
+    spec.argv.insert(spec.argv.end(), program.begin() + 1, program.end());
+    return SpawnProcess(spec, pid);
   };
   int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
   // `bash` is the documented default, so fall back to the usual absolute
@@ -109,31 +81,18 @@ int SpawnShellWithFallback(const std::vector<std::string>& program,
   // downgrade to sh: its pipelines may mask failures.
   const bool fallback = wrapper.empty() && shell == "bash";
   if (error != 0 && fallback) error = spawn("/bin/bash");
-  posix_spawnattr_destroy(&attributes);
   return error;
 }
 
-// Spawn `program` with stdin at /dev/null, both output streams on the
-// log, default signal dispositions, and its own process group (or session, for
-// a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
+// Spawn `program` with stdin at /dev/null and both output streams on the log,
+// in a session of its own when `detach`.
 int SpawnLoggedShell(const std::vector<std::string>& program,
                      const std::vector<std::string>& wrapper, int log_fd,
                      bool detach, char* const* environment, pid_t& pid) {
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
-                                   O_RDONLY, 0);
-  posix_spawn_file_actions_adddup2(&actions, log_fd, STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, log_fd, STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, log_fd);
-  PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
-#ifdef POSIX_SPAWN_SETSID
-  if (detach) group_flag = POSIX_SPAWN_SETSID;
-#endif
-  int error = SpawnShellWithFallback(program, wrapper, actions, group_flag,
-                                     environment, pid);
-  posix_spawn_file_actions_destroy(&actions);
-  return error;
+  return SpawnShellWithFallback(
+      program, wrapper,
+      {{STDIN_FILENO}, {STDOUT_FILENO, log_fd}, {STDERR_FILENO, log_fd}},
+      detach, environment, pid);
 }
 
 // master_fd is set only on success; the caller owns it from then on.
@@ -149,26 +108,15 @@ int SpawnPtyShell(const std::vector<std::string>& program,
   char slave_path[PATH_MAX];
   const int pts_error = ptsname_r(master.Get(), slave_path, sizeof(slave_path));
   if (pts_error != 0) return pts_error > 0 ? pts_error : errno;
-  const char* slave_name = slave_path;
   winsize initial_size{};
   initial_size.ws_row = 24;
   initial_size.ws_col = 80;
   (void)ioctl(master.Get(), TIOCSWINSZ, &initial_size);
-
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, slave_name, O_RDWR,
-                                   0);
-  posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, master.Get());
-  PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
-#ifdef POSIX_SPAWN_SETSID
-  group_flag = POSIX_SPAWN_SETSID;
-#endif
-  int error = SpawnShellWithFallback(program, wrapper, actions, group_flag,
-                                     environment, pid);
-  posix_spawn_file_actions_destroy(&actions);
+  int error = SpawnShellWithFallback(program, wrapper,
+                                     {{STDIN_FILENO, -1, slave_path},
+                                      {STDOUT_FILENO, STDIN_FILENO},
+                                      {STDERR_FILENO, STDIN_FILENO}},
+                                     /*session=*/true, environment, pid);
   if (error == 0) master_fd = master.Release();
   return error;
 }

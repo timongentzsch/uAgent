@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
-#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -171,29 +170,17 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
     Fd err_read(errp[0]), err_write(errp[1]);
     fcntl(err_read.Get(), F_SETFD, FD_CLOEXEC);
     fcntl(err_write.Get(), F_SETFD, FD_CLOEXEC);
-    const std::string log_path = McpLogPath(s.name);
-    const std::string bytes = std::to_string(kMcpLogBytes);
-    const std::string& self = ExecutablePath();
-    char* pump_argv[] = {const_cast<char*>(self.c_str()),
-                         const_cast<char*>("--log-pump"),
-                         const_cast<char*>(log_path.c_str()),
-                         const_cast<char*>(bytes.c_str()), nullptr};
-    posix_spawn_file_actions_t actions;
-    posix_spawnattr_t attributes;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, err_read.Get(), 0);
-    posix_spawnattr_init(&attributes);
     // Own group, like the server: terminal Ctrl+C must not cut the log.
-    posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETPGROUP);
-    posix_spawnattr_setpgroup(&attributes, 0);
-    if (posix_spawn(&log_pid, self.c_str(), &actions, &attributes, pump_argv,
-                    environ) == 0) {
+    if (SpawnProcess(
+            {.argv = {ExecutablePath(), "--log-pump", McpLogPath(s.name),
+                      std::to_string(kMcpLogBytes)},
+             .group = SpawnSpec::Group::kOwn,
+             .fds = {{STDIN_FILENO, err_read.Get()}}},
+            log_pid) == 0) {
       errfd = std::move(err_write);
     } else {
       log_pid = -1;
     }
-    posix_spawnattr_destroy(&attributes);
-    posix_spawn_file_actions_destroy(&actions);
   }
   if (!errfd) errfd.Reset(open("/dev/null", O_WRONLY | O_CLOEXEC));
   ChildEnvironment child_environment(env);

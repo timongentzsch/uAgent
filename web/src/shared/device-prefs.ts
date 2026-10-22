@@ -32,4 +32,11 @@ export function applyDevicePrefs() {
   follow(devicePrefs.theme, applyTheme);
   follow(devicePrefs.motion, applyMotion);
   follow(devicePrefs.zoom, applyZoom);
+  // Fields measure their font when they mount, which can be before the
+  // page's styles have loaded; once they have, they measure again.
+  if (document.readyState !== "complete") {
+    addEventListener("load", () => applyZoom(devicePrefs.zoom.read()), {
+      once: true,
+    });
+  }
 }

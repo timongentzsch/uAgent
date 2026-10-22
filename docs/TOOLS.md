@@ -93,7 +93,8 @@ panel's threads differ.
 
 `run` waits 10 s and then returns a still-running command as an activity.
 `yield_ms` of 250–30,000 overrides the wait and `0` waits until the command
-exits. Set `tty=true` only when the process needs interactive input; a PTY
+exits. Guidance sent meanwhile moves the command to the background, as it
+ends an `activity` wait. Set `tty=true` only when the process needs interactive input; a PTY
 keeps merged output, writable input, interruption and resize. `detach=true`
 keeps the command running after the session ends, with a rotating log.
 
@@ -116,9 +117,12 @@ to a non-PTY activity is rejected.
   PID-backed with a rotating log; launching the same detached command from
   the same directory reuses its process group, and it cannot be reattached
   interactively after µAgent exits.
-- A command's completion appears only in the UI and never starts a model
-  turn. A subagent's completion is added once to the next model call
-  without starting one.
+- A background command's or subagent's result is added once, bounded, to
+  the model's next call; output already read is not repeated. If the
+  conversation is idle by then, the result starts a turn, so the agent can
+  end its turn instead of waiting. A headless run (`-p`) answers once: it
+  waits for its subagents but starts no turn for a late result, and its
+  commands stop when it ends.
 - A failed child reports its route, failure stage, bounded diagnostics and a
   remedy. µAgent never silently changes provider, model, pricing or privacy
   policy for a child.

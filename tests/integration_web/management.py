@@ -414,6 +414,18 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             exchange = json.loads(raw)
             assert_true(exchange["complete"] and "FULL_BODY_END" in exchange["response"], exchange)
             assert_true("�" not in exchange["response"], "UTF-8 page boundary split")
+            # The command's result reaches the model in the turn or, finished
+            # after it, in a turn of its own; inspect once that has ended.
+            client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(
+                        "[completed background tasks" in json.dumps(body["messages"])
+                        for _, body in provider.requests
+                    )
+                ),
+            )
             count = len(provider.requests)
             client.command("activity", session, operation="list")
             assert_true(len(provider.requests) == count, "inspection invoked model")
@@ -503,7 +515,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                         for row in value["state"].get("activities", [])
                     )
                     and any(
-                        "[subagent finished" in json.dumps(body["messages"])
+                        "[background work finished" in json.dumps(body["messages"])
                         for _, body in provider.requests
                     )
                 ),

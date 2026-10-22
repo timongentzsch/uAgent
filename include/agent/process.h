@@ -188,6 +188,9 @@ class ProcessSupervisor {
   // Mirror supervisor state changes to one application-owned nonblocking pipe.
   // The caller must clear the descriptor before closing it.
   void SetNotifyFd(int fd);
+  // Whether a finished job wakes the session that started it: a conversation
+  // runtime takes up a result as a turn; a headless run's answer is final.
+  bool WakesSession() const;
   void WaitForChange(uint64_t generation) const;
   bool WaitForChange(uint64_t generation,
                      std::chrono::steady_clock::time_point deadline) const;

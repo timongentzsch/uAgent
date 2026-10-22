@@ -6,6 +6,7 @@
 // human-readable formatters shared by the REPL and the tool trace.
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -118,6 +119,13 @@ std::string TerminalSafe(std::string_view s);
 std::string AsciiGlyphs(std::string_view s);
 
 std::string FmtCount(int64_t n);
+
+// "1 file", "3 files": a count and its noun, plural by an "s".
+template <std::integral Count>
+std::string Plural(Count count, std::string_view noun) {
+  return std::to_string(count) + " " + std::string(noun) +
+         (count == 1 ? "" : "s");
+}
 std::string FmtCost(double cost);
 
 // Elapsed time in whatever unit keeps it readable at that magnitude:

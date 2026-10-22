@@ -75,9 +75,7 @@ json Agent::CompactionMessages() const {
           std::string id = JsonValue(call, "id", "");
           if (!id.empty()) tool_names[id] = name;
           json arguments = ParsedToolCallArguments(function);
-          append_call(name, arguments,
-                      arguments.is_string() ? arguments.get<std::string>()
-                                            : JsonDump(arguments));
+          append_call(name, arguments, JsonText(arguments));
         }
       }
       continue;

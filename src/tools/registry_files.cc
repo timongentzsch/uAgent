@@ -167,8 +167,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     size_t count = 0;
     auto edits = a.find("edits");
     if (edits != a.end() && edits->is_array()) count = edits->size();
-    return "edit " + JsonValue(a, "path", "") + " · " + std::to_string(count) +
-           (count == 1 ? " edit" : " edits");
+    return "edit " + JsonValue(a, "path", "") + " · " + Plural(count, "edit");
   };
   edit.approval_preview = [](const json& a) {
     std::string path = JsonValue(a, "path", "");

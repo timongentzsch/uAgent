@@ -36,6 +36,8 @@ struct EffectiveConfigSnapshot {
   // What the saved settings hold that was not taken; the rest applies.
   std::string warning;
 
+  // The merged value of `key`, empty when no scope sets it.
+  std::string Get(const std::string& key) const;
   // What `key` would be without the conversation's own choice: the value a
   // conversation's control offers as its default. Empty when no scope sets it.
   std::string Inherited(const std::string& key) const;

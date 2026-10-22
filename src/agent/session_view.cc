@@ -262,10 +262,7 @@ json LiveToolRow(const json& data) {
           {"occurrence_id", JsonValue(data, "occurrence_id", "")},
           {"detail_id", JsonValue(data, "detail_id", "")},
           {"name", JsonValue(data, "name", "")},
-          {"arguments",
-           Utf8Trunc(arguments.is_string() ? arguments.get<std::string>()
-                                           : JsonDump(arguments),
-                     1024)},
+          {"arguments", Utf8Trunc(JsonText(arguments), 1024)},
           {"activity", JsonValue(data, "activity", json::object())},
           {"view", JsonValue(data, "view", json(nullptr))},
           {"status", "running"},

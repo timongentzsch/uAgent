@@ -380,10 +380,9 @@ void Logged(const std::string& event, const json& params,
     line = JsonValue(params, "type", "log") + ":";
     for (const json& value : JsonValue(params, "args", json::array())) {
       const json* held = value.contains("value") ? &value["value"] : nullptr;
-      line += " " + (held && held->is_string() ? held->get<std::string>()
-                     : held ? JsonDump(*held)
-                            : JsonValue(value, "description",
-                                        JsonValue(value, "type", "")));
+      line += " " + (held ? JsonText(*held)
+                          : JsonValue(value, "description",
+                                      JsonValue(value, "type", "")));
     }
     const json* stack = JsonObject(params, "stackTrace");
     const json* frames = stack ? JsonArray(*stack, "callFrames") : nullptr;

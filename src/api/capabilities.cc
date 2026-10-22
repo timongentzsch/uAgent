@@ -47,7 +47,7 @@ bool ParseFeatures(const json& names, FeatureSet& features,
       }
     }
     if (!found) {
-      unknown = name.is_string() ? name.get<std::string>() : name.dump();
+      unknown = JsonText(name);
       return false;
     }
   }

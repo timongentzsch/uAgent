@@ -546,20 +546,16 @@ ToolResult ToolEditFile(const std::string& path,
   }
   if (run.replacements == 0) {
     return ToolSuccess("already applied " + path + " (" +
-                       std::to_string(run.already_applied) +
-                       (run.already_applied == 1 ? " edit)" : " edits)"));
+                       Plural(run.already_applied, "edit") + ")");
   }
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (!write.Ok()) return write;
-  ToolResult result =
-      ToolSuccess("edited " + path + " (" + std::to_string(run.replacements) +
-                  (run.replacements == 1 ? " replacement across "
-                                         : " replacements across ") +
-                  std::to_string(edits.size()) +
-                  (edits.size() == 1 ? " edit; " : " edits; ") +
-                  std::to_string(original_size) + " -> " +
-                  std::to_string(data.size()) + " bytes)");
+  ToolResult result = ToolSuccess(
+      "edited " + path + " (" + Plural(run.replacements, "replacement") +
+      " across " + Plural(edits.size(), "edit") + "; " +
+      std::to_string(original_size) + " -> " + std::to_string(data.size()) +
+      " bytes)");
   result.display = DiffReceipt("Edited", path, run.display);
   result.effect = FileEffect{CanonicalAccessPath(path).string(), true,
                              std::move(original), HashHex(data), original_mode};

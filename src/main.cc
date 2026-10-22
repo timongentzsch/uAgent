@@ -104,12 +104,10 @@ void InitializeProcess() {
 
 // The terminal profile the user configured, or asked for with --plain.
 void ResolveTerminalProfile(const Options& options) {
-  const auto values = ConfigManager::Capture(options.overrides).Read().values;
+  const auto settings = ConfigManager::Capture(options.overrides).Read();
   auto on = [&](const char* key) {
     bool value = false;
-    if (auto found = values.find(key); found != values.end()) {
-      ParseBool(found->second, value);
-    }
+    ParseBool(settings.Get(key), value);
     return value;
   };
   ApplyTerminalProfile(on("UAGENT_PLAIN"), on("UAGENT_REDUCED_MOTION"));

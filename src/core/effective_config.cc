@@ -111,6 +111,11 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   return snapshot;
 }
 
+std::string EffectiveConfigSnapshot::Get(const std::string& key) const {
+  const auto found = values.find(key);
+  return found == values.end() ? "" : found->second;
+}
+
 std::string EffectiveConfigSnapshot::Inherited(const std::string& key) const {
   std::string value;
   for (const ConfigScopeName& scope : kConfigScopes) {

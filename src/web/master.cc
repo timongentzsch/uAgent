@@ -608,10 +608,9 @@ const std::string* Master::ExpectedOrigin(const Request& request) const {
 }
 // The configured level, by a name the policy table knows.
 std::string Master::ConfiguredVerbosity() {
-  const auto values = ConfigManager::Capture({}, "").Read().values;
-  const auto found = values.find(std::string(kVerbositySetting));
-  return std::string(
-      DetailFor(found == values.end() ? "" : found->second).level);
+  const auto settings = ConfigManager::Capture({}, "").Read();
+  const std::string level = settings.Get(std::string(kVerbositySetting));
+  return std::string(DetailFor(level).level);
 }
 // Tells every browser that what is saved is no longer what they read, and
 // the level with it: display state they all share.

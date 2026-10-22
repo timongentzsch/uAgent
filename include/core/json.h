@@ -171,6 +171,11 @@ inline std::string JsonDump(const json& value, int indent = -1) {
   return value.dump(indent, ' ', false, json::error_handler_t::replace);
 }
 
+// A string as itself, any other value as its JSON text.
+inline std::string JsonText(const json& value) {
+  return value.is_string() ? value.get<std::string>() : JsonDump(value);
+}
+
 // Rough serialized size, used for context accounting rather than exactness.
 inline size_t JsonEstimatedBytes(const json& value) {
   if (value.is_string()) {

@@ -28,10 +28,7 @@ json ToolTraceMessages(const json& messages, const json& kinds) {
         const json* found = JsonObject(call, "function");
         if (!found) continue;
         json arguments = ParsedToolCallArguments(*found);
-        json stored =
-            json::parse(arguments.is_string() ? arguments.get<std::string>()
-                                              : JsonDump(arguments),
-                        nullptr, false);
+        json stored = json::parse(JsonText(arguments), nullptr, false);
         trace.push_back(
             {{"type", "function"},
              {"id", JsonValue(call, "id", "")},

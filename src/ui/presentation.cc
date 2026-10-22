@@ -52,10 +52,9 @@ bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
   std::vector<CitationEntry> sources = CitationEntries(annotations);
   if (searches <= 0 && sources.empty()) return false;
   if (line_open) printf("\n");
-  std::string source_summary =
-      sources.empty() ? "source details unavailable"
-                      : std::to_string(sources.size()) + " source" +
-                            (sources.size() == 1 ? "" : "s");
+  std::string source_summary = sources.empty()
+                                   ? "source details unavailable"
+                                   : Plural(sources.size(), "source");
   if (searches > 0) {
     printf("%s%s%s\n", DIM(),
            AsciiGlyphs("  ← web_search ×" + std::to_string(searches) + " · " +
@@ -662,11 +661,9 @@ void TerminalPresenter::ToolRow(const json& block) {
 std::string TerminalPresenter::WorkLine() {
   rows_.clear();
   if (!steps_) return "";
-  std::string line =
-      "Worked · " + std::to_string(steps_) + (steps_ == 1 ? " step" : " steps");
+  std::string line = "Worked · " + Plural(steps_, "step");
   if (!edited_.empty()) {
-    line += " · edited " + std::to_string(edited_.size()) +
-            (edited_.size() == 1 ? " file" : " files");
+    line += " · edited " + Plural(edited_.size(), "file");
   }
   steps_ = 0;
   edited_.clear();

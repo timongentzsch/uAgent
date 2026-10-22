@@ -307,9 +307,8 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
   }
   const json& restart = described["restart_required"];
   if (restart.is_array() && !restart.empty()) {
-    reply.Note(Tone::kWarn,
-               "restart required for " + std::to_string(restart.size()) +
-                   " changed setting" + (restart.size() == 1 ? "" : "s"));
+    reply.Note(Tone::kWarn, "restart required for " +
+                                Plural(restart.size(), "changed setting"));
   }
   reply.Note(Tone::kNeutral,
              "precedence: command line, process environment, trusted "
@@ -364,14 +363,11 @@ void HandleConfig(AppSession& session, const std::string& argument,
     if (source == "default") continue;
     ++changed;
     const json value = JsonValue(setting, "effective", json());
-    reply.Print("%s = %s%s · %s%s\n",
-                TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
-                value.is_null()
-                    ? "configured"
-                    : TerminalSafe(value.is_string() ? value.get<std::string>()
-                                                     : JsonDump(value))
-                          .c_str(),
-                std::string(ConfigScopeLabel(source)).c_str(), RST());
+    reply.Print(
+        "%s = %s%s · %s%s\n",
+        TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
+        value.is_null() ? "configured" : TerminalSafe(JsonText(value)).c_str(),
+        std::string(ConfigScopeLabel(source)).c_str(), RST());
   }
   if (!changed) {
     reply.Note(Tone::kNeutral, "every setting is at its default");

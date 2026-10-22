@@ -491,8 +491,7 @@ bool ParseConfigChanges(const json& request, std::vector<ConfigChange>& changes,
         error = "set needs a value for " + change.key;
         return false;
       }
-      change.value =
-          value->is_string() ? value->get<std::string>() : JsonDump(*value);
+      change.value = JsonText(*value);
     }
     changes.push_back(std::move(change));
   }

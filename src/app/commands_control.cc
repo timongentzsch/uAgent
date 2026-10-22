@@ -38,11 +38,9 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread) {
     if (!ParseApprovalMode(text, value)) value = ApprovalMode::kAsk;
     return value;
   };
-  const auto value = configured.values.find(kApprovalKey);
   const bool chosen =
       JsonValue(configured.sources, kApprovalKey, "") == "conversation";
-  ApprovalMode effective =
-      parsed(value == configured.values.end() ? "" : value->second);
+  ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
   if (thread) {
     inherited = ApprovalMode::kAuto;
@@ -317,9 +315,7 @@ std::string ActivityText(const json& result) {
       for (const json& row : *rows) {
         if (JsonValue(row, "detached", false)) text += "[detached] activity ";
         auto id = row.find("id");
-        const std::string id_text = id == row.end()   ? "—"
-                                    : id->is_string() ? id->get<std::string>()
-                                                      : JsonDump(*id);
+        const std::string id_text = id == row.end() ? "—" : JsonText(*id);
         if (agents) {
           // Agents are named teammates, not tasks: name first, id for reuse.
           const std::string name = JsonValue(row, "name", "");

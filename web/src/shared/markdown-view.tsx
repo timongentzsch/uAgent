@@ -4,10 +4,16 @@ import {
   wholeStreamingMarkdownChars,
 } from "./limits.ts";
 import { closedFence, streamingHead } from "./markdown-split.ts";
-import { Component, type ComponentType } from "preact";
+import { Component } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
-import { CodeCopy, LoadError, DataText, usePlaceholder } from "./ui.tsx";
+import {
+  CodeCopy,
+  Deferred,
+  LoadError,
+  DataText,
+  usePlaceholder,
+} from "./ui.tsx";
 import { useResource } from "./use-resource.ts";
 
 type Renderer = typeof import("./markdown.ts");
@@ -96,34 +102,27 @@ function CodeBlock({
   );
 }
 
+const diagramModule = () => import("./diagram.tsx");
 function DiagramLeaf({ source }: { source: string }) {
-  const [Diagram, setDiagram] = useState<ComponentType<{
-    source: string;
-  }> | null>(null);
-  useEffect(() => {
-    let active = true;
-    import("./diagram.tsx").then(({ default: component }) => {
-      if (active) setDiagram(() => component);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-  return Diagram ? (
-    <Diagram source={source} />
-  ) : (
-    <div class="diagram">
-      <div class="diagram-preview" role="status">
-        Rendering diagram…
-      </div>
-      <details>
-        <summary>Show source</summary>
-        <CodeBlock
-          source={source}
-          html={`<pre><code>${escapeHTML(source)}</code></pre>`}
-        />
-      </details>
-    </div>
+  return (
+    <Deferred
+      load={diagramModule}
+      source={source}
+      fallback={
+        <div class="diagram">
+          <div class="diagram-preview" role="status">
+            Rendering diagram…
+          </div>
+          <details>
+            <summary>Show source</summary>
+            <CodeBlock
+              source={source}
+              html={`<pre><code>${escapeHTML(source)}</code></pre>`}
+            />
+          </details>
+        </div>
+      }
+    />
   );
 }
 

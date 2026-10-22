@@ -17,6 +17,7 @@ import { capturePointer, TAP_SLOP_PX, type ZoomView } from "./zoom.ts";
 import { ZoomSurface } from "./zoom-surface.tsx";
 import { maxUploadBytes } from "./limits.ts";
 import { useAction } from "./use-action.ts";
+import { useResource } from "./use-resource.ts";
 import "./annotate.css";
 
 type Point = [x: number, y: number, pressure: number];
@@ -150,9 +151,22 @@ export default function Annotator({
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [image, setImage] = useState<ImageBitmap | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
+  const {
+    value: image,
+    error,
+    retry,
+  } = useResource(
+    (signal) =>
+      fetch(src, { signal })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.blob();
+        })
+        .then(createImageBitmap),
+    [src],
+  );
+  // The decoded image holds its full-size pixels until closed.
+  useEffect(() => () => image?.close(), [image]);
   const [items, setItems] = useState<Item[]>([]);
   const [tool, setTool] = useState<"pen" | "pin">("pen");
   const [editing, setEditing] = useState<number | null>(null);
@@ -170,29 +184,6 @@ export default function Annotator({
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [aiming, setAiming] = useState(false);
   const hint = useId();
-
-  useEffect(() => {
-    let active = true;
-    let loaded: ImageBitmap | undefined;
-    setError(null);
-    fetch(src)
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.blob();
-      })
-      .then(createImageBitmap)
-      .then((bitmap) => {
-        loaded = bitmap;
-        if (active) setImage(bitmap);
-        else bitmap.close();
-      })
-      .catch((failure) => active && setError(failure));
-    return () => {
-      active = false;
-      // The decoded image holds its full-size pixels until closed.
-      loaded?.close();
-    };
-  }, [src, attempt]);
 
   // Fit the image to the stage; the backing store follows the pixel ratio.
   useLayoutEffect(() => {
@@ -405,7 +396,7 @@ export default function Annotator({
       />
       <div class="dialog-body annotator" data-tool={tool}>
         {error ? (
-          <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+          <LoadError error={error} retry={retry} />
         ) : !image ? (
           <Spinner surface />
         ) : (

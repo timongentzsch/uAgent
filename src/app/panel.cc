@@ -50,8 +50,7 @@ std::string LiveStatus(const SessionInfo& info) {
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
   if (!connection.status.empty()) return connection.status;
-  // One that has said nothing yet, or started from an older binary: its
-  // first state says it.
+  // One still starting has said nothing yet: its first state says it.
   std::string status = "idle";
   session::ReadFrames(
       connection.socket.Get(), -1, session::kFrameBytes,
@@ -122,9 +121,8 @@ ToolResult State(const std::string& folder, const json& a) {
   }
   if (value.size() > kPinnedBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       block +
-                           " would exceed 2048 bytes; "
-                           "rewrite it shorter with set");
+                       block + " would exceed " + std::to_string(kPinnedBytes) +
+                           " bytes; rewrite it shorter with set");
   }
   pinned[block] = value;
   if (std::string error = WritePinned(folder, pinned); !error.empty()) {
@@ -166,7 +164,7 @@ ToolResult Unavailable(const std::string& error) {
 std::optional<SessionInfo> FindSession(const std::string& folder,
                                        const std::string& id) {
   for (SessionInfo& info : FolderSessions(folder)) {
-    if (HashHex(info.path) == id) return std::move(info);
+    if (SessionIdFor(info.path) == id) return std::move(info);
   }
   return std::nullopt;
 }
@@ -222,7 +220,7 @@ std::vector<SessionInfo> OwnThreads(const std::string& folder) {
 }
 
 std::string PanelId(const std::string& folder) {
-  return HashHex(PanelPath(folder));
+  return SessionIdFor(PanelPath(folder));
 }
 
 double ThreadBudget(const json& thread) {
@@ -248,7 +246,7 @@ std::string PanelBoard(const std::string& folder) {
   size_t shown = 0;
   for (const SessionInfo& info : sessions) {
     std::string line =
-        HashHex(info.path) + " " + LiveStatus(info) + " · " +
+        SessionIdFor(info.path) + " " + LiveStatus(info) + " · " +
         (!ChatMember(info.thread).empty()  ? "member "
          : info.kind == kSessionKindThread ? "↳ "
                                            : "") +

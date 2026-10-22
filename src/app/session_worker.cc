@@ -28,6 +28,7 @@
 #include "include/app/thread_link.h"
 #include "include/app/transient_batcher.h"
 #include "include/cli/cli.h"
+#include "include/core/activity.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
@@ -116,9 +117,7 @@ class WorkerChannel final : public ApplicationChannel {
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
         panel_(panel),
-        chat_(panel                        ? CanonicalCwd()
-              : ChatMember(thread).empty() ? ""
-                                           : JsonValue(thread, "folder", "")) {
+        chat_(ChatFolder(panel, thread)) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
   }
   ~WorkerChannel() override { Close(); }
@@ -321,7 +320,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::string InitialTitle() const override { return title_; }
   void PublishState(const json& state, bool checkpoint) override {
     std::lock_guard lock(mutex_);
-    std::string activity = JsonValue(state_, "activity", "Ready");
+    std::string activity = JsonValue(state_, "activity", kIdleActivity);
     std::string phase = JsonValue(state_, "phase", "idle");
     int64_t started = JsonValue(state_, "turn_started_ms", int64_t{0});
     state_ = state;
@@ -350,7 +349,7 @@ class WorkerChannel final : public ApplicationChannel {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
-      state_["activity"] = "Ready";
+      state_["activity"] = kIdleActivity;
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
@@ -616,11 +615,9 @@ class WorkerChannel final : public ApplicationChannel {
         }
         break;
       case SessionCommandKind::kRename:
-        if (input_ || !ValidSessionTitle(parsed.title)) {
-          error = "rename requires a valid title and an empty input queue";
-        } else if (error = chat_.empty()
-                               ? ""
-                               : ChatNameProblem(chat_, parsed.title, path_);
+        if (input_) {
+          error = "rename requires an empty input queue";
+        } else if (error = RenameProblem(chat_, parsed.title, path_);
                    error.empty()) {
           if (!chat_.empty()) {
             ChatRenamed(chat_, path_, ChatName(chat_, path_), parsed.title);
@@ -853,7 +850,7 @@ class WorkerChannel final : public ApplicationChannel {
 }  // namespace
 
 int WorkerMain(int argc, char** argv) {
-  if (argc != 7 || !OpaqueId(argv[4]) || HashHex(argv[3]) != argv[4]) {
+  if (argc != 7 || !OpaqueId(argv[4]) || SessionIdFor(argv[3]) != argv[4]) {
     return kWorkerBadLaunch;
   }
   (void)setsid();

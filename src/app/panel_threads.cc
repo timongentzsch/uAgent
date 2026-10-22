@@ -162,14 +162,14 @@ ToolResult Spawn(const std::string& folder, const json& a,
   }
   if (member) {
     return ToolSuccess(JsonDump(
-        {{"session_id", HashHex(launch.path)},
+        {{"session_id", SessionIdFor(launch.path)},
          {"name", title},
          {"next",
           "It introduces itself in the chat, and from now on reads what is "
           "written here and answers when it has something to add."}}));
   }
   return ToolSuccess(
-      JsonDump({{"session_id", HashHex(launch.path)},
+      JsonDump({{"session_id", SessionIdFor(launch.path)},
                 {"title", title},
                 {"cwd", launch.cwd},
                 {"environment", environment},
@@ -189,7 +189,8 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                    const std::string& text) {
   if (text.empty() || text.size() > kMessageBytes) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "a message needs 1 to 8192 bytes of text");
+                       "a message needs 1 to " + std::to_string(kMessageBytes) +
+                           " bytes of text");
   }
   // The chat's cap on turns counts what is written there, nothing else.
   if (const std::string& name = info.title; !ChatMember(info.thread).empty()) {

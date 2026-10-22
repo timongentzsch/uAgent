@@ -92,6 +92,8 @@ struct ParsedOptions {
 ParsedOptions ParseOptions(int argc, char* const argv[]);
 const char* UsageText();
 std::span<const FlagSpec> FlagRegistry();
+// How a flag is written with its value: "--model MODEL", "--debug[=FILE]".
+std::string FlagInvocation(const FlagSpec& spec);
 
 }  // namespace uagent
 

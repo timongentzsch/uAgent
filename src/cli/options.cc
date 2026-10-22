@@ -225,24 +225,25 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
 
 std::span<const FlagSpec> FlagRegistry() { return kFlags; }
 
+std::string FlagInvocation(const FlagSpec& spec) {
+  std::string invocation(spec.flag);
+  if (!spec.value) return invocation;
+  return spec.optional_value ? invocation + "[=" + spec.value + "]"
+                             : invocation + " " + spec.value;
+}
+
 const char* UsageText() {
   static const std::string kText = [] {
-    auto invocation_of = [](const FlagSpec& spec) {
-      std::string invocation(spec.flag);
-      if (!spec.value) return invocation;
-      return spec.optional_value ? invocation + "[=" + spec.value + "]"
-                                 : invocation + " " + spec.value;
-    };
     size_t column = 0;
     for (const FlagSpec& spec : kFlags) {
       if (!spec.help || !*spec.help) continue;
-      column = std::max(column, invocation_of(spec).size() + 4);
+      column = std::max(column, FlagInvocation(spec).size() + 4);
     }
     std::string synopsis = "usage: uagent";
     std::string listing;
     for (const FlagSpec& spec : kFlags) {
       if (!spec.help || !*spec.help) continue;
-      std::string invocation = invocation_of(spec);
+      std::string invocation = FlagInvocation(spec);
       synopsis += " [" + invocation + "]";
       std::string row = "  " + invocation;
       row.append(column - row.size(), ' ');

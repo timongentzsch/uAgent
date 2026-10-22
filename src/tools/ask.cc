@@ -17,6 +17,8 @@ namespace uagent {
 namespace {
 constexpr size_t kPreviewLines = 40;
 constexpr size_t kPreviewBytes = 4000;
+// A header names a step or a chip: about 12 characters, at most this many.
+constexpr size_t kHeaderChars = 24;
 
 bool ImageFile(const std::string& path) {
   std::string extension =
@@ -83,16 +85,15 @@ std::optional<std::string> AskQuestionsIssue(const json& questions) {
   for (const json& question : questions) {
     const json* options = JsonArray(question, "options");
     const std::string header = JsonValue(question, "header", "");
-    const auto characters = std::ranges::count_if(
-        header, [](unsigned char byte) { return (byte & 0xC0) != 0x80; });
+    const size_t characters = Utf8Chars(header);
     if (JsonValue(question, "question", "").empty() || header.empty()) {
       return "each question needs its text and a header";
     }
-    // The header names a step or a chip: 12 characters is the aim, and a
-    // longer one is refused by name so only it needs rewriting.
-    if (characters > 24) {
+    // A longer header is refused by name, so only it needs rewriting.
+    if (characters > kHeaderChars) {
       return "the header \"" + header + "\" is " + std::to_string(characters) +
-             " characters; use at most 24, about 12";
+             " characters; use at most " + std::to_string(kHeaderChars) +
+             ", about 12";
     }
     if (!options || options->size() < 2 || options->size() > 4) {
       return "each question needs 2 to 4 options; Other is always offered";
@@ -112,7 +113,8 @@ std::optional<std::string> AskQuestionsIssue(const json& questions) {
       if (preview.size() > kPreviewBytes ||
           static_cast<size_t>(std::ranges::count(preview, '\n')) >=
               kPreviewLines) {
-        return "a preview holds at most 40 lines and 4000 bytes";
+        return "a preview holds at most " + std::to_string(kPreviewLines) +
+               " lines and " + std::to_string(kPreviewBytes) + " bytes";
       }
     }
   }

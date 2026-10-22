@@ -17,6 +17,7 @@
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
+#include "include/core/activity.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -111,7 +112,7 @@ void SessionHost::LoadDrafts() {
     session->path = JsonValue(draft, "path", "");
     session->cwd = JsonValue(draft, "cwd", "");
     const std::filesystem::path path(session->path);
-    if (!OpaqueId(session->id) || session->id != HashHex(session->path) ||
+    if (!OpaqueId(session->id) || session->id != SessionIdFor(session->path) ||
         path.parent_path() != std::filesystem::path(UagentDir(kHistoryDir)) /
                                   WorkspaceId(session->cwd) ||
         !path.filename().string().starts_with("web-") ||
@@ -151,7 +152,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
   bool changed = false;
   std::set<std::string> listed;
   for (const SessionInfo& item : list) {
-    const std::string id = HashHex(item.path);
+    const std::string id = SessionIdFor(item.path);
     listed.insert(id);
     auto [it, inserted] = sessions_.try_emplace(id, nullptr);
     if (inserted) {
@@ -315,7 +316,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"turn_active", session.turn_active},
       {"guidance", session.guidance},
       {"incoming", session.incoming},
-      {"activity", JsonValue(session.state, "activity", "Ready")},
+      {"activity", JsonValue(session.state, "activity", kIdleActivity)},
       {"phase", JsonValue(session.state, "phase", "idle")},
       {"activities", JsonValue(session.state, "activities", json::array())},
       {"error", session.error},

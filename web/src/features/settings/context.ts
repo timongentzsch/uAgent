@@ -8,19 +8,10 @@ import type {
   McpServer,
   Session,
 } from "../../shared/types.ts";
-import type { TimePrefs } from "../../shared/time.ts";
 
 // What Settings is opened with. Panes read what they need from here, so the
 // shell passes nothing through.
 export interface SettingsProps {
-  theme: string;
-  setTheme: Dispatch<StateUpdater<string>>;
-  motion: string;
-  setMotion: Dispatch<StateUpdater<string>>;
-  timePrefs: TimePrefs;
-  setTimePrefs: Dispatch<StateUpdater<TimePrefs>>;
-  zoom: number;
-  setZoom: Dispatch<StateUpdater<number>>;
   install: InstallPrompt | null;
   setInstall: Dispatch<StateUpdater<InstallPrompt | null>>;
   update: ServiceWorker | null;

@@ -247,8 +247,8 @@ void Application::EnsureSessionPath() {
   if (!session_file_.empty()) {
     ::setenv("UAGENT_INTERNAL_SESSION_PATH", session_file_.c_str(), 1);
   }
-  runtime_.processes.SetOwner(session_file_.empty() ? agent_.SessionId()
-                                                    : HashHex(session_file_));
+  runtime_.processes.SetOwner(
+      session_file_.empty() ? agent_.SessionId() : SessionIdFor(session_file_));
 }
 
 void Application::ReportReplacedExecutable() {

@@ -508,9 +508,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       output = LimitOutput(session->transcript.Snapshot(), interaction_cap);
     }
     // The transcript above is what the caller reads; the log is only kept.
-    std::optional<ToolArtifact> artifact = KeepCompletedLog(
-        log, ToolResultCap(),
-        /*failed=*/!(WIFEXITED(status) && WEXITSTATUS(status) == 0));
+    std::optional<ToolArtifact> artifact =
+        KeepCompletedLog(log, ToolResultCap(),
+                         /*failed=*/!ExitedOk(status));
     ToolResult result = build(std::move(output), status);
     if (!result.Ok() && !wrapper.empty()) {
       result.output += SandboxHint(result.output);

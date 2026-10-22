@@ -25,6 +25,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/output_buffer.h"
+#include "include/core/platform.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "include/tools/tool.h"
@@ -34,8 +35,7 @@ namespace uagent {
 // One finished extraction: its receipt decides what the memory event records,
 // and only a change or a failure is worth a line on screen.
 void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
-  bool success =
-      WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
+  bool success = ExitedOk(completion.status);
   MemoryEvent event;
   std::string receipt_error;
   bool receipt_exists =
@@ -76,7 +76,8 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
         std::string_view candidate =
             start == std::string_view::npos ? tail : tail.substr(start + 1);
         if (!Trim(std::string(candidate)).empty()) {
-          event.preview = Utf8Trunc(std::string(candidate), 160);
+          event.preview =
+              Utf8Trunc(std::string(candidate), kActivityLabelBytes);
           break;
         }
         tail = start == std::string_view::npos ? std::string_view()
@@ -163,10 +164,8 @@ void Agent::DeliverActivityCompletions(
     if (completion.kind == ActivityKind::kMemory) continue;
     std::string header = BgResultHeader(completion);
 
-    const bool succeeded =
-        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
+    const bool succeeded = ExitedOk(completion.status);
     PresentationRecord record;
-    record.kind = PresentationKind::kNotice;
     record.status = succeeded ? PresentationStatus::kSucceeded
                               : PresentationStatus::kFailed;
     record.title = completion.kind == ActivityKind::kSubagent
@@ -175,13 +174,13 @@ void Agent::DeliverActivityCompletions(
     std::string label = completion.display_label.empty()
                             ? FirstLine(completion.command)
                             : completion.display_label;
-    if (!label.empty()) record.title += " · " + Utf8Trunc(label, 160);
-    record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
+    if (!label.empty()) {
+      record.title += " · " + Utf8Trunc(label, kActivityLabelBytes);
+    }
     const json completion_activity = {
         {"category",
          completion.kind == ActivityKind::kSubagent ? "delegate" : "run"},
         {"label", record.title}};
-    record.activity = completion_activity;
     std::string text = record.title + (succeeded ? " completed" : " failed");
     if (!completion.output.empty()) text += "\n" + completion.output;
     const bool agent = completion.kind == ActivityKind::kSubagent &&
@@ -192,7 +191,8 @@ void Agent::DeliverActivityCompletions(
           {{"verb",
             json{agent ? "Delegating" : "Running",
                  succeeded ? (agent ? "Delegated" : "Finished") : "Failed"}},
-           {"target", Utf8Trunc(label.empty() ? record.title : label, 160)},
+           {"target", Utf8Trunc(label.empty() ? record.title : label,
+                                kActivityLabelBytes)},
            {"output", "tail"}}},
          {"parts",
           json::array(
@@ -203,7 +203,7 @@ void Agent::DeliverActivityCompletions(
          // The full command travels with the record (bounded): rows and
          // titles abbreviate, but the popup and history must not lose it
          // when the supervisor no longer retains the job.
-         {"command", Utf8Trunc(completion.command, 8192)},
+         {"command", Utf8Trunc(completion.command, kActivityCommandBytes)},
          {"activity", completion_activity},
          {"agent_id", completion.source_id},
          {"status", succeeded ? "completed" : "failed"}});
@@ -212,7 +212,7 @@ void Agent::DeliverActivityCompletions(
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},
          {"kind", ActivityKindName(completion.kind)},
-         {"command", Utf8Trunc(completion.command, 8192)},
+         {"command", Utf8Trunc(completion.command, kActivityCommandBytes)},
          {"status",
           WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
          {"output_chars", completion.output.size()}}};

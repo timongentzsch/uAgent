@@ -113,7 +113,7 @@ json ActivityProjection::Project() const {
             : phase == "preparing"  ? "Preparing tool call"
             : phase == "responding" ? "Responding"
             : phase == "finishing"  ? "Finishing"
-            : phase == "idle"       ? "Ready"
+            : phase == "idle"       ? kIdleActivity
                                     : "Working";
   }
   return {{"phase", phase}, {"activity", label}};

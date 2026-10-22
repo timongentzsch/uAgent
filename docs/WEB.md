@@ -326,7 +326,7 @@ own editors; see [Memory, skills and scheduled tasks](MANAGEMENT.md) and
 
 The page stays pinch-zoomable; inside the browser viewer a pinch zooms the
 remote display instead. Settings → This browser → Zoom scales the whole
-interface from 50 to 200%. A reduced-motion preference, or Animations: Off,
+interface in steps from 50 to 200%, applied when one is chosen. A reduced-motion preference, or Animations: Off,
 disables animation. See [Accessibility](ACCESSIBILITY.md).
 
 ## Attachments

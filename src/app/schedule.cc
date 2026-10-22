@@ -102,7 +102,7 @@ json Run(const json& task, int64_t at, const std::string& status) {
           {"cwd", cwd},
           {"project", project},
           {"session_path", path},
-          {"session_id", HashHex(path)},
+          {"session_id", SessionIdFor(path)},
           {"definition", task}};
 }
 bool Busy(const json& store, const std::string& task) {
@@ -291,10 +291,7 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
   const std::string name = Trim(JsonValue(task, "name", ""));
   const std::string prompt = Trim(JsonValue(task, "prompt", ""));
   const auto environment = JsonValue(task, "environment", "worktree");
-  // The approval modes, by their own names; a task saved as "prompt"
-  // asks.
-  std::string permissions = JsonValue(task, "permissions", "ask");
-  if (permissions == "prompt") permissions = "ask";
+  const std::string permissions = JsonValue(task, "permissions", "ask");
   task["permissions"] = permissions;
   if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
       prompt.size() > kSchedulePromptChars ||

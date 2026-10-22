@@ -6,12 +6,12 @@ import {
   keepOlderPages,
   patchCatalogue,
   raiseIncoming,
-  readStored,
   stateFrame,
   withActivities,
   keptSession,
 } from "../src/state/store.ts";
 import { api, command, receiveOutcome } from "../src/state/api.ts";
+import { stored } from "../src/shared/storage.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
 import {
   renderMarkdown,
@@ -107,7 +107,9 @@ test("a pending receipt remains pending and SSE may acknowledge before HTTP", as
 test("corrupt browser preferences fall back without breaking the app", () => {
   for (const value of ["{", "null", '"wrong"', "[]"])
     assert.deepEqual(
-      readStored({ getItem: () => value }, "sizes", { display: 100 }),
+      stored("sizes", { display: 100 }, undefined, {
+        where: { getItem: () => value },
+      }).read(),
       { display: 100 },
     );
 });

@@ -127,8 +127,10 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 ),
             )
             assert_true(len(provider.requests) == 2, provider.requests)
-            files = session_files(home)
-            assert_true(len(files) == 1, files)
+            # One web conversation despite the repeated submit; the CLI run
+            # is saved beside it.
+            files = [path for path in session_files(home) if path.name.startswith("web-")]
+            assert_true(len(files) == 1, session_files(home))
             data = json.loads(files[0].read_text().splitlines()[1])
             assert_true("display" in data, data.keys())
             assert_true("Supplied thinking" in json.dumps(value), value)
@@ -172,7 +174,7 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 assert_true(status == 200 and denied["accepted"], denied)
                 client.until(session, lambda value: value["metadata"]["status"] == "idle")
             assert_true(
-                len(session_files(home)) == 1,
+                [path for path in session_files(home) if path.name.startswith("web-")] == files,
                 "slash fork changed worker identity",
             )
             client.command("close", session)

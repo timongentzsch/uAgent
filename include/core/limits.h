@@ -24,7 +24,6 @@ inline constexpr size_t MiB(size_t n) { return n * kMiB; }
 // grow the others.
 inline constexpr size_t kPreviewChars = 4096;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
-inline constexpr size_t kTraceSummaryChars = 512;
 // The opening of a change/diff that a tool-result fact and its live event
 // carry. A longer diff is kept whole in a private artifact the row names.
 inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
@@ -32,11 +31,6 @@ inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
 // largest dimension kept for vision payloads.
 inline constexpr size_t kAttachmentCacheBytes = size_t{16} * 1024 * 1024;
 inline constexpr int kMaxImageDimension = 2048;
-// Kept-receipt detail cap: compact rows record title/summary/flags, and only
-// multiline rows carry a bounded detail body.
-inline constexpr size_t kReplayDetailChars = 2048;
-// Terminal columns reserved beside a record title when truncating its summary.
-inline constexpr size_t kRecordTitleReserveChars = 6;
 // Maximum entries held in a session/asset catalogue scan. Distinct from the
 // byte budgets above: raising retention must not raise preview windows.
 inline constexpr size_t kMaxCatalogueEntries = 4096;
@@ -67,8 +61,10 @@ inline constexpr size_t kGenericTitleReplacementMinChars = 12;
 inline constexpr size_t kTitleInputChars = 2000;
 inline constexpr size_t kTitleChars = 80;
 // The longest title a user (or a fork) may give a session, and the longest
-// workspace name. The web form mirrors both (web/src/shared/limits.ts).
-inline constexpr size_t kUserTitleBytes = 256;
+// workspace name, in characters; a generated title is cut to as many bytes,
+// which is never more characters. The web form mirrors both
+// (web/src/shared/limits.ts).
+inline constexpr size_t kUserTitleChars = 256;
 inline constexpr size_t kSpaceNameChars = 64;
 inline constexpr int64_t kTitleTimeoutSeconds = 30;
 // Upload and subsequent claim validation must accept the same display names.
@@ -96,6 +92,8 @@ inline constexpr int64_t kStreamBatchIntervalMs = 12;
 inline constexpr size_t kStreamBatchBytes = KiB(8);
 // Short activity captions are presentation policies, not model limits.
 inline constexpr size_t kActivityLabelBytes = 160;
+// A background job's full command, kept with its row and its result.
+inline constexpr size_t kActivityCommandBytes = KiB(8);
 inline constexpr size_t kActivityLineBytes = 192;
 
 // Turn-loop recovery stages. A valid repeated call gets two model-facing

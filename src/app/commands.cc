@@ -9,8 +9,10 @@
 #include <sstream>
 #include <string>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/chat.h"
 #include "include/app/control.h"
 #include "include/app/self_description.h"
 #include "include/core/config_registry.h"
@@ -57,15 +59,7 @@ void CommandReply::Note(Tone tone, std::string_view text) {
 
 RuntimeConfig::Values RestoreChoices(const json& settings,
                                      ConfigManager& manager) {
-  json chosen = JsonValue(settings, "chosen", json(nullptr));
-  if (!chosen.is_object()) {
-    // Saved before choices were kept as settings.
-    chosen = json::object();
-    const std::string mode = JsonValue(settings, "permissions", "");
-    if (!mode.empty() && mode != "default") chosen["UAGENT_APPROVAL"] = mode;
-    const std::string route = JsonValue(settings, "route", "");
-    if (!route.empty()) chosen["UAGENT_MODEL"] = route;
-  }
+  const json chosen = JsonValue(settings, "chosen", json::object());
   const RuntimeConfig::Values flagged = manager.Conversation();
   RuntimeConfig::Values taken;
   for (const auto& [key, value] : chosen.items()) {
@@ -187,14 +181,24 @@ CommandReply RunSlashCommand(AppSession& session,
       }
       result = PermissionControl(session.context, {{"mode", command.argument}});
       return reply;
-    case SlashCommandId::kRename:
-      if (Trim(command.argument).empty()) {
+    case SlashCommandId::kRename: {
+      const std::string title = Trim(command.argument);
+      const Options& options = session.context.options;
+      const std::string chat =
+          ChatFolder(options.Panel(), ThreadRole(options.session));
+      const std::string& path = session.session_file;
+      if (title.empty()) {
         result = {{"error", "usage: /rename TITLE"}};
+      } else if (std::string problem = RenameProblem(chat, title, path);
+                 !problem.empty()) {
+        result = {{"error", problem}};
       } else {
-        session.ActiveAgent().Rename(Trim(command.argument));
-        result = {{"title", Trim(command.argument)}};
+        if (!chat.empty()) ChatRenamed(chat, path, ChatName(chat, path), title);
+        session.ActiveAgent().Rename(title);
+        result = {{"title", title}};
       }
       return reply;
+    }
     case SlashCommandId::kConfig:
       HandleConfig(session, command.argument, reply);
       return reply;

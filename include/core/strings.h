@@ -5,6 +5,7 @@
 // String, UTF-8, and display-width helpers, plus the terminal-safe and
 // human-readable formatters shared by the REPL and the tool trace.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -66,6 +67,14 @@ std::string Utf8Trunc(std::string s, size_t cap);
 // the terminal's own output uses, so none ends a sequence elsewhere.
 size_t CsiSpan(std::string_view text);
 
+// Characters in UTF-8 text: what a person counts, and never more than the
+// UTF-16 units a browser's maxLength counts. Continuation bytes are skipped.
+inline size_t Utf8Chars(std::string_view text) {
+  return static_cast<size_t>(std::count_if(
+      text.begin(), text.end(),
+      [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
+}
+
 // Terminal column width for valid UTF-8 in the active locale. Invalid or
 // incomplete sequences degrade to one column rather than breaking rendering.
 size_t DisplayWidth(const std::string& s);
@@ -125,9 +134,6 @@ int64_t TerminalColumns();
 // Usable columns after reserving room for a prompt, marker or trailing cell.
 // Never zero: callers pass the result straight to a width-bounded formatter.
 size_t TerminalWidth(int64_t reserved = 0);
-
-std::string TerminalSummary(const std::string& text,
-                            size_t reserved_columns = 0);
 
 // Stable short digest for session and workspace identity.
 std::string HashHex(const std::string& data);

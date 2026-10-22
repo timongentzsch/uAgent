@@ -382,16 +382,6 @@ std::string TerminalSafe(std::string_view s) {
   return out;
 }
 
-std::string TerminalSummary(const std::string& text, size_t reserved_columns) {
-  size_t newline = text.find('\n');
-  std::string summary = TerminalSafe(text.substr(0, newline));
-  if (newline != std::string::npos && newline + 1 < text.size()) {
-    summary += " …";
-  }
-  return DisplayTrunc(std::move(summary),
-                      TerminalWidth(static_cast<int64_t>(reserved_columns)));
-}
-
 std::string DisplayTail(std::string text, size_t columns) {
   size_t total = DisplayWidth(text);
   if (total <= columns) return text;

@@ -413,6 +413,22 @@ def test_input_idle_background_completion_starts_a_turn(root, home, *, binary):
         assert_true(len(server.requests) == 3, server.requests)
 
 
+def test_headless_run_continues_with_c(root, home, *, binary):
+    def second(_, body):
+        sent = json.dumps(body["messages"])
+        assert_true("remember the word quince" in sent and "noted" in sent, sent[-2000:])
+        return event({"content": "quince"})
+
+    with Server([event({"content": "noted"}), second]) as server:
+        env = base_env(home, server.url)
+        first = run(root, env, "-p", "remember the word quince", binary=binary)
+        assert_true(first.returncode == 0 and first.stdout.strip() == "noted", first.stderr)
+        again = run(root, env, "-c", "-p", "which word?", binary=binary)
+        assert_true(again.returncode == 0, again.stderr)
+        assert_true("no saved conversation" not in again.stderr, again.stderr)
+        assert_true(again.stdout.strip() == "quince", again.stdout)
+
+
 def test_continued_headless_json_reports_this_runs_usage(root, home, *, binary):
     session = write_session(
         home,

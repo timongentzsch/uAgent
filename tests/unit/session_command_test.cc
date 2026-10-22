@@ -671,6 +671,17 @@ void TestSessionPersistence() {
   SetApprovalMode(prior_approval);
 }
 
+// A title is bounded in characters, as the web's form bounds it: accented
+// or other non-ASCII text gets its whole length, not a quarter of it.
+void TestTitlesCountCharacters() {
+  std::string accented;
+  for (size_t i = 0; i < kUserTitleChars; ++i) accented += "\xc3\xa9";
+  CHECK(Utf8Chars(accented) == kUserTitleChars);
+  CHECK(ValidSessionTitle(accented));
+  CHECK(!ValidSessionTitle(accented + "x"));
+  CHECK(!ValidSessionTitle("tab\tinside"));
+}
+
 void TestSessionCatalogueCache() {
   TestWorkspace workspace("catalogue-cache");
   const std::string folder = UagentDir(kHistoryDir);

@@ -11,7 +11,6 @@
 #include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/prompt.h"
-#include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/app/runtime.h"
@@ -967,14 +966,6 @@ void TestCapsAndEscaping() {
   CHECK(recoverable_text.find("/tmp/uagent-output") != std::string::npos);
   CHECK(recoverable_text.ends_with("do not read it whole]"));
 
-  CHECK(TextLines("") == 0);
-  CHECK(TextLines("one") == 1);
-  CHECK(TextLines("one\ntwo\n") == 2);
-  CHECK(ToolResultSummary(ToolSuccess(""), "", false) == "(empty)");
-  CHECK(ToolResultSummary(ToolSuccess("one\ntwo"), "one\ntwo", false) ==
-        "one … · +1 lines · 7 chars");
-  CHECK(ToolResultSummary(ToolTimedOut("late"), "late", true) ==
-        "timed_out: late · truncated");
   // Verbose rendering shows the tool's own bounded output rather than the
   // model-facing cap, and still honours a per-call result limit.
   CallTask displayed;

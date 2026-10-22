@@ -100,9 +100,8 @@ int Application::FinishHeadless(std::string answer, std::string error,
 }
 
 int Application::RunHeadless() {
-  // Delegated children are durable conversations even though ordinary
-  // one-shot `-p` calls remain ephemeral.
-  persist_ = !session_file_.empty();
+  // Saved like any conversation, so `-c -p` continues it.
+  persist_ = true;
   // Spend is reported from here on: a continued conversation's envelope
   // carries this run, not everything before it.
   used_before_ = {{"usage", UsageJson(agent_.SessionUsage())},

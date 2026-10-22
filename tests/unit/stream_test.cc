@@ -10,7 +10,6 @@
 
 #include "include/agent/jobs.h"
 #include "include/agent/process.h"
-#include "include/agent/tool_presentation.h"
 #include "include/api/retry.h"
 #include "include/core/activity.h"
 #include "include/core/term.h"

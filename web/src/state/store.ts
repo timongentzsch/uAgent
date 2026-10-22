@@ -12,33 +12,6 @@ import type {
   View,
 } from "../shared/types.ts";
 import { retainedBackgroundViews, maxHttpExchanges } from "../shared/limits.ts";
-export function readStored<T>(
-  storage: Pick<Storage, "getItem">,
-  key: string,
-  fallback: T,
-): T {
-  try {
-    const value = JSON.parse(storage.getItem(key) || "null");
-    return value !== null &&
-      typeof value === typeof fallback &&
-      Array.isArray(value) === Array.isArray(fallback)
-      ? value
-      : fallback;
-  } catch {
-    return fallback;
-  }
-}
-export function writeStored(
-  storage: Pick<Storage, "setItem">,
-  key: string,
-  value: unknown,
-) {
-  try {
-    storage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* Private storage may be full. */
-  }
-}
 
 export const emptyDraft = (): Draft => ({ text: "", files: [] });
 // Unsent work: text or a file, uploaded or still uploading.

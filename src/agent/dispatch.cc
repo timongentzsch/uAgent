@@ -140,32 +140,9 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
   return data;
 }
 
-PresentationRecord ToolResultObservation(const CallTask& task,
-                                         const ToolCall& call) {
-  PresentationRecord record;
-  record.kind = PresentationKind::kToolResult;
-  record.id = call.id;
-  record.title = task.ordinal + call.name;
-  record.status = task.result.status == CompletionStatus::kCancelled
-                      ? PresentationStatus::kCancelled
-                  : task.result.Ok() ? PresentationStatus::kSucceeded
-                                     : PresentationStatus::kFailed;
-  record.summary =
-      task.result.output.empty()
-          ? "(empty)"
-          : Utf8Trunc(FirstLine(task.result.output), kTraceSummaryChars);
-  if (task.result.artifact) {
-    record.artifacts.push_back({"tool-output", task.result.artifact->path,
-                                task.result.artifact->bytes});
-  }
-  return record;
-}
-
 void EmitToolResultObservation(const CallTask& task, const ToolCall& call,
                                int64_t turn, int64_t step) {
-  Event event{EventId::kToolResult, ToolResultData(task, call, turn, step)};
-  event.presentation = ToolResultObservation(task, call);
-  Emit(std::move(event));
+  Emit(Event{EventId::kToolResult, ToolResultData(task, call, turn, step)});
 }
 
 json ToolCallData(const ToolCall& call, int64_t turn, int64_t step) {

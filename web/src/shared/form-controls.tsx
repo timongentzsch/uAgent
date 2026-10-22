@@ -26,7 +26,6 @@ type ControlProps =
 type Sizing = {
   inputRef?: RefObject<ControlElement | null>;
   grow?: boolean;
-  resizeKey?: number;
 };
 
 // Keep native editing/pickers and a Safari-safe layout font, while painting
@@ -35,7 +34,6 @@ function Control({
   tag,
   inputRef,
   grow,
-  resizeKey,
   class: className,
   className: alias,
   ...props
@@ -59,7 +57,7 @@ function Control({
     }
     wrapper.style.height = `${element.getBoundingClientRect().height}px`;
   }, [ref, grow]);
-  useLayoutEffect(fit, [fit, props.value, resizeKey]);
+  useLayoutEffect(fit, [fit, props.value]);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;

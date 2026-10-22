@@ -342,7 +342,7 @@ void TestFileTools() {
   CHECK(read_tool && read_tool->result_chars == kReadFileResultChars);
   CHECK(read_tool &&
         read_tool->parameters["properties"]["limit"]["description"] ==
-            "lines or entries (default 1000)");
+            "lines or entries");
   fs::path external =
       root.parent_path() / ("uagent-external-list-" + std::to_string(getpid()));
   fs::create_directories(external);

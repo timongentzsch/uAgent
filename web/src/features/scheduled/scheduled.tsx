@@ -1,4 +1,4 @@
-import { tabStorage } from "../../shared/storage.ts";
+import { tabDrafts, useStored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
 import {
@@ -11,7 +11,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useContext, useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Button,
@@ -28,9 +28,10 @@ import {
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../../shared/model-picker.tsx";
-import { readStored, writeStored } from "../../state/store.ts";
+import { useResource } from "../../shared/use-resource.ts";
 import { ProjectField } from "../../shared/project-field.tsx";
-import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
+import { formatMoment } from "../../shared/time.ts";
+import { devicePrefs } from "../../shared/device-prefs.ts";
 import { ListRow } from "../../shared/list-row.tsx";
 import { capitalize, permissionLabels } from "../../shared/display.ts";
 
@@ -51,7 +52,7 @@ const blank = (cwd: string): ScheduledTask => ({
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   },
 });
-const storage = storageKeys.scheduledDraft;
+const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
 const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {
@@ -79,10 +80,8 @@ export default function Scheduled({
   choose: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
-  const [task, setTask] = useState<ScheduledTask | null>(() =>
-    readStored(tabStorage, storage, null),
-  );
-  const prefs = useContext(TimePrefsContext);
+  const [task, setTask] = useState(drafts.open.read);
+  const [prefs] = useStored(devicePrefs.time);
   // A run's moment by the viewer's time preferences, in its task's zone.
   const moment = (seconds?: number, zone?: string) =>
     seconds
@@ -91,8 +90,7 @@ export default function Scheduled({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [confirm, setConfirm] = useState(false);
-  const [times, setTimes] = useState<number[] | null>(null);
-  const [previewError, setPreviewError] = useState<unknown>(null);
+
   const current = scheduled?.tasks?.find((entry) => entry.id === task?.id);
   const changed =
     !!task?.id && (!current || task.revision !== current.revision);
@@ -113,48 +111,39 @@ export default function Scheduled({
   const scheduleKey = JSON.stringify(task?.schedule);
   // biome-ignore lint/correctness/useExhaustiveDependencies: saves when the draft changes, not when the host's copy does
   useEffect(() => {
-    if (task) {
-      writeStored(tabStorage, storage, task);
-      if (dirty)
-        writeStored(tabStorage, `${storage}-${task.id || "new"}`, task);
-    } else tabStorage.removeItem(storage);
+    if (task && dirty) drafts.keep(task.id, task);
+    else drafts.open.write(task);
   }, [task]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: previews when the schedule's value changes, not on edits to other fields
-  useEffect(() => {
-    let active = true;
-    setTimes(null);
-    setPreviewError(null);
-    if (!task || !online) return;
-    const timer = setTimeout(
-      () =>
-        manage("schedule", { action: "preview", schedule: task.schedule })
-          .then((result) => {
-            if (active) setTimes(result.times || []);
-          })
-          .catch((failure) => {
-            if (active) setPreviewError(failure);
-          }),
-      schedulePreviewDebounceMs,
-    );
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [scheduleKey, online]);
+  // Previews when the schedule's value changes, not on edits to other
+  // fields; a preview of another schedule is not shown.
+  const preview = useResource(
+    (signal) =>
+      task && online
+        ? new Promise((done) => setTimeout(done, schedulePreviewDebounceMs))
+            .then(() =>
+              signal.aborted
+                ? undefined
+                : manage("schedule", {
+                    action: "preview",
+                    schedule: task.schedule,
+                  }),
+            )
+            .then((result) => ({ scheduleKey, times: result?.times || [] }))
+        : undefined,
+    [scheduleKey, online],
+  );
+  const times =
+    (online &&
+      preview.value?.scheduleKey === scheduleKey &&
+      preview.value?.times) ||
+    null;
+  const previewError = preview.error;
   function chooseTask(value: ScheduledTask | null) {
-    setTask(
-      value
-        ? readStored<ScheduledTask>(
-            tabStorage,
-            `${storage}-${value.id || "new"}`,
-            value,
-          )
-        : null,
-    );
+    setTask(value && (drafts.read(value.id) || value));
     setError(null);
   }
   function discard() {
-    tabStorage.removeItem(`${storage}-${task?.id || "new"}`);
+    drafts.forget(task?.id);
     setTask(current || null);
   }
   const edit = (value: Partial<ScheduledTask>) =>
@@ -173,7 +162,7 @@ export default function Scheduled({
         ...(action === "save" && task ? { task } : {}),
       });
       if (result.item) {
-        tabStorage.removeItem(`${storage}-${task?.id || "new"}`);
+        drafts.forget(task?.id);
         setTask(result.item);
       }
       if (action === "forget") {
@@ -456,10 +445,7 @@ export default function Scheduled({
                   >
                     <Select
                       aria-label="Approval"
-                      // A task saved before the modes had one name asks.
-                      value={
-                        task.permissions === "prompt" ? "ask" : task.permissions
-                      }
+                      value={task.permissions}
                       onChange={(event) =>
                         edit({
                           permissions: event.currentTarget

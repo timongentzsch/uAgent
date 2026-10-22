@@ -4,17 +4,32 @@
 
 ### Upgrade notes
 
+- **Settings and tasks from v1.3.1 or earlier are no longer read.** A
+  settings file in format 1, a conversation whose model and approval mode
+  were saved before they were kept as settings, and a scheduled task saved
+  with `"permissions": "prompt"` need one run of v1.4 or v1.5 first, which
+  rewrites them; otherwise the settings file is reported unreadable and the
+  others start from the defaults.
 - **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem`
   (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are
   removed; it was off by default and unused. A saved conversation that still
   carries one loads without it. The system message is the built-in base
   followed by instruction files.
+- **A `-p` run is saved like any conversation**, so `-c -p` continues the
+  latest one in the folder. Scripts that ran `-p` many times now leave one
+  history entry per run.
 - **Headless `--json` reports this run's usage.** `usage` and `routes` no
   longer include what a continued conversation (`-c`, `--resume`) spent
   before; a conversation another runtime holds gets an error envelope.
 
 ### Changes
 
+- The terminal draws a tool row from the transcript row the web shows, live
+  and on resume alike: a resumed command keeps its last output lines, a long
+  result shows its start and end, result rows lose the `[2]` batch ordinal,
+  and an activity poll is an ordinary call and result instead of a "waited
+  on activity" line. Calls saved before this show their tool's name where
+  the headline was.
 - The agent's Chrome no longer reads as a test browser: pages see no
   `navigator.webdriver` and none of the agent's scripts (they run in an
   isolated world), WebGL renders in software, text is typed key by key,
@@ -94,6 +109,19 @@
 - A long conversation no longer forgets its chosen model, approval mode and
   fork origin: under display-metadata pressure they could be evicted with
   the transcript's row data, which sorted after them.
+- Titles and workspace names are limited in characters (256 and 64), as the
+  web's form counts them; the host counted bytes, so a title with accents or
+  emoji could pass the form and then be refused.
+- Zoom in Settings → This browser is a list of steps (50 to 200%) instead of
+  a slider, which rescaled the page under the finger at its first touch.
+- A diagram whose renderer fails to load says so and offers Retry, instead
+  of showing "Rendering diagram…" for good.
+- An approval's choices read the same in the terminal and the web: "Allow
+  for this conversation" and "Always allow this exact action here", which
+  the web now takes from the host instead of its own copies.
+- A typed `/rename` keeps to the same rules as a rename from the web: the
+  title rule, and in a panel's chat the rule for a name there, whose members
+  are told; it used to accept any text.
 - A mail's author travels with it: the person typing the same words as a
   queued mail, or two mails saying the same thing, no longer swap authors.
 

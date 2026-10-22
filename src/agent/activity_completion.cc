@@ -150,7 +150,7 @@ std::vector<std::string> TakeCompleted(
     if (job.Detached()) unlink(DetachedRecordPath(job.pid).c_str());
     std::string incremental =
         job.session ? DrainActivityOutput(job, output_cap) : std::string();
-    bool failed = !(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    bool failed = !ExitedOk(status);
     CollectedLog collected =
         job.Detached()
             ? CollectedLog{ReadLogTail(job.log, output_cap), std::nullopt}

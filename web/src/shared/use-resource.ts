@@ -5,10 +5,10 @@ import { useEffect, useState, type Inputs } from "preact/hooks";
 // The last value (first `initial()`) stays until the next arrives; `load`
 // returns nothing to skip a round (offline, say). `setValue` and
 // `setError` let the owner apply its own writes' answers. `load` gets a
-// `live()` that turns false once a newer load replaced it, for a load that
-// writes state of its own before it returns.
+// signal that aborts once a newer load replaced it, for its requests and
+// for a load that writes state of its own before it returns.
 export function useResource<T>(
-  load: (live: () => boolean) => Promise<T> | undefined,
+  load: (signal: AbortSignal) => Promise<T> | undefined,
   deps: Inputs,
   initial?: () => T | undefined,
 ) {
@@ -17,15 +17,14 @@ export function useResource<T>(
   const [attempt, setAttempt] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the caller's deps say when to load
   useEffect(() => {
-    let active = true;
+    const abort = new AbortController();
+    const { signal } = abort;
     setError(null);
-    load(() => active)?.then(
-      (next) => active && setValue(() => next),
-      (failure) => active && setError(failure),
+    load(signal)?.then(
+      (next) => signal.aborted || setValue(() => next),
+      (failure) => signal.aborted || setError(failure),
     );
-    return () => {
-      active = false;
-    };
+    return () => abort.abort();
   }, [...deps, attempt]);
   return {
     value,

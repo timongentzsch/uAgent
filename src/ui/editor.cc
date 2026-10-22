@@ -10,6 +10,7 @@
 
 #include "include/core/config.h"
 #include "include/core/fs.h"
+#include "include/core/platform.h"
 #include "include/core/signals.h"
 
 namespace uagent {
@@ -38,7 +39,7 @@ bool EditExternalText(std::string& text, int terminal_fd, size_t limit) {
     int status = 0;
     const pid_t waited = spawned == 0 ? WaitPid(pid, &status) : -1;
     std::string edited;
-    ok = waited == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0 &&
+    ok = waited == pid && ExitedOk(status) &&
          ReadRegularFile(draft.Path(), limit, edited, error);
     if (ok) text = std::move(edited);
   }

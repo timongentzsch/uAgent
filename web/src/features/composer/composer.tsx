@@ -122,7 +122,7 @@ function Composer({
   resume?: () => void;
 }) {
   const { online, connection, report, showContext } = useHostContext();
-  const { upload, uploading, busy, act, following, zoom } = useConversation();
+  const { upload, uploading, busy, act, following } = useConversation();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same
@@ -422,7 +422,6 @@ function Composer({
         </span>
         <MessageInput
           submit={send}
-          resizeKey={zoom}
           {...suggestions.attributes}
           {...(mentionOpen && {
             "aria-expanded": true,

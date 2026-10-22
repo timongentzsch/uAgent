@@ -225,54 +225,6 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
   return values;
 }
 
-// A scope spelled the way the environment and the format before this one
-// spell it, {NAME: text}, as this document holds one. False when it is not
-// such a scope.
-bool FromNames(const json& held, json& out) {
-  if (!held.is_object()) return false;
-  SettingValues values;
-  for (const auto& [name, text] : held.items()) {
-    if (!text.is_string()) return false;
-    values[name] = text.get<std::string>();
-  }
-  out = EncodeScope(values);
-  // Settings that format 3 spells otherwise, whose names the registry no
-  // longer knows.
-  constexpr std::pair<const char*, const char*> kRenamed[] = {
-      {"UAGENT_OPENROUTER_PROVIDER", "openrouter.provider"},
-      {"UAGENT_OPENROUTER_VARIANT", "openrouter.variant"},
-      {"UAGENT_PDF_ENGINE", "pdf.engine"}};
-  if (auto variables = out.find(kVariables); variables != out.end()) {
-    for (const auto& [name, key] : kRenamed) {
-      if (variables->contains(name)) {
-        out[key] = (*variables)[name];
-        variables->erase(name);
-      }
-    }
-    if (variables->empty()) out.erase(kVariables);
-  }
-  return true;
-}
-
-// The document of format 1, which an earlier release wrote, as format 2; or
-// nothing when it is not one:
-// {"format": 1, "all": {NAME: text}, "projects": {folder: {...}}}.
-bool UpgradeNames(json& document) {
-  json upgraded = EmptyDocument();
-  const json* projects = JsonObject(document, "projects");
-  if (!document.is_object() || JsonValue(document, "format", 0) != 1 ||
-      !projects ||
-      !FromNames(JsonValue(document, "all", json()), upgraded["all"])) {
-    return false;
-  }
-  for (const auto& [folder, held] : projects->items()) {
-    if (!FromNames(held, upgraded["projects"][folder])) return false;
-  }
-  upgraded["format"] = 2;
-  document = std::move(upgraded);
-  return true;
-}
-
 constexpr std::string_view kEfforts[] = {"none", "minimal", "low", "medium",
                                          "high", "xhigh",   "max"};
 
@@ -398,9 +350,9 @@ void UpgradeEndpoints(json& scope) {
 }
 
 // The document of the formats before this one, which earlier releases wrote,
-// as this one; false when it is not one.
+// as this one; false when it is not one. Format 1 (before v1.4.0) is not read.
 bool Upgrade(json& document) {
-  bool upgraded = UpgradeNames(document);
+  bool upgraded = false;
   if (JsonValue(document, "format", 0) == 2 && JsonObject(document, "all") &&
       JsonObject(document, "projects")) {
     UpgradeEndpoints(document["all"]);

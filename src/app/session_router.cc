@@ -51,7 +51,7 @@ std::string InvalidSpaceNameMessage() {
 }
 
 bool ValidSpaceName(const std::string& name) {
-  return ValidSessionTitle(name) && name.size() <= kSpaceNameChars &&
+  return ValidSessionTitle(name) && Utf8Chars(name) <= kSpaceNameChars &&
          name.find('/') == std::string::npos;
 }
 
@@ -247,7 +247,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const bool panel = JsonValue(command, "panel", false);
     auto path = panel ? PanelPath(cwd.string())
                       : HistoryPath(cwd.string(), "web-" + RandomToken(16));
-    if (auto known = sessions_.find(HashHex(path)); known != sessions_.end()) {
+    if (auto known = sessions_.find(SessionIdFor(path));
+        known != sessions_.end()) {
       result.outcome["session"] = Metadata(*known->second);
       return result;
     }
@@ -311,19 +312,15 @@ SessionCommandResult SessionHost::ExecuteCommand(
       return result;
     }
     std::string title = Trim(JsonValue(command, "title", ""));
-    if (kind == SessionCommandKind::kRename && !ValidSessionTitle(title)) {
-      result.error = InvalidSessionTitleMessage();
-      return result;
-    }
     // In a chat the title is the name a message opens with.
     const std::string chat = session->kind == kSessionKindPanel ? session->cwd
                              : session->member.empty() ? ""
                                                        : session->folder;
     std::string was;
-    if (kind == SessionCommandKind::kRename && !chat.empty()) {
-      result.error = ChatNameProblem(chat, title, session->path);
+    if (kind == SessionCommandKind::kRename) {
+      result.error = RenameProblem(chat, title, session->path);
       if (!result.error.empty()) return result;
-      was = ChatName(chat, session->path);
+      if (!chat.empty()) was = ChatName(chat, session->path);
     }
     SessionStatus prior_status = session->status;
     session->status = kind == SessionCommandKind::kDelete

@@ -414,14 +414,14 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
 }
 
 bool ValidSessionTitle(const std::string& title) {
-  return !title.empty() && title.size() <= kUserTitleBytes &&
+  return !title.empty() && Utf8Chars(title) <= kUserTitleChars &&
          std::none_of(title.begin(), title.end(),
                       [](unsigned char ch) { return ch < 32 || ch == 127; });
 }
 
 std::string InvalidSessionTitleMessage() {
-  return "title must be 1–" + std::to_string(kUserTitleBytes) +
-         " bytes without control characters";
+  return "title must be 1–" + std::to_string(kUserTitleChars) +
+         " characters without control characters";
 }
 
 json SessionStore::Fork(const std::string& source, const std::string& title,
@@ -582,7 +582,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     record.metadata.title = Utf8Prefix(
         "Fork of " + record.metadata.title +
             (fork_turn > 0 ? " @ turn " + std::to_string(fork_turn) : ""),
-        kUserTitleBytes);
+        kUserTitleChars);
   }
   record.metadata.custom_title = true;
   auto result =

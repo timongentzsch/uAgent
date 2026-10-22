@@ -27,17 +27,16 @@ import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById, threadsOf } from "../state/attention.ts";
 import { folderOf } from "../shared/display.ts";
 import { lockPageZoom, useCompact } from "../shared/layout.ts";
+import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
-import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
 import ChatPage from "./chat-page.tsx";
 import ConversationHeader from "./conversation-header.tsx";
 import Modals, { PreferencesContext } from "./modals.tsx";
 import Toasts from "./toasts.tsx";
-import { usePreferences } from "./use-preferences.ts";
 import { useDraftUploads } from "./use-draft-uploads.ts";
 import { useBoot } from "./use-boot.ts";
 import { useSideConversations } from "./use-side-conversations.ts";
@@ -149,16 +148,6 @@ function App() {
   // The sidebar's filter, here because Alt+↑/↓ steps through what it shows.
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
-  const {
-    zoom,
-    setZoom,
-    timePrefs,
-    setTimePrefs,
-    theme,
-    setTheme,
-    motion,
-    setMotion,
-  } = usePreferences();
   const [notificationMode, setNotificationMode] = useState(false);
   // How much of the agent's work shows: one level for every conversation,
   // browser and terminal. Only rendering reads it, so a change restyles
@@ -422,7 +411,6 @@ function App() {
       busy,
       following,
       setFollowing,
-      zoom,
     }),
     [
       draft,
@@ -434,7 +422,6 @@ function App() {
       busy,
       following,
       setFollowing,
-      zoom,
     ],
   );
   const sidebar = (
@@ -464,258 +451,243 @@ function App() {
   );
 
   return (
-    <TimePrefsContext.Provider value={timePrefs}>
-      <HostContext.Provider value={hostContext}>
-        <ConversationContext.Provider value={conversation}>
-          <DetailContext.Provider value={detail}>
-            <ImageViewer.Provider value={setViewed}>
-              <Toasts
-                error={error}
-                notice={notice}
-                dismiss={() => {
-                  setError("");
-                  setNotice("");
-                }}
-                update={update}
-                updateBlocked={updateBlocked}
+    <HostContext.Provider value={hostContext}>
+      <ConversationContext.Provider value={conversation}>
+        <DetailContext.Provider value={detail}>
+          <ImageViewer.Provider value={setViewed}>
+            <Toasts
+              error={error}
+              notice={notice}
+              dismiss={() => {
+                setError("");
+                setNotice("");
+              }}
+              update={update}
+              updateBlocked={updateBlocked}
+            />
+            {authenticated === false ? (
+              <Deferred
+                load={pairing}
+                paired={refresh}
+                report={report}
+                fallback={<Spinner label="Loading connection form…" surface />}
               />
-              {authenticated === false ? (
-                <Deferred
-                  load={pairing}
-                  paired={refresh}
-                  report={report}
-                  fallback={
-                    <Spinner label="Loading connection form…" surface />
-                  }
-                />
-              ) : (
-                <>
-                  {/* First stop for a keyboard: past the sessions list. The hash
+            ) : (
+              <>
+                {/* First stop for a keyboard: past the sessions list. The hash
                 routes sessions, so the link moves focus itself. */}
-                  <a
-                    class="skip-link"
-                    href="#conversation"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      document
-                        .getElementById("conversation")
-                        ?.focus({ preventScroll: true });
-                    }}
-                  >
-                    Skip to conversation
-                  </a>
-                  <div class="shell">
-                    {!compact ? (
-                      <aside
-                        class="sidebar"
-                        aria-label="Projects and conversations"
+                <a
+                  class="skip-link"
+                  href="#conversation"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    document
+                      .getElementById("conversation")
+                      ?.focus({ preventScroll: true });
+                  }}
+                >
+                  Skip to conversation
+                </a>
+                <div class="shell">
+                  {!compact ? (
+                    <aside
+                      class="sidebar"
+                      aria-label="Projects and conversations"
+                    >
+                      {sidebar}
+                      <ResizeHandle
+                        pane="sidebar"
+                        label="Resize the sidebar"
+                        edge="end"
+                      />
+                    </aside>
+                  ) : (
+                    drawer && (
+                      <Modal
+                        title="Conversations"
+                        className="sidebar drawer"
+                        close={() => setDrawer(false)}
                       >
                         {sidebar}
-                        <ResizeHandle
-                          pane="sidebar"
-                          label="Resize the sidebar"
-                          edge="end"
+                      </Modal>
+                    )
+                  )}
+                  <main class="conversation" id="conversation" tabIndex={-1}>
+                    <ConversationHeader
+                      page={page}
+                      selected={selected}
+                      session={session}
+                      opening={opening}
+                      booting={booting}
+                      threads={threads}
+                      placeName={places.placeName}
+                      browserAvailable={browserAvailable}
+                      filesOpen={filesOpen}
+                      setFilesOpen={setFilesOpen}
+                      openDrawer={() => setDrawer(true)}
+                      openPanel={openPanel}
+                      open={open}
+                      settings={settings}
+                      menu={conversationMenu}
+                      choose={choose}
+                      addMember={addMember}
+                    />
+                    {filesOpen && compact && page === "chat" && session && (
+                      <Modal
+                        title="Files"
+                        layout="sheet"
+                        className="files-sheet"
+                        close={() => setFilesOpen(false)}
+                      >
+                        <Deferred
+                          key={session.id}
+                          load={filesPane}
+                          session={session}
                         />
-                      </aside>
-                    ) : (
-                      drawer && (
-                        <Modal
-                          title="Conversations"
-                          className="sidebar drawer"
-                          close={() => setDrawer(false)}
-                        >
-                          {sidebar}
-                        </Modal>
-                      )
+                      </Modal>
                     )}
-                    <main class="conversation" id="conversation" tabIndex={-1}>
-                      <ConversationHeader
-                        page={page}
-                        selected={selected}
-                        session={session}
-                        opening={opening}
-                        booting={booting}
-                        threads={threads}
-                        placeName={places.placeName}
-                        browserAvailable={browserAvailable}
-                        filesOpen={filesOpen}
-                        setFilesOpen={setFilesOpen}
-                        openDrawer={() => setDrawer(true)}
-                        openPanel={openPanel}
-                        open={open}
-                        settings={settings}
-                        menu={conversationMenu}
+                    {page !== "chat" && (
+                      <Deferred
+                        key={
+                          page === "library" ? `library:${libraryKind}` : page
+                        }
+                        load={
+                          page === "library" ? libraryModule : scheduledModule
+                        }
+                        initialKind={libraryKind}
+                        projects={projects}
+                        cwd={session?.cwd || projects[0] || ""}
+                        online={online}
+                        version={managementVersion}
+                        scheduled={catalogue.scheduled}
+                        unread={unread}
                         choose={choose}
-                        addMember={addMember}
+                        refresh={refresh}
+                        fallback={
+                          <div class="management">
+                            <Spinner
+                              label={
+                                page === "library"
+                                  ? "Loading library…"
+                                  : "Loading scheduled tasks…"
+                              }
+                              surface
+                            />
+                          </div>
+                        }
                       />
-                      {filesOpen && compact && page === "chat" && session && (
-                        <Modal
-                          title="Files"
-                          layout="sheet"
-                          className="files-sheet"
-                          close={() => setFilesOpen(false)}
-                        >
+                    )}
+                    <ChatPage
+                      active={page === "chat"}
+                      historyKey={
+                        page === "chat" ? `${page}:${selected}` : `page:${page}`
+                      }
+                      selected={selected}
+                      session={session}
+                      threads={session?.kind === "panel" ? threads : undefined}
+                      opening={opening}
+                      catalogue={catalogue}
+                      outgoing={outgoing}
+                      loadError={loadErrors[selected]}
+                      menu={conversationMenu}
+                      newPlace={newPlace}
+                      addMember={addMember}
+                      updateView={updateView}
+                      choose={choose}
+                      side={side}
+                      closeSide={closeSide}
+                      actions={chatActions}
+                      setInspector={setInspector}
+                      files={
+                        filesOpen &&
+                        !compact &&
+                        session && (
                           <Deferred
                             key={session.id}
                             load={filesPane}
                             session={session}
+                            close={() => setFilesOpen(false)}
                           />
-                        </Modal>
-                      )}
-                      {page !== "chat" && (
-                        <Deferred
-                          key={
-                            page === "library" ? `library:${libraryKind}` : page
-                          }
-                          load={
-                            page === "library" ? libraryModule : scheduledModule
-                          }
-                          initialKind={libraryKind}
-                          projects={projects}
-                          cwd={session?.cwd || projects[0] || ""}
-                          online={online}
-                          version={managementVersion}
-                          scheduled={catalogue.scheduled}
-                          unread={unread}
-                          choose={choose}
-                          refresh={refresh}
-                          fallback={
-                            <div class="management">
-                              <Spinner
-                                label={
-                                  page === "library"
-                                    ? "Loading library…"
-                                    : "Loading scheduled tasks…"
-                                }
-                                surface
-                              />
-                            </div>
-                          }
-                        />
-                      )}
-                      <ChatPage
-                        active={page === "chat"}
-                        historyKey={
-                          page === "chat"
-                            ? `${page}:${selected}`
-                            : `page:${page}`
-                        }
-                        selected={selected}
-                        session={session}
-                        threads={
-                          session?.kind === "panel" ? threads : undefined
-                        }
-                        opening={opening}
-                        catalogue={catalogue}
-                        outgoing={outgoing}
-                        loadError={loadErrors[selected]}
-                        menu={conversationMenu}
-                        newPlace={newPlace}
-                        addMember={addMember}
-                        updateView={updateView}
-                        choose={choose}
-                        side={side}
-                        closeSide={closeSide}
-                        actions={chatActions}
-                        setInspector={setInspector}
-                        files={
-                          filesOpen &&
-                          !compact &&
-                          session && (
-                            <Deferred
-                              key={session.id}
-                              load={filesPane}
-                              session={session}
-                              close={() => setFilesOpen(false)}
-                            />
-                          )
-                        }
-                      />
-                    </main>
-                  </div>
-                </>
-              )}
-              {overlay && (
-                // Keyed: an action that opens the other one replaces this dialog
-                // instead of closing it under the new one.
-                <Modal
-                  key={overlay}
-                  title={
-                    overlay === "palette"
-                      ? "Command palette"
-                      : "Keyboard shortcuts"
-                  }
-                  layout="sheet"
-                  size="narrow"
-                  close={() => setOverlay(null)}
-                >
-                  {overlay === "palette" ? (
-                    <Deferred
-                      load={paletteDialog}
-                      fallback={<Spinner label="Loading…" surface />}
-                      sessions={listed}
-                      commands={catalogue.commands || []}
-                      choose={choose}
-                      start={(cwd: string, panel?: boolean) =>
-                        void startConversation(cwd, panel).catch(report)
+                        )
                       }
-                      run={runCommand}
-                      settings={(section: string) =>
-                        open({ type: "settings", section })
-                      }
-                      actions={{ ...shortcutActions, palette: undefined }}
                     />
-                  ) : (
-                    <Deferred
-                      load={shortcutsDialog}
-                      fallback={<Spinner label="Loading…" surface />}
-                    />
-                  )}
-                </Modal>
-              )}
-              <PreferencesContext.Provider
-                value={{
-                  theme,
-                  setTheme,
-                  motion,
-                  setMotion,
-                  timePrefs,
-                  setTimePrefs,
-                  zoom,
-                  setZoom,
-                  install,
-                  setInstall,
-                  update,
-                  updateBlocked: !!updateBlocked,
-                  notificationMode,
-                  setNotificationMode,
-                  notifications,
-                  logout,
-                }}
+                  </main>
+                </div>
+              </>
+            )}
+            {overlay && (
+              // Keyed: an action that opens the other one replaces this dialog
+              // instead of closing it under the new one.
+              <Modal
+                key={overlay}
+                title={
+                  overlay === "palette"
+                    ? "Command palette"
+                    : "Keyboard shortcuts"
+                }
+                layout="sheet"
+                size="narrow"
+                close={() => setOverlay(null)}
               >
-                <Modals
-                  modal={modal}
-                  inspector={inspector}
-                  setInspector={setInspector}
-                  viewed={viewed}
-                  setViewed={setViewed}
-                  annotate={session && online ? attachAnnotated : undefined}
-                  selected={selected}
-                  session={session}
-                  catalogue={catalogue}
-                  compact={compact}
-                  managementVersion={managementVersion}
-                  places={places}
-                />
-              </PreferencesContext.Provider>
-            </ImageViewer.Provider>
-          </DetailContext.Provider>
-        </ConversationContext.Provider>
-      </HostContext.Provider>
-    </TimePrefsContext.Provider>
+                {overlay === "palette" ? (
+                  <Deferred
+                    load={paletteDialog}
+                    fallback={<Spinner label="Loading…" surface />}
+                    sessions={listed}
+                    commands={catalogue.commands || []}
+                    choose={choose}
+                    start={(cwd: string, panel?: boolean) =>
+                      void startConversation(cwd, panel).catch(report)
+                    }
+                    run={runCommand}
+                    settings={(section: string) =>
+                      open({ type: "settings", section })
+                    }
+                    actions={{ ...shortcutActions, palette: undefined }}
+                  />
+                ) : (
+                  <Deferred
+                    load={shortcutsDialog}
+                    fallback={<Spinner label="Loading…" surface />}
+                  />
+                )}
+              </Modal>
+            )}
+            <PreferencesContext.Provider
+              value={{
+                install,
+                setInstall,
+                update,
+                updateBlocked: !!updateBlocked,
+                notificationMode,
+                setNotificationMode,
+                notifications,
+                logout,
+              }}
+            >
+              <Modals
+                modal={modal}
+                inspector={inspector}
+                setInspector={setInspector}
+                viewed={viewed}
+                setViewed={setViewed}
+                annotate={session && online ? attachAnnotated : undefined}
+                selected={selected}
+                session={session}
+                catalogue={catalogue}
+                compact={compact}
+                managementVersion={managementVersion}
+                places={places}
+              />
+            </PreferencesContext.Provider>
+          </ImageViewer.Provider>
+        </DetailContext.Provider>
+      </ConversationContext.Provider>
+    </HostContext.Provider>
   );
 }
 lockPageZoom();
+applyDevicePrefs();
 render(
   <ErrorBoundary>
     <App />

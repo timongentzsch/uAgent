@@ -272,6 +272,18 @@ std::string ChatName(const std::string& folder, const std::string& path) {
              : JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
 }
 
+std::string ChatFolder(bool panel, const json& thread) {
+  return panel                        ? CanonicalCwd()
+         : ChatMember(thread).empty() ? ""
+                                      : JsonValue(thread, "folder", "");
+}
+
+std::string RenameProblem(const std::string& chat, const std::string& title,
+                          const std::string& path) {
+  if (!ValidSessionTitle(title)) return InvalidSessionTitleMessage();
+  return chat.empty() ? "" : ChatNameProblem(chat, title, path);
+}
+
 void ChatRenamed(const std::string& folder, const std::string& path,
                  const std::string& old, const std::string& now) {
   const bool moderator = path == PanelPath(folder);
@@ -398,7 +410,7 @@ json Chat::Deliver(const ChatRoster& roster, const std::set<std::string>& opens,
   // is called later.
   const SessionInfo* writer = roster.Find(from);
   const std::string sender = from == kSelf ? PanelId(folder_)
-                             : writer      ? HashHex(writer->path)
+                             : writer      ? SessionIdFor(writer->path)
                                            : "";
   const Mail chat = MailFrom(PanelPath(folder_), "", kMailChat, json());
   std::vector<SessionInfo> started;
@@ -586,7 +598,7 @@ void Chat::Heard(Mail& mail) {
     if (read->second != kNothing) {
       mail.body["quiet"] = read->second == kQuiet;
       mail.body["author"] = name;
-      mail.body["sender"] = HashHex(sender->path);
+      mail.body["sender"] = SessionIdFor(sender->path);
       mail.body["text"] = name + ": " + text;
     }
   }

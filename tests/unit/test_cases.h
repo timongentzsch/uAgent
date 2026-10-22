@@ -50,9 +50,9 @@ namespace uagent {
   X(TestHostedSearchStatusRow)                    \
   X(TestActivityBar)                              \
   X(TestDiffLineColoring)                         \
-  X(TestReplayBlocksMirrorLiveRows)               \
+  X(TestToolRowsDrawLiveAsResumed)                \
   X(TestStatusBarDropsByPriority)                 \
-  X(TestPollCollapse)                             \
+  X(TestToolResultRows)                           \
   X(TestTerminalSafety)                           \
   X(TestTerminalInputDecoder)                     \
   X(TestSseChunkPartitions)                       \
@@ -68,6 +68,7 @@ namespace uagent {
   X(TestSavedTranscriptIndex)                     \
   X(TestSessionPersistence)                       \
   X(TestSessionCatalogueCache)                    \
+  X(TestTitlesCountCharacters)                    \
   X(TestCommandReplies)                           \
   X(TestCostRoutesCountCacheWrites)               \
   X(TestSessionFramePartitions)                   \

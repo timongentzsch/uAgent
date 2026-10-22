@@ -37,6 +37,9 @@ export default function Decision({
   );
   const offers = (value: string) =>
     options.some((item) => item.value === value);
+  // The host names its choices, for the terminal and here alike.
+  const labelOf = (value: string) =>
+    options.find((item) => item.value === value)?.label ?? value;
   // Letter-keyed answers are one choice each, as the terminal's key hints
   // are; numbered lists are radio cards.
   const keyed =
@@ -212,12 +215,12 @@ export default function Decision({
           <div class="decision-answers">
             {offers(DENY) && (
               <Button disabled={idle} onClick={() => void send(DENY)}>
-                Deny
+                {labelOf(DENY)}
               </Button>
             )}
             {offers(ALLOW_SESSION) && (
               <Button disabled={idle} onClick={() => void send(ALLOW_SESSION)}>
-                Allow for this conversation
+                {labelOf(ALLOW_SESSION)}
               </Button>
             )}
             {offers(ALLOW_ONCE) && (
@@ -226,7 +229,7 @@ export default function Decision({
                 disabled={idle}
                 onClick={() => void send(always ? ALWAYS : ALLOW_ONCE)}
               >
-                Allow once
+                {labelOf(ALLOW_ONCE)}
               </Button>
             )}
           </div>
@@ -243,7 +246,7 @@ export default function Decision({
                         setAlways(event.currentTarget.checked)
                       }
                     />
-                    Always allow this exact action here
+                    {labelOf(ALWAYS)}
                   </label>
                 )}
                 {(extra.length > 0 || offers(GUIDANCE)) && (

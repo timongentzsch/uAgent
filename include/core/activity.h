@@ -15,6 +15,9 @@ namespace uagent {
 
 enum class EventId : uint16_t;
 
+// What a session with nothing running says.
+inline constexpr const char* kIdleActivity = "Ready";
+
 // Presentation policies only: these values never enter model history or
 // authorize execution. Work is proportional to new text, with bounded storage.
 std::string ActivityLabel(std::string_view text);

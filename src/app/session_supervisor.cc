@@ -13,6 +13,7 @@
 #include "include/app/schedule.h"
 #include "include/app/session.h"
 #include "include/app/session_host.h"
+#include "include/core/activity.h"
 #include "include/core/capture.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -114,7 +115,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   auto session = std::make_shared<HostSession>();
   session->cwd = cwd;
   session->path = path;
-  session->id = HashHex(path);
+  session->id = SessionIdFor(path);
   session->title = title.empty() ? "New conversation" : title;
   session->draft_title = title;
   session->status = SessionStatus::kDraft;
@@ -156,8 +157,8 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
   if (!session.launch.empty()) {
     const std::string model = JsonValue(session.launch, "model", "");
     if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
-    const std::string mode = JsonValue(session.launch, "permissions", "ask");
-    options.overrides["UAGENT_APPROVAL"] = mode == "prompt" ? "ask" : mode;
+    options.overrides["UAGENT_APPROVAL"] =
+        JsonValue(session.launch, "permissions", "ask");
   }
   Connection connection = create ? Open(executable_, session.cwd, session.path,
                                         session.draft_title, options, error)
@@ -176,7 +177,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   session.status = SessionStatus::kSaved;
   session.error.clear();
   // A saved conversation is read from disk.
-  session.state = {{"activity", "Ready"}};
+  session.state = {{"activity", kIdleActivity}};
   PublishLifecycle(session, {{"kind", "deactivated"}});
 }
 
@@ -459,7 +460,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     return true;
   }
   if (kind == "activity") {
-    session.state["activity"] = JsonValue(frame, "activity", "Ready");
+    session.state["activity"] = JsonValue(frame, "activity", kIdleActivity);
     session.state["phase"] = JsonValue(frame, "phase", "working");
     session.turn_active = JsonValue(frame, "busy", false);
     session.status = LiveStatus(session);
@@ -476,11 +477,6 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   }
   if (kind != "event") return true;
   const std::string type = JsonValue(frame, "type", "");
-  // Terminal renderings of what the transcript rows already show; terminals
-  // read them from the worker, browsers never do.
-  if (type == AppType(EventId::kPresentation)) {
-    return false;
-  }
   RecordRunEvent(session, type, frame);
   json patch;
   ApplySessionEvent(session.state, type, frame["data"], &patch);

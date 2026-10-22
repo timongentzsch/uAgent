@@ -23,7 +23,7 @@ test("static UI showcase renders shared flat controls and scales them", async ({
     name: "Secondary action",
     exact: true,
   });
-  const select = page.getByRole("combobox").nth(1);
+  const select = page.getByRole("combobox", { name: "Selection", exact: true });
   const styles = await Promise.all(
     [secondary, select].map((control) =>
       control.evaluate((element) => {
@@ -50,7 +50,7 @@ test("static UI showcase renders shared flat controls and scales them", async ({
   const normalWidth = await page
     .locator(".showcase")
     .evaluate((element) => element.getBoundingClientRect().width);
-  await page.getByLabel("Zoom", { exact: true }).fill("50");
+  await page.getByLabel("Zoom", { exact: true }).selectOption("50");
   await expect(page.locator("html")).toHaveCSS("--zoom", "0.5");
   const smallHeight = await secondary.evaluate(
     (element) => element.getBoundingClientRect().height,
@@ -366,7 +366,7 @@ test("shared textarea keeps its width after native resizing and zoom", async ({
   await page.goto(SHOWCASE_URL);
   const field = page.locator(".showcase textarea");
   for (const zoom of [50, 100, 200]) {
-    await page.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+    await page.getByLabel("Zoom", { exact: true }).selectOption(String(zoom));
     await field.scrollIntoViewIfNeeded();
     const box = await field.boundingBox();
     // A diagonal drag must resize height only; inline pixel widths would

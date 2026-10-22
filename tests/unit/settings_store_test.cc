@@ -182,33 +182,17 @@ void TestSettingsStore() {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "$COUNT");
   }
 
-  // A document in the format before this one is rewritten in this one the
-  // first time it is read, and one handed over in either is taken.
+  // Settings handed over whole are taken whole or not at all, and a panel
+  // setting under the name it had as a coordinator's is read as the panel's.
   {
-    TestWorkspace earlier("settings-store-earlier");
-    const json before = {
-        {"format", 1},
-        {"all",
-         {{"UAGENT_MODEL", "old"}, {"UAGENT_MAX_STEPS", "9"}, {"TOKEN", "t"}}},
-        {"projects",
-         {{"/p",
-           {{"UAGENT_SANDBOX", "false"},
-            {"UAGENT_COORDINATOR_MAX_THREADS", "7"}}}}}};
-    Put(SettingsPath(), JsonDump(before));
-    CHECK(ReadSettings("/p").all == (SettingValues{{"TOKEN", "t"},
-                                                   {"UAGENT_MAX_STEPS", "9"},
-                                                   {"UAGENT_MODEL", "old"}}));
-    CHECK(ReadSettings("/p").project.at("UAGENT_SANDBOX") == "false");
-    const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
-    CHECK(now["format"] == 3 && now["all"]["limits.maxSteps"] == 9);
-    CHECK(now["projects"]["/p"]["sandbox.level"] == "false");
-    // A panel's settings under the names they had as a coordinator's.
-    CHECK(now["projects"]["/p"]["panel.maxThreads"] == 7);
+    TestWorkspace handed_over("settings-store-handed");
+    const json now = {{"format", 3},
+                      {"all", {{"model", "old"}, {"limits.maxSteps", 9}}},
+                      {"projects", {{"/p", {{"sandbox.level", "false"}}}}}};
     AllSettings handed;
     std::string why;
-    CHECK(ParseSettings(before, handed, why) && handed.all.size() == 3);
     CHECK(ParseSettings(now, handed, why) && handed.projects.count("/p"));
-    // One handed over is taken whole or not at all.
+    CHECK(handed.all.at("UAGENT_MAX_STEPS") == "9");
     json wrong = now;
     wrong["all"]["no.such.setting"] = 1;
     CHECK(!ParseSettings(wrong, handed, why));
@@ -297,7 +281,6 @@ void TestSettingsStore() {
 
   // A variant belongs to the model an alias names; a model that is a
   // reference to a variable cannot take it, and the variant stays, reported.
-  // The names the settings had in format 1 are read as the settings they were.
   {
     TestWorkspace aliased("settings-store-alias-variant");
     Put(SettingsPath(),
@@ -318,22 +301,6 @@ void TestSettingsStore() {
     CHECK(read.warning.find("openrouter.variant is not a setting") !=
           std::string::npos);
   }
-  {
-    TestWorkspace names("settings-store-format-1-openrouter");
-    Put(SettingsPath(), JsonDump(json{{"format", 1},
-                                      {"all",
-                                       {{"UAGENT_OPENROUTER_PROVIDER", "pin"},
-                                        {"UAGENT_PDF_ENGINE", "native"},
-                                        {"TOKEN", "t"}}},
-                                      {"projects", json::object()}}));
-    CHECK(ReadSettings("").error.empty());
-    const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
-    CHECK(now["format"] == 3);
-    CHECK(now["all"]["providers"]["openrouter"]["options"] ==
-          (json{{"provider", "pin"}, {"pdf_engine", "native"}}));
-    CHECK(now["all"]["variables"] == json({{"TOKEN", "t"}}));
-  }
-
   // A document that cannot be read is reported and never saved over.
   for (const char* broken : {"{\"format\": 1, \"all\": [", "null"}) {
     Put(SettingsPath(), broken);

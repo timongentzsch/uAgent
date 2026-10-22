@@ -95,7 +95,7 @@ std::string SendWhenReady(const session::Connection& connection,
         if (kind != "state" || (idle && JsonValue(frame, "busy", true))) {
           return true;
         }
-        session::StampFrame(command, HashHex(path), connection.generation);
+        session::StampFrame(command, SessionIdFor(path), connection.generation);
         command["request_id"] = request;
         sent = session::WriteFrame(connection.socket.Get(), command);
         return sent;

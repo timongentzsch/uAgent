@@ -1,12 +1,20 @@
-import { useCallback, useState } from "preact/hooks";
+import { useCallback } from "preact/hooks";
 import type { Report, Session, Snapshot } from "../shared/types.ts";
-import { storage } from "../shared/storage.ts";
+import { stored, useStored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
-import { readStored } from "../state/store.ts";
-import { usePersisted } from "../state/use-persisted.ts";
 import { command, requestId } from "../state/api.ts";
 
 export type Side = { question: string; id?: string; firstRequest: string };
+
+const kept = stored<Record<string, Side>>(
+  storageKeys.sideConversations,
+  {},
+  undefined,
+  {
+    kept: (value) =>
+      Object.fromEntries(Object.entries(value).filter(([, side]) => side.id)),
+  },
+);
 
 // The /btw side conversation of each conversation: started from a question,
 // kept across reloads once it has its own session, and asked again there.
@@ -21,12 +29,7 @@ export function useSideConversations({
   refresh: () => Promise<void>;
   report: Report;
 }) {
-  const [sides, setSides] = useState<Record<string, Side>>(() =>
-    readStored(storage, storageKeys.sideConversations, {}),
-  );
-  usePersisted(storage, storageKeys.sideConversations, sides, (value) =>
-    Object.fromEntries(Object.entries(value).filter(([, side]) => side.id)),
-  );
+  const [sides, setSides] = useStored(kept);
   const side = sides[selected] || null;
   const closeSide = useCallback(
     () =>

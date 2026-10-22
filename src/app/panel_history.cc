@@ -34,7 +34,7 @@ std::string AsData(const std::string& session_id, const std::string& body) {
 
 ToolResult SessionData(const SessionInfo& info, std::string text, size_t cap) {
   if (text.size() > cap) text = Utf8Prefix(text, cap) + "\n[truncated]";
-  return ToolSuccess(AsData(HashHex(info.path), text));
+  return ToolSuccess(AsData(SessionIdFor(info.path), text));
 }
 
 namespace {
@@ -95,7 +95,7 @@ ToolResult Search(const std::string& folder, const std::string& query) {
       const std::string text = ContentText(messages[index], "");
       const size_t at = AsciiLower(text).find(needle);
       if (at == std::string::npos) continue;
-      hits.push_back({{"session_id", HashHex(info.path)},
+      hits.push_back({{"session_id", SessionIdFor(info.path)},
                       {"title", info.title},
                       {"message_id", "m-" + std::to_string(ids[index])},
                       {"kind", MessageKindName(kinds[index])},
@@ -135,7 +135,7 @@ ToolResult Read(const SessionInfo& info, uint64_t before) {
                    {"blocks", std::move(blocks)},
                    {"before", first > 0 ? all[first]["id"] : page["before"]},
                    {"more", first > 0 || JsonValue(page, "more", false)}};
-    return ToolSuccess(AsData(HashHex(info.path), JsonDump(result, 1)));
+    return ToolSuccess(AsData(SessionIdFor(info.path), JsonDump(result, 1)));
   });
 }
 

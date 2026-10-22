@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/defaults.h"
+
 namespace uagent {
 namespace {
 
@@ -183,7 +185,7 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   // say it: Landlock has no deny form, so expressing this there would mean not
   // granting the workspace at all.
   if (!inputs.workspace.empty()) {
-    result.policy.denied_writes = {inputs.workspace + "/.mcp.json"};
+    result.policy.denied_writes = {inputs.workspace + "/" + kMcpConfigFile};
     if (inputs.git_repository) {
       result.policy.denied_writes.push_back(inputs.workspace + "/.git/config");
       result.policy.denied_writes.push_back(inputs.workspace + "/.git/hooks");

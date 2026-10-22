@@ -185,7 +185,6 @@ add_library(
   src/agent/session_store.cc
   src/agent/session_view.cc
   src/agent/tool_loop.cc
-  src/agent/tool_presentation.cc
   src/agent/trace.cc
   src/agent/turn.cc
   src/agent/turn_budgets.cc

@@ -52,6 +52,7 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "UAGENT_BUILD_BENCHMARKS": "ON",
+        "UAGENT_WEB_PUSH": "ON",
         "CMAKE_DISABLE_PRECOMPILE_HEADERS": "ON"
       }
     },

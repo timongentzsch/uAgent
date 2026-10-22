@@ -195,7 +195,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
         if (catalogue.empty()) {
           return ToolFailure(
               ToolErrorCode::kNotFound,
-              "error: no installed skill matches: " + TerminalSafe(query) +
+              "no installed skill matches: " + TerminalSafe(query) +
                   "; call skill with {} to list installed "
                   "names");
         }

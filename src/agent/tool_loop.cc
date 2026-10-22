@@ -154,7 +154,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
     ToolArgumentIssue issue = ArgumentIssue(
         "arguments.malformed", "malformed tool arguments (not valid JSON)");
     reject(task, ToolErrorCode::kInvalidArguments,
-           "error: nothing ran: the arguments were not one complete JSON "
+           "nothing ran: the arguments were not one complete JSON "
            "object. Send the call again with every argument inside a single "
            "JSON object. Received " +
                std::to_string(call.malformed.size()) +
@@ -163,16 +163,16 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   } else if (!tool) {
     ToolArgumentIssue issue =
         ArgumentIssue("tool.unknown", "unknown tool " + call.name);
-    reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
+    reject(task, ToolErrorCode::kNotFound, "unknown tool " + call.name,
            "unknown_tool", issue);
   } else if (!tool_selection_.Enabled(*tool)) {
     ToolArgumentIssue issue =
         ArgumentIssue("tool.inactive", "inactive tool " + call.name);
     reject(task, ToolErrorCode::kUnavailable,
-           "error: tool is inactive for this conversation: " + call.name,
+           "tool is inactive for this conversation: " + call.name,
            "inactive_tool", issue);
   } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
-    std::string message = "error: invalid tool argument: " + issue->message;
+    std::string message = "invalid tool argument: " + issue->message;
     reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
            "invalid_argument", std::move(issue));
   } else if (tool->validate) {
@@ -190,7 +190,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   if (valid && tool->max_calls_per_turn >= 0 &&
       tool_counts[call.name] >= tool->max_calls_per_turn) {
     std::string message =
-        "error: " + call.name + " reached its per-turn call limit (" +
+        call.name + " reached its per-turn call limit (" +
         std::to_string(tool->max_calls_per_turn) +
         "); continue from the results you have — do not reimplement it "
         "with run";

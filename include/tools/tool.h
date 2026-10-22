@@ -41,8 +41,9 @@ enum class ToolErrorCode {
 
 const char* ToolErrorCodeName(ToolErrorCode code);
 
-// The human-facing failure prefix. ToolFailure and its siblings do not
-// auto-prepend it: call sites spell it in their messages.
+// The human-facing failure prefix. ToolFailure prepends it when missing, so
+// its call sites leave it out; ToolCancelled and ToolTimedOut leave their
+// text as given.
 inline constexpr std::string_view kToolErrorPrefix = "error: ";
 
 struct ToolArgumentIssue {

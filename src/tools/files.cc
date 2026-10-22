@@ -101,7 +101,7 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
 
 ToolResult FileOpenFailure(const std::string& path) {
   std::error_code error(errno, std::generic_category());
-  return ToolFailure(FileToolError(error), "error: cannot open " + path);
+  return ToolFailure(FileToolError(error), "cannot open " + path);
 }
 
 // Scan skipped lines without retaining them; never allocate a complete giant
@@ -664,7 +664,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
   std::error_code ec;
   if (!std::filesystem::remove(path, ec)) {
     if (ec) {
-      return ToolFailure(FileToolError(ec), "error: cannot delete " + path);
+      return ToolFailure(FileToolError(ec), "cannot delete " + path);
     }
     return ToolFailure(ToolErrorCode::kNotFound,
                        "path does not exist: " + path);
@@ -764,7 +764,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     entries.push_back(e.path().filename().string() + (directory ? "/" : ""));
   }
   if (ec) {
-    return ToolFailure(FileToolError(ec), "error: cannot open directory " + p);
+    return ToolFailure(FileToolError(ec), "cannot open directory " + p);
   }
   std::sort(entries.begin(), entries.end());
   if (entries.empty()) return ToolSuccess("(empty directory)");

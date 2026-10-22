@@ -24,7 +24,7 @@ namespace uagent {
 namespace {
 
 ToolResult SearchError(int64_t http_status, const std::string& detail) {
-  std::string message = "error: web_search";
+  std::string message = "web_search";
   if (http_status) message += " HTTP " + std::to_string(http_status);
   return ToolFailure(ToolErrorCode::kRemoteError, message + detail);
 }

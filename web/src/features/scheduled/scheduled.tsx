@@ -1,4 +1,4 @@
-import { tabStorage } from "../../shared/storage.ts";
+import { tabDrafts } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
 import {
@@ -28,7 +28,6 @@ import {
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../../shared/model-picker.tsx";
-import { readStored, writeStored } from "../../state/store.ts";
 import { ProjectField } from "../../shared/project-field.tsx";
 import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { ListRow } from "../../shared/list-row.tsx";
@@ -51,7 +50,7 @@ const blank = (cwd: string): ScheduledTask => ({
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   },
 });
-const storage = storageKeys.scheduledDraft;
+const drafts = tabDrafts<ScheduledTask>(storageKeys.scheduledDraft);
 const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
 function localInput(at?: number) {
@@ -79,9 +78,7 @@ export default function Scheduled({
   choose: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
-  const [task, setTask] = useState<ScheduledTask | null>(() =>
-    readStored(tabStorage, storage, null),
-  );
+  const [task, setTask] = useState(drafts.open.read);
   const prefs = useContext(TimePrefsContext);
   // A run's moment by the viewer's time preferences, in its task's zone.
   const moment = (seconds?: number, zone?: string) =>
@@ -113,11 +110,8 @@ export default function Scheduled({
   const scheduleKey = JSON.stringify(task?.schedule);
   // biome-ignore lint/correctness/useExhaustiveDependencies: saves when the draft changes, not when the host's copy does
   useEffect(() => {
-    if (task) {
-      writeStored(tabStorage, storage, task);
-      if (dirty)
-        writeStored(tabStorage, `${storage}-${task.id || "new"}`, task);
-    } else tabStorage.removeItem(storage);
+    if (task && dirty) drafts.keep(task.id, task);
+    else drafts.open.write(task);
   }, [task]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: previews when the schedule's value changes, not on edits to other fields
   useEffect(() => {
@@ -142,19 +136,11 @@ export default function Scheduled({
     };
   }, [scheduleKey, online]);
   function chooseTask(value: ScheduledTask | null) {
-    setTask(
-      value
-        ? readStored<ScheduledTask>(
-            tabStorage,
-            `${storage}-${value.id || "new"}`,
-            value,
-          )
-        : null,
-    );
+    setTask(value && (drafts.read(value.id) || value));
     setError(null);
   }
   function discard() {
-    tabStorage.removeItem(`${storage}-${task?.id || "new"}`);
+    drafts.forget(task?.id);
     setTask(current || null);
   }
   const edit = (value: Partial<ScheduledTask>) =>
@@ -173,7 +159,7 @@ export default function Scheduled({
         ...(action === "save" && task ? { task } : {}),
       });
       if (result.item) {
-        tabStorage.removeItem(`${storage}-${task?.id || "new"}`);
+        drafts.forget(task?.id);
         setTask(result.item);
       }
       if (action === "forget") {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import type { InstallPrompt, Report } from "../shared/types.ts";
-import { storage } from "../shared/storage.ts";
+import { stored, useStored } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import { idlePreloadMs } from "../shared/limits.ts";
 import { preloadDeferred } from "../shared/ui.tsx";
@@ -20,6 +20,12 @@ import {
   statisticsDialog,
 } from "./dialogs.ts";
 
+// Remembered per device, so the header's browser slot is right from the
+// first frame instead of appearing once the host answers.
+const browserKept = stored(storageKeys.browser, false, (value) => value === 1, {
+  kept: Number,
+});
+
 // What the shell does once it starts, apart from any conversation: warms
 // what it will draw, follows the viewport, takes files dropped on the page,
 // hears from the service worker, and learns whether the host has a browser.
@@ -38,20 +44,14 @@ export function useBoot({
   authenticated: boolean | null;
   online: boolean;
 }) {
-  // Remembered per device, so the header's browser slot is right from the
-  // first frame instead of appearing once the host answers.
-  const [browserAvailable, setBrowserAvailable] = useState(
-    () => storage.getItem(storageKeys.browser) === "1",
-  );
+  const [browserAvailable, setBrowserAvailable] = useStored(browserKept);
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   useEffect(() => {
     if (authenticated !== true || !online) return;
     let active = true;
     const known = (available: boolean) => {
-      if (!active) return;
-      setBrowserAvailable(available);
-      storage.setItem(storageKeys.browser, available ? "1" : "0");
+      if (active) setBrowserAvailable(available);
     };
     api(routes.browserStatus)
       .then(() => known(true))

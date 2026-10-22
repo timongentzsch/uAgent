@@ -161,28 +161,6 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
   return true;
 }
 
-// Worth a trace record long before it is worth stopping the turn.
-void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
-                                      StepState& loop) {
-  if (calls.size() != 1) {
-    loop.recovery.last_single_tool.clear();
-    loop.recovery.same_tool_rounds = 0;
-    return;
-  }
-  loop.recovery.same_tool_rounds =
-      calls[0].name == loop.recovery.last_single_tool
-          ? loop.recovery.same_tool_rounds + 1
-          : 1;
-  loop.recovery.last_single_tool = calls[0].name;
-  if (loop.recovery.same_tool_rounds == kRepeatedToolRoundTraceAfter) {
-    DebugLog("repeated_tool_rounds",
-             {{"turn", turn_id_},
-              {"step", loop.step},
-              {"tool", calls[0].name},
-              {"rounds", loop.recovery.same_tool_rounds}});
-  }
-}
-
 bool Agent::StopForRepeatedRejections(
     const std::vector<ToolRejection>& rejections, TurnExecution& state,
     StepState& loop) {

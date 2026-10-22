@@ -125,6 +125,13 @@ test.describe("back closes what is open", () => {
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
     expect(await layerDepth(page)).toBe(0);
+    // Back leaves the layer's entry for the conversation, still with nothing
+    // open, and does not leave the app.
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`#session=${session.id}$`));
+    await expect(page.getByLabel("Message or guidance")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
+    expect(await layerDepth(page)).toBe(0);
   });
 });
 

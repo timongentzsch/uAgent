@@ -101,7 +101,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
   }
   if (response.interrupted) {
     state.line_open = false;
-    printf("\n");
     conversation_.Push(
         HarnessMessage("(response interrupted; partial output was "
                        "discarded)"),

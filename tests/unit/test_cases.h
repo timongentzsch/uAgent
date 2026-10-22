@@ -81,6 +81,7 @@ namespace uagent {
   X(TestReplayLogReadsInBatches)                  \
   X(TestTransientBatcherHoldsStreamedText)        \
   X(TestReceiptLogBackpressure)                   \
+  X(TestReceiptLogEvictsOldest)                   \
   X(TestHostCommandKinds)                         \
   X(TestToolCopiesKeepRoomForUserFiles)           \
   X(TestSandboxPolicy)                            \

@@ -92,14 +92,17 @@ ReceiptVerdict ReceiptLog::Check(const json& command,
     previous = found->second.second;
     return ReceiptVerdict::kReplay;
   }
-  if (receipts_.size() >= kReceiptEntries) {
-    auto completed =
-        std::find_if(receipts_.begin(), receipts_.end(), [](const auto& item) {
-          return !JsonValue(item.second.second, "pending", false);
+  if (order_.size() >= kReceiptEntries) {
+    auto completed = std::find_if(
+        order_.begin(), order_.end(),
+        [&](const std::string& id) UAGENT_REQUIRES(mutex_) {
+          return !JsonValue(receipts_.at(id).second, "pending", false);
         });
-    if (completed == receipts_.end()) return ReceiptVerdict::kReject;
-    receipts_.erase(completed);
+    if (completed == order_.end()) return ReceiptVerdict::kReject;
+    receipts_.erase(*completed);
+    order_.erase(completed);
   }
+  order_.push_back(request);
   receipts_[request] = {command,
                         {{"kind", "outcome"},
                          {"request_id", request},

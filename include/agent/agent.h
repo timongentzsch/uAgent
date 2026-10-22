@@ -88,9 +88,6 @@ class Agent {
 
   void RouteChanged();
 
-  // Approval mode is host-owned but can change between interactive turns.
-  // Rebuild message zero after the host updates its canonical environment.
-
   std::string ActiveRoute() const;
 
   // Vision route for the analysis side call: the configured model wins;
@@ -258,7 +255,7 @@ class Agent {
   // its answer unless the user renamed the session meanwhile.
   void StartTitle(const std::string& user_input);
 
-  // one user turn: stream, run tools, repeat until prose; prints as it goes
+  // One user turn: stream, run tools, repeat until prose.
   // `origin` as on a queued message (Steering::Message): who wrote the
   // input when not the person.
   void Turn(const std::string& user_input, json user_content = nullptr,
@@ -414,13 +411,12 @@ class Agent {
   std::string RuntimeContextText() const;
 
   // Message 0 is the one place the system shape is defined. Always rebuilt
-  // rather than restored, so it tracks the current tools/protocol (see load()).
+  // rather than restored, so it tracks the current tools/protocol (see Load()).
   json SysMsg() const;
-  void EnsureRuntimeContext();
-  json PanelRequest(json messages) const;
-
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.
+  void EnsureRuntimeContext();
+  json PanelRequest(json messages) const;
 
   std::string ProjectInstructionText() const;
   std::string MemoryText() const;
@@ -441,9 +437,9 @@ class Agent {
   // and the UI join on. No push path may skip the metadata half.
   void PushToolResultMessage(const ToolCall& call, json message);
 
-  // returns true if the user interrupted the batch
   void PrepareCall(const ToolCall& call, CallTask& task, TurnExecution& state,
                    StepState& loop);
+  // True when the user interrupted the batch.
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
                 std::vector<ActivityPollResult>& activity_polls);

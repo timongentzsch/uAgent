@@ -218,7 +218,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     for (const json& run : tick.prepare) {
       const json& definition = run["definition"];
       const std::string id = JsonValue(run, "id", "");
-      mutex_.unlock();
+      lock.unlock();
       const json before = ReadSchedules();
       const json* queued = FindRun(before, id);
       const bool starting =
@@ -230,7 +230,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
                                JsonValue(run, "cwd", ""))
               : "";
       const json current = starting ? ReadSchedules() : before;
-      mutex_.lock();
+      lock.lock();
       if (stopping_) return wait;
       const json* latest = FindRun(current, id);
       // Stop/forget may land while Git runs. A stopped preparation must never

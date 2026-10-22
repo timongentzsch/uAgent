@@ -12,6 +12,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -41,6 +42,7 @@ class OutcomeStore {
   // A caller pins its receipt while waiting, independently of cache eviction.
   std::map<std::string, std::shared_ptr<json>> outcomes_
       UAGENT_GUARDED_BY(mutex_);
+  std::deque<std::string> order_ UAGENT_GUARDED_BY(mutex_);
 };
 
 }  // namespace uagent::session

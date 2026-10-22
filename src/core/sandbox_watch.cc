@@ -9,12 +9,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 
 namespace uagent {
@@ -53,11 +53,8 @@ bool Record(const fs::path& path, SandboxWatch::Tree* tree) {
       }
     } else if (fs::is_regular_file(status)) {
       std::ifstream file(current, std::ios::binary);
-      std::ostringstream content;
-      content << file.rdbuf();
-      entry.content = content.str();
+      if (ReadBounded(file, kWatchBytes - bytes, entry.content)) return false;
       bytes += entry.content.size();
-      if (bytes > kWatchBytes) return false;
     } else {
       return false;
     }

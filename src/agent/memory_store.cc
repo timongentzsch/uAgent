@@ -24,6 +24,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -203,12 +204,7 @@ bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
 
 bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
                        std::string& error) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    error = "receipt not found";
-    return false;
-  }
-  json value = json::parse(input, nullptr, false);
+  json value = ReadJsonFile(path, kMemoryEventLineBytes);
   if (value.is_discarded() || !ParseMemoryEvent(value, event)) {
     error = "invalid memory receipt";
     return false;

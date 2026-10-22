@@ -711,7 +711,6 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
            (std::string_view(action->name) == "tabs" &&
             !JsonValue(args, "target_id", "").empty());
   };
-  tool.needs_approval = tool.mutates;
   auto seen = std::make_shared<Seen>();
   tool.approval_subject = [seen](const json& args) {
     return Subject(args, *seen);

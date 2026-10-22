@@ -1273,7 +1273,10 @@ void TestBrowserToolSteps() {
   CHECK(logged.Ok() &&
         logged.output.starts_with("2 console messages and uncaught errors:\n"
                                   "log: hello 42"));
-  CHECK(!tool.needs_approval({{"action", "network"}}));
+  CHECK(RequiredApproval(tool, {{"action", "network"}}) ==
+        ApprovalClass::kNone);
+  CHECK(RequiredApproval(tool, {{"action", "click"}}) ==
+        ApprovalClass::kYoloEligibleMutation);
   CHECK(tool.approval_preview({{"action", "drag"},
                                {"element", 1},
                                {"view_id", view(fetched.output)},

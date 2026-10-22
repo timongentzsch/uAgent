@@ -15,6 +15,9 @@
   removed; it was off by default and unused. A saved conversation that still
   carries one loads without it. The system message is the built-in base
   followed by instruction files.
+- **A `-p` run is saved like any conversation**, so `-c -p` continues the
+  latest one in the folder. Scripts that ran `-p` many times now leave one
+  history entry per run.
 - **Headless `--json` reports this run's usage.** `usage` and `routes` no
   longer include what a continued conversation (`-c`, `--resume`) spent
   before; a conversation another runtime holds gets an error envelope.

@@ -312,7 +312,8 @@ uagent panel -p "status of the threads"             # ask the panel
   `routes` are what this run spent, also when `-c` continues a conversation.
   Nothing else goes to stdout; problems go to stderr, and a conversation that
   cannot be continued still gets an envelope, with `error` set.
-- A plain `-p` run is not saved; `-c` and `--resume` continue saved ones.
+- A `-p` run is saved like any conversation: `-c -p` continues the latest
+  one in the folder, and `--resume` a named one.
 - `--json-stream` prints events as they happen, each
   `{"schema": "uagent.event.v2", "seq": N, "time": "…", "type": "…",
   "data": {…}}`. Types include `turn.started`, `usage.updated`, `notice`,

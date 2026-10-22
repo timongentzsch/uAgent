@@ -67,11 +67,13 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 void Agent::Arrive(const std::string& text, json re, const std::string& author,
                    const std::string& mail, const std::string& sender) {
   if (!mail.empty()) arriving_mail_.push_back(mail);
-  SteeringState().Queue({.text = text,
-                         .origin = {{"author", author},
-                                    {"sender", sender},
-                                    {"mail", mail},
-                                    {"re", std::move(re)}}});
+  Steering::Message message;
+  message.text = text;
+  message.origin = {{"author", author},
+                    {"sender", sender},
+                    {"mail", mail},
+                    {"re", std::move(re)}};
+  SteeringState().Queue(std::move(message));
 }
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }

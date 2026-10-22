@@ -321,9 +321,7 @@ json Runtime::Act(const std::string& op, const json& command) {
                             Numbered(view, number) + (held ? ",true)" : ")")},
          {"returnByValue", true},
          {"awaitPromise", true}});
-    const json* found = JsonObject(where, "result");
-    found = found ? JsonObject(*found, "result") : nullptr;
-    found = found ? JsonObject(*found, "value") : nullptr;
+    const json* found = RemoteValue(where);
     if (!found) return "that element is gone; look again";
     if (JsonValue(*found, "moving", false)) {
       return named + " is still moving; look again";
@@ -346,6 +344,25 @@ json Runtime::Act(const std::string& op, const json& command) {
     y = JsonValue(*found, "y", -1);
     return "";
   };
+  // A page left behind takes its looks with it.
+  const auto navigate = [&](const char* method, const json& params) {
+    observation_.clear();
+    looks_.clear();
+    leaving_ = true;
+    json sent = Call(method, params, page_session_);
+    leaving_ = false;
+    return sent;
+  };
+  const auto outside = [&](int x, int y) {
+    return x < 0 || y < 0 || x >= view_width_ || y >= view_height_;
+  };
+  constexpr const char* kOutside = "coordinates exceed the observed viewport";
+  // Pointer actions act on what a look showed.
+  if (op == "click" || op == "drag" || op == "scroll" || op == "upload") {
+    if (const std::string why = unseen(); !why.empty()) {
+      return {{"error", why}};
+    }
+  }
   // A click may open a file chooser: held back, it never shows a window the
   // agent cannot answer, and upload fills its field instead.
   struct Release {
@@ -378,8 +395,6 @@ json Runtime::Act(const std::string& op, const json& command) {
                url.size() > 4096) {
       return {{"error", "URL must be HTTP(S)"}};
     }
-    observation_.clear();
-    looks_.clear();
     if (JsonValue(command, "new_tab", false)) {
       json created = Call("Target.createTarget", {{"url", "about:blank"}});
       const json* made = JsonObject(created, "result");
@@ -388,9 +403,7 @@ json Runtime::Act(const std::string& op, const json& command) {
         return {{"error", made ? error : "Chrome did not open a tab"}};
       }
     }
-    leaving_ = true;
-    reply = Call("Page.navigate", {{"url", url}}, page_session_);
-    leaving_ = false;
+    reply = navigate("Page.navigate", {{"url", url}});
     if (const json* result = JsonObject(reply, "result")) {
       if (auto failed = JsonValue(*result, "errorText", ""); !failed.empty()) {
         return {{"error", "navigation failed: " + failed}};
@@ -422,22 +435,11 @@ json Runtime::Act(const std::string& op, const json& command) {
     if (!url.starts_with("https://") && !url.starts_with("http://")) {
       return {{"error", "the " + which + " page is not HTTP(S)"}};
     }
-    observation_.clear();
-    looks_.clear();
-    leaving_ = true;
-    reply = Call("Page.navigateToHistoryEntry",
-                 {{"entryId", JsonValue(entry, "id", 0)}}, page_session_);
-    leaving_ = false;
+    reply = navigate("Page.navigateToHistoryEntry",
+                     {{"entryId", JsonValue(entry, "id", 0)}});
   } else if (op == "reload") {
-    observation_.clear();
-    looks_.clear();
-    leaving_ = true;
-    reply = Call("Page.reload", json::object(), page_session_);
-    leaving_ = false;
+    reply = navigate("Page.reload", json::object());
   } else if (op == "click") {
-    if (const std::string why = unseen(); !why.empty()) {
-      return {{"error", why}};
-    }
     const std::string button = JsonValue(command, "button", "left");
     const int pressed = button == "left"     ? 1
                         : button == "right"  ? 2
@@ -456,9 +458,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
       return {{"error", "click requires an element, or x and y"}};
     }
-    if (x < 0 || y < 0 || x >= view_width_ || y >= view_height_) {
-      return {{"error", "coordinates exceed the observed viewport"}};
-    }
+    if (outside(x, y)) return {{"error", kOutside}};
     observation_.clear();
     // Onto the point first, as a pointer gets there: menus open on hover,
     // and what opens may cover the element, so it is found again after.
@@ -498,9 +498,6 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (!CdError(reply).empty()) break;
     }
   } else if (op == "drag") {
-    if (const std::string why = unseen(); !why.empty()) {
-      return {{"error", why}};
-    }
     // It starts at element (or x and y), brought into view, and ends at
     // to_element (or to_x and to_y) wherever that then is.
     int x = -1, y = -1, to_x = -1, to_y = -1;
@@ -520,10 +517,7 @@ json Runtime::Act(const std::string& op, const json& command) {
                !Coordinate(command, "to_y", to_y)) {
       return {{"error", "drag ends at to_element, or to_x and to_y"}};
     }
-    if (std::max(x, to_x) >= view_width_ || std::max(y, to_y) >= view_height_ ||
-        std::min({x, y, to_x, to_y}) < 0) {
-      return {{"error", "coordinates exceed the observed viewport"}};
-    }
+    if (outside(x, y) || outside(to_x, to_y)) return {{"error", kOutside}};
     observation_.clear();
     // A slider or a sortable list follows the pointer. The page's own
     // drag-and-drop would hand the drag to the system, which never sees
@@ -576,10 +570,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     json control = Evaluate({{"expression", std::string("(") + kControlScript +
                                                 ")(" + JsonDump(value) + ")"},
                              {"returnByValue", true}});
-    const json* set = JsonObject(control, "result");
-    set = set ? JsonObject(*set, "result") : nullptr;
-    set = set ? JsonObject(*set, "value") : nullptr;
-    if (set) {
+    if (const json* set = RemoteValue(control)) {
       if (const std::string why = JsonValue(*set, "error", ""); !why.empty()) {
         return {{"error", why}};
       }
@@ -588,8 +579,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     json secret =
         Evaluate({{"expression", kSecretFieldScript}, {"returnByValue", true}});
-    const json* field = JsonObject(secret, "result");
-    field = field ? JsonObject(*field, "result") : nullptr;
+    const json* field = RemoteObject(secret);
     const json verdict =
         field && field->contains("value") ? (*field)["value"] : json();
     if (verdict != false) {
@@ -646,8 +636,7 @@ json Runtime::Act(const std::string& op, const json& command) {
     // is, before and after, says whether Chrome filled it; the text itself
     // is never read.
     json field = Evaluate({{"expression", "document.activeElement"}});
-    const json* held = JsonObject(field, "result");
-    held = held ? JsonObject(*held, "result") : nullptr;
+    const json* held = RemoteObject(field);
     const std::string id = held ? JsonValue(*held, "objectId", "") : "";
     const auto length = [&] {
       json measured = Call("Runtime.callFunctionOn",
@@ -657,8 +646,7 @@ json Runtime::Act(const std::string& op, const json& command) {
                              "this.value.length:-1}"},
                             {"returnByValue", true}},
                            page_session_);
-      const json* result = JsonObject(measured, "result");
-      result = result ? JsonObject(*result, "result") : nullptr;
+      const json* result = RemoteObject(measured);
       return result ? JsonValue(*result, "value", -1) : -1;
     };
     const int before = id.empty() ? -1 : length();
@@ -729,17 +717,12 @@ json Runtime::Act(const std::string& op, const json& command) {
       reply = Call("Input.dispatchKeyEvent", event, page_session_);
     }
   } else if (op == "scroll") {
-    if (const std::string why = unseen(); !why.empty()) {
-      return {{"error", why}};
-    }
     int x = JsonValue(command, "x", 640), y = JsonValue(command, "y", 400);
     int delta = JsonValue(command, "delta_y", 0);
     if (delta < -3000 || delta > 3000) {
       return {{"error", "invalid scroll amount"}};
     }
-    if (x < 0 || y < 0 || x >= view_width_ || y >= view_height_) {
-      return {{"error", "coordinates exceed the observed viewport"}};
-    }
+    if (outside(x, y)) return {{"error", kOutside}};
     observation_.clear();
     reply = Call("Input.dispatchMouseEvent",
                  {{"type", "mouseWheel"},
@@ -753,14 +736,10 @@ json Runtime::Act(const std::string& op, const json& command) {
     if (element < 1 || file.empty()) {
       return {{"error", "upload takes an element and a path"}};
     }
-    if (const std::string why = unseen(); !why.empty()) {
-      return {{"error", why}};
-    }
     // A file field takes the file itself; anything else is clicked, and the
     // file field whose chooser that opens takes it.
     json held = Evaluate({{"expression", Numbered(view, element)}});
-    const json* found = JsonObject(held, "result");
-    found = found ? JsonObject(*found, "result") : nullptr;
+    const json* found = RemoteObject(held);
     const std::string id = found ? JsonValue(*found, "objectId", "") : "";
     if (id.empty()) return {{"error", "that element is gone; look again"}};
     json files = {{"files", json::array({file})}, {"objectId", id}};
@@ -771,8 +750,7 @@ json Runtime::Act(const std::string& op, const json& command) {
                        "this.type==='file'}"},
                       {"returnByValue", true}},
                      page_session_);
-    const json* field = JsonObject(kind, "result");
-    field = field ? JsonObject(*field, "result") : nullptr;
+    const json* field = RemoteObject(kind);
     if (!field || !JsonValue(*field, "value", false)) {
       if (json clicked = Act("click", command); clicked.contains("error")) {
         return clicked;

@@ -652,6 +652,18 @@ void TestBrowserSecretMaskAndBack() {
   CHECK(fake.Act({{"op", "click"}, {"element", 1}, {"view_id", view}})
             .value("error", "") ==
         "click needs view_id from a look at this page");
+  // A scroll is a pointer action too: on the latest look, inside its view.
+  const std::string latest =
+      fake.Act({{"op", "observe"}, {"image", false}}).value("view_id", "");
+  CHECK(fake.Act({{"op", "scroll"}, {"delta_y", 100}}).value("error", "") ==
+        "scroll needs view_id from the latest observe");
+  CHECK(fake.Act({{"op", "scroll"},
+                  {"x", 9999},
+                  {"delta_y", 100},
+                  {"view_id", latest}})
+            .value("error", "") == "coordinates exceed the observed viewport");
+  CHECK(!fake.Act({{"op", "scroll"}, {"delta_y", 100}, {"view_id", latest}})
+             .contains("error"));
   CHECK(fake.Act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
   CHECK(fake.Act({{"op", "read"}, {"find", "clip"}}).value("text", "") ==
         "Clip one");

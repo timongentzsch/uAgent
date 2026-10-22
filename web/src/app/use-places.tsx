@@ -11,7 +11,7 @@ import type {
 import { command } from "../state/api.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import { folderOf } from "../shared/display.ts";
-import { SpaceMenu } from "../features/sidebar/sidebar.tsx";
+import { SpaceMenu } from "./menus.tsx";
 import { collapsed } from "../features/sidebar/folding.ts";
 
 // The places conversations start in: workspaces by name and folders by

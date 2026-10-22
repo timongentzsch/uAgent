@@ -1,9 +1,8 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
-import { Component, type ComponentChildren } from "preact";
+import type { ComponentChildren } from "preact";
 import { useMemo } from "preact/hooks";
-import type { Session, Space, AppModal } from "../../shared/types.ts";
+import type { Session, Space } from "../../shared/types.ts";
 import {
-  Check,
   ChevronDown,
   ChevronRight,
   Plus,
@@ -16,7 +15,6 @@ import {
   TriangleAlert,
   Inbox,
 } from "lucide-preact";
-import { command, manage } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import {
   Mark,
@@ -26,12 +24,12 @@ import {
   IconButton,
   Placeholder,
   EmptyState,
-  propsChanged,
+  updateChecked,
 } from "../../shared/ui.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
-import { capitalize, folderOf } from "../../shared/display.ts";
+import { folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
-import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { MemberAvatar } from "../../shared/member-card.tsx";
@@ -40,179 +38,8 @@ import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
 import { collapsed, useFolding } from "./folding.ts";
+import { matches } from "../../shared/fuzzy.ts";
 import "./sidebar.css";
-// The conversation's transcript as Markdown on the host; says where.
-export async function shareTranscript(item: Session) {
-  const result = await command("share", item);
-  return result.pending ? "" : `Transcript saved to ${result.result.path}`;
-}
-// A fresh runtime that keeps the history, e.g. for a setting that needs it.
-export async function restartConversation(item: Session) {
-  const { restarting, deferred } = await manage("restart_conversations", {
-    target_id: item.id,
-  });
-  return restarting
-    ? "Conversation restarted."
-    : deferred
-      ? "Restarts when this turn ends."
-      : "Nothing to restart: this conversation is not running.";
-}
-
-// What can be done to a workspace, which is µAgent's own to rename and remove.
-export function SpaceMenu({
-  space,
-  conversations,
-  open,
-}: {
-  space: Space;
-  conversations: number;
-  open: (modal: AppModal) => void;
-}) {
-  const { online } = useHostContext();
-  return (
-    <Menu label={`Menu for the workspace ${space.name}`}>
-      <MenuItem
-        disabled={!online}
-        onClick={() => open({ type: "rename", space })}
-      >
-        Rename
-      </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => open({ type: "delete", space, conversations })}
-      >
-        Delete
-      </MenuItem>
-    </Menu>
-  );
-}
-
-export function ConversationMenu({
-  item,
-  fork,
-  notify,
-  open,
-  detail,
-  children,
-}: {
-  item: Session;
-  fork: (item: Session) => void;
-  // Says what an action did, where the conversation shows its notices.
-  notify: (text: string) => void;
-  open: (modal: AppModal) => void;
-  // How much of the agent's work every transcript shows, and changing it:
-  // one level for all conversations, offered where a transcript is read.
-  detail?: {
-    levels: string[];
-    level: string;
-    disabled: boolean;
-    change: (level: string) => void;
-  };
-  // What the conversation's header would hold on a wider screen, first.
-  children?: ComponentChildren;
-}) {
-  const { online, load: loadSnapshot, report } = useHostContext();
-  return (
-    <Menu label="Conversation menu">
-      {children}
-      <MenuItem
-        disabled={
-          !online ||
-          item.turn_active ||
-          ["starting", "draft"].includes(item.status || "")
-        }
-        title={
-          item.turn_active || ["starting", "draft"].includes(item.status || "")
-            ? "Wait for the running turn to finish before forking"
-            : undefined
-        }
-        onClick={() => fork(item)}
-      >
-        Fork conversation
-      </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => {
-          open({ type: "rename", session: item });
-        }}
-      >
-        Rename
-      </MenuItem>
-      <MenuItem
-        onClick={() => open({ type: "statistics", session_id: item.id })}
-      >
-        Statistics
-      </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => open({ type: "tools", session_id: item.id })}
-      >
-        Tools
-      </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => void shareTranscript(item).then(notify, report)}
-      >
-        Export transcript
-      </MenuItem>
-      {detail && detail.levels.length > 0 && (
-        <MenuSub label="Detail" value={capitalize(detail.level)}>
-          {detail.levels.map((level) => (
-            <MenuItem
-              key={level}
-              role="menuitemradio"
-              aria-checked={level === detail.level}
-              disabled={detail.disabled}
-              onClick={() => detail.change(level)}
-            >
-              {capitalize(level)}
-              {level === detail.level && <Check />}
-            </MenuItem>
-          ))}
-          <p class="menu-note">For all conversations.</p>
-        </MenuSub>
-      )}
-      {item.generation && (
-        <MenuItem
-          disabled={!online || item.turn_active}
-          onClick={() =>
-            void command("submit", item, { text: "/compact" }).catch(report)
-          }
-        >
-          Compact
-        </MenuItem>
-      )}
-      {item.generation && (
-        <MenuItem
-          disabled={!online}
-          onClick={() => void restartConversation(item).then(notify, report)}
-        >
-          Restart
-        </MenuItem>
-      )}
-      {item.generation && (
-        <MenuItem
-          disabled={!online}
-          onClick={() =>
-            command("close", item)
-              .then(() => loadSnapshot(item.id))
-              .catch(report)
-          }
-        >
-          Close conversation
-        </MenuItem>
-      )}
-      <MenuItem
-        disabled={!online}
-        onClick={() => {
-          open({ type: "delete", session: item });
-        }}
-      >
-        Delete
-      </MenuItem>
-    </Menu>
-  );
-}
 
 // Before the catalogue arrives, the list draws these (see <Placeholder>).
 const SAMPLE: Session[] = [
@@ -259,25 +86,23 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
     return groups.get(path)!;
   };
   const names = new Map(spaces.map((space) => [space.path, space.name]));
-  const matches = (text: string) =>
-    text.toLowerCase().includes(search.toLowerCase());
   for (const item of [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   )) {
     const path = folderOf(item);
     // A panel is listed with its place, whatever the search shows of it.
     if (item.kind === "panel") {
-      if (!search || matches(`${names.get(path) || ""} ${path}`))
-        place(path).panel = item;
+      if (matches(search, names.get(path), path)) place(path).panel = item;
     } else if (item.member) {
       seated.set(path, [...(seated.get(path) || []), item]);
-    } else if (matches(`${item.title} ${names.get(path) || ""} ${item.cwd}`)) {
+    } else if (matches(search, item.title, names.get(path), item.cwd)) {
       (item.kind === "thread" ? place(path).threads : place(path).others).push(
         item,
       );
     }
   }
-  for (const space of spaces) if (matches(space.name)) place(space.path);
+  for (const space of spaces)
+    if (matches(search, space.name)) place(space.path);
   // In a steady order, which the avatars keep as the members speak.
   for (const [path, group] of groups)
     group.members = (seated.get(path) || []).sort((a, b) =>
@@ -331,7 +156,7 @@ type SessionRowProps = {
 
 // One conversation in the list, on one line: its title and its state. The
 // time and the menu show while the row is pointed at or focused.
-function SessionRowView({
+function SessionRow({
   item,
   selected,
   unread,
@@ -375,14 +200,7 @@ function SessionRowView({
 }
 
 // A patch to one session keeps the others' objects, so only its row renders.
-class SessionRow extends Component<SessionRowProps> {
-  shouldComponentUpdate(next: SessionRowProps) {
-    return propsChanged(this.props, next);
-  }
-  render(props: SessionRowProps) {
-    return <SessionRowView {...props} />;
-  }
-}
+const SessionEntry = updateChecked(SessionRow);
 
 type SidebarProps = {
   loading: boolean;
@@ -451,7 +269,7 @@ function SidebarView({
     return counts;
   }, [all]);
   const row = (item: Session) => (
-    <SessionRow
+    <SessionEntry
       key={item.id}
       item={item}
       selected={item.id === selected}
@@ -697,11 +515,4 @@ function SidebarView({
 
 // The shell re-renders with every streamed frame; the list only when one of
 // its props changes, which the shell keeps stable.
-export default class Sidebar extends Component<SidebarProps> {
-  shouldComponentUpdate(next: SidebarProps) {
-    return propsChanged(this.props, next);
-  }
-  render(props: SidebarProps) {
-    return <SidebarView {...props} />;
-  }
-}
+export default updateChecked(SidebarView);

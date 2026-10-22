@@ -66,7 +66,8 @@ export const downloadRevokeMs = 30_000;
 // A tool argument this short reads as a fact beside the tool's name.
 export const maxInlineFactChars = 40;
 
-// A draft's attachments: how many, and the largest upload the host takes.
+// A draft's attachments: how many, and the largest upload the host takes
+// (kUploadCount, kUploadBytes).
 export const maxDraftFiles = 8;
 export const maxUploadBytes = 8 * 1024 * 1024;
 

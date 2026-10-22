@@ -14,6 +14,15 @@ export function writeSelection(id: string, replace = false) {
   });
 }
 
+// Focuses the message input once drawn, which a just chosen session delays.
+export function focusComposer(tries = 10) {
+  requestAnimationFrame(() => {
+    const prompt = document.getElementById("prompt");
+    if (prompt) prompt.focus({ preventScroll: true });
+    else if (tries) focusComposer(tries - 1);
+  });
+}
+
 // A notification's link names the decision a session waits on: once that
 // session draws its decision, focus it.
 export function focusDecision() {

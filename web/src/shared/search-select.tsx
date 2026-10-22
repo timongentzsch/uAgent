@@ -3,6 +3,8 @@ import { ChevronDown } from "lucide-preact";
 import { Field, Input } from "./ui.tsx";
 import { SuggestionList } from "./suggestion-list.tsx";
 import "./search-select.css";
+import { matches } from "./fuzzy.ts";
+import { nextIndex, plainKey } from "./listbox-nav.ts";
 
 export type SearchOption = { value: string; label: string; detail?: string };
 
@@ -27,15 +29,10 @@ export function SearchSelect({
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const selected = options.find((option) => option.value === value);
-  const words = query.toLocaleLowerCase().trim().split(/\s+/);
-  const matches = options.filter((option) =>
-    words.every((word) =>
-      `${option.label} ${option.value} ${option.detail || ""}`
-        .toLocaleLowerCase()
-        .includes(word),
-    ),
+  const shown = options.filter((option) =>
+    matches(query, option.label, option.value, option.detail),
   );
-  const active = Math.min(index, matches.length - 1);
+  const active = Math.min(index, shown.length - 1);
   const pick = (option: SearchOption) => {
     change(option.value);
     setOpen(false);
@@ -80,30 +77,22 @@ export function SearchSelect({
             setIndex(0);
           }}
           onKeyDown={(event) => {
-            if (event.isComposing) return;
+            if (event.isComposing || !plainKey(event)) return;
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
               setOpen(true);
               setIndex(
-                open
-                  ? Math.max(
-                      0,
-                      Math.min(
-                        matches.length - 1,
-                        active + (event.key === "ArrowDown" ? 1 : -1),
-                      ),
-                    )
+                open && shown.length
+                  ? nextIndex(active, event.key, shown.length)
                   : 0,
               );
             } else if (open && event.key === "Enter") {
-              event.preventDefault();
-              if (matches[active]) pick(matches[active]);
+              if (shown[active]) pick(shown[active]);
             } else if (open && event.key === "Escape") {
-              event.preventDefault();
               event.stopPropagation();
               setOpen(false);
               setQuery("");
-            }
+            } else return;
+            event.preventDefault();
           }}
         />
       </Field>
@@ -114,7 +103,7 @@ export function SearchSelect({
             id={id}
             label={`${label} options`}
             prefix={`${id}-option`}
-            items={matches}
+            items={shown}
             index={active}
             pick={pick}
             keyOf={(option) => option.value}
@@ -127,7 +116,7 @@ export function SearchSelect({
               </span>
             )}
           </SuggestionList>
-          {!matches.length && <p role="status">No matching options.</p>}
+          {!shown.length && <p role="status">No matching options.</p>}
         </div>
       )}
     </div>

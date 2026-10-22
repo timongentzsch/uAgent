@@ -15,6 +15,7 @@ import { RestartNotice } from "./config/restart-notice.tsx";
 import { SettingField } from "./config/setting-field.tsx";
 import { useConfiguration } from "./config/use-configuration.ts";
 import "./configuration.css";
+import { matches } from "../../shared/fuzzy.ts";
 
 const WHOLE = {
   user: {
@@ -64,12 +65,15 @@ export default function Configuration({
   const find = (name: string) =>
     config.settings.find((setting) => setting.name === name);
   const needle = query.trim().toLowerCase();
-  const listed = config.settings.filter(
-    (setting) =>
-      !needle ||
-      `${setting.label} ${setting.key} ${setting.name} ${setting.purpose || ""} ${setting.description}`
-        .toLowerCase()
-        .includes(needle),
+  const listed = config.settings.filter((setting) =>
+    matches(
+      query,
+      setting.label,
+      setting.key,
+      setting.name,
+      setting.purpose,
+      setting.description,
+    ),
   );
   const held = config.settings.filter(
     (setting) =>

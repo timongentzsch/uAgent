@@ -1,4 +1,4 @@
-import type { Pending, Act, CommandFields, Report } from "./types.ts";
+import type { Pending, Act, CommandInputs, Report } from "./types.ts";
 import { failure } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
@@ -14,6 +14,7 @@ const ALLOW_ONCE = "y",
   DENY = "n",
   GUIDANCE = "guidance";
 const CARD = new Set([ALLOW_ONCE, ALLOW_SESSION, ALWAYS, DENY, GUIDANCE]);
+type Answer = Omit<CommandInputs["reply"], "interaction_id">;
 
 export default function Decision({
   pending,
@@ -56,12 +57,12 @@ export default function Decision({
   // A reply that did not reach the host stays here, with Retry.
   const [failed, setFailed] = useState<{
     message: string;
-    fields: CommandFields;
+    fields: Answer;
   } | null>(null);
   const approval = pending.kind === "approval" ? pending.approval : undefined;
   const asking = pending.kind === "ask";
   // One reply in flight at a time: answer and cancel share the guard.
-  const answer = async (fields: CommandFields) => {
+  const answer = async (fields: Answer) => {
     setSending(true);
     setFailed(null);
     try {

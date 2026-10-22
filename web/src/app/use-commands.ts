@@ -11,11 +11,10 @@ import { emptyDraft } from "../state/store.ts";
 import { command, requestId } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import { outgoingStatus } from "../shared/message-view.ts";
-import {
-  restartConversation,
-  shareTranscript,
-} from "../features/sidebar/sidebar.tsx";
+import { folderOf } from "../shared/display.ts";
+import { restartConversation, shareTranscript } from "./menus.tsx";
 import { parseSlash } from "../features/composer/slash.ts";
+import { focusComposer } from "../shared/navigation.ts";
 
 type Page = "chat" | "library" | "scheduled";
 
@@ -113,7 +112,7 @@ export function useCommands({
   // the composer.
   async function forkAndOpen(
     target: Session | undefined,
-    fields: CommandFields = {},
+    fields: CommandFields<"fork"> = {},
     edit = false,
   ) {
     const result = await command("fork", target, fields);
@@ -134,9 +133,14 @@ export function useCommands({
       );
   }
   async function localCommand(text: string) {
-    const { name, argument } = parseSlash(catalogue.commands || [], text);
+    const { name, argument, clientOnly } = parseSlash(
+      catalogue.commands || [],
+      text,
+    );
     if (!argument && screens[name]) screens[name]();
     else if (name === "/reset") await startConversation(session!.cwd!);
+    else if (name === "/panel")
+      await startConversation(folderOf(session!), true);
     else if (name === "/verbosity") {
       if (!levels.includes(argument))
         throw new Error(`Use /verbosity ${levels.join("|")}`);
@@ -181,7 +185,10 @@ export function useCommands({
         exchanges: [exchanges[index - 1]],
         part: part as "request" | "response",
       });
-    } else return false;
+    }
+    // The runtime refuses the rest of the client's own commands.
+    else if (clientOnly) throw new Error(`${name} works only in a terminal.`);
+    else return false;
     return true;
   }
   async function submit(event: Event, jumpToLatest: () => void, queue = false) {
@@ -319,7 +326,7 @@ export function useCommands({
         if (!session)
           throw new Error(`Open a conversation to use ${entry.command}`);
         setDraft({ ...draft, text: `${entry.command} ` });
-        requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+        focusComposer();
       } else if (!(await localCommand(entry.command))) {
         if (!session)
           throw new Error(`Open a conversation to run ${entry.command}`);

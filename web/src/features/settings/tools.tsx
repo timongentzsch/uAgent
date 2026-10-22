@@ -1,6 +1,7 @@
 import "./tools.css";
 import { useCallback, useMemo, useState } from "preact/hooks";
 import type {
+  CommandInputs,
   Session,
   ToolCategories,
   ToolCatalogue,
@@ -19,6 +20,7 @@ import { useAction } from "../../shared/use-action.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
+import { matches } from "../../shared/fuzzy.ts";
 
 const labels: Record<string, string> = {
   workspace: "Workspace",
@@ -96,12 +98,7 @@ export default function Tools({
   } = useAction();
   const error = toolError ?? categoryError;
 
-  const update = async (fields: {
-    operation: string;
-    name?: string;
-    active?: boolean;
-    profile?: string;
-  }) => {
+  const update = async (fields: CommandInputs["tools"]) => {
     setError(null);
     setSaving(fields.name || fields.profile || fields.operation);
     try {
@@ -117,11 +114,7 @@ export default function Tools({
     }
   };
 
-  const updateCategories = (fields: {
-    action: string;
-    name?: string;
-    category_id?: string;
-  }) =>
+  const updateCategories = (fields: CommandInputs["tool_categories"]) =>
     saveCategories(async () => {
       const response = await command("tool_categories", null, fields);
       if (response.pending)
@@ -138,15 +131,18 @@ export default function Tools({
   );
   const groups = useMemo(() => {
     const found = new Map<string, ToolCatalogueItem[]>();
-    const needle = query.trim().toLowerCase();
     for (const tool of (catalogue ?? SAMPLE).tools) {
       const category =
         categories.assignments[tool.name] || tool.category || "workspace";
       if (
-        needle &&
-        !`${tool.name} ${tool.title} ${tool.description} ${tool.provider} ${categoryLabel(category)}`
-          .toLowerCase()
-          .includes(needle)
+        !matches(
+          query,
+          tool.name,
+          tool.title,
+          tool.description,
+          tool.provider,
+          categoryLabel(category),
+        )
       )
         continue;
       if (!found.has(category)) found.set(category, []);

@@ -552,6 +552,8 @@ export interface SlashCommand {
   // Listed only at a terminal: this page has its own control for it. Typed
   // here it still runs, and its aliases still resolve.
   terminal?: boolean;
+  // Navigation a client performs itself; a runtime refuses it.
+  client_only?: boolean;
 }
 // What one verbosity level shows, as the host's table states it (see
 // DetailPolicy in verbosity.h): how tool work is laid out, and what is shown
@@ -850,71 +852,128 @@ export interface CommandResults {
   test_notification: never;
 }
 export type CommandKind = keyof CommandResults;
-export interface CommandFields {
-  // Raw text after a slash command, parsed by the native host.
-  argument?: string;
-  // The message a fork is cut before ("m-<id>").
-  message_id?: string;
-  detail?: string;
-  raw?: boolean;
-  offset?: number;
-  cancelled?: boolean;
-  action?: string;
+type None = Record<never, never>;
+interface Library {
+  cwd?: string;
+  action: string;
+  key?: string;
   revision?: string;
   content?: string;
   target?: string;
-  task?: ScheduledTask;
-  schedule?: ScheduleRule;
-  after?: number;
-  request_id?: string;
-  target_id?: string;
-  operation?: string;
-  model?: string;
-  effort?: string;
-  // Model select: also save the choice for all conversations.
-  default?: boolean;
-  mode?: string;
-  profile?: string;
-  active?: boolean;
-  name?: string;
-  scope?: string;
-  changes?: ConfigChange[];
-  key?: string;
-  // Import: limits `list` and `run` to skills or memories.
-  only?: string;
-  value?: string;
-  cwd?: string;
-  // Create: a workspace by its name, in place of `cwd`.
-  space?: string;
-  panel?: boolean;
-  audience?: string;
-  // Instructions: the text an edit started from; a changed file refuses.
-  base?: string;
-  title?: string;
-  device_id?: string;
-  text?: string;
-  interaction_id?: string;
-  profile_id?: string;
-  instance_id?: string;
-  parallel_capacity?: number;
-  category_id?: string;
-  attachment_ids?: (string | { id: string; name: string })[];
-  activity_id?: number;
-  agent_id?: string;
-  before?: number;
+}
+interface Message {
+  text: string;
+  attachment_ids?: { id: string; name: string }[];
   // Steer: hold the message until the running turn ends ("Queue next").
   queue?: boolean;
-  // Revert: the turn (0 = latest) and one file of it, or all.
-  turn?: number;
-  path?: string;
 }
+// What each command sends besides its kind and conversation.
+export interface CommandInputs {
+  browser: {
+    action: string;
+    instance_id?: string;
+    interaction_id?: string;
+    name?: string;
+    profile_id?: string;
+    parallel_capacity?: number;
+  };
+  instructions: {
+    action: string;
+    cwd?: string;
+    audience?: string;
+    scope?: string;
+    text?: string;
+    // The text an edit started from; a changed file refuses.
+    base?: string;
+  };
+  memory: Library;
+  skills: Library;
+  // only: limits `list` and `run` to skills or memories.
+  import: { cwd?: string; action: string; only?: string; key?: string };
+  schedule: {
+    action: string;
+    key?: string;
+    revision?: string;
+    task?: ScheduledTask;
+    schedule?: ScheduleRule;
+  };
+  models: { cwd?: string };
+  model: {
+    operation: string;
+    model?: string;
+    effort?: string;
+    // Select: also save the choice for all conversations.
+    default?: boolean;
+  };
+  config: {
+    operation?: string;
+    scope?: string;
+    cwd?: string;
+    changes?: ConfigChange[];
+  };
+  restart_conversations: { target_id?: string; cwd?: string };
+  space: { action: string; cwd: string; name: string };
+  restart_host: None;
+  tools: {
+    operation: string;
+    name?: string;
+    active?: boolean;
+    profile?: string;
+    enabled?: boolean;
+  };
+  tool_categories: { action: string; name?: string; category_id?: string };
+  activity: {
+    operation: string;
+    activity_id?: number;
+    agent_id?: string;
+    text?: string;
+    model?: string;
+    before?: number;
+    detail?: string;
+    raw?: boolean;
+    offset?: number;
+  };
+  context: None;
+  // The turn (0 = latest) and one file of it, or all.
+  revert: { turn: number; path?: string };
+  // argument: raw text after /fork, parsed by the native host; message_id:
+  // the message a fork is cut before ("m-<id>").
+  fork: { argument?: string; message_id?: string };
+  share: None;
+  side: { operation: string; text: string };
+  // A workspace by its name (`space`), in place of `cwd`.
+  create: { cwd?: string; space?: string; panel?: boolean };
+  activate: None;
+  close: None;
+  rename: { title: string };
+  delete: None;
+  logout: None;
+  submit: Message;
+  steer: Message;
+  recall: { target_id: string };
+  insert: { target_id: string };
+  reply: {
+    interaction_id: string;
+    text: string;
+    cancelled?: boolean;
+    attachment_ids?: string[];
+  };
+  interrupt: None;
+  permissions: { mode: string };
+  permission_rules: { action: string; key?: string; cwd?: string };
+  revoke_device: { device_id: string };
+  test_notification: None;
+}
+export type CommandFields<K extends CommandKind> = CommandInputs[K] & {
+  request_id?: string;
+};
 type Receipt<T> = Outcome &
   ({ pending: true } | { pending?: false; result: T });
 export type CommandReceipt<K extends CommandKind> = Receipt<CommandResults[K]> &
   (K extends "create" ? { session: Session } : object);
 export type Act = <K extends CommandKind>(
   kind: K,
-  fields?: CommandFields,
+  fields?: CommandFields<K>,
 ) => Promise<CommandReceipt<K>>;
 export type StatisticsModal =
   | {

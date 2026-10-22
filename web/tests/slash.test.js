@@ -5,11 +5,18 @@ import {
   slashCompletion,
   parseSlash,
 } from "../src/features/composer/slash.ts";
-import { fuzzy, fuzzyScore } from "../src/shared/fuzzy.ts";
+import { fuzzy, fuzzyScore, matches } from "../src/shared/fuzzy.ts";
 const commands = [
   { command: "/help", aliases: ["/commands"], argument: "" },
   { command: "/model", aliases: [], argument: "NAME" },
   { command: "/models", aliases: [], argument: "[QUERY]" },
+  {
+    command: "/clear",
+    aliases: [],
+    argument: "",
+    client_only: true,
+    terminal: true,
+  },
 ];
 test("slash completion uses the CLI common-prefix and argument rules", () => {
   assert.equal(slashCompletion(slashMatches(commands, "/mo")), "/model");
@@ -20,11 +27,17 @@ test("slash completion uses the CLI common-prefix and argument rules", () => {
   assert.deepEqual(parseSlash(commands, "/commands"), {
     name: "/help",
     argument: "",
+    clientOnly: false,
   });
   assert.deepEqual(parseSlash(commands, "/model vendor/name high"), {
     name: "/model",
     argument: "vendor/name high",
+    clientOnly: false,
   });
+});
+test("a client-only command the page cannot run is not offered", () => {
+  assert.deepEqual(slashMatches(commands, "/cl"), []);
+  assert.equal(parseSlash(commands, "/clear").clientOnly, true);
 });
 test("fuzzy matching ranks a prefix, then a word start, then a subsequence", () => {
   const labels = ["Open settings", "/status", "Session: stats probe", "Tools"];
@@ -38,4 +51,10 @@ test("fuzzy matching ranks a prefix, then a word start, then a subsequence", () 
   );
   assert.equal(fuzzyScore("xyz", "Tools"), -1);
   assert.equal(fuzzyScore("", "Tools"), 0);
+});
+test("a filter matches when every word occurs in some field", () => {
+  assert.ok(matches("", "anything"));
+  assert.ok(matches("  Web  PORT ", "UAGENT_WEB_PORT", "Web port"));
+  assert.ok(matches("port web", "Web", undefined, "port"));
+  assert.ok(!matches("web host", "Web port"));
 });

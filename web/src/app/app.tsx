@@ -18,10 +18,8 @@ import { Modal, Deferred, Spinner, ErrorBoundary } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
-import Sidebar, {
-  ConversationMenu,
-  sessionOrder,
-} from "../features/sidebar/sidebar.tsx";
+import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
+import { ConversationMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById, threadsOf } from "../state/attention.ts";
@@ -43,6 +41,7 @@ import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
 import { useMessageActions } from "./use-message-actions.ts";
+import { focusComposer } from "../shared/navigation.ts";
 import {
   libraryModule,
   pairing,
@@ -196,7 +195,7 @@ function App() {
   function addMember() {
     // What is already written stays: it may be the request itself.
     if (!draft.text) setDraft({ ...draft, text: "Add a member named " });
-    document.querySelector<HTMLTextAreaElement>("#prompt")?.focus();
+    focusComposer();
   }
   // Writes to a member, or to the moderator, from where its avatar was
   // pointed at: in its panel's composer, which opens.
@@ -212,19 +211,13 @@ function App() {
         : { ...current, text: greeting + current.text },
     );
     choose(panel.id);
-    const focus = (tries: number) =>
-      requestAnimationFrame(() => {
-        const prompt = document.getElementById("prompt");
-        if (prompt) prompt.focus({ preventScroll: true });
-        else if (tries) focus(tries - 1);
-      });
-    focus(10);
+    focusComposer();
   }
   const act: Act = useCallback(
-    async <K extends CommandKind>(kind: K, fields: CommandFields = {}) => {
+    async <K extends CommandKind>(kind: K, fields?: CommandFields<K>) => {
       if (!online)
         throw new Error("Reconnect and refresh before sending commands.");
-      if (fields.request_id) correlate(fields.request_id);
+      if (fields?.request_id) correlate(fields.request_id);
       return command(kind, session, fields);
     },
     [online, session, correlate],

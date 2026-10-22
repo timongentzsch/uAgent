@@ -223,7 +223,9 @@ before Submit.
   status line reads **Stopped** with **Continue**, which sends `continue`.
 - `/` opens slash commands with suggestions and Tab completion. The list
   offers the commands the page has no control for; others still run when
-  typed. `/restart` does the same as the menu; `/quit` closes nothing here.
+  typed. `/restart` does the same as the menu; `/quit` closes nothing here;
+  `/panel` opens the panel. A terminal command the page has no equivalent
+  for (`/clear`, `/board`, `/open`) says so instead of running.
 - Typed without an argument, `/config`, `/verbosity`, `/permissions`,
   `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`, `/context`
   and `/sessions` open their screen. With an argument they run on the host,

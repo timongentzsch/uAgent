@@ -1,5 +1,7 @@
 // Attachment display names and @-mention tokens. UI-free so node tests
 // cover the naming and parsing rules directly.
+import { matches } from "../../shared/fuzzy.ts";
+
 export function dedupeName(
   name: string,
   taken: Set<string> | string[],
@@ -51,6 +53,5 @@ export function mentionOptions<T extends { name: string }>(
   files: T[],
   query: string,
 ): T[] {
-  const needle = query.toLowerCase();
-  return files.filter((file) => file.name.toLowerCase().includes(needle));
+  return files.filter((file) => matches(query, file.name));
 }

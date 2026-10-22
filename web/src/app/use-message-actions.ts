@@ -56,7 +56,7 @@ export function useMessageActions({
   report: Report;
   forkAndOpen: (
     target: Session | undefined,
-    fields?: CommandFields,
+    fields?: CommandFields<"fork">,
     edit?: boolean,
   ) => Promise<void>;
   outgoing: Outgoing[];

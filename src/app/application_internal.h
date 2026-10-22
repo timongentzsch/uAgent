@@ -65,6 +65,7 @@ class Application {
   bool out_of_time_ = false;
   bool turn_active_ = false;
   std::string request_id_;
+  json origin_;
   uint64_t message_subscription_ = 0;
   std::string input_error_;
   ApplicationChannel* channel_ = nullptr;

@@ -165,7 +165,7 @@ void Application::RunTurns(const std::string& input, json content,
   {
     TurnGuard guard(turn_active_);
     if (channel_ || !session_file_.empty()) PublishChannelState(false);
-    agent_.Turn(input, std::move(content), images, request_id_);
+    agent_.Turn(input, std::move(content), images, request_id_, origin_);
     SteeringState().Take();
   }
 #ifdef UAGENT_BROWSER

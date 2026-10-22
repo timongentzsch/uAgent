@@ -37,6 +37,8 @@ struct ApplicationInput {
   json control{};
   std::vector<Attachment> attachments{};
   bool wake = false;
+  // Who wrote the text when not the person (Steering::Message::origin).
+  json origin{};
   // The text joins the conversation as the person's message and starts no
   // turn: a panel's chat message for its members alone.
   bool quiet = false;

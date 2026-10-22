@@ -66,8 +66,12 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 
 void Agent::Arrive(const std::string& text, json re, const std::string& author,
                    const std::string& mail, const std::string& sender) {
-  NotFromUser(text, author, mail, std::move(re), sender);
-  SteeringState().Queue(text, "", true);
+  if (!mail.empty()) arriving_mail_.push_back(mail);
+  SteeringState().Queue({.text = text,
+                         .origin = {{"author", author},
+                                    {"sender", sender},
+                                    {"mail", mail},
+                                    {"re", std::move(re)}}});
 }
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
@@ -385,7 +389,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
   }
   // Mail whose text has not reached the conversation is not in this save.
   const auto arriving = [this](const std::string& id) {
-    return std::ranges::find(not_user_, id, &Arriving::mail) != not_user_.end();
+    return std::ranges::find(arriving_mail_, id) != arriving_mail_.end();
   };
   json delivered = json::array();
   for (const json& id : delivered_mail_) {

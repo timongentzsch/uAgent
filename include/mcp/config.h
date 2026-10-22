@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "include/core/config.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -208,7 +209,7 @@ inline json McpLoadConfig(const json& trusted_project) {
   std::string home_dir = UserHome();
   json home = home_dir.empty()
                   ? json::object()
-                  : annotate(read(home_dir + "/.mcp.json"), home_dir);
+                  : annotate(read(home_dir + "/" + kMcpConfigFile), home_dir);
   for (auto& [name, conf] : home.items()) {
     if (!cfg.contains(name)) {
       cfg[name] = conf;

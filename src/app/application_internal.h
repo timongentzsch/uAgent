@@ -63,7 +63,6 @@ class Application {
   bool search_unnamed_ = false;
   // A delegated child's time ran out while work it had started was running.
   bool out_of_time_ = false;
-  bool turn_active_ = false;
   std::string request_id_;
   uint64_t message_subscription_ = 0;
   std::string input_error_;

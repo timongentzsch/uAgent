@@ -123,7 +123,7 @@ std::string ToolResultName(const json& messages,
 }
 
 std::string CompactedResult(const std::string& content) {
-  std::string preview = Utf8Trunc(FirstLine(content), 160);
+  std::string preview = Utf8Trunc(FirstLine(content), kActivityLabelBytes);
   return std::string(kCompactedToolOutput) + " " +
          std::to_string(content.size()) +
          " chars; full result retained in "

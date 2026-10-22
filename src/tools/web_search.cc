@@ -130,9 +130,10 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    std::vector<Endpoint> providers) {
   Tool t = MakeTool(
       "web_search",
-      "Search the web with cited sources; put up to 3 related queries in one "
-      "call. Include dates or cutoffs in recency queries. Do not repeat a "
-      "search.",
+      "Search the web with cited sources; put up to " +
+          std::to_string(kWebSearchMaxUses) +
+          " related queries in one call. Include dates or cutoffs in recency "
+          "queries. Do not repeat a search.",
       json::parse(R"json({"type":"object","properties":{
           "queries":{"type":"array","items":{"type":"string","minLength":1},
             "minItems":1,"maxItems":3}},

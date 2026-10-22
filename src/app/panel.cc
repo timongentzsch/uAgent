@@ -121,9 +121,8 @@ ToolResult State(const std::string& folder, const json& a) {
   }
   if (value.size() > kPinnedBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       block +
-                           " would exceed 2048 bytes; "
-                           "rewrite it shorter with set");
+                       block + " would exceed " + std::to_string(kPinnedBytes) +
+                           " bytes; rewrite it shorter with set");
   }
   pinned[block] = value;
   if (std::string error = WritePinned(folder, pinned); !error.empty()) {

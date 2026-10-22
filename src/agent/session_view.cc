@@ -565,12 +565,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
     // The preview keeps the start of a long result; its end is where a
     // command reports how it went, so rows can show that tail.
     if (text.size() > kPreviewChars) {
-      size_t start = text.size() - 512;
-      while (start < text.size() &&
-             (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) {
-        ++start;
-      }
-      block["tail"] = text.substr(start);
+      block["tail"] = text.substr(Utf8BoundaryAfter(text, text.size() - 512));
     }
     block["artifact"] = detail.contains("artifact");
     if (detail.contains("result_replay")) {

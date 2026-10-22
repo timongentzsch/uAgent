@@ -98,6 +98,8 @@ inline constexpr int64_t kStreamBatchIntervalMs = 12;
 inline constexpr size_t kStreamBatchBytes = KiB(8);
 // Short activity captions are presentation policies, not model limits.
 inline constexpr size_t kActivityLabelBytes = 160;
+// A background job's full command, kept with its row and its result.
+inline constexpr size_t kActivityCommandBytes = KiB(8);
 inline constexpr size_t kActivityLineBytes = 192;
 
 // Turn-loop recovery stages. A valid repeated call gets two model-facing

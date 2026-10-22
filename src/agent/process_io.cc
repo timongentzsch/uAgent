@@ -410,13 +410,15 @@ json ProcessSupervisor::ActivityViews() const {
     row["kind"] = job.kind == ActivityKind::kSubagent ? "agent" : "command";
     row["label"] =
         JsonValue(row, "label",
-                  job.display_label.empty() ? Utf8Trunc(FirstLine(job.cmd), 160)
-                                            : job.display_label);
+                  job.display_label.empty()
+                      ? Utf8Trunc(FirstLine(job.cmd), kActivityLabelBytes)
+                      : job.display_label);
     // The modal shows the full command scrollable on top. Rows only carry
     // the 160-char label, and inspect fails once a finished job leaves the
     // retained set, so the command travels here (bounded like transcript
     // blocks) instead of degrading to the abbreviated label.
-    if (!job.cmd.empty()) row["command"] = Utf8Trunc(job.cmd, 8192);
+    if (!job.cmd.empty())
+      row["command"] = Utf8Trunc(job.cmd, kActivityCommandBytes);
     row["started_ms"] = job.started_ms;
     row["status"] = "running";
     if (job.session) {

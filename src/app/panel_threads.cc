@@ -189,7 +189,8 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                    const std::string& text) {
   if (text.empty() || text.size() > kMessageBytes) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "a message needs 1 to 8192 bytes of text");
+                       "a message needs 1 to " + std::to_string(kMessageBytes) +
+                           " bytes of text");
   }
   // The chat's cap on turns counts what is written there, nothing else.
   if (const std::string& name = info.title; !ChatMember(info.thread).empty()) {

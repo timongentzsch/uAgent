@@ -18,9 +18,9 @@ json ResolvePrompt(const std::string& base, const json& context) {
     sources.push_back(std::move(source));
   }
   if (text.size() > kSystemPromptBytes) {
-    return {{"error",
-             "The resolved system prompt exceeds 64 KiB. Shorten the "
-             "instructions."}};
+    return {{"error", "The resolved system prompt exceeds " +
+                          std::to_string(kSystemPromptBytes / 1024) +
+                          " KiB. Shorten the instructions."}};
   }
   return {{"effective", text},
           {"sources", sources},

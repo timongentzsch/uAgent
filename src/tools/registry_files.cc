@@ -81,7 +81,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       json::parse(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line or entry (default 1)"},
-                    "limit":{"type":"integer","description":"lines or entries (default 1000)"}},
+                    "limit":{"type":"integer","description":"lines or entries (omit for a default page)"}},
                     "required":["path"]})json"),
       [workspace](const json& a, const ToolContext& context) {
         std::string path = JsonValue(a, "path", ".");

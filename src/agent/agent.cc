@@ -202,12 +202,8 @@ void Agent::PublishMessage(const std::string& request_id) {
   if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) {
     reply_to_ = conversation_.LastDisplayId();
     if (turn_root_.empty()) turn_root_ = reply_to_;
-    auto view = LastMessageView(conversation_);
-    reply_excerpt_ = Utf8Trunc(JsonValue(view, "text", ""), 160);
   }
-  json links = {{"turn_root", turn_root_},
-                {"reply_to", reply_to_},
-                {"reply_excerpt", reply_excerpt_}};
+  json links = {{"turn_root", turn_root_}, {"reply_to", reply_to_}};
   if (kind == MessageKind::kAssistant) links["http"] = api_.http_exchanges;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(links));
   if (kind == MessageKind::kAssistant) {

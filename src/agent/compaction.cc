@@ -267,7 +267,6 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   for (json& skill : retained_skills) {
     conversation_.Push(std::move(skill), MessageKind::kInternal);
   }
-  size_t retained_count = retained_users.size();
   for (size_t i = 0; i < retained_users.size(); ++i) {
     // Keep the source display id so the archived original and this re-push
     // collapse to one block instead of flooding the transcript twice.
@@ -289,7 +288,6 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
         {{"automatic", automatic},
          {"messages_before", messages_before},
          {"messages_after", conversation_.Size()},
-         {"retained_user_messages", retained_count},
          {"duration_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - compact_started)
                              .count()}}}});

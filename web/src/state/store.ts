@@ -148,7 +148,6 @@ export function applySessionEvent(
       ...(state || {}),
       activity: event.activity,
       phase: event.phase,
-      activity_detail: event.activity_detail,
     };
   if (event.type === "activities.changed")
     state = { ...(state || {}), activities: data.activities };

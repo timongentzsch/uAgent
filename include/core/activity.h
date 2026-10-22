@@ -27,7 +27,7 @@ class ActivityProjection {
 
  private:
   struct Call {
-    std::string label, source, response;
+    std::string label;
     bool running = false;
   };
   void Reasoning(const json& data);
@@ -37,7 +37,7 @@ class ActivityProjection {
   int64_t turn_ = 0;
   uint64_t revision_ = 0;
   std::string response_, phase_ = "idle";
-  std::string part_, line_, excerpt_, reasoning_source_;
+  std::string part_, line_, excerpt_;
   bool long_line_ = false;
   std::map<std::string, Call> calls_;
   std::set<std::string> decisions_;

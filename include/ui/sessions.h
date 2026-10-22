@@ -26,7 +26,6 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
-#include "include/ui/conversation.h"
 #include "include/ui/display.h"
 
 namespace uagent {

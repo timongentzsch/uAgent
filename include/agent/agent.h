@@ -484,7 +484,7 @@ class Agent {
   RouteUsage route_usage_;
   std::string session_id_;
   bool retain_exchanges_ = false;
-  std::string turn_root_, reply_to_, reply_excerpt_;
+  std::string turn_root_, reply_to_;
   json image_analyses_ = json::object();
   // Images whose analysis failed this turn. Each later step would otherwise
   // ask again and pay the same failure; the next turn tries once more.

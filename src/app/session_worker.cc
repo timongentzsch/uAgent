@@ -323,14 +323,12 @@ class WorkerChannel final : public ApplicationChannel {
     std::lock_guard lock(mutex_);
     std::string activity = JsonValue(state_, "activity", "Ready");
     std::string phase = JsonValue(state_, "phase", "idle");
-    json detail = JsonValue(state_, "activity_detail", json(nullptr));
     int64_t started = JsonValue(state_, "turn_started_ms", int64_t{0});
     state_ = state;
     state_["turn_started_ms"] = started;
     state_["notices"] = notices_;
     state_["activity"] = activity;
     state_["phase"] = phase;
-    state_["activity_detail"] = std::move(detail);
     if (!paused_.empty()) state_["paused"] = paused_;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
@@ -353,7 +351,6 @@ class WorkerChannel final : public ApplicationChannel {
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
       state_["activity"] = "Ready";
-      state_.erase("activity_detail");
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();

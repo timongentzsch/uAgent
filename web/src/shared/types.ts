@@ -154,7 +154,6 @@ interface BlockBase {
   text?: string;
   truncated?: boolean;
   text_bytes?: number;
-  retained_text_bytes?: number;
   content_complete?: boolean;
   status?: string;
   // A chat participant's pass or wait: shown to nobody.
@@ -172,7 +171,6 @@ interface Delivery {
 // on it, as the reply that never came cannot.
 interface Answered {
   reply_to?: string;
-  reply_excerpt?: string;
   http?: Exchange[];
 }
 // What a person typed, or mail from a participant of a panel's chat.
@@ -204,16 +202,13 @@ export interface AttachmentBlock extends BlockBase, Answered {
 }
 export interface AssistantBlock extends BlockBase, Answered {
   kind: "assistant";
-  row_id?: string;
   incoming?: number;
   response_id?: string;
   content_revision?: number;
   reasoning?: string;
-  reasoning_available?: boolean;
   reasoning_revision?: number;
   reasoning_complete?: boolean;
   reasoning_bytes?: number;
-  retained_reasoning_bytes?: number;
   streaming?: boolean;
   request_id?: string;
   files?: Asset[];
@@ -249,7 +244,6 @@ export interface ToolBlock extends BlockBase, Answered {
   replay?: unknown;
   exchange_path?: string;
   // A retained result whose receipt is gone.
-  receipt_missing?: boolean;
   artifact?: boolean;
   // Files a tool's attachment block brought; the page joins them to the row.
   files?: Asset[];
@@ -279,7 +273,6 @@ export interface CompactionBlock extends BlockBase {
     messages_before: number;
     messages_after: number;
     duration_ms: number;
-    retained_user_messages?: number;
   };
 }
 export type Block =
@@ -355,7 +348,6 @@ export interface Agent {
   status?: string;
 }
 export interface ActivityDetail extends Activity {
-  activity_detail?: ActivityStatusDetail | null;
   phase?: ExecutionPhase;
   context_tokens?: number;
   context_window?: number;
@@ -491,20 +483,10 @@ export interface Session {
   error?: string;
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
-interface ActivityStatusDetail {
-  source: "lifecycle" | "tool" | "model_intent" | "summary" | "reasoning";
-  label: string;
-  response_id: string;
-  occurrence_id: string;
-  active_tools: number;
-  turn: number;
-  retry?: { attempt: number; max_attempts: number; retry_at_ms: number };
-}
 export interface State {
   phase?: ExecutionPhase;
   // When the running turn started, on the host's clock.
   turn_started_ms?: number;
-  activity_detail?: ActivityStatusDetail | null;
   attachments?: number;
   title?: string;
   route?: string;
@@ -670,7 +652,6 @@ export interface BlockPatch {
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
 interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
-  activity_detail?: ActivityStatusDetail | null;
   scheduled?: ScheduledState;
   v: number;
   epoch: string;

@@ -25,13 +25,11 @@ export function BrowserFrame({
 // Present in every state; disabled rather than removed while watching.
 export function BrowserTools({
   disabled,
-  typing = false,
   keyboard,
   copy,
   paste,
 }: {
   disabled: boolean;
-  typing?: boolean;
   keyboard?: () => void;
   copy?: () => void;
   paste?: () => void;
@@ -44,7 +42,6 @@ export function BrowserTools({
       {coarsePointer() && (
         <IconButton
           label="Keyboard"
-          aria-pressed={typing}
           disabled={disabled}
           onPointerDown={keepFocus}
           onClick={keyboard}

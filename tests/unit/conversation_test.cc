@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/ui/conversation.h"
-
 #include <array>
 #include <future>
 #include <map>
@@ -22,11 +20,22 @@
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
+#include "include/ui/presentation.h"
 #include "include/ui/sessions.h"
 #include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+namespace {
+
+// A transcript as an attached terminal and the browser show it.
+void PrintConversationHistory(const Conversation& conversation) {
+  const json view = ConversationView(conversation);
+  TerminalPresenter presenter;
+  for (const json& block : view.at("blocks")) presenter.Block(block);
+}
+
+}  // namespace
 
 void TestSharedArchiveSnapshots() {
   Conversation conversation;
@@ -586,7 +595,6 @@ void TestCompactionKeepsDisplayIdentity() {
                        {"append", {{"text", "complete streamed body"}}}}));
   MergeDisplayBlock(state["view"], {{"id", "r-7-3-1"},
                                     {"sequence", 99},
-                                    {"row_id", "r-7-3-1"},
                                     {"response_id", "r-7-3-1"},
                                     {"kind", "assistant"},
                                     {"text", "preview"},
@@ -646,14 +654,12 @@ void TestCompactionKeepsDisplayIdentity() {
   const size_t preview_text_bytes = preview["text"].get<std::string>().size();
   CHECK(preview_text_bytes <= 4096 && preview_text_bytes < full_body.size());
   CHECK(preview["text_bytes"] == preview_text_bytes);
-  CHECK(preview["retained_text_bytes"] == 9000);
   CHECK(preview["content_complete"] == false);
   const size_t preview_reasoning_bytes =
       preview["reasoning"].get<std::string>().size();
   CHECK(preview_reasoning_bytes <= 4096 &&
         preview_reasoning_bytes < full_reasoning.size());
   CHECK(preview["reasoning_bytes"] == preview_reasoning_bytes);
-  CHECK(preview["retained_reasoning_bytes"] == 9000);
   CHECK(preview["reasoning_complete"] == false);
 
   // Deltas without a response id belong to no started block. Providers that
@@ -811,7 +817,6 @@ void TestToolResultHealsMissingMetadata() {
   CHECK(result["status"] == "success");
   CHECK(result["duration_ms"] == 12.5);
   CHECK(result["detail_id"] == "t-hash1");
-  CHECK(!result.contains("receipt_missing"));
   // The call and its result are one row: the result keeps its place and
   // takes the call's arguments.
   CHECK(view["blocks"].size() == 2);
@@ -825,7 +830,6 @@ void TestToolResultHealsMissingMetadata() {
   const json& orphan = orphan_view["blocks"].back();
   CHECK(orphan["name"] == "tool");
   CHECK(orphan["status"] == "complete");
-  CHECK(orphan["receipt_missing"] == true);
 }
 
 // Delivery receipts dedupe the per-request attachment notice. Display facts

@@ -280,7 +280,6 @@ void Agent::Turn(const std::string& user_input, json user_content,
   failed_image_analyses_.clear();
   turn_root_.clear();
   reply_to_.clear();
-  reply_excerpt_.clear();
   ++revision_;
   ++total_user_turns_;
   std::string title = FirstLine(user_input);

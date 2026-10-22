@@ -22,12 +22,30 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
-#include "include/ui/conversation.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "include/ui/markdown.h"
 
 namespace uagent {
+
+std::string AttachmentDeliveryRows(const json& deliveries) {
+  std::string rows;
+  if (!deliveries.is_array()) return rows;
+  for (const json& delivery : deliveries) {
+    if (!delivery.is_object()) continue;
+    std::string name = JsonValue(delivery, "name", "");
+    std::string kind = JsonValue(delivery, "delivery", "");
+    if (name.empty() && kind.empty()) continue;
+    if (name.empty()) name = "attachment";
+    if (kind.empty()) kind = "attached";
+    // Chrome downgrades on non-UTF-8 terminals; the file name is user
+    // content and stays byte-preserved.
+    rows += std::string(DIM()) + "  " + TerminalSafe(name) +
+            AsciiGlyphs(" · ") + TerminalSafe(kind) + RST() + "\n";
+  }
+  return rows;
+}
+
 namespace {
 
 bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,

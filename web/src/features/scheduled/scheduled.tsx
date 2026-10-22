@@ -1,4 +1,4 @@
-import { tabDrafts } from "../../shared/storage.ts";
+import { tabDrafts, useStored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
 import {
@@ -11,7 +11,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useContext, useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Button,
@@ -29,7 +29,8 @@ import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../../shared/model-picker.tsx";
 import { ProjectField } from "../../shared/project-field.tsx";
-import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
+import { formatMoment } from "../../shared/time.ts";
+import { devicePrefs } from "../../shared/device-prefs.ts";
 import { ListRow } from "../../shared/list-row.tsx";
 import { capitalize, permissionLabels } from "../../shared/display.ts";
 
@@ -79,7 +80,7 @@ export default function Scheduled({
   refresh: () => Promise<void>;
 }) {
   const [task, setTask] = useState(drafts.open.read);
-  const prefs = useContext(TimePrefsContext);
+  const [prefs] = useStored(devicePrefs.time);
   // A run's moment by the viewer's time preferences, in its task's zone.
   const moment = (seconds?: number, zone?: string) =>
     seconds

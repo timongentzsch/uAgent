@@ -1,6 +1,6 @@
-import { normalizeZoom } from "./layout.ts";
+import { applyMotion, applyTheme, applyZoom, normalizeZoom } from "./layout.ts";
 import { defaultZoom } from "./limits.ts";
-import { stored } from "./storage.ts";
+import { stored, type Stored } from "./storage.ts";
 import { storageKeys } from "./storage-keys.ts";
 import { defaultTimePrefs, normalizeTimePrefs } from "./time.ts";
 
@@ -18,3 +18,18 @@ export const devicePrefs = {
   time: stored(storageKeys.time, defaultTimePrefs, normalizeTimePrefs),
   panes: stored<Partial<Record<Pane, number>>>(storageKeys.panes, {}),
 };
+
+// Applies the display preferences to the document now and whenever one
+// changes, wherever it is changed.
+export function applyDevicePrefs() {
+  const follow = <T>(store: Stored<T>, apply: (value: T) => unknown) => {
+    let undo = apply(store.read());
+    store.subscribe((value) => {
+      if (typeof undo === "function") undo();
+      undo = apply(value);
+    });
+  };
+  follow(devicePrefs.theme, applyTheme);
+  follow(devicePrefs.motion, applyMotion);
+  follow(devicePrefs.zoom, applyZoom);
+}

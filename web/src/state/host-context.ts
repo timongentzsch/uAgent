@@ -46,7 +46,6 @@ export interface Conversation {
   busy: boolean;
   following: boolean;
   setFollowing: (following: boolean) => void;
-  zoom: number;
 }
 
 export const HostContext = createContext<Host | null>(null);

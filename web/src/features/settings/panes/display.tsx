@@ -3,52 +3,27 @@ import { Group, Row, ValueSelect } from "../../../shared/ui.tsx";
 import { ZoomSlider } from "../../../shared/zoom-slider.tsx";
 import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
 import { devicePrefs } from "../../../shared/device-prefs.ts";
-import { useSettings, type SettingsProps } from "../context.ts";
+import { useStored } from "../../../shared/storage.ts";
 
-// This browser's display settings at their defaults.
-const DEFAULTS = {
-  theme: devicePrefs.theme.fallback,
-  motion: devicePrefs.motion.fallback,
-  zoom: devicePrefs.zoom.fallback,
-};
+const { theme: themePref, motion: motionPref, zoom: zoomPref } = devicePrefs;
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",
   relative: "How long ago, e.g. 5 min ago.",
   absolute: "The full date and time.",
 };
 
-// How many differ from their defaults, and putting them all back.
-const displayChanged = ({ theme, motion, zoom, timePrefs }: SettingsProps) =>
-  Number(theme !== DEFAULTS.theme) +
-  Number(motion !== DEFAULTS.motion) +
-  Number(zoom !== DEFAULTS.zoom) +
-  Number(timePrefs.clock !== defaultTimePrefs.clock) +
-  Number(timePrefs.style !== defaultTimePrefs.style);
-function resetDisplay({
-  setTheme,
-  setMotion,
-  setZoom,
-  setTimePrefs,
-}: SettingsProps) {
-  setTheme(DEFAULTS.theme);
-  setMotion(DEFAULTS.motion);
-  setZoom(DEFAULTS.zoom);
-  setTimePrefs(defaultTimePrefs);
-}
-
 export function DisplayPane() {
-  const settings = useSettings();
-  const changed = displayChanged(settings);
-  const {
-    theme,
-    setTheme,
-    motion,
-    setMotion,
-    timePrefs,
-    setTimePrefs,
-    zoom,
-    setZoom,
-  } = settings;
+  const [theme, setTheme] = useStored(themePref);
+  const [motion, setMotion] = useStored(motionPref);
+  const [timePrefs, setTimePrefs] = useStored(devicePrefs.time);
+  const [zoom, setZoom] = useStored(zoomPref);
+  // How many differ from their defaults.
+  const changed =
+    Number(theme !== themePref.fallback) +
+    Number(motion !== motionPref.fallback) +
+    Number(zoom !== zoomPref.fallback) +
+    Number(timePrefs.clock !== defaultTimePrefs.clock) +
+    Number(timePrefs.style !== defaultTimePrefs.style);
   // One row per choice: its name, its options, and where it is kept.
   const choice = (
     label: string,
@@ -122,7 +97,7 @@ export function DisplayPane() {
         <ZoomSlider
           zoom={zoom}
           change={setZoom}
-          reset={() => setZoom(DEFAULTS.zoom)}
+          reset={() => setZoom(zoomPref.fallback)}
         />
       </Row>
       <Row
@@ -134,7 +109,12 @@ export function DisplayPane() {
         }
         destructive
         disabled={!changed}
-        onClick={() => resetDisplay(settings)}
+        onClick={() => {
+          setTheme(themePref.fallback);
+          setMotion(motionPref.fallback);
+          setZoom(zoomPref.fallback);
+          setTimePrefs(defaultTimePrefs);
+        }}
       />
     </Group>
   );

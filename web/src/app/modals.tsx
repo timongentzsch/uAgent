@@ -40,14 +40,6 @@ import {
 // What Settings shows and changes of the shell's own state.
 type Preferences = Pick<
   ComponentProps<typeof Settings>,
-  | "theme"
-  | "setTheme"
-  | "motion"
-  | "setMotion"
-  | "timePrefs"
-  | "setTimePrefs"
-  | "zoom"
-  | "setZoom"
   | "install"
   | "setInstall"
   | "update"

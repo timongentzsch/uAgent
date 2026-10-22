@@ -21,7 +21,9 @@ import type {
   ToolRowBlock,
 } from "../../shared/types.ts";
 import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
-import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
+import { formatMoment } from "../../shared/time.ts";
+import { devicePrefs } from "../../shared/device-prefs.ts";
+import { useStored } from "../../shared/storage.ts";
 import { MessageActions } from "./message-actions.ts";
 import { Mail, Minimize2, X } from "lucide-preact";
 import {
@@ -96,7 +98,7 @@ function MentionFile({
 // Who wrote a row and when, e.g. "You, 10:32": the row's accessible name
 // and its menu's. Smart and absolute styles only, so it needs no ticking.
 function useRowName(who: string, time?: string) {
-  const prefs = useContext(TimePrefsContext);
+  const [prefs] = useStored(devicePrefs.time);
   const date = time ? new Date(time) : null;
   if (!date || Number.isNaN(date.getTime())) return who;
   const style = prefs.style === "absolute" ? "absolute" : "smart";

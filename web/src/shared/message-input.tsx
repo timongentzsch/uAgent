@@ -12,18 +12,15 @@ export default function MessageInput({
   inputRef,
   submit,
   onKeyDown,
-  resizeKey,
   ...props
 }: TextareaProps & {
   inputRef?: RefObject<HTMLTextAreaElement | null>;
-  resizeKey?: number;
   submit: (event: Event) => void;
 }) {
   return (
     <Textarea
       class="message-input"
       grow
-      resizeKey={resizeKey}
       enterkeyhint={softKeyboard.matches ? "enter" : "send"}
       {...props}
       inputRef={inputRef}

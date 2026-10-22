@@ -156,8 +156,8 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
   if (!session.launch.empty()) {
     const std::string model = JsonValue(session.launch, "model", "");
     if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
-    const std::string mode = JsonValue(session.launch, "permissions", "ask");
-    options.overrides["UAGENT_APPROVAL"] = mode == "prompt" ? "ask" : mode;
+    options.overrides["UAGENT_APPROVAL"] =
+        JsonValue(session.launch, "permissions", "ask");
   }
   Connection connection = create ? Open(executable_, session.cwd, session.path,
                                         session.draft_title, options, error)

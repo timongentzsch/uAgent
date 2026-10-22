@@ -296,7 +296,6 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
                            {"projected_bytes", projected_bytes},
                            {"retained_user_messages", retained_users.size()},
                            {"summary_chars", r.content.size()}});
-  printf("\n");
   Emit(NoticeEvent(PresentationStatus::kNeutral, "compacted"));
   return true;
 }

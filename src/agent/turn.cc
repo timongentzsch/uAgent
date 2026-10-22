@@ -240,7 +240,6 @@ bool Agent::HandleActivityPollResults(
 
 Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
                                         TurnExecution& state, StepState& loop) {
-  if (state.line_open) printf("\n");
   std::vector<ToolRejection> rejections;
   std::vector<ActivityPollResult> activity_polls;
   bool cancelled = RunCalls(calls, state, loop, rejections, activity_polls);

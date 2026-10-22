@@ -217,15 +217,19 @@ function workLabel(steps: PresentedBlock[], took?: number) {
     .join(" · ");
 }
 
-// A turn runs from a message of yours to its footer. Its last reply is the
-// answer; the calls and interim replies before it fold into one row where
-// the first of them stood. What is for you stays a row of its own: a failed
-// or cancelled call, an error, a file the agent handed you.
+// A turn runs from a message of yours to its footer. Its last reply after
+// its last call is the answer; the calls and interim replies before it fold
+// into one row where the first of them stood. What is for you stays a row
+// of its own: a failed or cancelled call, an error, a file the agent handed
+// you.
 function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   let turn: PresentedBlock[] = [];
   const flush = (took?: number) => {
-    const answer = turn.findLast((row) => row.kind === "assistant" && row.text);
+    const lastCall = turn.findLastIndex((row) => row.kind === "tool_result");
+    const answer = turn.findLast(
+      (row, index) => index > lastCall && row.kind === "assistant" && row.text,
+    );
     const steps: PresentedBlock[] = [];
     let at = -1;
     for (const row of turn) {

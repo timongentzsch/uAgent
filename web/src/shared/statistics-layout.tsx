@@ -1,7 +1,13 @@
 import type { ComponentChildren } from "preact";
 import type { StatisticsUnit, Usage } from "./types.ts";
 import { Button, DataText, Placeholder } from "./ui.tsx";
-import { cost, count } from "./quantities.ts";
+import {
+  cacheHit,
+  cost,
+  count,
+  generatedTokens,
+  promptTokens,
+} from "./quantities.ts";
 import "./statistics-layout.css";
 
 // Labelled values, the one shape every statistics scope lists.
@@ -26,12 +32,9 @@ export function UsageRows({ usage }: { usage?: Usage }) {
   return (
     <Rows
       rows={[
-        ["Input tokens (uncached)", count(usage?.input)],
-        ["Output tokens", count(usage?.output)],
-        ["Reasoning tokens", count(usage?.reasoning)],
-        ["Cache read tokens", count(usage?.cache_read)],
-        ["Cache write tokens", count(usage?.cache_write)],
-        ["Web searches", count(usage?.web_searches)],
+        ["Input tokens", count(usage && promptTokens(usage))],
+        ["Output tokens", count(usage && generatedTokens(usage))],
+        ["Cache hit rate", usage ? cacheHit(usage) : "Not recorded"],
         ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
       ]}
     />

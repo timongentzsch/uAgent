@@ -400,6 +400,12 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                         == {"mode": "ask", "effective": "ask", "default": "yolo"},
                         state["state"]["permissions"],
                     )
+                    # Closed, it shows the model and mode it resumes with.
+                    for key in ("permissions", "route"):
+                        assert_true(
+                            saved["state"].get(key) == state["state"][key],
+                            (key, saved["state"].get(key), state["state"][key]),
+                        )
             finally:
                 release.set()
 

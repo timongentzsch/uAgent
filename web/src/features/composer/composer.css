@@ -99,11 +99,13 @@
   min-height: 0;
 }
 .status-action {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
 }
-/* The slot's action appears and leaves by opacity alone. */
+/* The slot's action appears and leaves by opacity alone, and holds no room
+   while hidden, so the state beside it keeps the whole line. */
 .status-action > button {
   position: relative;
   min-height: var(--control-s);
@@ -119,6 +121,8 @@
   }
 }
 .status-action > button[data-shown="false"] {
+  position: absolute;
+  right: 0;
   opacity: 0;
   visibility: hidden;
 }

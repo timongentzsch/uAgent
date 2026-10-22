@@ -50,9 +50,19 @@ CommandReply RunSlashCommand(AppSession& session,
 void LoadSessionJournal(AppSession& session, const std::string& previous_path);
 
 void SaveSessionSettings(AppSession& session);
+// What a saved conversation chose for itself (its session settings), taken
+// into `manager` where a conversation may choose the setting. A choice the
+// manager already holds (a flag for this run: --model, --yolo) was made
+// later and stays. Returns the choices taken.
+RuntimeConfig::Values RestoreChoices(const json& settings,
+                                     ConfigManager& manager);
 
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
+// What the approval control shows for these settings: the conversation's
+// own mode or "default", the mode in effect, the one it inherits, and for a
+// thread the limit.
+json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread);
 json ActivityControl(ProcessSupervisor& processes, const json& request);
 std::string ActivityText(const json& result);
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);

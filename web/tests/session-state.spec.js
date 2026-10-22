@@ -647,6 +647,8 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
   const statsBody = stats.locator(".activity-page");
   await expect(statsBody).toHaveCSS("overflow-y", "auto");
+  // Short enough that the page overflows, which then scrolls as a whole.
+  await page.setViewportSize({ width: page.viewportSize().width, height: 480 });
   await statsBody.hover();
   await page.mouse.wheel(0, 600);
   await expect

@@ -73,6 +73,15 @@
   terminal installs here, as before.
 - The README compares µAgent's footprint with Claude Code, Codex CLI and omp;
   `benchmarks/compare_agents.py` measures omp with `--omp`.
+- Minimal detail: a reply with calls after it folds into the turn's work
+  row instead of staying below it as the answer.
+- Web: a running turn's state uses the status line's whole width, and a
+  narrow tool row keeps its name beside its chevron.
+- A saved conversation's composer shows the model and approval mode it
+  resumes with, instead of "Select model" and the default mode.
+- Web statistics show input tokens (cached and cache-written included, as
+  providers bill them), output tokens (reasoning included) and the cache hit
+  rate, in place of the separate buckets.
 
 ## v1.5.0 - 2026-10-20
 

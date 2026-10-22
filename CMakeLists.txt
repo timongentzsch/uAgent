@@ -282,11 +282,6 @@ add_library(
   src/ui/presentation.cc)
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 
-# Umbrella preserves the existing `uagent_core` link name for tests, benches,
-# fuzzers and the web lib while the DAG above does the real work.
-add_library(uagent_core INTERFACE)
-target_link_libraries(uagent_core INTERFACE uagent_app)
-
 add_executable(uagent src/main.cc)
 # The web UI is built, not checked in (`npm ci && npm run build` in web/, or
 # CI's web-dist artifact). A first configure without it builds CLI-only rather
@@ -311,7 +306,7 @@ if(UAGENT_WEB)
                          src/web/master_command.cc src/web/master_files.cc
                          src/web/master_stream.cc "${_web_generated}")
   find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
-  target_link_libraries(uagent_web PUBLIC uagent_core ZLIB::ZLIB)
+  target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
   # leave the browser unreferenced and the linker drops it.
@@ -344,7 +339,7 @@ if(UAGENT_WEB)
 elseif(UAGENT_WEB_PUSH)
   message(FATAL_ERROR "UAGENT_WEB_PUSH requires UAGENT_WEB")
 else()
-  target_link_libraries(uagent PRIVATE uagent_core)
+  target_link_libraries(uagent PRIVATE uagent_app)
 endif()
 
 # `third_party/json.hpp` is 25k lines and reaches 82 of the ~90 translation
@@ -370,7 +365,7 @@ foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
 endforeach()
 
 # Link-time optimization has to cover the libraries: main.cc is a few lines
-# and every code path lives in the layered static libs behind uagent_core.
+# and every code path lives in the layered static libs behind uagent_app.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
@@ -417,11 +412,13 @@ if(BUILD_TESTING)
     tests/unit/test_main.cc
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
-  target_link_libraries(uagent_tests PRIVATE uagent_core)
+  # uagent_web brings uagent_app; linking both lists it twice.
   if(UAGENT_BROWSER)
-    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc
-                                        src/web/rfb_filter.cc)
+    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc)
+    target_link_libraries(uagent_tests PRIVATE uagent_web)
     target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
+  else()
+    target_link_libraries(uagent_tests PRIVATE uagent_app)
   endif()
   # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
   # and a reused header has to have been built with the same command line.
@@ -491,7 +488,7 @@ endif()
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
 if(UAGENT_BUILD_BENCHMARKS)
   add_executable(uagent_bench benchmarks/bench_core.cc)
-  target_link_libraries(uagent_bench PRIVATE uagent_core)
+  target_link_libraries(uagent_bench PRIVATE uagent_app)
   # Registered so the benchmark cannot silently stop compiling or running.
   if(BUILD_TESTING)
     add_test(NAME benchmarks COMMAND uagent_bench)

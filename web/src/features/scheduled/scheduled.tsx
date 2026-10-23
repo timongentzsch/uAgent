@@ -21,9 +21,9 @@ import {
   IconButton,
   Select,
   LoadError,
-  Spinner,
   Input,
   Textarea,
+  Placeholder,
 } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
@@ -63,6 +63,15 @@ function localInput(at?: number) {
     .toISOString()
     .slice(0, 16);
 }
+const SAMPLE_SCHEDULE: ScheduledState = {
+  tasks: ["Weekly dependency review", "Nightly test run"].map(
+    (name, index) =>
+      ({ id: `sample-${index}`, name, enabled: false }) as ScheduledTask,
+  ),
+  runs: [],
+  revision: "",
+};
+
 export default function Scheduled({
   projects,
   cwd,
@@ -176,6 +185,8 @@ export default function Scheduled({
       setBusy(false);
     }
   }
+  // Until the tasks arrive, the list is drawn from these (see <Placeholder>).
+  const shown = scheduled ?? SAMPLE_SCHEDULE;
   const runs = [...(scheduled?.runs || [])]
     .reverse()
     .filter((run) => !task?.id || run.task_id === task.id);
@@ -198,367 +209,370 @@ export default function Scheduled({
       </div>
       {scheduled?.error ? (
         <LoadError error={scheduled.error} retry={refresh} />
-      ) : !scheduled ? (
-        <Spinner label="Loading scheduled tasks…" surface />
       ) : (
-        <div class={`management-body ${task ? "has-selection" : ""}`}>
-          <div class="management-list">
-            <ListRow
-              class="library-row"
-              aria-current={!task || undefined}
-              onClick={() => setTask(null)}
-              title="All runs"
-            />
-            {scheduled.tasks.map((entry) => (
+        <Placeholder label="Loading scheduled tasks…" when={!scheduled}>
+          <div class={`management-body ${task ? "has-selection" : ""}`}>
+            <div class="management-list">
               <ListRow
-                key={entry.id}
                 class="library-row"
-                aria-current={task?.id === entry.id || undefined}
-                disabled={busy}
-                onClick={() => chooseTask(entry)}
-                title={entry.name}
-                unread={
-                  scheduled.runs.some(
-                    (run) =>
-                      run.task_id === entry.id && unread.has(run.session_id),
-                  ) && "Unread results"
-                }
-                meta={
-                  entry.enabled
-                    ? moment(entry.next, entry.schedule.timezone)
-                    : "Paused"
-                }
+                aria-current={!task || undefined}
+                onClick={() => setTask(null)}
+                title="All runs"
               />
-            ))}
-            {!scheduled.tasks.length && (
-              <EmptyState>
-                Schedule a recurring review or a one-off task.
-              </EmptyState>
-            )}
-          </div>
-          <fieldset disabled={busy} class="management-editor schedule-editor">
-            {task && (
-              <>
-                <div class="editor-head">
-                  <Button variant="quiet" onClick={() => setTask(null)}>
-                    <ChevronLeft />
-                    All runs
-                  </Button>
-                  <strong>{task.id ? task.name : "New task"}</strong>
-                  {task.id && (
-                    <Menu label="Task menu">
-                      <MenuItem
-                        disabled={!online || busy}
-                        onClick={() =>
-                          action(task.enabled ? "pause" : "resume")
-                        }
-                      >
-                        {task.enabled ? "Pause" : "Resume"}
-                      </MenuItem>
-                      <MenuItem
-                        disabled={busy}
-                        onClick={() => setConfirm(true)}
-                      >
-                        Delete task
-                      </MenuItem>
-                    </Menu>
-                  )}
-                </div>
-                {changed && (
-                  <p role="status">
-                    This task changed. Your draft is retained.{" "}
-                    <Button onClick={discard}>Reload</Button>
-                  </p>
-                )}
-                <div class="field-row">
-                  <Field label="Name">
-                    <Input
-                      value={task.name}
-                      onInput={(event) =>
-                        edit({ name: event.currentTarget.value })
-                      }
-                    />
-                  </Field>
-                  <ProjectField
-                    value={task.cwd}
-                    projects={projects}
-                    change={(cwd) => edit({ cwd })}
-                  />
-                </div>
-                <Field label="Instructions">
-                  <Textarea
-                    rows={5}
-                    value={task.prompt}
-                    onInput={(event) =>
-                      edit({ prompt: event.currentTarget.value })
-                    }
-                    placeholder="What should uAgent do, and what result should it report?"
-                  />
-                </Field>
-                <div class="field-row">
-                  <Field label="Repeat">
-                    <Select
-                      value={task.schedule.type}
-                      onChange={(event) => {
-                        const type = event.currentTarget
-                          .value as ScheduleRule["type"];
-                        edit({
-                          schedule:
-                            type === "weekly"
-                              ? blank(task.cwd).schedule
-                              : type === "interval"
-                                ? { type, seconds: defaultScheduleSeconds }
-                                : {
-                                    type,
-                                    at:
-                                      Math.floor(Date.now() / 1000) +
-                                      defaultScheduleSeconds,
-                                  },
-                        });
-                      }}
-                    >
-                      <option value="weekly">Selected weekdays</option>
-                      <option value="interval">Fixed interval</option>
-                      <option value="once">Once</option>
-                    </Select>
-                  </Field>
-                  {task.schedule.type === "once" ? (
-                    <Field label="Date and time · your timezone">
-                      <Input
-                        type="datetime-local"
-                        value={localInput(task.schedule.at)}
-                        onChange={(event) =>
-                          rule({
-                            at: Math.floor(
-                              new Date(event.currentTarget.value).getTime() /
-                                1000,
-                            ),
-                          })
-                        }
-                      />
-                    </Field>
-                  ) : task.schedule.type === "interval" ? (
-                    <Field label="Every · minutes">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={maxScheduleMinutes}
-                        value={
-                          (task.schedule.seconds || defaultScheduleSeconds) / 60
-                        }
-                        onInput={(event) =>
-                          rule({
-                            seconds: Number(event.currentTarget.value) * 60,
-                          })
-                        }
-                      />
-                    </Field>
-                  ) : (
-                    <>
-                      <Field label="Time">
-                        <Input
-                          type="time"
-                          value={task.schedule.time}
-                          onChange={(event) =>
-                            rule({ time: event.currentTarget.value })
-                          }
-                        />
-                      </Field>
-                      <Field label="Timezone">
-                        <Input
-                          value={task.schedule.timezone}
-                          onChange={(event) =>
-                            rule({ timezone: event.currentTarget.value })
-                          }
-                          placeholder="Europe/Zurich"
-                        />
-                      </Field>
-                    </>
-                  )}
-                </div>
-                {task.schedule.type === "weekly" && (
-                  <div class="weekdays" role="group" aria-label="Weekdays">
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                      (day, index) => (
-                        <Button
-                          aria-pressed={task.schedule.days?.includes(index)}
-                          onClick={() =>
-                            rule({
-                              days: task.schedule.days?.includes(index)
-                                ? task.schedule.days.filter(
-                                    (value) => value !== index,
-                                  )
-                                : [...(task.schedule.days || []), index],
-                            })
-                          }
-                        >
-                          {day}
-                        </Button>
-                      ),
-                    )}
-                  </div>
-                )}
-                <p class="muted" aria-live="polite">
-                  {previewError
-                    ? "Choose a valid schedule to see upcoming runs."
-                    : times
-                      ? times.length
-                        ? `Next: ${times.map((at) => moment(at, task.schedule.timezone)).join(" · ")}`
-                        : "No future run. Choose a later date."
-                      : online
-                        ? "Calculating upcoming runs…"
-                        : "Reconnect to preview."}
-                </p>
-                {previewError && <LoadError error={previewError} />}
-                <div class="field-row">
-                  <Field
-                    label="Environment"
-                    help={
-                      task.environment === "worktree"
-                        ? "Starts from committed HEAD; changes are kept for review."
-                        : "Changes apply directly to this project."
-                    }
-                  >
-                    <Select
-                      aria-label="Environment"
-                      value={task.environment}
-                      onChange={(event) =>
-                        edit({
-                          environment: event.currentTarget
-                            .value as ScheduledTask["environment"],
-                        })
-                      }
-                    >
-                      <option value="worktree">Git worktree</option>
-                      <option value="local">Local project</option>
-                    </Select>
-                  </Field>
-                  <Field
-                    label="Approval"
-                    help={
-                      task.permissions === "yolo"
-                        ? "Runs without ordinary approval prompts."
-                        : task.permissions === "auto"
-                          ? "Uses the configured permission reviewer; uncertain actions remain denied in unattended runs."
-                          : "Pauses for approval in the run's conversation."
-                    }
-                  >
-                    <Select
-                      aria-label="Approval"
-                      value={task.permissions}
-                      onChange={(event) =>
-                        edit({
-                          permissions: event.currentTarget
-                            .value as ScheduledTask["permissions"],
-                        })
-                      }
-                    >
-                      {Object.entries(permissionLabels).map(
-                        ([value, label]) => (
-                          <option value={value}>{label}</option>
-                        ),
-                      )}
-                    </Select>
-                  </Field>
-                </div>
-                <SheetButton
-                  label="Task model"
-                  title="Model, variant and effort"
-                  trigger={
-                    <span>{task.model || "Model · project default"}</span>
+              {shown.tasks.map((entry) => (
+                <ListRow
+                  key={entry.id}
+                  class="library-row"
+                  aria-current={task?.id === entry.id || undefined}
+                  disabled={busy}
+                  onClick={() => chooseTask(entry)}
+                  title={entry.name}
+                  unread={
+                    shown.runs.some(
+                      (run) =>
+                        run.task_id === entry.id && unread.has(run.session_id),
+                    ) && "Unread results"
                   }
-                >
-                  {(close) => (
-                    <ModelPicker
-                      session={{ id: task.id || "new-task", cwd: task.cwd }}
-                      selection={task.model}
-                      save={(model) => edit({ model })}
-                      close={close}
-                      online={online}
-                      running={false}
-                    />
-                  )}
-                </SheetButton>
-                <div class="editor-actions">
-                  <Button disabled={busy} onClick={discard}>
-                    Cancel
-                  </Button>
-                  {task.id && (
-                    <Button
-                      disabled={
-                        !online ||
-                        busy ||
-                        !!dirty ||
-                        scheduled.runs.some(
-                          (run) =>
-                            run.task_id === task.id && taskActive(run.status),
-                        )
-                      }
-                      onClick={() => action("run")}
-                    >
-                      <Play />
-                      Run now
-                    </Button>
-                  )}
-                  <Button
-                    variant="primary"
-                    disabled={
-                      !online ||
-                      !dirty ||
-                      !task.name.trim() ||
-                      !task.prompt.trim() ||
-                      !task.cwd ||
-                      changed ||
-                      !times?.length
-                    }
-                    busy={busy}
-                    onClick={() => action("save")}
-                  >
-                    Save
-                  </Button>
-                </div>
-              </>
-            )}
-            {error && <LoadError error={error} />}
-            <div class="run-history">
-              <h2>{task ? "Run history" : "All runs"}</h2>
-              {!runs.length ? (
+                  meta={
+                    entry.enabled
+                      ? moment(entry.next, entry.schedule.timezone)
+                      : "Paused"
+                  }
+                />
+              ))}
+              {!shown.tasks.length && (
                 <EmptyState>
-                  Results appear here. Missed runs are skipped; interrupted runs
-                  wait for your review.
+                  Schedule a recurring review or a one-off task.
                 </EmptyState>
-              ) : (
-                runs.map((run) => (
-                  <div class="run-row" key={run.id}>
-                    <ListRow
-                      disabled={
-                        run.session_available === false ||
-                        ["queued", "starting", "missed", "skipped"].includes(
-                          run.status,
-                        )
-                      }
-                      onClick={() => choose(run.session_id).catch(setError)}
-                      title={run.title}
-                      unread={unread.has(run.session_id) && "Unread results"}
-                      meta={`${capitalize(run.status)} · ${moment(run.scheduled_for)}`}
-                    >
-                      {run.error && <small>{run.error}</small>}
-                    </ListRow>
-                    {taskActive(run.status) && (
-                      <IconButton
-                        label="Stop run"
-                        disabled={!online || busy || run.status === "stopping"}
-                        onClick={() => action("stop", run.id)}
-                      >
-                        <Square />
-                      </IconButton>
-                    )}
-                  </div>
-                ))
               )}
             </div>
-          </fieldset>
-        </div>
+            <fieldset disabled={busy} class="management-editor schedule-editor">
+              {task && (
+                <>
+                  <div class="editor-head">
+                    <Button variant="quiet" onClick={() => setTask(null)}>
+                      <ChevronLeft />
+                      All runs
+                    </Button>
+                    <strong>{task.id ? task.name : "New task"}</strong>
+                    {task.id && (
+                      <Menu label="Task menu">
+                        <MenuItem
+                          disabled={!online || busy}
+                          onClick={() =>
+                            action(task.enabled ? "pause" : "resume")
+                          }
+                        >
+                          {task.enabled ? "Pause" : "Resume"}
+                        </MenuItem>
+                        <MenuItem
+                          disabled={busy}
+                          onClick={() => setConfirm(true)}
+                        >
+                          Delete task
+                        </MenuItem>
+                      </Menu>
+                    )}
+                  </div>
+                  {changed && (
+                    <p role="status">
+                      This task changed. Your draft is retained.{" "}
+                      <Button onClick={discard}>Reload</Button>
+                    </p>
+                  )}
+                  <div class="field-row">
+                    <Field label="Name">
+                      <Input
+                        value={task.name}
+                        onInput={(event) =>
+                          edit({ name: event.currentTarget.value })
+                        }
+                      />
+                    </Field>
+                    <ProjectField
+                      value={task.cwd}
+                      projects={projects}
+                      change={(cwd) => edit({ cwd })}
+                    />
+                  </div>
+                  <Field label="Instructions">
+                    <Textarea
+                      rows={5}
+                      value={task.prompt}
+                      onInput={(event) =>
+                        edit({ prompt: event.currentTarget.value })
+                      }
+                      placeholder="What should uAgent do, and what result should it report?"
+                    />
+                  </Field>
+                  <div class="field-row">
+                    <Field label="Repeat">
+                      <Select
+                        value={task.schedule.type}
+                        onChange={(event) => {
+                          const type = event.currentTarget
+                            .value as ScheduleRule["type"];
+                          edit({
+                            schedule:
+                              type === "weekly"
+                                ? blank(task.cwd).schedule
+                                : type === "interval"
+                                  ? { type, seconds: defaultScheduleSeconds }
+                                  : {
+                                      type,
+                                      at:
+                                        Math.floor(Date.now() / 1000) +
+                                        defaultScheduleSeconds,
+                                    },
+                          });
+                        }}
+                      >
+                        <option value="weekly">Selected weekdays</option>
+                        <option value="interval">Fixed interval</option>
+                        <option value="once">Once</option>
+                      </Select>
+                    </Field>
+                    {task.schedule.type === "once" ? (
+                      <Field label="Date and time · your timezone">
+                        <Input
+                          type="datetime-local"
+                          value={localInput(task.schedule.at)}
+                          onChange={(event) =>
+                            rule({
+                              at: Math.floor(
+                                new Date(event.currentTarget.value).getTime() /
+                                  1000,
+                              ),
+                            })
+                          }
+                        />
+                      </Field>
+                    ) : task.schedule.type === "interval" ? (
+                      <Field label="Every · minutes">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={maxScheduleMinutes}
+                          value={
+                            (task.schedule.seconds || defaultScheduleSeconds) /
+                            60
+                          }
+                          onInput={(event) =>
+                            rule({
+                              seconds: Number(event.currentTarget.value) * 60,
+                            })
+                          }
+                        />
+                      </Field>
+                    ) : (
+                      <>
+                        <Field label="Time">
+                          <Input
+                            type="time"
+                            value={task.schedule.time}
+                            onChange={(event) =>
+                              rule({ time: event.currentTarget.value })
+                            }
+                          />
+                        </Field>
+                        <Field label="Timezone">
+                          <Input
+                            value={task.schedule.timezone}
+                            onChange={(event) =>
+                              rule({ timezone: event.currentTarget.value })
+                            }
+                            placeholder="Europe/Zurich"
+                          />
+                        </Field>
+                      </>
+                    )}
+                  </div>
+                  {task.schedule.type === "weekly" && (
+                    <div class="weekdays" role="group" aria-label="Weekdays">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                        (day, index) => (
+                          <Button
+                            aria-pressed={task.schedule.days?.includes(index)}
+                            onClick={() =>
+                              rule({
+                                days: task.schedule.days?.includes(index)
+                                  ? task.schedule.days.filter(
+                                      (value) => value !== index,
+                                    )
+                                  : [...(task.schedule.days || []), index],
+                              })
+                            }
+                          >
+                            {day}
+                          </Button>
+                        ),
+                      )}
+                    </div>
+                  )}
+                  <p class="muted" aria-live="polite">
+                    {previewError
+                      ? "Choose a valid schedule to see upcoming runs."
+                      : times
+                        ? times.length
+                          ? `Next: ${times.map((at) => moment(at, task.schedule.timezone)).join(" · ")}`
+                          : "No future run. Choose a later date."
+                        : online
+                          ? "Calculating upcoming runs…"
+                          : "Reconnect to preview."}
+                  </p>
+                  {previewError && <LoadError error={previewError} />}
+                  <div class="field-row">
+                    <Field
+                      label="Environment"
+                      help={
+                        task.environment === "worktree"
+                          ? "Starts from committed HEAD; changes are kept for review."
+                          : "Changes apply directly to this project."
+                      }
+                    >
+                      <Select
+                        aria-label="Environment"
+                        value={task.environment}
+                        onChange={(event) =>
+                          edit({
+                            environment: event.currentTarget
+                              .value as ScheduledTask["environment"],
+                          })
+                        }
+                      >
+                        <option value="worktree">Git worktree</option>
+                        <option value="local">Local project</option>
+                      </Select>
+                    </Field>
+                    <Field
+                      label="Approval"
+                      help={
+                        task.permissions === "yolo"
+                          ? "Runs without ordinary approval prompts."
+                          : task.permissions === "auto"
+                            ? "Uses the configured permission reviewer; uncertain actions remain denied in unattended runs."
+                            : "Pauses for approval in the run's conversation."
+                      }
+                    >
+                      <Select
+                        aria-label="Approval"
+                        value={task.permissions}
+                        onChange={(event) =>
+                          edit({
+                            permissions: event.currentTarget
+                              .value as ScheduledTask["permissions"],
+                          })
+                        }
+                      >
+                        {Object.entries(permissionLabels).map(
+                          ([value, label]) => (
+                            <option value={value}>{label}</option>
+                          ),
+                        )}
+                      </Select>
+                    </Field>
+                  </div>
+                  <SheetButton
+                    label="Task model"
+                    title="Model, variant and effort"
+                    trigger={
+                      <span>{task.model || "Model · project default"}</span>
+                    }
+                  >
+                    {(close) => (
+                      <ModelPicker
+                        session={{ id: task.id || "new-task", cwd: task.cwd }}
+                        selection={task.model}
+                        save={(model) => edit({ model })}
+                        close={close}
+                        online={online}
+                        running={false}
+                      />
+                    )}
+                  </SheetButton>
+                  <div class="editor-actions">
+                    <Button disabled={busy} onClick={discard}>
+                      Cancel
+                    </Button>
+                    {task.id && (
+                      <Button
+                        disabled={
+                          !online ||
+                          busy ||
+                          !!dirty ||
+                          shown.runs.some(
+                            (run) =>
+                              run.task_id === task.id && taskActive(run.status),
+                          )
+                        }
+                        onClick={() => action("run")}
+                      >
+                        <Play />
+                        Run now
+                      </Button>
+                    )}
+                    <Button
+                      variant="primary"
+                      disabled={
+                        !online ||
+                        !dirty ||
+                        !task.name.trim() ||
+                        !task.prompt.trim() ||
+                        !task.cwd ||
+                        changed ||
+                        !times?.length
+                      }
+                      busy={busy}
+                      onClick={() => action("save")}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </>
+              )}
+              {error && <LoadError error={error} />}
+              <div class="run-history">
+                <h2>{task ? "Run history" : "All runs"}</h2>
+                {!runs.length ? (
+                  <EmptyState>
+                    Results appear here. Missed runs are skipped; interrupted
+                    runs wait for your review.
+                  </EmptyState>
+                ) : (
+                  runs.map((run) => (
+                    <div class="run-row" key={run.id}>
+                      <ListRow
+                        disabled={
+                          run.session_available === false ||
+                          ["queued", "starting", "missed", "skipped"].includes(
+                            run.status,
+                          )
+                        }
+                        onClick={() => choose(run.session_id).catch(setError)}
+                        title={run.title}
+                        unread={unread.has(run.session_id) && "Unread results"}
+                        meta={`${capitalize(run.status)} · ${moment(run.scheduled_for)}`}
+                      >
+                        {run.error && <small>{run.error}</small>}
+                      </ListRow>
+                      {taskActive(run.status) && (
+                        <IconButton
+                          label="Stop run"
+                          disabled={
+                            !online || busy || run.status === "stopping"
+                          }
+                          onClick={() => action("stop", run.id)}
+                        >
+                          <Square />
+                        </IconButton>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </fieldset>
+          </div>
+        </Placeholder>
       )}
       {confirm && task && (
         <ConfirmModal

@@ -4,6 +4,8 @@
 // and panes.
 export const storageKeys = {
   catalogue: "uagent-catalogue",
+  spaces: "uagent-spaces",
+  page: "uagent-page",
   drafts: "uagent-drafts",
   outgoing: "uagent-outgoing",
   read: "uagent-read",

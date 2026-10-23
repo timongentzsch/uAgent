@@ -39,6 +39,7 @@ import { needsYou } from "./attention.ts";
 // never finishes, and its chip would have no id the host knows.
 const kept = {
   catalogue: stored<Catalogue["sessions"]>(storageKeys.catalogue, []),
+  spaces: stored<NonNullable<Catalogue["spaces"]>>(storageKeys.spaces, []),
   drafts: stored<Record<string, Draft>>(
     storageKeys.drafts,
     {},
@@ -125,6 +126,7 @@ export function useHost(
   // everything stays inert until then (`online` is false).
   const [catalogue, setCatalogue] = useState<Catalogue>(() => ({
     sessions: kept.catalogue.read(),
+    spaces: kept.spaces.read(),
     capabilities: {},
     devices: [],
   }));
@@ -242,6 +244,7 @@ export function useHost(
     catalogueRef.current = undefined;
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
     kept.catalogue.write([]);
+    kept.spaces.write([]);
     setDrafts({});
     setAuthenticated(false);
     live.current = {};
@@ -424,6 +427,16 @@ export function useHost(
     dropStream();
     loads.current.clear();
     const signal = lifetime.current.signal;
+    // The open conversation is asked for with the list, not after it, when
+    // this device listed it before; the list's own load below reuses it.
+    const open = selection.current;
+    if (
+      open &&
+      (catalogueRef.current?.sessions ?? kept.catalogue.read()).some(
+        (item) => item.id === open,
+      )
+    )
+      load(open).catch(() => {});
     try {
       const scan = rescan.current;
       rescan.current = false;
@@ -533,10 +546,11 @@ export function useHost(
     } catch (error) {
       if (signal.aborted) return;
       setConnecting(false);
+      // Only the host's refusal asks for pairing: a host that cannot be
+      // reached keeps the app on screen while it is tried again.
       if (failure(error).status === 401) signedOut();
       else {
         report(error);
-        if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
         retryLater();
       }
     } finally {
@@ -628,6 +642,9 @@ export function useHost(
   useEffect(() => {
     if (authenticated) kept.catalogue.write(listed);
   }, [authenticated, listed]);
+  useEffect(() => {
+    if (authenticated && catalogue.spaces) kept.spaces.write(catalogue.spaces);
+  }, [authenticated, catalogue.spaces]);
   // The tab title and the installed app's badge count what needs you;
   // written only when that count changes.
   const attention = needsYou(listed);

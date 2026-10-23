@@ -37,7 +37,7 @@ const SAMPLE: Block[] = [
 ];
 
 // The transcript before its snapshot: its own rows, drawn from sample text.
-export function TranscriptPlaceholder({ session }: { session: SessionRef }) {
+function TranscriptPlaceholder({ session }: { session: SessionRef }) {
   return (
     <Placeholder label="Loading conversation…">
       <MessageRows blocks={SAMPLE} online={false} session={session} />

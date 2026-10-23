@@ -159,7 +159,7 @@ What a spec may assume about time:
   and scroll steps in `scroll-stick.spec.js`.
 
 Playwright has two projects. `chromium` runs every spec. `webkit` runs
-`btw`, `guidance-queue`, `phone-layout`, `mobile-navigation`,
+`btw`, `guidance-queue`, `phone-layout`, `reload`, `mobile-navigation`,
 `loading-surfaces`, `session-state`, `ui-quality`, `browser`, `model-picker`,
 `showcase`, `dismiss`, `history-anchor`, `scroll-restore`, `scroll-stick` and
 `panel`. A failed test is retried once, locally and in CI. Four workers run

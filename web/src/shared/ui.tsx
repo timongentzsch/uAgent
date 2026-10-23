@@ -380,8 +380,22 @@ export function ConfirmModal({
 export function Actions({ children }: { children: ComponentChildren }) {
   return <div class="dialog-actions">{children}</div>;
 }
-// Lines of text whose length is unknown until they load (a tool's full
-// output, a thread). Known shapes draw themselves (see <Placeholder>).
+// A loading indicator that lives for a single frame IS the flash: it shows
+// once `delayMs` has passed, so fast resolves draw nothing.
+function useDelayed(delayMs: number) {
+  const [visible, setVisible] = useState(delayMs <= 0);
+  useEffect(() => {
+    if (delayMs <= 0) return;
+    const timer = setTimeout(() => setVisible(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [delayMs]);
+  return visible;
+}
+
+// Loading draws by one rule: a view whose shape is known draws itself from
+// sample data (see <Placeholder>); text of unknown length draws these lines;
+// a <Spinner> is left for an action's progress, or a surface whose shape
+// cannot be known, such as one whose code is still on its way.
 export function Skeleton({
   rows = 3,
   label = "Loading…",
@@ -391,15 +405,7 @@ export function Skeleton({
   label?: string;
   delayMs?: number;
 }) {
-  // A skeleton that lives for a single frame IS the flash: wait out fast
-  // resolves.
-  const [visible, setVisible] = useState(delayMs <= 0);
-  useEffect(() => {
-    if (delayMs <= 0) return;
-    const timer = setTimeout(() => setVisible(true), delayMs);
-    return () => clearTimeout(timer);
-  }, [delayMs]);
-  if (!visible) return null;
+  if (!useDelayed(delayMs)) return null;
   return (
     <div class="skeleton" role="status" aria-busy="true">
       <small class="loading-label">{label}</small>
@@ -415,10 +421,13 @@ export function Skeleton({
 export function Spinner({
   label = "Loading…",
   surface = false,
+  delayMs = 150,
 }: {
   label?: string;
   surface?: boolean;
+  delayMs?: number;
 }) {
+  if (!useDelayed(delayMs)) return null;
   return (
     <div
       class={`loading-indicator${surface ? " loading-surface" : ""}`}

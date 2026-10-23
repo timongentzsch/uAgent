@@ -8,7 +8,7 @@
 .board section + section {
   margin-top: var(--space-4);
 }
-/* The heading holds its count and, for members, the way to add one. */
+/* The heading holds its count. */
 .board h2 {
   display: flex;
   align-items: center;
@@ -18,9 +18,6 @@
   color: var(--muted);
   min-height: var(--row);
   padding: 0 var(--inset-x);
-}
-.board h2 button {
-  margin-left: auto;
 }
 .board-note {
   color: var(--muted);

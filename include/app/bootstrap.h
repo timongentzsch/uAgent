@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "include/agent/agent.h"
-#include "include/app/chat.h"
 #include "include/app/permissions.h"
 #include "include/app/runtime.h"
 #include "include/cli/options.h"
@@ -39,9 +38,6 @@ struct ApplicationInput {
   bool wake = false;
   // Who wrote the text when not the person (Steering::Message::origin).
   json origin{};
-  // The text joins the conversation as the person's message and starts no
-  // turn: a panel's chat message for its members alone.
-  bool quiet = false;
   std::optional<std::string> title{};
 };
 
@@ -106,9 +102,6 @@ struct AppContext {
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::unordered_set<std::string> session_approvals;
-  // A panel's chat with its members; unset for every other session.
-  // Before the agent, which calls into it.
-  std::optional<Chat> chat;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

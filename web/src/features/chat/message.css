@@ -22,7 +22,7 @@
      read wider by exactly this much. */
   margin-top: var(--space-6);
 }
-/* Every message opens with a line of its own: a member's name at the left,
+/* Every message opens with a line of its own: a name at the left,
    the time and the menu at the right. */
 .message > header {
   display: flex;

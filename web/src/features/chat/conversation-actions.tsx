@@ -85,13 +85,7 @@ export default function ConversationActions({
     >
       {modal.type === "rename" ? (
         <label>
-          {modal.space
-            ? "Workspace name"
-            : modal.session.kind === "panel"
-              ? "Moderator’s name"
-              : modal.session.member
-                ? "Member’s name"
-                : "Conversation name"}
+          {modal.space ? "Workspace name" : "Conversation name"}
           <Input
             autoFocus
             value={title}

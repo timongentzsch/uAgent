@@ -36,8 +36,6 @@ import {
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
-import { Avatar } from "../../shared/avatar.tsx";
-import { MemberAvatar } from "../../shared/member-card.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { routes } from "../../state/api.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
@@ -126,9 +124,6 @@ function MessageView({ block, online, session }: MessageProps) {
     retry: resend,
     branch,
     http,
-    team,
-    moderator,
-    prompt,
   } = useContext(MessageActions);
   const { policy } = useContext(DetailContext);
   // A level that shows output opens the row on the preview it holds.
@@ -136,15 +131,8 @@ function MessageView({ block, online, session }: MessageProps) {
   // The full text loads when asked for: by opening the row, or from a row
   // or output box that is already open, or by Show full message.
   const [wantFull, setWantFull] = useState(false);
-  // A chat member's message: shown under its name, without the name its
-  // text opens with for the model ("Ada: …").
   const mail =
     block.kind === "user" && block.origin === "mail" ? block : undefined;
-  const author = mail?.author;
-  // Under the name its session has now: renamed since, what it wrote before
-  // follows. One that has left keeps the name it wrote under.
-  const seat = team?.find((item) => item.id === mail?.sender);
-  const member = author && (seat?.member || author);
   const call = block.kind === "tool_result" ? block : undefined;
   const tool = !!call;
   const reply = block.kind === "assistant" ? block : undefined;
@@ -184,11 +172,7 @@ function MessageView({ block, online, session }: MessageProps) {
   useEffect(() => {
     if (!row && fullText.error) report(fullText.error);
   }, [fullText.error]);
-  const whole = full ?? block.text ?? "";
-  const text =
-    author && whole.startsWith(`${author}: `)
-      ? whole.slice(author.length + 2)
-      : whole;
+  const text = full ?? block.text ?? "";
   // A long diff arrives as its opening; the row shows the stored whole,
   // read once per session and retry.
   const diff = useResource(
@@ -209,22 +193,20 @@ function MessageView({ block, online, session }: MessageProps) {
   // label; only other kinds name themselves.
   // Receipts (memory saves, finished background work) read as tool rows.
   const userOwned =
-    (block.kind === "user" && !member) ||
+    block.kind === "user" ||
     (block.kind === "attachment" && block.origin !== "tool");
   const agentRow =
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
   const nameId = useId();
   const name = useRowName(
-    member
-      ? member
-      : userOwned
-        ? "You"
-        : agentRow
-          ? "Assistant"
-          : row
-            ? call?.name || "Tool"
-            : capitalize(block.kind),
+    userOwned
+      ? "You"
+      : agentRow
+        ? "Assistant"
+        : row
+          ? call?.name || "Tool"
+          : capitalize(block.kind),
     block.time,
   );
   if (block.kind === "compaction" && block.compaction)
@@ -248,7 +230,7 @@ function MessageView({ block, online, session }: MessageProps) {
   // Another session's or the harness's words: an event with its sender's
   // label, never the person's bar. The label is the text's own opening
   // bracket ("[thread event, not a user message] …").
-  if (mail && !member) {
+  if (mail) {
     const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
     const label = match?.[1] ?? "Message";
     const body = match?.[2] ?? "";
@@ -274,18 +256,14 @@ function MessageView({ block, online, session }: MessageProps) {
         open={() => statistics?.(block)}
       />
     );
-  // In a chat with members the panel is named like everyone else.
-  const panel =
-    !!team?.length && block.kind === "assistant" ? moderator : undefined;
-  const actor =
-    member || panel || (userOwned || row || agentRow ? null : block.kind);
+  const actor = userOwned || row || agentRow ? null : block.kind;
   const running = took == null && isRunningStatus(block.status);
   const assets = routes.assets(session.id);
   const header = !row;
   return (
     <article
       data-message-id={block.key || block.id}
-      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${member || panel ? " member" : ""}${block.turn_root === block.id ? " turn-start" : ""}`}
+      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
       aria-labelledby={nameId}
     >
       <h3 class="sr-only" id={nameId}>
@@ -293,8 +271,6 @@ function MessageView({ block, online, session }: MessageProps) {
       </h3>
       {header && (
         <header>
-          {member &&
-            (seat ? <MemberAvatar item={seat} /> : <Avatar name={member} />)}
           {actor && <span class="actor">{actor}</span>}
           {block.status && (
             <span class="muted">
@@ -324,9 +300,6 @@ function MessageView({ block, online, session }: MessageProps) {
             statistics={statistics}
             http={http}
             branch={userOwned ? branch : undefined}
-            prompt={
-              prompt && (member || panel) ? () => prompt(member) : undefined
-            }
           />
         </header>
       )}
@@ -560,11 +533,7 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
 // from its own start, and until then a row stays as the person left it.
 export function MessageRows({ blocks, ...props }: MessageRowsProps) {
   const { level, policy } = useContext(DetailContext);
-  const chat = !!useContext(MessageActions).team?.length;
-  const rows = useMemo(
-    () => presentMessages(blocks, policy, chat),
-    [blocks, policy, chat],
-  );
+  const rows = useMemo(() => presentMessages(blocks, policy), [blocks, policy]);
   const scope = `${props.session?.id || ""}:${level}:`;
   return (
     <>

@@ -124,9 +124,9 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   await page.getByTitle(/^Panel of /).click();
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board).toBeVisible();
-  // Its empty chat explains itself, and the input says whom it reaches.
+  // Its empty chat explains itself.
   await expect(page.locator(".transcript .tips")).toContainText(
-    "Start a message with a name",
+    "What is working and what needs you",
   );
   await expect(page.locator(".transcript .empty")).toContainText(
     "starts threads that do the work",

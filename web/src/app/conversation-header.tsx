@@ -40,7 +40,6 @@ export default function ConversationHeader({
   settings,
   menu,
   choose,
-  addMember,
 }: {
   page: "chat" | "library" | "scheduled";
   selected: string;
@@ -63,7 +62,6 @@ export default function ConversationHeader({
     extra?: ComponentChildren,
   ) => ComponentChildren;
   choose: (id: string) => Promise<void>;
-  addMember: () => void;
 }) {
   const { store, setModal } = useHostContext();
   const compact = useCompact();
@@ -208,10 +206,6 @@ export default function ConversationHeader({
               void choose(id);
             }}
             menu={menu}
-            add={() => {
-              setBoardOpen(false);
-              addMember();
-            }}
           />
         </Modal>
       )}

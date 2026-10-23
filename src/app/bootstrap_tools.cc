@@ -191,6 +191,20 @@ std::vector<Tool> BuildTools(AppContext& context,
     KeepLeanTools(tools);
   }
   ApplyToolPolicy(tools, context.tool_policy);
+  // A child gets only the tools its parent has, and a lean one none that
+  // edit: where nothing here runs commands either, a lean child only reads,
+  // so starting one is no change to approve, as starting a thread is not.
+  if (std::ranges::none_of(tools, [](const Tool& tool) {
+        return tool.capabilities & Capability(ToolCapability::kExecute);
+      })) {
+    for (Tool& tool : tools) {
+      if (tool.name != "subagent") continue;
+      tool.mutating = false;
+      tool.mutates = [](const json& a) {
+        return JsonValue(a, "mode", "lean") == "full";
+      };
+    }
+  }
   std::vector<std::string> tool_names = ToolNames(tools);
   KeepSupportedSkills(skills, tool_names);
   if (!skills.empty()) {

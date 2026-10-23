@@ -245,7 +245,6 @@ add_library(
   src/app/panel.cc
   src/app/panel_history.cc
   src/app/panel_threads.cc
-  src/app/chat.cc
   src/cli/options.cc
   src/cli/reference.cc
   src/app/runtime.cc

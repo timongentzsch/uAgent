@@ -9,7 +9,6 @@
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
-#include "include/app/chat.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/launch.h"
@@ -310,15 +309,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
       return result;
     }
     std::string title = Trim(JsonValue(command, "title", ""));
-    // In a chat the title is the name a message opens with.
-    const std::string chat = session->kind == kSessionKindPanel ? session->cwd
-                             : session->member.empty() ? ""
-                                                       : session->folder;
-    std::string was;
-    if (kind == SessionCommandKind::kRename) {
-      result.error = RenameProblem(chat, title, session->path);
-      if (!result.error.empty()) return result;
-      if (!chat.empty()) was = ChatName(chat, session->path);
+    if (kind == SessionCommandKind::kRename && !ValidSessionTitle(title)) {
+      result.error = InvalidSessionTitleMessage();
+      return result;
     }
     SessionStatus prior_status = session->status;
     session->status = kind == SessionCommandKind::kDelete
@@ -351,10 +344,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       replay_.Publish(epoch_, session->id, "", {{"kind", "deleted"}},
                       !session->run_id.empty());
     } else if (result.error.empty()) {
-      // Only a rename that was saved is one the chat hears of.
-      ChatRenamed(chat, session->path, was, title);
       session->title = title;
-      if (!chat.empty()) session->member = title;
       session->draft_title = title;
       session->updated = NowMillis();
       PublishMetadata(session->id, *session);

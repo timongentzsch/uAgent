@@ -20,7 +20,6 @@
 #include "include/agent/session_view.h"
 #include "include/app/asset_store.h"
 #include "include/app/bootstrap.h"
-#include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
@@ -108,7 +107,6 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 
 class WorkerChannel final : public ApplicationChannel {
  public:
-  // Made in the session's folder, which a panel's chat is.
   WorkerChannel(std::string path, std::string id, std::string generation,
                 std::string title, bool panel, json thread)
       : path_(std::move(path)),
@@ -116,8 +114,7 @@ class WorkerChannel final : public ApplicationChannel {
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
-        panel_(panel),
-        chat_(ChatFolder(panel, thread)) {
+        panel_(panel) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
   }
   ~WorkerChannel() override { Close(); }
@@ -342,8 +339,7 @@ class WorkerChannel final : public ApplicationChannel {
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
                               "reason", "completed"),
                     JsonValue(state_, "title", title_),
-                    JsonValue(state, "answer", ""),
-                    JsonValue(state, "chat_re", json()));
+                    JsonValue(state, "answer", ""));
     }
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final
@@ -367,10 +363,6 @@ class WorkerChannel final : public ApplicationChannel {
       }
     }
     SendState(true);
-    // The answer must precede idle, but the chat may consume it while our
-    // last published status still says working. Reconcile after idle is
-    // visible, and only if no queued turn has already started.
-    if (finished_turn && !busy_ && link_) link_->Idle();
   }
   void CompleteControl(const std::string& request,
                        const json& result) override {
@@ -418,7 +410,7 @@ class WorkerChannel final : public ApplicationChannel {
   // At today's spend limit a panel keeps its mail pending and says so
   // in its state. Checked outside the lock: it reads the threads' files.
   bool HoldMail() override {
-    const std::string pause = panel_ ? PanelPause(chat_) : "";
+    const std::string pause = panel_ ? PanelPause(CanonicalCwd()) : "";
     std::lock_guard lock(mutex_);
     if (pause != paused_) {
       paused_ = pause;
@@ -552,11 +544,6 @@ class WorkerChannel final : public ApplicationChannel {
         break;
     }
     SessionCommandKind kind = parsed.kind;
-    // Read before the lock: it looks at the folder's session files.
-    const json* files = JsonArray(parsed.raw, "attachments");
-    const bool members_only = panel_ && kind == SessionCommandKind::kSubmit &&
-                              (!files || files->empty()) &&
-                              ForMembersOnly(chat_, parsed.text);
     UniqueLock lock(mutex_);
     if (kind == SessionCommandKind::kSteer && !turn_active_) {
       kind = SessionCommandKind::kSubmit;
@@ -617,11 +604,9 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kRename:
         if (input_) {
           error = "rename requires an empty input queue";
-        } else if (error = RenameProblem(chat_, parsed.title, path_);
-                   error.empty()) {
-          if (!chat_.empty()) {
-            ChatRenamed(chat_, path_, ChatName(chat_, path_), parsed.title);
-          }
+        } else if (!ValidSessionTitle(parsed.title)) {
+          error = InvalidSessionTitleMessage();
+        } else {
           input_ = ApplicationInput{.title = std::string(parsed.title)};
           busy_ = true;
           wake_.Wake();
@@ -661,7 +646,7 @@ class WorkerChannel final : public ApplicationChannel {
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
       case SessionCommandKind::kSubmit:
-        SubmitLocked(parsed, members_only, error);
+        SubmitLocked(parsed, error);
         break;
       case SessionCommandKind::kCreate:
       case SessionCommandKind::kDelete:
@@ -760,10 +745,8 @@ class WorkerChannel final : public ApplicationChannel {
 
   // A message during a turn is guidance, as a steer is; otherwise it takes
   // the one-slot input queue. The caller holds mutex_.
-  // With `members_only` the message is written into a panel's chat for
-  // the members it names: it starts no turn of the panel's own.
-  void SubmitLocked(const SessionCommand& parsed, bool members_only,
-                    std::string& error) UAGENT_REQUIRES(mutex_) {
+  void SubmitLocked(const SessionCommand& parsed, std::string& error)
+      UAGENT_REQUIRES(mutex_) {
     if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/")) {
       SteerLocked(parsed, error);
       return;
@@ -777,7 +760,6 @@ class WorkerChannel final : public ApplicationChannel {
     ApplicationInput input;
     input.request_id = parsed.client_request_id;
     input.text = parsed.text;
-    input.quiet = members_only;
     json images = json::array();
     if (!ResolveCommandAttachments(parsed.raw, input.attachments, images,
                                    error)) {
@@ -793,8 +775,8 @@ class WorkerChannel final : public ApplicationChannel {
     if (!error.empty()) return;
     ClearAbort();
     busy_ = true;
-    turn_active_ = !members_only && (!input.text.starts_with("/") ||
-                                     !SlashCommandPrompt(slash).empty());
+    turn_active_ =
+        !input.text.starts_with("/") || !SlashCommandPrompt(slash).empty();
     if (turn_active_) BeginTurn();
     input_ = std::move(input);
     input_command_ = parsed.request_id;
@@ -818,9 +800,6 @@ class WorkerChannel final : public ApplicationChannel {
   bool busy_ UAGENT_GUARDED_BY(mutex_) = true;
   bool turn_active_ UAGENT_GUARDED_BY(mutex_) = false;
   const bool panel_ = false;
-  // The folder whose chat this session speaks in under its title: a panel's
-  // own, or the one a member was added to. Empty for any other session.
-  const std::string chat_;
   std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ UAGENT_GUARDED_BY(mutex_) = false;
   bool ready_ UAGENT_GUARDED_BY(mutex_) = false;

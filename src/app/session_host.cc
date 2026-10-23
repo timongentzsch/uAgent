@@ -171,15 +171,6 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.cwd = item.cwd;
     session.kind = item.kind;
     session.folder = JsonValue(item.thread, "folder", "");
-    // Its name in the folder's chat: a member's title, a panel's when it
-    // was given one.
-    session.member = !ChatMember(item.thread).empty() ? item.title
-                     : item.kind != kSessionKindPanel ? ""
-                     : item.custom_title              ? item.title
-                                                      : "Moderator";
-    const json seat = ChatMember(item.thread);
-    session.persona = JsonValue(seat, "persona", "");
-    session.skills = JsonValue(seat, "skills", "");
     session.model = item.model;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
@@ -305,9 +296,6 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"cwd", session.cwd},
       {"kind", session.kind},
       {"folder", session.folder},
-      {"member", session.member},
-      {"persona", session.persona},
-      {"skills", session.skills},
       {"model", session.model},
       {"title", session.title},
       {"generation", session.generation},

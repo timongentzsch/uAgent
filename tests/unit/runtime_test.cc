@@ -730,9 +730,10 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   CHECK(!SteeringState().TakeNextAutoStart().has_value());
 }
 
-// Who wrote a message travels with it, not with its words: the person typing
-// what a queued mail says keeps their own message, and the mail its author.
-void TestMailKeepsItsAuthorBesideTheSameWords() {
+// Where a message came from travels with it, not with its words: the person
+// typing what a queued mail says keeps their own message, and the mail its
+// origin.
+void TestMailKeepsItsOriginBesideTheSameWords() {
   Api api(RuntimeConfig{});
   api.model = "test";
   std::vector<Tool> tools;
@@ -742,7 +743,7 @@ void TestMailKeepsItsAuthorBesideTheSameWords() {
     return std::string("denied");
   };
   Agent agent(api, tools, processes, usage, denied);
-  agent.Arrive("same words", json(), "alice", "mail-1", "session-1");
+  agent.Arrive("same words", "mail-1");
   agent.Say("same words", "");
   const auto next = SteeringState().TakeNextAutoStart();
   CHECK(next && next->text == "same words");
@@ -753,8 +754,7 @@ void TestMailKeepsItsAuthorBesideTheSameWords() {
     if (JsonValue(block, "kind", "") == "user") rows.push_back(block);
   }
   CHECK(rows.size() == 2);
-  CHECK(!rows[0].contains("author") && !rows[0].contains("origin"));
-  CHECK(JsonValue(rows[1], "author", "") == "alice");
+  CHECK(!rows[0].contains("origin"));
   CHECK(JsonValue(rows[1], "origin", "") == "mail");
 }
 

@@ -14,7 +14,7 @@ layer.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/panel*.cc`, `chat.cc`, `thread_link.cc`, `launch.cc` | A folder's panel (board, history, threads, `panel -p`), its chat with members, and where a launched session runs |
+| `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's panel (board, plan, history, threads, `panel -p`) and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
@@ -142,36 +142,12 @@ an idle parent takes up at once as a turn.
 A folder's panel is a session whose agent, the moderator, reads and delegates
 but never writes or runs commands. The sessions it starts are its threads.
 
-The panel's conversation is also a chat (`src/app/chat.cc`). A member is a
-thread the moderator added under a name and a persona instead of a brief: it
-reads and searches, changes nothing, and its prompt comes from its session
-header, which it cannot rewrite. The moderator is one participant, set apart
-only by its tools. The runtime, not a model, enforces the chat's rules, which
-the [Guide](GUIDE.md#the-panel) states for users:
-
-- Everyone hears every message; the runtime wakes only the participants a
-  message opens with, or all when it names nobody. An addressed answer goes
-  back to whoever asked.
-- A woken participant may answer `PASS` (nothing to add) or `WAIT` (someone
-  typing will likely cover it); neither is shown. A waiting participant is
-  woken by the next message or once nobody is typing.
-- A member's answer appears in the panel's conversation and starts a turn
-  there only when it wakes the panel.
-- A round begins with a user message or a thread's report and gives each
-  participant `UAGENT_PANEL_CHAT_TURNS` turns and two messages. Introductions
-  are nobody's turn, and an answer that arrives after the user wrote again
-  counts in the previous round. The panel cannot message a member outside
-  the chat, and members spend from the threads' daily limit.
-- The moderator's answer to the user wakes only the members it opens with and
-  those who joined while it was written. When the chat falls silent after at
-  least two member messages since the moderator last wrote, and no thread has
-  work ahead, the moderator is woken once to close the round; that message
-  wakes nobody. After the close, its answers to thread reports go to the user.
-- A file the user attaches reaches members as its path in the message.
-- The round's state (turns and messages used, who is typing, who waits) is
-  saved beside the panel's session, so a restarted runtime resumes it. A
-  member's answer is forwarded under an ID derived from it, so a forward
-  repeated after a crash is mail its readers already have.
+The moderator asks its questions of subagents: it has the `subagent` tool but
+no tool that edits or runs commands, so its children, which get only what
+their parent has, read and research and change nothing; starting one needs
+no approval. Its plan (goals, decisions, open questions and steps) is saved
+beside its session and rebuilt into its context every turn, with the
+subagents and threads that carry each step's id.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its

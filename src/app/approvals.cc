@@ -110,14 +110,7 @@ bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
       SandboxRuntime().mode == SandboxMode::kEnforced &&
       (WrapsCommands(tool) ||
        (tool.needs_approval && !tool.needs_approval(arguments)));
-  const json thread = ThreadRole(app->options.session);
-  const bool shared_file =
-      tool.name == "read_path" && !ChatMember(thread).empty() &&
-      PathWithin(
-          CanonicalAccessPath(JsonValue(arguments, "path", "")),
-          CanonicalAccessPath(PanelPath(JsonValue(thread, "folder", "")) +
-                              kSessionAssetsSuffix));
-  return confined_thread || shared_file;
+  return confined_thread;
 }
 
 // The outcome of an approval: who refused, for the model, is a person by

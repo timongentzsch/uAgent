@@ -4,10 +4,6 @@
 // The roles a session can have beyond an ordinary conversation: a folder's
 // panel, or a thread it started. A session header's `kind` names it.
 
-#include <algorithm>
-#include <iterator>
-#include <string_view>
-
 #include "include/core/json.h"
 
 namespace uagent {
@@ -21,24 +17,10 @@ inline bool IsThread(const json& session) {
   return JsonValue(session, "kind", "") == kSessionKindThread;
 }
 
-// A thread's link to its panel (its folder, ceiling, chat membership) from a
+// A thread's link to its panel (its folder, ceiling, brief) from a
 // session's options or header; empty for any other session.
 inline json ThreadRole(const json& session) {
   return JsonValue(session, "thread", json::object());
-}
-
-// Who a thread is in its panel's chat (name, persona, skills), from its
-// `thread` role; empty for a thread that works a brief.
-inline json ChatMember(const json& thread) {
-  return JsonValue(thread, "member", json::object());
-}
-
-// A chat participant's whole answer when it has nothing to say now: it
-// passes, or waits to read someone who is typing. Shown to nobody.
-inline constexpr std::string_view kSilentAnswers[] = {"PASS", "PASS.", "WAIT",
-                                                      "WAIT."};
-inline bool SilentAnswer(std::string_view text) {
-  return std::ranges::find(kSilentAnswers, text) != std::end(kSilentAnswers);
 }
 
 // A pending decision or approval the thread's panel decides first.

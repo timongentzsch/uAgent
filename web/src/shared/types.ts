@@ -156,8 +156,6 @@ interface BlockBase {
   text_bytes?: number;
   content_complete?: boolean;
   status?: string;
-  // A chat participant's pass or wait: shown to nobody.
-  silent?: boolean;
   turn_root?: string;
 }
 // How an attachment reached the model.
@@ -173,17 +171,13 @@ interface Answered {
   reply_to?: string;
   http?: Exchange[];
 }
-// What a person typed, or mail from a participant of a panel's chat.
+// What a person typed, or mail from another session or the harness.
 export interface UserBlock extends BlockBase, Answered {
   kind: "user";
   request_id?: string;
   session_id?: string;
   files?: Asset[];
   origin?: string;
-  // Who wrote a message that came by mail: a participant of a panel's chat,
-  // by the name it had then and, as `sender`, by its session.
-  author?: string;
-  sender?: string;
   deliveries?: Delivery[];
   unavailable_images?: number;
   // Why the host refused it, on a message held here until it confirms.
@@ -462,12 +456,7 @@ export interface Session {
   // A folder's panel, or a thread it launched (in `folder`).
   kind?: "panel" | "thread" | "";
   folder?: string;
-  // A thread's name as a member of its panel's chat, with the persona and
-  // skills it was given; a panel's is the moderator's. `model` is the one
-  // its file names.
-  member?: string;
-  persona?: string;
-  skills?: string;
+  // The model its file names.
   model?: string;
   status?: SessionStatus;
   presence?: "active" | "";
@@ -805,7 +794,7 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: { sessions: string; panel: string; member: string };
+  base: { sessions: string; panel: string };
 }
 export interface CommandResults {
   browser: {

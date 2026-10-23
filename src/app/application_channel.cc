@@ -86,11 +86,7 @@ int Application::RunChannel() {
       for (auto& attachment : input->attachments) {
         attachments_.push_back(std::move(attachment));
       }
-      if (input->quiet) {
-        agent_.Say(input->text, input->request_id);
-      } else {
-        ProcessInput(std::move(input->text));
-      }
+      ProcessInput(std::move(input->text));
       // Mail that came as the turn was ending starts the next one.
       agent_.DeliverMail(channel_->HoldMail());
     }
@@ -138,7 +134,6 @@ void Application::PublishChannelState(bool checkpoint) {
     }
   }
   state["turns"] = agent_.UserTurns();
-  state["chat_re"] = agent_.ChatRe();
   state["activities"] = runtime_.processes.ActivityViews();
   state["agents"] = AgentSummaries(runtime_.processes);
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;

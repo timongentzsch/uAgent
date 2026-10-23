@@ -284,15 +284,6 @@ void Application::RunPrompt(const std::string& input) {
     attachments_.clear();
   }
   RunTurns(input, std::move(content), images);
-  // A panel's answer is a message in its chat; a turn that ended
-  // without one is a turn it is no longer taking.
-  if (context_.chat) {
-    context_.chat->Answered(
-        JsonValue(agent_.LastStop(), "reason", "") == "completed"
-            ? agent_.LastText()
-            : std::string(),
-        agent_.ChatRe());
-  }
 }
 
 json Application::InterfaceState() const {

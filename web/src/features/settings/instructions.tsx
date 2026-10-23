@@ -98,13 +98,6 @@ export default function Instructions({
             <h3>Panel</h3>
             <Base text={stack?.base.panel} label="Built-in panel base" />
             {files.filter((file) => file.audience === "panel").map(card)}
-            <h3>Chat members</h3>
-            <Base text={stack?.base.member} label="Built-in member base" />
-            <p class="muted instructions-also">
-              The moderator fills in each member&rsquo;s name, persona and
-              skills when it adds one. What a member was sent is under
-              &ldquo;Show prompt&rdquo; on its messages.
-            </p>
           </>
         </Placeholder>
       )}

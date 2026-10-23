@@ -314,29 +314,6 @@ void TestSseChunkPartitions() {
     CHECK(guarded_stream.show == StreamCtx::Show::kSuppress);
   }
 
-  // A whole answer that is shown to nobody is held however it is chunked;
-  // one that only begins like it appears whole once it differs.
-  constexpr std::string_view kUnsaid[] = {"PASS", "PASS."};
-  for (const std::string said : {"PASS", " PASS.\n", "PASSWORD reset"}) {
-    for (size_t split = 0; split <= said.size(); ++split) {
-      ChatResult held;
-      StreamCtx held_stream;
-      held_stream.res = &held;
-      held_stream.unsaid = kUnsaid;
-      held_stream.started = std::chrono::steady_clock::now();
-      held_stream.EmitContent(said.substr(0, split));
-      const bool early = held_stream.show == StreamCtx::Show::kPrint;
-      held_stream.EmitContent(said.substr(split));
-      held_stream.Finish();
-      CHECK(held.content == said && !held.suppressed);
-      // Nothing shows before it differs from every such answer.
-      CHECK(early == (split > 4 && said.starts_with("PASSW")));
-      CHECK(held_stream.show == (said.starts_with("PASSW")
-                                     ? StreamCtx::Show::kPrint
-                                     : StreamCtx::Show::kSuppress));
-    }
-  }
-
   ChatResult html;
   StreamCtx html_stream;
   html_stream.res = &html;

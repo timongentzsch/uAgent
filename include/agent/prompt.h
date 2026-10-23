@@ -23,9 +23,6 @@ namespace uagent {
 const char* SystemPromptBase();
 // The base of a folder panel's prompt, in place of SystemPromptBase.
 const char* PanelPromptBase();
-// The base of a chat member's prompt: who it is (session_role.h ChatMember)
-// and how the chat works.
-std::string MemberPromptBase(const json& member);
 
 // The base sections an overlay may replace, in prompt order.
 std::vector<std::string_view> PromptSections();

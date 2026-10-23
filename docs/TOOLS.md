@@ -36,7 +36,7 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
-| `thread`, `decide`, `plan`, `history` | the panel's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's panel, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-panel) |
+| `thread`, `decide`, `plan`, `history` | the panel's own: start, guide, stop and remove threads; answer what a thread asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's panel, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-panel) |
 | `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a panel and its threads are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
@@ -131,7 +131,9 @@ activity ID at once.
 
 - `mode` is `lean` by default (read and run, no file-editing tools); `full`
   adds the editing tools and lets the child delegate in turn. A child never
-  gets a tool its parent has switched off.
+  gets a tool its parent has switched off. In a session with no command
+  tool, such as a panel, a lean child only reads, so starting one needs no
+  approval.
 - `model` picks the child's route; without it the child runs on the
   parent's.
 - `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for

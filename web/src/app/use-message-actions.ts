@@ -28,7 +28,7 @@ import type { SnapshotStore } from "../state/snapshot-store.ts";
 import { transcriptBlocks } from "./chat-page.tsx";
 
 // What a message's controls do: retry, continue, branch, recall or insert
-// guidance, and open what a row links to; a panel's chat adds its team.
+// guidance, and open what a row links to.
 // Every row reads them through one context value, so they stay the same
 // functions and read the latest state through a ref.
 export function useMessageActions({
@@ -41,8 +41,6 @@ export function useMessageActions({
   session,
   deliver,
   busy,
-  showContext,
-  threads,
   setOutgoing,
   patchOutgoing,
   updateDraft,
@@ -63,9 +61,6 @@ export function useMessageActions({
   session?: Session;
   deliver: (id: string, sent: Draft) => Promise<void>;
   busy: boolean;
-  showContext: (item?: Session) => void;
-  // The other conversations of the open one's folder.
-  threads: Session[];
   setOutgoing: (update: StateUpdater<Outgoing[]>) => void;
   patchOutgoing: (requestId: string, patch: Partial<Outgoing>) => void;
   updateDraft: (id: string, change: (draft: Draft) => Draft) => void;
@@ -73,14 +68,6 @@ export function useMessageActions({
   setInspector: (target: InspectorTarget | null) => void;
   setModal: (modal: AppModal | null) => void;
 }) {
-  // A panel's chat names who of them wrote what and shows each one's
-  // prompt.
-  const teamNames =
-    session?.kind === "panel"
-      ? [session.member, ...threads.map((item) => item.member)]
-          .filter(Boolean)
-          .join(" ")
-      : "";
   const latest = useLatest({
     online,
     selected,
@@ -91,8 +78,6 @@ export function useMessageActions({
     session,
     deliver,
     busy,
-    showContext,
-    threads,
   });
   // A failed message sends again as a new request; Continue resumes a
   // stopped turn. Both leave the composer's draft alone.
@@ -199,7 +184,7 @@ export function useMessageActions({
     },
     [patchOutgoing],
   );
-  const messageActions = useMemo(
+  return useMemo(
     () => ({
       report,
       recall: recallGuidance,
@@ -237,24 +222,5 @@ export function useMessageActions({
       setInspector,
       setModal,
     ],
-  );
-  return useMemo(
-    () =>
-      teamNames
-        ? {
-            ...messageActions,
-            team: latest.current.threads.filter((item) => item.member),
-            moderator: latest.current.session?.member || "Moderator",
-            prompt: (member?: string) =>
-              latest.current.showContext(
-                member
-                  ? latest.current.threads.find(
-                      (item) => item.member === member,
-                    )
-                  : undefined,
-              ),
-          }
-        : messageActions,
-    [messageActions, teamNames],
   );
 }

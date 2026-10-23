@@ -344,8 +344,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     last_progress = now;
   };
   api_.observe_progress(json::object(), 0);
-  // A chat participant's pass or wait never shows, not even as it arrives.
-  if (ChatParticipant()) api_.unsaid = kSilentAnswers;
   ChatResult result =
       api_.Chat(messages, schemas, turn_budget, session_id_, estimated_bytes);
   api_.observe_progress = {};
@@ -678,12 +676,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 
 std::string Agent::PromptBase() const {
   const bool panel = JsonValue(session_role_, "kind", "") == kSessionKindPanel;
-  json member = ChatMember(ThreadRole(session_role_));
-  // It is called what its session is: renamed, it reads its new name.
-  if (!member.empty()) member["name"] = session_title_;
-  return ApplyPromptOverlay(!member.empty() ? MemberPromptBase(member)
-                            : panel         ? PanelPromptBase()
-                                            : SystemPromptBase(),
+  return ApplyPromptOverlay(panel ? PanelPromptBase() : SystemPromptBase(),
                             PromptOverlay(nullptr), nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }

@@ -8,6 +8,7 @@
 #include <ctime>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,7 +16,6 @@
 #include <vector>
 
 #include "include/agent/session_role.h"
-#include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
@@ -40,8 +40,6 @@ using panel::Unavailable;
 
 namespace {
 constexpr size_t kBoardBytes = 4096;
-// How long a member's runtime may take to start on the mail that wakes it.
-constexpr int64_t kStartingMs = int64_t{30} * 1000;
 
 // "saved" without a runtime; else what its runtime said when it answered:
 // waiting on a person, working a turn, or idle. A decision still with the
@@ -203,14 +201,25 @@ Tool PlanTool(const std::string& folder) {
   return tool;
 }
 
-// The plan's steps as the panel reads them each turn: id, status, title and
-// the result it kept.
-std::string PlanSteps(const json& steps) {
+// The plan's steps as the panel reads them each turn: id, status, title, how
+// many of its subagents worked for each, and the result it kept.
+std::string PlanSteps(const std::string& folder, const json& steps) {
+  const std::string panel = PanelId(folder);
+  std::map<std::string, int> agents;
+  for (const SessionInfo& child : ListSessions(SessionScope::kChildren)) {
+    if (JsonValue(child.delegation, "parent", "") == panel) {
+      ++agents[JsonValue(child.delegation, "step", "")];
+    }
+  }
   std::string text;
   for (const json& step : steps) {
-    text += "- " + JsonValue(step, "id", "") + " [" +
-            JsonValue(step, "status", "open") + "] " +
-            JsonValue(step, "title", "") + "\n";
+    const std::string id = JsonValue(step, "id", "");
+    text += "- " + id + " [" + JsonValue(step, "status", "open") + "] " +
+            JsonValue(step, "title", "");
+    if (const auto found = agents.find(id); found != agents.end()) {
+      text += " · " + std::to_string(found->second) + " subagents";
+    }
+    text += "\n";
     const std::string result = JsonValue(step, "result", "");
     if (!result.empty()) text += "  result: " + result + "\n";
   }
@@ -309,9 +318,7 @@ std::string PanelBoard(const std::string& folder) {
   for (const SessionInfo& info : sessions) {
     std::string line =
         SessionIdFor(info.path) + " " + LiveStatus(info) + " · " +
-        (!ChatMember(info.thread).empty()  ? "member "
-         : info.kind == kSessionKindThread ? "↳ "
-                                           : "") +
+        (info.kind == kSessionKindThread ? "↳ " : "") +
         (JsonValue(info.thread, "step", "").empty()
              ? ""
              : "step " + JsonValue(info.thread, "step", "") + " · ") +
@@ -355,7 +362,7 @@ std::string PanelContext(const std::string& folder) {
   }
   if (const json* steps = JsonArray(pinned, "steps");
       steps && !steps->empty()) {
-    context += "\n## plan\n" + PlanSteps(*steps);
+    context += "\n## plan\n" + PlanSteps(folder, *steps);
   }
   return context + "\n## board\n" + PanelBoard(folder);
 }
@@ -391,22 +398,6 @@ std::string PanelPause(const std::string& folder) {
 }
 
 namespace {
-// Whether `member` was woken moments ago, and its runtime may still be
-// starting on it. Mail that only informs it starts nothing.
-bool JustWoken(const SessionInfo& member) {
-  const int64_t now = NowMillis();
-  return std::ranges::any_of(PendingMail(MailboxIdFor(member.path)),
-                             [&](const Mail& mail) {
-                               return !JsonValue(mail.body, "quiet", false) &&
-                                      now - mail.created_ms < kStartingMs;
-                             });
-}
-
-// Each takes a status LiveStatus read once: a probe opens a socket.
-bool AnswerAhead(const SessionInfo& member, const std::string& status) {
-  return status != "needs you" && (status != "saved" || JustWoken(member));
-}
-
 // One just started is idle until its brief arrives: it has work ahead as
 // long as its runtime is up and it has finished no turn.
 bool WorkAhead(const SessionInfo& info, const std::string& status) {
@@ -426,46 +417,19 @@ bool ReportsWaiting(const std::string& box,
 }
 }  // namespace
 
-bool AnswerAhead(const SessionInfo& member) {
-  return AnswerAhead(member, LiveStatus(member));
-}
-
 bool ThreadsOwe(const std::string& folder) {
   // Looked at in the order the work moves, so nothing slips between two
   // looks: a thread mails its report before it shows idle, and the mail is
   // taken before it is acknowledged.
   const std::vector<SessionInfo> threads = OwnThreads(folder);
-  const std::set<std::string> typing = ChatTyping(folder);
-  // The chat has woken the panel itself, which has not answered yet.
-  if (typing.contains(kChatPanel)) return true;
-  if (std::ranges::any_of(threads, [&](const SessionInfo& info) {
-        const std::string status = LiveStatus(info);
-        // A chat member woken and not yet heard from counts too.
-        return WorkAhead(info, status) ||
-               (typing.contains(MailboxIdFor(info.path)) &&
-                AnswerAhead(info, status));
+  if (std::ranges::any_of(threads, [](const SessionInfo& info) {
+        return WorkAhead(info, LiveStatus(info));
       })) {
     return true;
   }
   // Mail from anyone else may never be taken, and is not waited for.
   const std::string box = MailboxIdFor(PanelPath(folder));
   return ReportsWaiting(box, threads) || MailTaken(box);
-}
-
-bool ThreadsWorking(const std::string& folder) {
-  const std::vector<SessionInfo> threads = OwnThreads(folder);
-  // A member counts by what its runtime does, not by the chat's own count:
-  // one woken while it was still answering starts its next turn after the
-  // answer the chat counted.
-  return std::ranges::any_of(threads,
-                             [](const SessionInfo& info) {
-                               const std::string status = LiveStatus(info);
-                               return ChatMember(info.thread).empty()
-                                          ? WorkAhead(info, status)
-                                          : status == "working" ||
-                                                JustWoken(info);
-                             }) ||
-         ReportsWaiting(MailboxIdFor(PanelPath(folder)), threads);
 }
 
 void AddPanelTools(std::vector<Tool>& tools, const std::string& folder,

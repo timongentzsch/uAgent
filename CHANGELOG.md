@@ -4,6 +4,12 @@
 
 ### Upgrade notes
 
+- **The panel's chat with members is gone.** A panel no longer adds members
+  or holds a group discussion: its moderator asks read-only subagents its
+  questions, in parallel, and keeps a plan of the steps. `add_member`,
+  `panel.chatTurns` (`UAGENT_PANEL_CHAT_TURNS`) and the "Name, …" addressing
+  are removed. Existing members open as ordinary threads; their earlier chat
+  messages show as events.
 - **Names and formats from v1.4 and earlier are no longer read.** Before
   upgrading from v1.4, rename a panel's `COORDINATOR.md` to `PANEL.md` (it
   is otherwise ignored) and set `sandbox.level` instead of `sandbox.enabled`
@@ -33,6 +39,13 @@
 
 ### Changes
 
+- A panel works like a research lead. Its moderator has `subagent`,
+  `web_search` and `web_fetch`: it fans a question out to subagents in one
+  batch, each answering in a schema and tagged with its plan step, can have
+  others refute what they found, and records each step's result in the
+  plan, which now counts the subagents of each step. A panel's subagents get
+  only the panel's tools, so they read and change nothing, and starting one
+  needs no approval.
 - The panel keeps a plan: its `state` tool is now `plan`, which adds steps
   (id, title, status and a short result) to goals, decisions and open
   questions. The moderator sees the steps every turn, so a restarted panel

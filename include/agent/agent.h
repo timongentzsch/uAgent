@@ -202,34 +202,12 @@ class Agent {
   bool DeliverMail(bool hold = false);
   // The same, taken as a turn: an idle session starts one on it, a working
   // one reads it at its next step.
-  void Arrive(const std::string& text, json re = json(),
-              const std::string& author = "", const std::string& mail = "",
-              const std::string& sender = "");
-  // What the message this session last took a turn on came with.
-  const json& ChatRe() const { return chat_re_; }
+  void Arrive(const std::string& text, const std::string& mail = "");
   // The person's message, or with an `origin` another's (Arrive), written
   // into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id,
            const json& origin = nullptr) {
     PushUserInput(text, false, json(), request_id, origin);
-  }
-  // Whether this session is one of a chat's participants: its panel, or
-  // a member. And whether its last answer was only to pass or to wait.
-  bool ChatParticipant() const {
-    return static_cast<bool>(chat_said_) ||
-           !ChatMember(ThreadRole(session_role_)).empty();
-  }
-  bool SilentTurn() const {
-    return ChatParticipant() &&
-           SilentAnswer(Trim(conversation_.LastAssistantText()));
-  }
-  // A panel's chat (app/chat.h): `said` hears what a person writes
-  // here, `heard` is handed each message from another session before it is
-  // delivered and may rewrite it.
-  void SetChat(std::function<json(const std::string&)> said,
-               std::function<void(Mail&)> heard) {
-    chat_said_ = std::move(said);
-    chat_heard_ = std::move(heard);
   }
 
   // The session's undo (EditJournal), kept in `directory`; unset, nothing is
@@ -494,9 +472,6 @@ class Agent {
   // as delivered, and acknowledged, once its text is there: until then a
   // restart receives it again.
   std::vector<std::string> arriving_mail_;
-  json chat_re_;
-  std::function<json(const std::string&)> chat_said_;
-  std::function<void(Mail&)> chat_heard_;
   json delivered_mail_ = json::array();
   EditJournal edits_;
   uint64_t view_epoch_ = 0;

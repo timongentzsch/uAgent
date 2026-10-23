@@ -52,7 +52,7 @@ std::string PanelPause(const std::string& folder);
 // edit workspace files or run commands, whatever the capability setting allows.
 inline constexpr const char* kPanelTools[] = {
     "read_path", "grep",   "memory", "skill", "uagent",  "history",
-    "thread",    "decide", "state",  "ask",   "browser", "artifact"};
+    "thread",    "decide", "plan",   "ask",   "browser", "artifact"};
 
 // Everything a member of the panel's chat may use: it reads and
 // searches to check what it says, and changes nothing.

@@ -177,7 +177,7 @@ std::vector<Tool> BuildTools(AppContext& context,
       if (const json* names = JsonArray(origin, "tools")) {
         side_panel_tools = std::ranges::any_of(*names, [](const json& name) {
           return name == "thread" || name == "history" || name == "decide" ||
-                 name == "state";
+                 name == "plan";
         });
       }
     }

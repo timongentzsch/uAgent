@@ -330,7 +330,7 @@ def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
                 body["messages"][-1],
             )
             return event({"content": "SIDE-PANEL-DONE"})
-        return tool_call("state", {"action": "show"}, call_id="side-panel-state")
+        return tool_call("plan", {"action": "show"}, call_id="side-panel-plan")
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
@@ -350,7 +350,7 @@ def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
                 ),
             )
             assert_true(
-                {"state", "decide", "history", "artifact"} <= offered[0]
+                {"plan", "decide", "history", "artifact"} <= offered[0]
                 and "thread" not in offered[0],
                 offered,
             )

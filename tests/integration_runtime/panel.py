@@ -53,7 +53,7 @@ PANEL_TOOLS = {
     "thread",
     "decide",
     "ask",
-    "state",
+    "plan",
     "browser",
     "artifact",
 }
@@ -184,6 +184,28 @@ def test_panel_answers_headless_and_lists_the_board(root, home, *, binary):
         assert_true(len(server.requests[-1][1]["messages"]) >= 4, server.requests[-1])
     code, output = run_pty(root, env, [(b"/board\n", b"fix-lexer"), b"/q\n"], binary=binary)
     assert_true(code == 0, output)
+
+
+def test_a_thread_started_for_a_step_shows_it_on_the_board(root, home, *, binary):
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Objective: tag it" in text:
+            return event({"content": "tagged"})
+        if "[thread event" in text:
+            return event({"content": "ack"})
+        if not tool_results(body["messages"]):
+            return tool_call("thread", _spawn("Tag", "tag it") | {"step": "s1"})
+        return event({"content": "spawned"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        boards = [
+            json.dumps(body["messages"], ensure_ascii=False)
+            for _, body in server.requests
+            if "## board" in json.dumps(body["messages"])
+        ]
+        assert_true(any("step s1 · Tag" in board for board in boards), boards[-1][-600:])
 
 
 def test_a_headless_panel_says_why_it_has_no_answer(root, home, *, binary):
@@ -1074,7 +1096,17 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
     instructions.write_text("Prefer small threads.")
     with Server(
         [
-            tool_call("state", {"action": "set", "block": "goals", "text": "ship v1"}),
+            tool_call("plan", {"action": "set", "block": "goals", "text": "ship v1"}),
+            tool_call(
+                "plan",
+                {"action": "step", "id": "s1", "title": "Tag it", "status": "done"},
+                call_id="call-3",
+            ),
+            tool_call(
+                "plan",
+                {"action": "step", "id": "s1", "result": "tagged v1"},
+                call_id="call-4",
+            ),
             tool_call(
                 "uagent",
                 {
@@ -1104,6 +1136,7 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
         assert_true("Prefer small threads." in system, system[-300:])
         context = json.dumps(messages)
         assert_true("## goals\\nship v1" in context and "## board" in context, context[-800:])
+        assert_true("## plan\\n- s1 [done] Tag it\\n  result: tagged v1" in context, context[-800:])
         # Rebuilt per request, never stored: rewriting stored history would
         # move display rows and spoil the provider's cached prefix.
         stored = _coordinator(home)

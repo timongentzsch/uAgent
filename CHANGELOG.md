@@ -33,6 +33,10 @@
 
 ### Changes
 
+- The panel keeps a plan: its `state` tool is now `plan`, which adds steps
+  (id, title, status and a short result) to goals, decisions and open
+  questions. The moderator sees the steps every turn, so a restarted panel
+  knows what is done; a thread started with `step` shows it on the board.
 - `subagent` takes a `schema`, and the child answers with JSON of that
   shape: an answer that is not valid JSON or misses the schema is sent back
   with the reason, twice at most. `step` records which plan step a child

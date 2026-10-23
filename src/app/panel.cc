@@ -93,66 +93,128 @@ std::string WritePinned(const std::string& folder, const json& pinned) {
   return WritePanelFile(folder, ".pinned", pinned);
 }
 
-ToolResult State(const std::string& folder, const json& a) {
+constexpr size_t kPlanSteps = 24;
+
+// Adds the step `a` names, or updates it: given fields replace, the others
+// stay.
+ToolResult SetStep(const std::string& folder, json& pinned, const json& a) {
+  const std::string id = JsonValue(a, "id", "");
+  if (id.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments, "step requires id");
+  }
+  json steps = JsonValue(pinned, "steps", json::array());
+  auto found = std::find_if(steps.begin(), steps.end(), [&](const json& step) {
+    return JsonValue(step, "id", "") == id;
+  });
+  if (found == steps.end()) {
+    if (JsonValue(a, "title", "").empty()) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "a new step requires title");
+    }
+    if (steps.size() >= kPlanSteps) {
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "the plan holds " + std::to_string(kPlanSteps) +
+                             " steps; clear block=steps for a new plan");
+    }
+    steps.push_back({{"id", id}, {"status", "open"}});
+    found = steps.end() - 1;
+  }
+  for (const char* field : {"title", "status", "result"}) {
+    std::string given = JsonValue(a, field, "");
+    if (!given.empty()) (*found)[field] = std::move(given);
+  }
+  pinned["steps"] = std::move(steps);
+  if (std::string error = WritePinned(folder, pinned); !error.empty()) {
+    return Unavailable(error);
+  }
+  return ToolSuccess("step " + id + " updated");
+}
+
+ToolResult Plan(const std::string& folder, const json& a) {
   const std::string action = JsonValue(a, "action", "");
+  json pinned = ReadPinned(folder);
   if (action == "show") {
-    json pinned = ReadPinned(folder);
     pinned.erase("spend");
     return ToolSuccess(JsonDump(pinned, 1));
   }
+  if (action == "step") return SetStep(folder, pinned, a);
   const std::string block = JsonValue(a, "block", "");
-  if (std::find(std::begin(kPinnedBlocks), std::end(kPinnedBlocks), block) ==
-      std::end(kPinnedBlocks)) {
+  if (block == "steps" && action == "clear") {
+    pinned.erase("steps");
+  } else if (std::find(std::begin(kPinnedBlocks), std::end(kPinnedBlocks),
+                       block) == std::end(kPinnedBlocks)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "block is goals, decisions or open_questions");
-  }
-  json pinned = ReadPinned(folder);
-  std::string value = JsonValue(pinned, block.c_str(), "");
-  const std::string text = JsonValue(a, "text", "");
-  if (action == "set") {
-    value = text;
-  } else if (action == "append") {
-    value += (value.empty() ? "" : "\n") + text;
-  } else if (action == "clear") {
-    value.clear();
+                       "block is goals, decisions or open_questions; steps "
+                       "change with action=step and clear together");
   } else {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "unknown action " + action);
+    std::string value = JsonValue(pinned, block.c_str(), "");
+    const std::string text = JsonValue(a, "text", "");
+    if (action == "set") {
+      value = text;
+    } else if (action == "append") {
+      value += (value.empty() ? "" : "\n") + text;
+    } else if (action == "clear") {
+      value.clear();
+    } else {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "unknown action " + action);
+    }
+    if (value.size() > kPinnedBytes) {
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         block + " would exceed " +
+                             std::to_string(kPinnedBytes) +
+                             " bytes; rewrite it shorter with set");
+    }
+    pinned[block] = value;
   }
-  if (value.size() > kPinnedBytes) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       block + " would exceed " + std::to_string(kPinnedBytes) +
-                           " bytes; rewrite it shorter with set");
-  }
-  pinned[block] = value;
   if (std::string error = WritePinned(folder, pinned); !error.empty()) {
     return Unavailable(error);
   }
   return ToolSuccess(block + " updated");
 }
 
-Tool StateTool(const std::string& folder) {
+Tool PlanTool(const std::string& folder) {
   Tool tool = MakeTool(
-      "state",
-      "Your pinned notes, shown to you every turn: goals, decisions and "
-      "open_questions (2 KiB each). set replaces a block, append adds a line, "
-      "clear empties it, show prints all. Keep them current and short; "
-      "lessons about the user belong in memory, and your standing "
-      "instructions are PANEL.md, changed through uagent "
-      "set_instructions.",
+      "plan",
+      "Your plan, shown to you every turn: goals, decisions, open_questions "
+      "(2 KiB each) and steps. set replaces a block, append adds a line, "
+      "clear empties it, show prints all; step adds or updates one step by "
+      "id, with a short result once it ends. Give a step's id to the "
+      "threads that work for it. Lessons about the user go to memory; your "
+      "standing instructions are PANEL.md (uagent set_instructions).",
       json::parse(R"json({"type":"object","properties":{
-        "action":{"type":"string","enum":["show","set","append","clear"]},
-        "block":{"type":"string","enum":["goals","decisions","open_questions"]},
-        "text":{"type":"string"}},
+        "action":{"type":"string","enum":["show","set","append","clear","step"]},
+        "block":{"type":"string","enum":["goals","decisions","open_questions","steps"]},
+        "text":{"type":"string"},
+        "id":{"type":"string","maxLength":64},
+        "title":{"type":"string","maxLength":160},
+        "status":{"type":"string","enum":["open","running","done","failed"]},
+        "result":{"type":"string","maxLength":1024}},
         "required":["action"]})json"),
-      [folder](const json& a, const ToolContext&) { return State(folder, a); });
+      [folder](const json& a, const ToolContext&) { return Plan(folder, a); });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.summary = [](const json& a) {
-    return JsonValue(a, "action", "") + " " + JsonValue(a, "block", "");
+    const std::string action = JsonValue(a, "action", "");
+    return action + " " +
+           JsonValue(a, action == "step" ? "id" : "block", std::string());
   };
-  tool.header = Verbs("Updating notes", "Updated notes");
+  tool.header = Verbs("Updating the plan", "Updated the plan");
   return tool;
+}
+
+// The plan's steps as the panel reads them each turn: id, status, title and
+// the result it kept.
+std::string PlanSteps(const json& steps) {
+  std::string text;
+  for (const json& step : steps) {
+    text += "- " + JsonValue(step, "id", "") + " [" +
+            JsonValue(step, "status", "open") + "] " +
+            JsonValue(step, "title", "") + "\n";
+    const std::string result = JsonValue(step, "result", "");
+    if (!result.empty()) text += "  result: " + result + "\n";
+  }
+  return text;
 }
 }  // namespace
 
@@ -250,6 +312,9 @@ std::string PanelBoard(const std::string& folder) {
         (!ChatMember(info.thread).empty()  ? "member "
          : info.kind == kSessionKindThread ? "↳ "
                                            : "") +
+        (JsonValue(info.thread, "step", "").empty()
+             ? ""
+             : "step " + JsonValue(info.thread, "step", "") + " · ") +
         OneLine(info.title) + " · " + std::to_string(info.turns) + " turns · " +
         Age(info.mtime) + (LaunchWorktree(info.cwd) ? " · " + info.cwd : "") +
         "\n";
@@ -287,6 +352,10 @@ std::string PanelContext(const std::string& folder) {
     if (!value.empty()) {
       context += "\n## " + std::string(block) + "\n" + value + "\n";
     }
+  }
+  if (const json* steps = JsonArray(pinned, "steps");
+      steps && !steps->empty()) {
+    context += "\n## plan\n" + PlanSteps(*steps);
   }
   return context + "\n## board\n" + PanelBoard(folder);
 }
@@ -404,7 +473,7 @@ void AddPanelTools(std::vector<Tool>& tools, const std::string& folder,
   tools.push_back(HistoryTool(folder));
   tools.push_back(ThreadTool(folder, std::move(own_model)));
   tools.push_back(DecideTool(folder));
-  tools.push_back(StateTool(folder));
+  tools.push_back(PlanTool(folder));
   // The panel keeps what it learns about you without being asked and
   // says so in its answer; forgetting still waits for you.
   for (Tool& tool : tools) {

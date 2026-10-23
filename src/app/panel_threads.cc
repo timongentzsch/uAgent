@@ -126,6 +126,9 @@ ToolResult Spawn(const std::string& folder, const json& a,
                  {"folder", folder},
                  {"day", Today()},
                  {"ceiling", {{"budget_usd", budget}}}};
+  if (std::string step = JsonValue(a, "step", ""); !step.empty()) {
+    thread["step"] = std::move(step);
+  }
   if (member) {
     thread["member"] = {{"persona", objective},
                         {"skills", JsonValue(a, "skills", "")}};
@@ -264,7 +267,8 @@ Tool ThreadTool(const std::string& folder,
       "thread",
       "Delegate work to threads: ordinary sessions that edit and run code "
       "for you. spawn starts one on a brief (title, objective, output, "
-      "done_when, boundaries; environment worktree or local). message "
+      "done_when, boundaries; environment worktree or local; step, the plan "
+      "step it works for). message "
       "guides a running session in this folder, or restarts your own "
       "thread (session_id, text; three restarts in a row at most, then ask "
       "the user); stop interrupts its turn; close ends its runtime; diff shows "
@@ -285,6 +289,7 @@ Tool ThreadTool(const std::string& folder,
         "boundaries":{"type":"string"},
         "environment":{"type":"string","enum":["worktree","local"]},
         "model":{"type":"string"},
+        "step":{"type":"string","maxLength":64},
         "text":{"type":"string"},
         "name":{"type":"string"},
         "persona":{"type":"string"},

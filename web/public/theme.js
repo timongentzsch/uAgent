@@ -24,6 +24,13 @@
           `${panes[name]}rem`,
         );
   } catch {}
+  // An installed app rests on the layout viewport (trackViewport): set it
+  // before the first paint, so the frame does not move when that runs.
+  if (matchMedia("(display-mode: standalone)").matches) {
+    const root = document.documentElement;
+    root.style.setProperty("--viewport-width", `${root.clientWidth}px`);
+    root.style.setProperty("--viewport-height", `${root.clientHeight}px`);
+  }
   document.documentElement.dataset.theme = t;
   document.documentElement.style.setProperty("--zoom", String(z / 100));
   document.documentElement.style.setProperty(

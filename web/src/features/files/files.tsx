@@ -5,7 +5,13 @@ import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { api, routes } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
-import { Button, IconButton, LoadError, Spinner } from "../../shared/ui.tsx";
+import {
+  Button,
+  IconButton,
+  LoadError,
+  Placeholder,
+  Spinner,
+} from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy } from "../../shared/fuzzy.ts";
@@ -32,6 +38,15 @@ interface FileText {
 const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const MARKDOWN = /\.(md|markdown)$/i;
 // Search results shown at once; typing more narrows them.
+// A folder as it is drawn before its entries arrive (see <Placeholder>).
+const SAMPLE_LISTING: Listing = {
+  entries: [
+    { name: "src", dir: true, size: 0 },
+    { name: "tests", dir: true, size: 0 },
+    { name: "README.md", dir: false, size: 0 },
+  ],
+  more: false,
+};
 const SHOWN = 50;
 // Typing pauses this long before the folder is searched.
 const SEARCH_DELAY_MS = 150;
@@ -265,37 +280,37 @@ export default function Files({
               </div>
               {listing.error ? (
                 <LoadError error={listing.error} retry={listing.retry} />
-              ) : !listing.value ? (
-                <Spinner label="Loading files…" />
               ) : (
-                <ul class="files-entries">
-                  {listing.value.entries.map((entry) => {
-                    const path = join(dir, entry.name);
-                    return (
-                      <li key={entry.name}>
-                        <Button
-                          variant="quiet"
-                          aria-current={path === file ? "true" : undefined}
-                          onClick={() =>
-                            entry.dir ? browse(path) : open(path)
-                          }
-                        >
-                          {entry.dir ? (
-                            <Folder />
-                          ) : IMAGE.test(entry.name) ? (
-                            <Image />
-                          ) : (
-                            <File />
-                          )}
-                          <span class="files-name">{entry.name}</span>
-                        </Button>
-                      </li>
-                    );
-                  })}
-                  {!listing.value.entries.length && (
-                    <li class="files-note">This folder is empty.</li>
-                  )}
-                </ul>
+                <Placeholder label="Loading files…" when={!listing.value}>
+                  <ul class="files-entries">
+                    {(listing.value ?? SAMPLE_LISTING).entries.map((entry) => {
+                      const path = join(dir, entry.name);
+                      return (
+                        <li key={entry.name}>
+                          <Button
+                            variant="quiet"
+                            aria-current={path === file ? "true" : undefined}
+                            onClick={() =>
+                              entry.dir ? browse(path) : open(path)
+                            }
+                          >
+                            {entry.dir ? (
+                              <Folder />
+                            ) : IMAGE.test(entry.name) ? (
+                              <Image />
+                            ) : (
+                              <File />
+                            )}
+                            <span class="files-name">{entry.name}</span>
+                          </Button>
+                        </li>
+                      );
+                    })}
+                    {listing.value && !listing.value.entries.length && (
+                      <li class="files-note">This folder is empty.</li>
+                    )}
+                  </ul>
+                </Placeholder>
               )}
               {listing.value?.more && (
                 <p class="files-note">

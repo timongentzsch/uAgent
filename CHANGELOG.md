@@ -33,6 +33,15 @@
 
 ### Changes
 
+- Web: a reload looks like the app, not a page loading. Its frame (header,
+  and the sidebar in a wide window) paints before any script runs, about
+  half as soon as the first frame came before; the page it showed, Library
+  and Scheduled included, comes back drawn from samples; and the open
+  conversation is asked for together with the list instead of after it. A
+  host that cannot be reached keeps the app on screen while it is tried
+  again, where it showed the pairing form. Scheduled and the files list draw
+  their rows from samples while they load, and no spinner shows for a load
+  that finishes within 150 ms.
 - The terminal draws a tool row from the transcript row the web shows, live
   and on resume alike: a resumed command keeps its last output lines, a long
   result shows its start and end, result rows lose the `[2]` batch ordinal,

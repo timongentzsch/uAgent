@@ -169,6 +169,12 @@ kill it. Keep the service's normal kill policy; Close owns session shutdown.
 
 When the connection drops or the page reloads:
 
+- A reload paints the app's frame before any script runs, then the page it
+  showed (a conversation, Library or Scheduled) drawn from samples, and the
+  conversation fills it in place. The conversation is asked for together
+  with the conversation list.
+- A host that cannot be reached keeps the app on screen and says so while it
+  tries again; only a host that refuses this device shows the pairing form.
 - The status line shows "Reconnecting…". The conversation resumes where it
   was, and controls stay disabled until the browser has caught up.
 - A sent message shows as pending until the runtime accepts it. Reconnecting
@@ -350,8 +356,9 @@ that replaces the draft image it was drawn on.
 
 The app needs a connection to the host: transcripts and history are not
 stored in the browser, and commands are disabled while disconnected. The
-browser keeps only unsent drafts and the last conversation list (titles and
-folders). Signing out or a revoked device clears local UI state.
+browser keeps only unsent drafts, the last conversation list (titles,
+folders and workspace names) and, per tab, the page it showed. Signing out
+or a revoked device clears local UI state.
 
 ## Security model
 

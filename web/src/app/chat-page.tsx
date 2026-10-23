@@ -14,23 +14,14 @@ import { queuedGuidance } from "../shared/message-view.ts";
 import { useCallback, useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import {
-  Welcome,
-  Deferred,
-  Placeholder,
-  Button,
-  Actions,
-} from "../shared/ui.tsx";
+import { Welcome, Deferred, Button, Actions } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board from "../features/panel/board.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
 import { usePhone } from "../shared/layout.ts";
 import WaitingList from "../shared/escalations.tsx";
-import Chat, {
-  TranscriptPlaceholder,
-  prepareHistoryBlocks,
-} from "../features/chat/chat.tsx";
+import Chat, { prepareHistoryBlocks } from "../features/chat/chat.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
@@ -224,8 +215,11 @@ export default function ChatPage({
       ? stop.reason
       : undefined;
   // A panel's board, escalations and chat read the same threads.
-  // The conversation's composer; before the session is known, the same
-  // composer drawn from a sample (see <Placeholder>).
+  // A conversation opened by its link before the list names it is drawn the
+  // same way: its transcript from samples until it loads, its composer inert
+  // until the page is online.
+  const shown =
+    session ?? (opening ? { id: selected, generation: "placeholder" } : null);
   const composerFor = (item: Session) => (
     <Composer
       key={item.id}
@@ -249,7 +243,7 @@ export default function ChatPage({
       members={members}
     />
   );
-  return session ? (
+  return shown ? (
     <SideLayout
       pane={
         files
@@ -287,7 +281,7 @@ export default function ChatPage({
             snapshot={snapshot}
             loadError={loadError}
             blocks={blocks}
-            session={session}
+            session={shown}
             older={older}
           />
         </MessageActions.Provider>
@@ -305,26 +299,13 @@ export default function ChatPage({
       {threads && (
         <WaitingList
           sessions={catalogue.sessions}
-          folder={session.cwd || ""}
+          folder={shown.cwd || ""}
           paused={snapshot?.state?.paused}
           choose={choose}
         />
       )}
-      {composerFor(session)}
+      {composerFor(shown)}
     </SideLayout>
-  ) : opening ? (
-    // A reload on a conversation: its surfaces, before the
-    // catalogue names the session.
-    <>
-      <div class="transcript">
-        <div class="transcript-content dense">
-          <TranscriptPlaceholder session={{ id: selected }} />
-        </div>
-      </div>
-      <Placeholder label="Loading composer…">
-        {composerFor({ id: selected, generation: "placeholder" })}
-      </Placeholder>
-    </>
   ) : (
     <Welcome
       level={1}

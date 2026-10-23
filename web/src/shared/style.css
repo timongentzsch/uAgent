@@ -1436,6 +1436,10 @@ dialog section {
   .shell {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* The app draws no sidebar here; the frame it replaces draws none either. */
+  .boot-frame > .sidebar {
+    display: none;
+  }
   .conversation-head {
     padding-inline: var(--inset-x);
   }

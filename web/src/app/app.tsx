@@ -27,6 +27,8 @@ import { folderOf } from "../shared/display.ts";
 import { lockPageZoom, useCompact } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useLatest } from "../shared/use-latest.ts";
+import { stored, tabStorage } from "../shared/storage.ts";
+import { storageKeys } from "../shared/storage-keys.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
@@ -65,9 +67,19 @@ if (typeof history !== "undefined") history.scrollRestoration = "manual";
 // the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
 const NO_LEVELS: string[] = [];
+type Page = "chat" | "library" | "scheduled";
+// The page this tab showed, so a reload comes back to it.
+const keptPage = stored<Page>(
+  storageKeys.page,
+  "chat",
+  (value) =>
+    value === "library" || value === "scheduled" ? (value as Page) : "chat",
+  { where: tabStorage },
+);
 
 function App() {
-  const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
+  const [page, setPage] = useState<Page>(keptPage.read);
+  useEffect(() => keptPage.write(page), [page]);
   // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
@@ -625,7 +637,6 @@ function App() {
                 {overlay === "palette" ? (
                   <Deferred
                     load={paletteDialog}
-                    fallback={<Spinner label="Loading…" surface />}
                     sessions={listed}
                     commands={catalogue.commands || []}
                     choose={choose}
@@ -639,10 +650,7 @@ function App() {
                     actions={{ ...shortcutActions, palette: undefined }}
                   />
                 ) : (
-                  <Deferred
-                    load={shortcutsDialog}
-                    fallback={<Spinner label="Loading…" surface />}
-                  />
+                  <Deferred load={shortcutsDialog} />
                 )}
               </Modal>
             )}

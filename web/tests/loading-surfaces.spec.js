@@ -226,8 +226,9 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     name: "Model and effort",
     exact: true,
   });
+  // The sheet takes focus on its heading; the search waits to be chosen.
   await expect(
-    picker.getByRole("combobox", { name: "Model", exact: true }),
+    picker.getByRole("heading", { name: "Model and effort", exact: true }),
   ).toBeFocused();
   // It is a sheet at the window's right edge, not a panel beside its button.
   await expect

@@ -280,6 +280,17 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   for (size_t index = 0; index < tasks.size(); ++index) {
     if (tasks[index].execute) runnable.push_back(index);
   }
+  ToolContext context{deadline};
+  context.turn_id = turn_id_;
+  context.enabled_tools = EnabledTools();
+  context.delegations =
+      std::max<int64_t>(1, std::ranges::count_if(runnable, [&](size_t index) {
+                          return tasks[index].tool->delegates;
+                        }));
+  // A child blocks its worker for its whole run, so a batch of children
+  // gets a worker each, up to the slots children may hold at once.
+  const size_t width = static_cast<size_t>(std::max(
+      kToolConcurrency, std::min(context.delegations, kMaxDelegatedJobs)));
   if (Debug().Enabled()) {
     // Any two adjacent runnable calls that are both parallel-safe form a batch.
     bool parallel = false;
@@ -292,16 +303,9 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                                  {"calls", calls.size()},
                                  {"runnable", runnable.size()},
                                  {"parallel", parallel},
-                                 {"concurrency_limit", kToolConcurrency}});
+                                 {"concurrency_limit", width}});
   }
 
-  ToolContext context{deadline};
-  context.turn_id = turn_id_;
-  context.enabled_tools = EnabledTools();
-  context.delegations =
-      std::max<int64_t>(1, std::ranges::count_if(runnable, [&](size_t index) {
-                          return tasks[index].tool->delegates;
-                        }));
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];
@@ -315,8 +319,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
       continue;
     }
     std::atomic<size_t> next{begin};
-    size_t workers_count =
-        std::min(end - begin, static_cast<size_t>(kToolConcurrency));
+    size_t workers_count = std::min(end - begin, width);
     std::vector<std::future<void>> workers;
     workers.reserve(workers_count);
     for (size_t index = 0; index < workers_count; ++index) {

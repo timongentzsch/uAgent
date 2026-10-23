@@ -34,6 +34,8 @@ constexpr size_t kAgentDescriptionMax = 280;
 // The role rides in the session header, which is read through a bounded
 // prefix; the brief itself lives in the conversation.
 constexpr size_t kAgentDirectiveMax = 4096;
+constexpr size_t kAgentSchemaMax = 4096;
+constexpr size_t kAgentStepMax = 64;
 
 // A child is a session file in this workspace's history, named by its id.
 std::string AgentPath(const std::string& id) {
@@ -109,6 +111,7 @@ json AgentRow(const std::string& id, const json& role) {
           {"model", JsonValue(role, "route", JsonValue(role, "model", ""))},
           {"label", JsonValue(role, "label", "Subagent")},
           {"mode", JsonValue(role, "mode", "lean")},
+          {"step", JsonValue(role, "step", "")},
           {"status", "idle"}};
 }
 
@@ -318,9 +321,13 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   }
   // An empty value is one that was not given: models that fill in every
   // optional field would otherwise wipe what an earlier call had set.
-  for (const char* field : {"name", "description", "directive"}) {
+  for (const char* field : {"name", "description", "directive", "step"}) {
     std::string given = JsonValue(arguments, field, "");
     if (!given.empty()) role[field] = std::move(given);
+  }
+  if (const json* schema = JsonObject(arguments, "schema");
+      schema && !schema->empty()) {
+    role["schema"] = *schema;
   }
   const std::string name = JsonValue(role, "name", "");
   if (!name.empty() && !ValidAgentName(name)) {
@@ -335,6 +342,13 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
                        "directive is limited to " +
                            std::to_string(kAgentDirectiveMax) + " bytes");
   }
+  const std::string schema =
+      role.contains("schema") ? JsonDump(role["schema"]) : "";
+  if (schema.size() > kAgentSchemaMax) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "schema is limited to " + std::to_string(kAgentSchemaMax) + " bytes");
+  }
 
   std::string prompt = JsonValue(arguments, "prompt", "");
   if (prompt.empty()) {
@@ -344,6 +358,14 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   const std::string directive = JsonValue(role, "directive", "");
   if (!directive.empty()) {
     prompt = "[collaborator directive]\n" + directive + "\n\n" + prompt;
+  }
+  // The child's runtime holds its final answer to this schema (OwnDelegation);
+  // the brief says so up front, so the first answer can already fit.
+  if (!schema.empty()) {
+    prompt +=
+        "\n\n[answer format] Your final answer is only one JSON value "
+        "matching this JSON Schema, with no other text:\n" +
+        schema;
   }
   const std::string mode =
       JsonValue(arguments, "mode", JsonValue(role, "mode", "lean"));
@@ -537,6 +559,15 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"maxLength", 32},
         {"description", "reusable role, e.g. api-reviewer"}}},
+      {"step",
+       {{"type", "string"},
+        {"maxLength", kAgentStepMax},
+        {"description", "the plan step this child works for"}}},
+      {"schema",
+       {{"type", "object"},
+        {"description",
+         "JSON Schema of the child's answer; it answers with that JSON "
+         "only"}}},
       {"description",
        {{"type", "string"},
         {"maxLength", 280},

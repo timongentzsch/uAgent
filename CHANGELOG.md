@@ -33,6 +33,11 @@
 
 ### Changes
 
+- `subagent` takes a `schema`, and the child answers with JSON of that
+  shape: an answer that is not valid JSON or misses the schema is sent back
+  with the reason, twice at most. `step` records which plan step a child
+  works for, and `list` reports it. A batch of children now runs up to six
+  at once instead of four.
 - Web: a reload looks like the app, not a page loading. Its frame (header,
   and the sidebar in a wide window) paints before any script runs, about
   half as soon as the first frame came before; the page it showed, Library

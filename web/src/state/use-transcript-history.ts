@@ -132,6 +132,9 @@ export function useTranscriptHistory(
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
   const following = useRef(true);
+  // A deliberate jump wins over scroll events left by the previous gesture.
+  // Only fresh input can detach it again.
+  const jumped = useRef(false);
   const anchor = useRef<Anchor | null>(null);
   const key = useRef(sessionKey);
   const pending = useRef<string | null>(sessionKey);
@@ -352,6 +355,7 @@ export function useTranscriptHistory(
     capture();
     key.current = sessionKey;
     pending.current = sessionKey;
+    jumped.current = false;
     anchor.current = null;
     lastBlock.current = blocks.at(-1)?.id;
     setUnseen(0);
@@ -413,6 +417,7 @@ export function useTranscriptHistory(
     // One anchor pick per painted frame, however many scroll events land.
     let frame = 0;
     const wheel = (event: WheelEvent) => {
+      jumped.current = false;
       wheelAt.current = performance.now();
       // The ancestor walk reads layout; skip it once already unfollowed.
       if (event.deltaY < 0) {
@@ -420,6 +425,7 @@ export function useTranscriptHistory(
       } else if (event.deltaY > 0) resumeAtEnd();
     };
     const touchStart = (event: TouchEvent) => {
+      jumped.current = false;
       touchY = event.touches[0]?.clientY || 0;
     };
     const touchMove = (event: TouchEvent) => {
@@ -435,11 +441,21 @@ export function useTranscriptHistory(
         event.target.closest("input,textarea,[contenteditable]")
       )
         return;
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stopFollowing();
-      else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
-        resumeAtEnd();
+      const up = ["ArrowUp", "PageUp", "Home"].includes(event.key);
+      if (up || ["ArrowDown", "PageDown", "End", " "].includes(event.key)) {
+        jumped.current = false;
+        if (up) stopFollowing();
+        else resumeAtEnd();
+      }
+    };
+    const pointerDown = () => {
+      jumped.current = false;
     };
     const scroll = () => {
+      if (jumped.current && following.current) {
+        pin();
+        return;
+      }
       // Checked before any waiting compensation: the reader's downward
       // scroll into the end must win even while a wheel is still landing.
       if (box.scrollTop > lastTop.current + MOVE && resumeAtEnd()) {
@@ -475,6 +491,7 @@ export function useTranscriptHistory(
     // Capture: the wheel is recorded before anything it triggers (a layout
     // change, its mutation callbacks) can ask for compensation.
     box.addEventListener("wheel", wheel, { passive: true, capture: true });
+    box.addEventListener("pointerdown", pointerDown, { passive: true });
     box.addEventListener("touchstart", touchStart, { passive: true });
     box.addEventListener("touchmove", touchMove, { passive: true });
     box.addEventListener("keydown", keyDown);
@@ -486,6 +503,7 @@ export function useTranscriptHistory(
       readiness.disconnect();
       if (observer.current === watch) observer.current = null;
       box.removeEventListener("wheel", wheel, { capture: true });
+      box.removeEventListener("pointerdown", pointerDown);
       box.removeEventListener("touchstart", touchStart);
       box.removeEventListener("touchmove", touchMove);
       box.removeEventListener("keydown", keyDown);
@@ -495,6 +513,7 @@ export function useTranscriptHistory(
     box,
     column,
     observe,
+    pin,
     reconcile,
     restore,
     resumeAtEnd,
@@ -505,6 +524,20 @@ export function useTranscriptHistory(
 
   const jumpToLatest = useCallback(() => {
     pending.current = null;
+    jumped.current ||= !following.current;
+    if (deferred.current !== null) {
+      clearTimeout(deferred.current);
+      deferred.current = null;
+    }
+    wheelAt.current = -Infinity;
+    // Reset the native scroll container to cancel touch inertia before pinning.
+    const element = scroller.current;
+    if (element) {
+      const overflow = element.style.overflowY;
+      element.style.overflowY = "hidden";
+      void element.offsetHeight;
+      element.style.overflowY = overflow;
+    }
     setFollow(true);
     pin();
     capture();

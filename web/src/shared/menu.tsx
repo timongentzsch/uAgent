@@ -6,6 +6,7 @@ import {
   type ButtonHTMLAttributes,
   type Ref,
   type TargetedKeyboardEvent,
+  type TargetedMouseEvent,
 } from "preact";
 import {
   useCallback,
@@ -113,7 +114,15 @@ export function Menu({
     "aria-haspopup": "menu" as const,
     "aria-controls": open ? id : undefined,
     "aria-expanded": open,
-    onClick: () => (open ? close() : openAt("first")),
+    // Associate the invoker even where showPopover({ source }) is ignored:
+    // pressing it must toggle, rather than light-dismiss before our click.
+    popovertarget: id,
+    onClick: (event: TargetedMouseEvent<HTMLButtonElement>) => {
+      // Mounting and exit animations are owned here, so skip native toggle.
+      event.preventDefault();
+      if (open) close();
+      else openAt("first");
+    },
     onKeyDown: (event: TargetedKeyboardEvent<HTMLButtonElement>) => {
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       event.preventDefault();

@@ -517,10 +517,9 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  // An answer's menu is on its turn's last line, under it.
-  await page
-    .locator(".turn-footer")
-    .last()
+  // An answer owns its metadata and actions in its header.
+  await reply
+    .locator("header")
     .getByRole("button", { name: /^Actions for / })
     .click();
   const rawAction = page.getByRole("menuitem", {

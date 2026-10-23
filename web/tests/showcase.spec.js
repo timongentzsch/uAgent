@@ -458,3 +458,39 @@ for (const touch of [false, true]) {
     });
   });
 }
+
+for (const touch of [false, true]) {
+  test.describe(`menu toggle with ${touch ? "touch" : "mouse"}`, () => {
+    test.use({ hasTouch: touch, reducedMotion: "no-preference" });
+    test("pressing an expanded menu trigger closes it", async ({ page }) => {
+      // Older engines ignore showPopover's source option. The trigger must
+      // still be associated declaratively so its press is not light-dismiss.
+      await page.addInitScript(() => {
+        const show = HTMLElement.prototype.showPopover;
+        HTMLElement.prototype.showPopover = function () {
+          return show.call(this);
+        };
+      });
+      await page.goto(SHOWCASE_URL);
+      const trigger = page.getByRole("button", {
+        name: "Example menu",
+        exact: true,
+      });
+      const menu = page.getByRole("menu", {
+        name: "Example menu",
+        exact: true,
+      });
+      const activate = () => (touch ? trigger.tap() : trigger.click());
+      for (let index = 0; index < 3; index++) {
+        await page.emulateMedia({
+          reducedMotion: index === 1 ? "reduce" : "no-preference",
+        });
+        await activate();
+        await expect(menu).toBeVisible();
+        await activate();
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toHaveAttribute("aria-expanded", "false");
+      }
+    });
+  });
+}

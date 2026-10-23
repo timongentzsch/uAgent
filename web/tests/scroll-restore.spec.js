@@ -47,3 +47,59 @@ test("returning to a session restores its position unfollowed", async ({
     .poll(() => box.evaluate((element) => element.scrollTop))
     .toBeLessThan(124);
 });
+
+test.describe("phone jump to latest", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  test("a jump keeps following through residual scroll until a new gesture", async ({
+    page,
+    session,
+    request,
+  }) => {
+    const snapshot = await (
+      await request.get(`/api/sessions/${session.id}`)
+    ).json();
+    snapshot.state.view.blocks = Array.from({ length: 60 }, (_, index) => ({
+      id: `momentum-${index}`,
+      kind: index % 2 ? "assistant" : "user",
+      text:
+        `Message ${index}. ` + "Scrollable conversation content. ".repeat(8),
+      time: new Date().toISOString(),
+    }));
+    await page.route(`**/api/sessions/${session.id}`, (route) =>
+      route.fulfill({ json: snapshot }),
+    );
+    await page.goto(`/#session=${session.id}`);
+    const box = page.locator(".transcript");
+    const jump = page.getByRole("button", {
+      name: "Jump to latest",
+      exact: true,
+    });
+    await expect
+      .poll(() => box.evaluate((node) => node.scrollHeight - node.clientHeight))
+      .toBeGreaterThan(500);
+    await box.evaluate((node) => {
+      node.scrollTop = 400;
+    });
+    await expect(jump).toBeVisible();
+    await jump.tap();
+    // Momentum delivers scroll offsets without a new wheel/touch/key gesture.
+    await box.evaluate(async (node) => {
+      for (let frame = 0; frame < 10; frame++) {
+        node.scrollTop -= 35;
+        await new Promise(requestAnimationFrame);
+      }
+    });
+    await expect(jump).toHaveCount(0);
+    await expect
+      .poll(() =>
+        box.evaluate(
+          (node) => node.scrollHeight - node.clientHeight - node.scrollTop,
+        ),
+      )
+      .toBeLessThanOrEqual(2);
+    // A fresh gesture must still let the person leave the end immediately.
+    await box.hover();
+    await page.mouse.wheel(0, -300);
+    await expect(jump).toBeVisible();
+  });
+});

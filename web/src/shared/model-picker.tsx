@@ -1,5 +1,5 @@
 import type { SessionRef, State } from "./types.ts";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import { useAction } from "./use-action.ts";
 import { useResource } from "./use-resource.ts";
 import { command } from "../state/api.ts";
@@ -32,7 +32,6 @@ export default function ModelPicker({
   // The first choice is for every conversation to come.
   const [forAll, setForAll] = useState(!save && state?.route === "");
   const action = useAction();
-  const form = useRef<HTMLDivElement>(null);
   const {
     value: catalog,
     error: loadError,
@@ -70,10 +69,6 @@ export default function ModelPicker({
     },
     [session.id, session.cwd],
   );
-  useEffect(() => {
-    if (catalog)
-      form.current?.querySelector("input")?.focus({ preventScroll: true });
-  }, [catalog]);
   if (!catalog && !loadError)
     return <ModelLoading close={close} defaults={!save} />;
   const selected = catalog?.models.find((item) => item.value === model);
@@ -88,7 +83,7 @@ export default function ModelPicker({
     ]),
   ];
   return (
-    <div class="model-form" ref={form}>
+    <div class="model-form">
       {!catalog ? (
         <LoadError error={loadError} retry={retry} />
       ) : (

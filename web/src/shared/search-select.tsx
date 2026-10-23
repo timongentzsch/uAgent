@@ -33,6 +33,10 @@ export function SearchSelect({
     matches(query, option.label, option.value, option.detail),
   );
   const active = Math.min(index, shown.length - 1);
+  const search = () => {
+    setOpen(true);
+    setIndex(0);
+  };
   const pick = (option: SearchOption) => {
     change(option.value);
     setOpen(false);
@@ -66,15 +70,11 @@ export function SearchSelect({
           autocomplete="off"
           autocapitalize="off"
           spellcheck={false}
-          onFocus={(event) => event.currentTarget.select()}
-          onClick={() => {
-            setOpen(true);
-            setIndex(0);
-          }}
+          onFocus={search}
+          onClick={search}
           onInput={(event) => {
             setQuery(event.currentTarget.value);
-            setOpen(true);
-            setIndex(0);
+            search();
           }}
           onKeyDown={(event) => {
             if (event.isComposing || !plainKey(event)) return;

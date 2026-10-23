@@ -18,7 +18,16 @@
     <title>µAgent</title>
   </head>
   <body>
-    <div id="app"></div>
+    <!-- The shell before any script runs: its header and, in a wide window,
+         its sidebar, at their own sizes. The app replaces it when it mounts. -->
+    <div id="app">
+      <div class="shell boot-frame" aria-hidden="true">
+        <aside class="sidebar"></aside>
+        <main class="conversation">
+          <header class="conversation-head"></header>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/app/app.tsx"></script>
   </body>
 </html>

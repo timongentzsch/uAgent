@@ -335,6 +335,11 @@ const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name);
 std::string ToolCategory(const Tool& tool);
 std::string ToolTitle(const Tool& tool);
 
+// The first way `value` breaks `schema`, the JSON Schema subset tools use
+// (type, enum, bounds, required, properties, items); `name` labels the root.
+std::optional<ToolArgumentIssue> FindSchemaIssue(const json& schema,
+                                                 const json& value,
+                                                 const std::string& name);
 // Structured argument validation against a tool's JSON schema.
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args);

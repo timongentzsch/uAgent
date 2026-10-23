@@ -137,6 +137,12 @@ activity ID at once.
 - `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
   one child, within the session's remaining budgets; `limits.memory=false`
   withholds memory.
+- `schema` (a JSON Schema) makes the child answer with only that JSON. The
+  brief tells it the format; an answer that does not parse or fit goes back
+  to it with the reason, twice at most, after which it stands as written.
+- `step` names the plan step the child works for; `list` reports it.
+- Children started in one batch run at once, up to six; other parallel
+  calls run four at a time.
 - `followup` resumes the child's private conversation and prepends its
   stored `directive`; a new directive replaces it.
 - `message` delivers one-shot guidance at a running child's next step; a

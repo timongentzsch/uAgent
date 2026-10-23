@@ -627,6 +627,67 @@ def test_a_batch_of_children_runs_together_and_shares_the_budget(root, home, *, 
         assert_true(running.most == 2, running.most)
 
 
+def test_a_batch_of_six_children_runs_at_once(root, home, *, binary):
+    """A child holds its tool worker for its whole run, so a batch gets a
+    worker per child up to the slots children may hold, not the four other
+    parallel calls share."""
+    running = Concurrency()
+    prompts = tuple(f"child-{index}" for index in range(6))
+
+    def route(_, body):
+        messages = body["messages"]
+        if child := user_prompt(messages, prompts):
+            with running:
+                time.sleep(1)
+                return event({"content": f"{child}-result"})
+        if tool_results(messages):
+            return event({"content": "six-ok"})
+        return subagent_batch(prompts)
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "--yolo", "-p", "delegate six", timeout=8, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "six-ok", result.stdout)
+        assert_true(running.most == 6, running.most)
+
+
+def test_a_child_answer_is_held_to_the_schema_it_was_asked_for(root, home, *, binary):
+    """A child given a schema is told the format in its brief. An answer that
+    does not fit goes back to it with the reason, and the one that fits
+    reaches the parent. The plan step it works for is kept in its role."""
+    schema = {
+        "type": "object",
+        "required": ["claims"],
+        "properties": {"claims": {"type": "array"}},
+    }
+    briefs = []
+
+    def route(_, body):
+        messages = body["messages"]
+        brief = next((text for text in user_texts(messages) if text.startswith("child")), None)
+        if brief is not None:
+            briefs.append(brief)
+            said = "\n".join(str(message.get("content", "")) for message in messages)
+            if "does not match the schema: `claims` is required" in said:
+                return event({"content": '```json\n{"claims": ["fits"]}\n```'})
+            return event({"content": '{"findings": []}'})
+        if results := tool_results(messages):
+            return event({"content": results[0]})
+        return tool_call("subagent", {"prompt": "child", "step": "s1", "schema": schema})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=8, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true('{"claims": ["fits"]}' in result.stdout, result.stdout)
+        assert_true(len(briefs) == 2, briefs)
+        assert_true("[answer format]" in briefs[0] and '"claims"' in briefs[0], briefs[0])
+        [child] = child_sessions(home)
+        role = json.loads(child.read_text().split("\n", 1)[0])["delegation"]
+        assert_true(role["step"] == "s1" and role["schema"] == schema, role)
+
+
 def test_subagent_interrupt_reaps_child(root, home, *, binary):
     """A soft interrupt during the tool batch must not orphan delegation."""
     batch = tool_calls(

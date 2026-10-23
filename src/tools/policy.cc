@@ -318,10 +318,15 @@ void CanonicalizeToolArguments(const Tool& tool, json& args,
   ClampToolArguments(tool, args, clamped);
 }
 
+std::optional<ToolArgumentIssue> FindSchemaIssue(const json& schema,
+                                                 const json& value,
+                                                 const std::string& name) {
+  return InvalidSchemaValue(schema, value, name, /*root=*/true);
+}
+
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args) {
-  return InvalidSchemaValue(ToolParameters(tool), args, tool.name,
-                            /*root=*/true);
+  return FindSchemaIssue(ToolParameters(tool), args, tool.name);
 }
 
 ToolPolicy ToolPolicyFromEnvironment() {

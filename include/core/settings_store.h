@@ -5,7 +5,7 @@
 // The host's settings: one private JSON document,
 // {"format": 3, "all": {...}, "projects": {"<folder>": {...}}}. A scope names
 // each setting as the registry's `key` does and holds its value in its own
-// type: {"model": "x", "limits.maxSteps": 40, "sandbox.enabled": false}.
+// type: {"model": "x", "limits.maxSteps": 40, "sandbox.level": "off"}.
 // "variables" in a scope holds what a value may refer to as $NAME, kept and
 // never shown. The document may be edited by hand: what it holds that is no
 // setting, or no value a setting takes, is reported and otherwise left
@@ -71,10 +71,9 @@ struct AllSettings {
 // Everything saved, as the document spells it. `error` says why it is not
 // all there.
 json ExportSettings(std::string& error);
-// A document from a backup or another host, in this format or the one
-// before, as scopes. False with why it is not
-// one: unlike a document edited in place, one handed over is taken whole or not
-// at all.
+// A document from a backup or another host, in this format, as scopes. False
+// with why it is not one: unlike a document edited in place, one handed over
+// is taken whole or not at all.
 bool ParseSettings(const json& document, AllSettings& settings,
                    std::string& error);
 // Replaces everything saved; the values are the caller's to check. Returns

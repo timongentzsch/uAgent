@@ -489,11 +489,7 @@
                 "strict",
                 "default",
                 "relaxed",
-                "off",
-                "0",
-                "1",
-                "false",
-                "true"
+                "off"
               ],
               "type": "string"
             },

@@ -1387,9 +1387,8 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   write("ordinary", json::object());
   write("agent-aaaa1111",
         {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
-  // A folder lists its panel only in the host's whole view. One saved
-  // before it was called that is the panel all the same.
-  write("coordinator", {{kSessionHeaderKind, "coordinator"}});
+  // A folder lists its panel only in the host's whole view.
+  write("coordinator", {{kSessionHeaderKind, kSessionKindPanel}});
   CHECK(PanelPath(CanonicalCwd()) == (dir / "coordinator.json").string());
   auto ids = [](SessionScope scope) {
     std::vector<std::string> out;

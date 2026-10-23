@@ -147,15 +147,6 @@ bool KindFits(const ConfigDescriptor& descriptor, const json& held) {
   return false;
 }
 
-// The sandbox was a switch (sandbox.enabled) before it was a level; the
-// switch's name is renamed with the registry, its value here.
-json CurrentValue(const std::string& key, const json& written) {
-  if (key == "sandbox.enabled" && written.is_boolean()) {
-    return written.get<bool>() ? "default" : "off";
-  }
-  return written;
-}
-
 // A scope of the document as settings. With `problems`, what cannot be taken
 // is named there, each with `where` before it, and left out; without, every
 // value of a setting is taken as it stands.
@@ -165,8 +156,7 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
   const auto report = [&](std::string problem) {
     if (problems) problems->push_back(where + std::move(problem));
   };
-  for (const auto& [key, written] : scope.items()) {
-    const json held = CurrentValue(key, written);
+  for (const auto& [key, held] : scope.items()) {
     if (key == kVariables) {
       if (!held.is_object()) {
         report("variables must map names to text");
@@ -225,152 +215,6 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
   return values;
 }
 
-// The text setting `key` of a scope, when it is text that names no variable.
-const std::string* PlainText(const json& scope, const char* key) {
-  auto held = scope.find(key);
-  if (held == scope.end() || !held->is_string()) return nullptr;
-  const std::string& text = held->get_ref<const std::string&>();
-  return text.find('$') == std::string::npos ? &text : nullptr;
-}
-
-// Format 2 kept OpenRouter's settings beside the others; format 3 holds them
-// as options of that endpoint. A value that cannot move (a reference to a
-// variable, providers that are not an object) stays where it is and is
-// reported as the setting it no longer is.
-void MoveToOpenRouter(json& scope, const char* key, const char* option) {
-  const std::string* value = PlainText(scope, key);
-  if (!value) return;
-  auto providers = scope.find("providers");
-  if (providers == scope.end()) {
-    providers = scope.emplace("providers", json::object()).first;
-  }
-  if (!providers->is_object()) return;
-  json& entry = (*providers)["openrouter"];
-  if (entry.is_null()) entry = json::object();
-  if (!entry.is_object()) return;
-  json& options = entry["options"];
-  if (options.is_null()) options = json::object();
-  if (!options.is_object()) return;
-  options[option] = *value;
-  scope.erase(key);
-}
-
-// The model id an alias `provider/alias` names, where the scope defines it.
-std::string* AliasId(json& scope, const std::string& selection) {
-  const size_t slash = selection.find('/');
-  auto providers = scope.find("providers");
-  if (slash == std::string::npos || providers == scope.end() ||
-      !providers->is_object()) {
-    return nullptr;
-  }
-  auto provider = providers->find(selection.substr(0, slash));
-  if (provider == providers->end() || !provider->is_object()) return nullptr;
-  auto models = provider->find("models");
-  if (models == provider->end() || !models->is_object()) return nullptr;
-  auto spec = models->find(selection.substr(slash + 1));
-  if (spec == models->end()) return nullptr;
-  json* id = &*spec;
-  if (spec->is_object()) {
-    auto named = spec->find("id");
-    id = named == spec->end() ? nullptr : &*named;
-  }
-  return id ? id->get_ptr<std::string*>() : nullptr;
-}
-
-// A routing variant (`nitro`) is a suffix of the model id now, before its
-// effort, or of the model an alias names. With no model in the scope there is
-// nothing to attach it to, and it is dropped; with one that is a reference
-// to a variable it stays, reported.
-void FoldVariant(json& scope) {
-  const std::string* variant = PlainText(scope, "openrouter.variant");
-  const std::string* held = PlainText(scope, "model");
-  if (!variant) return;
-  if (held && !variant->empty()) {
-    std::string model = *held;
-    const size_t colon = model.rfind(':');
-    const bool effort =
-        colon != std::string::npos &&
-        std::ranges::find(kReasoningEfforts, model.substr(colon + 1)) !=
-            std::end(kReasoningEfforts);
-    const std::string suffix = ":" + *variant;
-    if (std::string* id =
-            AliasId(scope, model.substr(0, effort ? colon : model.size()))) {
-      if (id->find(suffix) == std::string::npos) *id += suffix;
-    } else if (model.find(suffix) == std::string::npos) {
-      model.insert(effort ? colon : model.size(), suffix);
-      scope["model"] = model;
-    }
-  }
-  if (held || variant->empty() || !scope.contains("model")) {
-    scope.erase("openrouter.variant");
-  }
-}
-
-void UpgradeEndpoints(json& scope) {
-  if (!scope.is_object()) return;
-  // What `"protocol": "openrouter"` of a provider declared, written out as the
-  // features of its endpoint, and what the settings above meant for it. Frozen
-  // with the format.
-  static const json kOpenRouterSupports = {
-      "search_plugin",         "provider_routing",     "session_passthrough",
-      "raw_vendor_ids",        "model_variants",       "reasoning_object",
-      "reasoning_replay_text", "prompt_cache_control", "pdf_parser",
-      "inline_usage"};
-  json gateway = {{"pdf_engine", "cloudflare-ai"}};
-  if (const std::string* engine = PlainText(scope, "pdf.engine")) {
-    gateway["pdf_engine"] = *engine;
-  }
-  if (const std::string* pin = PlainText(scope, "openrouter.provider");
-      pin && !pin->empty()) {
-    gateway["provider"] = *pin;
-  }
-  FoldVariant(scope);
-  MoveToOpenRouter(scope, "openrouter.provider", "provider");
-  MoveToOpenRouter(scope, "pdf.engine", "pdf_engine");
-  if (const std::string* backend = PlainText(scope, "webSearch.backend");
-      backend && *backend == "openrouter") {
-    scope["webSearch.backend"] = "auto";
-  }
-  auto providers = scope.find("providers");
-  if (providers == scope.end() || !providers->is_object()) return;
-  for (auto& [name, provider] : providers->items()) {
-    if (!provider.is_object() || !provider.contains("protocol")) continue;
-    if (provider["protocol"] == "openrouter") {
-      provider["supports"] = kOpenRouterSupports;
-      json& options = provider["options"];
-      if (!options.is_object()) options = json::object();
-      for (const auto& [option, value] : gateway.items()) {
-        options.emplace(option, value);
-      }
-    }
-    provider.erase("protocol");
-  }
-}
-
-// The document of the formats before this one, which earlier releases wrote,
-// as this one; false when it is not one. Format 1 (before v1.4.0) is not read.
-bool Upgrade(json& document) {
-  bool upgraded = false;
-  if (JsonValue(document, "format", 0) == 2 && JsonObject(document, "all") &&
-      JsonObject(document, "projects")) {
-    UpgradeEndpoints(document["all"]);
-    for (auto& [folder, scope] : document["projects"].items()) {
-      UpgradeEndpoints(scope);
-    }
-    document["format"] = kFormat;
-    upgraded = true;
-  }
-  // Earlier format-3 builds also held this retired setting. The decision
-  // address now belongs to the endpoint that serves it.
-  if (Valid(document)) {
-    upgraded |= document["all"].erase("approval.reviewerUrl") != 0;
-    for (auto& [folder, scope] : document["projects"].items()) {
-      upgraded |= scope.erase("approval.reviewerUrl") != 0;
-    }
-  }
-  return upgraded;
-}
-
 // The schema beside the document, kept current with this build.
 void WriteSchema() {
   const std::string path = UagentDir(kConfigDir) + "/" + kSettingsSchemaFile;
@@ -390,15 +234,6 @@ std::string Joined(const std::vector<std::string>& problems) {
 
 std::string Invalid() {
   return "the saved settings cannot be read; fix or remove " + SettingsPath();
-}
-
-// Rewrites a saved document of the format before in this one, under the
-// lock: another process may have done it since it was read.
-std::string UpgradeSaved() {
-  std::string error;
-  PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
-  if (store.Ready() && Upgrade(store.Data())) store.Save(error);
-  return error;
 }
 
 // The document and its stamp, read until both describe one version.
@@ -423,14 +258,8 @@ std::string SettingsPath() {
 SavedSettings ReadSettings(const std::string& folder) {
   SavedSettings saved;
   json document = ReadDocument(saved.stamp);
-  if (Upgrade(document)) {
-    saved.error = UpgradeSaved();
-    document = ReadDocument(saved.stamp);
-  }
   if (!Valid(document)) {
-    if (saved.error.empty() && PathExists(SettingsPath())) {
-      saved.error = Invalid();
-    }
+    if (PathExists(SettingsPath())) saved.error = Invalid();
     return saved;
   }
   std::vector<std::string> problems;
@@ -465,17 +294,15 @@ json ExportSettings(std::string& error) {
 
 bool ParseSettings(const json& document, AllSettings& settings,
                    std::string& error) {
-  json current = document;
-  Upgrade(current);
-  if (!Valid(current)) {
+  if (!Valid(document)) {
     error =
         "expected {\"format\": 3, \"all\": {setting: value}, "
         "\"projects\": {folder: {setting: value}}}";
     return false;
   }
   std::vector<std::string> problems;
-  settings.all = DecodeScope(current["all"], "", &problems);
-  for (const auto& [folder, scope] : current["projects"].items()) {
+  settings.all = DecodeScope(document["all"], "", &problems);
+  for (const auto& [folder, scope] : document["projects"].items()) {
     settings.projects[folder] = DecodeScope(scope, folder + ": ", &problems);
   }
   if (problems.empty()) return true;

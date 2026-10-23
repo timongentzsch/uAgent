@@ -4,6 +4,15 @@
 
 ### Upgrade notes
 
+- **Names and formats from v1.4 and earlier are no longer read.** Before
+  upgrading from v1.4, rename a panel's `COORDINATOR.md` to `PANEL.md` (it
+  is otherwise ignored) and set `sandbox.level` instead of `sandbox.enabled`
+  (`true` is `default`, `false` is `off`); `UAGENT_SANDBOX` takes `strict`,
+  `default`, `relaxed` or `off`, no longer `0`/`1`/`true`/`false`, and an
+  unknown value means the default level, with the sandbox on. A settings
+  file in format 2 needs one run of v1.5 first, which rewrites it. Settings
+  named `coordinator.*` or `UAGENT_COORDINATOR_*`, and conversations saved
+  as kind `coordinator`, are from v1.3 and earlier.
 - **Settings and tasks from v1.3.1 or earlier are no longer read.** A
   settings file in format 1, a conversation whose model and approval mode
   were saved before they were kept as settings, and a scheduled task saved

@@ -247,8 +247,7 @@ settle or passes them to you.
   what threads from earlier days spend today; at the limit, thread reports
   wait. A route that reports no cost cannot reach it, and the panel says so.
 - **Instructions.** Every moderator reads `PANEL.md` at start
-  ([Instructions](INSTRUCTIONS.md)). Where no `PANEL.md` exists, it reads
-  `COORDINATOR.md`, the file's former name.
+  ([Instructions](INSTRUCTIONS.md)).
 
 ### The chat
 

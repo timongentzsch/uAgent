@@ -35,13 +35,6 @@ void TestInstructionFiles() {
   const auto cwd = workspace.workspace;
   CHECK(InstructionPath(false, false, cwd).filename() == "AGENTS.md");
   CHECK(InstructionPath(true, true, cwd) == cwd / ".uagent" / "PANEL.md");
-  // The file under its name of before is the one, until a PANEL.md is.
-  fs::create_directories(cwd / ".uagent");
-  std::ofstream(cwd / ".uagent" / "COORDINATOR.md") << "old";
-  CHECK(InstructionPath(true, true, cwd).filename() == "COORDINATOR.md");
-  std::ofstream(cwd / ".uagent" / "PANEL.md") << "new";
-  CHECK(InstructionPath(true, true, cwd).filename() == "PANEL.md");
-  fs::remove_all(cwd / ".uagent");
   CHECK(WriteInstructionFile(false, true, cwd, "Run ctest.").empty());
   CHECK(WriteInstructionFile(true, false, cwd, "Keep threads small.").empty());
   struct stat info{};

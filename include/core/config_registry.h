@@ -138,9 +138,8 @@ inline constexpr std::string_view kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
-// 0 and 1 (also false and true) are the values of the switch this setting was.
-inline constexpr std::string_view kSandboxLevels[] = {
-    "strict", "default", "relaxed", "off", "0", "1", "false", "true"};
+inline constexpr std::string_view kSandboxLevels[] = {"strict", "default",
+                                                      "relaxed", "off"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
                                                         "full"};

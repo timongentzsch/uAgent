@@ -208,7 +208,7 @@ void TestConfigProposalAndCommit() {
         }).empty());
   ConfigProposal repair = PrepareConfigProposal(
       ConfigProposalScope::kUser,
-      {{"UAGENT_MAX_STEPS", "11", false}, {"UAGENT_SANDBOX", "1", false}},
+      {{"UAGENT_MAX_STEPS", "11", false}, {"UAGENT_SANDBOX", "default", false}},
       manager);
   CHECK(repair.ok);
   CHECK(CommitConfigProposal(repair, error));

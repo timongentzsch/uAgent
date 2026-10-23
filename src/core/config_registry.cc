@@ -13,37 +13,14 @@
 
 namespace uagent {
 
-namespace {
-// A setting's name from before the coordinator became the panel, or before the
-// sandbox switch became a level, as its name now: a saved file that spells it
-// the old way keeps its values.
-std::string CurrentName(std::string_view name) {
-  using Pair = std::pair<std::string_view, std::string_view>;
-  for (const auto& [old, now] :
-       {Pair{"coordinator.", "panel."},
-        Pair{"sandbox.enabled", "sandbox.level"},
-        Pair{"UAGENT_COORDINATOR_", "UAGENT_PANEL_"}}) {
-    if (name.starts_with(old)) {
-      return std::string(now) + std::string(name.substr(old.size()));
-    }
-  }
-  return std::string(name);
-}
-}  // namespace
-
 const ConfigDescriptor* FindConfigDescriptor(std::string_view name) {
-  const std::string environment = CurrentName(name);
   auto found =
-      std::find_if(std::begin(kConfigRegistry), std::end(kConfigRegistry),
-                   [&](const ConfigDescriptor& descriptor) {
-                     return descriptor.environment == environment;
-                   });
+      std::ranges::find(kConfigRegistry, name, &ConfigDescriptor::environment);
   return found == std::end(kConfigRegistry) ? nullptr : &*found;
 }
 
 const ConfigDescriptor* FindConfigKey(std::string_view name) {
-  const std::string key = CurrentName(name);
-  auto found = std::ranges::find(kConfigRegistry, key, &ConfigDescriptor::key);
+  auto found = std::ranges::find(kConfigRegistry, name, &ConfigDescriptor::key);
   return found == std::end(kConfigRegistry) ? nullptr : &*found;
 }
 

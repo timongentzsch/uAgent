@@ -159,12 +159,6 @@ std::string StateText(const SessionState& state,
          "}";
 }
 
-// What a session is, as its header says. One written before the coordinator
-// became the panel says so the old way.
-std::string StoredKind(const json& header) {
-  const std::string kind = JsonValue(header, kSessionHeaderKind, "");
-  return kind == "coordinator" ? kSessionKindPanel : kind;
-}
 }  // namespace
 
 bool SessionState::RestoreConversation(Conversation& conversation) && {
@@ -276,7 +270,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTime, "");
   record.metadata.delegation =
       JsonValue(header, kSessionHeaderDelegation, json::object());
-  record.metadata.kind = StoredKind(header);
+  record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
   record.metadata.thread =
       JsonValue(header, kSessionHeaderThread, json::object());
   record.state.messages = std::move(state["messages"]);
@@ -392,7 +386,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.cost = JsonValue(header, "cost", 0.0);
         item.delegation =
             JsonValue(header, kSessionHeaderDelegation, json::object());
-        item.kind = StoredKind(header);
+        item.kind = JsonValue(header, kSessionHeaderKind, "");
         item.thread = JsonValue(header, kSessionHeaderThread, json::object());
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {

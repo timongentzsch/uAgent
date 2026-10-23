@@ -87,7 +87,7 @@ def test_sandbox_keeps_spawning_after_binary_replacement(root, home, *, binary):
 
 def sandbox_env(home, url, **overrides):
     env = base_env(home, url)
-    env["UAGENT_SANDBOX"] = "1"
+    env["UAGENT_SANDBOX"] = "default"
     env.update(overrides)
     return env
 
@@ -158,7 +158,7 @@ def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, bin
     """Yolo means nobody is asked, in either startup form; confinement is the
     sandbox setting's alone."""
     require_sandbox(root, home, binary=binary)
-    for source, sandbox in (("cli", "1"), ("config", "1"), ("cli", "0")):
+    for source, sandbox in (("cli", "default"), ("config", "default"), ("cli", "off")):
         outside = root / f"yolo-{source}-{sandbox}.txt"
         command = f"echo x > {outside}"
         with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
@@ -170,7 +170,7 @@ def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, bin
             result = run(workspace(root), env, *flags, "-p", "go", timeout=30, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(
-            outside.exists() == (sandbox == "0"),
+            outside.exists() == (sandbox == "off"),
             f"{source} yolo with UAGENT_SANDBOX={sandbox}: {result.stdout}",
         )
 
@@ -203,7 +203,11 @@ def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
     require_sandbox(root, home, binary=binary)
     # The second folder's name reads, in a colon-separated list, as itself
     # and its parent: a child handed its parent's roots that way gains one.
-    for sandbox, ws in (("1", workspace(root)), ("0", workspace(root)), ("1", root / "ws:..")):
+    for sandbox, ws in (
+        ("default", workspace(root)),
+        ("off", workspace(root)),
+        ("default", root / "ws:.."),
+    ):
         ws.mkdir(exist_ok=True)
         outside, inside = root / f"{ws.name}-{sandbox}.txt", ws / f"child-{sandbox}.txt"
         with delegating_server(outside, inside) as server:
@@ -215,7 +219,7 @@ def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
         # parent is.
         assert_true(inside.exists(), f"the child never ran its command: {result.stdout}")
         assert_true(
-            outside.exists() == (sandbox == "0"),
+            outside.exists() == (sandbox == "off"),
             f"child of a parent with UAGENT_SANDBOX={sandbox}: {result.stdout}",
         )
 
@@ -225,15 +229,15 @@ def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binar
     parent's sandbox is fixed at its start, and so is its child's."""
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
-    save_settings(home, UAGENT_SANDBOX=True)
+    save_settings(home, UAGENT_SANDBOX="default")
     outside, inside, hooked = root / "later.txt", ws / "later.txt", root / "hooked.txt"
     # A startup file a confined command could have written: the child starts
     # outside the sandbox, so it is started through no shell.
     hook = ws / "hook.sh"
-    hook.write_text(f"export UAGENT_SANDBOX=0\ntouch {hooked}\n")
+    hook.write_text(f"export UAGENT_SANDBOX=off\ntouch {hooked}\n")
 
     def loosen():
-        save_settings(home, UAGENT_SANDBOX=False)
+        save_settings(home, UAGENT_SANDBOX="off")
 
     with delegating_server(outside, inside, loosen) as server:
         env = base_env(home, server.url)
@@ -399,7 +403,7 @@ def test_sandbox_protects_agent_state(root, home, *, binary):
     run_once(root, sandbox_env(home, ""), command, binary=binary)
     assert_true(not target.exists(), "sandboxed command wrote the saved settings")
 
-    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary)
+    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="off"), command, binary=binary)
     assert_true(target.exists(), "control run could not write the saved settings either")
 
 
@@ -419,7 +423,7 @@ def test_sandbox_hides_the_web_hosts_devices(root, home, *, binary):
     )
     assert_true(
         "device-token-marker"
-        in tool_output(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary),
+        in tool_output(root, sandbox_env(home, "", UAGENT_SANDBOX="off"), command, binary=binary),
         "control run could not read the file either",
     )
 
@@ -467,7 +471,7 @@ def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, h
             )
 
         with Server([route] * 2) as server:
-            env = sandbox_env(home, server.url, UAGENT_SANDBOX="0")
+            env = sandbox_env(home, server.url, UAGENT_SANDBOX="off")
             result = run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(link.is_symlink(), f"{name}: the link was never made: {seen}")
@@ -580,7 +584,7 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
         reached = browser_reach(root, env, profile, binary=binary, yolo=True)
         assert_true(reached == expected, f"yolo: reached {sorted(reached)}")
         for case in ("off", "approve"):
-            case_env = dict(env, UAGENT_SANDBOX="0") if case == "off" else env
+            case_env = dict(env, UAGENT_SANDBOX="off") if case == "off" else env
             options = {} if case == "off" else {case: True}
             reached = browser_reach(root, case_env, profile, binary=binary, **options)
             assert_true(reached == everything, f"{case}: reached only {sorted(reached)}")
@@ -868,9 +872,9 @@ def test_sandbox_degrades_when_it_cannot_enforce_by_default(root, home, *, binar
 
 
 def test_sandbox_off_leaves_spawning_unchanged(root, home, *, binary):
-    """UAGENT_SANDBOX=0: no wrapper, no refusal, no behaviour change."""
+    """UAGENT_SANDBOX=off: no wrapper, no refusal, no behaviour change."""
     target = root / "unconfined.txt"
-    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), f"echo x > {target}", binary=binary)
+    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="off"), f"echo x > {target}", binary=binary)
     assert_true(target.exists(), "the unsandboxed path changed")
 
 
@@ -1014,8 +1018,8 @@ def test_sandbox_levels(root, home, *, binary):
         "relaxed is not the home folder minus ~/.uagent and the hidden stores",
     )
     assert_true(writes("strict")["project"] is False, "strict reached into the home folder")
-    assert_true(writes("true")["project"] is False, "1 and true no longer mean default")
-    assert_true(writes("0")["project"] is True, "0 no longer means off")
+    # What the switch this setting was took is no level: the default stands.
+    assert_true(writes("0")["project"] is False, "0 still means off")
 
     if sys.platform == "darwin" or landlock_abi() >= 4:
         assert_true(

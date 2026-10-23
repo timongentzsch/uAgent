@@ -52,16 +52,8 @@ std::filesystem::path InstructionPath(bool panel, bool project,
     return InstructionFileIn(project ? ProjectRoot(cwd)
                                      : std::filesystem::path(GlobalBase()));
   }
-  const std::filesystem::path dir =
-      project ? cwd / kWorkspaceDir : std::filesystem::path(GlobalBase());
-  // The file's name from before the coordinator became the panel still
-  // counts where no PANEL.md has replaced it.
-  std::error_code ignored;
-  return !std::filesystem::exists(dir / kPanelInstructionFile, ignored) &&
-                 std::filesystem::exists(dir / kLegacyPanelInstructionFile,
-                                         ignored)
-             ? dir / kLegacyPanelInstructionFile
-             : dir / kPanelInstructionFile;
+  return (project ? cwd / kWorkspaceDir : std::filesystem::path(GlobalBase())) /
+         kPanelInstructionFile;
 }
 
 bool ParseInstructionTarget(const std::string& audience,

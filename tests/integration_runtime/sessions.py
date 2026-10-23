@@ -86,7 +86,7 @@ def test_a_settings_file_edited_by_hand_says_what_it_cannot_take(root, home, *, 
     path = settings_path(home)
     path.parent.mkdir(parents=True)
     edited = {"limits.maxToolCalls": 1, "limits.maxStps": 3, "sandbox.level": "maybe"}
-    path.write_text(json.dumps({"format": 2, "all": edited, "projects": {}}))
+    path.write_text(json.dumps({"format": 3, "all": edited, "projects": {}}))
     calls = tool_calls([("one", "read_path", {"path": "."}), ("two", "read_path", {"path": "."})])
     responses = [calls, event({"content": "answered-at-the-limit"}), event({"content": "scripted"})]
     with Server(responses) as server:
@@ -525,7 +525,7 @@ def test_headless_json_stream_emits_lifecycle_events(root, home, *, binary):
         env = base_env(home, server.url)
         # On Linux the suite's home is under /tmp, which the sandbox then
         # refuses as a writable root and says so before the turn starts.
-        env["UAGENT_SANDBOX"] = "0"
+        env["UAGENT_SANDBOX"] = "off"
         result = run(
             root,
             env,

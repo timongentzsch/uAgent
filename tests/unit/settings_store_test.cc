@@ -94,7 +94,7 @@ void TestSettingsStore() {
               R"({"format": 3, "projects": {}, "all": {"model": "kept",)"
               R"( "limits.maxSteps": "many", "limits.maxToolCalls": -4,)"
               R"( "limits.maxTurnSeconds": false, "title.model": 7,)"
-              R"( "sandbox.enabled": "off", "memory.enabled": 1,)"
+              R"( "sandbox.level": "off", "memory.enabled": 1,)"
               R"( "sandbox.enabld": true, "variables": {"A": 1}}})");
     SavedSettings read = ReadSettings("");
     CHECK(read.error.empty());
@@ -119,24 +119,6 @@ void TestSettingsStore() {
     CHECK(kept["all"]["sandbox.level"] == "off");
     // What the document holds is what a correction is compared with.
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
-  }
-
-  // The sandbox was a switch, saved as sandbox.enabled: its true and false
-  // are the levels default and off, and a save writes the new name.
-  {
-    TestWorkspace switched("settings-store-sandbox-switch");
-    WriteFile(SettingsPath(),
-              R"({"format": 3, "all": {"sandbox.enabled": false},)"
-              R"( "projects": {"/p": {"sandbox.enabled": true}}})");
-    const SavedSettings read = ReadSettings("/p");
-    CHECK(read.warning.empty());
-    CHECK(read.all.at("UAGENT_SANDBOX") == "off");
-    CHECK(read.project.at("UAGENT_SANDBOX") == "default");
-    CHECK(Set("", "UAGENT_MODEL", "m").empty());
-    const json rewritten =
-        json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
-    CHECK(rewritten["all"]["sandbox.level"] == "off");
-    CHECK(!rewritten["all"].contains("sandbox.enabled"));
   }
 
   // An editor takes no lock. What it saves while a change is being made is
@@ -179,13 +161,12 @@ void TestSettingsStore() {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "$COUNT");
   }
 
-  // Settings handed over whole are taken whole or not at all, and a panel
-  // setting under the name it had as a coordinator's is read as the panel's.
+  // Settings handed over whole are taken whole or not at all.
   {
     TestWorkspace handed_over("settings-store-handed");
     const json now = {{"format", 3},
                       {"all", {{"model", "old"}, {"limits.maxSteps", 9}}},
-                      {"projects", {{"/p", {{"sandbox.level", "false"}}}}}};
+                      {"projects", {{"/p", {{"sandbox.level", "off"}}}}}};
     AllSettings handed;
     std::string why;
     CHECK(ParseSettings(now, handed, why) && handed.projects.count("/p"));
@@ -194,115 +175,13 @@ void TestSettingsStore() {
     wrong["all"]["no.such.setting"] = 1;
     CHECK(!ParseSettings(wrong, handed, why));
     CHECK(why.find("no.such.setting is not a setting") != std::string::npos);
-    json spelled = now;
-    spelled["all"]["coordinator.chatTurns"] = 2;
-    WriteFile(SettingsPath(), JsonDump(spelled));
-    CHECK(ReadSettings("").all.at("UAGENT_PANEL_CHAT_TURNS") == "2");
   }
 
-  // The retired reviewer address also disappears from existing format-3
-  // settings without disturbing the rest of either scope.
-  {
-    TestWorkspace earlier("settings-store-review-address");
-    WriteFile(
-        SettingsPath(),
-        R"({"format":3,"all":{"approval.reviewerUrl":"https://old.test/alpha",)"
-        R"("model":"keep"},"projects":{"/p":{"approval.reviewerUrl":)"
-        R"("https://project.test/alpha","limits.maxSteps":7}}})");
-    const SavedSettings read = ReadSettings("/p");
-    CHECK(read.error.empty() && read.warning.empty());
-    CHECK(read.all.at("UAGENT_MODEL") == "keep");
-    CHECK(read.project.at("UAGENT_MAX_STEPS") == "7");
-    const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
-    CHECK(!now["all"].contains("approval.reviewerUrl"));
-    CHECK(!now["projects"]["/p"].contains("approval.reviewerUrl"));
-  }
-
-  // Format 2 kept OpenRouter's settings beside the others. They move into
-  // that endpoint, a provider's protocol becomes its features, and the routing
-  // variant joins the model id before its effort.
-  {
-    TestWorkspace endpoints("settings-store-endpoints");
-    WriteFile(
-        SettingsPath(),
-        R"({"format": 2, "all": {"openrouter.provider": "streamlake",)"
-        R"( "approval.reviewerUrl": "https://x.test/alpha",)"
-        R"( "openrouter.variant": "nitro", "model": "vendor/m:high",)"
-        R"( "pdf.engine": "mistral-ocr", "webSearch.backend": "openrouter",)"
-        R"( "providers": {"gateway": {"base_url": "https://gw.test/v1",)"
-        R"( "protocol": "openrouter"}, "plain": {"base_url": "https://p.test",)"
-        R"( "protocol": "anthropic"}}},)"
-        R"( "projects": {"/p": {"openrouter.variant": "floor",)"
-        R"( "openrouter.provider": "$WHO", "pdf.engine": "native"}}})");
-    const SavedSettings read = ReadSettings("/p");
-    CHECK(read.error.empty());
-    const json now = json::parse(ReadFile(SettingsPath(), 8192).value_or(""));
-    CHECK(now["format"] == 3);
-    const json& held = now["all"];
-    CHECK(held["model"] == "vendor/m:nitro:high");
-    CHECK(held["webSearch.backend"] == "auto");
-    CHECK(!held.contains("approval.reviewerUrl"));
-    CHECK(!held.contains("openrouter.provider") &&
-          !held.contains("openrouter.variant") && !held.contains("pdf.engine"));
-    const json& openrouter = held["providers"]["openrouter"];
-    CHECK(openrouter["options"] ==
-          (json{{"provider", "streamlake"}, {"pdf_engine", "mistral-ocr"}}));
-    CHECK(!openrouter.contains("base_url"));
-    const json& gateway = held["providers"]["gateway"];
-    CHECK(!gateway.contains("protocol"));
-    // What the global settings meant for it, an OpenRouter-protocol
-    // provider, is its own options now.
-    CHECK(gateway["options"] ==
-          (json{{"pdf_engine", "mistral-ocr"}, {"provider", "streamlake"}}));
-    CHECK(std::ranges::find(gateway["supports"], "prompt_cache_control") !=
-          gateway["supports"].end());
-    CHECK(!held["providers"]["plain"].contains("protocol"));
-    CHECK(!held["providers"]["plain"].contains("supports"));
-    // A project scope with no model drops the variant; a value that refers
-    // to a variable stays, and is reported as the setting it no longer is.
-    const json& project = now["projects"]["/p"];
-    CHECK(!project.contains("openrouter.variant"));
-    CHECK(project["openrouter.provider"] == "$WHO");
-    CHECK(project["providers"]["openrouter"]["options"] ==
-          (json{{"pdf_engine", "native"}}));
-    CHECK(read.warning.find("openrouter.provider is not a setting") !=
-          std::string::npos);
-    // The environment still reads the migrated provider entry.
-    CHECK(read.all.at("UAGENT_WEB_SEARCH_BACKEND") == "auto");
-    AllSettings handed;
-    std::string why;
-    CHECK(ParseSettings(json::parse(R"({"format": 2, "projects": {},)"
-                                    R"( "all": {"webSearch.backend":)"
-                                    R"( "openrouter"}})"),
-                        handed, why));
-    CHECK(handed.all.at("UAGENT_WEB_SEARCH_BACKEND") == "auto");
-  }
-
-  // A variant belongs to the model an alias names; a model that is a
-  // reference to a variable cannot take it, and the variant stays, reported.
-  {
-    TestWorkspace aliased("settings-store-alias-variant");
-    WriteFile(
-        SettingsPath(),
-        R"({"format": 2, "all": {"model": "gw/fast:low",)"
-        R"( "openrouter.variant": "floor", "providers": {"gw":)"
-        R"( {"base_url": "https://gw.test", "protocol": "openrouter",)"
-        R"( "models": {"fast": "vendor/m", "slow": {"id": "vendor/s"}}}}},)"
-        R"( "projects": {"/p": {"model": "$CHOSEN",)"
-        R"( "openrouter.variant": "nitro"}}})");
-    const SavedSettings read = ReadSettings("/p");
-    const json now = json::parse(ReadFile(SettingsPath(), 8192).value_or(""));
-    CHECK(now["all"]["model"] == "gw/fast:low");
-    CHECK(now["all"]["providers"]["gw"]["models"]["fast"] == "vendor/m:floor");
-    CHECK(now["all"]["providers"]["gw"]["options"] ==
-          (json{{"pdf_engine", "cloudflare-ai"}}));
-    CHECK(now["projects"]["/p"]["model"] == "$CHOSEN");
-    CHECK(now["projects"]["/p"]["openrouter.variant"] == "nitro");
-    CHECK(read.warning.find("openrouter.variant is not a setting") !=
-          std::string::npos);
-  }
-  // A document that cannot be read is reported and never saved over.
-  for (const char* broken : {"{\"format\": 1, \"all\": [", "null"}) {
+  // A document that cannot be read is reported and never saved over; one an
+  // earlier release wrote in format 2 is one of them.
+  for (const char* broken :
+       {"{\"format\": 1, \"all\": [", "null",
+        "{\"format\": 2, \"all\": {}, \"projects\": {}}"}) {
     WriteFile(SettingsPath(), broken);
     CHECK(!ReadSettings(folder).error.empty());
     CHECK(!Set("", "UAGENT_MODEL", "m4").empty());

@@ -96,11 +96,7 @@ bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset) {
   for (const Spelling& spelling : {Spelling{"strict", SandboxPreset::kStrict},
                                    {"default", SandboxPreset::kDefault},
                                    {"relaxed", SandboxPreset::kRelaxed},
-                                   {"off", SandboxPreset::kOff},
-                                   {"1", SandboxPreset::kDefault},
-                                   {"true", SandboxPreset::kDefault},
-                                   {"0", SandboxPreset::kOff},
-                                   {"false", SandboxPreset::kOff}}) {
+                                   {"off", SandboxPreset::kOff}}) {
     if (text == spelling.text) {
       *preset = spelling.preset;
       return true;

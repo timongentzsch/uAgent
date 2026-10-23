@@ -79,9 +79,8 @@ inline constexpr std::string_view kHiddenEnvMarkers[] = {
 // File names uAgent reads or writes in more than one place.
 inline constexpr char kSkillFile[] = "SKILL.md";
 inline constexpr char kMcpConfigFile[] = ".mcp.json";
-// A panel's instructions. COORDINATOR.md is what they were called before.
+// A panel's instructions.
 inline constexpr char kPanelInstructionFile[] = "PANEL.md";
-inline constexpr char kLegacyPanelInstructionFile[] = "COORDINATOR.md";
 
 }  // namespace uagent
 

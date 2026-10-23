@@ -882,7 +882,7 @@ int WorkerMain(int argc, char** argv) {
   // mode is held to Auto where the mode is resolved (PermissionControl).
   if (options.Thread()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");
-    options.overrides["UAGENT_SANDBOX"] = "true";
+    options.overrides["UAGENT_SANDBOX"] = "default";
     const double budget = ThreadBudget(ThreadRole(options.session));
     if (budget > 0) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);

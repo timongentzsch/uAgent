@@ -32,7 +32,7 @@ enum class PathTarget {
 // Any name an instruction file can have, AGENTS.md's fallbacks included.
 inline bool InstructionFileName(const std::filesystem::path& path) {
   const std::string name = path.filename().string();
-  return name == kPanelInstructionFile || name == kLegacyPanelInstructionFile ||
+  return name == kPanelInstructionFile ||
          std::ranges::find(kInstructionNames, name) !=
              std::end(kInstructionNames);
 }

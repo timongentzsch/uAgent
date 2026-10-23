@@ -151,17 +151,13 @@ void TestSandboxLevels() {
        {std::pair<const char*, SandboxPreset>{"strict", SandboxPreset::kStrict},
         {"default", SandboxPreset::kDefault},
         {"relaxed", SandboxPreset::kRelaxed},
-        {"off", SandboxPreset::kOff},
-        // The values of the switch the setting replaced.
-        {"1", SandboxPreset::kDefault},
-        {"true", SandboxPreset::kDefault},
-        {"0", SandboxPreset::kOff},
-        {"false", SandboxPreset::kOff}}) {
+        {"off", SandboxPreset::kOff}}) {
     CHECK(ParseSandboxPreset(text, &preset));
     CHECK(preset == expected);
   }
   preset = SandboxPreset::kRelaxed;
   CHECK(!ParseSandboxPreset("loose", &preset));
+  CHECK(!ParseSandboxPreset("0", &preset));
   CHECK(!ParseSandboxPreset("", &preset));
   CHECK(preset == SandboxPreset::kRelaxed);
 

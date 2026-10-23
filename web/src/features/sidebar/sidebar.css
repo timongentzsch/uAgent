@@ -28,11 +28,9 @@
   margin-top: var(--space-6);
 }
 /* A place's header: fold it, its name (which opens its panel), start a
-   conversation in it, its menu; the avatars of the panel's members on a line
-   of their own below, so the name keeps the row's width. */
+   conversation in it, its menu. */
 .place-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   border-left: 2px solid transparent;
@@ -81,30 +79,6 @@
 }
 .place-body {
   padding-left: var(--indent);
-}
-/* Who is in the panel's chat, overlapping, set in under the name; the
-   avatars take the row's background so the ones beneath do not show
-   through. */
-.place-seats {
-  display: flex;
-  flex-basis: 100%;
-  align-items: center;
-  padding: 0 0 var(--space-2) calc(var(--indent) + 2 * var(--space-2));
-}
-.place-seats .member-avatar + .member-avatar,
-.place-seats .member-avatar + .place-count {
-  margin-left: calc(-1 * var(--space-4));
-}
-/* Narrow targets, on a touch screen too, so the name keeps its room. */
-.place-seats .avatar-button {
-  width: var(--space-12);
-  min-width: var(--space-12);
-}
-.place-seats .avatar {
-  background: var(--bg);
-}
-.place-seats .place-count {
-  padding-left: var(--space-4);
 }
 /* What the panel started, then the place's own conversations. */
 .place-rule {

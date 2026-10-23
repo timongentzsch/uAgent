@@ -38,8 +38,6 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     "Built-in panel base",
     "Yours · panel",
     "Project · panel",
-    "Chat members",
-    "Built-in member base",
   ]);
   const yours = dialog.getByLabel("Yours · every conversation");
   await yours.fill("Prefer small diffs.\nKeep this line break.");

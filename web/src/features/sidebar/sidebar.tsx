@@ -32,7 +32,6 @@ import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
-import { MemberAvatar } from "../../shared/member-card.tsx";
 import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
@@ -53,9 +52,6 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
-// How many of a panel's avatars the header shows before it counts the rest.
-const SEATS_SHOWN = 4;
-
 // What a row says of its conversation, at its right edge: it waits on you,
 // it failed, or it works (the LED breathes). An idle one says nothing.
 const STATES: Partial<
@@ -68,8 +64,6 @@ const STATES: Partial<
 
 type Place = {
   panel?: Session;
-  // The members of the panel's chat, whom the header shows as avatars.
-  members: Session[];
   threads: Session[];
   others: Session[];
 };
@@ -79,10 +73,8 @@ type Place = {
 // or not anything is in it yet.
 function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
   const groups = new Map<string, Place>();
-  const seated = new Map<string, Session[]>();
   const place = (path: string) => {
-    if (!groups.has(path))
-      groups.set(path, { members: [], threads: [], others: [] });
+    if (!groups.has(path)) groups.set(path, { threads: [], others: [] });
     return groups.get(path)!;
   };
   const names = new Map(spaces.map((space) => [space.path, space.name]));
@@ -93,8 +85,6 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
     // A panel is listed with its place, whatever the search shows of it.
     if (item.kind === "panel") {
       if (matches(search, names.get(path), path)) place(path).panel = item;
-    } else if (item.member) {
-      seated.set(path, [...(seated.get(path) || []), item]);
     } else if (matches(search, item.title, names.get(path), item.cwd)) {
       (item.kind === "thread" ? place(path).threads : place(path).others).push(
         item,
@@ -103,11 +93,6 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
   }
   for (const space of spaces)
     if (matches(search, space.name)) place(space.path);
-  // In a steady order, which the avatars keep as the members speak.
-  for (const [path, group] of groups)
-    group.members = (seated.get(path) || []).sort((a, b) =>
-      (a.member || "").localeCompare(b.member || ""),
-    );
   return groups;
 }
 
@@ -284,16 +269,14 @@ function SidebarView({
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
     const folded = foldedOf(cwd, query);
-    const { panel, members } = group;
+    const { panel } = group;
     const conversations = [...group.threads, ...group.others];
-    const holdsOpen = [panel, ...members, ...conversations].some(
+    const holdsOpen = [panel, ...conversations].some(
       (item) => item?.id === selected,
     );
-    const attention = [panel, ...members, ...conversations].filter(
+    const attention = [panel, ...conversations].filter(
       (item) => item && ["waiting", "failed"].includes(statusOf(item, online)),
     ).length;
-    // The moderator first, then who sits in its chat: the header's avatars.
-    const seats = panel && members.length ? [panel, ...members] : [];
     return (
       <section key={cwd}>
         <div class="place-head">
@@ -318,13 +301,7 @@ function SidebarView({
               variant="quiet"
               title={`Panel of ${name}`}
               disabled={drawing || (!panel && !online)}
-              aria-current={
-                panel && selected === panel.id
-                  ? "page"
-                  : members.some((item) => item.id === selected)
-                    ? "true"
-                    : undefined
-              }
+              aria-current={panel && selected === panel.id ? "page" : undefined}
               onClick={() => (panel ? choose(panel.id) : openPanel(cwd))}
             >
               <FolderLabel path={cwd} space={!!space}>
@@ -362,16 +339,6 @@ function SidebarView({
             <Plus />
           </IconButton>
           {space && spaceMenu(space, counts.get(cwd) || 0)}
-          {seats.length > 0 && (
-            <div class="place-seats" role="group" aria-label="Members">
-              {seats.slice(0, SEATS_SHOWN).map((item) => (
-                <MemberAvatar key={item.id} item={item} />
-              ))}
-              {seats.length > SEATS_SHOWN && (
-                <span class="place-count">+{seats.length - SEATS_SHOWN}</span>
-              )}
-            </div>
-          )}
         </div>
         {!folded && (
           <div class="place-body">

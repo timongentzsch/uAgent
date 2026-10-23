@@ -80,7 +80,6 @@ bool Agent::DeliverMail(bool hold) {
   for (Mail& mail : taken) {
     const bool seen = std::find(delivered_mail_.begin(), delivered_mail_.end(),
                                 mail.id) != delivered_mail_.end();
-    if (!seen && chat_heard_) chat_heard_(mail);
     // The sender labels its text; it is never the user's. Trimmed as input
     // is, so the message it becomes is known for this mail's.
     const std::string text = Trim(JsonValue(mail.body, "text", ""));
@@ -97,18 +96,8 @@ bool Agent::DeliverMail(bool hold) {
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    const std::string author = JsonValue(mail.body, "author", "");
-    const std::string sender = JsonValue(mail.body, "sender", "");
-    if (JsonValue(mail.body, "quiet", false)) {
-      // Read, not answered: it joins the conversation where it stands, and
-      // nothing is an answer to it.
-      arriving_mail_.push_back(mail.id);
-      Say(text, "",
-          {{"author", author}, {"sender", sender}, {"mail", mail.id}});
-    } else {
-      // Mail wakes its recipient: an idle one starts a turn on it.
-      Arrive(text, JsonValue(mail.body, "re", json()), author, mail.id, sender);
-    }
+    // Mail wakes its recipient: an idle one starts a turn on it.
+    Arrive(text, mail.id);
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"type", mail.type},
                                 {"from", mail.from},

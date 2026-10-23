@@ -64,15 +64,11 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
   Reset();
 }
 
-void Agent::Arrive(const std::string& text, json re, const std::string& author,
-                   const std::string& mail, const std::string& sender) {
+void Agent::Arrive(const std::string& text, const std::string& mail) {
   if (!mail.empty()) arriving_mail_.push_back(mail);
   Steering::Message message;
   message.text = text;
-  message.origin = {{"author", author},
-                    {"sender", sender},
-                    {"mail", mail},
-                    {"re", std::move(re)}};
+  message.origin = {{"mail", mail}};
   SteeringState().Queue(std::move(message));
 }
 

@@ -106,7 +106,6 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | --- | --- | --- | --- | --- | --- |
 | `panel.maxThreads` | `UAGENT_PANEL_MAX_THREADS` | integer | `5` | next-user-turn | threads one panel may run at once |
 | `panel.dailySpendUsd` | `UAGENT_PANEL_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a panel and its threads may spend per day; at it, thread events wait. 0 disables it |
-| `panel.chatTurns` | `UAGENT_PANEL_CHAT_TURNS` | integer | `3` | next-user-turn | turns each participant of a panel's chat may take on one message of the user's or one thread report; 0 lets the members only read |
 | `panel.environment` | `UAGENT_PANEL_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself; a folder outside git runs in place |
 
 ## Web search

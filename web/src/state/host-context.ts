@@ -25,8 +25,6 @@ export interface Host {
   // Opens the context a conversation was last sent: the open one's, or the
   // given one's.
   showContext: (item?: Session) => void;
-  // Starts a message to a member (or the moderator) in its panel's composer.
-  askMember: (item: Session) => void;
 }
 
 // What the open conversation's surfaces share. It changes with every send,

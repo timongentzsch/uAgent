@@ -48,29 +48,18 @@ void RecordPanelCost(const std::string& folder, double cost);
 // turns and its threads', has reached the daily limit.
 std::string PanelPause(const std::string& folder);
 
-// The moderator reads, browses, delegates and shares completed files. It cannot
-// edit workspace files or run commands, whatever the capability setting allows.
+// The moderator reads, researches, delegates and shares completed files. It
+// cannot edit workspace files or run commands, whatever the capability setting
+// allows, and neither can its subagents: a child gets only what its parent has.
 inline constexpr const char* kPanelTools[] = {
-    "read_path", "grep",   "memory", "skill", "uagent",  "history",
-    "thread",    "decide", "plan",   "ask",   "browser", "artifact"};
-
-// Everything a member of the panel's chat may use: it reads and
-// searches to check what it says, and changes nothing.
-inline constexpr const char* kMemberTools[] = {"read_path", "grep", "skill",
-                                               "web_search", "web_fetch"};
+    "read_path", "grep",     "memory",     "skill",     "uagent",
+    "history",   "thread",   "decide",     "plan",      "ask",
+    "browser",   "artifact", "web_search", "web_fetch", "subagent"};
 
 // Whether anything the panel waits for is still ahead: a thread working or
-// not begun, a chat member woken and not heard from, or mail from a thread
-// not yet read or acknowledged. What a headless panel run waits for.
+// not begun, or mail from a thread not yet read or acknowledged. What a
+// headless panel run waits for.
 bool ThreadsOwe(const std::string& folder);
-// Whether anything the chat would still hear from is under way: a thread
-// working or not begun, a member answering or just woken, or a report or
-// message waiting unread.
-bool ThreadsWorking(const std::string& folder);
-// Whether something can still bring the answer of a chat member that was
-// woken: a runtime that does not wait on a person, or a wake-up sent moments
-// ago that is starting one.
-bool AnswerAhead(const SessionInfo& member);
 
 // `own_model` names the model the panel is on right now, as a
 // selection a thread can be started with.

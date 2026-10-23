@@ -9,7 +9,6 @@
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
-#include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
@@ -26,8 +25,6 @@
 namespace uagent::panel {
 namespace {
 constexpr size_t kMessageBytes = KiB(8);
-// Members one panel's chat may have.
-constexpr int64_t kChatMembers = 16;
 constexpr size_t kDiffBytes = KiB(16);
 
 std::string Brief(const json& brief) {
@@ -43,24 +40,14 @@ std::string Brief(const json& brief) {
          "you changed, how you verified it, and anything left open.)";
 }
 
-// Starts a thread on a brief, or with `member` a chat member under a name and
-// a persona: the same session within the same ceiling, told who it is
-// instead of what to finish.
+// Starts a thread on a brief.
 ToolResult Spawn(const std::string& folder, const json& a,
-                 const std::function<std::string()>& own_model, bool member) {
-  const std::string title =
-      Utf8Prefix(JsonValue(a, member ? "name" : "title", ""), 120);
-  const std::string objective =
-      JsonValue(a, member ? "persona" : "objective", "");
+                 const std::function<std::string()>& own_model) {
+  const std::string title = Utf8Prefix(JsonValue(a, "title", ""), 120);
+  const std::string objective = JsonValue(a, "objective", "");
   if (title.empty() || objective.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       member ? "add_member needs a name and a persona"
-                              : "spawn needs a title and an objective");
-  }
-  if (const std::string problem =
-          member ? ChatNameProblem(folder, title, "") : "";
-      !problem.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, problem);
+                       "spawn needs a title and an objective");
   }
   const std::string panel = PanelId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_PANEL_MAX_THREADS"));
@@ -69,22 +56,13 @@ ToolResult Spawn(const std::string& folder, const json& a,
   std::vector<bool> busy;
   busy.reserve(threads.size());
   for (const SessionInfo& info : threads) busy.push_back(Working(info));
-  // The cap is on threads at work. A chat's members answer and fall silent
-  // again, so they have a limit of their own, on how many there are.
-  int64_t working = 0, members = 0;
-  for (size_t i = 0; i < threads.size(); ++i) {
-    const bool seated = !ChatMember(threads[i].thread).empty();
-    members += seated;
-    working += busy[i] && !seated;
-  }
-  if (member ? members >= kChatMembers : working >= cap) {
-    return ToolFailure(
-        ToolErrorCode::kLimitExceeded,
-        member ? "a chat has at most " + std::to_string(kChatMembers) +
-                     " members; delete one first"
-               : std::to_string(cap) +
-                     " threads are already working; wait for one to "
-                     "finish or stop one");
+  // The cap is on threads at work.
+  const int64_t working = std::ranges::count(busy, true);
+  if (working >= cap) {
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       std::to_string(cap) +
+                           " threads are already working; wait for one to "
+                           "finish or stop one");
   }
   const double limit = DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
@@ -100,12 +78,9 @@ ToolResult Spawn(const std::string& folder, const json& a,
                            " more threads; ask the user to raise "
                            "UAGENT_PANEL_DAILY_SPEND_USD or wait for tomorrow");
   }
-  // A member reads the folder as it is; it changes nothing, so needs no copy.
   // Unasked, a folder outside git runs in place: it can have no worktree.
   std::string environment = JsonValue(a, "environment", "");
-  if (member) {
-    environment = "local";
-  } else if (environment.empty()) {
+  if (environment.empty()) {
     environment = StringSetting(Cfg("UAGENT_PANEL_ENVIRONMENT"));
     if (environment == "worktree" && !InGitRepository(folder)) {
       environment = "local";
@@ -129,15 +104,10 @@ ToolResult Spawn(const std::string& folder, const json& a,
   if (std::string step = JsonValue(a, "step", ""); !step.empty()) {
     thread["step"] = std::move(step);
   }
-  if (member) {
-    thread["member"] = {{"persona", objective},
-                        {"skills", JsonValue(a, "skills", "")}};
-  } else {
-    thread["brief"] = {{"objective", objective},
-                       {"output", JsonValue(a, "output", "")},
-                       {"done_when", JsonValue(a, "done_when", "")},
-                       {"boundaries", JsonValue(a, "boundaries", "")}};
-  }
+  thread["brief"] = {{"objective", objective},
+                     {"output", JsonValue(a, "output", "")},
+                     {"done_when", JsonValue(a, "done_when", "")},
+                     {"boundaries", JsonValue(a, "boundaries", "")}};
   Options options;
   // Named, else the panel's own: a thread is told its model and
   // resolves the rest like any session. It inherits no endpoint from this
@@ -152,24 +122,11 @@ ToolResult Spawn(const std::string& folder, const json& a,
   if (!connection.socket) {
     return Unavailable(error);
   }
-  error = SendWhenReady(
-      connection, launch.path,
-      {{"kind", "submit"},
-       {"text", member ? "(From this folder's moderator.) You have joined "
-                         "the chat. Introduce yourself to the others in one "
-                         "sentence."
-                       : Brief(thread["brief"])}},
-      true);
+  error = SendWhenReady(connection, launch.path,
+                        {{"kind", "submit"}, {"text", Brief(thread["brief"])}},
+                        true);
   if (!error.empty()) {
     return Unavailable(error);
-  }
-  if (member) {
-    return ToolSuccess(JsonDump(
-        {{"session_id", SessionIdFor(launch.path)},
-         {"name", title},
-         {"next",
-          "It introduces itself in the chat, and from now on reads what is "
-          "written here and answers when it has something to add."}}));
   }
   return ToolSuccess(
       JsonDump({{"session_id", SessionIdFor(launch.path)},
@@ -194,12 +151,6 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "a message needs 1 to " + std::to_string(kMessageBytes) +
                            " bytes of text");
-  }
-  // The chat's cap on turns counts what is written there, nothing else.
-  if (const std::string& name = info.title; !ChatMember(info.thread).empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "a member reads the chat: open your answer with \"" +
-                           name + ",\" instead");
   }
   std::string error =
       "the session is not running; only this moderator's "
@@ -275,12 +226,10 @@ Tool ThreadTool(const std::string& folder,
       "what it changed; delete closes and removes a session, and its "
       "worktree if nothing would be lost, after the user confirms. One "
       "thread per independent part; keep dependent steps in one thread. "
-      "add_member brings a member into this chat to discuss, not to work "
-      "(name, persona, skills, model); delete takes it out again.",
+      "A question that only needs reading goes to a subagent instead.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string",
-          "enum":["spawn","message","stop","close","diff","delete",
-                  "add_member"]},
+          "enum":["spawn","message","stop","close","diff","delete"]},
         "session_id":{"type":"string"},
         "title":{"type":"string"},
         "objective":{"type":"string"},
@@ -290,17 +239,12 @@ Tool ThreadTool(const std::string& folder,
         "environment":{"type":"string","enum":["worktree","local"]},
         "model":{"type":"string"},
         "step":{"type":"string","maxLength":64},
-        "text":{"type":"string"},
-        "name":{"type":"string"},
-        "persona":{"type":"string"},
-        "skills":{"type":"string"}},
+        "text":{"type":"string"}},
         "required":["action"]})json"),
       [folder, own_model = std::move(own_model)](const json& a,
                                                  const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
-        if (action == "spawn" || action == "add_member") {
-          return Spawn(folder, a, own_model, action == "add_member");
-        }
+        if (action == "spawn") return Spawn(folder, a, own_model);
         return WithSession(folder, a, [&](const SessionInfo& info) {
           if (action == "message") {
             return Message(info, folder, JsonValue(a, "text", ""));
@@ -325,8 +269,7 @@ Tool ThreadTool(const std::string& folder,
   tool.mandatory_reason = "deleting a session";
   tool.summary = [](const json& a) {
     return JsonValue(a, "action", "") + " " +
-           JsonValue(a, "title",
-                     JsonValue(a, "name", JsonValue(a, "session_id", "")));
+           JsonValue(a, "title", JsonValue(a, "session_id", ""));
   };
   tool.header = Verbs("Delegating", "Delegated");
   return tool;

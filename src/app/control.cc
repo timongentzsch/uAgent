@@ -52,13 +52,8 @@ json ManagementControl(const json& request) {
       if (!error.empty()) return {{"error", error}};
     }
     json shown = InstructionFiles(cwd);
-    // A chat member's base with the parts each member fills in named.
-    shown["base"] = {
-        {"sessions", SystemPromptBase()},
-        {"panel", PanelPromptBase()},
-        {"member", MemberPromptBase({{"name", "‹name›"},
-                                     {"persona", "‹its persona›"},
-                                     {"skills", "‹its skills›"}})}};
+    shown["base"] = {{"sessions", SystemPromptBase()},
+                     {"panel", PanelPromptBase()}};
     return shown;
   }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));

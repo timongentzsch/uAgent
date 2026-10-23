@@ -24,16 +24,13 @@ class ThreadLink {
            const std::string& title) const;
 
   // A finished turn is an event for the panel, with the turn's answer
-  // so reading it costs no round. `re` is what a chat member's answer
-  // is an answer to.
+  // so reading it costs no round.
   void Report(const std::string& reason, const std::string& title,
-              const std::string& answer, const json& re);
-  // After publishing idle, lets the chat reconsider a deferred close.
-  void Idle();
+              const std::string& answer);
   // Sends again a report the panel's full inbox refused.
   void Resend();
   // Whether a report still waits to be sent: its runtime stays for it.
-  bool Owes() const { return unsent_.has_value() || unsent_idle_.has_value(); }
+  bool Owes() const { return unsent_.has_value(); }
 
   // Why a message may not enter the thread, or empty. A panel may start
   // kStreak turns in a row with nobody else speaking here, so the two can
@@ -55,7 +52,6 @@ class ThreadLink {
   int streak_ = 0;           // turns the panel started since anyone else spoke
   bool panel_last_ = false;  // the newest message was the panel's
   std::optional<Mail> unsent_;
-  std::optional<Mail> unsent_idle_;
 };
 }  // namespace uagent::session
 #endif

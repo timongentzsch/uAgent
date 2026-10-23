@@ -448,9 +448,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (context->options.Panel()) {
     context->tool_policy.tool_allowlist.assign(std::begin(kPanelTools),
                                                std::end(kPanelTools));
-  } else if (!ChatMember(ThreadRole(context->options.session)).empty()) {
-    context->tool_policy.tool_allowlist.assign(std::begin(kMemberTools),
-                                               std::end(kMemberTools));
   }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
@@ -465,22 +462,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->agent->SetSessionRole(context->options.session);
   if (memory_child) context->agent->SetUsagePurpose("memory_extract");
   if (context->options.Panel()) {
-    context->chat.emplace(
-        CanonicalCwd(), [agent = context->agent.get()](const std::string& note,
-                                                       const json& re) {
-          agent->Arrive(note, re);
+    context->agent->SetRuntimeContext(
+        [folder = CanonicalCwd(), agent = context->agent.get()] {
+          RecordPanelCost(folder, agent->SessionUsage().cost);
+          return PanelContext(folder);
         });
-    context->agent->SetRuntimeContext([folder = CanonicalCwd(),
-                                       agent = context->agent.get(),
-                                       chat = &*context->chat] {
-      RecordPanelCost(folder, agent->SessionUsage().cost);
-      return PanelContext(folder) + chat->Context();
-    });
-    context->agent->SetChat(
-        [chat = &*context->chat](const std::string& text) {
-          return chat->Said(text);
-        },
-        [chat = &*context->chat](Mail& mail) { chat->Heard(mail); });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +

@@ -9,7 +9,6 @@
 #include <utility>
 
 #include "include/agent/session_store.h"
-#include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
@@ -141,9 +140,8 @@ void AwaitPanel(PanelRequest& panel) {
   }
 }
 
-// Everything the panel and its chat's members said since the
-// request, in full: a thread's report reopens its turn or starts another,
-// and each says part of it.
+// Everything the panel said since the request, in full: a thread's report
+// reopens its turn or starts another, and each says part of it.
 std::string AnswerSince(const std::string& path, const std::string& prompt) {
   std::string answer;
   SessionLoadResult saved = SessionStore::Inspect(path);
@@ -160,22 +158,9 @@ std::string AnswerSince(const std::string& path, const std::string& prompt) {
         asked = index - 1;
       }
     }
-    // A member's message is the one that has an author.
-    const auto posted = [&](size_t index) {
-      const auto facts = conversation.DisplayFacts().find(
-          "m-" + std::to_string(conversation.DisplayIds()[index]));
-      return facts != conversation.DisplayFacts().end() &&
-             facts->contains("author");
-    };
     for (size_t index = asked + 1; index < messages.size(); ++index) {
-      const std::string content = JsonValue(messages[index], "content", "");
-      // What it passed on or waited over is not part of what was said.
-      const std::string text =
-          (JsonValue(messages[index], "role", "") == "assistant"
-               ? !SilentAnswer(Trim(content))
-               : posted(index))
-              ? content
-              : std::string();
+      if (JsonValue(messages[index], "role", "") != "assistant") continue;
+      const std::string text = JsonValue(messages[index], "content", "");
       if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
     }
     // The request itself was compacted away: what was said last.

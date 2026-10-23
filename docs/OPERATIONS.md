@@ -93,7 +93,7 @@ session limit and the panel's daily cost limit.
 | trace pruning | newest 64 KiB protected; results from 32 KiB pruned | |
 | automatic compaction | 85% of projected context | `UAGENT_AUTO_COMPACT_PCT` |
 | compacted-trace archive | 16 MiB | |
-| background jobs / foreground tool workers | 8 (6 open to subagents) / 4 | |
+| background jobs / foreground tool workers | 8 (6 open to subagents) / 4, 6 for a batch of subagents | |
 | `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | |
 | activity output buffer | 1 MiB, equal head and tail | |
 | retained finished activities | 16 | |
@@ -102,9 +102,8 @@ session limit and the panel's daily cost limit.
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
 | subagent launches per turn | 32 | |
 | panel threads at once / reported cost per day | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
-| chat turns per participant, and messages each, for one message of the user's or one thread report | 3, 2 | `UAGENT_PANEL_CHAT_TURNS` |
-| members of one panel's chat | 16 | |
-| a thread's report to its panel / one chat message | 6,000 characters / 16 KiB; `history` reads the rest | |
+| a thread's report to its panel | 6,000 characters; `history` reads the rest | |
+| steps in a panel's plan | 24 | |
 | idle session runtime | stops after 15 minutes; the next message starts it | |
 | undo journal | 2 MiB per file, 64 MiB per session | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |

@@ -67,16 +67,7 @@ import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
-const NO_MEMBERS: Session[] = [];
 const NONE: [] = [];
-
-// "Ada is typing…", for the participants of a chat answering now.
-function typingLabel(names: string[]) {
-  if (!names.length) return "";
-  if (names.length === 1) return `${names[0]} is typing…`;
-  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
-  return `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`;
-}
 
 function Composer({
   session,
@@ -96,7 +87,6 @@ function Composer({
   openBrowser,
   stopped,
   resume,
-  members = NO_MEMBERS,
 }: {
   session: Session;
   queued?: UserBlock[];
@@ -114,9 +104,6 @@ function Composer({
   openInspector: (target: InspectorTarget) => void;
   showStatistics: () => void;
   openBrowser: () => void;
-  // The members of a panel's chat: with any, the state above the
-  // input says who is typing and nothing else.
-  members?: Session[];
   // Why the last turn stopped short, while nothing has been sent since.
   stopped?: string;
   // Continues that stopped turn.
@@ -345,20 +332,10 @@ function Composer({
           <span class="activity-toggle">
             <ActivityStatus
               phase={
-                (members.length
-                  ? typingLabel([
-                      ...members
-                        .filter((item) => isRunning(item, online))
-                        .map((item) => item.member || ""),
-                      ...(running ? [session.member || "Moderator"] : []),
-                    ]) ||
-                    detached ||
-                    "Ready"
-                  : detached || state?.activity) ||
-                (state ? "Ready" : "Loading…")
+                detached || state?.activity || (state ? "Ready" : "Loading…")
               }
               running={running}
-              started={members.length ? undefined : state?.turn_started_ms}
+              started={state?.turn_started_ms}
               pending={pending}
               stopped={continuing ? stopLabel : undefined}
               present={online && !!session?.presence}
@@ -439,11 +416,9 @@ function Composer({
               ? "Decide above to continue"
               : running
                 ? "Add guidance… (Esc to stop)"
-                : members.length
-                  ? "Message everyone, or start with a name…"
-                  : session.kind === "panel"
-                    ? "Ask the panel…"
-                    : "Ask µAgent…"
+                : session.kind === "panel"
+                  ? "Ask the panel…"
+                  : "Ask µAgent…"
           }
           value={draft.text}
           onInput={(event) => {

@@ -85,11 +85,6 @@ void Agent::PushSkillContext(std::string skill) {
 // The person's message, with the files the transcript shows for it.
 void Agent::PushUserInput(json content, bool attachment, const json& images,
                           const std::string& request_id, const json& origin) {
-  // With files, the text part: the message and where each file is.
-  const std::string text = content.is_string() ? content.get<std::string>()
-                           : content.is_array() && !content.empty()
-                               ? JsonValue(content[0], "text", "")
-                               : "";
   conversation_.Push(
       {{"role", "user"}, {"content", std::move(content)}},
       attachment ? MessageKind::kAttachment : MessageKind::kUser);
@@ -97,20 +92,11 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"files", images}});
   }
-  // Another's message shows as an event under its author, not as the
-  // person's; an answer to it is an answer to its `re` (app/chat.h).
+  // Another session's message shows as an event, not as the person's.
   if (origin.is_object()) {
-    json facts = {{"origin", "mail"}};
-    for (const char* key : {"author", "sender"}) {
-      const std::string value = JsonValue(origin, key, "");
-      if (!value.empty()) facts[key] = value;
-    }
-    if (origin.contains("re")) chat_re_ = origin["re"];
     std::erase(arriving_mail_, JsonValue(origin, "mail", ""));
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                std::move(facts));
-  } else if (chat_said_) {
-    chat_re_ = chat_said_(text);
+                                {{"origin", "mail"}});
   }
   PublishMessage(request_id);
 }
@@ -606,7 +592,6 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
                 {"turn_root", turn_root_},
                 {"summary", summary}};
   // A turn that only passed or waited leaves no row of its own.
-  if (SilentTurn()) entry["silent"] = true;
   json block = conversation_.RecordEntry(std::move(entry));
   Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
   Event completed{EventId::kTurnCompleted, std::move(summary)};

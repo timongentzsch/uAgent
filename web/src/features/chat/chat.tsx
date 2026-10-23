@@ -126,18 +126,7 @@ function Chat({
             title="What are we working on?"
             tips={
               session.kind === "panel"
-                ? [
-                    [
-                      "Members",
-                      "Ask for another voice and it joins this chat.",
-                    ],
-                    [
-                      "Ask one",
-                      "Start a message with a name, like “Ada,\u00a0…”.",
-                    ],
-                    ["Silence", "A member with nothing to add says nothing."],
-                    ["Board", "Who is working and what needs you."],
-                  ]
+                ? [["Board", "What is working and what needs you."]]
                 : [
                     [<kbd>/</kbd>, "Lists the commands."],
                     [
@@ -153,7 +142,7 @@ function Chat({
           >
             <p>
               {session.kind === "panel"
-                ? "The moderator starts threads that do the work and reports back. It never edits files itself."
+                ? "The moderator plans, asks subagents, and starts threads that do the work. It never edits files itself."
                 : "Describe a task."}
             </p>
           </Welcome>

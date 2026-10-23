@@ -322,22 +322,6 @@
           "type": "string",
           "x-env": "OPENROUTER_API_KEY"
         },
-        "panel.chatTurns": {
-          "anyOf": [
-            {
-              "default": 3,
-              "maximum": 64,
-              "minimum": 0,
-              "type": "integer"
-            },
-            {
-              "pattern": "\\$",
-              "type": "string"
-            }
-          ],
-          "description": "turns each participant of a panel's chat may take on one message of the user's or one thread report; 0 lets the members only read",
-          "x-env": "UAGENT_PANEL_CHAT_TURNS"
-        },
         "panel.dailySpendUsd": {
           "anyOf": [
             {

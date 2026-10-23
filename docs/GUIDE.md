@@ -6,9 +6,9 @@ has the install and a one-screen quick start.
 
 Terms: a **conversation** is what you talk in (its file and its running
 process are a *session*); a **thread** is a conversation a panel started to do
-work; a **member** is a persona in a panel's chat; an **activity** is a
-command or agent that keeps running in the background; **approval** is being
-asked before an action.
+work; a **subagent** is a short-lived helper that answers one question
+inside a turn; an **activity** is a command or agent that keeps running in
+the background; **approval** is being asked before an action.
 
 ## A first conversation
 
@@ -249,40 +249,24 @@ settle or passes them to you.
 - **Instructions.** Every moderator reads `PANEL.md` at start
   ([Instructions](INSTRUCTIONS.md)).
 
-### The chat
+### Questions and the plan
 
-Ask the moderator for another voice ("add a sceptical reviewer called Ada")
-and it adds a **member**: a persona with a name, optionally its own model,
-that reads and searches but changes nothing. From then on the panel's
-conversation is a chat.
+For a question rather than a change ("which of these three libraries fits
+us?", "where can this proxy leak a key?") the moderator asks **subagents**:
+short-lived helpers that read, search and fetch but change nothing, several
+at once, each answering in the shape the moderator asked for. It can have
+other subagents try to refute what they found, and reports only what holds.
+They are not conversations of their own: open one from the plan or from its
+row in the moderator's answer.
 
-- **Everyone reads every message** and decides whether to answer. A
-  participant with nothing to add stays silent, and one that sees someone
-  else typing may wait for them. You see only the messages.
-- **To ask one participant alone, start the message with its name** and a
-  comma or colon: `Ada, is this safe?`, `Ada and Lin: your view?`,
-  `Moderator, summarise`. Only those named answer, and the answer comes back
-  to you without waking the others. A name elsewhere in the message
-  addresses nobody.
-- **A message for everyone** starts with no name; members also answer one
-  another.
-- **A closing answer.** When the discussion settles and the panel's threads
-  are done, the moderator closes it for you: what was decided and what is
-  still open. Its answers to you, the closing one included, wake no member.
-  After the close, thread reports reach the moderator alone until you write
-  again.
-- **Limits.** For each of your messages, and each thread report the
-  moderator passes on before the close, every participant may take three
-  turns (`panel.chatTurns`) and post two messages. A chat has at most 16
-  members.
-- **Who said what.** Each message is shown under its author's name; in the
-  web, a message's menu shows the prompt its author was given.
-- **Names.** A name may be several words ("Security Reviewer") but contains
-  no comma, colon or `&`. Rename a member like any conversation: its earlier
-  messages show the new name, the others are told, and a message that opens
-  with the old name still reaches it. Renaming the panel's conversation
-  renames its moderator.
-- Ask the moderator to remove a member; it asks you to confirm.
+- **The plan.** For work with several parts the moderator keeps a plan:
+  your goal, decisions, open questions, and steps with their status and a
+  short result each. It sees the plan every turn, so it survives a long
+  conversation and a restart; a thread or subagent started for a step is
+  shown with it.
+- **Threads or subagents.** Threads change files and run for as long as the
+  work takes, in their own worktree; subagents answer within the
+  moderator's turn and leave nothing behind but their answer.
 
 ## Memory, skills and schedules
 

@@ -733,21 +733,6 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   margin-right: var(--space-2);
 }
-/* A chat member's initials, sized by the text they stand beside. */
-.avatar {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 1.7em;
-  height: 1.7em;
-  margin-right: var(--space-2);
-  border: var(--border);
-  border-radius: 50%;
-  color: var(--muted);
-  font-size: var(--font-small);
-  font-weight: 600;
-  line-height: 1;
-}
 /* One line: the words truncate, the link to its instructions stays. */
 .panel-subtitle {
   display: flex;

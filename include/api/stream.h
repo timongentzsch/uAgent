@@ -12,7 +12,6 @@
 #include <map>
 #include <optional>
 #include <set>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -65,16 +64,6 @@ struct StreamCtx {
   // answer. Classification lives beside the protocol constants and is shared
   // with the final response validator.
   enum class Show { kUndecided, kPrint, kSuppress } show = Show::kUndecided;
-  // Whole answers that are shown to nobody (Api::unsaid), held back the
-  // same way.
-  std::span<const std::string_view> unsaid;
-  // Whether the answer so far could become one of them or, `complete`, is.
-  bool Unsaid(bool complete) const {
-    const std::string text = Trim(res->content);
-    return std::ranges::any_of(unsaid, [&](std::string_view word) {
-      return complete ? word == text : word.starts_with(text);
-    });
-  }
 
   void MarkEvent() {
     res->semantic_progress = true;
@@ -158,7 +147,6 @@ struct StreamCtx {
     if (show == Show::kSuppress) return;
     LeadingToolMarkup classification = ClassifyLeadingToolMarkup(res->content);
     if (classification == LeadingToolMarkup::kProse) {
-      if (Unsaid(false)) return;
       show = Show::kPrint;
       OutputText(res->content);
     } else if (classification == LeadingToolMarkup::kCall) {
@@ -239,10 +227,6 @@ struct StreamCtx {
         LeadingToolMarkup::kCall) {
       show = Show::kSuppress;
       res->suppressed = true;
-      return;
-    }
-    if (Unsaid(true)) {
-      show = Show::kSuppress;
       return;
     }
     show = Show::kPrint;

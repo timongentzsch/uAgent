@@ -570,29 +570,6 @@ test("a streamed row refolds only the last fold", () => {
   );
 });
 
-test("a chat participant's pass or wait never has a row, not even while it streams", () => {
-  const reply = (text, more = {}) => ({
-    id: "m-1",
-    kind: "assistant",
-    text,
-    ...more,
-  });
-  const shown = (block, chat = true) =>
-    presentMessages([block], undefined, chat).length;
-  // Streaming: nothing shows while the text could still become a pass.
-  for (const text of ["", "P", "PA", "PASS", "WAIT", "WAI"]) {
-    assert.equal(shown(reply(text, { streaming: true, reasoning: "hm" })), 0);
-  }
-  assert.equal(shown(reply("Patch it.", { streaming: true })), 1);
-  // Finished: only the word itself is unsaid, and what the host marked.
-  assert.equal(shown(reply("PASS")), 0);
-  assert.equal(shown(reply("PASS.")), 0);
-  assert.equal(shown(reply("Passing thought", { silent: true })), 0);
-  assert.equal(shown(reply("PASS on the rewrite, patch instead.")), 1);
-  // Outside a chat an answer is an answer.
-  assert.equal(shown(reply("PASS"), false), 1);
-});
-
 test("an edit's counts come from its receipt, also when the diff is cut", () => {
   // The host cuts a long diff's body; its first line keeps the totals.
   const cut = "Edited a.ts (+812 -40)\n@@ -1,3 +1,3 @@\n-old\n+new\n";

@@ -78,7 +78,6 @@ export default function ChatPage({
   loadError,
   menu,
   newPlace,
-  addMember,
   updateView,
   choose,
   side,
@@ -97,11 +96,10 @@ export default function ChatPage({
   catalogue: Catalogue;
   outgoing: Outgoing[];
   loadError: unknown;
-  // A panel's roster: a row's own actions, and asking for another member.
+  // A board row's own actions.
   menu: (item: Session) => ComponentChildren;
   // Asks for a workspace's name or a folder's path, to start a conversation.
   newPlace: (place: "workspace" | "folder") => void;
-  addMember: () => void;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
   choose: (id: string) => Promise<void>;
   side: { question: string; id?: string; firstRequest: string } | null;
@@ -197,10 +195,6 @@ export default function ChatPage({
     () => setModal({ type: "browser", handoff: true }),
     [setModal],
   );
-  const members = useMemo(
-    () => threads?.filter((thread) => thread.member),
-    [threads],
-  );
   if (!active) return null;
 
   // The last turn stopped short, and nothing new has been sent since: the
@@ -240,7 +234,6 @@ export default function ChatPage({
       openBrowser={openBrowser}
       stopped={stopped}
       resume={actions.resume}
-      members={members}
     />
   );
   return shown ? (
@@ -253,12 +246,7 @@ export default function ChatPage({
                 name: "board",
                 label: "Resize the board",
                 content: (
-                  <Board
-                    threads={threads}
-                    choose={choose}
-                    menu={menu}
-                    add={addMember}
-                  />
+                  <Board threads={threads} choose={choose} menu={menu} />
                 ),
               }
             : undefined
@@ -313,7 +301,7 @@ export default function ChatPage({
       tips={[
         [
           "Panel",
-          "Runs several conversations in a workspace or folder for you and hosts a chat with other voices. A place’s name in the list opens its panel.",
+          "Runs several conversations in a workspace or folder for you. A place’s name in the list opens its panel.",
         ],
         [
           <kbd>{keysOf("palette").join(" ")}</kbd>,

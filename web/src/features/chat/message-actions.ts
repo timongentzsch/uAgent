@@ -5,7 +5,6 @@ import type {
   Exchange,
   PresentedBlock,
   Report,
-  Session,
   UserBlock,
 } from "../../shared/types.ts";
 
@@ -30,11 +29,6 @@ export interface MessageActions {
   resume?: () => void;
   branch?: (block: Pick<Block, "id">, edit: boolean) => void;
   http?: (exchanges: Exchange[]) => void;
-  // In a panel's chat: its members, and a way to see the prompt a
-  // participant was last sent (a member by name, the panel by none).
-  team?: Session[];
-  moderator?: string;
-  prompt?: (member?: string) => void;
 }
 
 export const MessageActions = createContext<MessageActions>({

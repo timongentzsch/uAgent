@@ -23,7 +23,6 @@ import { ConversationMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById, threadsOf } from "../state/attention.ts";
-import { folderOf } from "../shared/display.ts";
 import { lockPageZoom, useCompact } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useLatest } from "../shared/use-latest.ts";
@@ -43,7 +42,6 @@ import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
 import { useMessageActions } from "./use-message-actions.ts";
-import { focusComposer } from "../shared/navigation.ts";
 import {
   libraryModule,
   pairing,
@@ -202,29 +200,6 @@ function App() {
     (value: Draft, id = selected) => updateDraft(id, () => value),
     [updateDraft, selected],
   );
-  // The moderator adds a member, with a persona, skills and model of its
-  // choosing: asking for one starts the message that asks.
-  function addMember() {
-    // What is already written stays: it may be the request itself.
-    if (!draft.text) setDraft({ ...draft, text: "Add a member named " });
-    focusComposer();
-  }
-  // Writes to a member, or to the moderator, from where its avatar was
-  // pointed at: in its panel's composer, which opens.
-  function askMember(item: Session) {
-    const panel = catalogue.sessions.find(
-      (entry) => entry.kind === "panel" && folderOf(entry) === folderOf(item),
-    );
-    if (!panel || !item.member) return;
-    const greeting = `${item.member}, `;
-    updateDraft(panel.id, (current) =>
-      current.text.startsWith(greeting)
-        ? current
-        : { ...current, text: greeting + current.text },
-    );
-    choose(panel.id);
-    focusComposer();
-  }
   const act: Act = useCallback(
     async <K extends CommandKind>(kind: K, fields?: CommandFields<K>) => {
       if (!online)
@@ -316,8 +291,6 @@ function App() {
     session,
     deliver,
     busy,
-    showContext,
-    threads,
     setOutgoing,
     patchOutgoing,
     updateDraft,
@@ -327,7 +300,7 @@ function App() {
   });
   // The host context and the conversation menus must keep their functions;
   // they read the latest ones through a ref.
-  const latest = useLatest({ showContext, askMember, forkAndOpen });
+  const latest = useLatest({ showContext, forkAndOpen });
   async function logout() {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
@@ -401,7 +374,6 @@ function App() {
       forget,
       setModal,
       showContext: (item?: Session) => latest.current.showContext(item),
-      askMember: (item: Session) => latest.current.askMember(item),
     }),
     [online, connection, report, snapshots, load, refresh, forget],
   );
@@ -535,7 +507,6 @@ function App() {
                       settings={settings}
                       menu={conversationMenu}
                       choose={choose}
-                      addMember={addMember}
                     />
                     {filesOpen && compact && page === "chat" && session && (
                       <Modal
@@ -596,7 +567,6 @@ function App() {
                       loadError={loadErrors[selected]}
                       menu={conversationMenu}
                       newPlace={newPlace}
-                      addMember={addMember}
                       updateView={updateView}
                       choose={choose}
                       side={side}

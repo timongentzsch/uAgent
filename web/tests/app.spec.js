@@ -94,10 +94,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     ),
   ).toBeLessThan(2);
   await expect(page.getByRole("button", { name: /^Reply to:/ })).toHaveCount(0);
-  // An answer's menu is on its turn's last line, under it.
-  const footer = page.locator(".turn-footer").last();
-  await footer.getByLabel(/^Actions for /).click();
-  await footer
+  // An answer owns its metadata and actions in its header.
+  const header = reply.locator("header");
+  await header.getByLabel(/^Actions for /).click();
+  await header
     .getByRole("menuitem", { name: "HTTP request/response", exact: true })
     .click();
   await expect(page.getByRole("dialog").locator("pre").last()).toContainText(
@@ -123,9 +123,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "print('hello')\n",
   );
-  await expect(footer.locator("time")).toHaveAttribute("datetime", /T/);
-  await footer.getByLabel(/^Actions for /).click();
-  await footer
+  await expect(header.locator("time")).toHaveAttribute("datetime", /T/);
+  await header.getByLabel(/^Actions for /).click();
+  await header
     .getByRole("menuitem", { name: "Statistics", exact: true })
     .click();
   await expect(

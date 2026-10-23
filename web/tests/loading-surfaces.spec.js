@@ -226,8 +226,9 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     name: "Model and effort",
     exact: true,
   });
+  // The sheet takes focus on its heading; the search waits to be chosen.
   await expect(
-    picker.getByRole("combobox", { name: "Model", exact: true }),
+    picker.getByRole("heading", { name: "Model and effort", exact: true }),
   ).toBeFocused();
   // It is a sheet at the window's right edge, not a panel beside its button.
   await expect
@@ -517,10 +518,9 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  // An answer's menu is on its turn's last line, under it.
-  await page
-    .locator(".turn-footer")
-    .last()
+  // An answer owns its metadata and actions in its header.
+  await reply
+    .locator("header")
     .getByRole("button", { name: /^Actions for / })
     .click();
   const rawAction = page.getByRole("menuitem", {
@@ -633,6 +633,12 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   ).json();
   snapshot.state.view.blocks = [
     {
+      id: "fixture-response",
+      response_id: "fixture-response",
+      kind: "assistant",
+      time: new Date(Date.now() - 2300).toISOString(),
+    },
+    {
       id: "fixture-tool",
       kind: "tool_result",
       name: "web_search",
@@ -651,6 +657,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       status: "success",
       truncated: true,
       time: new Date().toISOString(),
+      response_id: "fixture-response",
       activity: {
         label: `ssh remote "docker exec -i app python manage.py shell" <<'PY' 2>&1 | grep '^SMOKE' | ${"x".repeat(200)}`,
         category: "execute",
@@ -798,6 +805,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   );
   // Short arguments read as facts in the info line, not as field rows.
   await expect(tool.locator(".tool-facts")).toContainText("a test query");
+  await expect(tool.locator(".tool-facts time")).toHaveCount(1);
+  await expect(tool.locator(".tool-facts")).not.toContainText(
+    /called |completed /,
+  );
+  await expect(tool.locator(".tool-facts")).not.toHaveText(/^\s*·/);
   await expect(tool.locator(".tool-fields")).toHaveCount(0);
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);

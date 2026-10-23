@@ -406,3 +406,91 @@ test("expanded events draw one vertical guide", async ({ page }) => {
     "0px",
   );
 });
+
+for (const touch of [false, true]) {
+  test.describe(`focus restoration with ${touch ? "touch" : "mouse"}`, () => {
+    test.use({ hasTouch: touch });
+    test("pointer navigation stays unringed and keyboard navigation restores its ring", async ({
+      page,
+    }) => {
+      await page.goto(SHOWCASE_URL);
+      const activate = (target) => (touch ? target.tap() : target.click());
+      const trigger = page.getByRole("button", {
+        name: "Example menu",
+        exact: true,
+      });
+      await activate(trigger);
+      await activate(page.getByRole("menuitem", { name: /Nested view/ }));
+      await activate(
+        page.getByRole("menuitem", { name: "Back to Example menu" }),
+      );
+      await activate(
+        page.getByRole("menuitem", { name: "First action", exact: true }),
+      );
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveCSS("outline-style", "none");
+
+      const sheet = page.getByRole("button", {
+        name: "Example sheet",
+        exact: true,
+      });
+      await activate(sheet);
+      await activate(
+        page.getByRole("button", { name: "Close example sheet", exact: true }),
+      );
+      await expect(sheet).toBeFocused();
+      await expect(sheet).toHaveCSS("outline-style", "none");
+
+      await trigger.focus();
+      await trigger.press("Enter");
+      await page.getByRole("menuitem", { name: /Nested view/ }).focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(
+        page.getByRole("menuitem", { name: "One", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(
+        page.getByRole("menuitem", { name: /Nested view/ }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveCSS("outline-style", "solid");
+    });
+  });
+}
+
+for (const touch of [false, true]) {
+  test.describe(`menu toggle with ${touch ? "touch" : "mouse"}`, () => {
+    test.use({ hasTouch: touch, reducedMotion: "no-preference" });
+    test("pressing an expanded menu trigger closes it", async ({ page }) => {
+      // Older engines ignore showPopover's source option. The trigger must
+      // still be associated declaratively so its press is not light-dismiss.
+      await page.addInitScript(() => {
+        const show = HTMLElement.prototype.showPopover;
+        HTMLElement.prototype.showPopover = function () {
+          return show.call(this);
+        };
+      });
+      await page.goto(SHOWCASE_URL);
+      const trigger = page.getByRole("button", {
+        name: "Example menu",
+        exact: true,
+      });
+      const menu = page.getByRole("menu", {
+        name: "Example menu",
+        exact: true,
+      });
+      const activate = () => (touch ? trigger.tap() : trigger.click());
+      for (let index = 0; index < 3; index++) {
+        await page.emulateMedia({
+          reducedMotion: index === 1 ? "reduce" : "no-preference",
+        });
+        await activate();
+        await expect(menu).toBeVisible();
+        await activate();
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toHaveAttribute("aria-expanded", "false");
+      }
+    });
+  });
+}

@@ -407,9 +407,21 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible,
-.file-button:focus-within {
+.file-button:has(:focus-visible) {
   outline: var(--focus-ring);
   outline-offset: 2px;
+}
+/* Pointer-driven focus restoration must not look like keyboard selection.
+   Editable fields retain their native focus indication in either mode. */
+:root[data-input="pointer"]
+  :is(button, a, summary, [tabindex]):not(
+    input,
+    textarea,
+    select,
+    [contenteditable]
+  ):focus-visible,
+:root[data-input="pointer"] .file-button:has(:focus-visible) {
+  outline: none;
 }
 ::placeholder {
   color: var(--muted);
@@ -1717,7 +1729,7 @@ dialog > header .icon-button {
   width: 100%;
   min-width: 0;
   min-height: var(--row);
-  padding-block: var(--space-1);
+  padding-block: var(--row-padding, var(--space-1));
   border: 0;
   line-height: var(--leading-snug);
   text-align: start;
@@ -1733,6 +1745,7 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 .row {
+  --row-padding: var(--space-3);
   background: transparent;
 }
 .row-icon {

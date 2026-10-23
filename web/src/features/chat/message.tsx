@@ -113,13 +113,9 @@ type MessageProps = {
   block: PresentedBlock;
   online: boolean;
   session: SessionRef;
-  // A turn's answer whose time and menu its footer carries, given to that
-  // footer as `answer` and to the answer itself as `footed`.
-  answer?: PresentedBlock;
-  footed?: boolean;
 };
 
-function MessageView({ block, online, session, answer, footed }: MessageProps) {
+function MessageView({ block, online, session }: MessageProps) {
   const {
     read,
     inspect,
@@ -231,7 +227,6 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
             : capitalize(block.kind),
     block.time,
   );
-  const answerName = useRowName("Assistant", answer?.time);
   if (block.kind === "compaction" && block.compaction)
     return (
       <EventRow
@@ -277,19 +272,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
         summary={block.summary}
         session={session}
         open={() => statistics?.(block)}
-      >
-        {answer && (
-          <>
-            <Time value={answer.time} />
-            <MessageMenu
-              label={`Actions for ${answerName}`}
-              block={answer}
-              statistics={statistics}
-              http={http}
-            />
-          </>
-        )}
-      </TurnFooter>
+      />
     );
   // In a chat with members the panel is named like everyone else.
   const panel =
@@ -298,10 +281,7 @@ function MessageView({ block, online, session, answer, footed }: MessageProps) {
     member || panel || (userOwned || row || agentRow ? null : block.kind);
   const running = took == null && isRunningStatus(block.status);
   const assets = routes.assets(session.id);
-  // A reply's time and menu sit on its turn's last line: a line of its own
-  // only for a name or a status, else an empty row while it streams and a
-  // jump when the turn ends.
-  const header = !row && !footed && !(reply && !actor && !block.status);
+  const header = !row;
   return (
     <article
       data-message-id={block.key || block.id}
@@ -489,9 +469,7 @@ class Message extends Component<MessageProps> {
     const prior = this.props;
     return (
       next.block !== prior.block ||
-      next.answer !== prior.answer ||
       next.online !== prior.online ||
-      next.footed !== prior.footed ||
       next.session.id !== prior.session.id ||
       next.session.generation !== prior.session.generation
     );
@@ -588,22 +566,10 @@ export function MessageRows({ blocks, ...props }: MessageRowsProps) {
     [blocks, policy, chat],
   );
   const scope = `${props.session?.id || ""}:${level}:`;
-  // A turn's answer puts its time and menu on the turn's footer, under it.
-  // In a chat the panel's answers keep their header, which names them.
-  const footed = (index: number) =>
-    !chat &&
-    rows[index]?.kind === "assistant" &&
-    rows[index + 1]?.kind === "turn_summary";
   return (
     <>
-      {rows.map((row, index) => (
-        <Message
-          key={`${scope}${row.key || row.id}`}
-          block={row}
-          footed={footed(index)}
-          answer={footed(index - 1) ? rows[index - 1] : undefined}
-          {...props}
-        />
+      {rows.map((row) => (
+        <Message key={`${scope}${row.key || row.id}`} block={row} {...props} />
       ))}
     </>
   );

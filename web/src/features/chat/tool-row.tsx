@@ -183,6 +183,22 @@ export function ToolRow({
         : part,
     )
     .filter((part) => part.kind !== "fields" || part.rows.length);
+  const time = block.source?.time || block.time;
+  const metadata = [
+    call?.name !== title && call?.name,
+    ...facts.map(([label, value]) => `${label} ${cleanText(value)}`),
+    time && <Time value={time} />,
+    inspect && call && (
+      <Button
+        variant="quiet"
+        class="tool-link"
+        aria-label="Tool input/output"
+        onClick={() => inspect(call.detail_id || `t-${call.call_id}`)}
+      >
+        raw
+      </Button>
+    ),
+  ].filter(Boolean);
   return (
     <DisclosureRow
       className={`tool-disclosure${running || live ? " running" : failed ? " failed" : ""}`}
@@ -202,40 +218,16 @@ export function ToolRow({
       onToggle={onToggle}
     >
       <div class="tool-body">
-        <p class="small muted tool-facts">
-          {call?.name}
-          {facts.map(([label, value]) => (
-            <Fragment key={label}>
-              {" · "}
-              {label} {cleanText(value)}
-            </Fragment>
-          ))}
-          {block.source?.time && (
-            <>
-              {" · called "}
-              <Time value={block.source.time} />
-            </>
-          )}
-          {block.result_loaded && block.time && (
-            <>
-              {" · completed "}
-              <Time value={block.time} />
-            </>
-          )}
-          {inspect && call && (
-            <>
-              {" · "}
-              <Button
-                variant="quiet"
-                class="tool-link"
-                aria-label="Tool input/output"
-                onClick={() => inspect(call.detail_id || `t-${call.call_id}`)}
-              >
-                raw
-              </Button>
-            </>
-          )}
-        </p>
+        {metadata.length > 0 && (
+          <p class="small muted tool-facts">
+            {metadata.map((item, index) => (
+              <Fragment key={index}>
+                {index > 0 && " · "}
+                {item}
+              </Fragment>
+            ))}
+          </p>
+        )}
         <ToolInput parts={blocks} />
         {!online && block.truncated && text == null && (
           <p class="small muted">

@@ -597,11 +597,11 @@ test("phone header keeps its buttons in place from loading to ready", async ({
   }
 });
 
-test("user message metadata has a line of its own above the text", async ({
+test("message metadata has a line of its own above the text", async ({
   page,
   session,
   command,
-}) => {
+}, testInfo) => {
   await selectProbeModel(command, session);
   await page.goto(`/#session=${session.id}`);
   const text =
@@ -616,8 +616,19 @@ test("user message metadata has a line of its own above the text", async ({
   // replaced the one sent from this page by then.
   await expect(page.locator(".turn-footer")).toBeVisible();
   await expect(bubble).toBeVisible();
+  await expect(
+    page.locator(".turn-footer time, .turn-footer .action-menu"),
+  ).toHaveCount(0);
+  const answer = page.locator(".message.response").last();
+  await expect(answer.locator("header time")).toHaveCount(1);
+  await expect(answer.locator("header .action-menu")).toHaveCount(1);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
+    const answerHeader = await answer.locator("header").boundingBox();
+    const answerText = await answer.locator(".markdown").last().boundingBox();
+    expect(answerText.y).toBeGreaterThanOrEqual(
+      answerHeader.y + answerHeader.height - 1,
+    );
     await bubble.scrollIntoViewIfNeeded();
     const box = await bubble.boundingBox();
     const header = await bubble.locator("header").boundingBox();
@@ -629,6 +640,12 @@ test("user message metadata has a line of its own above the text", async ({
     expect(time.x + time.width).toBeLessThanOrEqual(menu.x);
     // The text starts under the line, so no line of it wraps around them.
     expect(words.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+    await testInfo.attach(`message-${width}`, {
+      body: await answer.screenshot({
+        path: testInfo.outputPath(`message-${width}.png`),
+      }),
+      contentType: "image/png",
+    });
   }
 });
 
@@ -714,3 +731,45 @@ for (const width of [390, 1706]) {
     }
   });
 }
+
+test("settings dividers leave room around wrapped fields", async ({
+  page,
+  session,
+}, testInfo) => {
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Settings");
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "All conversations", exact: true })
+    .click();
+  await expect(settings.locator(".setting-field").first()).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const clearance = await settings
+      .locator(".setting-field")
+      .evaluateAll((fields) =>
+        fields
+          .filter((field) => field.getBoundingClientRect().height > 0)
+          .map((field) => {
+            const box = field.getBoundingClientRect();
+            const content = [
+              ...field.querySelectorAll(".row-text, .row-value"),
+            ].map((node) => node.getBoundingClientRect());
+            return Math.min(
+              ...content.flatMap((rect) => [
+                rect.top - box.top,
+                box.bottom - rect.bottom,
+              ]),
+            );
+          }),
+      );
+    expect(Math.min(...clearance)).toBeGreaterThanOrEqual(5);
+    await testInfo.attach(`settings-${width}`, {
+      body: await settings.screenshot({
+        path: testInfo.outputPath(`settings-${width}.png`),
+      }),
+      contentType: "image/png",
+    });
+  }
+});

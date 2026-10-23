@@ -259,8 +259,7 @@
   font-size: var(--font-small);
   text-align: start;
 }
-/* A turn's last line: a receipt of the files it changed, its statistics,
-   then its answer's time and menu at the far end, inset as a message is. */
+/* A turn's last line: changed files and statistics. */
 .turn-footer {
   display: flex;
   flex-wrap: wrap;
@@ -272,12 +271,6 @@
 }
 .turn-footer > .turn-summary:has(+ .turn-summary) {
   padding-right: 0;
-}
-.turn-footer > time {
-  margin-inline: auto var(--gap);
-  color: var(--muted);
-  font-size: var(--font-small);
-  white-space: nowrap;
 }
 .turn-files {
   display: grid;

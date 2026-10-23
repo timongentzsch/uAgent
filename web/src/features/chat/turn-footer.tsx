@@ -1,4 +1,3 @@
-import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { duration } from "../../shared/duration.ts";
 import { cost, count, plural, tokens } from "../../shared/quantities.ts";
@@ -9,21 +8,16 @@ import { formatStat } from "../../shared/display.ts";
 // The review sheet loads on first open, as the statistics dialog does.
 const review = () => import("./turn-review.tsx");
 
-// A turn's last line: its numbers, and after them what `children` adds
-// (the answer's time and menu). Lives apart from statistics.tsx (the lazily
-// loaded statistics dialog): every transcript message row renders this, so
-// a static import of the dialog chunk would chain the whole transcript
-// behind it and freeze message rendering until the dialog arrives.
+// A turn's receipt and statistics. Kept apart from the lazily loaded
+// statistics dialog so transcript rendering never waits for that chunk.
 export function TurnFooter({
   summary,
   session,
   open,
-  children,
 }: {
   summary: TurnSummary;
   session: SessionRef;
   open: () => void;
-  children?: ComponentChildren;
 }) {
   const [reviewing, setReviewing] = useState(false);
   const files = summary.files || [];
@@ -46,7 +40,6 @@ export function TurnFooter({
           </span>
           {outcome}
         </Button>
-        {children}
       </div>
     );
   // A turn that changed files leads with them: its receipt, and the way
@@ -76,7 +69,6 @@ export function TurnFooter({
         {duration(summary.duration_ms)}
         {outcome}
       </Button>
-      {children}
       {reviewing && (
         <Modal
           title="Changed files"

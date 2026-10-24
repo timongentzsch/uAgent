@@ -246,7 +246,13 @@ export default function ChatPage({
                 name: "board",
                 label: "Resize the board",
                 content: (
-                  <Board threads={threads} choose={choose} menu={menu} />
+                  <Board
+                    threads={threads}
+                    choose={choose}
+                    menu={menu}
+                    state={snapshot?.state}
+                    open={setInspector}
+                  />
                 ),
               }
             : undefined

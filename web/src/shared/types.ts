@@ -340,6 +340,21 @@ export interface Agent {
   description?: string;
   model?: string;
   status?: string;
+  // The panel plan step it works for.
+  step?: string;
+}
+// A panel's plan (its plan tool): what the moderator keeps between turns.
+export interface PlanStep {
+  id: string;
+  title: string;
+  status: "open" | "running" | "done" | "failed";
+  result?: string;
+}
+export interface Plan {
+  goals?: string;
+  decisions?: string;
+  open_questions?: string;
+  steps?: PlanStep[];
 }
 export interface ActivityDetail extends Activity {
   phase?: ExecutionPhase;
@@ -453,9 +468,11 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // A folder's panel, or a thread it launched (in `folder`).
+  // A folder's panel, or a thread it launched (in `folder`), and the plan step
+  // the thread works for.
   kind?: "panel" | "thread" | "";
   folder?: string;
+  step?: string;
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -493,6 +510,8 @@ export interface State {
   activity?: string;
   activities?: Activity[];
   agents?: Agent[];
+  // A panel's plan.
+  plan?: Plan;
   context_tokens?: number;
   context_window?: number;
   permissions?: Permissions;

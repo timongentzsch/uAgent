@@ -36,6 +36,10 @@ std::string WritePanelFile(const std::string& folder, const char* suffix,
 // fresh on each request; never stored.
 std::string PanelBoard(const std::string& folder);
 
+// The panel's plan as a client shows it: goals, decisions, open questions and
+// steps.
+json PanelPlan(const std::string& folder);
+
 // What a panel sees fresh every turn: the time, its pinned notes and
 // the board. Outside the transcript, so compaction never loses it.
 std::string PanelContext(const std::string& folder);

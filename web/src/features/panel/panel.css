@@ -33,3 +33,33 @@
   background: none;
   padding: 0;
 }
+.board-goal {
+  font-size: var(--font-small);
+  padding: var(--space-2) var(--inset-x);
+  white-space: pre-line;
+}
+.plan-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.plan-step summary {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: var(--row);
+  padding: 0 var(--inset-x);
+  cursor: pointer;
+}
+.plan-step-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-step summary small {
+  color: var(--muted);
+  font-size: var(--font-small);
+  font-variant-numeric: tabular-nums;
+}

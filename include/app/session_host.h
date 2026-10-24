@@ -86,9 +86,9 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // "panel", "thread" or empty; a thread names its project `folder`.
-  // `model` is the one the file names.
-  std::string kind, folder, model;
+  // "panel", "thread" or empty; a thread names its project `folder` and the
+  // plan `step` it works for. `model` is the one the file names.
+  std::string kind, folder, step, model;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;

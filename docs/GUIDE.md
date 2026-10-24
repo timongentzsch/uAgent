@@ -233,7 +233,8 @@ when their turn ends. The moderator answers the approvals a thread cannot
 settle or passes them to you.
 
 - **The board** lists the folder's conversations, what each is doing and what
-  waits on you: `/board` in the terminal, beside the chat in the web.
+  waits on you: `/board` in the terminal, beside the chat in the web, where
+  it also shows the plan with each step's threads and subagents.
   `/open ID` switches to one.
 - **Where a thread works.** By default in a git worktree of its own under
   `~/.uagent/worktrees/`, started from your `HEAD`, so your checkout stays as

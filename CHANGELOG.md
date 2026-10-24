@@ -47,6 +47,11 @@
 
 ### Changes
 
+- Web: a panel's board shows its plan. The goal comes first, then each step
+  with its status. A step opens to its result, the threads working for it,
+  and its subagents with their status and time; a subagent opens in the
+  inspector. Threads that no step names stay under Work. A thread's session
+  carries its `step`, and a running subagent's activity does too.
 - `subagent operation=fanout` runs a question as two rounds without a model
   turn in between: one child per item answering in a finding schema, then
   refuters for every finding. Only what held, what was refuted and why, and

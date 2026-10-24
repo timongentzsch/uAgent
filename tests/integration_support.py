@@ -703,9 +703,12 @@ def write_session(
         "archive": [],
         "archive_dropped_segments": 0,
         "context_tokens": context_tokens,
+        "context_window": 0,
         "usage": usage or {},
         "route_usage": {},
-        "tool_displays": {},
+        "last_sent_prompt": "",
+        "display": {},
+        "delivered_mail": [],
     }
     history = home / ".uagent" / "history"
     history.mkdir(parents=True, exist_ok=True)

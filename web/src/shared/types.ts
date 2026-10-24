@@ -110,9 +110,9 @@ export interface TurnSummary {
   outcome: string;
   route?: string;
   tool_calls: number;
-  direct_tool_calls?: number;
+  direct_tool_calls: number;
   model_calls?: number;
-  direct_model_calls?: number;
+  direct_model_calls: number;
   background_statistics?: Statistics;
   steps: number;
   duration_ms: number;

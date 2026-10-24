@@ -363,9 +363,8 @@ int TerminalMain(Options options) {
       // Nothing to manage yet: what it is for, as the web's empty chat says.
       if (FolderSessions(cwd).empty()) {
         fputs(AsciiGlyphs("\nAsk for work and it starts threads that do it. "
-                          "Ask for another voice and it adds a member to the "
-                          "chat;\nopen a message with a name (\"Ada, …\") to "
-                          "ask that one alone.\n")
+                          "Ask a question and it fans out\nsubagents and "
+                          "reports what held up.\n")
                   .c_str(),
               stdout);
       }

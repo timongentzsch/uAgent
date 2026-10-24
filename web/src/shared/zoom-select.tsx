@@ -2,8 +2,7 @@ import { ValueSelect } from "./ui.tsx";
 import { maximumZoom, minimumZoom } from "./layout.ts";
 
 // The interface zoom in steps, as a browser offers it: choosing one rescales
-// once, where a slider rescaled the page under the finger dragging it. A
-// zoom kept from before that is no step stays listed.
+// once, where a slider rescaled the page under the finger dragging it.
 const STEPS = [
   minimumZoom,
   67,
@@ -25,16 +24,13 @@ export function ZoomSelect({
   zoom: number;
   change: (value: number) => void;
 }) {
-  const steps = STEPS.includes(zoom)
-    ? STEPS
-    : [...STEPS, zoom].sort((a, b) => a - b);
   return (
     <ValueSelect
       aria-label="Zoom"
       value={String(zoom)}
       onChange={(event) => change(Number(event.currentTarget.value))}
     >
-      {steps.map((step) => (
+      {STEPS.map((step) => (
         <option key={step} value={step}>
           {step}%
         </option>

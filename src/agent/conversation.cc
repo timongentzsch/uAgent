@@ -39,11 +39,6 @@ void NormalizeRole(json& message, MessageKind kind) {
       message["role"] = "assistant";
       return;
     case MessageKind::kToolResult:
-      // Native results keep their tool_call_id and role. Text-protocol results
-      // have no native call to reference, so they are harness-owned context.
-      if (JsonValue(message, "role", "") != "tool") {
-        message["role"] = "user";
-      }
       return;
     case MessageKind::kSystem:
       message["role"] = "system";
@@ -112,14 +107,7 @@ std::string ToolResultName(const json& messages,
       if (kinds[index - 1] == MessageKind::kUser) break;
     }
   }
-
-  std::string content = JsonValue(message, "content", "");
-  constexpr std::string_view kPrefix = "[tool_result ";
-  if (!content.starts_with(kPrefix)) return "";
-  size_t end = content.find(']', kPrefix.size());
-  return end == std::string::npos
-             ? ""
-             : content.substr(kPrefix.size(), end - kPrefix.size());
+  return "";
 }
 
 std::string CompactedResult(const std::string& content) {
@@ -183,6 +171,8 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   std::vector<uint64_t> restored_ids;
   json restored_facts = json::object();
   uint64_t next_id = 1;
+  // Without display metadata, messages a caller builds in memory are numbered
+  // afresh; a saved session always carries it (SessionState).
   if (!display.empty()) {
     const json* ids = JsonArray(display, "ids");
     const json* facts = JsonObject(display, "facts");
@@ -237,8 +227,6 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
       fact_bytes_[key] = FactBytes(key, value);
     }
   }
-  // Sessions written before announcement receipts existed restore without
-  // any: the next request announces once, then dedupes from there.
   announced_deliveries_ = json::object();
   const json announced = JsonValue(display, "announced", json::object());
   if (announced.is_object() && announced.size() <= size_t{1024} &&

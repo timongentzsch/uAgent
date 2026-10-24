@@ -324,9 +324,9 @@ void TestConversation() {
   CHECK(resumed.At(0).value("content", "") == "new system");
   CHECK(resumed.At(1).value("content", "") == "continue");
 
-  // A session written before display metadata existed restores without any.
-  Conversation legacy;
-  CHECK(legacy.Restore(resumed.Messages(), resumed.Kinds(), json::array(), 0));
+  // A conversation built from bare messages has no display metadata.
+  Conversation built;
+  CHECK(built.Restore(resumed.Messages(), resumed.Kinds(), json::array(), 0));
 
   // Oversized counters cost only themselves, never the resume.
   json crowded_statistics = json::object();
@@ -358,7 +358,7 @@ void TestConversation() {
   browser.AddStatistics({{"model_calls", 1}, {"model_ms", 10.0}});
   CHECK(browser.Statistics()["model_calls"] == 3);
   CHECK(browser.Statistics()["model_ms"] == 133.5);
-  CHECK(legacy.Statistics()["complete"] == false);
+  CHECK(built.Statistics()["complete"] == false);
   json projection = ConversationView(browser);
   CHECK(projection["blocks"][0].contains("time"));
   CHECK(projection["blocks"][1].contains("time"));
@@ -874,12 +874,12 @@ void TestAttachmentDeliveryAnnouncements() {
                          conversation.Archive(), conversation.DroppedSegments(),
                          conversation.DisplayMetadata()));
   CHECK(reloaded.AnnouncedDeliveries(id) == degraded);
-  // Sessions written before receipts existed restore without any: the next
+  // A conversation built without receipts has none: the next
   // request announces once, then dedupes from there.
-  Conversation legacy;
-  CHECK(legacy.Restore(conversation.Messages(), conversation.Kinds(),
-                       json::array(), 0));
-  CHECK(legacy.AnnouncedDeliveries(id) == json::array());
+  Conversation built;
+  CHECK(built.Restore(conversation.Messages(), conversation.Kinds(),
+                      json::array(), 0));
+  CHECK(built.AnnouncedDeliveries(id) == json::array());
   // The receipt store is bounded; bulk attachment sessions cannot grow it
   // without limit.
   for (size_t seq = 0; seq < 1100; ++seq) {

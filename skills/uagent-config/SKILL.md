@@ -1,6 +1,6 @@
 ---
 name: uagent-config
-description: Configure, inspect, troubleshoot, or explain µAgent settings, providers, models, effort, approvals, tools, skills, memory, MCP, web search, limits, retention, and installation. Use for questions about UAGENT_* or OPENROUTER_* variables, /config and saved settings (~/.uagent/config/settings.json), legacy ~/.uagent/.config or project .uagent/.config files, .mcp.json, or changing µAgent behavior.
+description: Configure, inspect, troubleshoot, or explain µAgent settings, providers, models, effort, approvals, tools, skills, memory, MCP, web search, limits, retention, and installation. Use for questions about UAGENT_* or OPENROUTER_* variables, /config and saved settings (~/.uagent/config/settings.json), .mcp.json, or changing µAgent behavior.
 ---
 
 # Configure µAgent

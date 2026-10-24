@@ -582,7 +582,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"maxLength", kAgentDirectiveMax},
         {"description",
-         "persistent coordinator guidance prepended to followups; a new "
+         "persistent parent guidance prepended to followups; a new "
          "one replaces it"}}},
       {"background",
        {{"type", "boolean"},

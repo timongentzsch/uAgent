@@ -162,11 +162,6 @@ One setting chooses how far it goes, `sandbox.level` in the settings file or
 | `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | allowed | yes |
 | `off` | unconfined | allowed | no |
 
-`0` and `false` are accepted as `off`, `1` and `true` as `default`, as
-`UAGENT_SANDBOX` was spelled while it was a switch. A saved
-`sandbox.enabled` is renamed to `sandbox.level` (`false` becomes `off`,
-`true` `default`) the first time the settings are saved.
-
 Four more settings each adjust one thing and win over the level:
 
 | To | Setting | Environment |

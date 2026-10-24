@@ -661,15 +661,16 @@ void TestEditJournal() {
     CHECK((info.st_mode & 07777) == mode);
   }
 
-  // Older journals have no mode. Keep existing permissions when possible;
-  // recreate a missing file privately instead of broadening access.
-  const std::string legacy = (workspace.workspace / "legacy.txt").string();
-  journal.Record(99, {legacy, true, "private\n", ""});
+  // An entry whose mode could not be read has none. Keep existing permissions
+  // when possible; recreate a missing file privately instead of broadening
+  // access.
+  const std::string unmoded = (workspace.workspace / "unmoded.txt").string();
+  journal.Record(99, {unmoded, true, "private\n", ""});
   journal.Files(99);
   reopened.Open(directory);
   CHECK(reopened.Revert(99, "")["restored"].size() == 1);
   struct stat info{};
-  REQUIRE(stat(legacy.c_str(), &info) == 0);
+  REQUIRE(stat(unmoded.c_str(), &info) == 0);
   CHECK((info.st_mode & 07777) == kPrivateFileMode);
 }
 

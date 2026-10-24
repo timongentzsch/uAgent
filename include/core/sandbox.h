@@ -73,9 +73,8 @@ struct SandboxInputs {
 // apply. Not SandboxLevel, which is what the host can enforce.
 enum class SandboxPreset { kStrict, kDefault, kRelaxed, kOff };
 
-// strict, default, relaxed and off; also 0 and false for off, 1 and true for
-// default, which is how the setting was spelled while it was a switch. False
-// for anything else, leaving *preset alone.
+// strict, default, relaxed and off. False for anything else, leaving *preset
+// alone.
 bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset);
 
 struct SandboxPolicyResult {

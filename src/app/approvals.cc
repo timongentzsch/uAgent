@@ -97,8 +97,7 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 // finds inside the workspace. Stopping a process is not one of them: a
 // detached one may belong to another folder.
 // Without an enforced sandbox, or for anything else, it is reviewed like
-// any Auto session. A chat member reads what was shared in its panel's chat as
-// it reads the folder: without review.
+// any Auto session.
 bool WrapsCommands(const Tool& tool) {
   return tool.name == "run" || tool.name == "scratch";
 }

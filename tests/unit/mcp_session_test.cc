@@ -308,20 +308,14 @@ void TestWorkspaceScopedSession() {
     CHECK(payload.value("context_tokens", int64_t{-1}) == agent.ContextUsed());
     CHECK(payload.value("context_window", int64_t{-1}) == api.ctx_window);
     payload["context_tokens"] = 1'900'000;
+    const json display = payload["display"];
     payload["display"] = json::array();
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .Ok());
     CHECK(SessionStore::Inspect(session.string()).status.error ==
           SessionStoreError::kCorrupt);
-    // Earlier format-3 sessions omit display metadata; ones that still carry
-    // the retired tool receipts or self-directive load with them ignored.
-    payload["tool_displays"] = json::object();
-    payload["adaptive_system"] = "retired directive";
-    payload["adaptive_system_mode"] = "replace";
-    payload["adaptive_system_revision"] = 4;
-    payload.erase("display");
-    payload.erase("context_window");
+    payload["display"] = display;
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .output.starts_with("wrote "));
@@ -330,8 +324,6 @@ void TestWorkspaceScopedSession() {
   CHECK(stat(session.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
   CHECK(agent.Load(session.string(), CanonicalCwd(), error));
-  CHECK(agent.PromptPreview()["effective"].get<std::string>().find(
-            "retired directive") == std::string::npos);
   CHECK(agent.SessionId() == session_id);
   CHECK(agent.ContextUsed() > 0);
   CHECK(agent.ContextUsed() < 1'900'000);
@@ -351,12 +343,7 @@ void TestWorkspaceScopedSession() {
   CHECK(!contender.Acquire(session.string() + ".lock", error));
   CHECK(agent.SessionId() == session_id);
 
-  // Resume and fork normalize absent presentation metadata to empty objects.
-  auto older = SessionStore::Inspect(session.string());
-  CHECK(older.record.has_value());
-  CHECK(older.record->state.display == json::object());
-  CHECK(older.record->state.context_window == 0);
-  auto forked = SessionStore::Fork(session.string(), "Legacy fork", true);
+  auto forked = SessionStore::Fork(session.string(), "A fork", true);
   CHECK(!forked.contains("error"));
   const auto fork_path = forked.value("path", "");
   CHECK(agent.Load(fork_path, CanonicalCwd(), error));

@@ -42,7 +42,6 @@ import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
 import {
-  assetsOf,
   capitalize,
   diffCounts,
   formatStat,
@@ -76,10 +75,10 @@ function MentionFile({
 }: {
   id: string;
   alt: string;
-  files?: (Asset | string)[];
+  files?: Asset[];
   assets: string;
 }) {
-  const file = assetsOf(files).find((item) => item.id === id);
+  const file = files?.find((item) => item.id === id);
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
   const href = `${assets}${file.id}`;
   return file.image ? (
@@ -395,10 +394,7 @@ function MessageView({ block, online, session }: MessageProps) {
         <p class="small muted">Attachments are available when connected.</p>
       )}
       {online && !!files?.length && !row && (
-        <AttachmentList
-          files={assetsOf(files)}
-          href={(id) => `${assets}${id}`}
-        />
+        <AttachmentList files={files} href={(id) => `${assets}${id}`} />
       )}
       {!row && block.truncated && (
         <Button disabled={expanding} onClick={() => setWantFull(full === null)}>

@@ -45,8 +45,7 @@ struct SavedSettings {
 };
 
 // What is saved for all conversations and for the conversations in `folder`.
-// A document in the format before this one, which the last release still
-// writes, is rewritten in this one the first time it is read.
+// A document in another format is not read.
 SavedSettings ReadSettings(const std::string& folder);
 
 // One scope as the document holds it, also the values reading does not take:

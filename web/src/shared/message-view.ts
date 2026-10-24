@@ -1,4 +1,4 @@
-import { assetsOf, isFailedStatus, isRunningStatus } from "./display.ts";
+import { isFailedStatus, isRunningStatus } from "./display.ts";
 import { duration } from "./duration.ts";
 import { plural } from "./quantities.ts";
 import type {
@@ -144,7 +144,7 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
       if (call.kind === "tool_result")
         kept[owner] = joined(call, [row], () => ({
           ...call,
-          files: [...(call.files || []), ...assetsOf(row.files)],
+          files: [...(call.files || []), ...(row.files || [])],
         }));
       continue;
     }

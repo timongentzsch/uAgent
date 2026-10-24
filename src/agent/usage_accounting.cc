@@ -136,11 +136,9 @@ void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
     json side = JsonValue(summary, "background_statistics", json::object());
     MergeNumericStatistics(side, statistics);
     const int64_t direct_tools =
-        JsonValue(summary, "direct_tool_calls",
-                  JsonValue(summary, "tool_calls", int64_t{0}));
+        JsonValue(summary, "direct_tool_calls", int64_t{0});
     const int64_t direct_models =
-        JsonValue(summary, "direct_model_calls",
-                  JsonValue(summary, "model_calls", int64_t{0}));
+        JsonValue(summary, "direct_model_calls", int64_t{0});
     summary["usage"] = UsageJson(updated);
     summary["usage_reported"] =
         JsonValue(summary, "usage_reported", false) || HasUsage(usage);

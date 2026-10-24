@@ -25,12 +25,12 @@ int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
 int64_t AutoCompactPct();
 int64_t AutoCompactTokens();
-// Delegation depth: 0 is the interactive coordinator. A subagent may delegate
+// Delegation depth: 0 is a session nobody delegated to. A subagent may delegate
 // again while it stays under the cap, so nesting is bounded, not banned.
 int64_t AgentDepth();
 bool CanDelegate();
 bool LeanToolset();
-// Budgets handed to a delegated child. Lower than the coordinator's own, so one
+// Budgets handed to a delegated child. Lower than its parent's own, so one
 // flailing subagent cannot spend the whole turn.
 int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();

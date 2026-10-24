@@ -853,7 +853,7 @@ int WorkerMain(int argc, char** argv) {
     options.session = *role;
   } else if (const json header = SessionHeader(argv[3]); IsThread(header)) {
     options.session = {{"kind", kSessionKindThread},
-                       {"thread", ThreadRole(header)}};
+                       {"delegation", ThreadRole(header)}};
   }
   // A thread runs sandboxed and within its budget however its runtime is
   // started again, so a restart never widens it: not even a sandbox policy

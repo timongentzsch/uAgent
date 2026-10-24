@@ -10,6 +10,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/file_services.h"
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -94,10 +95,9 @@ bool HasMember(const json& members, const std::string& id) {
   return false;
 }
 
-// Who the link joins. It is for a person's own sessions: a delegated child an
-// older version put there is not counted, so it reaches no session its parent
-// did not give it. Nor is a session whose saved header cannot be read, which
-// could be one.
+// Who the link joins. It is for a person's own sessions: a subagent is not
+// counted, so it reaches no session its parent did not give it. Nor is a
+// session whose saved header cannot be read, which could be one.
 json LinkMembers() {
   const json link = ReadJsonFile(AutoLinkPath(), kSessionLinkBytes);
   json own = json::array();
@@ -106,7 +106,8 @@ json LinkMembers() {
     const std::string path = JsonValue(member, "path", "");
     const json header = SessionHeader(path);
     if (!PathExists(path) ||
-        (!header.empty() && !header.contains(kSessionHeaderDelegation))) {
+        (!header.empty() && (!header.contains(kSessionHeaderDelegation) ||
+                             ThreadLifetime(DelegationOf(header))))) {
       own.push_back(std::move(member));
     }
   }

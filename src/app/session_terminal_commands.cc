@@ -173,8 +173,7 @@ Terminal::Command Terminal::SetVerbosity(const std::string& argument) {
 
 std::string Terminal::Folder() const {
   const json header = SessionHeader(path_);
-  std::string folder = JsonValue(
-      JsonValue(header, kSessionHeaderThread, json::object()), "folder", "");
+  std::string folder = JsonValue(ThreadRole(header), "folder", "");
   if (!folder.empty()) return folder;
   return JsonValue(header, kSessionHeaderCwd, CanonicalCwd());
 }

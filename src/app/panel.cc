@@ -244,7 +244,7 @@ std::string Today() { return LocalTime(std::time(nullptr), "%Y-%m-%d"); }
 
 bool OwnThread(const SessionInfo& info, const std::string& panel) {
   return info.kind == kSessionKindThread &&
-         JsonValue(info.thread, "coordinator_id", "") == panel;
+         JsonValue(info.delegation, "parent", "") == panel;
 }
 
 bool Working(const SessionInfo& info) {
@@ -270,11 +270,11 @@ double SpentToday(const std::string& folder,
     if (const auto before = baselines.find(info.path);
         before != baselines.end() && before->is_number()) {
       cost = std::max(0.0, cost - before->get<double>());
-    } else if (JsonValue(info.thread, "day", "") != today) {
+    } else if (JsonValue(info.delegation, "day", "") != today) {
       continue;
     }
     spent += i < working.size() && working[i]
-                 ? std::max(cost, ThreadBudget(info.thread))
+                 ? std::max(cost, ThreadBudget(info.delegation))
                  : cost;
   }
   return spent;
@@ -305,7 +305,7 @@ std::vector<SessionInfo> FolderSessions(const std::string& folder) {
   std::erase_if(sessions, [&](const SessionInfo& info) {
     return !info.error.empty() || info.kind == kSessionKindPanel ||
            (info.cwd != folder &&
-            JsonValue(info.thread, "coordinator_id", "") != panel);
+            JsonValue(info.delegation, "parent", "") != panel);
   });
   return sessions;
 }
@@ -319,9 +319,9 @@ std::string PanelBoard(const std::string& folder) {
     std::string line =
         SessionIdFor(info.path) + " " + LiveStatus(info) + " · " +
         (info.kind == kSessionKindThread ? "↳ " : "") +
-        (JsonValue(info.thread, "step", "").empty()
+        (JsonValue(info.delegation, "step", "").empty()
              ? ""
-             : "step " + JsonValue(info.thread, "step", "") + " · ") +
+             : "step " + JsonValue(info.delegation, "step", "") + " · ") +
         OneLine(info.title) + " · " + std::to_string(info.turns) + " turns · " +
         Age(info.mtime) + (LaunchWorktree(info.cwd) ? " · " + info.cwd : "") +
         "\n";
@@ -374,7 +374,7 @@ void RecordPanelCost(const std::string& folder, double cost) {
     // Threads from earlier days count today only for what they spend from now.
     json threads = json::object();
     for (const SessionInfo& info : OwnThreads(folder)) {
-      if (JsonValue(info.thread, "day", "") != Today()) {
+      if (JsonValue(info.delegation, "day", "") != Today()) {
         threads[info.path] = info.cost;
       }
     }

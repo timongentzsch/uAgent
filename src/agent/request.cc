@@ -753,9 +753,9 @@ std::string Agent::RuntimeContextText() const {
     // message. The second line is the other half of the same channel -- a child
     // that stops on a missing decision has somewhere to send the question.
     content +=
-        "\n[collaborator: coordinator guidance may arrive between steps as a "
-        "user message; follow it.\nIf you are blocked on a decision only the "
-        "coordinator can make, end your answer with that one question.]";
+        "\n[collaborator: your parent's guidance may arrive between steps as "
+        "a user message; follow it.\nIf you are blocked on a decision only "
+        "your parent can make, end your answer with that one question.]";
   }
   if (std::string memory = MemoryText(); !memory.empty()) {
     content += "\n\n" + memory;

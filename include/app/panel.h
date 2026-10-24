@@ -21,11 +21,11 @@ double ThreadBudget(const json& thread);
 // folder and the threads it launched elsewhere (worktrees), newest first.
 std::vector<SessionInfo> FolderSessions(const std::string& folder);
 
-// The threads this folder's panel started, chat members included.
+// The threads this folder's panel started.
 std::vector<SessionInfo> OwnThreads(const std::string& folder);
 
 // A JSON object the panel keeps beside its session file, under
-// `suffix`: its pinned notes, its chat's round. Not named *.json, so the
+// `suffix`: its plan and spend. Not named *.json, so the
 // session catalogue never mistakes one for a session. Reading gives an
 // empty object when there is none; writing returns why it failed.
 json ReadPanelFile(const std::string& folder, const char* suffix);

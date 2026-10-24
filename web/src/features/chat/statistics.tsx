@@ -77,19 +77,13 @@ export function StatisticsContent({
   const took = block && "duration_ms" in block ? block.duration_ms : undefined;
   const side = summary?.background_statistics;
   const fork = state?.view?.fork;
-  const toolScope =
-    summary?.direct_tool_calls === undefined ? "recorded parent" : "all agents";
-  const modelScope =
-    summary?.direct_model_calls === undefined
-      ? "recorded parent"
-      : "all agents";
   const rows: Row[] = summary
     ? [
         ["Outcome", summary.outcome],
         ["Model at completion", summary.route || "Not recorded"],
         ["Model steps (parent)", count(summary.steps)],
-        [`Model calls (${modelScope})`, count(summary.model_calls)],
-        [`Tool calls (${toolScope})`, count(summary.tool_calls)],
+        ["Model calls (all agents)", count(summary.model_calls)],
+        ["Tool calls (all agents)", count(summary.tool_calls)],
         ["Side model calls", count(side?.model_calls)],
         ["Side tool calls", count(side?.tool_calls)],
         ["Duration", duration(summary.duration_ms)],

@@ -68,10 +68,10 @@ Find a conversation with `/sessions [PREFIX]`, `uagent --resume` or
 
 A session file is a format-3 snapshot: active messages, the bounded archive
 of compacted tool traces, usage, provider session identity, the system
-directive, and optional `display` metadata (message IDs, readable reasoning,
-tool status and timing, receipts, routes, usage and asset references) for
-browsing history after context pruning. An optional `custom_title` keeps a
-name the user chose.
+directive, and `display` metadata (message IDs, readable reasoning, tool
+status and timing, receipts, routes, usage and asset references) for
+browsing history after context pruning. `custom_title` says whether the user
+chose the title.
 
 - A save validates the complete record, writes a private temporary file in
   the same directory, `fsync`s it and renames it into place. An interrupted

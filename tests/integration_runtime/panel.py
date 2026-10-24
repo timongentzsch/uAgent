@@ -36,7 +36,7 @@ def _spawn(title, objective, *, environment="local"):
 
 def _panel_path(home, root):
     """Where the panel of `root` keeps its session."""
-    return home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    return home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "panel.json"
 
 
 def _thread_role(panel_path, root, **fields):
@@ -98,7 +98,7 @@ def test_panel_is_one_read_only_session_per_folder(root, home, *, binary):
             assert_true("coding agent" not in system, system[:200])
         # Both invocations reached the same runtime and file.
         sessions = session_files(home)
-        assert_true([path.name for path in sessions] == ["coordinator.json"], sessions)
+        assert_true([path.name for path in sessions] == ["panel.json"], sessions)
         header = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[0])
         assert_true(header.get("kind") == "panel", header)
         assert_true(header["turns"] == 2, header)
@@ -528,7 +528,7 @@ def society(root, home, binary, *, stopped):
         wait_until(lambda: seen["events"], "the panel heard no thread event", timeout=10)
         assert_true("Its answer" in str(seen["events"][0]), seen["events"][0])
         # And its row is recorded as mail, so no client shows it as the person's.
-        saved = _coordinator(home).read_text()
+        saved = _panel_session(home).read_text()
         assert_true('"origin":"mail"' in saved.replace(" ", ""), saved[-600:])
 
 
@@ -654,7 +654,7 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}],
         cwd=root,
         kind="thread",
-        delegation=_thread_role(home / "coordinator.json", root),
+        delegation=_thread_role(home / "panel.json", root),
     )
     with Server([event({"content": "unused"})]) as server:
         env = base_env(home, server.url)
@@ -941,8 +941,8 @@ def _threads(home):
     return [path for path in session_files(home) if path.name.startswith("thread-")]
 
 
-def _coordinator(home):
-    return next(path for path in session_files(home) if path.name == "coordinator.json")
+def _panel_session(home):
+    return next(path for path in session_files(home) if path.name == "panel.json")
 
 
 def _thread_session(home):
@@ -1166,7 +1166,7 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
         assert_true("## plan\\n- s1 [done] Tag it\\n  result: tagged v1" in context, context[-800:])
         # Rebuilt per request, never stored: rewriting stored history would
         # move display rows and spoil the provider's cached prefix.
-        stored = _coordinator(home)
+        stored = _panel_session(home)
         assert_true("## board" not in stored.read_text(), "panel context was stored")
         # The typed text is stored as typed; only the request carries stamps.
         stored_messages = json.loads(stored.read_text().split("\n", 1)[1])["messages"]

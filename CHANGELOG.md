@@ -7,12 +7,18 @@
 - **Threads saved before this version are ordinary conversations.** A
   thread's link to its panel is now the same `delegation` role a subagent
   has (with lifetime `thread`), and the old `thread` header is not read.
+- **No compatibility with older saved data.** uAgent is in development and
+  reads only what this version writes. A conversation saved without display
+  metadata, its context window, last prompt or delivered mail, or with
+  text-protocol tool results, is not loaded; turn statistics without direct
+  call counts read as zero; and the web shows only attachments recorded as
+  objects. A folder's panel is saved as `panel.json`, and one saved as
+  `coordinator.json` is not read.
 - **The panel's chat with members is gone.** A panel no longer adds members
   or holds a group discussion: its moderator asks read-only subagents its
   questions, in parallel, and keeps a plan of the steps. `add_member`,
   `panel.chatTurns` (`UAGENT_PANEL_CHAT_TURNS`) and the "Name, …" addressing
-  are removed. Existing members open as ordinary threads; their earlier chat
-  messages show as events.
+  are removed. Saved members are not converted.
 - **Names and formats from v1.4 and earlier are no longer read.** Before
   upgrading from v1.4, rename a panel's `COORDINATOR.md` to `PANEL.md` (it
   is otherwise ignored) and set `sandbox.level` instead of `sandbox.enabled`
@@ -30,9 +36,8 @@
   others start from the defaults.
 - **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem`
   (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are
-  removed; it was off by default and unused. A saved conversation that still
-  carries one loads without it. The system message is the built-in base
-  followed by instruction files.
+  removed; it was off by default and unused. The system message is the
+  built-in base followed by instruction files.
 - **A `-p` run is saved like any conversation**, so `-c -p` continues the
   latest one in the folder. Scripts that ran `-p` many times now leave one
   history entry per run.
@@ -71,8 +76,7 @@
   and on resume alike: a resumed command keeps its last output lines, a long
   result shows its start and end, result rows lose the `[2]` batch ordinal,
   and an activity poll is an ordinary call and result instead of a "waited
-  on activity" line. Calls saved before this show their tool's name where
-  the headline was.
+  on activity" line.
 - The agent's Chrome no longer reads as a test browser: pages see no
   `navigator.webdriver` and none of the agent's scripts (they run in an
   isolated world), WebGL renders in software, text is typed key by key,

@@ -37,7 +37,7 @@ constexpr size_t kSessionLinkBytes = KiB(256);
 
 // A panel and its threads work together, so they are linked by where
 // they live, whatever mode each runs in: one history folder holds
-// coordinator.json and its thread-*.json. Nothing to join, nothing to prune.
+// panel.json and its thread-*.json. Nothing to join, nothing to prune.
 std::vector<json> SocietyMembers() {
   const auto member = SocietySession;
   const std::filesystem::path own(OwnSessionFile());

@@ -795,7 +795,7 @@ def trial_summaries(results: list[dict[str, Any]], requested_k: int) -> list[dic
             str(result.get("variant") or "control"),
             str(result.get("model") or "?"),
             str(result.get("route") or result.get("model") or "?"),
-            str(result.get("cohort") or "legacy"),
+            str(result.get("cohort") or "?"),
         )
         grouped[key].append(result)
     summaries = []

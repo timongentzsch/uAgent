@@ -80,9 +80,8 @@ inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kModelsDir = "models";
 inline constexpr const char* kConfigDir = "config";
-// A folder's panel session record, in its history folder (the file keeps the
-// name it had before the coordinator became the panel).
-inline constexpr const char* kPanelRecordFile = "coordinator.json";
+// A folder's panel session record, in its history folder.
+inline constexpr const char* kPanelRecordFile = "panel.json";
 inline constexpr const char* kMailDir = "mail";
 // Named workspaces, one folder each.
 inline constexpr const char* kSpacesDir = "spaces";

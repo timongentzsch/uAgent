@@ -104,8 +104,11 @@ export async function saveHistory(host, file, { id, title, turns, messages }) {
     archive: [],
     archive_dropped_segments: 0,
     context_tokens: 0,
+    context_window: 0,
     usage: {},
-    tool_displays: {},
+    last_sent_prompt: "",
+    display: {},
+    delivered_mail: [],
   };
   const path = `${directory}/${file}`;
   await writeFile(path, `${JSON.stringify(header)}\n${JSON.stringify(state)}`, {

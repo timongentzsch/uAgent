@@ -81,11 +81,11 @@ constexpr Field kStateFields[] = {
     {"archive", json::value_t::array, true},
     {"archive_dropped_segments", json::value_t::number_integer, true},
     {"context_tokens", json::value_t::number_integer, true},
-    {"context_window", json::value_t::number_integer, false},
+    {"context_window", json::value_t::number_integer, true},
     {"usage", json::value_t::object, true},
-    {"last_sent_prompt", json::value_t::string, false},
-    {"display", json::value_t::object, false},
-    {"delivered_mail", json::value_t::array, false}};
+    {"last_sent_prompt", json::value_t::string, true},
+    {"display", json::value_t::object, true},
+    {"delivered_mail", json::value_t::array, true}};
 
 constexpr Field kHeaderFields[] = {
     {kSessionHeaderCwd, json::value_t::string, true},

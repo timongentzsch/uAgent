@@ -1387,8 +1387,8 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   write("agent-aaaa1111",
         {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
   // A folder lists its panel only in the host's whole view.
-  write("coordinator", {{kSessionHeaderKind, kSessionKindPanel}});
-  CHECK(PanelPath(CanonicalCwd()) == (dir / "coordinator.json").string());
+  write("panel", {{kSessionHeaderKind, kSessionKindPanel}});
+  CHECK(PanelPath(CanonicalCwd()) == (dir / "panel.json").string());
   auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
     for (const SessionInfo& info : ListSessions(scope)) {
@@ -1399,7 +1399,7 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   CHECK(ids(SessionScope::kWorkspace) == std::vector<std::string>{"ordinary"});
   auto all = ids(SessionScope::kAll);
   std::ranges::sort(all);
-  CHECK(all == (std::vector<std::string>{"coordinator", "ordinary"}));
+  CHECK(all == (std::vector<std::string>{"ordinary", "panel"}));
   const std::vector<SessionInfo> children =
       ListSessions(SessionScope::kChildren);
   CHECK(children.size() == 1);

@@ -22,7 +22,6 @@ import {
   recallable,
   unsent,
 } from "../shared/message-view.ts";
-import { assetsOf } from "../shared/display.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import type { SnapshotStore } from "../state/snapshot-store.ts";
 import { transcriptBlocks } from "./chat-page.tsx";
@@ -90,7 +89,7 @@ export function useMessageActions({
       );
       void deliver(selected, {
         text: block.text || "",
-        files: assetsOf(block.files),
+        files: block.files || [],
       });
     },
     [setOutgoing],

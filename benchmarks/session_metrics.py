@@ -11,7 +11,7 @@ Usage:
     python3 benchmarks/session_metrics.py --cohort 3f22a10c9c73
     python3 benchmarks/session_metrics.py --json /tmp/sessions.json
 
-Journals predating provenance are an explicit ``legacy`` cohort. Failure text
+A journal without provenance is not reported. Failure text
 is read only from the adjacent transcript and folded before aggregation; raw
 arguments, outputs, routes, commands and credentials never enter the report.
 """
@@ -138,8 +138,6 @@ def safe_provenance(value):
 
 
 def provenance_cohort(provenance):
-    if provenance is None:
-        return "legacy"
     canonical = json.dumps(provenance, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()[:12]
 
@@ -163,7 +161,7 @@ def journal_metrics(path):
         "message_counts": [],
         "results": 0,
         "provenance": None,
-        "cohort": "legacy",
+        "cohort": None,
     }
     failed_messages = []
     signatures = collections.Counter()
@@ -272,7 +270,11 @@ def collect(history, since, cohorts=()):
         if os.path.getmtime(journal) < since:
             continue
         summary = journal_metrics(journal)
-        if not summary["batches"] or (wanted and summary["cohort"] not in wanted):
+        if (
+            not summary["batches"]
+            or summary["cohort"] is None
+            or (wanted and summary["cohort"] not in wanted)
+        ):
             continue
         total["sessions"] += 1
         total["calls"] += sum(summary["batches"].values())
@@ -280,8 +282,7 @@ def collect(history, since, cohorts=()):
         total["batch_total"] += len(summary["batches"])
         total["sizes"].update(summary["batches"].values())
         total["cohorts"][summary["cohort"]] += 1
-        if summary["provenance"] is not None:
-            total["provenance"][summary["cohort"]] = summary["provenance"]
+        total["provenance"][summary["cohort"]] = summary["provenance"]
         for field in (
             "names",
             "failures",
@@ -322,7 +323,7 @@ def report(total):
     print("\nprovenance cohorts")
     for cohort, count in total["cohorts"].most_common():
         provenance = total["provenance"].get(cohort, {})
-        identity = provenance.get("build_id") or provenance.get("binary_version") or "pre-v1"
+        identity = provenance.get("build_id") or provenance.get("binary_version")
         print(f"  {cohort:<12} {count:>4}  {identity}")
 
     print("\ntool mix (share of calls)")
@@ -400,7 +401,7 @@ def self_test():
     redacted = message_key("error: api_key=private-value Bearer second-private-value")
     if "private-value" in redacted or "second-private-value" in redacted:
         failures.append(f"failure-message secret was retained: {redacted}")
-    if total["cohorts"]["legacy"] != 1 or len(total["cohorts"]) != 3:
+    if len(total["cohorts"]) != 3:
         failures.append(f"mixed provenance cohorts were not separated: {dict(total['cohorts'])}")
     expected_trajectory = {
         "failed_calls": 2,
@@ -434,7 +435,7 @@ def main():
         help="session history directory",
     )
     parser.add_argument("--since", help="only sessions modified on or after YYYY-MM-DD")
-    parser.add_argument("--cohort", action="append", default=[], help="cohort id or legacy")
+    parser.add_argument("--cohort", action="append", default=[], help="cohort id")
     parser.add_argument("--json", help="write the same privacy-safe summary as JSON")
     parser.add_argument(
         "--self-test", action="store_true", help="check classifiers against planted fixtures"

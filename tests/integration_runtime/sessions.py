@@ -572,7 +572,7 @@ def test_a_runtime_that_cannot_listen_says_so_at_once(root, home, *, binary):
     from integration_support import fnv1a64
     from session_support import runtime_directory
 
-    session = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    session = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "panel.json"
     blocked = runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
     (blocked / "kept").mkdir(parents=True, mode=0o700)
     runtime_directory(home).chmod(0o700)

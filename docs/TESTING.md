@@ -249,7 +249,7 @@ The report records the authority file's SHA-256 and each route's mode.
 
 `benchmarks/session_metrics.py` summarizes real sessions from their journals
 without retaining prompts or tool values: cohorts by `session.ready`
-provenance (`legacy` for older journals), failed-call recovery, repeats,
+provenance (a journal without it is not reported), failed-call recovery, repeats,
 argument issues, activity polls and turn outcomes.
 
 ```sh

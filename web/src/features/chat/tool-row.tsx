@@ -10,7 +10,7 @@ import {
 } from "../../shared/ui.tsx";
 import DiffView from "../../shared/diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { assetsOf, cleanText, isFailedStatus } from "../../shared/display.ts";
+import { cleanText, isFailedStatus } from "../../shared/display.ts";
 import type {
   Activity,
   FilePart,
@@ -289,7 +289,7 @@ export function ToolInline({
       ? cleanText((more && call?.tail) || text || "").trim()
       : "";
   const parts = block.parts || [];
-  const files = assetsOf(call?.files);
+  const files = call?.files || [];
   if (!diff && !output && !parts.length && !files.length) return null;
   return (
     <div class="tool-inline">

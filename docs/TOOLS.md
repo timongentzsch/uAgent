@@ -143,6 +143,12 @@ activity ID at once.
   brief tells it the format; an answer that does not parse or fit goes back
   to it with the reason, twice at most, after which it stands as written.
 - `step` names the plan step the child works for; `list` reports it.
+- `fanout` runs `prompt` once per entry of `items` (put in its `{item}`),
+  each child answering with findings of the `finding` schema. Then
+  `refuters` children (default 1, at most 3) try to refute each finding.
+  It returns the verified findings, the refuted ones with a reason, and those
+  left unchecked, with no model turn in between. One call starts at most 64
+  children, and any it could not check are reported as unchecked.
 - Children started in one batch run at once, up to six; other parallel
   calls run four at a time.
 - `followup` resumes the child's private conversation and prepends its

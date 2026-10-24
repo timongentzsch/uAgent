@@ -688,6 +688,58 @@ def test_a_child_answer_is_held_to_the_schema_it_was_asked_for(root, home, *, bi
         assert_true(role["step"] == "s1" and role["schema"] == schema, role)
 
 
+def test_a_fanout_keeps_only_what_its_refuters_cannot_refute(root, home, *, binary):
+    """One finder per item runs at once; each finding gets a refuter; the parent
+    receives the verified findings and the refuted ones with their reason."""
+    running = Concurrency()
+    finding = {"type": "object", "required": ["claim"], "properties": {"claim": {"type": "string"}}}
+    found = {"find in a": ["a-1", "a-2"], "find in b": ["b-1"]}
+
+    def route(_, body):
+        messages = body["messages"]
+        brief = next(
+            (t for t in user_texts(messages) if t.startswith(("find in", "Try to refute"))), None
+        )
+        if brief and brief.startswith("find in"):
+            with running:
+                time.sleep(0.5)
+                claims = found[brief.split("\n")[0]]
+                return event({"content": json.dumps({"findings": [{"claim": c} for c in claims]})})
+        if brief:
+            refuted = "a-2" in brief.split("The task that produced it")[0]
+            verdict = "refuted" if refuted else "holds"
+            return event({"content": json.dumps({"verdict": verdict, "reason": f"{verdict}-why"})})
+        if results := tool_results(messages):
+            return event({"content": results[0]})
+        return tool_call(
+            "subagent",
+            {
+                "operation": "fanout",
+                "items": ["a", "b"],
+                "prompt": "find in {item}",
+                "finding": finding,
+                "step": "s1",
+            },
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "--yolo", "-p", "survey", timeout=15, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        report = json.loads(result.stdout[result.stdout.index("{") : result.stdout.rindex("}") + 1])
+        assert_true(sorted(f["claim"] for f in report["verified"]) == ["a-1", "b-1"], report)
+        assert_true(
+            report["refuted"] == [{"finding": {"claim": "a-2"}, "reason": "refuted-why"}], report
+        )
+        assert_true(report["children"] == 5 and not report["failed_items"], report)
+        assert_true(running.most == 2, running.most)
+        roles = [
+            json.loads(path.read_text().split("\n", 1)[0])["delegation"]
+            for path in child_sessions(home)
+        ]
+        assert_true(len(roles) == 5 and all(role["step"] == "s1" for role in roles), roles)
+
+
 def test_subagent_interrupt_reaps_child(root, home, *, binary):
     """A soft interrupt during the tool batch must not orphan delegation."""
     batch = tool_calls(

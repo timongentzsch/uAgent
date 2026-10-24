@@ -47,6 +47,13 @@
 
 ### Changes
 
+- `subagent operation=fanout` runs a question as two rounds without a model
+  turn in between: one child per item answering in a finding schema, then
+  refuters for every finding. Only what held, what was refuted and why, and
+  what stayed unchecked comes back. A panel's moderator uses it for questions
+  with independent parts. On a read-only code review on dev (local Haiku) the
+  same pipeline found 19 verified issues in 150 s, where the panel alone
+  verified 5 in 260 s.
 - A panel works like a research lead. Its moderator has `subagent`,
   `web_search` and `web_fetch`: it fans a question out to subagents in one
   batch, each answering in a schema and tagged with its plan step, can have

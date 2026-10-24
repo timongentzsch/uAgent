@@ -3,7 +3,10 @@
 #include "include/tools/subagent.h"
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
+#include <functional>
+#include <future>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -19,6 +22,7 @@
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/mailbox.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/tools/shell.h"
 
@@ -541,6 +545,164 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   return result;
 }
 
+// What one fan-out may start: finders, one per item, then refuters.
+constexpr size_t kFanoutItems = 24;
+constexpr size_t kFanoutChildren = 64;
+// The report stands in for every child's answer, so it is read whole rather
+// than cut to the cap one answer gets.
+constexpr int64_t kFanoutResultChars = int64_t{48} * 1024;
+
+// The JSON object a child answered with; its notes follow it. Null when it
+// gave none.
+json ChildJson(const std::string& output) {
+  const size_t open = output.find('{');
+  const size_t close = output.rfind('}');
+  if (open == std::string::npos || close == std::string::npos || close < open) {
+    return nullptr;
+  }
+  json value =
+      json::parse(output.substr(open, close - open + 1), nullptr, false);
+  return value.is_object() ? value : json(nullptr);
+}
+
+// Runs `run(i)` for i in [0, count), `width` at a time; stops starting new
+// ones once the turn is interrupted or out of time.
+void ParallelFor(size_t count, const ToolContext& context,
+                 const std::function<void(size_t)>& run) {
+  std::atomic<size_t> next{0};
+  std::vector<std::future<void>> workers;
+  const size_t width = std::min(count, static_cast<size_t>(kMaxDelegatedJobs));
+  workers.reserve(width);
+  for (size_t worker = 0; worker < width; ++worker) {
+    workers.push_back(std::async(std::launch::async, [&] {
+      for (size_t index; !AbortRequested() && !context.Expired() &&
+                         (index = next.fetch_add(1)) < count;) {
+        run(index);
+      }
+    }));
+  }
+  for (std::future<void>& worker : workers) worker.get();
+}
+
+// One subagent per item on `prompt`, each answering with findings of the
+// `finding` schema; then `refuters` more per finding, which try to refute it.
+// A finding stands when none refutes it and one confirms it. The runtime runs
+// both rounds, so no model turn sits between them, and only the outcome
+// reaches the caller; every child stays open to followup and inspection.
+ToolResult RunFanout(const Api& api, ProcessSupervisor& processes,
+                     const std::vector<Route>& routes,
+                     const std::vector<Endpoint>& providers, bool debug,
+                     const json& arguments, const ToolContext& context) {
+  const json items = JsonValue(arguments, "items", json::array());
+  const std::string prompt = JsonValue(arguments, "prompt", "");
+  const json* finding = JsonObject(arguments, "finding");
+  if (items.empty() || items.size() > kFanoutItems || !finding ||
+      prompt.find("{item}") == std::string::npos ||
+      !std::ranges::all_of(items, &json::is_string)) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "fanout needs 1 to " + std::to_string(kFanoutItems) +
+            " items as strings, a prompt with {item}, and a finding schema");
+  }
+  const auto refuters = static_cast<size_t>(
+      std::clamp<int64_t>(JsonValue(arguments, "refuters", int64_t{1}), 0, 3));
+  json child = {{"operation", "spawn"}, {"mode", "lean"}};
+  for (const char* field : {"step", "model", "limits"}) {
+    if (arguments.contains(field)) child[field] = arguments[field];
+  }
+  // Children of one round run together and share what the session has left.
+  ToolContext round = context;
+  round.delegations = kMaxDelegatedJobs;
+  const auto ask = [&](std::string brief, json schema) {
+    json spawn = child;
+    spawn["prompt"] = std::move(brief);
+    spawn["schema"] = std::move(schema);
+    ToolResult result =
+        RunSubagent(api, processes, routes, providers, debug, spawn, round);
+    return result.Ok() ? ChildJson(result.output) : json(nullptr);
+  };
+
+  std::vector<json> found(items.size());
+  const json findings_schema = {
+      {"type", "object"},
+      {"required", {"findings"}},
+      {"properties", {{"findings", {{"type", "array"}, {"items", *finding}}}}}};
+  ParallelFor(items.size(), context, [&](size_t index) {
+    std::string brief = prompt;
+    brief.replace(brief.find("{item}"), 6, items[index].get<std::string>());
+    found[index] = ask(std::move(brief), findings_schema);
+  });
+  json report = {{"verified", json::array()},
+                 {"refuted", json::array()},
+                 {"unchecked", json::array()},
+                 {"failed_items", json::array()},
+                 {"children", items.size()}};
+  std::vector<json> claims;
+  std::vector<std::string> sources;
+  for (size_t index = 0; index < items.size(); ++index) {
+    const json* list = JsonArray(found[index], "findings");
+    if (!list) {
+      report["failed_items"].push_back(items[index]);
+      continue;
+    }
+    for (const json& claim : *list) {
+      claims.push_back(claim);
+      sources.push_back(items[index].get<std::string>());
+    }
+  }
+  // Refuters past the ceiling are not started: what they would have checked
+  // is reported unchecked, never as verified.
+  const size_t room =
+      (kFanoutChildren - items.size()) / std::max<size_t>(1, refuters);
+  const size_t checked = refuters > 0 ? std::min(claims.size(), room) : 0;
+  std::vector<json> verdicts(checked * refuters);
+  const json verdict_schema = json::parse(R"json({"type":"object",
+      "required":["verdict","reason"],"properties":{
+      "verdict":{"type":"string","enum":["holds","refuted","unclear"]},
+      "reason":{"type":"string"}}})json");
+  ParallelFor(verdicts.size(), context, [&](size_t index) {
+    const size_t claim = index / refuters;
+    std::string task = prompt;
+    task.replace(task.find("{item}"), 6, sources[claim]);
+    verdicts[index] = ask(
+        "Try to refute this finding. Check it against what it rests on "
+        "yourself (the code, files or pages it cites), and say holds only if "
+        "you confirmed it.\n\nFinding: " +
+            JsonDump(claims[claim]) + "\n\nThe task that produced it: " + task,
+        verdict_schema);
+  });
+  report["children"] = items.size() + verdicts.size();
+  for (size_t claim = 0; claim < claims.size(); ++claim) {
+    if (refuters == 0) {
+      report["verified"].push_back(claims[claim]);
+      continue;
+    }
+    if (claim >= checked) {
+      report["unchecked"].push_back(claims[claim]);
+      continue;
+    }
+    bool holds = false;
+    std::string refuted;
+    for (size_t one = 0; one < refuters; ++one) {
+      const json& verdict = verdicts[claim * refuters + one];
+      const std::string said = JsonValue(verdict, "verdict", "unclear");
+      holds = holds || said == "holds";
+      if (said == "refuted" && refuted.empty()) {
+        refuted = JsonValue(verdict, "reason", "refuted");
+      }
+    }
+    if (!refuted.empty()) {
+      report["refuted"].push_back(
+          {{"finding", claims[claim]}, {"reason", refuted}});
+    } else {
+      report[holds ? "verified" : "unchecked"].push_back(claims[claim]);
+    }
+  }
+  ToolResult result = ToolSuccess(JsonDump(report));
+  result.result_chars = kFanoutResultChars;
+  return result;
+}
+
 }  // namespace
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
@@ -549,9 +711,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   json properties = {
       {"operation",
        {{"type", "string"},
-        {"enum", json::array({"spawn", "followup", "message", "list"})},
+        {"enum",
+         json::array({"spawn", "followup", "message", "list", "fanout"})},
         {"description",
-         "spawn by default; followup, message or list children"}}},
+         "spawn by default; followup, message or list children; fanout"}}},
       {"agent_id",
        {{"type", "string"},
         {"description", "child id for followup or message"}}},
@@ -568,6 +731,21 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         {"description",
          "JSON Schema of the child's answer; it answers with that JSON "
          "only"}}},
+      {"items",
+       {{"type", "array"},
+        {"maxItems", kFanoutItems},
+        {"items", {{"type", "string"}}},
+        {"description", "fanout: one child per item, put in prompt's {item}"}}},
+      {"finding",
+       {{"type", "object"},
+        {"description", "fanout: JSON Schema of one finding"}}},
+      {"refuters",
+       {{"type", "integer"},
+        {"minimum", 0},
+        {"maximum", 3},
+        {"description",
+         "fanout: children that try to refute each finding; "
+         "default 1"}}},
       {"description",
        {{"type", "string"},
         {"maxLength", 280},
@@ -620,12 +798,16 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "its next step or runs a finished one again; the activity tool waits "
       "on, reads or stops it. Name the reusable role and describe it at "
       "spawn, and put what you already found into the prompt so the child "
-      "does not look it up again.",
+      "does not look it up again. fanout runs prompt once per item, has "
+      "refuters check each finding, and returns only what held.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
-        return RunSubagent(api, processes, routes, providers, debug, arguments,
-                           context);
+        return JsonValue(arguments, "operation", "") == "fanout"
+                   ? RunFanout(api, processes, routes, providers, debug,
+                               arguments, context)
+                   : RunSubagent(api, processes, routes, providers, debug,
+                                 arguments, context);
       });
   tool.clamped_arguments = {"limits.steps", "limits.tool_calls",
                             "limits.seconds"};
@@ -651,6 +833,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string id = JsonValue(arguments, "agent_id", "");
     if (operation == "message") return "[message " + id + "] " + prompt;
+    if (operation == "fanout") {
+      return "[fanout " +
+             std::to_string(
+                 JsonValue(arguments, "items", json::array()).size()) +
+             " items] " + prompt;
+    }
     std::string label = RouteSelection(
         ResolveSideRoute(api, routes, providers,
                          NormalizeModelId(JsonValue(arguments, "model", "")))
@@ -667,7 +855,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // the route and flags, since that is what a person approves.
   tool.summary = [describe](const json& arguments) {
     const std::string operation = JsonValue(arguments, "operation", "spawn");
-    if (operation == "list" || operation == "message") {
+    if (operation == "list" || operation == "message" ||
+        operation == "fanout") {
       return describe(arguments);
     }
     const std::string name = JsonValue(arguments, "name", "");
@@ -684,6 +873,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     if (operation == "message") {
       return json{{"verb", {"Messaging", "Messaged"}},
                   {"target", JsonValue(arguments, "agent_id", name)}};
+    }
+    if (operation == "fanout") {
+      return json{{"verb", {"Fanning out", "Fanned out"}}, {"target", task}};
     }
     return json{
         {"verb", operation == "followup" ? json{"Following up", "Followed up"}

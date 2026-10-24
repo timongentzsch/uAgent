@@ -13,7 +13,7 @@ import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { active, withAgents } from "../../shared/activity-status.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
-import { plural } from "../../shared/quantities.ts";
+import { count, plural } from "../../shared/quantities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import "./panel.css";
 
@@ -48,7 +48,7 @@ export default function Board({
   const steps = state?.plan?.steps || [];
   const named = new Set(steps.map((step) => step.id));
   const agents = state?.agents || [];
-  const stepOf = new Map(agents.map((child) => [child.id, child.step]));
+  const agentOf = new Map(agents.map((child) => [child.id, child]));
   const children = withAgents(
     (state?.activities || NO_ACTIVITIES).filter(
       (item) => item.kind === "agent",
@@ -101,11 +101,12 @@ export default function Board({
                 key={step.id}
                 step={step}
                 agents={children.filter(
-                  (item) => stepOf.get(item.agent_id || "") === step.id,
+                  (item) => agentOf.get(item.agent_id || "")?.step === step.id,
                 )}
                 threads={managed
                   .filter((item) => item.step === step.id)
                   .map(threadRow)}
+                tokensOf={(id) => agentOf.get(id)?.tokens}
                 online={online}
                 open={open}
               />
@@ -135,12 +136,14 @@ function Step({
   step,
   agents,
   threads,
+  tokensOf,
   online,
   open,
 }: {
   step: PlanStep;
   agents: Activity[];
   threads: ComponentChildren[];
+  tokensOf: (id: string) => number | undefined;
   online: boolean;
   open?: (target: InspectorTarget) => void;
 }) {
@@ -166,7 +169,13 @@ function Step({
         {step.result && <p class="board-note">{cleanText(step.result)}</p>}
         {threads}
         {agents.map((item) => (
-          <Child key={item.agent_id} item={item} online={online} open={open} />
+          <Child
+            key={item.agent_id}
+            item={item}
+            tokens={tokensOf(item.agent_id || "")}
+            online={online}
+            open={open}
+          />
         ))}
       </details>
     </li>
@@ -175,10 +184,12 @@ function Step({
 
 function Child({
   item,
+  tokens,
   online,
   open,
 }: {
   item: Activity;
+  tokens?: number;
   online: boolean;
   open?: (target: InspectorTarget) => void;
 }) {
@@ -188,7 +199,7 @@ function Child({
       disabled={!online || !open}
       onClick={() => open?.({ item })}
       title={cleanText(item.name || item.label || "Subagent")}
-      meta={`${item.status}${elapsed ? ` · ${elapsed}` : ""}`}
+      meta={`${item.status}${elapsed ? ` · ${elapsed}` : ""}${tokens ? ` · ${count(tokens)} tokens` : ""}`}
     />
   );
 }

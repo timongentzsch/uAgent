@@ -1,15 +1,20 @@
 import { useEffect, useState } from "preact/hooks";
 import { defaultZoom } from "./limits.ts";
-export const minimumZoom = 50;
-export const maximumZoom = 200;
+// The interface zoom in steps, as a browser offers it: choosing one rescales
+// once, where a slider rescaled the page under the finger dragging it.
+export const zoomSteps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 const conversationMeasure = 1040;
 export const zoomChanged = "uagent:zoom";
 
 // A touch screen: the on-screen keyboard, no hover.
 export const coarsePointer = () => matchMedia("(pointer: coarse)").matches;
 
+// A stored value snaps to the nearest step, so the picker always shows it.
 export function normalizeZoom(value: number) {
-  return Math.min(maximumZoom, Math.max(minimumZoom, value || defaultZoom));
+  const wanted = value || defaultZoom;
+  return zoomSteps.reduce((best, step) =>
+    Math.abs(step - wanted) < Math.abs(best - wanted) ? step : best,
+  );
 }
 
 export function applyZoom(value: number) {

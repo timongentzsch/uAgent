@@ -291,6 +291,9 @@ void TestRuntimeConfigAndRequests() {
   api.wire_api = WireApi::kResponses;
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
+  // Session ids are 64-bit FNV-1a; the standard vectors pin the constants.
+  CHECK(HashHex("") == "cbf29ce484222325");
+  CHECK(HashHex("a") == "af63dc4c8601ec8c");
   // A proxy in front of the API gets the key as well, and passes it on.
   api.base_url = "http://127.0.0.1:8080/v1";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");

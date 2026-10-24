@@ -52,7 +52,8 @@ struct SessionInfo {
   bool custom_title = false;
   int64_t turns = 0;
   uint64_t incoming = 0;
-  double cost = 0;  // reported spend, as of the last save
+  double cost = 0;     // reported spend, as of the last save
+  int64_t tokens = 0;  // every token its calls processed, as of the last save
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;

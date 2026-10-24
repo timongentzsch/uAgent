@@ -342,6 +342,8 @@ export interface Agent {
   status?: string;
   // The panel plan step it works for.
   step?: string;
+  // Every token its calls processed, as of its last save.
+  tokens?: number;
 }
 // A panel's plan (its plan tool): what the moderator keeps between turns.
 export interface PlanStep {

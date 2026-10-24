@@ -4,6 +4,10 @@
 
 ### Upgrade notes
 
+- **Session ids changed.** The session and workspace hash now uses
+  FNV-1a's standard offset basis; the old one was missing a digit. Each
+  workspace's history folder and every session id therefore have a new
+  name, and conversations saved before are not found.
 - **Threads saved before this version are ordinary conversations.** A
   thread's link to its panel is now the same `delegation` role a subagent
   has (with lifetime `thread`), and the old `thread` header is not read.
@@ -47,6 +51,10 @@
 
 ### Changes
 
+- Web: a subagent on the panel's board shows the tokens it used, which its
+  session header now carries beside its cost.
+- Web: a zoom saved between two steps snaps to the nearer one, so the zoom
+  picker always shows what is applied.
 - Web: a panel's board shows its plan. The goal comes first, then each step
   with its status. A step opens to its result, the threads working for it,
   and its subagents with their status and time; a subagent opens in the

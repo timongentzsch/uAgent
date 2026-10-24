@@ -218,9 +218,9 @@ test("instructions read well on a phone", async ({ page, session }) => {
 });
 
 // The native session and workspace hash (src/core/strings.cc HashHex): FNV-1a
-// over 64 bits from uAgent's own offset basis.
+// over 64 bits.
 function fnv1a64(text) {
-  let value = 1469598103934665603n;
+  let value = 14695981039346656037n;
   for (const byte of new TextEncoder().encode(text)) {
     value = BigInt.asUintN(64, (value ^ BigInt(byte)) * 0x100000001b3n);
   }
@@ -283,6 +283,7 @@ test("the board shows the panel's plan with what works for each step", async ({
   await seed(dir, "agent-aaaa1111", {
     cwd: project,
     title: "review",
+    tokens: 12400,
     delegation: { ...role, name: "reviewer-a", label: "Review a", step: "s1" },
   });
   await openPanel(page, session);
@@ -310,6 +311,7 @@ test("the board shows the panel's plan with what works for each step", async ({
   await expect(done).toContainText("1 subagent");
   await done.locator("summary").click();
   await expect(done.getByText("3 issues held")).toBeVisible();
+  await expect(done).toContainText("12.4k tokens");
   await done.getByRole("button", { name: /reviewer-a/ }).click();
   await expect(
     page.getByRole("dialog").filter({ hasText: "reviewer-a" }),

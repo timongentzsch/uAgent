@@ -124,7 +124,6 @@ json HeaderJson(const SessionMetadata& metadata) {
     header[kSessionHeaderDelegation] = metadata.delegation;
   }
   if (!metadata.kind.empty()) header[kSessionHeaderKind] = metadata.kind;
-  if (!metadata.thread.empty()) header[kSessionHeaderThread] = metadata.thread;
   if (!metadata.memory) header["memory"] = false;
   return header;
 }
@@ -268,11 +267,8 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTurn, int64_t{0});
   record.metadata.forked_at_time =
       JsonValue(header, kSessionHeaderForkTime, "");
-  record.metadata.delegation =
-      JsonValue(header, kSessionHeaderDelegation, json::object());
+  record.metadata.delegation = DelegationOf(header);
   record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
-  record.metadata.thread =
-      JsonValue(header, kSessionHeaderThread, json::object());
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
@@ -347,7 +343,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   const auto listed = [&](const SessionInfo& info) {
     return (scope == SessionScope::kAll ||
             (info.cwd == current && info.kind != kSessionKindPanel)) &&
-           info.delegation.empty() != (scope == SessionScope::kChildren);
+           (!info.delegation.empty() && !ThreadLifetime(info.delegation)) ==
+               (scope == SessionScope::kChildren);
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
@@ -384,10 +381,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
-        item.delegation =
-            JsonValue(header, kSessionHeaderDelegation, json::object());
+        item.delegation = DelegationOf(header);
         item.kind = JsonValue(header, kSessionHeaderKind, "");
-        item.thread = JsonValue(header, kSessionHeaderThread, json::object());
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
@@ -568,7 +563,9 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   // A fork is the user's own conversation: never a second panel, and
   // no longer a thread its panel steers.
   record.metadata.kind.clear();
-  record.metadata.thread = json::object();
+  if (ThreadLifetime(record.metadata.delegation)) {
+    record.metadata.delegation = json::object();
+  }
   record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
   if (!title.empty()) {

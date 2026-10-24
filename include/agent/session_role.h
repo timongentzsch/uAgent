@@ -17,10 +17,25 @@ inline bool IsThread(const json& session) {
   return JsonValue(session, "kind", "") == kSessionKindThread;
 }
 
-// A thread's link to its panel (its folder, ceiling, brief) from a
-// session's options or header; empty for any other session.
+// The role a delegating session gave this one, from its options or header:
+// {parent, parent_session, ...}. A subagent's lives for its parent's turn;
+// a thread's has lifetime "thread" and adds its folder, day, ceiling, brief
+// and step. Empty for any other session.
+inline json DelegationOf(const json& session) {
+  return JsonValue(session, "delegation", json::object());
+}
+
+// Whether `role` (DelegationOf) is a thread's: it outlives the turn that
+// started it.
+inline bool ThreadLifetime(const json& role) {
+  return JsonValue(role, "lifetime", "") == kSessionKindThread;
+}
+
+// A thread's role from a session's options or header; empty for any other
+// session.
 inline json ThreadRole(const json& session) {
-  return JsonValue(session, "thread", json::object());
+  json role = DelegationOf(session);
+  return ThreadLifetime(role) ? role : json::object();
 }
 
 // A pending decision or approval the thread's panel decides first.

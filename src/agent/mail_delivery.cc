@@ -23,21 +23,19 @@ std::string Stem(const std::string& path) {
   return std::filesystem::path(path).stem().string();
 }
 
-std::string Folder(const json& header) {
-  return JsonValue(ThreadRole(header), "folder", "");
-}
-
 std::string ParentSession(const json& delegation) {
   return MailboxIdFor(JsonValue(delegation, "parent_session", ""));
 }
 
-// Who may talk to whom: linked sessions, a delegated child and its parent,
-// children of one parent, and a folder's panel and its threads. The
+// Who may talk to whom: linked sessions, a delegated session (a subagent or
+// a panel's thread) and its parent, and children of one parent. The
 // sender's own session header says which it is.
 bool MailAllowed(const Mail& mail, const std::string& own_path,
                  const json& role) {
-  // The parent, by its session or, without one, by its owner id.
-  const json& delegation = OwnDelegation();
+  // The parent, by its session or, without one, by its owner id. A thread
+  // carries its role in its options, a subagent in its environment.
+  const json delegation =
+      OwnDelegation().empty() ? ThreadRole(role) : OwnDelegation();
   const std::string parent = ParentSession(delegation);
   if (!mail.from.empty() &&
       (mail.from == parent ||
@@ -49,21 +47,16 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
   }
   const std::string own = MailboxIdFor(own_path);
   const json sender = SessionHeader(mail.sender_path);
-  const std::string sender_parent =
-      ParentSession(JsonValue(sender, "delegation", json::object()));
+  const std::string sender_parent = ParentSession(DelegationOf(sender));
   if (!sender_parent.empty() &&
       (sender_parent == own || sender_parent == parent)) {
     return true;
   }
-  const std::string folder = Folder(role);
-  if (!folder.empty() && MailboxIdFor(PanelPath(folder)) == mail.from) {
-    return true;
-  }
   // A thread asks during its first turn, before its header is saved; until
   // then its mail names its folder.
-  const std::string sender_folder =
-      sender.empty() ? JsonValue(mail.body, "folder", "") : Folder(sender);
-  if (!sender_folder.empty() && MailboxIdFor(PanelPath(sender_folder)) == own) {
+  const std::string folder = JsonValue(mail.body, "folder", "");
+  if (sender.empty() && !folder.empty() &&
+      MailboxIdFor(PanelPath(folder)) == own) {
     return true;
   }
   return SharesLink(Stem(mail.sender_path), Stem(own_path));

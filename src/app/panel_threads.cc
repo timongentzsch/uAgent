@@ -97,7 +97,9 @@ ToolResult Spawn(const std::string& folder, const json& a,
                              "folder itself");
     }
   }
-  json thread = {{"coordinator_id", panel},
+  json thread = {{"parent", panel},
+                 {"parent_session", PanelPath(folder)},
+                 {"lifetime", kSessionKindThread},
                  {"folder", folder},
                  {"day", Today()},
                  {"ceiling", {{"budget_usd", budget}}}};
@@ -115,7 +117,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
   std::string model = Trim(JsonValue(a, "model", ""));
   if (model.empty()) model = own_model();
   if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
-  options.session = {{"kind", kSessionKindThread}, {"thread", thread}};
+  options.session = {{"kind", kSessionKindThread}, {"delegation", thread}};
   std::string error;
   session::Connection connection = session::Open(
       ExecutablePath(), launch.cwd, launch.path, title, options, error);
@@ -189,7 +191,7 @@ ToolResult Delete(const SessionInfo& info, const std::string& folder) {
   }
   if (LaunchWorktree(info.cwd)) {
     const std::string kept =
-        RemoveWorktree(JsonValue(info.thread, "folder", folder), info.cwd);
+        RemoveWorktree(JsonValue(info.delegation, "folder", folder), info.cwd);
     if (!kept.empty()) {
       return ToolFailure(ToolErrorCode::kInvalidArguments, kept);
     }

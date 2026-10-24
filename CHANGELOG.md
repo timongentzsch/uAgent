@@ -4,6 +4,9 @@
 
 ### Upgrade notes
 
+- **Threads saved before this version are ordinary conversations.** A
+  thread's link to its panel is now the same `delegation` role a subagent
+  has (with lifetime `thread`), and the old `thread` header is not read.
 - **The panel's chat with members is gone.** A panel no longer adds members
   or holds a group discussion: its moderator asks read-only subagents its
   questions, in parallel, and keeps a plan of the steps. `add_member`,

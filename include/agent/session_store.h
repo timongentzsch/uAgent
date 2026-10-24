@@ -30,15 +30,13 @@ inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr const char* kSessionHeaderParent = "parent_session_id";
 inline constexpr const char* kSessionHeaderForkTurn = "forked_at_turn";
 inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
-// Present only on a delegated child: who spawned it and in what role
-// (parent, name, description, directive, mode, model, route, label, memory).
-// Children are addressed by their parent, never listed as sessions.
+// Present only on a delegated session: who started it and in what role
+// (DelegationOf in session_role.h). A subagent is addressed by its parent,
+// never listed as a session; a thread is.
 inline constexpr const char* kSessionHeaderDelegation = "delegation";
-// Present only on a folder's panel ("panel") or on a session it
-// launched ("thread"); absent means an ordinary session. A thread also
-// carries its link: {coordinator_id, brief, ceiling}, fixed at spawn.
+// Present only on a folder's panel ("panel") or on a thread it launched
+// ("thread"); absent means an ordinary session.
 inline constexpr const char* kSessionHeaderKind = "kind";
-inline constexpr const char* kSessionHeaderThread = "thread";
 // Optional lineage: empty/zero when this session was never forked. Unknown
 // to older readers, which ignore extra header fields.
 inline constexpr int64_t kSessionFormat = 3;
@@ -58,9 +56,8 @@ struct SessionInfo {
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
-  json delegation = json::object();
+  json delegation = json::object();  // DelegationOf its header
   std::string kind;
-  json thread = json::object();
   bool memory = true;
 };
 
@@ -114,7 +111,6 @@ struct SessionMetadata {
   std::string forked_at_time{};
   json delegation = json::object();
   std::string kind{};
-  json thread = json::object();
   // False for a conversation run with memory off: nothing learns from it.
   bool memory = true;
 };

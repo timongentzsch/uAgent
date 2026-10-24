@@ -170,7 +170,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     }
     session.cwd = item.cwd;
     session.kind = item.kind;
-    session.folder = JsonValue(item.thread, "folder", "");
+    session.folder = JsonValue(item.delegation, "folder", "");
     session.model = item.model;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;

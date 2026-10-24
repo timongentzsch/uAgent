@@ -362,9 +362,10 @@ SessionRecord Agent::Snapshot() const {
                      .parent_session_id = parent_session_id_,
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
-                     .delegation = OwnDelegation(),
+                     .delegation = OwnDelegation().empty()
+                                       ? ThreadRole(session_role_)
+                                       : OwnDelegation(),
                      .kind = JsonValue(session_role_, "kind", ""),
-                     .thread = ThreadRole(session_role_),
                      .memory = api_.config.memory_enabled};
   record.state = {.context_tokens = ContextUsed(),
                   .context_window = api_.ctx_window,

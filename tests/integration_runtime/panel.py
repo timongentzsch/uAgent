@@ -39,6 +39,17 @@ def _panel_path(home, root):
     return home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
 
 
+def _thread_role(panel_path, root, **fields):
+    """A thread's delegation role, as its panel at `panel_path` writes it."""
+    return {
+        "parent": fnv1a64(str(panel_path)),
+        "parent_session": str(panel_path),
+        "lifetime": "thread",
+        "folder": str(root.resolve()),
+        **fields,
+    }
+
+
 def _socket(home, session):
     """The runtime socket of the saved session at `session`."""
     return runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
@@ -320,7 +331,9 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true(latency < budget(5), f"panel heard back after {latency:.1f}s")
         header = json.loads(_thread_session(home).read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["kind"] == "thread", header)
-        link = header["thread"]
+        # One delegation role, as a subagent's, that outlives the panel's turn.
+        link = header["delegation"]
+        assert_true(link["lifetime"] == "thread" and "parent_session" in link, link)
         assert_true(link["folder"] == str(root.resolve()), link)
         assert_true("budget_usd" in link["ceiling"], link)
         # The thread's own requests carried only its brief, never the panel's.
@@ -521,7 +534,6 @@ def society(root, home, binary, *, stopped):
 
 def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
 
-    panel = fnv1a64(str(_panel_path(home, root)))
     write_session(
         home,
         "thread-spent",
@@ -529,11 +541,7 @@ def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
         cwd=root,
         usage={"cost": 1.5, "cost_reported": True},
         kind="thread",
-        thread={
-            "coordinator_id": panel,
-            "folder": str(root.resolve()),
-            "day": time.strftime("%Y-%m-%d"),
-        },
+        delegation=_thread_role(_panel_path(home, root), root, day=time.strftime("%Y-%m-%d")),
     )
     with Server(
         [
@@ -556,7 +564,6 @@ def test_panel_counts_what_older_threads_spend_today(root, home, *, binary):
     """A thread spawned yesterday counts today for what it spent since the
     day began, not for nothing: its spawn day alone would leave it out."""
     panel_path = _panel_path(home, root)
-    panel = fnv1a64(str(panel_path))
     yesterday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
     thread = write_session(
         home,
@@ -565,7 +572,7 @@ def test_panel_counts_what_older_threads_spend_today(root, home, *, binary):
         cwd=root,
         usage={"cost": 1.5, "cost_reported": True},
         kind="thread",
-        thread={"coordinator_id": panel, "folder": str(root.resolve()), "day": yesterday},
+        delegation=_thread_role(_panel_path(home, root), root, day=yesterday),
     )
     panel_path.parent.mkdir(parents=True, exist_ok=True)
     # The day's baseline: the thread had spent $0.50 when today began.
@@ -592,7 +599,6 @@ def test_panel_counts_what_older_threads_spend_today(root, home, *, binary):
 
 def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root, home, *, binary):
 
-    panel = fnv1a64(str(_panel_path(home, root)))
     conversation = [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}]
     write_session(
         home,
@@ -601,11 +607,7 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         cwd=root,
         usage={"cost": 5, "cost_reported": True},
         kind="thread",
-        thread={
-            "coordinator_id": panel,
-            "folder": str(root.resolve()),
-            "ceiling": {"budget_usd": 1},
-        },
+        delegation=_thread_role(_panel_path(home, root), root, ceiling={"budget_usd": 1}),
     )
     write_session(home, "mine", conversation, cwd=root)
     ids = {path.stem: fnv1a64(str(path)) for path in session_files(home)}
@@ -652,10 +654,7 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}],
         cwd=root,
         kind="thread",
-        thread={
-            "coordinator_id": fnv1a64(str(home / "coordinator.json")),
-            "folder": str(root.resolve()),
-        },
+        delegation=_thread_role(home / "coordinator.json", root),
     )
     with Server([event({"content": "unused"})]) as server:
         env = base_env(home, server.url)
@@ -693,7 +692,6 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
 
 def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):
 
-    panel = fnv1a64(str(_panel_path(home, root)))
     thread = write_session(
         home,
         "thread-busy",
@@ -701,11 +699,7 @@ def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, bin
         cwd=root,
         usage={"cost": 5, "cost_reported": True},
         kind="thread",
-        thread={
-            "coordinator_id": panel,
-            "folder": str(root.resolve()),
-            "ceiling": {"budget_usd": 1},
-        },
+        delegation=_thread_role(_panel_path(home, root), root, ceiling={"budget_usd": 1}),
     )
     message = {"action": "message", "session_id": fnv1a64(str(thread)), "text": "again"}
 
@@ -798,11 +792,7 @@ def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
         cwd=root,
         usage={"cost": 1.5, "cost_reported": True},
         kind="thread",
-        thread={
-            "coordinator_id": fnv1a64(str(path)),
-            "folder": str(root.resolve()),
-            "day": time.strftime("%Y-%m-%d"),
-        },
+        delegation=_thread_role(path, root, day=time.strftime("%Y-%m-%d")),
     )
     with Server([event({"content": "asked-ok"}), event({"content": "event-ran"})]) as server:
         env = base_env(home, server.url)

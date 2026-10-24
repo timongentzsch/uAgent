@@ -507,6 +507,7 @@ function App() {
                       settings={settings}
                       menu={conversationMenu}
                       choose={choose}
+                      openInspector={setInspector}
                     />
                     {filesOpen && compact && page === "chat" && session && (
                       <Modal

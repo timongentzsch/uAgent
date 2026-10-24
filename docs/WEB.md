@@ -29,9 +29,8 @@ address. Or open the URL and type the code.
 The sidebar lists this OS user's conversations by place: **Workspaces**
 first, then **Folders**. A place's header is its panel: the name opens the
 panel (starting one the first time), the chevron before it folds the place
-away (remembered per browser) and **+** starts a conversation there. Once the
-panel has members, their avatars sit at the end of the header, the
-moderator's first. Under the header come the threads the panel started, a
+away (remembered per browser) and **+** starts a conversation there. Under
+the header come the threads the panel started, a
 divider, then the place's own conversations. Browsing saved history starts no
 model and runs no command.
 
@@ -274,25 +273,21 @@ before Submit.
   active schema and groups tools into persistent custom categories. Close a
   live runtime before deleting its history; project files are unaffected.
 
-### The panel and its chat
+### The panel
 
-[The guide](GUIDE.md#the-panel) explains threads, members and the chat's
-rules. In the web:
+[The guide](GUIDE.md#the-panel) explains threads, subagents and the plan. In
+the web:
 
 - A place's name in the sidebar, or the command palette, opens its panel.
-  The threads it started are listed under the name, and a thread or member
-  links back to its panel under its title.
-- The **board** beside the chat (a button in the header on a phone) lists
-  the chat's members and the work the moderator started. A row's menu renames
-  or removes it, and **+** starts a message asking for another member. What
-  needs you is above the input and in the sidebar's "need you" count.
-- Members appear with an avatar on the place's name, on the board and on
-  their messages. Pointing at or focusing one (on a touch screen, tapping it
-  opens a sheet) shows its card: its model, persona and skills, **Ask** to
-  start a message to it, **Full prompt**, and a menu to rename or remove it.
-  The moderator's card says what the moderator is. A message's menu has
-  **Show prompt**, what its author was given. The line above the input says
-  who is typing.
+  The threads it started are listed under the name, and a thread links back
+  to its panel under its title.
+- The **board** beside the chat (a button in the header on a phone) shows the
+  moderator's **plan**: its goal, then each step with its status. A running
+  step is open; any step opens to its result, the threads working for it
+  and its subagents with their status and time, and a subagent opens in the
+  inspector. Below, **Work** lists the threads no step names. A thread's
+  menu renames or removes it. What needs you is above the input and in the
+  sidebar's "need you" count.
 
 ### Settings
 

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import type { AppModal, Session } from "../shared/types.ts";
+import type { AppModal, InspectorTarget, Session } from "../shared/types.ts";
 import { Button, IconButton, Modal } from "../shared/ui.tsx";
 import { MenuItem } from "../shared/menu.tsx";
 import {
@@ -40,6 +40,7 @@ export default function ConversationHeader({
   settings,
   menu,
   choose,
+  openInspector,
 }: {
   page: "chat" | "library" | "scheduled";
   selected: string;
@@ -62,6 +63,7 @@ export default function ConversationHeader({
     extra?: ComponentChildren,
   ) => ComponentChildren;
   choose: (id: string) => Promise<void>;
+  openInspector: (target: InspectorTarget) => void;
 }) {
   const { store, setModal } = useHostContext();
   const compact = useCompact();
@@ -71,6 +73,8 @@ export default function ConversationHeader({
   const [boardOpen, setBoardOpen] = useState(false);
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
+  // The board's sheet reads the panel's plan and subagents.
+  const boardState = useSnapshots(store, (all) => all[selected]?.state);
   const openBrowser = () => setModal({ type: "browser" });
   // On a phone the conversation's menu holds the header's other actions;
   // without a conversation there is no menu, and Settings keeps its button.
@@ -206,6 +210,11 @@ export default function ConversationHeader({
               void choose(id);
             }}
             menu={menu}
+            state={boardState}
+            open={(target) => {
+              setBoardOpen(false);
+              openInspector(target);
+            }}
           />
         </Modal>
       )}

@@ -183,6 +183,7 @@ add_library(
   src/agent/request.cc
   src/agent/session_links.cc
   src/agent/session_store.cc
+  src/agent/session_search.cc
   src/agent/session_view.cc
   src/agent/tool_loop.cc
   src/agent/trace.cc

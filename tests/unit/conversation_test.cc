@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <array>
+#include <clocale>
 #include <future>
 #include <map>
 #include <string>
@@ -37,6 +38,62 @@ void PrintConversationHistory(const Conversation& conversation) {
 }
 
 }  // namespace
+
+// Search finds what a reader sees, archived rows included, and nothing the
+// view hides.
+void TestTranscriptSearch() {
+  Conversation conversation;
+  conversation.Reset(
+      json::array({{{"role", "system"}, {"content", "the needle rules"}}}),
+      {MessageKind::kSystem});
+  conversation.Push({{"role", "user"}, {"content", "Where is the Needle?"}},
+                    MessageKind::kUser);
+  conversation.Push(
+      {{"role", "assistant"}, {"content", "needle, needle and NEEDLE"}},
+      MessageKind::kAssistant);
+  CHECK(conversation.ArchiveRange("compacted", 1, 3, 1, 1 << 20));
+  conversation.Erase(1, 3);
+  conversation.Push(
+      {{"role", "tool"}, {"tool_call_id", "c1"}, {"content", "no match"}},
+      MessageKind::kToolResult);
+  std::string accents;
+  for (int i = 0; i < 60; ++i) accents += "é";
+  conversation.Push({{"role", "tool"},
+                     {"tool_call_id", "c2"},
+                     {"content", accents + " needle"}},
+                    MessageKind::kToolResult);
+  conversation.Push({{"role", "user"}, {"content", "needle"}},
+                    MessageKind::kInternal);
+  const json hits = TranscriptView(conversation).Search("neeDLE", 10);
+  REQUIRE(hits.size() == 3);
+  CHECK(hits[0]["kind"] == "user");
+  CHECK(hits[0]["count"] == 1);
+  CHECK(hits[0]["snippet"] == "Where is the Needle?");
+  CHECK(hits[1]["kind"] == "assistant");
+  CHECK(hits[1]["count"] == 3);
+  CHECK(hits[2]["kind"] == "tool_result");
+  CHECK(hits[0]["sequence"] < hits[1]["sequence"]);
+  CHECK(hits[1]["sequence"] < hits[2]["sequence"]);
+  // A long row's snippet starts near the hit, on a whole character.
+  const std::string snippet = hits[2]["snippet"];
+  CHECK(snippet.starts_with("…é"));
+  CHECK(snippet.ends_with("é needle"));
+  CHECK(TranscriptView(conversation).Search("needle", 2).size() == 2);
+  CHECK(TranscriptView(conversation).Search("", 10).empty());
+  CHECK(ContainsCaseInsensitive("xAaAB", "aab"));
+  CHECK(ContainsCaseInsensitive("ends with NeEdLe", "needle"));
+  CHECK(ContainsCaseInsensitive("anything", ""));
+  CHECK(!ContainsCaseInsensitive("nee", "needle"));
+  CHECK(!ContainsCaseInsensitive("needlf needl", "needle"));
+  CHECK(ContainsCaseInsensitive("caf\xC3\xA9", "caf\xC3\xA9"));
+  // Folding is ASCII whatever the locale, which uagent sets from the
+  // environment; a UTF-8 one would otherwise fold bytes inside characters.
+  const std::string previous = std::setlocale(LC_CTYPE, nullptr);
+  if (std::setlocale(LC_CTYPE, "en_US.UTF-8")) {
+    CHECK(AsciiLower("CAFÉ é") == "cafÉ é");
+    std::setlocale(LC_CTYPE, previous.c_str());
+  }
+}
 
 void TestSharedArchiveSnapshots() {
   Conversation conversation;

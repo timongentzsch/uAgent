@@ -155,6 +155,7 @@ namespace uagent {
   X(TestMcpContractHelpers)                       \
   X(TestSideArchiveForks)                         \
   X(TestSharedArchiveSnapshots)                   \
+  X(TestTranscriptSearch)                         \
   X(TestConversation)                             \
   X(TestForkAtTurnAndLineage)                     \
   X(TestForkAtMessageAndShare)                    \

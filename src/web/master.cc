@@ -467,6 +467,10 @@ void Master::RegisterApiRoutes() {
     }
     Reply(response, push_->Capabilities(device));
   });
+  server_.Get("/api/search",
+              [this](const Request& request, Response& response) {
+                Search(request, response);
+              });
   server_.Get("/api/events",
               [this](const Request& request, Response& response) {
                 Events(request, response);

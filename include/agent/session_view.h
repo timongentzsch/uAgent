@@ -23,6 +23,10 @@ class TranscriptView {
   json Page(uint64_t before = 0) const;
   json Detail(const std::string& id, size_t offset = 0) const;
   json Exchange(const std::string& id, size_t offset = 0) const;
+  // The rows a reader sees whose text contains `query`, ignoring ASCII case,
+  // oldest first, at most `limit`: each its sequence, kind, how often it
+  // contains the query and a snippet around the first time.
+  json Search(const std::string& query, size_t limit) const;
 
  private:
   const Conversation& conversation_;

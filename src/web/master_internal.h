@@ -86,6 +86,7 @@ class Master {
   std::string DeviceId(const Request& request) const UAGENT_REQUIRES(mutex_);
   void Authenticate(const Request& request, Response& response);
   void Snapshot(const Request&, Response&);
+  void Search(const Request&, Response&);
   void Command(const Request&, Response&);
   void Events(const Request&, Response&);
   void Upload(const Request&, Response&, const httplib::ContentReader&);

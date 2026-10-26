@@ -128,7 +128,7 @@ export function useCommands({
     if (edit)
       setNotice(
         rewound
-          ? "The panel rewound to this message; edit and send."
+          ? "The lead agent rewound to this message; edit and send."
           : "Continuing in a fork. Files on disk are unchanged.",
       );
   }

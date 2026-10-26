@@ -14,7 +14,7 @@ layer.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's panel (board, plan, history, threads, `panel -p`) and where a launched session runs |
+| `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's lead agent (board, plan, history, background agents, `panel -p`) and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
@@ -139,27 +139,29 @@ finished child, starts a new bounded child process from the saved
 conversation. The result reaches the parent as an activity completion, which
 an idle parent takes up at once as a turn.
 
-A folder's panel is a session whose agent, the moderator, reads and delegates
-but never writes or runs commands. The sessions it starts are its threads.
+A folder's lead agent (internally a panel) is a session that reads and
+delegates but never writes or runs commands. The sessions it starts are its
+background agents (internally threads).
 
-The moderator asks its questions of subagents: it has the `subagent` tool but
+The lead agent asks its questions of subagents: it has the `subagent` tool but
 no tool that edits or runs commands, so its children, which get only what
 their parent has, read and research and change nothing; starting one needs
 no approval. Its plan (goals, decisions, open questions and steps) is saved
 beside its session and rebuilt into its context every turn, with the
-subagents and threads that carry each step's id.
+subagents and background agents that carry each step's id.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its
-children, children of one parent, and a folder's panel and its threads.
+children, children of one parent, and a folder's lead agent and its
+background agents.
 
 - Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
   the next model step, including after a final answer, which reopens the turn.
 - An idle runtime starts a turn on mail meant to wake it. A headless child
   answers mail that arrives after its last step before it exits.
-- A thread's finished turns and questions reach its panel within
-  milliseconds, starting the panel's runtime when none runs. At the daily
-  spend limit the panel's mail waits.
+- A background agent's finished turns and questions reach its lead agent
+  within milliseconds, starting the lead agent's runtime when none runs. At
+  the daily spend limit its mail waits.
 - A sender is refused, visibly, past 64 pending messages, 20 a minute or 8
   forwards (`include/core/mailbox.h`).
 

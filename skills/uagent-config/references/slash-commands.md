@@ -43,6 +43,6 @@
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbosity [minimal|default|full]` | set how much of the agent's work is shown, everywhere |
 | `/yolo` | toggle acting without asking; the sandbox setting still applies |
-| `/panel` | open this folder's panel |
-| `/board` | list this folder's conversations and threads |
+| `/panel` | open this folder's lead agent |
+| `/board` | list this folder's conversations and background agents |
 | `/open ID` | switch to a conversation from /board |

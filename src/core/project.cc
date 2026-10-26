@@ -128,7 +128,7 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
     for (bool project : {false, true}) {
       const fs::path path = InstructionPath(true, project, cwd);
       if (fs::is_regular_file(path, ec) &&
-          append(path, loaded.text, "For the folder's moderator:\n")) {
+          append(path, loaded.text, "For the folder's lead agent:\n")) {
         loaded.sources.push_back(path.string());
       }
     }

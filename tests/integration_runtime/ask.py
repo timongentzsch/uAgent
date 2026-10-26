@@ -226,7 +226,7 @@ def test_a_threads_question_goes_to_its_panel(root, home, *, binary):
             answered["result"] = results[0]
             return event({"content": "thread-done"})
         if "[question, not a user message]" in text and "sent answer" not in json.dumps(results):
-            match = re.search(r"Thread ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
+            match = re.search(r"Background agent ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
             return tool_call(
                 "decide",
                 {
@@ -237,7 +237,7 @@ def test_a_threads_question_goes_to_its_panel(root, home, *, binary):
                     "reason": "the brief names a server",
                 },
             )
-        if "[question" in text or "[thread event" in text:
+        if "[question" in text or "[background agent event" in text:
             return event({"content": "panel-ack"})
         if not results:
             return tool_call(

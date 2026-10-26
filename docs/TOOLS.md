@@ -36,13 +36,13 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
-| `thread`, `decide`, `plan`, `history` | the panel's own: start, guide, stop and remove threads; answer what a thread asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's panel, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-panel) |
-| `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a panel and its threads are linked, and so are YOLO sessions in one folder |
-| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
+| `thread`, `decide`, `plan`, `history` | the lead agent's own: start, guide, stop and remove background agents (`thread`); answer what a background agent asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
+| `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a lead agent and its background agents are linked, and so are YOLO sessions in one folder |
+| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
-| `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, panel moderators and threads) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
-| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a panel or a lean child |
+| `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, lead agents and background agents) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
+| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a lead agent or a lean child |
 
 Independent calls to parallel-safe tools run up to four at a time; results
 are appended in the order the model issued the calls. A tool with a per-turn
@@ -63,7 +63,7 @@ explains the modes; none of them turns the sandbox off.
 `/permissions forget N|all` removes them.
 [Security](../SECURITY.md#what-the-agent-may-do-without-asking) says what
 each mode covers, what always needs a person, and how subagents and a
-panel's threads differ.
+lead agent's background agents differ.
 
 ## Files and search
 
@@ -132,7 +132,7 @@ activity ID at once.
 - `mode` is `lean` by default (read and run, no file-editing tools); `full`
   adds the editing tools and lets the child delegate in turn. A child never
   gets a tool its parent has switched off. In a session with no command
-  tool, such as a panel, a lean child only reads, so starting one needs no
+  tool, such as a lead agent, a lean child only reads, so starting one needs no
   approval.
 - `model` picks the child's route; without it the child runs on the
   parent's.

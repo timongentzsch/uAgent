@@ -102,7 +102,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   ).toContainText("No conversations yet");
   const tips = page.locator(".empty .tips dd");
   await expect(tips).toHaveCount(3);
-  await expect(tips.first()).toContainText("several conversations");
+  await expect(tips.first()).toContainText("subagents and background agents");
   await expect(tips.nth(1)).toContainText("Finds a conversation");
 
   // Enter in the dialog starts a conversation, as its primary button does.
@@ -116,20 +116,20 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   await expect(page.locator(".transcript .tips")).toContainText(
     "Lists the commands",
   );
-  await expect(page.getByRole("complementary", { name: "Board" })).toHaveCount(
+  await expect(page.getByRole("complementary", { name: "Plan" })).toHaveCount(
     0,
   );
 
   // The panel of that folder opens from the folder's name in the list.
-  await page.getByTitle(/^Panel of /).click();
-  const board = page.getByRole("complementary", { name: "Board" });
+  await page.getByTitle(/^Lead agent of /).click();
+  const board = page.getByRole("complementary", { name: "Plan" });
   await expect(board).toBeVisible();
   // Its empty chat explains itself.
   await expect(page.locator(".transcript .tips")).toContainText(
-    "What is working and what needs you",
+    "what each subagent and background agent is doing",
   );
   await expect(page.locator(".transcript .empty")).toContainText(
-    "starts threads that do the work",
+    "hands code changes to background agents",
   );
 });
 

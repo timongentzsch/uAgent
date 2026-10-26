@@ -112,7 +112,7 @@ buffers do not.
 
 ## Mail
 
-Sessions, a folder's panel and its threads, and delegated children talk
+Sessions, a folder's lead agent and its background agents, and delegated children talk
 through one mailbox each, `mail/<id>/`, where `<id>` hashes the canonical
 session file. A message is a private JSON file with a type
 (`task.completed`, `ask`, `steer`, `note`, ...), sender, correlation id and

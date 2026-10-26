@@ -5,8 +5,9 @@ to do and links to the reference with the detail. The [README](../README.md)
 has the install and a one-screen quick start.
 
 Terms: a **conversation** is what you talk in (its file and its running
-process are a *session*); a **thread** is a conversation a panel started to do
-work; a **subagent** is a short-lived helper that answers one question
+process are a *session*); a **lead agent** plans a folder's work; a
+**background agent** is a conversation a lead agent started to do work; a
+**subagent** is a short-lived helper that answers one question
 inside a turn; an **activity** is a command or agent that keeps running in
 the background; **approval** is being asked before an action.
 
@@ -205,7 +206,7 @@ running and stops by itself after 15 minutes with nothing to do.
 
 `/btw` copies the conversation's current checkpoint into a separate, saved
 conversation with the parent's model, approval setting and enabled tools
-(including a moderator's panel tools). Its messages stay out of the parent's
+(including a lead agent's own tools). Its messages stay out of the parent's
 transcript, but its tools work in the same folder and can change files or
 external state. In the web its card stays beside the input: follow up there,
 or open it as a full conversation. Closing the card hides it; the
@@ -223,51 +224,54 @@ conversation open in a terminal is the same one in the browser.
 [Web interface](WEB.md) covers phones, other machines and notifications;
 [The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
 
-## The panel
+## The lead agent
 
-`uagent panel` opens the folder's panel (`/panel` from inside a
-conversation; in the web, the place's name in the sidebar). You talk to its
-**moderator**, which never edits files itself. Ask it for work and it starts
-**threads**: conversations of their own, each on a brief, that report back
-when their turn ends. The moderator answers the approvals a thread cannot
+`uagent panel` opens the folder's lead agent (`/panel` from inside a
+conversation; in the web, the place's name in the sidebar). It plans the
+work and never edits files itself. Ask it a question and it asks
+**subagents**; ask it for a change and it starts **background agents**:
+conversations of their own, each on a brief, that report back when their
+turn ends. The lead agent answers the approvals a background agent cannot
 settle or passes them to you.
 
-- **The board** lists the folder's conversations, what each is doing and what
-  waits on you: `/board` in the terminal, beside the chat in the web, where
-  it also shows the plan with each step's threads and subagents.
+- **The plan pane** shows the plan, with each step's subagents and
+  background agents, and the folder's other background agents with what
+  waits on you: beside the chat in the web, `/board` in the terminal.
   `/open ID` switches to one.
-- **Where a thread works.** By default in a git worktree of its own under
-  `~/.uagent/worktrees/`, started from your `HEAD`, so your checkout stays as
-  it is while several threads work. Ask the moderator for a thread's diff. To
-  take the work, have the thread commit, then merge or cherry-pick that
-  commit from your checkout (the worktree shares your repository). With
-  `panel.environment=local`, or in a folder outside git such as a workspace,
-  threads work in the folder itself.
-- **Limits.** Five threads at once (`panel.maxThreads`) and $20 of reported
-  cost a day for a panel and its threads (`panel.dailySpendUsd`), counting
-  what threads from earlier days spend today; at the limit, thread reports
-  wait. A route that reports no cost cannot reach it, and the panel says so.
-- **Instructions.** Every moderator reads `PANEL.md` at start
+- **Where a background agent works.** By default in a git worktree of its
+  own under `~/.uagent/worktrees/`, started from your `HEAD`, so your
+  checkout stays as it is while several work. Ask the lead agent for a
+  background agent's diff. To take the work, have it commit, then merge or
+  cherry-pick that commit from your checkout (the worktree shares your
+  repository). With `panel.environment=local`, or in a folder outside git
+  such as a workspace, background agents work in the folder itself.
+- **Limits.** Five background agents at once (`panel.maxThreads`) and $20 of
+  reported cost a day for a lead agent and its background agents
+  (`panel.dailySpendUsd`), counting what those from earlier days spend
+  today; at the limit, their reports wait. A route that reports no cost
+  cannot reach it, and the lead agent says so.
+- **Instructions.** Every lead agent reads `PANEL.md` at start
   ([Instructions](INSTRUCTIONS.md)).
 
 ### Questions and the plan
 
 For a question rather than a change ("which of these three libraries fits
-us?", "where can this proxy leak a key?") the moderator asks **subagents**:
+us?", "where can this proxy leak a key?") the lead agent asks **subagents**:
 short-lived helpers that read, search and fetch but change nothing, several
-at once, each answering in the shape the moderator asked for. It can have
+at once, each answering in the shape the lead agent asked for. It can have
 other subagents try to refute what they found, and reports only what holds.
 They are not conversations of their own: open one from the plan or from its
-row in the moderator's answer.
+row in the lead agent's answer.
 
-- **The plan.** For work with several parts the moderator keeps a plan:
+- **The plan.** For work with several parts the lead agent keeps a plan:
   your goal, decisions, open questions, and steps with their status and a
   short result each. It sees the plan every turn, so it survives a long
-  conversation and a restart; a thread or subagent started for a step is
-  shown with it.
-- **Threads or subagents.** Threads change files and run for as long as the
-  work takes, in their own worktree; subagents answer within the
-  moderator's turn and leave nothing behind but their answer.
+  conversation and a restart; a background agent or subagent started for a
+  step is shown with it.
+- **Background agents or subagents.** Background agents change files and
+  run for as long as the work takes, in their own worktree; subagents
+  answer within the lead agent's turn and leave nothing behind but their
+  answer.
 
 ## Memory, skills and schedules
 
@@ -286,7 +290,7 @@ uagent -p "inspect this repository"
 uagent -p "inspect this repository" --json          # one JSON envelope
 uagent -p "inspect this repository" --json-stream   # one JSON event per line
 uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
-uagent panel -p "status of the threads"             # ask the panel
+uagent panel -p "status of the background agents"   # ask the lead agent
 ```
 
 - `--json` prints one object with `schema` (`uagent.headless.v1`), `answer`,

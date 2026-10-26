@@ -27,10 +27,10 @@ address. Or open the URL and type the code.
   **Log out this device**.
 
 The sidebar lists this OS user's conversations by place: **Workspaces**
-first, then **Folders**. A place's header is its panel: the name opens the
-panel (starting one the first time), the chevron before it folds the place
+first, then **Folders**. A place's header is its lead agent: the name opens
+it (starting one the first time), the chevron before it folds the place
 away (remembered per browser) and **+** starts a conversation there. Under
-the header come the threads the panel started, a
+the header come the background agents the lead agent started, a
 divider, then the place's own conversations. Browsing saved history starts no
 model and runs no command.
 
@@ -53,7 +53,7 @@ with line numbers and highlighting, Markdown rendered with its images
 (**Source** shows the text), and an image at full size on a click; any other
 file offers a download. What is open is read again when a turn ends.
 
-Drag the edge of the sidebar, the board, Files or its list to resize it, or
+Drag the edge of the sidebar, the plan, Files or its list to resize it, or
 focus the edge and use the arrow keys (Shift for larger steps). A
 double-click or Enter restores the default width. Each device keeps its own
 widths.
@@ -229,7 +229,7 @@ before Submit.
 - `/` opens slash commands with suggestions and Tab completion. The list
   offers the commands the page has no control for; others still run when
   typed. `/restart` does the same as the menu; `/quit` closes nothing here;
-  `/panel` opens the panel. A terminal command the page has no equivalent
+  `/panel` opens the lead agent. A terminal command the page has no equivalent
   for (`/clear`, `/board`, `/open`) says so instead of running.
 - Typed without an argument, `/config`, `/verbosity`, `/permissions`,
   `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`, `/context`
@@ -273,20 +273,20 @@ before Submit.
   active schema and groups tools into persistent custom categories. Close a
   live runtime before deleting its history; project files are unaffected.
 
-### The panel
+### The lead agent
 
-[The guide](GUIDE.md#the-panel) explains threads, subagents and the plan. In
-the web:
+[The guide](GUIDE.md#the-lead-agent) explains background agents, subagents
+and the plan. In the web:
 
-- A place's name in the sidebar, or the command palette, opens its panel.
-  The threads it started are listed under the name, and a thread links back
-  to its panel under its title.
-- The **board** beside the chat (a button in the header on a phone) shows the
-  moderator's **plan**: its goal, then each step with its status. A running
-  step is open; any step opens to its result, the threads working for it
-  and its subagents with their status and time, and a subagent opens in the
-  inspector. Below, **Work** lists the threads no step names. A thread's
-  menu renames or removes it. What needs you is above the input and in the
+- A place's name in the sidebar, or the command palette, opens its lead
+  agent. The background agents it started are listed under the name, and a
+  background agent links back to its lead agent under its title.
+- The **plan** beside the chat (a button in the header on a phone) shows the
+  lead agent's goal, then each step with its status. A running step is open;
+  any step opens to its result, the background agents working for it and
+  its subagents with their status, time and tokens, and a subagent opens in
+  the inspector. Below, **Background agents** lists those no step names. A
+  background agent's menu renames or removes it. What needs you is above the input and in the
   sidebar's "need you" count.
 
 ### Settings

@@ -76,7 +76,7 @@ The export holds credentials in clear text; treat it as a secret.
 ## Limits
 
 Rows without a setting are fixed in the binary. `0` switches off a turn or
-session limit and the panel's daily cost limit.
+session limit and the lead agent's daily cost limit.
 
 | Concern | Default | Setting |
 | --- | --- | --- |
@@ -101,9 +101,9 @@ session limit and the panel's daily cost limit.
 | delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
 | subagent launches per turn | 32 | |
-| panel threads at once / reported cost per day | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
-| a thread's report to its panel | 6,000 characters; `history` reads the rest | |
-| steps in a panel's plan | 24 | |
+| background agents at once / reported cost per day per lead agent | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
+| a background agent's report to its lead agent | 6,000 characters; `history` reads the rest | |
+| steps in a lead agent's plan | 24 | |
 | idle session runtime | stops after 15 minutes; the next message starts it | |
 | undo journal | 2 MiB per file, 64 MiB per session | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |

@@ -36,7 +36,7 @@ std::string Brief(const json& brief) {
     if (!value.empty()) text += "\n" + std::string(label) + ": " + value;
   }
   return text +
-         "\n\n(From this folder's moderator. End with a short report: what "
+         "\n\n(From this folder's lead agent. End with a short report: what "
          "you changed, how you verified it, and anything left open.)";
 }
 
@@ -59,10 +59,11 @@ ToolResult Spawn(const std::string& folder, const json& a,
   // The cap is on threads at work.
   const int64_t working = std::ranges::count(busy, true);
   if (working >= cap) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       std::to_string(cap) +
-                           " threads are already working; wait for one to "
-                           "finish or stop one");
+    return ToolFailure(
+        ToolErrorCode::kLimitExceeded,
+        std::to_string(cap) +
+            " background agents are already working; wait for one to "
+            "finish or stop one");
   }
   const double limit = DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
@@ -75,7 +76,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
                            FmtCost(limit) +
                            " spend limit is left, too little to share among " +
                            std::to_string(cap - working) +
-                           " more threads; ask the user to raise "
+                           " more background agents; ask the user to raise "
                            "UAGENT_PANEL_DAILY_SPEND_USD or wait for tomorrow");
   }
   // Unasked, a folder outside git runs in place: it can have no worktree.
@@ -155,8 +156,8 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                            " bytes of text");
   }
   std::string error =
-      "the session is not running; only this moderator's "
-      "threads can be started again";
+      "the session is not running; only this lead agent's "
+      "background agents can be started again";
   session::Connection connection =
       OwnThread(info, PanelId(folder))
           ? session::Wake(info.cwd, info.path, error)
@@ -167,7 +168,7 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
   error = SendWhenReady(connection, info.path,
                         {{"kind", "steer"},
                          {"origin", kRoutePanel},
-                         {"text", "[from the folder's moderator] " + text}},
+                         {"text", "[from the folder's lead agent] " + text}},
                         false);
   return error.empty() ? ToolSuccess("sent") : Unavailable(error);
 }
@@ -218,16 +219,18 @@ Tool ThreadTool(const std::string& folder,
                 std::function<std::string()> own_model) {
   Tool tool = MakeTool(
       "thread",
-      "Delegate work to threads: ordinary sessions that edit and run code "
+      "Delegate work to background agents: ordinary sessions that edit and run "
+      "code "
       "for you. spawn starts one on a brief (title, objective, output, "
       "done_when, boundaries; environment worktree or local; step, the plan "
       "step it works for). message "
       "guides a running session in this folder, or restarts your own "
-      "thread (session_id, text; three restarts in a row at most, then ask "
+      "background agent (session_id, text; three restarts in a row at most, "
+      "then ask "
       "the user); stop interrupts its turn; close ends its runtime; diff shows "
       "what it changed; delete closes and removes a session, and its "
       "worktree if nothing would be lost, after the user confirms. One "
-      "thread per independent part; keep dependent steps in one thread. "
+      "background agent per independent part; keep dependent steps in one. "
       "A question that only needs reading goes to a subagent instead.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string",
@@ -287,7 +290,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
   json command;
   if (action == "yield") {
     command = {{"kind", "escalate"},
-               {"text", reason.empty() ? "The moderator asks you." : reason}};
+               {"text", reason.empty() ? "The lead agent asks you." : reason}};
   } else if (action == "answer") {
     // The thread's question, answered in its ask tool's reply shape.
     const json* answers = JsonArray(a, "answers");
@@ -303,7 +306,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
         {"text", action == "allow_once"     ? "y"
                  : action == "allow_thread" ? "s"
                  : reason.empty() ? "n"
-                                  : "The moderator denied this: " + reason}};
+                                  : "The lead agent denied this: " + reason}};
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "decision is allow_once, allow_thread, deny, "
@@ -315,7 +318,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
   }
   command["interaction_id"] = interaction;
   const auto error = SendToRunning(info.path, std::move(command));
-  if (!error) return Unavailable("that thread is not running");
+  if (!error) return Unavailable("that background agent is not running");
   return error->empty() ? ToolSuccess("sent " + action) : Unavailable(*error);
 }
 }  // namespace
@@ -323,12 +326,15 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
 Tool DecideTool(const std::string& folder) {
   Tool tool = MakeTool(
       "decide",
-      "Decide what a thread sent you. An approval request: allow_once, "
-      "allow_thread (this and identical calls for the rest of the thread) "
-      "or deny (the reason goes back to the thread). A question: answer, "
+      "Decide what a background agent sent you. An approval request: "
+      "allow_once, "
+      "allow_thread (this and identical calls for the rest of its session) "
+      "or deny (the reason goes back to the background agent). A question: "
+      "answer, "
       "with answers holding one {choices, other} per question. Or yield to "
       "hand either to the user. Judge against the brief you gave, not the "
-      "thread's own justification. Yield when it leaves the brief, touches "
+      "background agent's own justification. Yield when it leaves the brief, "
+      "touches "
       "shared or remote state, is the user's preference, or you are unsure.",
       json::parse(R"json({"type":"object","properties":{
         "session_id":{"type":"string"},

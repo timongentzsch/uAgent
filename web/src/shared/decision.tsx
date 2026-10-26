@@ -104,7 +104,7 @@ export default function Decision({
   }, []);
   const title =
     pending.route === "panel"
-      ? "The moderator is deciding"
+      ? "The lead agent is deciding"
       : asking
         ? "Needs your answer"
         : "Needs your decision";

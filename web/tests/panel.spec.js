@@ -25,10 +25,10 @@ test("on a phone the board slides in from the right", async ({
   await openPanel(page, session);
   // Nothing stacks above the chat.
   await expect(page.locator(".conversation .board")).toHaveCount(0);
-  await page.getByRole("button", { name: /^Board/ }).click();
-  const sheet = page.getByRole("dialog", { name: "Board" });
+  await page.getByRole("button", { name: /^Plan(,|$)/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Plan" });
   await expect(
-    sheet.getByRole("complementary", { name: "Board" }),
+    sheet.getByRole("complementary", { name: "Plan" }),
   ).toBeVisible();
   // Settled against the right edge, leaving the chat visible to its left.
   await expect
@@ -79,7 +79,9 @@ for (const [name, viewport] of VIEWPORTS) {
       // What it is, in one line under its title, with its instructions a
       // tap away even where the words truncate.
       const subtitle = page.locator(".panel-subtitle");
-      await expect(subtitle).toContainText("hands changes to threads");
+      await expect(subtitle).toContainText(
+        "hands code changes to background agents",
+      );
       const button = subtitle.getByRole("button", {
         name: "Edit instructions",
       });
@@ -168,7 +170,7 @@ for (const [name, viewport] of VIEWPORTS) {
     // The panel is the place's name now, and what waits is said once in
     // the list: by the inbox above it.
     if (name === "desktop") {
-      await expect(page.getByTitle(/^Panel of /)).toHaveAttribute(
+      await expect(page.getByTitle(/^Lead agent of /)).toHaveAttribute(
         "aria-current",
         "page",
       );
@@ -195,7 +197,7 @@ test("the panel's subtitle opens its instructions", async ({
   await openPanel(page, session);
   await headerAction(page, "Edit instructions");
   const dialog = page.getByRole("dialog", { name: "Instructions" });
-  const panel = dialog.getByLabel("Yours · panel");
+  const panel = dialog.getByLabel("Yours · lead agent");
   await expect(panel).toBeEnabled();
   await panel.fill("Prefer small threads.");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
@@ -210,7 +212,7 @@ test("instructions read well on a phone", async ({ page, session }) => {
   await openPanel(page, session);
   await headerAction(page, "Edit instructions");
   const dialog = page.getByRole("dialog", { name: "Instructions" });
-  await expect(dialog.getByLabel("Yours · panel")).toBeEnabled();
+  await expect(dialog.getByLabel("Yours · lead agent")).toBeEnabled();
   expect(
     await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
   ).toBe(true);
@@ -287,7 +289,7 @@ test("the board shows the panel's plan with what works for each step", async ({
     delegation: { ...role, name: "reviewer-a", label: "Review a", step: "s1" },
   });
   await openPanel(page, session);
-  const board = page.getByRole("complementary", { name: "Board" });
+  const board = page.getByRole("complementary", { name: "Plan" });
   await expect(board.getByRole("heading", { name: /^Plan/ })).toContainText(
     "1/2",
   );
@@ -300,7 +302,7 @@ test("the board shows the panel's plan with what works for each step", async ({
   await expect(
     board
       .locator("section")
-      .filter({ hasText: /^Work/ })
+      .filter({ hasText: /^Background agents/ })
       .getByText("Lexer fix"),
   ).toHaveCount(0);
   // A finished one opens to its result and its subagents, one opening the

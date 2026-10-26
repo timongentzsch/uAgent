@@ -126,7 +126,12 @@ function Chat({
             title="What are we working on?"
             tips={
               session.kind === "panel"
-                ? [["Board", "What is working and what needs you."]]
+                ? [
+                    [
+                      "Plan",
+                      "The steps, and what each subagent and background agent is doing.",
+                    ],
+                  ]
                 : [
                     [<kbd>/</kbd>, "Lists the commands."],
                     [
@@ -142,7 +147,7 @@ function Chat({
           >
             <p>
               {session.kind === "panel"
-                ? "The moderator plans, asks subagents, and starts threads that do the work. It never edits files itself."
+                ? "The lead agent plans, asks subagents, and hands code changes to background agents. It never edits files itself."
                 : "Describe a task."}
             </p>
           </Welcome>

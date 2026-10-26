@@ -82,7 +82,7 @@ export default function Board({
     </div>
   );
   return (
-    <aside class="board" aria-label="Board">
+    <aside class="board" aria-label="Plan">
       {(state?.plan?.goals || steps.length > 0) && (
         <section>
           <h2>
@@ -116,11 +116,12 @@ export default function Board({
       )}
       <section>
         <h2>
-          Work <span class="board-count">{items.length + earlier}</span>
+          Background agents{" "}
+          <span class="board-count">{items.length + earlier}</span>
         </h2>
         {!items.length && (
           <p class="board-note">
-            Nothing yet. The moderator starts threads for work you ask for.
+            None yet. The lead agent starts one for each change you ask for.
           </p>
         )}
         {items.map(threadRow)}
@@ -215,7 +216,7 @@ export function PanelHelp({
     <p class="panel-subtitle">
       <span>
         Plans this folder&rsquo;s work, asks subagents its questions and hands
-        changes to threads (↳); never edits files itself.
+        code changes to background agents (↳); never edits files itself.
       </span>
       <Button variant="quiet" onClick={editInstructions}>
         Edit instructions

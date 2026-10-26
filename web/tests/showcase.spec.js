@@ -237,7 +237,7 @@ for (const width of [1440, 900, 390]) {
     await ask.scrollIntoViewIfNeeded();
     // Routed to the panel, the form still answers: the first wins.
     await expect(
-      ask.getByRole("heading", { name: "The moderator is deciding" }),
+      ask.getByRole("heading", { name: "The lead agent is deciding" }),
     ).toBeVisible();
     // One question to a page: Next until the review, which holds Submit.
     const submit = ask.getByRole("button", { name: "Submit" });

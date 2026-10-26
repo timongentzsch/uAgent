@@ -6,9 +6,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "include/agent/session_search.h"
+#include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/session_host.h"
 #include "include/core/fs.h"
@@ -24,6 +27,11 @@ namespace uagent::web::master {
 namespace {
 constexpr size_t kAssetMetadataBytes = KiB(1);
 constexpr auto kReplayWait = std::chrono::seconds(15);
+// Search across every conversation lists a few rows of each; within one, a
+// find bar steps through all of them.
+constexpr SessionSearchLimits kSearchLimits{
+    .sessions = kMaxCatalogueEntries, .hits = 100, .per_session = 5};
+constexpr size_t kSessionSearchHits = 2000;
 }  // namespace
 
 void Master::Snapshot(const Request& request, Response& response) {
@@ -40,6 +48,36 @@ void Master::Snapshot(const Request& request, Response& response) {
   query.offset = request.get_param_value("offset");
   auto result = host_.Snapshot(request.matches[1].str(), query);
   Reply(response, result.value, result.status);
+}
+
+// GET /api/search?q=…: the rows of every listed conversation that contain
+// q, newest conversation first; with session=ID, every row of that one.
+void Master::Search(const Request& request, Response& response) {
+  const std::string query = request.get_param_value("q");
+  if (query.size() < 2) {
+    Error(response, "search needs at least two characters");
+    return;
+  }
+  if (!request.has_param("session")) {
+    Reply(response, SearchSessions(ListSessions(SessionScope::kAll), query,
+                                   kSearchLimits));
+    return;
+  }
+  std::string path;
+  {
+    std::lock_guard lock(mutex_);
+    path = host_.AssetPath(request.get_param_value("session"));
+  }
+  std::string error;
+  const auto conversation =
+      path.empty() ? std::nullopt : LoadConversation(path, error);
+  if (!conversation) {
+    Error(response, path.empty() ? "unknown session" : error, 404);
+    return;
+  }
+  json hits = TranscriptView(*conversation).Search(query, kSessionSearchHits);
+  const bool truncated = hits.size() >= kSessionSearchHits;
+  Reply(response, {{"hits", std::move(hits)}, {"truncated", truncated}});
 }
 
 void Master::Events(const Request& request, Response& response) {

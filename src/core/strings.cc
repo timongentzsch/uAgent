@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <cmath>
@@ -42,16 +43,38 @@ void ReplaceAll(std::string& s, const std::string& from,
   }
 }
 
+// Only A-Z: std::tolower follows the locale, and a UTF-8 one there maps
+// bytes above 127 too, breaking the characters they belong to.
 std::string AsciiLower(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  for (char& c : text) {
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  }
   return text;
 }
 
-bool ContainsCaseInsensitive(std::string text, const std::string& query) {
-  return query.empty() || AsciiLower(std::move(text)).find(AsciiLower(query)) !=
-                              std::string::npos;
+// Boyer-Moore-Horspool over ASCII-folded bytes: it skips ahead by up to the
+// query's length and copies nothing, so a large text is cheap to scan.
+bool ContainsCaseInsensitive(std::string_view text, std::string_view query) {
+  const size_t size = query.size();
+  if (size == 0) return true;
+  if (text.size() < size) return false;
+  const auto fold = [](char c) {
+    return static_cast<unsigned char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+  };
+  std::array<size_t, 256> shift;
+  shift.fill(size);
+  for (size_t i = 0; i + 1 < size; ++i) {
+    const unsigned char c = fold(query[i]);
+    shift[c] = size - 1 - i;
+    if (c >= 'a' && c <= 'z') shift[size_t{c} - 'a' + 'A'] = size - 1 - i;
+  }
+  for (size_t at = 0; at + size <= text.size();
+       at += shift[static_cast<unsigned char>(text[at + size - 1])]) {
+    size_t i = size;
+    while (i > 0 && fold(text[at + i - 1]) == fold(query[i - 1])) --i;
+    if (i == 0) return true;
+  }
+  return false;
 }
 
 bool ParseInt64(const char* text, int64_t& value) {

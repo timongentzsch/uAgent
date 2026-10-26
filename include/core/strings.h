@@ -27,7 +27,8 @@ void ReplaceAll(std::string& s, const std::string& from, const std::string& to);
 
 std::string AsciiLower(std::string text);
 
-bool ContainsCaseInsensitive(std::string text, const std::string& query);
+// Whether text holds query, ignoring the case of ASCII letters.
+bool ContainsCaseInsensitive(std::string_view text, std::string_view query);
 
 bool ParseInt64(const char* text, int64_t& value);
 

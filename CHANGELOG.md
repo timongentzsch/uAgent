@@ -51,6 +51,15 @@
 
 ### Changes
 
+- The web host answers `GET /api/search?q=…`: the rows of every listed
+  conversation (threads and panels included, subagents not) whose text,
+  tool output included, contains the words, ignoring case, with a snippet
+  and how often each row contains them; with `session=ID`, every such row of
+  one conversation. Files that cannot contain the words are skipped
+  unparsed: 500 conversations of 1 MB take about 0.3 s. A panel's `history
+  search` uses the same search and now finds compacted rows too.
+- Case-insensitive matching folds only ASCII letters. Under a UTF-8 locale
+  it used to change bytes inside other characters as well.
 - Web: a subagent on the panel's board shows the tokens it used, which its
   session header now carries beside its cost.
 - Web: a zoom saved between two steps snaps to the nearer one, so the zoom

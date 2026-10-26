@@ -747,6 +747,43 @@ json TranscriptView::Exchange(const std::string& id, size_t offset) const {
   }
   return PageText(JsonDump(exchange), offset);
 }
+json TranscriptView::Search(const std::string& query, size_t limit) const {
+  constexpr size_t kSnippetChars = 200;
+  json hits = json::array();
+  const std::string needle = AsciiLower(query);
+  if (needle.empty()) return hits;
+  for (const auto& [sequence, entry] : Index()) {
+    if (hits.size() >= limit) break;
+    if (entry.kind != "user" && entry.kind != "assistant" &&
+        entry.kind != "tool_result") {
+      continue;
+    }
+    const std::string text = DisplayText(*entry.message);
+    const std::string folded = AsciiLower(text);
+    const size_t first = folded.find(needle);
+    if (first == std::string::npos) continue;
+    size_t count = 0;
+    for (size_t at = first; at != std::string::npos;
+         at = folded.find(needle, at + needle.size())) {
+      ++count;
+    }
+    size_t start = first > kSnippetChars / 2 ? first - kSnippetChars / 2 : 0;
+    // A snippet starts on a character, not inside one.
+    while (start > 0 &&
+           (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) {
+      --start;
+    }
+    std::string snippet = Utf8Prefix(text.substr(start), kSnippetChars);
+    std::ranges::replace(snippet, '\n', ' ');
+    std::ranges::replace(snippet, '\r', ' ');
+    hits.push_back({{"sequence", sequence},
+                    {"kind", entry.kind},
+                    {"count", count},
+                    {"snippet", (start ? "…" : "") + snippet}});
+  }
+  return hits;
+}
+
 json ConversationView(const Conversation& conversation, uint64_t before) {
   return TranscriptView(conversation).Page(before);
 }

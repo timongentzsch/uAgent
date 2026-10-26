@@ -713,7 +713,11 @@ def write_session(
     history = home / ".uagent" / "history"
     history.mkdir(parents=True, exist_ok=True)
     session = history / f"{name}.json"
-    session.write_text(json.dumps(fields) + "\n" + json.dumps(payload), encoding="utf-8")
+    # The agent writes UTF-8 as itself, not as \u escapes.
+    session.write_text(
+        json.dumps(fields, ensure_ascii=False) + "\n" + json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return session
 
 

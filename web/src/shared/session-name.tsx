@@ -10,7 +10,7 @@ export default function SessionName({ item }: { item: Session }) {
         <span class="thread-mark" aria-hidden="true">
           ◆
         </span>
-        <DataText>Panel</DataText>
+        <DataText>Lead</DataText>
       </>
     );
   return (

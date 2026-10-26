@@ -51,6 +51,12 @@
 
 ### Changes
 
+- The panel speaks Claude Code's words: a folder's **lead agent** plans,
+  asks **subagents** and starts **background agents** (until now
+  "moderator" and "threads"), and its board is the **Plan** pane. The web,
+  the docs, the lead agent's prompt and its tool descriptions use these
+  names; commands, settings, files and tool names (`uagent panel`,
+  `panel.*`, `PANEL.md`, `thread`) are unchanged.
 - The web host answers `GET /api/search?q=…`: the rows of every listed
   conversation (threads and panels included, subagents not) whose text,
   tool output included, contains the words, ignoring case, with a snippet

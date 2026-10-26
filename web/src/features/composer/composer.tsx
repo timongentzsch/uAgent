@@ -417,7 +417,7 @@ function Composer({
               : running
                 ? "Add guidance… (Esc to stop)"
                 : session.kind === "panel"
-                  ? "Ask the panel…"
+                  ? "Ask the lead agent…"
                   : "Ask µAgent…"
           }
           value={draft.text}

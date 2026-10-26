@@ -20,9 +20,9 @@ browser, and runs commands in a sandbox limited to the project folder.
 - **Sandbox and approvals.** Commands can write only inside the folder. The
   agent asks before it changes a file, runs a command or uses the network, and
   `/undo` restores what the last turn changed.
-- **Panels.** A folder's panel is a moderator that keeps a plan, asks
-  read-only subagents its questions in parallel and has their findings
-  checked, and starts threads that change code and report back.
+- **Lead agent.** A folder's lead agent keeps a plan, asks read-only
+  subagents its questions in parallel and has their findings checked, and
+  starts background agents that change code and report back.
 - **Browser automation.** The agent drives a persistent Chrome that you can
   watch and take over from any device. It signs in with Chrome's saved
   passwords without reading them and hands codes, captchas and payments to
@@ -145,15 +145,16 @@ checksum.
    pairs the browser. One host serves every folder's conversations; see the
    [web guide](docs/WEB.md).
 
-7. **Run several at once.** `uagent panel` opens the folder's panel. Ask it
-   for work and it starts threads; ask it a question and it fans out
+7. **Run several at once.** `uagent panel` opens the folder's lead agent.
+   Ask it for work and it starts background agents; ask it a question and it
+   fans out
    subagents and reports what held up.
 
 8. **Script it.** `uagent -p "inspect this repository" --json` runs one turn
    and prints one JSON envelope.
 
 The [guide](docs/GUIDE.md) covers the rest in order: keys, models and
-providers, settings, approvals, returning to a conversation, the panel and
+providers, settings, approvals, returning to a conversation, the lead agent and
 scripting. `uagent --help` lists every flag.
 
 ## Documentation

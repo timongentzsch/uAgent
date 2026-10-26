@@ -292,7 +292,7 @@ class WorkerChannel final : public ApplicationChannel {
       wake_.Drain();
       lock.lock();
       if (routed && std::chrono::steady_clock::now() >= routed_until) {
-        EscalateLocked("The moderator did not decide in time.");
+        EscalateLocked("The lead agent did not decide in time.");
       }
     }
     if (!decided_.empty()) {
@@ -576,7 +576,7 @@ class WorkerChannel final : public ApplicationChannel {
         break;
       case SessionCommandKind::kEscalate:
         if (StaleLocked(parsed.interaction_id) || !RoutedToPanel(decision_)) {
-          error = "decision is stale or not with the moderator";
+          error = "decision is stale or not with the lead agent";
         } else {
           EscalateLocked(parsed.text);
         }
@@ -687,7 +687,7 @@ class WorkerChannel final : public ApplicationChannel {
     const std::string reason = JsonValue(parsed.raw, "reason", "");
     if (parsed.from_panel) {
       decided_ =
-          (ask ? "moderator answered" : "moderator decided " + parsed.text) +
+          (ask ? "lead agent answered" : "lead agent decided " + parsed.text) +
           (reason.empty() ? "" : ": " + reason);
     }
     wake_.Wake();

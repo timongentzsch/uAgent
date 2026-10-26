@@ -42,7 +42,7 @@ Two kinds of session act for you unattended:
 - A **subagent** approves its own tool calls; approving the delegation is the
   gate, and the approval says so. It runs its commands under the sandbox of
   the session that delegated to it, whatever its own configuration says.
-- A **panel's thread** cannot be put in yolo: `/permissions yolo` is refused
+- A lead agent's **background agent** cannot be put in yolo: `/permissions yolo` is refused
   there and a saved or flagged yolo reads as auto. Its sandbox is always on.
   While that sandbox is enforced, its `run` and `scratch` commands and its
   file changes inside the workspace run without review; everything else goes

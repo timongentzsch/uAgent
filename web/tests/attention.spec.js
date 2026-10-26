@@ -106,7 +106,7 @@ test("what a panel started nests under it", async ({
   await page.goto("/");
   // Under the panel's header. Where the host's paths differ (a symlinked
   // temp folder), the panel is another place and the thread is listed flat.
-  const threads = page.getByRole("group", { name: /^Threads of / });
+  const threads = page.getByRole("group", { name: /^Background agents of / });
   await expect(threads.locator(".session")).toHaveCount(1);
   // A shape and words beside the colour: nothing waits here, so no icon.
   await expect(threads.locator(".session-state")).toHaveCount(0);

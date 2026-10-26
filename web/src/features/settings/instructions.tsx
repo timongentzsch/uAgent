@@ -20,8 +20,8 @@ import "./instructions.css";
 const TITLES: Record<string, string> = {
   "sessions/user": "Yours · every conversation",
   "sessions/project": "Project · every conversation",
-  "panel/user": "Yours · panel",
-  "panel/project": "Project · panel",
+  "panel/user": "Yours · lead agent",
+  "panel/project": "Project · lead agent",
 };
 
 // Everything a session reads before your first message, top to bottom in the
@@ -95,8 +95,8 @@ export default function Instructions({
                 Also read here: {stack.also_loaded.join(", ")}
               </p>
             )}
-            <h3>Panel</h3>
-            <Base text={stack?.base.panel} label="Built-in panel base" />
+            <h3>Lead agent</h3>
+            <Base text={stack?.base.panel} label="Built-in lead agent base" />
             {files.filter((file) => file.audience === "panel").map(card)}
           </>
         </Placeholder>

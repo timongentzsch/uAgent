@@ -94,7 +94,7 @@ def test_panel_is_one_read_only_session_per_folder(root, home, *, binary):
             assert_true(names and names <= PANEL_TOOLS, names)
             assert_true("read_path" in names, names)
             system = request["messages"][0]["content"]
-            assert_true("moderator of this folder's panel" in system, system[:200])
+            assert_true("this folder's lead agent" in system, system[:200])
             assert_true("coding agent" not in system, system[:200])
         # Both invocations reached the same runtime and file.
         sessions = session_files(home)
@@ -206,7 +206,7 @@ def test_a_thread_started_for_a_step_shows_it_on_the_board(root, home, *, binary
         text = json.dumps(body["messages"])
         if "Objective: tag it" in text:
             return event({"content": "tagged"})
-        if "[thread event" in text:
+        if "[background agent event" in text:
             return event({"content": "ack"})
         if not tool_results(body["messages"]):
             return tool_call("thread", _spawn("Tag", "tag it") | {"step": "s1"})
@@ -291,7 +291,7 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
 
     def route(_, body):
         text = json.dumps(body["messages"])
-        if "[thread event" in text:
+        if "[background agent event" in text:
             reported.setdefault("heard", time.monotonic())
             heard.set()
             return event({"content": "noted-event"})
@@ -349,7 +349,7 @@ def test_a_headless_panel_waits_for_a_slow_thread(root, home, *, binary):
 
     def route(_, body):
         text = json.dumps(body["messages"])
-        if "[thread event" in text:
+        if "[background agent event" in text:
             return event({"content": "heard: " + ("slow-report" if "slow-report" in text else "?")})
         if "Objective: take your time" in text:
             time.sleep(budget(4))
@@ -382,7 +382,7 @@ def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
         if "Objective: count the files" in text:
             seen["thread"] = (handler.headers.get("Authorization"), body.get("model"))
             return event({"content": "thread-report"})
-        if "[thread event" in text:
+        if "[background agent event" in text:
             return event({"content": "thread-heard"})
         if tool_results(body["messages"]):
             return event({"content": "spawned-ok"})
@@ -486,11 +486,11 @@ def society(root, home, binary, *, stopped):
         # Mail may reach a thread before its own brief does.
         if "Objective: beta-task" in text or "ping-from-alpha" in text:
             return beta(body, text)
-        if "[thread event" in text:
+        if "[background agent event" in text:
             seen["events"] += [
                 str(m.get("content"))
                 for m in body["messages"]
-                if "[thread event" in str(m.get("content"))
+                if "[background agent event" in str(m.get("content"))
             ]
             return event({"content": "noted-event"})
         if not tool_results(body["messages"]):
@@ -637,7 +637,7 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         # no request ever carried the panel's message as a user turn.
         assert_true(
             not any(
-                "[from the folder's moderator] more" in json.dumps(body["messages"])
+                "[from the folder's lead agent] more" in json.dumps(body["messages"])
                 for _, body in server.requests
             ),
             [json.dumps(b)[-200:] for _, b in server.requests],
@@ -802,7 +802,10 @@ def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
         assert_true(result.stdout.strip() == "asked-ok", result.stdout + result.stderr)
         client = SessionClient(_socket(home, path))
         try:
-            client.send("steer", text="[thread event, not a user message] Thread x finished.")
+            client.send(
+                "steer",
+                text="[background agent event, not a user message] Background agent x finished.",
+            )
             # Events batch for up to 20 seconds before the limit is checked.
             paused = client.until(
                 lambda frame: frame.get("kind") == "state" and frame["state"].get("paused"),
@@ -840,7 +843,7 @@ def test_panel_caps_working_threads_in_worktrees(root, home, *, binary):
         if "Objective: first" in text:
             assert release.wait(budget(20))
             return event({"content": "first-done"})
-        if "[thread event" in text:
+        if "[background agent event" in text:
             return event({"content": "noted"})
         if not tool_results(body["messages"]):
             return tool_calls(
@@ -891,7 +894,7 @@ def test_panel_closes_an_idle_thread(root, home, *, binary):
         results = tool_results(body["messages"])
         if "Objective: idle" in text:
             return event({"content": "idle-done"})
-        if "[thread event" in text:
+        if "[background agent event" in text:
             if results and not results[-1].startswith("{"):
                 closed["result"] = results[-1]
                 return event({"content": "closed-ack"})
@@ -966,10 +969,10 @@ def _spawn_then(decide):
             state["done"].set()
             return event({"content": "thread-done"})
         if "[approval request" in text and "sent " not in json.dumps(results):
-            match = re.search(r"Thread ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
+            match = re.search(r"Background agent ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
             state["asked"].set()
             return tool_call("decide", decide(match.group(1), match.group(2)))
-        if "[approval request" in text or "[thread event" in text:
+        if "[approval request" in text or "[background agent event" in text:
             return event({"content": "panel-ack"})
         if not results:
             return tool_call(
@@ -1001,7 +1004,7 @@ def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, 
             return event({"content": "thread-done"})
         if "[approval request" in text:
             seen["asked"] = True
-        if results or "[thread event" in text:
+        if results or "[background agent event" in text:
             return event({"content": "panel-ack"})
         return tool_call(
             "thread",
@@ -1041,7 +1044,7 @@ def test_panel_approves_what_auto_could_not(root, home, *, binary):
         assert_true((root / "out.txt").read_text() == "x", "write was not allowed")
         journal = pathlib.Path(str(_thread_session(home)) + ".events.jsonl")
         wait_until(
-            lambda: "moderator decided y: inside the brief" in journal.read_text(),
+            lambda: "lead agent decided y: inside the brief" in journal.read_text(),
             "the decision is missing from the thread's log",
         )
 
@@ -1089,7 +1092,7 @@ def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
         assert "[approval request" not in text, "a mandatory decision reached the panel"
         if "Objective: run it" in text:
             return tool_call("run", {"command": "true", "sandbox": False})
-        if "[thread event" in text:
+        if "[background agent event" in text:
             return event({"content": "ack"})
         if not tool_results(body["messages"]):
             return tool_call(

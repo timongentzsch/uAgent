@@ -112,7 +112,7 @@ export default function ConversationHeader({
             ) : page === "scheduled" ? (
               "Scheduled"
             ) : session?.kind === "panel" ? (
-              `Panel · ${placeName(session.cwd)}`
+              `Lead · ${placeName(session.cwd)}`
             ) : session ? (
               session.title || "Your workspace"
             ) : opening ? (
@@ -130,7 +130,7 @@ export default function ConversationHeader({
                 variant="quiet"
                 onClick={() => openPanel(session.folder || "")}
               >
-                ‹ Panel · {placeName(session.folder)}
+                ‹ Lead · {placeName(session.folder)}
               </Button>
             </p>
           )}
@@ -169,7 +169,7 @@ export default function ConversationHeader({
             const waits = waitingOn(threads).length;
             return (
               <IconButton
-                label={waits ? `Board, ${waits} need you` : "Board"}
+                label={waits ? `Plan, ${waits} need you` : "Plan"}
                 aria-haspopup="dialog"
                 aria-expanded={boardOpen}
                 onClick={() => setBoardOpen(true)}
@@ -198,7 +198,7 @@ export default function ConversationHeader({
       </header>
       {boardOpen && phone && session?.kind === "panel" && (
         <Modal
-          title="Board"
+          title="Plan"
           layout="sheet"
           className="side-sheet"
           close={() => setBoardOpen(false)}

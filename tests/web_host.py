@@ -69,7 +69,7 @@ def answer(handler, body):
         if "Long opinion" in prompt:
             return event({"content": "Long. " * 1000 + "LONG-END"})
         return event({"content": "Ada here." if "joined the chat" in prompt else "PASS"})
-    said = [text for text in texts if "[moderator context" not in str(text)]
+    said = [text for text in texts if "[lead agent context" not in str(text)]
     if said and ("Ada: " in str(said[-1]) or "anyone?" in str(said[-1])):
         # Slowly, thinking first, as a model would: nothing of it may show.
         write_sse_sequence(

@@ -334,7 +334,7 @@
               "type": "string"
             }
           ],
-          "description": "reported cost a panel and its threads may spend per day; at it, thread events wait. 0 disables it",
+          "description": "reported cost a lead agent and its background agents may spend per day; at it, their events wait. 0 disables it",
           "x-env": "UAGENT_PANEL_DAILY_SPEND_USD"
         },
         "panel.environment": {
@@ -353,7 +353,7 @@
               "type": "string"
             }
           ],
-          "description": "where threads run: a fresh git worktree, or the folder itself; a folder outside git runs in place",
+          "description": "where background agents run: a fresh git worktree, or the folder itself; a folder outside git runs in place",
           "x-env": "UAGENT_PANEL_ENVIRONMENT"
         },
         "panel.maxThreads": {
@@ -369,7 +369,7 @@
               "type": "string"
             }
           ],
-          "description": "threads one panel may run at once",
+          "description": "background agents one lead agent may run at once",
           "x-env": "UAGENT_PANEL_MAX_THREADS"
         },
         "project.trustConfig": {

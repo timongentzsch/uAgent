@@ -74,7 +74,7 @@ export default function Palette({
       key: `session:${item.id}`,
       label:
         item.kind === "panel"
-          ? `Panel · ${folderName(item.cwd)}`
+          ? `Lead · ${folderName(item.cwd)}`
           : item.title || "New conversation",
       detail: folderName(folderOf(item)),
       run: () => choose(item.id),
@@ -94,7 +94,7 @@ export default function Palette({
         : [
             {
               key: `panel:${folder}`,
-              label: `Panel · ${folderName(folder)}`,
+              label: `Lead · ${folderName(folder)}`,
               detail: "Folder",
               run: () => start(folder, true),
             },

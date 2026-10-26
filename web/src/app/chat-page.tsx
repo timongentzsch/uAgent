@@ -244,7 +244,7 @@ export default function ChatPage({
           : threads && !phone
             ? {
                 name: "board",
-                label: "Resize the board",
+                label: "Resize the plan",
                 content: (
                   <Board
                     threads={threads}
@@ -306,8 +306,8 @@ export default function ChatPage({
       title="What are we working on?"
       tips={[
         [
-          "Panel",
-          "Runs several conversations in a workspace or folder for you. A place’s name in the list opens its panel.",
+          "Lead agent",
+          "Plans the work in a workspace or folder and runs subagents and background agents for it. A place’s name in the list opens its lead agent.",
         ],
         [
           <kbd>{keysOf("palette").join(" ")}</kbd>,

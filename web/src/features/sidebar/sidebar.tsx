@@ -299,7 +299,7 @@ function SidebarView({
           <h2>
             <Button
               variant="quiet"
-              title={`Panel of ${name}`}
+              title={`Lead agent of ${name}`}
               disabled={drawing || (!panel && !online)}
               aria-current={panel && selected === panel.id ? "page" : undefined}
               onClick={() => (panel ? choose(panel.id) : openPanel(cwd))}
@@ -343,7 +343,7 @@ function SidebarView({
         {!folded && (
           <div class="place-body">
             {group.threads.length > 0 && (
-              <div role="group" aria-label={`Threads of ${name}`}>
+              <div role="group" aria-label={`Background agents of ${name}`}>
                 {group.threads.map(row)}
               </div>
             )}

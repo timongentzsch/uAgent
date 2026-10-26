@@ -614,7 +614,7 @@ export default function BrowserPanel({
               )
             }
           >
-            <option value={0}>Shared browser · queue threads</option>
+            <option value={0}>Shared browser · conversations take turns</option>
             <option value={1}>1 isolated research browser</option>
             <option value={2}>2 parallel research browsers</option>
             <option value={4}>4 parallel research browsers</option>

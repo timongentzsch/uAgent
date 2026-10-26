@@ -489,23 +489,26 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Named(
         registry::Int("panel.maxThreads", "UAGENT_PANEL_MAX_THREADS", {}, 5, 1,
                       64, ReloadPolicy::kNextUserTurn, "coordination",
-                      "threads one panel may run at once"),
-        "Panel threads"),
+                      "background agents one lead agent may run at once"),
+        "Lead agent: background agents"),
     registry::Named(
         registry::Dbl("panel.dailySpendUsd", "UAGENT_PANEL_DAILY_SPEND_USD", {},
                       20.0, ReloadPolicy::kNextUserTurn, "coordination",
-                      "reported cost a panel and its threads may spend per "
-                      "day; at it, thread events wait. 0 disables it"),
-        "Panel daily spend"),
+                      "reported cost a lead agent and its background agents "
+                      "may spend per day; at it, their events wait. 0 "
+                      "disables it"),
+        "Lead agent daily spend"),
     registry::Named(
         registry::Choice(
-            registry::Str("panel.environment", "UAGENT_PANEL_ENVIRONMENT", {},
-                          "worktree", ReloadPolicy::kNextUserTurn,
-                          Sensitivity::kPublic, "coordination",
-                          "where threads run: a fresh git worktree, or the "
-                          "folder itself; a folder outside git runs in place"),
+            registry::Str(
+                "panel.environment", "UAGENT_PANEL_ENVIRONMENT", {}, "worktree",
+                ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                "coordination",
+                "where background agents run: a fresh git worktree, or "
+                "the "
+                "folder itself; a folder outside git runs in place"),
             kThreadEnvironments),
-        "Where threads run"),
+        "Where background agents run"),
 
     // Web search.
     registry::Named(

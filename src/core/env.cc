@@ -63,6 +63,10 @@ int64_t SubagentMaxSteps() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_MAX_STEPS"));
 }
 
+std::string SubagentModel() {
+  return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
+}
+
 int64_t SubagentMaxToolCalls() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_MAX_TOOL_CALLS"));
 }

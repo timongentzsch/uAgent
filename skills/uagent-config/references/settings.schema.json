@@ -578,6 +578,12 @@
           "description": "tool calls per delegated child",
           "x-env": "UAGENT_SUBAGENT_MAX_TOOL_CALLS"
         },
+        "subagent.model": {
+          "default": "",
+          "description": "route a subagent runs on when its call names none; empty runs it on its parent's",
+          "type": "string",
+          "x-env": "UAGENT_SUBAGENT_MODEL"
+        },
         "subagent.timeout": {
           "anyOf": [
             {

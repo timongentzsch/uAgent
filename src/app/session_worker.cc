@@ -207,7 +207,11 @@ class WorkerChannel final : public ApplicationChannel {
       if (ready < 0 && errno != EINTR) {
         return std::nullopt;
       }
-      if (ready == 0) {
+      // A signal is no input, so it counts as a quiet wait: a thread's exit
+      // (SIGCHLD) used to start the idle period over, keeping a panel up one
+      // more period per thread. What a child's end means reaches the wake
+      // pipe by itself.
+      if (ready <= 0) {
         if (link_) {
           std::lock_guard lock(mutex_);
           link_->Resend();

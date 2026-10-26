@@ -51,6 +51,20 @@
 
 ### Changes
 
+- `subagent.model` (`UAGENT_SUBAGENT_MODEL`) is the route a subagent runs on
+  when its call names none, so a Sonnet session can keep its children on
+  Haiku without naming it in every call; the tool's `model` description
+  names it. Empty, the default, keeps the parent's route.
+- A fanout with `refuters=0` reports its findings as unchecked; it used to
+  call them verified though nothing checked them.
+- In a session that cannot run commands, such as a lead agent, the `subagent`
+  tool says its children cannot either, so a brief does not ask them to.
+- A runtime lets go one idle period after its last input, as it should. A
+  signal such as a finished child's (SIGCHLD) used to start the period over,
+  so a lead agent stayed up one more period for every background agent that
+  ended (about half an hour after a headless `panel -p` with one).
+- `uagent panel -p` prints the panel's last answer, not also what it said
+  before a thread reported ("started a thread, waiting").
 - Web: **search** replaces the command palette and the sidebar's filter.
   Ctrl+K (⌘K) finds conversations by name, the messages of every
   conversation that hold the words, and the actions, commands and settings

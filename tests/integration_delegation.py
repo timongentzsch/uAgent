@@ -740,6 +740,36 @@ def test_a_fanout_keeps_only_what_its_refuters_cannot_refute(root, home, *, bina
         assert_true(len(roles) == 5 and all(role["step"] == "s1" for role in roles), roles)
 
 
+def test_a_fanout_without_refuters_verifies_nothing(root, home, *, binary):
+    """With refuters 0 nobody checks a finding, so each comes back unchecked."""
+    finding = {"type": "object", "required": ["claim"], "properties": {"claim": {"type": "string"}}}
+
+    def route(_, body):
+        messages = body["messages"]
+        if any(text.startswith("find in") for text in user_texts(messages)):
+            return event({"content": json.dumps({"findings": [{"claim": "x"}]})})
+        if results := tool_results(messages):
+            return event({"content": results[0]})
+        return tool_call(
+            "subagent",
+            {
+                "operation": "fanout",
+                "items": ["a", "b"],
+                "prompt": "find in {item}",
+                "finding": finding,
+                "refuters": 0,
+            },
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "--yolo", "-p", "survey", timeout=15, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        report = json.loads(result.stdout[result.stdout.index("{") : result.stdout.rindex("}") + 1])
+        assert_true(report["verified"] == [] and len(report["unchecked"]) == 2, report)
+        assert_true(report["children"] == 2, report)
+
+
 def test_subagent_interrupt_reaps_child(root, home, *, binary):
     """A soft interrupt during the tool batch must not orphan delegation."""
     batch = tool_calls(
@@ -877,6 +907,42 @@ def test_subagent_uses_selected_model_route(root, home, *, binary):
             child_output.read_text(encoding="utf-8"),
         )
         assert_true(len(child.requests) == 2, len(child.requests))
+    finally:
+        parent.close()
+        child.close()
+
+
+def test_subagent_model_is_the_route_a_call_that_names_none_runs_on(root, home, *, binary):
+    """subagent.model sends a child that names no route to that one, and the
+    tool says so to the parent."""
+    child = Server([lambda _, body: event({"content": f"ran on {body.get('model')}"})])
+    described = []
+
+    def delegate(_, body):
+        tool = next(t for t in body["tools"] if t["function"]["name"] == "subagent")
+        described.append(tool["function"]["parameters"]["properties"]["model"]["description"])
+        return tool_call("subagent", {"prompt": "child"})
+
+    parent = Server(
+        [delegate, lambda _, body: event({"content": tool_results(body["messages"])[0]})]
+    )
+    try:
+        env = base_env(home, parent.url)
+        env["UAGENT_SUBAGENT_MODEL"] = "codex-local/child model"
+        env["UAGENT_PROVIDERS"] = json.dumps(
+            {
+                "codex-local": {
+                    "base_url": child.url,
+                    "api_key": "local-key",
+                    "supports": OPENROUTER_SUPPORTS,
+                    "models": {"child-model": {"id": "child-model"}},
+                }
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=15, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("ran on child-model" in result.stdout, result.stdout)
+        assert_true("codex-local/child model, the configured default" in described[0], described)
     finally:
         parent.close()
         child.close()

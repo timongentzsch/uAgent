@@ -1,6 +1,8 @@
 import json
+import os
 import pathlib
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -251,6 +253,11 @@ def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, bin
         assert_true(len(offered) == 2, offered)
         for names in offered:
             assert_true(names and not names & {"run", "write_file", "edit_file"}, names)
+        # The lead agent is told so, and does not brief a child to run one.
+        [subagent] = [
+            t for t in server.requests[0][1]["tools"] if t["function"]["name"] == "subagent"
+        ]
+        assert_true("none of them runs commands" in subagent["function"]["description"], subagent)
         last = json.dumps(server.requests[-1][1]["messages"], ensure_ascii=False)
         assert_true(last.count('{\\"finding\\": \\"fine\\"}') == 2, last[-1500:])
         assert_true("- s1 [open] Survey · 2 subagents" in last, last[-800:])
@@ -309,13 +316,9 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
         env = base_env(home, server.url)
         result = run(root, env, "panel", "-p", "delegate a count", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        # The run waits for the thread it started and prints all the
-        # panel said: a thread that finishes before the panel's
-        # next step is heard within that turn, a later one in a turn of its own.
-        assert_true(
-            result.stdout.strip() in ("noted-event", "spawned-ok\n\nnoted-event"),
-            repr(result.stdout),
-        )
+        # The run waits for the thread it started and prints what the panel
+        # said last, not its "spawned" from before the report.
+        assert_true(result.stdout.strip() == "noted-event", repr(result.stdout))
         spawned = json.loads(
             next(
                 tool_results(body["messages"])[0]
@@ -366,9 +369,29 @@ def test_a_headless_panel_waits_for_a_slow_thread(root, home, *, binary):
             root, base_env(home, server.url), "panel", "-p", "delegate slowly", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(
-            result.stdout.strip() == "spawned-ok\n\nheard: slow-report", repr(result.stdout)
-        )
+        assert_true(result.stdout.strip() == "heard: slow-report", repr(result.stdout))
+
+
+def test_a_finished_child_does_not_restart_the_idle_period(root, home, *, binary):
+    """A child's exit (SIGCHLD) interrupts the runtime's wait but is no input:
+    a panel whose thread ended still lets go one idle period after its turn."""
+    with Server([event({"content": "done"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_INTERNAL_IDLE_S"] = "2"
+        result = run(root, env, "panel", "-p", "hello", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        [path] = runtime_directory(home).glob("*.sock")
+        client = SessionClient(path)
+        pid = client.hello["pid"]
+        client.close()
+        deadline = time.monotonic() + budget(10)
+        while path.exists() and time.monotonic() < deadline:
+            try:
+                os.kill(pid, signal.SIGCHLD)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        assert_true(not path.exists(), "the runtime outlived its idle period")
 
 
 def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):

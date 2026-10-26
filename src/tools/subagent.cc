@@ -108,7 +108,7 @@ bool LoadRole(const ProcessSupervisor& processes, const std::string& id,
   return true;
 }
 
-json AgentRow(const std::string& id, const json& role) {
+json AgentRow(const std::string& id, const json& role, int64_t tokens = 0) {
   return {{"id", id},
           {"name", JsonValue(role, "name", "")},
           {"description", JsonValue(role, "description", "")},
@@ -116,6 +116,7 @@ json AgentRow(const std::string& id, const json& role) {
           {"label", JsonValue(role, "label", "Subagent")},
           {"mode", JsonValue(role, "mode", "lean")},
           {"step", JsonValue(role, "step", "")},
+          {"tokens", tokens},
           {"status", "idle"}};
 }
 
@@ -127,7 +128,7 @@ std::vector<json> AgentSummaries(const ProcessSupervisor& processes) {
     if (rows.size() >= kMaxAgentRecords) break;
     if (JsonValue(info.delegation, "parent", "") != processes.Owner()) continue;
     rows.push_back(AgentRow(std::filesystem::path(info.path).stem().string(),
-                            info.delegation));
+                            info.delegation, info.tokens));
   }
   // The supervisor knows what runs; a child that has not saved yet is listed
   // from what its spawn stamped on the job.

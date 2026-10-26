@@ -176,6 +176,8 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   // Spend is read across many sessions (a panel's daily limit), so it
   // rides in the header instead of needing the whole state parsed.
   header["cost"] = record.state.usage.cost;
+  header["tokens"] = SaturatingNonnegativeAdd(
+      record.state.usage.PromptTokens(), record.state.usage.GeneratedTokens());
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
     return Error(SessionStoreError::kInvalid,
@@ -381,6 +383,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
+        item.tokens = JsonValue(header, "tokens", int64_t{0});
         item.delegation = DelegationOf(header);
         item.kind = JsonValue(header, kSessionHeaderKind, "");
         item.memory = JsonValue(header, "memory", true);

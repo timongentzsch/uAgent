@@ -1208,12 +1208,17 @@ void TestSessionPrefixMatch() {
         json::array({{{"role", "system"}, {"content", "sys"}},
                      {{"role", "user"}, {"content", "hi"}}});
     record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser};
+    record.state.usage.input = 1000;
+    record.state.usage.cache_read = 400;
+    record.state.usage.output = 200;
     CHECK(SessionStore::Save(dir + "/" + file, record).Ok());
   };
   save("match-a.json", "alpha task");
   save("match-b.json", "beta task");
   const std::string a = dir + "/match-a.json";
   const std::string b = dir + "/match-b.json";
+  // The token total rides in the header, so a listing costs no state parse.
+  CHECK(JsonValue(SessionHeader(a), "tokens", int64_t{0}) == 1600);
   CHECK(MatchSessionPrefix("alpha") == a);
   CHECK(MatchSessionPrefix("MATCH-B.JSON") == b);
   CHECK(MatchSessionPrefix(b) == b);

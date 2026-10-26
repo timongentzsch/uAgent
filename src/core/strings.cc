@@ -435,7 +435,7 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
 
 namespace {
 
-constexpr uint64_t kFnv1aOffsetBasis = 1469598103934665603ULL;
+constexpr uint64_t kFnv1aOffsetBasis = 14695981039346656037ULL;
 constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
 
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {

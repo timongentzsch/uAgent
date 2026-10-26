@@ -55,6 +55,7 @@ export function SpaceMenu({
 export function ConversationMenu({
   item,
   fork,
+  find,
   notify,
   open,
   detail,
@@ -62,6 +63,8 @@ export function ConversationMenu({
 }: {
   item: Session;
   fork: (item: Session) => void;
+  // Opens the find bar, for the conversation open on the page.
+  find?: () => void;
   // Says what an action did, where the conversation shows its notices.
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
@@ -80,6 +83,7 @@ export function ConversationMenu({
   return (
     <Menu label="Conversation menu">
       {children}
+      {find && <MenuItem onClick={find}>Find in conversation</MenuItem>}
       <MenuItem
         disabled={
           !online ||

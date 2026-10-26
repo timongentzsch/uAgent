@@ -262,6 +262,7 @@ function MessageView({ block, online, session }: MessageProps) {
   return (
     <article
       data-message-id={block.key || block.id}
+      data-sequence={block.sequence}
       className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
       aria-labelledby={nameId}
     >
@@ -477,7 +478,12 @@ function GroupRow(props: MessageProps) {
     ),
   );
   return (
-    <article data-message-id={props.block.key} className="message tool group">
+    <article
+      data-message-id={props.block.key}
+      // The rows it folds, so a find can open it to reach one.
+      data-sequences={steps.map((step) => step.sequence).join(" ")}
+      className="message tool group"
+    >
       <DisclosureRow
         className={`tool-disclosure${running ? " running" : ""}`}
         label={props.block.label || ""}

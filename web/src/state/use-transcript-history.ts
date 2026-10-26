@@ -543,6 +543,28 @@ export function useTranscriptHistory(
     capture();
   }, [capture, pin, setFollow]);
 
+  // Puts a found row or words in the middle of the view and stops
+  // following, so a streamed row does not pull the view away from it.
+  const reveal = useCallback(
+    (target: Element | Range) => {
+      const element = scroller.current;
+      if (!element) return;
+      pending.current = null;
+      jumped.current = true;
+      stopFollowing();
+      const view = element.getBoundingClientRect();
+      const box = target.getBoundingClientRect();
+      writeTop(
+        element.scrollTop +
+          box.top -
+          view.top -
+          (element.clientHeight - box.height) / 2,
+      );
+      selectAnchor();
+    },
+    [selectAnchor, stopFollowing, writeTop],
+  );
+
   const preserveWhile = useCallback(
     async (load: () => Promise<void>) => {
       stopFollowing();
@@ -558,6 +580,7 @@ export function useTranscriptHistory(
     attachContent,
     preserveWhile,
     jumpToLatest,
+    reveal,
     unseen,
   };
 }

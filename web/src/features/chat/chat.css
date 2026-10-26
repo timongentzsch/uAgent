@@ -13,3 +13,23 @@
   min-height: var(--control);
   overflow-anchor: none;
 }
+/* Find in the conversation: one line over the transcript, its field
+   taking the width the count and the buttons leave. */
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--column-inset);
+  border-bottom: var(--border);
+  background: var(--surface);
+}
+.find-bar > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.find-count {
+  color: var(--muted);
+  font-size: var(--font-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

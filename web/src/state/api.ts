@@ -31,6 +31,9 @@ export const routes = {
     `/api/sessions/${session}/assets/${id}`,
   attachments: (session: string, name: string) =>
     `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
+  // Rows that contain q, in every conversation or, with a session, in one.
+  search: (q: string, session?: string) =>
+    `/api/search?q=${encodeURIComponent(q)}${session ? `&session=${session}` : ""}`,
   // The conversation's folder, read only: `list`, `read` and `find` answer
   // JSON, `raw` is the file itself.
   files: (

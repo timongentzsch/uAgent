@@ -508,20 +508,19 @@ test.describe("touch interaction", () => {
       await scaledFields(tools, zoom);
       await tools.getByRole("button", { name: "Close tools" }).click();
       await page.getByRole("button", { name: "Open conversations" }).click();
-      const sessions = page.getByRole("dialog", {
-        name: "Conversations",
-        exact: true,
-      });
-      await expect(
-        sessions.getByPlaceholder("Find a conversation…"),
-      ).toBeVisible();
-      await scaledFields(sessions, zoom);
-      await sessions.getByPlaceholder("Find a conversation…").tap();
+      await page
+        .getByRole("dialog", { name: "Conversations", exact: true })
+        .getByRole("button", { name: "Search", exact: true })
+        .tap();
+      const spotlight = page.getByRole("dialog", { name: "Search" });
+      await expect(spotlight.getByRole("combobox")).toBeVisible();
+      await scaledFields(spotlight, zoom);
+      await spotlight.getByRole("combobox").tap();
       expect(await page.evaluate(() => visualViewport.scale)).toBe(1);
       if (zoom === 50 || zoom === 100)
-        await testInfo.attach(`session-search-${zoom}.png`, {
-          body: await sessions.screenshot({
-            path: testInfo.outputPath(`session-search-${zoom}.png`),
+        await testInfo.attach(`search-${zoom}.png`, {
+          body: await spotlight.screenshot({
+            path: testInfo.outputPath(`search-${zoom}.png`),
           }),
           contentType: "image/png",
         });

@@ -150,6 +150,10 @@
   --accent-active: #ccc;
   --on-accent: #000;
   --knob: #a3a3a3;
+  /* Found words, as a find bar marks them; the current one stronger. */
+  --find: rgba(255, 214, 10, 0.32);
+  --find-current: #ffd60a;
+  --on-find-current: #000;
   /* Edges and the focus ring, made here so each palette's colours fill
      them: a divider, a control's edge. */
   --border: 1px solid var(--line);
@@ -182,6 +186,9 @@
   --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
   --knob: #fff;
+  --find: rgba(255, 204, 0, 0.4);
+  --find-current: #ffcc00;
+  --on-find-current: #000;
   --border: 1px solid var(--line);
   --border-field: 1px solid var(--field-border);
   --focus-ring: 2px solid var(--accent);
@@ -720,9 +727,6 @@ aside.sidebar {
    from its starting style instead of appearing in place. */
 dialog.sidebar:not([open]) {
   display: none;
-}
-.search .text-control {
-  font-size: var(--font-small);
 }
 .folder-label {
   display: flex;
@@ -1804,4 +1808,14 @@ details[open]:not(.disclosure-row) > summary::before {
 }
 .empty-state p {
   margin: 0;
+}
+/* Words a find bar found (shared/find.ts), and the one it is on. */
+::highlight(find),
+mark {
+  background-color: var(--find);
+  color: inherit;
+}
+::highlight(find-current) {
+  background-color: var(--find-current);
+  color: var(--on-find-current);
 }

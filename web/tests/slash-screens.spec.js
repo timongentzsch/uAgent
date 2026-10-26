@@ -45,7 +45,12 @@ test("bare slash commands open their screens", async ({ page, session }) => {
     page.getByText("/clear works only in a terminal."),
   ).toBeVisible();
 
-  // On a wide screen the list is already beside the conversation.
+  // On a wide screen the list is already beside the conversation: it
+  // searches instead.
   await run("/sessions");
-  await expect(page.getByLabel("Find a conversation")).toBeFocused();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Search" })
+      .getByRole("combobox", { name: /^Search conversations/ }),
+  ).toBeFocused();
 });

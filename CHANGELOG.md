@@ -51,6 +51,13 @@
 
 ### Changes
 
+- Web: **search** replaces the command palette and the sidebar's filter.
+  Ctrl+K (⌘K) finds conversations by name, the messages of every
+  conversation that hold the words, and the actions, commands and settings
+  the palette had; a message opens its conversation there. **Find in
+  conversation** (Ctrl+F, or the conversation menu) marks every occurrence
+  in yellow and steps through them with Enter and Shift+Enter, loading
+  older messages and opening folded tool rows to reach one.
 - The panel speaks Claude Code's words: a folder's **lead agent** plans,
   asks **subagents** and starts **background agents** (until now
   "moderator" and "threads"), and its board is the **Plan** pane. The web,

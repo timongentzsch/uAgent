@@ -1,11 +1,11 @@
-// Finding your way without knowing where things are: the command palette,
+// Finding your way without knowing where things are: search,
 // the shortcuts sheet, conversations by keyboard, the home screen, and pairing
 // by link.
 import { test, expect, selectProbeModel } from "./fixtures.js";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
-test("the palette opens a conversation and runs a command", async ({
+test("search opens a conversation and runs a command", async ({
   page,
   session,
   command,
@@ -18,9 +18,9 @@ test("the palette opens a conversation and runs a command", async ({
   await page.goto("/");
   await expect(page.locator(".sidebar")).toContainText("Palette probe");
   await page.keyboard.press(`${mod}+k`);
-  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const palette = page.getByRole("dialog", { name: "Search" });
   const field = palette.getByRole("combobox", {
-    name: "Find a conversation, command or setting",
+    name: "Search conversations, messages, commands and settings",
   });
   await expect(field).toBeFocused();
   // Letters in order find it; the first match is selected.
@@ -71,7 +71,7 @@ test("? lists the shortcuts, and Alt+arrows step through conversations", async (
   await page.locator(".conversation-head h1").click();
   await page.keyboard.press("?");
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
-  await expect(sheet).toContainText("Command palette");
+  await expect(sheet).toContainText("Find in this conversation");
   await expect(sheet).toContainText("Next conversation");
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
@@ -103,7 +103,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   const tips = page.locator(".empty .tips dd");
   await expect(tips).toHaveCount(3);
   await expect(tips.first()).toContainText("subagents and background agents");
-  await expect(tips.nth(1)).toContainText("Finds a conversation");
+  await expect(tips.nth(1)).toContainText("Searches every conversation");
 
   // Enter in the dialog starts a conversation, as its primary button does.
   await page
@@ -150,17 +150,12 @@ test("the tips of an empty conversation go with its first message", async ({
   await expect(tips).toHaveCount(0);
 });
 
-test("the palette opens from the phone's sidebar", async ({
-  page,
-  session,
-}) => {
+test("search opens from the phone's sidebar", async ({ page, session }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   await page.getByLabel("Open conversations").click();
-  await page.getByRole("button", { name: "Command palette" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Command palette" }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
 });
 
 test.describe("pairing by link", () => {

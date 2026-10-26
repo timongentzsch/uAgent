@@ -261,33 +261,42 @@ before Submit.
 
 ### Finding and managing conversations
 
-- Ctrl+K (⌘K on a Mac), or the search button atop the sidebar on a phone,
-  opens the command palette: conversations, folders, slash commands, settings
-  sections and actions, matched by letters in order (prefixes first), each
-  with its shortcut.
+- **Search**: Ctrl+K (⌘K on a Mac), the search button atop the sidebar or
+  `/sessions` opens it. It lists conversations and folders by name (letters
+  in order, prefixes first), then the messages of every conversation that
+  hold the words (threads and panels included, tool output too), each with
+  the words around them, then actions, slash commands and settings. A
+  message opens its conversation at that message, with find open on the
+  words.
+- **Find in a conversation**: Ctrl+F (⌘F), or **Find in conversation** in
+  its menu, marks every occurrence in yellow, the current one stronger, and
+  says which of how many it is. Enter and Shift+Enter (or the arrows) step to
+  the next and previous one across the whole conversation, loading older
+  messages and opening a folded tool row to reach it; Esc closes it.
 - `?` outside a text field lists every shortcut. Alt+↑ and Alt+↓ step through
   the conversations in sidebar order.
-- The conversation menu has **Fork conversation**, **Rename**,
-  **Statistics**, **Tools**, **Export transcript**, **Detail**, **Compact**,
-  **Restart**, **Close conversation** and **Delete**. Tools controls the
-  active schema and groups tools into persistent custom categories. Close a
-  live runtime before deleting its history; project files are unaffected.
+- The conversation menu has **Find in conversation**, **Fork conversation**,
+  **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
+  **Compact**, **Restart**, **Close conversation** and **Delete**. Tools
+  controls the active schema and groups tools into persistent custom
+  categories. Close a live runtime before deleting its history; project
+  files are unaffected.
 
 ### The lead agent
 
 [The guide](GUIDE.md#the-lead-agent) explains background agents, subagents
 and the plan. In the web:
 
-- A place's name in the sidebar, or the command palette, opens its lead
-  agent. The background agents it started are listed under the name, and a
-  background agent links back to its lead agent under its title.
+- A place's name in the sidebar, or search, opens its lead agent. The
+  background agents it started are listed under the name, and a background
+  agent links back to its lead agent under its title.
 - The **plan** beside the chat (a button in the header on a phone) shows the
   lead agent's goal, then each step with its status. A running step is open;
   any step opens to its result, the background agents working for it and
   its subagents with their status, time and tokens, and a subagent opens in
   the inspector. Below, **Background agents** lists those no step names. A
-  background agent's menu renames or removes it. What needs you is above the input and in the
-  sidebar's "need you" count.
+  background agent's menu renames or removes it. What needs you is above
+  the input and in the sidebar's "need you" count.
 
 ### Settings
 

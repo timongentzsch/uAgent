@@ -279,10 +279,10 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(ticks.SessionRow).toBeGreaterThan(0);
   expect(ticks.SessionRow).toBeLessThanOrEqual(20);
 
-  // The palette fills its sheet, and a list the person scrolled stays where
+  // Search fills its sheet, and a list the person scrolled stays where
   // they left it while events keep re-rendering the app behind it.
   await page.keyboard.press("ControlOrMeta+k");
-  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const palette = page.getByRole("dialog", { name: "Search" });
   const results = palette.getByRole("listbox", { name: "Results" });
   await expect(results.getByRole("option").first()).toBeVisible();
   const gap = await results.evaluate(
@@ -295,7 +295,7 @@ test("streaming renders only what changed", async ({ page }) => {
   const scrolled = await results.evaluate((list) => list.scrollTop);
   expect(scrolled).toBeGreaterThan(0);
   const renders = await page.evaluate(async () => {
-    const before = globalThis.renderCounts.Palette || 0;
+    const before = globalThis.renderCounts.Spotlight || 0;
     for (let index = 0; index < 10; index++) {
       testSend({
         kind: "event",
@@ -314,9 +314,9 @@ test("streaming renders only what changed", async ({ page }) => {
       });
       await testFrame();
     }
-    return (globalThis.renderCounts.Palette || 0) - before;
+    return (globalThis.renderCounts.Spotlight || 0) - before;
   });
-  // The premise: the palette did re-render under the person's scroll.
+  // The premise: search did re-render under the person's scroll.
   expect(renders).toBeGreaterThan(0);
   expect(await results.evaluate((list) => list.scrollTop)).toBe(scrolled);
 });

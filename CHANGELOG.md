@@ -61,6 +61,10 @@
 
 ### Changes
 
+- A command that fails a name lookup while the sandbox denies the network
+  ("Could not resolve host", "nodename nor servname provided", …) now ends
+  with the sandbox's note, which says the network is closed. Before, only a
+  refused write was explained, and a blocked `curl` read like a DNS outage.
 - The `uagent` tool says it describes the running build, not the code in
   the workspace, which a model answering a question about the repository
   once mistook it for.

@@ -166,16 +166,19 @@ std::string WritesNote(const SandboxPolicy& policy,
   for (const std::string& root : policy.writable_roots) {
     roots += (roots.empty() ? "" : ", ") + root;
   }
+  // A refused connection reads as a failed lookup, so the note says it too.
+  const std::string offline =
+      policy.allow_network ? "" : ", and reach no network";
   if (policy.read_only) {
     return "commands here only read: they may write temporary files under " +
-           roots + ", and reach no network";
+           roots + offline;
   }
   if (SandboxWritable(policy, workspace)) {
     std::string note = "commands may write only under " + roots;
     for (const std::string& path : policy.withheld) {
       note += ", not " + path;
     }
-    return note;
+    return note + offline;
   }
   // Reads around a hidden path are granted folder by folder as a command
   // starts, so a workspace that holds one goes stale for a running command.
@@ -185,7 +188,7 @@ std::string WritesNote(const SandboxPolicy& policy,
                                  });
   return "commands cannot write the workspace " + std::string(workspace) +
          ", which holds µAgent's own state; they may write only under " +
-         roots +
+         roots + offline +
          ". write_file, edit_file and delete_file still work in the "
          "workspace" +
          (stale ? ", but a command still running cannot read a file made "

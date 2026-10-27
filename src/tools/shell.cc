@@ -198,16 +198,26 @@ std::shared_ptr<const SandboxWatch> WatchUnenforced(
 }
 
 // A refused write arrives as the kernel's errno, which names a permission and
-// not the policy that withheld it -- so a command that failed for the one
-// reason this session introduced is the one that explains itself worst. Added
-// only to a wrapped command that actually failed, and it names the roots: the
-// model cannot run /context, and probing for them costs it a round per guess.
+// not the policy that withheld it, and a refused connection as a failed name
+// lookup -- so a command that failed for the one reason this session
+// introduced is the one that explains itself worst. Added only to a wrapped
+// command that actually failed, and it names the roots: the model cannot run
+// /context, and probing for them costs it a round per guess.
 std::string SandboxHint(const std::string& output) {
-  for (std::string_view denial :
-       {"Operation not permitted", "Permission denied"}) {
-    if (output.find(denial) != std::string::npos) {
-      return "\n[sandbox: " + SandboxNote() + "]";
-    }
+  static constexpr std::string_view kDenied[] = {"Operation not permitted",
+                                                 "Permission denied"};
+  static constexpr std::string_view kOffline[] = {
+      "Could not resolve host", "nodename nor servname",
+      "Name or service not known", "Temporary failure in name resolution",
+      "Network is unreachable"};
+  const auto says = [&](const auto& phrases) {
+    return std::ranges::any_of(phrases, [&](std::string_view phrase) {
+      return output.find(phrase) != std::string::npos;
+    });
+  };
+  if (says(kDenied) ||
+      (!SandboxRuntime().policy.allow_network && says(kOffline))) {
+    return "\n[sandbox: " + SandboxNote() + "]";
   }
   return {};
 }

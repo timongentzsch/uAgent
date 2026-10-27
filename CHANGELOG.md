@@ -51,6 +51,10 @@
 
 ### Changes
 
+- On macOS the sandbox lets commands write the per-user temp folder too
+  (`confstr(_CS_DARWIN_USER_TEMP_DIR)`), where `xcrun` caches: with
+  `TMPDIR` pointing elsewhere, every `git` printed "couldn't create cache
+  file … Operation not permitted" first.
 - A lead agent has `run`, in a new `readonly` sandbox level it always runs
   at: commands read the workspace, write only temporary files and reach no
   network, so they need no approval, and its subagents inherit it. On a

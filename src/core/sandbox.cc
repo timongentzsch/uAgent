@@ -164,6 +164,7 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
     Offer(inputs.workspace, inputs, &accepted, &result.rejected);
   }
   Offer(inputs.tmpdir, inputs, &accepted, &result.rejected);
+  Offer(inputs.user_tmpdir, inputs, &accepted, &result.rejected);
   for (std::string_view root : kFixedRoots) {
     Offer(root, inputs, &accepted, &result.rejected);
   }

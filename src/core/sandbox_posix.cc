@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -273,6 +274,12 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
       std::filesystem::is_directory(inputs.workspace + "/.git", ec);
   inputs.global_base = canonical(GlobalBase());
   inputs.tmpdir = canonical(EnvStr("TMPDIR"));
+#if defined(__APPLE__)
+  if (char temp[PATH_MAX];
+      confstr(_CS_DARWIN_USER_TEMP_DIR, temp, sizeof temp) > 0) {
+    inputs.user_tmpdir = canonical(temp);
+  }
+#endif
   inputs.terminal_logs = canonical(UagentDir(kTerminalLogsDir));
   // Canonicalised component by component rather than passed through raw: a
   // root written as ~/.uagent/.. is not textually inside ~/.uagent, so the

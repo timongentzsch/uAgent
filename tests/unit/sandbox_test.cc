@@ -189,6 +189,8 @@ void TestSandboxLevels() {
   SandboxInputs looking = BaseInputs();
   looking.read_only = true;
   looking.extra_roots = {"/home/u/data"};
+  // macOS's own temp folder is temporary too: its tools cache there.
+  looking.user_tmpdir = "/private/var/folders/ab/xy/T";
   const SandboxPolicyResult only = BuildSandboxPolicy(looking);
   CHECK(only.policy.read_only);
   CHECK(!HasRoot(only.policy, "/home/u/work"));
@@ -196,6 +198,7 @@ void TestSandboxLevels() {
   CHECK(!HasRoot(only.policy, "/home/u/data"));
   CHECK(HasRoot(only.policy, "/private/var/folders/ab/T"));
   CHECK(HasRoot(only.policy, "/tmp"));
+  CHECK(HasRoot(only.policy, "/private/var/folders/ab/xy/T"));
   CHECK(HasRoot(only.policy, "/home/u/.uagent/terminals/logs"));
   CHECK(!SandboxWritable(only.policy, "/home/u/work/file"));
   CHECK(SandboxWritesNote(only.policy, "/home/u/work")

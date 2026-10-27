@@ -207,9 +207,9 @@ std::string SandboxHint(const std::string& output) {
   static constexpr std::string_view kDenied[] = {"Operation not permitted",
                                                  "Permission denied"};
   static constexpr std::string_view kOffline[] = {
-      "Could not resolve host", "nodename nor servname",
+      "Could not resolve host",    "nodename nor servname",
       "Name or service not known", "Temporary failure in name resolution",
-      "Network is unreachable"};
+      "Network is unreachable",    "ENOTFOUND"};
   const auto says = [&](const auto& phrases) {
     return std::ranges::any_of(phrases, [&](std::string_view phrase) {
       return output.find(phrase) != std::string::npos;

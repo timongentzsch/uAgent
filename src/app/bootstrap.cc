@@ -209,7 +209,10 @@ void ReportSandbox() {
   // The workspace is said in full: "not granted" alone does not tell a person
   // that every command in this conversation is about to fail to save its work.
   const std::string workspace = CanonicalCwd();
-  if (std::string refusal = SandboxWorkspaceRefusal(); !refusal.empty()) {
+  // At the readonly level, a lead agent's, the workspace is not writable on
+  // purpose.
+  if (std::string refusal = SandboxWorkspaceRefusal();
+      !refusal.empty() && !status.policy.read_only) {
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "sandbox: " + refusal +
                          ". Start in a project folder or a named workspace "

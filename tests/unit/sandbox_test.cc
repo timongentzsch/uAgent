@@ -73,6 +73,11 @@ void TestSandboxPolicy() {
   CHECK(note.starts_with("commands may write only under "));
   CHECK(note.find("/home/u/work") != std::string::npos);
   CHECK(note.find("cannot") == std::string::npos);
+  CHECK(note.find("network") == std::string::npos);
+  SandboxPolicy offline = base.policy;
+  offline.allow_network = false;
+  CHECK(SandboxWritesNote(offline, "/home/u/work") ==
+        note + ", and reach no network");
   // A home directory as the workspace holds ~/.uagent, so it is dropped: the
   // note then leads with that, and with what still works there.
   SandboxInputs at_home = BaseInputs();

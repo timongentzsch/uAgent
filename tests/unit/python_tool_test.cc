@@ -127,7 +127,7 @@ void TestPythonTool() {
 
   write("missing.py", "import definitely_missing_uagent_package\n");
   result = ToolRunScratch(supervisor, root, "missing.py");
-  CHECK(result.error == ToolErrorCode::kProcessFailed);
+  CHECK(result.error == ToolErrorCode::kExitStatus);
   CHECK(result.output.find("error: Python execution failed.") !=
         std::string::npos);
   CHECK(result.output.find("PEP 723 header") != std::string::npos);
@@ -190,7 +190,7 @@ void TestPythonTool() {
               .output == "a b; c\n");
     write("fail.js", "process.exit(7);\n");
     CHECK(ToolRunScratch(supervisor, root, "fail.js").error ==
-          ToolErrorCode::kProcessFailed);
+          ToolErrorCode::kExitStatus);
   }
   CHECK(ToolRunScratch(supervisor, root, "../escape.mjs").error ==
         ToolErrorCode::kInvalidArguments);

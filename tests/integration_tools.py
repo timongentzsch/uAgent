@@ -1274,3 +1274,28 @@ def test_isolated_browser_verification_helper(root, home, *, binary):
                 ),
                 outputs,
             )
+
+
+def test_a_command_that_exits_non_zero_is_no_tool_fault(root, home, *, binary):
+    """A red test run answered: three in a row are no streak of failed tools,
+    while three calls that could not do their work are."""
+
+    def advised(name, arguments):
+        bodies = []
+
+        def call(_, body):
+            bodies.append(body)
+            return tool_call(name, arguments, call_id=f"call-{len(bodies)}")
+
+        def finish(_, body):
+            bodies.append(body)
+            return event({"content": "done"})
+
+        with Server([call, call, call, finish]) as server:
+            run(root, base_env(home, server.url), "--yolo", "-p", "go", timeout=30, binary=binary)
+        return "tool failure advisory" in json.dumps(bodies[-1])
+
+    red = advised("run", {"command": "echo '2 failed, 5 passed'; exit 1"})
+    assert_true(not red, "a red test run counted as a failed tool")
+    missing = advised("read_path", {"path": str(root / "missing.txt")})
+    assert_true(missing, "three failed reads were no streak")

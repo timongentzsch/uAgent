@@ -65,6 +65,9 @@
   ("Could not resolve host", "nodename nor servname provided", …) now ends
   with the sandbox's note, which says the network is closed. Before, only a
   refused write was explained, and a blocked `curl` read like a DNS outage.
+- A command that exits non-zero, such as a red test run or a grep with no
+  match, no longer counts toward "consecutive tool calls failed": it ran and
+  answered. Its tool result says `exit_status` instead of `process_failed`.
 - The `uagent` tool says it describes the running build, not the code in
   the workspace, which a model answering a question about the repository
   once mistook it for.

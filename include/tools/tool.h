@@ -35,6 +35,9 @@ enum class ToolErrorCode {
   kLimitExceeded,
   kUnavailable,
   kProcessFailed,
+  // A command ran and exited non-zero: it answered, as a red test suite or a
+  // grep with no match does, so it is no fault of the tool.
+  kExitStatus,
   kRemoteError,
   kInternal,
 };

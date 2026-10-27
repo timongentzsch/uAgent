@@ -35,6 +35,8 @@ const char* ToolErrorCodeName(ToolErrorCode code) {
       return "unavailable";
     case ToolErrorCode::kProcessFailed:
       return "process_failed";
+    case ToolErrorCode::kExitStatus:
+      return "exit_status";
     case ToolErrorCode::kRemoteError:
       return "remote_error";
     case ToolErrorCode::kInternal:

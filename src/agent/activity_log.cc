@@ -62,7 +62,7 @@ ToolResult ProcessResult(std::string output, int status) {
   if (ExitedOk(status)) {
     return ToolSuccess(std::move(output));
   }
-  return ToolFailure(ToolErrorCode::kProcessFailed, std::move(output));
+  return ToolFailure(ToolErrorCode::kExitStatus, std::move(output));
 }
 
 // A caller-requested budget never exceeds the global tool-result cap; 0 means

@@ -516,7 +516,7 @@ void TestActivitySessions() {
     ShellCommandResult failed = RunShellCommand(
         pipeline, {},
         {.command = "sh -c 'echo failed; exit 7' | tail -n 1", .tty = tty});
-    CHECK(failed.result.error == ToolErrorCode::kProcessFailed);
+    CHECK(failed.result.error == ToolErrorCode::kExitStatus);
     CHECK(failed.result.output.find("exit code 7") != std::string::npos);
     CHECK(failed.wait_status.has_value());
   }

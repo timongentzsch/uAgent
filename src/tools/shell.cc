@@ -753,7 +753,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
       output += "[changed in the workspace: " + changed + "]";
     }
   }
-  if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {
+  if (result.result.error == ToolErrorCode::kExitStatus && !shell_script) {
     std::string hint =
         result.result.output.find("No module named") != std::string::npos
             ? " Add every third-party dependency to the script's PEP 723 "
@@ -846,7 +846,7 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
       output.resize(output.size() - suffix.size());
     }
   } else if (!outcome.Ok()) {
-    if (outcome.error == ToolErrorCode::kProcessFailed) {
+    if (outcome.error == ToolErrorCode::kExitStatus) {
       return ToolFailure(ToolErrorCode::kProcessFailed,
                          "search command failed:\n" + output);
     }

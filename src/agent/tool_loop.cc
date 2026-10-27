@@ -411,12 +411,13 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
       }
     }
   }
-  bool any_succeeded =
-      std::any_of(tasks.begin(), tasks.end(),
-                  [](const CallTask& task) { return task.result.Ok(); });
-  int64_t failed =
-      std::count_if(tasks.begin(), tasks.end(),
-                    [](const CallTask& task) { return !task.result.Ok(); });
+  // A command that exited non-zero answered; only a call that could not do
+  // its work is a fault.
+  auto faulted = [](const CallTask& task) {
+    return !task.result.Ok() && task.result.error != ToolErrorCode::kExitStatus;
+  };
+  bool any_succeeded = !std::all_of(tasks.begin(), tasks.end(), faulted);
+  int64_t failed = std::count_if(tasks.begin(), tasks.end(), faulted);
   if (any_succeeded) {
     loop.recovery.strikes[static_cast<size_t>(Fault::kFailedTools)] = 0;
   }

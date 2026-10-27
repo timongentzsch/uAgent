@@ -27,8 +27,7 @@ Saved settings live in one private document,
 ```
 
 `all` applies to every conversation, `projects` to the conversations in one
-folder. Each key is a setting as the
-[configuration reference](../skills/uagent-config/references/configuration.md)
+folder. Each key is a setting as `/config`
 names it, with a value of its type. A value of `$NAME` stands for the entry
 of that name under `variables`. Every setting also has an environment name
 (`UAGENT_MAX_TURN_COST` for `limits.maxTurnCost`), which `/config` accepts

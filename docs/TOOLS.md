@@ -11,8 +11,8 @@ approved.
 | limit every session to kinds of tools | `UAGENT_TOOL_CAPABILITIES`, a comma-separated list of `inspect`, `execute`, `mutate`, `delegate`, `external` |
 | choose how calls are approved | `/permissions ask\|auto\|yolo`; see [Approval](#approval) |
 
-The exact schemas and their sizes are in the generated
-[tool reference](../skills/uagent-config/references/tools.md).
+The exact schemas and their sizes come from the `uagent` tool's `inspect`
+action with topic `tools`.
 
 ## Inventory
 

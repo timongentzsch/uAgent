@@ -1524,7 +1524,7 @@ def test_provider_defined_hosted_tool_is_sent_and_replayed(root, home, *, binary
 
 def test_uagent_tool_reports_live_configuration(root, home, *, binary):
     """uagent inspection answers from the running binary and never leaks secrets."""
-    save_settings(home, UAGENT_MAX_TOOL_CALLS=120)
+    save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=120)
 
     def ask_config(_, body):
         assert_true("uagent" in function_names(body), function_names(body))
@@ -1599,6 +1599,33 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("self-info-ok"), result.stdout)
         assert_true("canary-route-key" not in result.stdout, result.stdout)
+
+
+def test_uagent_tool_lists_every_setting(root, home, *, binary):
+    """Inspecting config without a name returns the whole catalogue, uncut."""
+    save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=120)
+
+    def ask(_, _body):
+        return tool_call("uagent", {"action": "inspect", "topic": "config"})
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        # Longer than the usual tool-result cap, and still one JSON document.
+        assert_true(len(result) > 8000, len(result))
+        named = {setting["name"]: setting for setting in json.loads(result)["settings"]}
+        setting = named["UAGENT_MAX_TOOL_CALLS"]
+        assert_true(setting["key"] == "limits.maxToolCalls", setting)
+        assert_true(setting["effective"] == 120 and setting["default"] == 0, setting)
+        assert_true(setting["description"], setting)
+        assert_true("canary-api-key" not in result, "secret leaked into catalogue")
+        return event({"content": "catalogue-ok"})
+
+    with Server([ask, finish]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_API_KEY"] = "canary-api-key"
+        result = run(root, env, "--yolo", "-p", "list settings", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("catalogue-ok"), result.stdout)
 
 
 def test_effort_is_part_of_the_conversations_model_choice(root, home, *, binary):

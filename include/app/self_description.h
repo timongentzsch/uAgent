@@ -49,7 +49,7 @@ const char* SelfTopicName(SelfTopic topic);
 json DescribeSelf(SelfTopic topic, const std::string& name,
                   const SelfDescriptionInputs& inputs);
 
-// The configuration schema alone, used by the build-time reference generator.
+// The configuration schema alone.
 json ConfigSchemaJson();
 // One entry of facts per setting (one setting when `name` is set): its
 // descriptor, `scopes` (where it may be saved), `set` (what each scope
@@ -63,12 +63,15 @@ const json& CommandSchemaJson();
 
 // The model-facing surface: the base prompt with its sections and every
 // capability fragment, and the built-in tool schemas as the model receives
-// them. Both are deterministic — no environment, no live session — so the
-// generated references gate a prompt or schema change the same way they gate a
-// configuration default. Per-session additions (host capabilities, runtime
+// them. Both are deterministic — no environment, no live session — so their
+// digests identify a release. Per-session additions (host capabilities, runtime
 // context, the mutable directive) are recorded by `--debug` instead.
 json PromptSurfaceJson();
 json ToolSurfaceJson();
+
+// Digests of the surfaces above plus the binary version, logged at startup so
+// two sessions can be told apart by what they were built to say and do.
+json BuildProvenanceJson();
 
 }  // namespace uagent
 

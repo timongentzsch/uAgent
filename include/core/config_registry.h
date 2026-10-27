@@ -4,9 +4,9 @@
 #define UAGENT_INCLUDE_CORE_CONFIG_REGISTRY_H_
 // The authoritative description of every UAGENT_* setting: default, bounds,
 // when a change takes effect, and whether the value may be shown. Runtime
-// getters, RuntimeConfig, the self-description tool and the generated skill
-// references all read these descriptors, so a documented default cannot drift
-// from the one the binary applies.
+// getters, RuntimeConfig and the self-description tool all read these
+// descriptors, so a documented default cannot drift from the one the binary
+// applies.
 //
 // `environment` and `field` hold string literals, so `.data()` is
 // null-terminated and safe to hand to getenv.
@@ -62,7 +62,7 @@ inline constexpr ConfigScopeName kConfigScopes[] = {
     {"conversation", "This conversation", kScopeConversation},
 };
 // The groups settings are listed in, in the order and under the names people
-// read: the settings screen and the generated reference both follow it.
+// read: the settings screen and `uagent inspect` both follow it.
 struct ConfigCategory {
   std::string_view id;
   std::string_view label;

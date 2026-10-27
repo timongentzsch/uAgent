@@ -30,7 +30,6 @@ extern char** environ;
 #include "include/browser/browser.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
-#include "include/cli/reference.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
@@ -297,14 +296,6 @@ int Main(int argc, char** argv) {
   }
   if (parsed.action == OptionsAction::kPrintVersion) {
     printf("uagent %s\n", kVersion);
-    return 0;
-  }
-  if (parsed.action == OptionsAction::kEmitReference) {
-    std::string error;
-    if (!WriteReferenceFiles(parsed.options.reference_dir, error)) {
-      fprintf(stderr, "uagent: %s\n", error.c_str());
-      return 1;
-    }
     return 0;
   }
   if (!parsed.options.control.empty()) {

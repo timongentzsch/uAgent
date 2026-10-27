@@ -454,6 +454,7 @@ def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
             env.pop(name, None)
         save_settings(
             home,
+            binary=binary,
             NAMED_KEY="named-provider-key",
             UAGENT_PROVIDERS=json.dumps(
                 {"named": {"base_url": server.url, "api_key": "$NAMED_KEY"}}

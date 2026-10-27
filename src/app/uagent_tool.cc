@@ -101,8 +101,23 @@ Tool UagentTool(SelfDescriptionProvider describe,
             value.erase("inherited");
             value.erase("last_sent");
           }
+          // The whole catalogue answers "which settings exist", so it is
+          // returned complete but one line shorter per setting; a name asks
+          // for the full facts of one.
+          const bool catalogue = topic == SelfTopic::kConfig &&
+                                 JsonValue(arguments, "name", "").empty();
+          if (catalogue) {
+            for (json& setting : value["settings"]) {
+              json brief = json::object();
+              for (const char* field : {"key", "name", "type", "default",
+                                        "effective", "source", "description"}) {
+                if (setting.contains(field)) brief[field] = setting[field];
+              }
+              setting = std::move(brief);
+            }
+          }
           std::string output = JsonDump(value, 2);
-          int64_t limit = topic == SelfTopic::kPrompt
+          int64_t limit = topic == SelfTopic::kPrompt || catalogue
                               ? static_cast<int64_t>(output.size())
                               : -1;
           return ToolSuccess(std::move(output), limit);

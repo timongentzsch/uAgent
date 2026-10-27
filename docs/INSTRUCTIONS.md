@@ -54,8 +54,7 @@ a model call; `/context` shows a live conversation's full request.
 The assembled message is limited to 64 KiB. The runtime enforces tool
 schemas, approvals, sandboxing and host limits; prompt text cannot change
 them. The built-in base and the short capability notes added for some tools
-are in the generated
-[system prompt reference](../skills/uagent-config/references/system-prompt.md).
+are shown by `uagent --show-system-prompt`.
 
 `benchmarks/eval.py --prompt-overlay FILE` applies an experimental JSON
 file's named-section `replace` entries and `append` text to the built-in

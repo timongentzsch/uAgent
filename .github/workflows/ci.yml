@@ -115,18 +115,6 @@ jobs:
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
         run: ctest --test-dir build --output-on-failure -j 3 -LE source
-      - name: Check generated skill references
-        if: matrix.target == 'linux-x86_64'
-        run: |
-          set -euo pipefail
-          generated=$(mktemp -d)
-          ./build/uagent --emit-reference "$generated"
-          if ! diff -ru skills/uagent-config/references "$generated" \
-              --exclude=self-configuration.md; then
-            echo '::error::generated references are stale; run' \
-              'uagent --emit-reference skills/uagent-config/references'
-            exit 1
-          fi
       - name: Package
         shell: bash
         run: |

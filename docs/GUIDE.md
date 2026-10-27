@@ -141,9 +141,7 @@ Delete the file to ask again.
 project's settings, which override those for all conversations. Nothing is
 read from the project folder, and `.env` files are never loaded.
 [Operations](OPERATIONS.md#settings) describes the file and when a change
-applies; the
-[configuration reference](../skills/uagent-config/references/configuration.md)
-lists every setting with its default.
+applies; `/config` lists every setting with its default.
 
 ## Approvals and the sandbox
 

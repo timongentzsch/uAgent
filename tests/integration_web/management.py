@@ -685,7 +685,7 @@ def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binar
             )
             wait_until(lambda: pushed == ["minimal"], f"change was not pushed: {pushed}")
             # A terminal saves to the same place: browsers follow.
-            save_settings(home, UAGENT_VERBOSITY="full")
+            save_settings(home, binary=binary, UAGENT_VERBOSITY="full")
             wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
             assert_true(
                 client.json("/api/sessions")[1]["verbosity"]["level"] == "full", "stale level"

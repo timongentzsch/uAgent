@@ -1288,6 +1288,7 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     (claude / "MEMORY.md").write_text("claude-memory-body-sentinel", encoding="utf-8")
     save_settings(
         home,
+        binary=binary,
         OPENROUTER_API_KEY="context-secret-sentinel",
         UAGENT_BASE_URL="https://user:pass@review.example/v1",
     )

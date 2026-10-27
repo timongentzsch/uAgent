@@ -26,7 +26,7 @@ from integration_support import (
 
 
 def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
-    save_settings(home, UAGENT_MAX_TOOL_CALLS=2)
+    save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=2)
 
     def two_calls():
         return event(
@@ -54,7 +54,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
         )
 
     def change_during_first_request(_, __):
-        save_settings(home, UAGENT_MAX_TOOL_CALLS=1)
+        save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=1)
         return two_calls()
 
     with Server(

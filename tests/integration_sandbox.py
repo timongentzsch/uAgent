@@ -229,7 +229,7 @@ def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binar
     parent's sandbox is fixed at its start, and so is its child's."""
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
-    save_settings(home, UAGENT_SANDBOX="default")
+    save_settings(home, binary=binary, UAGENT_SANDBOX="default")
     outside, inside, hooked = root / "later.txt", ws / "later.txt", root / "hooked.txt"
     # A startup file a confined command could have written: the child starts
     # outside the sandbox, so it is started through no shell.
@@ -237,7 +237,7 @@ def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binar
     hook.write_text(f"export UAGENT_SANDBOX=off\ntouch {hooked}\n")
 
     def loosen():
-        save_settings(home, UAGENT_SANDBOX="off")
+        save_settings(home, binary=binary, UAGENT_SANDBOX="off")
 
     with delegating_server(outside, inside, loosen) as server:
         env = base_env(home, server.url)

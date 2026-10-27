@@ -61,7 +61,7 @@ constexpr const char kBase[] =
     "and claim success only with tool evidence.\n\n"
     "## Answer\nLead with the outcome and anything blocking it. If a check "
     "failed or you could not verify something, say so plainly. Write "
-    "Markdown; cite code as path:line.";
+    "Markdown, with math in $…$ or $$…$$; cite code as path:line.";
 
 // A panel's moderator manages sessions rather than code: no Changes
 // section, because it has no tool that changes the workspace. How to judge an
@@ -99,7 +99,7 @@ constexpr const char kPanelBase[] =
     "secrets or one-off approvals.\n\n"
     "## Answer\nLead with the status or decision and what needs the user. "
     "Name sessions by title and id. Keep it short, since the user reads you "
-    "between other work, and write Markdown.";
+    "between other work, and write Markdown, with math in $…$ or $$…$$.";
 
 constexpr std::string_view kSections[] = {
     "## Evidence", "## Tools", "## Changes", "## Delegation", "## Answer"};

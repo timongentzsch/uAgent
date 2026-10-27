@@ -105,6 +105,11 @@ export default function Modals({
   const agents = useSnapshots(store, (all) =>
     inspector ? all[selected]?.state?.agents : undefined,
   );
+  // What the page holds of the conversation, older pages included: a turn
+  // the person loaded is in it, and fetching again would drop those pages.
+  const held = useSnapshots(store, (all) =>
+    modal?.type === "statistics" ? all[modal.session_id] : undefined,
+  );
   const http = useSnapshots(store, (all) =>
     modal?.type === "raw" && modal.session
       ? all[modal.session]?.state?.http
@@ -153,6 +158,7 @@ export default function Modals({
               load={statisticsDialog}
               fallback={<StatisticsLoading unit={modal.unit} />}
               modal={modal}
+              held={held}
               loadSnapshot={load}
             />
           ) : (

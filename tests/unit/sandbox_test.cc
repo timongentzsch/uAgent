@@ -409,7 +409,7 @@ void TestSandboxReads() {
   container.closed_folders = {"/workspaces/a", "/workspaces/b"};
   CHECK(BuildSandboxPolicy(container).policy.unreadable ==
         Paths({"/workspaces/b"}));
-  inputs.closed_folders.push_back("/home/u/Software/other");
+  inputs.closed_folders.emplace_back("/home/u/Software/other");
   CHECK(BuildSandboxPolicy(inputs).policy.unreadable == policy.unreadable);
 
   // A workspace that is the home folder opens every entry; so does a level

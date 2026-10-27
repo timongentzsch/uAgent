@@ -704,27 +704,51 @@ SessionStoreStatus SessionStore::Rename(const std::string& path,
 
 SessionStoreStatus SessionStore::Remove(const std::string& path,
                                         const std::string& draft_path) {
+  namespace fs = std::filesystem;
   FileLease writer;
   std::string error;
-  if (!writer.Acquire(SessionLockPath(path), error)) {
+  const std::string lock = SessionLockPath(path);
+  if (!writer.Acquire(lock, error)) {
     return Error(SessionStoreError::kIo, std::move(error));
   }
   auto loaded = Inspect(path);
   std::error_code ec;
   // Remove the optional web draft before the snapshot so it cannot resurrect
   // a completed deletion. Acquire ownership before changing any files.
-  if (!draft_path.empty()) std::filesystem::remove(draft_path, ec);
-  // These are session-owned siblings; remove_all never follows symlinks.
-  if (!ec) {
-    std::filesystem::remove_all(path + kSessionAssetsSuffix, ec);
+  if (!draft_path.empty()) fs::remove(draft_path, ec);
+  // What the session owns sits beside it: its siblings (assets, edits,
+  // journal, a panel's plan, the lock) and its subagents' transcripts, which
+  // are never listed on their own. A thread is a conversation of its own and
+  // stays.
+  const fs::path own = CanonicalAccessPath(path);
+  const std::string prefix = own.filename().string() + ".";
+  std::vector<fs::path> siblings;
+  std::vector<std::string> subagents;
+  std::error_code scan;
+  for (const auto& entry : fs::directory_iterator(own.parent_path(), scan)) {
+    const std::string name = entry.path().filename().string();
+    if (name.starts_with(prefix)) {
+      siblings.push_back(entry.path());
+      continue;
+    }
+    if (entry.path().extension() != ".json") continue;
+    const json role = DelegationOf(SessionHeader(entry.path().string()));
+    const std::string parent = JsonValue(role, "parent_session", "");
+    if (!parent.empty() && !ThreadLifetime(role) &&
+        CanonicalAccessPath(parent) == own) {
+      subagents.push_back(entry.path().string());
+    }
   }
-  if (!ec) {
-    std::filesystem::remove_all(path + kSessionEditsSuffix, ec);
+  for (const std::string& subagent : subagents) {
+    if (SessionStoreStatus removed = Remove(subagent, ""); !removed.Ok()) {
+      return removed;
+    }
   }
-  if (!ec) {
-    std::filesystem::remove(path + kSessionJournalSuffix, ec);
+  // remove_all never follows symlinks. The lock goes last, still held.
+  for (const fs::path& sibling : siblings) {
+    if (!ec && sibling != lock) fs::remove_all(sibling, ec);
   }
-  if (!ec) std::filesystem::remove(path, ec);
+  if (!ec) fs::remove(path, ec);
   if (!ec && loaded.record) {
     const json facts =
         JsonValue(loaded.record->state.display, "facts", json::object());
@@ -733,11 +757,11 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
       const auto& text = value.get_ref<const std::string&>();
       if (ArtifactPath(text, artifacts)) {
         std::error_code ignored;
-        std::filesystem::remove(
-            artifacts / std::filesystem::path(text).filename(), ignored);
+        fs::remove(artifacts / fs::path(text).filename(), ignored);
       }
     });
   }
+  if (!ec) fs::remove(lock, ec);
   return ec ? Error(SessionStoreError::kIo, ec.message())
             : SessionStoreStatus{};
 }

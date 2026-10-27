@@ -14,28 +14,24 @@ import {
   Actions,
   Button,
   EmptyState,
-  Spinner,
   Input,
 } from "../shared/ui.tsx";
 import { ImageViewerDialog, type ViewedImage } from "../shared/attachments.tsx";
-import { StatisticsLoading } from "../shared/statistics-layout.tsx";
-import { SettingsLoading } from "../features/settings/loading.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
-import type Settings from "../features/settings/settings.tsx";
+import Settings from "../features/settings/settings.tsx";
+import Statistics from "../features/chat/statistics.tsx";
+import ConversationActions from "../features/chat/conversation-actions.tsx";
+import Inspector from "../features/chat/inspector.tsx";
+import Raw from "../features/chat/raw.tsx";
+import Instructions from "../features/settings/instructions.tsx";
+import Tools from "../features/settings/tools.tsx";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
 import type { Places } from "./use-places.tsx";
-import {
-  browserDialog,
-  conversationActions,
-  instructionsDialog,
-  rawDialog,
-  inspectorDialog,
-  settingsDialog,
-  toolsDialog,
-  statisticsDialog,
-} from "./dialogs.ts";
+
+// Only a host with a browser opens this dialog, so its code is fetched then.
+const browserDialog = () => import("../features/browser/browser.tsx");
 
 // What Settings shows and changes of the shell's own state.
 type Preferences = Pick<
@@ -154,19 +150,9 @@ export default function Modals({
           close={close}
         >
           {modal.type === "statistics" ? (
-            <Deferred
-              load={statisticsDialog}
-              fallback={<StatisticsLoading unit={modal.unit} />}
-              modal={modal}
-              held={held}
-              loadSnapshot={load}
-            />
+            <Statistics modal={modal} held={held} loadSnapshot={load} />
           ) : (
-            <Deferred
-              load={conversationActions}
-              fallback={
-                <Spinner label="Loading conversation actions…" surface />
-              }
+            <ConversationActions
               key={`${modal.type}-${modal.session?.id || modal.space?.path}`}
               modal={modal}
               close={close}
@@ -187,9 +173,7 @@ export default function Modals({
         </Modal>
       )}
       {inspector && session && (
-        <Deferred
-          load={inspectorDialog}
-          fallback={null}
+        <Inspector
           target={inspector}
           items={activities || []}
           agents={agents || []}
@@ -310,10 +294,8 @@ export default function Modals({
           layout="sheet"
           close={close}
         >
-          <Deferred
-            load={rawDialog}
+          <Raw
             instructions={() => setModal({ type: "instructions" })}
-            fallback={<Spinner label="Loading full body…" surface />}
             id={modal.id}
             session={modal.session}
             value={modal.value}
@@ -327,9 +309,7 @@ export default function Modals({
       )}
       {modal?.type === "instructions" && (
         <Modal title="Instructions" size="wide" layout="sheet" close={close}>
-          <Deferred
-            load={instructionsDialog}
-            fallback={<Spinner label="Loading instructions…" surface />}
+          <Instructions
             session={session}
             projects={projects}
             online={online}
@@ -346,10 +326,7 @@ export default function Modals({
           header={false}
           close={close}
         >
-          <Deferred
-            load={settingsDialog}
-            ownsDialog
-            fallback={<SettingsLoading />}
+          <Settings
             initialSection={modal.section}
             version={managementVersion}
             {...preferences}
@@ -366,9 +343,7 @@ export default function Modals({
       {modal?.type === "tools" && (
         <Modal title="Tools" size="medium" layout="sheet" close={close}>
           {toolsSession ? (
-            <Deferred
-              load={toolsDialog}
-              fallback={<Spinner label="Loading tools…" surface />}
+            <Tools
               session={toolsSession}
               online={online}
               busy={!!toolsSession.turn_active || toolsPending}

@@ -142,9 +142,79 @@ export async function headerAction(page, name) {
     .click();
 }
 
-// The UI showcase is a development page: the Vite dev server serves it
-// (see playwright.config.js), not the native host.
-export { showcaseUrl as SHOWCASE_URL } from "./showcase-url.js";
+// A question set from the model: single and multiple choice, an image and
+// previews on the options.
+export const SAMPLE_ASK = {
+  id: "ask-sample",
+  kind: "ask",
+  route: "panel",
+  prompt: "Which storage should the cache use?",
+  questions: [
+    {
+      header: "Storage",
+      question: "Which storage should the cache use?",
+      options: [
+        { label: "Memory", description: "Fastest; lost on restart." },
+        { label: "Disk", description: "Survives restarts; slower reads." },
+      ],
+    },
+    {
+      header: "Platforms",
+      question: "Which platforms must it support?",
+      multi_select: true,
+      options: [
+        { label: "macOS", description: "Apple silicon and Intel." },
+        { label: "Linux", description: "glibc distributions." },
+        { label: "Windows", description: "Windows 11 and later." },
+      ],
+    },
+    {
+      header: "Layout",
+      question: "Which layout should the settings page use?",
+      options: [
+        {
+          label: "Sidebar",
+          description: "Sections listed on the left, one open at a time.",
+          image: {
+            id: "fedcba9876543210fedcba9876543210",
+            name: "sidebar.svg",
+            path: "mockups/sidebar.svg",
+          },
+          preview:
+            "+------+----------+\n| Nav  | Section  |\n+------+----------+",
+        },
+        {
+          label: "Tabs",
+          description: "Sections as tabs above one scrolling page.",
+          preview:
+            "[ A ][ B ][ C ]\n+--------------+\n|   Section    |\n+--------------+",
+        },
+      ],
+    },
+  ],
+};
+
+// Serves the session's snapshot with `pending` in it, and records the
+// commands the page sends instead of reaching the host; returns the list.
+export async function servePending(page, request, session, pending) {
+  const snapshot = await (
+    await request.get(`/api/sessions/${session.id}`)
+  ).json();
+  snapshot.pending = pending;
+  await page.route(`**/api/sessions/${session.id}`, (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  const commands = [];
+  await page.route("**/api/command", (route) => {
+    commands.push(route.request().postDataJSON());
+    return route.fulfill({ json: { accepted: true } });
+  });
+  return commands;
+}
+
+// The app served by the Vite dev server (see playwright.config.js) instead of
+// the native host.
+export { devServerUrl as DEV_SERVER_URL } from "./dev-server.js";
 
 // No test may end with an uncaught page error.
 const failOnPageErrors = async ({ page }, use) => {
@@ -154,8 +224,8 @@ const failOnPageErrors = async ({ page }, use) => {
   expect(errors, "uncaught page errors").toEqual([]);
 };
 
-// Showcase-only tests: no native host.
-export const showcaseTest = base.extend({ page: failOnPageErrors });
+// Tests of the dev-server app: no native host.
+export const devServerTest = base.extend({ page: failOnPageErrors });
 
 export const test = base.extend({
   paired: [true, { option: true }],

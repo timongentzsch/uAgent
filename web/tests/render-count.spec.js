@@ -1,6 +1,6 @@
-import { showcaseTest as test, expect, SHOWCASE_URL } from "./fixtures.js";
+import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
 
-// The Vite-served app (a development page, like the showcase) on a mocked
+// The Vite-served app (a development page) on a mocked
 // host: a saved conversation, a long sidebar and a streamed reply. Counts
 // renders with the dev-only src/render-count.ts, so a regression that
 // re-renders the shell or every row per streamed frame fails here.
@@ -158,7 +158,7 @@ async function open(page) {
       generation: SESSIONS[0].generation,
     },
   );
-  await page.goto(new URL(`/#session=${ID}`, SHOWCASE_URL).href);
+  await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
   await expect(page.getByLabel("Message or guidance")).toBeEnabled();
   await expect(page.locator('[data-message-id="m-119"]')).toBeVisible();
   await page.evaluate(() => import("/src/render-count.ts"));

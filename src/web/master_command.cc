@@ -113,7 +113,6 @@ void Master::Command(const Request& request, Response& response) {
       {"schedule", false, &Master::ManagementCommand},
       {"models", false, &Master::ManagementCommand},
       {"permission_rules", false, &Master::ManagementCommand},
-      {"tool_categories", false, &Master::ManagementCommand},
       {"instructions", false, &Master::ManagementCommand},
       {"import", false, &Master::ManagementCommand},
       {"space", false, &Master::SpaceCommand},

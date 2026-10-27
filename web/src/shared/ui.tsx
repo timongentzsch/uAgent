@@ -793,7 +793,7 @@ export function Modal({
 
 const modules = new WeakMap<object, unknown>();
 
-export async function preloadDeferred<P extends object>(
+async function preloadDeferred<P extends object>(
   load: () => Promise<{ default: ComponentType<P> }>,
 ) {
   const cached = modules.get(load) as ComponentType<P> | undefined;
@@ -803,7 +803,8 @@ export async function preloadDeferred<P extends object>(
   return module.default;
 }
 
-// The caller owns the surface, so lazy code and data use the same visible shell.
+// Code loaded on first use (diagrams, annotation, the browser viewer); the
+// caller owns the surface and its placeholder.
 export function Deferred<P extends object>({
   load,
   fallback,
@@ -811,7 +812,7 @@ export function Deferred<P extends object>({
   ...props
 }: P & {
   load: () => Promise<{ default: ComponentType<P> }>;
-  fallback?: ComponentChildren;
+  fallback: ComponentChildren;
   // The whole content of a Modal with header={false}.
   ownsDialog?: boolean;
 }) {
@@ -840,8 +841,6 @@ export function Deferred<P extends object>({
     ) : (
       <LoadError error={error} retry={retry} />
     )
-  ) : fallback === undefined ? (
-    <Spinner surface />
   ) : (
     fallback
   );

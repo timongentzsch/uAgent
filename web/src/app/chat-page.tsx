@@ -14,7 +14,7 @@ import { queuedGuidance } from "../shared/message-view.ts";
 import { useCallback, useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { Welcome, Deferred, Button, Actions } from "../shared/ui.tsx";
+import { Welcome, Button, Actions } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board from "../features/panel/board.tsx";
@@ -28,7 +28,7 @@ import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
-import { sideAnswer } from "./dialogs.ts";
+import SideAnswer from "../features/chat/side-answer.tsx";
 
 // Empty lists, so an idle context value or prop never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
@@ -300,9 +300,7 @@ export default function ChatPage({
         </MessageActions.Provider>
       </LiveActivities.Provider>
       {side && (
-        <Deferred
-          load={sideAnswer}
-          fallback={null}
+        <SideAnswer
           key={side.firstRequest}
           side={side}
           choose={choose}

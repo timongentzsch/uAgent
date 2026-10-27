@@ -1,14 +1,15 @@
-// WCAG 2.2 AA, checked by axe-core on the surfaces a person meets: the
-// showcase of every primitive, a live conversation, both kinds of pending
-// decision, the settings sheet and the phone drawer. axe is a test-only
+// WCAG 2.2 AA, checked by axe-core on the surfaces a person meets: a live
+// conversation in both colour schemes, both kinds of pending decision, the
+// settings sheet and the phone drawer. axe is a test-only
 // dependency, injected into the page; the product bundle never carries it.
+import { test as bare } from "@playwright/test";
 import {
   test,
-  showcaseTest,
   expect,
-  SHOWCASE_URL,
   headerAction,
   selectProbeModel,
+  servePending,
+  SAMPLE_ASK,
 } from "./fixtures.js";
 import { createRequire } from "node:module";
 import { readdir, readFile } from "node:fs/promises";
@@ -42,25 +43,15 @@ async function violations(page, scope) {
 
 // The host's content security policy forbids injected scripts.
 test.use({ bypassCSP: true });
-showcaseTest.use({ bypassCSP: true });
 
-for (const scheme of ["dark", "light"])
-  showcaseTest(
-    `the showcase has no violations in ${scheme}`,
-    async ({ page }) => {
-      await page.emulateMedia({ colorScheme: scheme });
-      await page.goto(SHOWCASE_URL);
-      await expect(
-        page.getByRole("heading", { name: "µAgent UI showcase", exact: true }),
-      ).toBeVisible();
-      expect(await violations(page)).toEqual([]);
-    },
-  );
-
-showcaseTest("an ask decision has no violations", async ({ page }) => {
-  await page.goto(SHOWCASE_URL);
+test("an ask decision has no violations", async ({
+  page,
+  session,
+  request,
+}) => {
+  await servePending(page, request, session, SAMPLE_ASK);
+  await page.goto(`/#session=${session.id}`);
   const ask = page.getByRole("region", { name: "Pending decision" });
-  await ask.scrollIntoViewIfNeeded();
   await expect(ask.getByRole("button", { name: "Next" })).toBeVisible();
   expect(await violations(page, ".decision")).toEqual([]);
   // The review page: one tap each on the two single-choice questions.
@@ -72,121 +63,98 @@ showcaseTest("an ask decision has no violations", async ({ page }) => {
   expect(await violations(page, ".decision")).toEqual([]);
 });
 
-showcaseTest("a menu opens, moves and closes by keyboard", async ({ page }) => {
-  await page.goto(SHOWCASE_URL);
-  const trigger = page.getByRole("button", { name: "Example menu" });
+test("the conversation menu opens, moves and closes by keyboard", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  const trigger = page
+    .locator(".conversation-head")
+    .getByRole("button", { name: "Conversation menu" });
   await trigger.focus();
-  const menu = page.getByRole("menu", { name: "Example menu" });
+  const menu = page.getByRole("menu", { name: "Conversation menu" });
   const item = (name) => menu.getByRole("menuitem", { name });
   // Up opens at the last available item, Down at the first.
   await page.keyboard.press("ArrowUp");
-  await expect(item("Empty view")).toBeFocused();
-  // A view with nothing to choose still holds the keyboard: focus goes to
-  // the row that leads back, named for where it leads.
-  await page.keyboard.press("ArrowRight");
-  await expect(item("Back to Example menu")).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(item("Empty view")).toBeFocused();
-  await page.keyboard.press("ArrowUp");
-  await expect(item("Nested view")).toBeFocused();
-  // Right opens the row's view in place and moves into it; Left and Escape
-  // lead back to the row, and only then does Escape close the menu.
-  await page.keyboard.press("ArrowRight");
-  await expect(item("One")).toBeFocused();
-  await expect(item("First action")).toHaveCount(0);
-  await expect(menu.getByRole("group", { name: "Nested view" })).toBeVisible();
-  expect(await violations(page, ".menu-panel")).toEqual([]);
-  await page.keyboard.press("ArrowLeft");
-  await expect(item("Nested view")).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(item("One")).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(item("Nested view")).toBeFocused();
+  await expect(item("Delete")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(item("First action")).toBeFocused();
+  await expect(item("Find in conversation")).toBeFocused();
   // Items leave the tab order; a first letter moves to its item.
-  await expect(item("First action")).toHaveAttribute("tabindex", "-1");
-  await page.keyboard.press("s");
-  await expect(item("Second action")).toBeFocused();
-  await page.keyboard.press("f");
-  await expect(item("First action")).toBeFocused();
-  // Tab leaves from the button, on to what follows it.
+  await expect(item("Find in conversation")).toHaveAttribute("tabindex", "-1");
+  await page.keyboard.press("r");
+  await expect(item("Rename")).toBeFocused();
+  await page.keyboard.press("d");
+  await expect(item(/^Detail/)).toBeFocused();
+  // Right opens the row's view in place and moves into it; Left and Escape
+  // lead back to the row, and only then does Escape close the menu.
+  await page.keyboard.press("ArrowRight");
+  await expect(menu.getByRole("group", { name: "Detail" })).toBeVisible();
+  await expect(item("Find in conversation")).toHaveCount(0);
+  await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
+  expect(await violations(page, ".menu-panel")).toEqual([]);
+  await page.keyboard.press("ArrowLeft");
+  await expect(item(/^Detail/)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(item(/^Detail/)).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  // Tab leaves from the open menu, on to what follows it.
+  await page.keyboard.press("ArrowDown");
+  await expect(item("Find in conversation")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(menu).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Selected state" }),
-  ).toBeFocused();
 });
 
-showcaseTest(
-  "a forced palette still draws the switch knob apart from its track",
-  async ({ page }) => {
-    await page.emulateMedia({ forcedColors: "active" });
-    await page.goto(SHOWCASE_URL);
-    const switches = page.locator('.switch input[role="switch"]');
-    await expect(switches.first()).toBeVisible();
-    for (const index of [0, (await switches.count()) - 1]) {
-      const { knob, track } = await switches.nth(index).evaluate((input) => ({
-        knob: getComputedStyle(input, "::before").backgroundColor,
-        track: getComputedStyle(input).backgroundColor,
-      }));
-      expect(knob).not.toBe("rgba(0, 0, 0, 0)");
-      expect(knob).not.toBe(track);
-    }
-  },
-);
-
-showcaseTest.describe("touch", () => {
-  showcaseTest.use({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-
-  showcaseTest(
-    "the remote screen zooms and scrolls by buttons as well as gestures",
-    async ({ page }) => {
-      await page.goto(SHOWCASE_URL);
-      await page.getByRole("button", { name: "Open browser input" }).click();
-      const viewport = page.getByLabel("Browser viewport");
-      const view = viewport.getByRole("group", { name: "View" });
-      await expect(view).toBeVisible();
-      const rfb = viewport.locator(".browser-rfb");
-      const width = async () => (await rfb.boundingBox()).width;
-      const before = await width();
-      await view.getByRole("button", { name: "Zoom in" }).click();
-      await expect.poll(width).toBeGreaterThan(before);
-      await view.getByRole("button", { name: "Zoom out" }).click();
-      await expect.poll(width).toBeCloseTo(before, 0);
-      await page.evaluate(() => (globalThis.browserPointer ?? []).splice(0));
-      await view.getByRole("button", { name: "Scroll down" }).click();
-      // Three wheel-down notches (button 5, mask 16), each pressed and
-      // released.
-      expect(
-        await page.evaluate(() =>
-          (globalThis.browserPointer ?? []).splice(0).map(([, , mask]) => mask),
-        ),
-      ).toEqual([16, 0, 16, 0, 16, 0]);
-    },
-  );
-});
-
-test("a conversation with a reply has no violations", async ({
+test("a forced palette still draws the switch knob apart from its track", async ({
   page,
   session,
-  command,
 }) => {
-  await selectProbeModel(command, session);
+  await page.emulateMedia({ forcedColors: "active" });
   await page.goto(`/#session=${session.id}`);
-  const prompt = page.getByLabel("Message or guidance");
-  await prompt.fill("Hello there");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".message.response").first()).toBeVisible();
-  await expect(page.locator(".composer .activity-caption")).toHaveText("Ready");
-  expect(await violations(page)).toEqual([]);
+  await headerAction(page, "Settings");
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "All conversations", exact: true })
+    .click();
+  await settings
+    .getByRole("searchbox", { name: "Find a setting" })
+    .fill("memory");
+  const switches = settings.locator('.switch input[role="switch"]');
+  await expect(switches.first()).toBeVisible();
+  for (const index of [0, (await switches.count()) - 1]) {
+    const { knob, track } = await switches.nth(index).evaluate((input) => ({
+      knob: getComputedStyle(input, "::before").backgroundColor,
+      track: getComputedStyle(input).backgroundColor,
+    }));
+    expect(knob).not.toBe("rgba(0, 0, 0, 0)");
+    expect(knob).not.toBe(track);
+  }
 });
+
+for (const scheme of ["dark", "light"])
+  test(`a conversation with a reply has no violations in ${scheme}`, async ({
+    page,
+    session,
+    command,
+  }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await selectProbeModel(command, session);
+    await page.goto(`/#session=${session.id}`);
+    const prompt = page.getByLabel("Message or guidance");
+    await prompt.fill("Hello there");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.locator(".message.response").first()).toBeVisible();
+    await expect(page.locator(".composer .activity-caption")).toHaveText(
+      "Ready",
+    );
+    expect(await violations(page)).toEqual([]);
+  });
 
 test("an approval decision has no violations and takes focus", async ({
   page,
@@ -281,7 +249,7 @@ test("the skip link moves focus past the sessions to the conversation", async ({
   expect(new URL(page.url()).hash).toBe(`#session=${session.id}`);
 });
 
-showcaseTest("the product bundle does not ship axe", async () => {
+bare("the product bundle does not ship axe", async () => {
   const dist = new URL("../dist/", import.meta.url).pathname;
   const files = (await readdir(dist, { recursive: true })).filter((name) =>
     /\.(?:js|html|css)$/.test(name),

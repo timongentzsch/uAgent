@@ -3,13 +3,12 @@ import { useResource } from "./use-resource.ts";
 import type { Act, Pending, Session } from "./types.ts";
 import { api, command, routes } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
-import { Button, Deferred, LoadError, Spinner } from "./ui.tsx";
+import { Button, LoadError, Spinner } from "./ui.tsx";
+import Decision from "./decision.tsx";
 import { waiting } from "../state/attention.ts";
 import SessionName from "./session-name.tsx";
 import { folderName } from "./folder-label.tsx";
 import "./escalations.css";
-
-const decisionPanel = () => import("./decision.tsx");
 
 // Decisions sessions are waiting on: a folder's threads above its
 // panel's composer, or every folder's in the sidebar's inbox. Each is
@@ -102,15 +101,13 @@ function Escalation({
       {error ? (
         <LoadError error={error} retry={retry} />
       ) : pending ? (
-        <Deferred
-          load={decisionPanel}
+        <Decision
           key={pending.id}
           pending={pending}
           session={item.id}
           act={act}
           online={online}
           report={report}
-          fallback={loading}
         />
       ) : (
         loading

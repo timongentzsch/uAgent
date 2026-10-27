@@ -2,14 +2,11 @@ import { useState } from "preact/hooks";
 import { duration } from "../../shared/duration.ts";
 import { cost, count, plural, tokens } from "../../shared/quantities.ts";
 import type { SessionRef, TurnSummary } from "../../shared/types.ts";
-import { Button, Deferred, Modal, Spinner } from "../../shared/ui.tsx";
+import { Button, Modal } from "../../shared/ui.tsx";
+import TurnReview from "./turn-review.tsx";
 import { formatStat } from "../../shared/display.ts";
 
-// The review sheet loads on first open, as the statistics dialog does.
-const review = () => import("./turn-review.tsx");
-
-// A turn's receipt and statistics. Kept apart from the lazily loaded
-// statistics dialog so transcript rendering never waits for that chunk.
+// A turn's receipt and statistics.
 export function TurnFooter({
   summary,
   session,
@@ -76,13 +73,7 @@ export function TurnFooter({
           size="narrow"
           close={() => setReviewing(false)}
         >
-          <Deferred
-            load={review}
-            fallback={<Spinner label="Loading changes…" surface />}
-            files={files}
-            turn={summary.turn}
-            session={session}
-          />
+          <TurnReview files={files} turn={summary.turn} session={session} />
         </Modal>
       )}
     </div>

@@ -1,32 +1,8 @@
-import { DialogHeader, Group, Placeholder, Row } from "../../shared/ui.tsx";
+import { Group, Placeholder, Row } from "../../shared/ui.tsx";
 import "./settings.css";
-import { SettingsNav } from "./settings-nav.tsx";
-import { usePhone } from "../../shared/layout.ts";
 
-// Settings' loading states, which exist before its code: each draws the
-// feature's own primitives from sample data (see <Placeholder>).
-const noop = () => {};
-
-// Settings before its code arrives: the same header, scope list and page.
-export function SettingsLoading() {
-  const phone = usePhone();
-  return (
-    <>
-      <DialogHeader title="Settings" />
-      <div class="dialog-body settings-content">
-        <SettingsNav current={phone ? undefined : "user"} select={noop} />
-        <div class="settings-pane">
-          {!phone && <h3 class="settings-pane-title">All conversations</h3>}
-          <Placeholder label="Loading settings…">
-            <SettingRows />
-          </Placeholder>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Registry settings before they load.
+// Registry settings before they load, drawn from sample data (see
+// <Placeholder>).
 export function SettingRowsLoading() {
   return (
     <Placeholder label="Loading configuration…">

@@ -5,22 +5,19 @@ import { resolve } from "node:path";
 // Library rows the list loaded, not the rows its placeholder draws.
 const LOADED_ROWS = ".library-row:not(.placeholder *)";
 
-for (const surface of [
-  { name: "Library", chunk: "library", status: "Loading library…" },
-  { name: "Scheduled", chunk: "scheduled", status: "Loading scheduled tasks…" },
-]) {
+{
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 390, height: 844 },
   ]) {
-    test(`${surface.name} shell keeps its geometry while loading at ${viewport.width}px`, async ({
+    test(`Library shell keeps its geometry while loading at ${viewport.width}px`, async ({
       page,
       session,
     }) => {
       await page.setViewportSize(viewport);
       const { promise: gate, resolve: release } = Promise.withResolvers();
-      await page.route(`**/assets/${surface.chunk}-*.js`, async (route) => {
-        await gate;
+      await page.route("**/api/command", async (route) => {
+        if (route.request().postDataJSON()?.kind === "memory") await gate;
         await route.continue();
       });
       await page.goto(`/#session=${session.id}`);
@@ -30,9 +27,7 @@ for (const surface of [
         viewport.width < 900
           ? page.getByRole("dialog", { name: "Conversations" })
           : page.getByRole("complementary");
-      await nav
-        .getByRole("button", { name: surface.name, exact: true })
-        .click();
+      await nav.getByRole("button", { name: "Library", exact: true }).click();
       const measure = () =>
         page.evaluate(() => {
           const box = (selector) => {
@@ -53,19 +48,15 @@ for (const surface of [
         });
       let loading;
       try {
+        // One status per section (global, project) while the list loads.
         await expect(
-          page.getByRole("status", { name: surface.status }),
+          page.getByRole("status", { name: "Loading library…" }).first(),
         ).toBeVisible();
         loading = await measure();
       } finally {
         release();
       }
-      if (surface.name === "Library")
-        await expect(page.getByLabel("Library type")).toBeVisible();
-      else
-        await expect(
-          page.getByRole("heading", { name: "All runs" }),
-        ).toBeVisible();
+      await expect(page.getByLabel("Library type")).toBeVisible();
       const loaded = await measure();
       for (const edge of ["x", "y", "width", "height"])
         expect(

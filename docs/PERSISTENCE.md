@@ -31,7 +31,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
 | settings, for all conversations and per project folder | `config/settings.json` (and its `.lock`) |
-| project trust, permission rules, tool categories, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/tool-categories.json`, `config/welcomed` |
+| project trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
 | your instructions | `AGENTS.md`, `PANEL.md` |
 | your skills | `skills/*` |
 | shared browser profile (saved logins, cookies) | the directory `UAGENT_BROWSER_DATA` names |

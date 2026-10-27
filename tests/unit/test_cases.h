@@ -138,7 +138,7 @@ namespace uagent {
   X(TestUsageAccounting)                          \
   X(TestRuntimeConfigAndRequests)                 \
   X(TestRetrySafety)                              \
-  X(TestPermissionAndToolCategoryPolicy)          \
+  X(TestPermissionPolicy)                         \
   X(TestPermissionReview)                         \
   X(TestAttributedUsageAccumulator)               \
   X(TestSharedPanelHelpers)                       \

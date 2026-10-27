@@ -237,7 +237,6 @@ add_library(
   src/app/import.cc
   src/app/library.cc
   src/app/permissions.cc
-  src/app/tool_categories.cc
   src/app/control.cc
   src/app/schedule.cc
   src/app/launch.cc

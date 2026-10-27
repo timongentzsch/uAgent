@@ -51,8 +51,6 @@ export const maxSpaceNameChars = 64;
 
 // Zoom shown and stored when the device has not chosen one.
 export const defaultZoom = 100;
-// How long after start the idle screens are fetched ahead of use.
-export const idlePreloadMs = 2_000;
 // Drafts are saved once typing pauses this long, and when the page hides.
 export const draftSaveDelayMs = 500;
 // A second press of Stop within this is the first one bouncing, not a decision.

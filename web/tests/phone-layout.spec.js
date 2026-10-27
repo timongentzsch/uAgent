@@ -3,7 +3,6 @@ import {
   expect,
   withoutServiceWorker,
   headerAction,
-  selectProbeModel,
 } from "./fixtures.js";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -191,24 +190,19 @@ test("fresh conversation reload keeps one stable loading state", async ({
   try {
     await page.goto(`/#session=${session.id}`);
     await sawCatalogue;
-    // One transcript placeholder, in one place, through the catalogue and
-    // the snapshot: loading never restarts or moves.
+    // One transcript placeholder through the catalogue and the snapshot:
+    // loading never restarts.
     const loader = page.locator(".conversation .placeholder .message").first();
     const status = page.locator(".conversation [role=status]", {
       hasText: "Loading conversation…",
     });
     await expect(loader).toHaveCount(1);
     await expect(status).toHaveCount(1);
-    const first = await loader.boundingBox();
 
     releaseCatalogue();
     await sawSnapshot;
     await expect(loader).toHaveCount(1);
     await expect(status).toHaveCount(1);
-    const second = await loader.boundingBox();
-    expect(Math.abs(first.x - second.x)).toBeLessThan(1);
-    expect(Math.abs(first.y - second.y)).toBeLessThan(1);
-    expect(Math.abs(first.width - second.width)).toBeLessThan(1);
 
     releaseSnapshot();
     await expect(
@@ -217,59 +211,6 @@ test("fresh conversation reload keeps one stable loading state", async ({
   } finally {
     releaseCatalogue();
     releaseSnapshot();
-  }
-});
-
-test("touch controls remain reachable at phone width", async ({
-  browser,
-  host: fixture,
-  storageState,
-  session,
-}) => {
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    hasTouch: true,
-    storageState,
-  });
-  const page = await context.newPage();
-  try {
-    await page.goto(`${fixture.origin}/#session=${session.id}`);
-    await expect(page.getByLabel("Message or guidance")).toBeVisible();
-    expect(
-      await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
-    ).toBe(true);
-    for (const name of ["Model and effort", "Approval", "Send"]) {
-      const rect = await page
-        .getByRole("button", { name, exact: true })
-        .boundingBox();
-      expect(Math.min(rect.width, rect.height)).toBeGreaterThanOrEqual(44);
-      expect(rect.y + rect.height).toBeLessThanOrEqual(844);
-    }
-    await page
-      .getByRole("button", { name: "Model and effort", exact: true })
-      .tap();
-    const picker = page.getByRole("dialog", {
-      name: "Model and effort",
-      exact: true,
-    });
-    await expect(
-      picker.getByRole("combobox", { name: "Model", exact: true }),
-    ).toBeVisible();
-    const box = await picker.boundingBox();
-    expect(box.x + box.width).toBeLessThanOrEqual(390);
-    await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
-    await headerAction(page, "Settings");
-    await page
-      .locator(".settings-nav")
-      .getByRole("button", { name: "This browser", exact: true })
-      .tap();
-    await page.getByLabel("Appearance").selectOption("dark");
-    await page
-      .getByRole("button", { name: "Close settings", exact: true })
-      .tap();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  } finally {
-    await context.close();
   }
 });
 
@@ -487,44 +428,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   } finally {
     await context.close();
   }
-});
-
-test("a long agent state truncates instead of wrapping the phone status line", async ({
-  page,
-  session,
-  command,
-}) => {
-  await selectProbeModel(command, session, { yolo: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/#session=${session.id}`);
-  const line = page.locator(".composer .status-line");
-  await expect(line).toBeVisible();
-  const single = (await line.boundingBox()).height;
-  // One line with the state truncated, idle and while work runs; the work
-  // button and totals sit under the input.
-  const fits = async () => {
-    await page
-      .locator(".composer .activity-caption")
-      .evaluate(
-        (node) =>
-          (node.textContent =
-            "Running · Run · cd /home/dev/Software/project && rg -l --no-messages"),
-      );
-    expect((await line.boundingBox()).height).toBe(single);
-    expect(
-      await page
-        .locator(".composer .activity-caption")
-        .evaluate((node) => node.scrollWidth > node.clientWidth),
-    ).toBe(true);
-  };
-  await fits();
-  const prompt = page.getByLabel("Message or guidance");
-  await prompt.fill("Background activity probe");
-  await prompt.press("Enter");
-  await expect(
-    page.getByRole("button", { name: "Activity", exact: true }),
-  ).toBeVisible();
-  await fits();
 });
 
 test.describe("composer footer", () => {

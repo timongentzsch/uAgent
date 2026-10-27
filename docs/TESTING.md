@@ -137,9 +137,9 @@ How the tests are isolated:
 - Each test owns its host, temporary HOME and project, mock provider, pairing
   cookie and output directory, and waits on visible state or an API condition
   rather than a fixed delay.
-- The showcase's dev server takes a port derived from the checkout's path and
-  never reuses a server already listening there, so a run cannot test another
-  checkout's tree.
+- The Vite dev server `render-count.spec.js` loads the app from takes a port
+  derived from the checkout's path and never reuses a server already
+  listening there, so a run cannot test another checkout's tree.
 
 What a spec may assume about time:
 
@@ -155,16 +155,16 @@ What a spec may assume about time:
   go into attachments (`web-performance.json`, `reload-frame-gaps.json`) and
   never fail a run.
 - The only fixed pauses are gestures: the long-press holds in
-  `browser.spec.js` and `showcase.spec.js`, and the pauses between the wheel
-  and scroll steps in `scroll-stick.spec.js`.
+  `browser.spec.js`, and the pauses between the wheel and scroll steps in
+  `scroll-stick.spec.js`.
 
 Playwright has two projects. `chromium` runs every spec. `webkit` runs
 `btw`, `guidance-queue`, `phone-layout`, `reload`, `mobile-navigation`,
 `loading-surfaces`, `session-state`, `ui-quality`, `browser`, `model-picker`,
-`showcase`, `dismiss`, `history-anchor`, `scroll-restore`, `scroll-stick` and
-`panel`. A failed test is retried once, locally and in CI. Four workers run
-locally and two in CI. Traces and screenshots of failures are kept in
-`web/test-results`.
+`ask`, `menu`, `image-viewer`, `dismiss`, `history-anchor`, `scroll-restore`,
+`scroll-stick` and `panel`. A failed test is retried once, locally and in CI.
+Four workers run locally and two in CI. Traces and screenshots of failures are
+kept in `web/test-results`.
 
 ## Behavioral evaluation
 

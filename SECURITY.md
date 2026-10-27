@@ -42,6 +42,11 @@ Two kinds of session act for you unattended:
 - A **subagent** approves its own tool calls; approving the delegation is the
   gate, and the approval says so. It runs its commands under the sandbox of
   the session that delegated to it, whatever its own configuration says.
+- A **lead agent** always runs at the `readonly` level, whatever the
+  settings say, and so do its subagents: its commands read the workspace and
+  change nothing, so they run without review. `sandbox.network` and
+  `sandbox.write` do not widen that level. A `/btw` conversation forked
+  from it runs in the ordinary sandbox and so gets no `run`.
 - A lead agent's **background agent** cannot be put in yolo: `/permissions yolo` is refused
   there and a saved or flagged yolo reads as auto. Its sandbox is always on.
   While that sandbox is enforced, its `run` and `scratch` commands and its
@@ -157,6 +162,7 @@ One setting chooses how far it goes, `sandbox.level` in the settings file or
 
 | Level | Writes | Network | Hidden stores |
 | --- | --- | --- | --- |
+| `readonly` | temporary files and the terminal logs only, never the workspace | none | yes |
 | `strict` | the roots below | none | yes |
 | `default` | the roots below | allowed | yes |
 | `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | allowed | yes |

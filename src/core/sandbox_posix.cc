@@ -262,9 +262,11 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
   SandboxInputs inputs;
   // Outbound TCP. Allowed except at the strict level: git, npm and pip all
   // need it. A value somebody wrote down wins over the level.
-  inputs.allow_network = SettingText(Cfg("UAGENT_SANDBOX_NET")).empty()
-                             ? preset != SandboxPreset::kStrict
-                             : BoolSetting(Cfg("UAGENT_SANDBOX_NET"));
+  inputs.read_only = preset == SandboxPreset::kReadOnly;
+  inputs.allow_network =
+      !inputs.read_only && (SettingText(Cfg("UAGENT_SANDBOX_NET")).empty()
+                                ? preset != SandboxPreset::kStrict
+                                : BoolSetting(Cfg("UAGENT_SANDBOX_NET")));
   inputs.workspace = CanonicalCwd();
   std::error_code ec;
   inputs.git_repository =
@@ -328,6 +330,7 @@ SandboxStatus InheritedStatus(const std::string& text) {
   status.policy.writable_roots = paths("roots");
   status.policy.denied_writes = paths("denied");
   status.policy.withheld = paths("withheld");
+  status.policy.read_only = JsonValue(from, "read_only", false);
   return status;
 }
 
@@ -407,7 +410,8 @@ std::string SandboxInheritance() {
                    {"network", status.policy.allow_network},
                    {"roots", status.policy.writable_roots},
                    {"denied", status.policy.denied_writes},
-                   {"withheld", status.policy.withheld}});
+                   {"withheld", status.policy.withheld},
+                   {"read_only", status.policy.read_only}});
 }
 
 json SandboxDiagnosticJson() {

@@ -94,7 +94,7 @@ def test_panel_moderator_can_use_the_shared_browser(root, home, *, binary):
         web.command("submit", session, text="Check browser availability directly")
         web.until(session, lambda value: "moderator-browser-ok" in json.dumps(value))
         assert_true("browser" in offered, offered)
-        assert_true("run" not in offered and "write_file" not in offered, offered)
+        assert_true("write_file" not in offered and "edit_file" not in offered, offered)
         result = next(m for m in provider.requests[-1][1]["messages"] if m.get("role") == "tool")
         assert_true('"parallel_capacity":0' in result["content"].replace(" ", ""), result)
         configured = web.command("browser", action="configure", parallel_capacity=2)["result"]

@@ -863,6 +863,13 @@ int WorkerMain(int argc, char** argv) {
   // started again, so a restart never widens it: not even a sandbox policy
   // inherited through the environment stands in for its own. Its approval
   // mode is held to Auto where the mode is resolved (PermissionControl).
+  // A lead agent's commands only read, so its "never changes anything"
+  // holds by the OS and not by its prompt, and so do its subagents', which
+  // inherit the policy.
+  if (options.Panel()) {
+    ::unsetenv("UAGENT_INTERNAL_SANDBOX");
+    options.overrides["UAGENT_SANDBOX"] = "readonly";
+  }
   if (options.Thread()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     options.overrides["UAGENT_SANDBOX"] = "default";

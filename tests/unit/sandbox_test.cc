@@ -148,7 +148,9 @@ void TestSandboxPolicy() {
 void TestSandboxLevels() {
   SandboxPreset preset = SandboxPreset::kStrict;
   for (const auto& [text, expected] :
-       {std::pair<const char*, SandboxPreset>{"strict", SandboxPreset::kStrict},
+       {std::pair<const char*, SandboxPreset>{"readonly",
+                                              SandboxPreset::kReadOnly},
+        {"strict", SandboxPreset::kStrict},
         {"default", SandboxPreset::kDefault},
         {"relaxed", SandboxPreset::kRelaxed},
         {"off", SandboxPreset::kOff}}) {
@@ -181,6 +183,23 @@ void TestSandboxLevels() {
   CHECK(Rejected(BuildSandboxPolicy(relaxed), "/home/u/.uagent"));
   // Other levels withhold nothing.
   CHECK(BuildSandboxPolicy(BaseInputs()).policy.withheld.empty());
+
+  // Readonly grants only temporary files and the terminal logs: not the
+  // workspace, a package cache or a root the settings add.
+  SandboxInputs looking = BaseInputs();
+  looking.read_only = true;
+  looking.extra_roots = {"/home/u/data"};
+  const SandboxPolicyResult only = BuildSandboxPolicy(looking);
+  CHECK(only.policy.read_only);
+  CHECK(!HasRoot(only.policy, "/home/u/work"));
+  CHECK(!HasRoot(only.policy, "/home/u/.cache"));
+  CHECK(!HasRoot(only.policy, "/home/u/data"));
+  CHECK(HasRoot(only.policy, "/private/var/folders/ab/T"));
+  CHECK(HasRoot(only.policy, "/tmp"));
+  CHECK(HasRoot(only.policy, "/home/u/.uagent/terminals/logs"));
+  CHECK(!SandboxWritable(only.policy, "/home/u/work/file"));
+  CHECK(SandboxWritesNote(only.policy, "/home/u/work")
+            .starts_with("commands here only read"));
 
   // Seatbelt: the denial follows the home allow, the nested roots are allowed
   // again after it, and the folder cannot be renamed away.

@@ -40,6 +40,9 @@ struct SandboxPolicy {
   // connected to.
   std::vector<std::string> hidden;
   bool allow_network = true;
+  // The readonly level: commands may write only temporary files, so nothing
+  // they do outlasts them. Said to the model when a write is refused.
+  bool read_only = false;
 };
 
 // What a policy is composed from. Supplied by the caller rather than read from
@@ -62,6 +65,9 @@ struct SandboxInputs {
   // global_base stays withheld from it.
   std::string open_home;
   bool allow_network = true;
+  // The readonly level: only the temporary roots and the terminal logs are
+  // offered, whatever else is listed here.
+  bool read_only = false;
   // The workspace already is a repository (its .git is a directory), so its
   // config and hooks exist and must not be rewritten; before `git init` they
   // cannot be denied without denying the init itself.
@@ -71,10 +77,12 @@ struct SandboxInputs {
 // The `sandbox.level` setting: what a command may do before the individual
 // overrides (sandbox.network, sandbox.write, sandbox.hide, sandbox.reveal)
 // apply. Not SandboxLevel, which is what the host can enforce.
-enum class SandboxPreset { kStrict, kDefault, kRelaxed, kOff };
+// readonly is a lead agent's: its commands may look but change nothing, the
+// workspace and the network included, whatever the overrides say.
+enum class SandboxPreset { kReadOnly, kStrict, kDefault, kRelaxed, kOff };
 
-// strict, default, relaxed and off. False for anything else, leaving *preset
-// alone.
+// readonly, strict, default, relaxed and off. False for anything else, leaving
+// *preset alone.
 bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset);
 
 struct SandboxPolicyResult {

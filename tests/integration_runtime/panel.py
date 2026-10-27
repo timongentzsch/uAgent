@@ -60,6 +60,7 @@ def _socket(home, session):
 PANEL_TOOLS = {
     "read_path",
     "grep",
+    "run",
     "memory",
     "skill",
     "uagent",
@@ -226,9 +227,9 @@ def test_a_thread_started_for_a_step_shows_it_on_the_board(root, home, *, binary
 
 
 def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, binary):
-    """The moderator asks its questions of subagents: one batch, answers in
-    the schema it gave, no tool that edits or runs, and the plan counts them
-    under their step."""
+    """The lead agent asks its questions of subagents: one batch, answers in
+    the schema it gave, no tool that edits, and the plan counts them under
+    their step."""
     schema = {"type": "object", "required": ["finding"], "properties": {"finding": {}}}
     offered = []
 
@@ -252,15 +253,48 @@ def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, bin
         assert_true(result.returncode == 0, result.stderr)
         assert_true(len(offered) == 2, offered)
         for names in offered:
-            assert_true(names and not names & {"run", "write_file", "edit_file"}, names)
+            assert_true(names and not names & {"write_file", "edit_file"}, names)
         # The lead agent is told so, and does not brief a child to run one.
         [subagent] = [
             t for t in server.requests[0][1]["tools"] if t["function"]["name"] == "subagent"
         ]
-        assert_true("none of them runs commands" in subagent["function"]["description"], subagent)
+        assert_true("their commands only read" in subagent["function"]["description"], subagent)
         last = json.dumps(server.requests[-1][1]["messages"], ensure_ascii=False)
         assert_true(last.count('{\\"finding\\": \\"fine\\"}') == 2, last[-1500:])
         assert_true("- s1 [open] Survey · 2 subagents" in last, last[-800:])
+
+
+def test_a_lead_agents_commands_and_its_childrens_only_read(root, home, *, binary):
+    """A lead agent runs commands without asking, in the readonly sandbox: they
+    read the workspace and write nowhere in it, and its subagents' do the same."""
+    (root / "notes.txt").write_text("hello\n")
+
+    def route(_, body):
+        messages = body["messages"]
+        results = tool_results(messages)
+        if any(t.startswith("child") for t in user_texts(messages)):
+            if results:
+                return event({"content": "child: " + results[0][:200]})
+            return tool_call("run", {"command": "touch by-child.txt"})
+        if not results:
+            return tool_calls(
+                [
+                    ("call-1", "run", {"command": "cat notes.txt"}),
+                    ("call-2", "run", {"command": "touch by-lead.txt"}),
+                    ("call-3", "subagent", {"prompt": "child"}),
+                ]
+            )
+        return event({"content": "\n---\n".join(results)})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "look", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("hello" in result.stdout, result.stdout)
+        assert_true("only read" in result.stdout, result.stdout)
+        assert_true(not (root / "by-lead.txt").exists(), "the lead agent wrote")
+        assert_true(not (root / "by-child.txt").exists(), "its subagent wrote")
+        [run_tool] = [t for t in server.requests[0][1]["tools"] if t["function"]["name"] == "run"]
+        assert_true("reach no network" in run_tool["function"]["description"], run_tool)
 
 
 def test_a_headless_panel_says_why_it_has_no_answer(root, home, *, binary):

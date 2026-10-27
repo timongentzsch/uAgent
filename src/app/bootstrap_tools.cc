@@ -20,6 +20,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/sandbox.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
@@ -187,21 +188,47 @@ std::vector<Tool> BuildTools(AppContext& context,
       return ChosenSelection(app->runtime.api, app->provider.providers);
     });
   }
+  // A side fork runs in the ordinary sandbox, so a lead agent's read-only
+  // commands do not come with it.
+  if (side_panel_tools && !context.options.Panel()) {
+    std::erase_if(tools, [](const Tool& tool) { return tool.name == "run"; });
+  }
   if (toolset == "lean") {
     KeepLeanTools(tools);
   }
   ApplyToolPolicy(tools, context.tool_policy);
+  // A command in the readonly sandbox changes nothing, so it needs no
+  // approval, and a child inherits that sandbox.
+  const SandboxStatus& sandbox = SandboxRuntime();
+  const bool read_only =
+      sandbox.mode == SandboxMode::kEnforced && sandbox.policy.read_only;
+  const bool commands = std::ranges::any_of(tools, [](const Tool& tool) {
+    return tool.capabilities & Capability(ToolCapability::kExecute);
+  });
+  if (read_only) {
+    for (Tool& tool : tools) {
+      if (tool.name != "run") continue;
+      tool.mutating = false;
+      tool.mutates = nullptr;
+      // A refused connection reads like a name that does not resolve.
+      tool.description +=
+          " Commands here only read: they write nothing but temporary "
+          "files and reach no network.";
+    }
+  }
   // A child gets only the tools its parent has, and a lean one none that
-  // edit: where nothing here runs commands either, a lean child only reads,
-  // so starting one is no change to approve, as starting a thread is not.
-  if (std::ranges::none_of(tools, [](const Tool& tool) {
-        return tool.capabilities & Capability(ToolCapability::kExecute);
-      })) {
+  // edit: where nothing here runs commands, or only read-only ones, a lean
+  // child only reads, so starting one is no change to approve, as starting a
+  // thread is not.
+  if (!commands || read_only) {
     for (Tool& tool : tools) {
       if (tool.name != "subagent") continue;
       // So a brief does not ask a child for what it cannot do.
       tool.description +=
-          " Children have only your tools: none of them runs commands.";
+          commands
+              ? " Children have only your tools and sandbox: their commands "
+                "only read, and write nothing but temporary files."
+              : " Children have only your tools: none of them runs commands.";
       tool.mutating = false;
       tool.mutates = [](const json& a) {
         return JsonValue(a, "mode", "lean") == "full";

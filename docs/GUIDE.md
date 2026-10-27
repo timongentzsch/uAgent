@@ -228,7 +228,8 @@ conversation open in a terminal is the same one in the browser.
 
 `uagent panel` opens the folder's lead agent (`/panel` from inside a
 conversation; in the web, the place's name in the sidebar). It plans the
-work and never edits files itself. Ask it a question and it asks
+work and never changes files itself: its commands only read, in a
+read-only sandbox. Ask it a question and it asks
 **subagents**; ask it for a change and it starts **background agents**:
 conversations of their own, each on a brief, that report back when their
 turn ends. The lead agent answers the approvals a background agent cannot

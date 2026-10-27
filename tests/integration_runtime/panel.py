@@ -321,7 +321,7 @@ def test_panel_saves_memory_unasked_but_forgets_only_with_the_user(root, home, *
         saved, forgot = tool_results(server.requests[-1][1]["messages"])
         assert_true("approval" not in saved.lower() and "error" not in saved.lower(), saved)
         # Headless has no one to ask, so the forget is refused.
-        assert_true("approval" in forgot.lower() or "denied" in forgot.lower(), forgot)
+        assert_true("approv" in forgot.lower(), forgot)
         system = server.requests[0][1]["messages"][0]["content"]
         assert_true("Noted:" in system, system)
 
@@ -1273,3 +1273,18 @@ def test_only_checkpoints_carry_the_view(root, home, *, binary):
         finally:
             client.close()
             stop_sessions(home)
+
+
+def test_headless_panel_says_what_was_not_approved(root, home, *, binary):
+    """`panel -p` has nobody to answer an approval and declines it. The model
+    reads that it was not approved, and why, never that a user denied it."""
+    sibling = home / "Projects" / "other" / "notes.txt"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_text("marker-notes\n")
+    responses = [tool_call("read_path", {"path": str(sibling)}), event({"content": "ok"})]
+    with Server(responses) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "read it", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        refused = tool_results(server.requests[-1][1]["messages"])[-1]
+    assert_true("not approved" in refused and "sandbox.read" in refused, refused)
+    assert_true("user denied" not in refused and "marker-notes" not in refused, refused)

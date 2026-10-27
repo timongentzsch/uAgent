@@ -3,9 +3,9 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a coding agent that runs on your machine. It is a single C++20
-binary that serves the same conversations to a terminal, a script and a
-browser, and runs commands in a sandbox limited to the project folder.
+µAgent is a coding agent in a 7 MB binary. It is sandboxed to your project
+folder, keeps one conversation you can continue from the terminal, a script or
+your phone, and drives a real Chrome that you can watch and take over.
 
 ![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
 
@@ -13,22 +13,21 @@ browser, and runs commands in a sandbox limited to the project folder.
 
 - **Terminal, script and browser.** `uagent` opens the terminal,
   `uagent -p "..." --json` runs one turn from a script and `uagent --web`
-  serves the browser. A conversation started in one can be continued in
-  another.
+  serves the browser. A conversation continues in any of them.
 - **Endpoints.** Chat Completions, OpenAI Responses and Anthropic Messages
   APIs, local or hosted.
-- **Sandbox and approvals.** Commands can write only inside the folder. The
-  agent asks before it changes a file, runs a command or uses the network, and
+- **Sandbox and approvals.** Commands write only inside the folder. The agent
+  asks before it changes a file, runs a command or uses the network, and
   `/undo` restores what the last turn changed.
-- **Lead agent.** A folder's lead agent keeps a plan, asks read-only
-  subagents its questions in parallel and has their findings checked, and
-  starts background agents that change code and report back.
+- **Lead agent.** A folder's lead agent keeps a plan, has read-only subagents
+  answer its questions in parallel and checks their findings, and starts
+  background agents that change code and report back.
 - **Browser automation.** The agent drives a persistent Chrome that you can
   watch and take over from any device. It signs in with Chrome's saved
   passwords without reading them and hands codes, captchas and payments to
   you. See [the agent's browser](docs/BROWSER.md).
-- **Files.** In the browser, the conversation's folder can be shown beside the
-  chat, read only, with search, highlighted code and rendered markdown.
+- **Files.** The browser shows the conversation's folder beside the chat, read
+  only, with search, highlighted code and rendered markdown.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](docs/images/files.gif)
 

@@ -68,7 +68,7 @@ def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
             )
 
 
-def test_panel_moderator_can_use_the_shared_browser(root, home, *, binary):
+def test_panel_orchestrator_can_use_the_shared_browser(root, home, *, binary):
     offered = []
 
     def answer(_, body):

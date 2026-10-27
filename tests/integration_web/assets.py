@@ -318,7 +318,7 @@ def test_web_side_conversation_uses_tools_and_keeps_followups(root, home, *, bin
             )
 
 
-def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
+def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
     offered = []
 
     def responder(_, body):
@@ -357,7 +357,7 @@ def test_web_side_conversation_keeps_moderator_tools(root, home, *, binary):
             assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)
 
 
-def test_web_moderator_can_share_an_artifact(root, home, *, binary):
+def test_web_orchestrator_can_share_an_artifact(root, home, *, binary):
     report = b"<html><body>MODERATOR-REPORT</body></html>"
     (root / "report.html").write_bytes(report)
     with Server(

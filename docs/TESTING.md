@@ -109,8 +109,8 @@ build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096 \
   /tmp/corpus/input_decoder
 ```
 
-That is CI's smoke pass. The weekly `fuzz.yml` workflow searches for five
-minutes per fuzzer and uploads the corpus it reached.
+The weekly `fuzz.yml` workflow does this and then searches for five minutes per
+fuzzer and uploads the corpus it reached.
 
 ## Web tests
 
@@ -179,7 +179,6 @@ timing and trace aggregation the eval and the audit share.
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
 python3 benchmarks/eval.py build/debug/uagent --scenario parallel_batch
-python3 benchmarks/eval.py build/debug/uagent --scenario CASE --trials 5 --pass-k 3
 python3 benchmarks/eval.py build/debug/uagent --update   # review the diff
 python3 benchmarks/eval.py --self-test
 ```
@@ -189,57 +188,11 @@ python3 benchmarks/eval.py --self-test
 - `variants` and `variant_env` compare settings within one scenario, for
   example `read_volume` (250/500/1000-line reads). A `compacted` variant fails
   if it scores below its `control`.
-- Reports include pass@1, pass@k, pass^k with a Wilson 95% interval, rounds,
-  idle rounds, failure categories, context size, latency and usage.
+- Reports include rounds, idle rounds, failure categories, context size,
+  latency and usage.
 
-The hermetic mode scripts the provider, so it measures the harness, not model
+The provider is scripted, so the evaluation measures the harness, not model
 quality.
-
-### Live runs
-
-`--run` replays scenarios against a real route. Repeated runs need an explicit
-`--scenario`, and each trial gets a fresh workspace and HOME in seeded order.
-
-```sh
-python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
-  --scenario CASE --trials 5 --cost-authority authority.json \
-  --report /tmp/uagent-eval.json
-```
-
-Live mode refuses to start without a `--cost-authority` file
-(`uagent.eval.cost-authority.v1`, validated by `benchmarks/live_authority.py`)
-that gives every selected route exactly one mode:
-
-```json
-{
-  "schema": "uagent.eval.cost-authority.v1",
-  "routes": {
-    "provider/model": {"reports_cost": true, "enforces_hard_budget": true},
-    "local/cheap-model": {
-      "non_billable": true,
-      "cheap": true,
-      "limits": {
-        "max_sessions": 6,
-        "max_model_calls": 3,
-        "max_tool_calls": 8,
-        "max_output_tokens_per_call": 4096,
-        "max_session_seconds": 120
-      }
-    }
-  }
-}
-```
-
-- **Reported cost.** `--max-cost` (default `$0.10`) is one aggregate ceiling
-  across all such runs.
-- **Non-billable cheap.** All five limits are required and may not exceed 12
-  sessions, 8 model calls, 32 tool calls, 8,192 output tokens per call and
-  300 seconds per session. They are enforced in the child through
-  `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS`, `UAGENT_MAX_TOKENS`,
-  `UAGENT_MAX_TURN_SECONDS` and a subprocess deadline, and checked again
-  afterwards. Unreported cost is never counted as `$0`.
-
-The report records the authority file's SHA-256 and each route's mode.
 
 ## Measurement tools
 
@@ -298,7 +251,6 @@ Master, scheduled and manual runs always run them.
 | `variants` | On master and for heavy changes: CLI-only and no-browser Release builds with their tests |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
-| `fuzzers` | SSE and input-decoder smoke runs |
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh` (clang-format, cpplint, Ruff); `ctest -L source` |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
@@ -310,7 +262,7 @@ The `master requires CI` ruleset requires `CI result`, so a red run blocks a
 merge. When a pull request stacked on another's branch is pushed together
 with it, GitHub sends two events: the first run is cancelled within seconds
 and its `CI result` reads failed. CodeQL runs in its own workflow on pushes
-to `master`, pull requests and weekly.
+to `master` and weekly.
 
 ## Guidelines
 

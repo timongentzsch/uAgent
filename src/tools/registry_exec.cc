@@ -144,9 +144,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "Run a one-off script under .uagent/scratch, never requested "
             "project code: a .py with a PEP 723 `# /// script` header runs "
             "under isolated uv, a .sh under sh, .js/.mjs under installed node. "
-            "Use the browser-use skill helper for isolated headless checks. "
-            "Give code to write the script "
-            "and run it in this call; without code the file at path runs "
+            "Give code to write the script and run it in this call; without "
+            "code the file at path runs "
             "again, with new args, instead of a long pipeline resent through "
             "run.",
             std::move(scratch_schema),

@@ -76,7 +76,7 @@ for (const path of await readdir(root, {
       sizes.precache[key] += size[key];
   }
 }
-// CI records these measurements; reviewers compare them with the frontend
-// baseline in benchmarks/baselines/web.json. Fixed byte ceilings would reject useful layout or correctness
-// work even when the delivered shell remains small.
+// CI records these measurements for reviewers to compare. Fixed byte ceilings
+// would reject useful layout or correctness work even when the delivered shell
+// remains small.
 console.log(JSON.stringify({ bytes: sizes }, null, 2));

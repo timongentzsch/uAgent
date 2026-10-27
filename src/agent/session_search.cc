@@ -67,6 +67,8 @@ json SearchSessions(const std::vector<SessionInfo>& sessions,
       json hit = std::move(found[i]);
       hit["session_id"] = id;
       hit["title"] = info.title;
+      // All the session's rows that hold the words, not only those listed.
+      hit["rows"] = found.size();
       hits.push_back(std::move(hit));
     }
   }

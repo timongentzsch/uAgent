@@ -767,8 +767,15 @@ json TranscriptView::Search(const std::string& query, size_t limit) const {
          at = folded.find(needle, at + needle.size())) {
       ++count;
     }
-    size_t start = first > kSnippetChars / 2 ? first - kSnippetChars / 2 : 0;
-    // A snippet starts on a character, not inside one.
+    // Close before the match, so a reader who sees one line sees it.
+    constexpr size_t kLead = 40;
+    size_t start = first > kLead ? first - kLead : 0;
+    // It starts on a word where one starts before the match, and on a
+    // character always.
+    if (start > 0) {
+      const size_t space = text.find_first_of(" \t\n\r", start - 1);
+      if (space < first) start = space + 1;
+    }
     while (start > 0 &&
            (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) {
       --start;

@@ -26,3 +26,9 @@
   white-space: nowrap;
   font-size: var(--font-small);
 }
+/* A group's label: small and quiet, never an option. */
+.suggestion-group {
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  color: var(--muted);
+  font-size: var(--font-small);
+}

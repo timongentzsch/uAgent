@@ -60,12 +60,16 @@ void TestTranscriptSearch() {
   for (int i = 0; i < 60; ++i) accents += "é";
   conversation.Push({{"role", "tool"},
                      {"tool_call_id", "c2"},
-                     {"content", accents + " needle"}},
+                     {"content", accents + "needle"}},
                     MessageKind::kToolResult);
+  std::string prose;
+  for (int i = 0; i < 4; ++i) prose += "Ordinary words go on for a while. ";
+  conversation.Push({{"role", "assistant"}, {"content", prose + "a needle"}},
+                    MessageKind::kAssistant);
   conversation.Push({{"role", "user"}, {"content", "needle"}},
                     MessageKind::kInternal);
   const json hits = TranscriptView(conversation).Search("neeDLE", 10);
-  REQUIRE(hits.size() == 3);
+  REQUIRE(hits.size() == 4);
   CHECK(hits[0]["kind"] == "user");
   CHECK(hits[0]["count"] == 1);
   CHECK(hits[0]["snippet"] == "Where is the Needle?");
@@ -77,7 +81,11 @@ void TestTranscriptSearch() {
   // A long row's snippet starts near the hit, on a whole character.
   const std::string snippet = hits[2]["snippet"];
   CHECK(snippet.starts_with("…é"));
-  CHECK(snippet.ends_with("é needle"));
+  CHECK(snippet.ends_with("éneedle"));
+  // It starts close before the match, so one line of it shows the match,
+  // and on a word where it can.
+  CHECK(snippet.find("needle") < 50);
+  CHECK(hits[3]["snippet"] == "…Ordinary words go on for a while. a needle");
   CHECK(TranscriptView(conversation).Search("needle", 2).size() == 2);
   CHECK(TranscriptView(conversation).Search("", 10).empty());
   CHECK(ContainsCaseInsensitive("xAaAB", "aab"));

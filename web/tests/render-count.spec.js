@@ -62,6 +62,17 @@ async function open(page) {
         devices: [],
         commands: [],
       });
+    // Every conversation holds the searched word once.
+    if (path === "/api/search")
+      return json({
+        hits: SESSIONS.map(({ id, title }) => ({
+          session_id: id,
+          title,
+          sequence: 1,
+          snippet: "the word",
+          rows: 1,
+        })),
+      });
     if (path === `/api/sessions/${ID}`)
       return json({
         epoch: EPOCH,
@@ -279,18 +290,19 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(ticks.SessionRow).toBeGreaterThan(0);
   expect(ticks.SessionRow).toBeLessThanOrEqual(20);
 
-  // Search fills its sheet, and a list the person scrolled stays where
-  // they left it while events keep re-rendering the app behind it.
+  // A search list the person scrolled stays where they left it while
+  // events keep re-rendering the app behind it. Every conversation holds
+  // "word" (the mock above): more hits than the panel shows at once.
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByRole("dialog", { name: "Search" });
+  await palette.getByRole("combobox").fill("word");
   const results = palette.getByRole("listbox", { name: "Results" });
-  await expect(results.getByRole("option").first()).toBeVisible();
-  const gap = await results.evaluate(
-    (list) =>
-      list.closest("dialog").getBoundingClientRect().bottom -
-      list.getBoundingClientRect().bottom,
+  await expect(results.locator(".spotlight-snippet").first()).toBeVisible();
+  // The panel ends inside the window, however long the list.
+  const bottom = await palette.evaluate(
+    (dialog) => dialog.getBoundingClientRect().bottom,
   );
-  expect(gap).toBeLessThan(40);
+  expect(bottom).toBeLessThanOrEqual(page.viewportSize().height);
   await results.evaluate((list) => (list.scrollTop = list.scrollHeight));
   const scrolled = await results.evaluate((list) => list.scrollTop);
   expect(scrolled).toBeGreaterThan(0);

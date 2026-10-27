@@ -689,7 +689,8 @@ export function Modal({
   // which rises from the bottom on a phone instead of filling the screen.
   size?: "narrow" | "compact" | "medium" | "wide" | "browser";
   // "sheet": full height at the right edge (full screen on a phone).
-  layout?: "content" | "panel" | "sheet";
+  // "spotlight": centered high in the window, as tall as its content.
+  layout?: "content" | "panel" | "sheet" | "spotlight";
   // Header controls beside Close, for actions on the dialog's subject.
   actions?: ComponentChildren;
   // False when the content renders its own DialogHeader and .dialog-body.

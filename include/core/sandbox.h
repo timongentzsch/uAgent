@@ -55,6 +55,9 @@ struct SandboxInputs {
   // reach of a command that can otherwise write freely.
   std::string global_base;
   std::string tmpdir;  // $TMPDIR; empty when unset
+  // macOS's own per-user temp folder, where its tools cache (xcrun, behind
+  // /usr/bin/git) whatever $TMPDIR says; empty elsewhere.
+  std::string user_tmpdir;
   // Package-manager caches (kPackageCaches in include/core/defaults.h).
   std::vector<std::string> tool_caches;
   // ~/.uagent/terminals/logs -- the one deliberate exception inside

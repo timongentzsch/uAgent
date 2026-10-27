@@ -742,11 +742,18 @@ void TestSessionCatalogueCache() {
   CHECK(scan().size() == 2);
   CHECK(scan(SessionScope::kWorkspace).size() == 1);
   CHECK(scan().size() == 2);
+  // Two sessions saved within one clock tick sort either way, so the row is
+  // found by its path.
+  auto row = [&](const std::vector<SessionInfo>& rows) {
+    const auto found = std::ranges::find(rows, path, &SessionInfo::path);
+    CHECK(found != rows.end());
+    return found != rows.end() ? *found : SessionInfo{};
+  };
   std::string error;
   REQUIRE(AtomicWriteFile(path, "corrupt", 0600, false, error));
-  CHECK(!scan()[0].error.empty());
+  CHECK(!row(scan()).error.empty());
   REQUIRE(SessionStore::Save(path, record).Ok());
-  CHECK(scan()[0].error.empty());
+  CHECK(row(scan()).error.empty());
   const std::string moved = path + ".moved";
   std::filesystem::rename(path, moved);
   std::filesystem::create_symlink(moved, path);

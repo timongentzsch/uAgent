@@ -18,7 +18,6 @@ import {
 import { useHostContext } from "../../state/host-context.ts";
 import {
   Mark,
-  Input,
   Time,
   Button,
   IconButton,
@@ -37,7 +36,6 @@ import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
 import { collapsed, useFolding } from "./folding.ts";
-import { matches } from "../../shared/fuzzy.ts";
 import "./sidebar.css";
 
 // Before the catalogue arrives, the list draws these (see <Placeholder>).
@@ -71,35 +69,30 @@ type Place = {
 // The list's places in its order, newest first: each one's panel, what
 // the panel started, then its conversations. A workspace is a place whether
 // or not anything is in it yet.
-function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
+function groupSessions(sessions: Session[], spaces: Space[] = []) {
   const groups = new Map<string, Place>();
   const place = (path: string) => {
     if (!groups.has(path)) groups.set(path, { threads: [], others: [] });
     return groups.get(path)!;
   };
-  const names = new Map(spaces.map((space) => [space.path, space.name]));
   for (const item of [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   )) {
     const path = folderOf(item);
-    // A panel is listed with its place, whatever the search shows of it.
-    if (item.kind === "panel") {
-      if (matches(search, names.get(path), path)) place(path).panel = item;
-    } else if (matches(search, item.title, names.get(path), item.cwd)) {
+    if (item.kind === "panel") place(path).panel = item;
+    else
       (item.kind === "thread" ? place(path).threads : place(path).others).push(
         item,
       );
-    }
   }
-  for (const space of spaces)
-    if (matches(search, space.name)) place(space.path);
+  for (const space of spaces) place(space.path);
   return groups;
 }
 
 // The places under the word for their kind, workspaces first: one is
 // µAgent's to keep and remove, the other a directory of yours.
-function placesByKind(sessions: Session[], spaces: Space[] = [], search = "") {
-  const places = [...groupSessions(sessions, spaces, search)];
+function placesByKind(sessions: Session[], spaces: Space[] = []) {
+  const places = [...groupSessions(sessions, spaces)];
   const space = (path: string) => spaces.some((item) => item.path === path);
   return (
     [
@@ -109,18 +102,14 @@ function placesByKind(sessions: Session[], spaces: Space[] = [], search = "") {
   ).filter(([, shown]) => shown.length);
 }
 
-// A search shows what it found, whatever is folded.
-const foldedOf = (path: string, query: string) => !query && collapsed.has(path);
-
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
 export const sessionOrder = (
   sessions: Session[],
   spaces: Space[] | undefined,
-  query: string,
 ) =>
-  placesByKind(sessions, spaces, query).flatMap(([, places]) =>
+  placesByKind(sessions, spaces).flatMap(([, places]) =>
     places.flatMap(([path, group]) =>
-      foldedOf(path, query)
+      collapsed.has(path)
         ? []
         : [
             ...(group.panel ? [group.panel] : []),
@@ -195,9 +184,6 @@ type SidebarProps = {
   sessions: Session[];
   // How many of them wait on a decision.
   needsYou: number;
-  // What the list is filtered by: it decides which rows show.
-  query: string;
-  setSearch: (query: string) => void;
   spaces: Space[];
   // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
@@ -211,15 +197,14 @@ type SidebarProps = {
   // A new conversation in a place, and the place's panel.
   start: (cwd: string) => void;
   openPanel: (cwd: string) => void;
-  palette: () => void;
+  // Search over every conversation, command and setting.
+  search: () => void;
 };
 
 function SidebarView({
   loading,
   sessions,
   needsYou,
-  query,
-  setSearch,
   spaces,
   spaceMenu,
   selected,
@@ -233,7 +218,7 @@ function SidebarView({
   page,
   navigate,
   scheduledUnread,
-  palette,
+  search,
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
   useFolding();
@@ -243,8 +228,8 @@ function SidebarView({
   // Grouped again only when the list, the places or the search change, not
   // for a selection, an unread mark or a fold.
   const places = useMemo(
-    () => placesByKind(all, drawing ? [] : spaces, query),
-    [all, drawing, spaces, query],
+    () => placesByKind(all, drawing ? [] : spaces),
+    [all, drawing, spaces],
   );
   // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
@@ -268,7 +253,7 @@ function SidebarView({
   const place = ([cwd, group]: [string, Place]) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
-    const folded = foldedOf(cwd, query);
+    const folded = collapsed.has(cwd);
     const { panel } = group;
     const conversations = [...group.threads, ...group.others];
     const holdsOpen = [panel, ...conversations].some(
@@ -376,7 +361,7 @@ function SidebarView({
         >
           <Mark />
         </a>
-        <IconButton label="Command palette" onClick={palette}>
+        <IconButton label="Search" onClick={search}>
           <Search />
         </IconButton>
         <Menu
@@ -444,25 +429,14 @@ function SidebarView({
           )}
         </Button>
       </div>
-      <label class="search">
-        <span class="sr-only">Find a conversation</span>
-        <Input
-          id="session-search"
-          type="search"
-          value={query}
-          onInput={(event) => setSearch(event.currentTarget.value)}
-          placeholder="Find a conversation…"
-        />
-      </label>
       <nav aria-label="Conversations">
         <Placeholder label="Loading conversations…" when={drawing}>
           {list.length ? (
             list
           ) : (
             <EmptyState>
-              {query
-                ? "No conversation matches."
-                : "No conversations yet. New starts one in a workspace or in a folder on your host."}
+              No conversations yet. New starts one in a workspace or in a folder
+              on your host.
             </EmptyState>
           )}
         </Placeholder>

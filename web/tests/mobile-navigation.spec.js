@@ -210,7 +210,9 @@ test.describe("mobile navigation and commands", () => {
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/sessions");
     await send.tap();
-    await expect(page.getByLabel("Find a conversation")).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Conversations", exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Close conversations", exact: true })
       .tap();

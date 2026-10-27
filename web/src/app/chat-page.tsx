@@ -22,6 +22,7 @@ import { SideLayout } from "../shared/side-pane.tsx";
 import { usePhone } from "../shared/layout.ts";
 import WaitingList from "../shared/escalations.tsx";
 import Chat, { prepareHistoryBlocks } from "../features/chat/chat.tsx";
+import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
@@ -85,6 +86,8 @@ export default function ChatPage({
   actions,
   setInspector,
   files,
+  find,
+  closeFind,
 }: {
   active: boolean;
   historyKey: string;
@@ -109,6 +112,9 @@ export default function ChatPage({
   // The files pane, when it is open beside the chat; it takes the board's
   // place while it is.
   files?: ComponentChildren;
+  // The find bar's request, for whichever conversation it was opened in.
+  find: FindRequest | null;
+  closeFind: () => void;
 }) {
   const { store, online, report, load, setModal } = useHostContext();
   const { setFollowing, draft, setDraft, submit } = useConversation();
@@ -146,6 +152,7 @@ export default function ChatPage({
     attachContent,
     jumpToLatest,
     preserveWhile,
+    reveal,
     unseen,
   } = useTranscriptHistory(setFollowing, historyKey, blocks);
   // The shared transcript controller retains the visible block through
@@ -258,6 +265,18 @@ export default function ChatPage({
             : undefined
       }
     >
+      {find?.session === selected && (
+        <FindBar
+          key={`${selected}:${find.at}`}
+          request={find}
+          view={view}
+          blocks={blocks}
+          root={transcript}
+          older={() => preserveWhile(older)}
+          reveal={reveal}
+          close={closeFind}
+        />
+      )}
       {/* Remount the transcript per session: a stale surface's
         node detaches, so queued scrolls from it can never
         rewrite the live one, and each surface keeps its own
@@ -310,8 +329,8 @@ export default function ChatPage({
           "Plans the work in a workspace or folder and runs subagents and background agents for it. A place’s name in the list opens its lead agent.",
         ],
         [
-          <kbd>{keysOf("palette").join(" ")}</kbd>,
-          "Finds a conversation, a command or a settings section.",
+          <kbd>{keysOf("search").join(" ")}</kbd>,
+          "Searches every conversation, command and setting.",
         ],
         [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
       ]}

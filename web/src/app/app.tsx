@@ -41,12 +41,13 @@ import { useBoot } from "./use-boot.ts";
 import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
+import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import {
   libraryModule,
   pairing,
   scheduledModule,
-  paletteDialog,
+  spotlightDialog,
   shortcutsDialog,
   filesPane,
 } from "./dialogs.ts";
@@ -90,8 +91,12 @@ function App() {
   // The conversation's files: beside the chat, or a sheet on a small screen.
   const [filesOpen, setFilesOpen] = useState(false);
   const [modal, setModal] = useState<AppModal | null>(null);
-  // The command palette (Mod+K) or the shortcuts sheet (?).
-  const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
+  // Search (Mod+K) or the shortcuts sheet (?).
+  const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
+  // The open conversation's find bar: its words, and the row to start at
+  // when search opened it there; `at` makes a repeated request a new one.
+  const [find, setFind] = useState<FindRequest | null>(null);
+  const closeFind = useCallback(() => setFind(null), []);
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
@@ -101,9 +106,9 @@ function App() {
     setDrawer(false);
     setModal(value);
   }, []);
-  const openPalette = useCallback(() => {
+  const openSearch = useCallback(() => {
     setDrawer(false);
-    setOverlay("palette");
+    setOverlay("search");
   }, []);
   const [notice, setNotice] = useState("");
   // The banner shows one line: a new notice replaces an older error.
@@ -154,8 +159,6 @@ function App() {
     refresh,
     report,
   });
-  // The sidebar's filter, here because Alt+↑/↓ steps through what it shows.
-  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
   // How much of the agent's work shows: one level for every conversation,
@@ -269,6 +272,7 @@ function App() {
       setLibraryKind,
       compact,
       setDrawer,
+      search: openSearch,
       setNotice,
       levels,
       changeDetail,
@@ -325,6 +329,11 @@ function App() {
       <ConversationMenu
         item={item}
         fork={fork}
+        find={
+          withDetail
+            ? () => setFind({ session: item.id, words: "", at: Date.now() })
+            : undefined
+        }
         notify={setNotice}
         open={open}
         detail={
@@ -345,13 +354,18 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces, query);
+    const order = sessionOrder(listed, catalogue.spaces);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
   };
   const shortcutActions = {
-    palette: () => setOverlay("palette"),
+    search: () => setOverlay("search"),
+    // Only over an open conversation; elsewhere the browser's own find.
+    find:
+      page === "chat" && session
+        ? () => setFind({ session: session.id, words: "", at: Date.now() })
+        : undefined,
     shortcuts: () => setOverlay("shortcuts"),
     previous: () => step("ArrowUp"),
     next: () => step("ArrowDown"),
@@ -411,8 +425,6 @@ function App() {
       }
       sessions={listed}
       needsYou={attention}
-      query={query}
-      setSearch={setQuery}
       spaces={catalogue.spaces || NO_SPACES}
       spaceMenu={places.spaceMenu}
       selected={page === "chat" ? selected : ""}
@@ -423,7 +435,7 @@ function App() {
       create={newPlace}
       start={startIn}
       openPanel={openPanel}
-      palette={openPalette}
+      search={openSearch}
     />
   );
 
@@ -586,6 +598,8 @@ function App() {
                           />
                         )
                       }
+                      find={find}
+                      closeFind={closeFind}
                     />
                   </main>
                 </div>
@@ -596,21 +610,21 @@ function App() {
               // instead of closing it under the new one.
               <Modal
                 key={overlay}
-                title={
-                  overlay === "palette"
-                    ? "Command palette"
-                    : "Keyboard shortcuts"
-                }
+                title={overlay === "search" ? "Search" : "Keyboard shortcuts"}
                 layout="sheet"
                 size="narrow"
                 close={() => setOverlay(null)}
               >
-                {overlay === "palette" ? (
+                {overlay === "search" ? (
                   <Deferred
-                    load={paletteDialog}
+                    load={spotlightDialog}
                     sessions={listed}
                     commands={catalogue.commands || []}
                     choose={choose}
+                    find={(id: string, words: string, sequence: number) => {
+                      void choose(id);
+                      setFind({ session: id, words, sequence, at: Date.now() });
+                    }}
                     start={(cwd: string, panel?: boolean) =>
                       void startConversation(cwd, panel).catch(report)
                     }
@@ -618,7 +632,7 @@ function App() {
                     settings={(section: string) =>
                       open({ type: "settings", section })
                     }
-                    actions={{ ...shortcutActions, palette: undefined }}
+                    actions={{ ...shortcutActions, search: undefined }}
                   />
                 ) : (
                   <Deferred load={shortcutsDialog} />

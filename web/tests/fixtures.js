@@ -87,7 +87,11 @@ export async function openProbePanel(page, session, command, request) {
 
 // Saves a conversation the way the host keeps one, for the list to show;
 // returns its file.
-export async function saveHistory(host, file, { id, title, turns, messages }) {
+export async function saveHistory(
+  host,
+  file,
+  { id, title, turns, messages, kinds },
+) {
   const directory = `${host.home}/.uagent/history`;
   await mkdir(directory, { recursive: true });
   const header = {
@@ -100,7 +104,7 @@ export async function saveHistory(host, file, { id, title, turns, messages }) {
   };
   const state = {
     messages,
-    message_kinds: messages.map((message) => message.role),
+    message_kinds: kinds || messages.map((message) => message.role),
     archive: [],
     archive_dropped_segments: 0,
     context_tokens: 0,

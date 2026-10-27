@@ -447,8 +447,16 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Conversations",
       exact: true,
     });
-    await input(drawer.getByRole("searchbox"), "");
-    await contained(drawer, 390, 70);
+    // Search from the drawer stays above the keyboard.
+    await drawer.getByRole("button", { name: "Search", exact: true }).tap();
+    const search = page.getByRole("dialog", { name: "Search" });
+    await input(search.getByRole("combobox"), "");
+    await contained(search, 390, 70);
+    await page.keyboard.press("Escape");
+    await viewport(844);
+    await page
+      .getByRole("button", { name: "Open conversations", exact: true })
+      .tap();
     await drawer.getByRole("button", { name: "Library", exact: true }).tap();
     await viewport(844);
     await page.getByRole("button", { name: "Add memory", exact: true }).tap();

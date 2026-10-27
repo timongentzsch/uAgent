@@ -40,6 +40,7 @@ export function useCommands({
   setLibraryKind,
   compact,
   setDrawer,
+  search,
   setNotice,
   levels,
   changeDetail,
@@ -67,6 +68,8 @@ export function useCommands({
   setLibraryKind: (kind: "memory" | "skills") => void;
   compact: boolean;
   setDrawer: (open: boolean) => void;
+  // Opens search over everything.
+  search: () => void;
   setNotice: (notice: string) => void;
   levels: string[];
   changeDetail: (level: string) => Promise<void>;
@@ -97,11 +100,8 @@ export function useCommands({
     "/memory": () => showLibrary("memory"),
     "/skills": () => showLibrary("skills"),
     "/schedule": () => setPage("scheduled"),
-    // The list is always beside a wide conversation: find in it instead.
-    "/sessions": () =>
-      compact
-        ? setDrawer(true)
-        : document.getElementById("session-search")?.focus(),
+    // The list is always beside a wide conversation: search instead.
+    "/sessions": () => (compact ? setDrawer(true) : search()),
   };
   function showLibrary(kind: "memory" | "skills") {
     setLibraryKind(kind);

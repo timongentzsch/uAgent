@@ -2,11 +2,17 @@ import { useEffect } from "preact/hooks";
 import { useLatest } from "./use-latest.ts";
 
 // Every keyboard shortcut, once: the global listener below matches these,
-// and the shortcuts sheet and command palette show them. `keys` is
+// and the shortcuts sheet and search show them. `keys` is
 // "Mod+K" style, Mod being ⌘ on a Mac and Ctrl elsewhere. Entries without
 // `global` are the composer's own, listed so they can be found.
 export const SHORTCUTS = [
-  { id: "palette", keys: "Mod+K", label: "Command palette", global: true },
+  { id: "search", keys: "Mod+K", label: "Search", global: true },
+  {
+    id: "find",
+    keys: "Mod+F",
+    label: "Find in this conversation",
+    global: true,
+  },
   { id: "shortcuts", keys: "?", label: "Keyboard shortcuts", global: true },
   {
     id: "previous",

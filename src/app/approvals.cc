@@ -6,9 +6,12 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include "include/agent/path_policy.h"
@@ -121,9 +124,19 @@ struct Verdict {
   std::string refusal = "this action was not approved";
 };
 
+// What the review made of each action in the turn being run, so the same
+// action asked again in that turn is not paid for again. A new turn starts
+// afresh.
+struct ReviewMemo {
+  std::mutex mutex;
+  int64_t turn = -1;
+  std::unordered_map<std::string, AutoPermissionReview> reviews;
+};
+
 // The automatic permission review's verdict, or nothing when it asks for a
 // person to decide. Records what it saw in review.
-std::optional<Verdict> ReviewAutomatically(AppContext* app, const Tool& tool,
+std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
+                                           const Tool& tool,
                                            const std::string& raw_payload,
                                            int64_t turn, json& review) {
   Verdict verdict;
@@ -135,12 +148,31 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, const Tool& tool,
   if (const std::string first = history.UserMessageText(1); first != request) {
     request += "\n\n[first message]\n" + first;
   }
-  AutoPermissionReview decision = ReviewPermission(
-      app->runtime.permission_api,
-      ResolveReviewRoute(app->runtime.api, app->provider.providers,
-                         app->runtime.config.permission_model),
-      app->runtime.config, app->runtime.side_usage,
-      {tool, raw_payload, request, app->agent->SessionId(), turn});
+  const std::string memo_key = tool.name + ":" + HashHex(raw_payload);
+  std::optional<AutoPermissionReview> memoized;
+  {
+    std::lock_guard lock(memo.mutex);
+    if (memo.turn != turn) {
+      memo.turn = turn;
+      memo.reviews.clear();
+    }
+    if (auto found = memo.reviews.find(memo_key); found != memo.reviews.end()) {
+      memoized = found->second;
+    }
+  }
+  AutoPermissionReview decision =
+      memoized
+          ? std::move(*memoized)
+          : ReviewPermission(
+                app->runtime.permission_api,
+                ResolveReviewRoute(app->runtime.api, app->provider.providers,
+                                   app->runtime.config.permission_model),
+                app->runtime.config, app->runtime.side_usage,
+                {tool, raw_payload, request, app->agent->SessionId(), turn});
+  if (!memoized && decision.error.empty()) {
+    std::lock_guard lock(memo.mutex);
+    if (memo.turn == turn) memo.reviews.emplace(memo_key, decision);
+  }
   const bool ask = decision.decision == AutoPermissionDecision::kAsk;
   const bool allow = decision.decision == AutoPermissionDecision::kAllow;
   review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
@@ -251,7 +283,8 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
 // boundary: until commands are sandboxed an approved shell reaches the same
 // paths with none of these checks in front of it.
 Agent::Approver MakeApprover(AppContext* app) {
-  return [app](const Tool& tool, const json& arguments, int64_t turn) {
+  auto memo = std::make_shared<ReviewMemo>();
+  return [app, memo](const Tool& tool, const json& arguments, int64_t turn) {
     static std::atomic<uint64_t> sequence{0};
     ApprovalClass required = RequiredApproval(tool, arguments);
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
@@ -278,8 +311,8 @@ Agent::Approver MakeApprover(AppContext* app) {
                              SandboxRuntime().mode != SandboxMode::kEnforced);
     if (!automatic && !mandatory &&
         CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
-      if (auto decided =
-              ReviewAutomatically(app, tool, raw_payload, turn, review)) {
+      if (auto decided = ReviewAutomatically(app, *memo, tool, raw_payload,
+                                             turn, review)) {
         automatic = true;
         verdict = std::move(*decided);
       }

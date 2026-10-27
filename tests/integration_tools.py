@@ -151,7 +151,7 @@ def test_a_loaded_skill_survives_compaction(root, home, *, binary):
     )
 
     def summarize(_, body):
-        assert_true("tools" not in body, body)
+        assert_true(body.get("tool_choice") == "none", body)
         return event({"content": "the user is following the demo skill"})
 
     def after(_, body):
@@ -180,6 +180,39 @@ def test_a_loaded_skill_survives_compaction(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true("skill-kept" in result.stdout, result.stdout)
         assert_true(len(server.requests) == 5, len(server.requests))
+
+
+def test_compaction_retries_from_a_transcript_when_the_model_calls_a_tool(root, home, *, binary):
+    workspace = root / "compact-retry-workspace"
+    workspace.mkdir()
+
+    def retry(_, body):
+        assert_true("tools" not in body, body)
+        assert_true("<transcript>" in json.dumps(body["messages"]), body)
+        return event({"content": "retried-summary"})
+
+    def after(_, body):
+        serialized = json.dumps(body["messages"])
+        return event({"content": "retry-ok" if "retried-summary" in serialized else "retry-bad"})
+
+    with Server(
+        [
+            event({"content": "long-answer " * 400}),
+            tool_call("read_path", {"path": "."}),
+            retry,
+            after,
+        ]
+    ) as server:
+        result = run_dialog(
+            workspace,
+            base_env(home, server.url),
+            "hello\n/compact\ncontinue\n/q\n",
+            timeout=30,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("retry-ok" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
 
 
 def test_an_attachment_over_the_budget_is_warned_about_once(root, home, *, binary):

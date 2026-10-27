@@ -10,6 +10,7 @@
 #include "include/api/client.h"
 #include "include/api/wire.h"
 #include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -21,13 +22,32 @@ const json* MatchingReplay(const json& message, std::string_view wire_api) {
                                                                   : nullptr;
 }
 
-json ChatMessages(const json& messages) {
+json CacheControl() { return {{"type", "ephemeral"}}; }
+
+// Ends the cached prefix at `message`: its text becomes a part carrying the
+// breakpoint. A message without text keeps none.
+void ChatCacheBreakpoint(json& message) {
+  if (!message.contains("content")) return;
+  json& content = message["content"];
+  if (content.is_string()) {
+    content = json::array({{{"type", "text"},
+                            {"text", std::move(content)},
+                            {"cache_control", CacheControl()}}});
+  } else if (content.is_array() && !content.empty() &&
+             JsonValue(content.back(), "type", "") == "text") {
+    content.back()["cache_control"] = CacheControl();
+  }
+}
+
+json ChatMessages(const json& messages, bool cache_control) {
   if (!messages.is_array()) return messages;
   json encoded = messages;
   for (json& message : encoded) {
-    if (message.is_object()) {
-      message.erase(kWireReplayField);
-      message.erase(kReadRangeField);
+    if (!message.is_object()) continue;
+    message.erase(kWireReplayField);
+    message.erase(kReadRangeField);
+    if (message.erase(kCacheBreakpointField) && cache_control) {
+      ChatCacheBreakpoint(message);
     }
   }
   return encoded;
@@ -173,6 +193,10 @@ bool DataUri(std::string_view uri, std::string& media_type, std::string& data) {
   return !data.empty();
 }
 
+// The marker HarnessNote (include/agent/protocol.h) puts on harness text sent
+// in the user role.
+constexpr char kHarnessNoteMarker[] = "[harness note, not a user message] ";
+
 json AnthropicContent(const json& content) {
   json blocks = json::array();
   if (content.is_string()) {
@@ -225,6 +249,16 @@ json AnthropicContent(const json& content) {
   return blocks;
 }
 
+// Ends the cached prefix at the message's last block; thinking blocks cannot
+// carry a breakpoint.
+void AnthropicCacheBreakpoint(const json& message, json& blocks) {
+  if (!message.contains(kCacheBreakpointField) || blocks.empty()) return;
+  json& last = blocks.back();
+  if (!JsonValue(last, "type", "").ends_with("thinking")) {
+    last["cache_control"] = CacheControl();
+  }
+}
+
 void AppendAnthropicMessage(json& messages, std::string role, json blocks) {
   if (blocks.empty()) return;
   if (!messages.empty() && JsonValue(messages.back(), "role", "") == role) {
@@ -236,7 +270,20 @@ void AppendAnthropicMessage(json& messages, std::string role, json blocks) {
       {{"role", std::move(role)}, {"content", std::move(blocks)}});
 }
 
-json AnthropicMessages(const json& canonical, std::string& system) {
+// Whether a message is part of the conversation proper, ending the run of
+// leading system messages.
+bool IsConversationRole(const json& message) {
+  const std::string role = JsonValue(message, "role", "");
+  return role == "user" || role == "assistant" || role == "tool";
+}
+
+// Only the system messages that open the conversation become the top-level
+// `system`; Anthropic caches tools, system, then messages in that order, so a
+// note added later must not rewrite it. A later one stays in place as marked
+// user text. `leading` says whether no conversation message precedes
+// `canonical`.
+json AnthropicMessages(const json& canonical, std::string& system,
+                       bool leading = true) {
   if (!canonical.is_array()) return canonical;
   json messages = json::array();
   for (const json& message : canonical) {
@@ -246,14 +293,24 @@ json AnthropicMessages(const json& canonical, std::string& system) {
         message.contains("content") ? message["content"] : json(nullptr);
     if (role == "system" || role == "developer") {
       std::string text = ContentText(message, "\n\n");
-      if (!text.empty()) system += (system.empty() ? "" : "\n\n") + text;
+      if (text.empty()) continue;
+      if (leading) {
+        system += (system.empty() ? "" : "\n\n") + text;
+      } else {
+        AppendAnthropicMessage(
+            messages, "user",
+            json::array({{{"type", "text"},
+                          {"text", std::string(kHarnessNoteMarker) + text}}}));
+      }
       continue;
     }
+    leading = leading && !IsConversationRole(message);
     if (role == "tool") {
       json blocks =
           json::array({{{"type", "tool_result"},
                         {"tool_use_id", JsonValue(message, "tool_call_id", "")},
                         {"content", JsonValue(message, "content", "")}}});
+      AnthropicCacheBreakpoint(message, blocks);
       AppendAnthropicMessage(messages, "user", std::move(blocks));
       continue;
     }
@@ -287,6 +344,7 @@ json AnthropicMessages(const json& canonical, std::string& system) {
     } else {
       blocks = AnthropicContent(content);
     }
+    AnthropicCacheBreakpoint(message, blocks);
     AppendAnthropicMessage(messages, role, std::move(blocks));
   }
   return messages;
@@ -297,33 +355,36 @@ json RequestTools(WireApi wire_api, const WireRequest& request) {
       wire_api, request.tool_schemas,
       (wire_api != WireApi::kChatCompletions && request.native_web_search) ||
           !request.function_web_search);
+  // Tools the endpoint runs itself join only a request that offers the
+  // agent's own; one that offers none (a title, a summary) leaves them out,
+  // or a model with an effort may search instead of answering.
+  if (!request.tool_schemas.is_array() || request.tool_schemas.empty()) {
+    return tools;
+  }
   if (request.native_web_search) {
     if (wire_api == WireApi::kResponses) {
       tools.push_back({{"type", "web_search"}});
     } else if (wire_api == WireApi::kAnthropicMessages) {
-      tools.push_back(
-          {{"type", "web_search_20250305"}, {"name", "web_search"}});
+      tools.push_back({{"type", "web_search_20250305"},
+                       {"name", "web_search"},
+                       {"max_uses", kWebSearchMaxUses}});
     }
   }
-  // Tools the endpoint runs itself join an agent's own, each in place of the
-  // agent's tool of its name (web_fetch); a request that offers none (a
-  // title, a summary) leaves them out too.
-  if (request.tool_schemas.is_array() && !request.tool_schemas.empty()) {
-    const auto name = [](const json& tool) {
-      const json* function = JsonObject(tool, "function");
-      return JsonValue(function ? *function : tool, "name", "");
-    };
-    for (const json& hosted : request.hosted_tools) {
-      const std::string replaced = name(hosted);
-      if (replaced.empty()) continue;
-      json kept = json::array();
-      for (json& tool : tools) {
-        if (name(tool) != replaced) kept.push_back(std::move(tool));
-      }
-      tools = std::move(kept);
+  // Hosted definitions replace the agent's tool of their name (web_fetch).
+  const auto name = [](const json& tool) {
+    const json* function = JsonObject(tool, "function");
+    return JsonValue(function ? *function : tool, "name", "");
+  };
+  for (const json& hosted : request.hosted_tools) {
+    const std::string replaced = name(hosted);
+    if (replaced.empty()) continue;
+    json kept = json::array();
+    for (json& tool : tools) {
+      if (name(tool) != replaced) kept.push_back(std::move(tool));
     }
-    for (const json& tool : request.hosted_tools) tools.push_back(tool);
+    tools = std::move(kept);
   }
+  for (const json& tool : request.hosted_tools) tools.push_back(tool);
   return tools;
 }
 
@@ -331,6 +392,9 @@ json RequestEnvelope(WireApi wire_api, const WireRequest& request, json tools) {
   json body = {{"model", request.model}, {"stream", true}};
   if (!tools.empty()) {
     body["tools"] = std::move(tools);
+    if (request.forbid_tool_calls && wire_api != WireApi::kAnthropicMessages) {
+      body["tool_choice"] = "none";
+    }
     if (request.parallel_tools && wire_api != WireApi::kAnthropicMessages) {
       body["parallel_tool_calls"] = true;
     }
@@ -388,7 +452,7 @@ json AnthropicSystem(std::string system) {
   // exceeds automatic caching's 20-block lookback window.
   return json::array({{{"type", "text"},
                        {"text", std::move(system)},
-                       {"cache_control", {{"type", "ephemeral"}}}}});
+                       {"cache_control", CacheControl()}}});
 }
 
 }  // namespace
@@ -422,7 +486,8 @@ json EncodeWireRequest(WireApi wire_api, const WireRequest& request) {
   std::string system;
   switch (wire_api) {
     case WireApi::kChatCompletions:
-      body["messages"] = ChatMessages(request.messages);
+      body["messages"] =
+          ChatMessages(request.messages, request.prompt_cache_control);
       break;
     case WireApi::kResponses:
       body["input"] = ResponsesInput(request.messages);
@@ -446,25 +511,28 @@ json WireRequestCache::Encode(WireApi wire_api, const WireRequest& request) {
   messages_.resize(request.messages.size());
   std::string system;
   std::string role;
+  bool leading = true;
   encoded_messages_ = "[";
   for (size_t index = 0; index < messages_.size(); ++index) {
     Message& entry = messages_[index];
     const json& source = request.messages[index];
-    if (!entry.valid || entry.source != source) {
-      entry = {source, {}, {}, {}, true};
+    if (!entry.valid || entry.source != source || entry.leading != leading) {
+      entry = {source, {}, {}, {}, true, leading};
       json single = json::array({source});
       if (wire_api == WireApi::kAnthropicMessages) {
-        json encoded = AnthropicMessages(single, entry.system);
+        json encoded = AnthropicMessages(single, entry.system, leading);
         if (!encoded.empty()) {
           entry.role = JsonValue(encoded[0], "role", "");
           entry.body = ArrayContents(encoded[0]["content"]);
         }
       } else {
-        entry.body = ArrayContents(wire_api == WireApi::kResponses
-                                       ? ResponsesInput(single)
-                                       : ChatMessages(single));
+        entry.body = ArrayContents(
+            wire_api == WireApi::kResponses
+                ? ResponsesInput(single)
+                : ChatMessages(single, request.prompt_cache_control));
       }
     }
+    leading = leading && !IsConversationRole(source);
     if (!entry.system.empty()) {
       if (!system.empty()) system += "\n\n";
       system += entry.system;
@@ -557,12 +625,14 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   }
   if (web_available) *web_available = native_web || function_web;
 
+  const int64_t output_cap =
+      max_output_tokens > 0 ? max_output_tokens : MaxOutputTokens();
   WireRequest request{
       .model = model,
       .messages = messages,
       .tool_schemas = tool_schemas,
       .reasoning_effort = reasoning_effort,
-      .max_output_tokens = MaxOutputTokens(),
+      .max_output_tokens = output_cap,
       .parallel_tools = capabilities.parallel_tools,
       .stream_usage = capabilities.stream_usage_option,
       .native_web_search = native_web,
@@ -570,7 +640,9 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
       .include_web_search_sources = features.Has(Feature::kSearchSources),
       .hosted_tools = hosted_tools,
       .reasoning_summary = capabilities.reasoning_summary,
-      .adaptive_thinking = capabilities.adaptive_thinking};
+      .adaptive_thinking = capabilities.adaptive_thinking,
+      .prompt_cache_control = features.Has(Feature::kPromptCacheControl),
+      .forbid_tool_calls = forbid_tool_calls};
   json body = cache ? cache->Encode(wire_api, request)
                     : EncodeWireRequest(wire_api, request);
   if (wire_api != WireApi::kChatCompletions) {
@@ -595,11 +667,10 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   if (features.Has(Feature::kPromptCacheControl)) {
     body["cache_control"] = {{"type", "ephemeral"}};
   }
-  int64_t max_tokens = MaxOutputTokens();
-  if (max_tokens > 0) {
+  if (output_cap > 0) {
     body[features.Has(Feature::kMaxCompletionTokens) ? "max_completion_tokens"
                                                      : "max_tokens"] =
-        max_tokens;
+        output_cap;
   }
   if (!reasoning_effort.empty()) {
     if (features.Has(Feature::kReasoningObject)) {

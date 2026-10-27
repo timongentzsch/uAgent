@@ -292,6 +292,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
             std::chrono::milliseconds(kMillisecondsPerSecond - 1))
             .count());
   }
+  api_.forbid_tool_calls = std::string_view(purpose) == "compact";
   api_.exchange_context = {{"turn_root", turn_root_},
                            {"reply_to", reply_to_},
                            {"request", request},
@@ -488,15 +489,22 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
     const Route& route = ImageRoute().route;
     const std::string key =
         route.base_url + "\n" + route.model + ":" + HashHex(JsonDump(input));
-    std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;
+    std::string analysis, error;
+    if (auto cached = std::ranges::find_if(
+            image_analyses_,
+            [&](const auto& entry) { return entry.first == key; });
+        cached != image_analyses_.end()) {
+      image_analyses_.splice(image_analyses_.begin(), image_analyses_, cached);
+      analysis = cached->second;
+    }
     if (analysis.empty() && analyze && !failed_image_analyses_.contains(key)) {
       analysis = AnalyzeImageContent(input, error);
       if (analysis.empty()) {
         failed_image_analyses_.insert(key);
       } else {
-        image_analyses_[key] = analysis;
-        while (image_analyses_.size() > kImageAnalysisCacheEntries) {
-          image_analyses_.erase(image_analyses_.begin());
+        image_analyses_.emplace_front(key, analysis);
+        if (image_analyses_.size() > kImageAnalysisCacheEntries) {
+          image_analyses_.pop_back();
         }
       }
     }
@@ -809,6 +817,12 @@ json Agent::PanelRequest(json messages) const {
       previous = seconds;
       Prefix(messages[index], stamp);
     }
+  }
+  // The context below changes every request, so automatic caching's moving
+  // breakpoint would land on it and never read the stored history back: end
+  // the cached prefix on the last stored message instead.
+  if (!messages.empty() && messages.back().is_object()) {
+    messages.back()[kCacheBreakpointField] = true;
   }
   // Harness context in the user role: strict chat templates accept a single
   // system message, at index zero.

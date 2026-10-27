@@ -67,6 +67,8 @@ inline constexpr size_t kTitleChars = 80;
 inline constexpr size_t kUserTitleChars = 256;
 inline constexpr size_t kSpaceNameChars = 64;
 inline constexpr int64_t kTitleTimeoutSeconds = 30;
+// Enough for a title once the model does not think first.
+inline constexpr int64_t kTitleMaxTokens = 64;
 // Upload and subsequent claim validation must accept the same display names.
 inline constexpr size_t kAssetNameChars = 128;
 inline constexpr size_t kImageAnalysisCacheEntries = 8;
@@ -226,7 +228,7 @@ inline constexpr size_t kFileFindMatches = 200;
 // Delegation and hosted search.
 inline constexpr int64_t kSubagentCallsPerTurn = 32;
 inline constexpr int64_t kWebSearchTimeoutSeconds = 60;
-inline constexpr int64_t kWebSearchMaxTokens = 5000;
+inline constexpr int64_t kWebSearchMaxTokens = 2000;
 inline constexpr int64_t kWebSearchCalls = 4;
 inline constexpr int64_t kWebSearchMaxResults = 5;
 inline constexpr int64_t kWebSearchMaxUses = 3;

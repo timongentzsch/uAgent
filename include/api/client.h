@@ -56,6 +56,11 @@ class Api : public ApiSettings {
   Api& operator=(const Api&) = delete;
 
   bool capture_http = false;
+  // Per-client overrides for side requests: a positive output cap replaces
+  // UAGENT_MAX_TOKENS, and `forbid_tool_calls` keeps the offered tools in the
+  // request (the cached prefix) while the model is told not to call them.
+  int64_t max_output_tokens = 0;
+  bool forbid_tool_calls = false;
   std::function<void(const json&, size_t)> observe_progress;
   json exchange_context = json::object();
   json http_exchanges = json::array();

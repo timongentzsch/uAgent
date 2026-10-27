@@ -566,7 +566,7 @@ def test_web_compact_renders_single_footer_without_duplicates(root, home, *, bin
 
     def answer(_, body):
         text = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        if "Summarize the bounded transcript" in text:
+        if "for a fresh agent context" in text:
             return event({"content": "COMPACT-SUMMARY"})
         return event({"content": "turn-ok " + "detail " * 200})
 

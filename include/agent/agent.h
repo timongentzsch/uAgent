@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -451,7 +452,8 @@ class Agent {
   std::string session_id_;
   bool retain_exchanges_ = false;
   std::string turn_root_, reply_to_;
-  json image_analyses_ = json::object();
+  // Image analyses by key, the most recently used first.
+  std::list<std::pair<std::string, std::string>> image_analyses_;
   // Images whose analysis failed this turn. Each later step would otherwise
   // ask again and pay the same failure; the next turn tries once more.
   std::set<std::string> failed_image_analyses_;

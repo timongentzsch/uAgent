@@ -14,7 +14,7 @@
   },
   "script": [
     {
-      "when": {"no_tools": true, "last_starts_with": "Summarize the bounded transcript"},
+      "when": {"last_starts_with": "Summarize the conversation so far"},
       "respond": {
         "content": "The user requested a read-only diagnosis of ISSUE.md, src/cache.py, and tests/test_cache.py. ISSUE.md has been read; inspect both code files next and return exactly four bullets."
       }

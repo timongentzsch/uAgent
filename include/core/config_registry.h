@@ -469,6 +469,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "delegation", "deepest delegation level allowed"),
         "Delegation depth"),
     registry::Named(
+        registry::Str("subagent.model", "UAGENT_SUBAGENT_MODEL", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "delegation",
+                      "route a subagent runs on when its call names none; "
+                      "empty runs it on its parent's"),
+        "Sub-agent model"),
+    registry::Named(
         registry::Int("subagent.maxSteps", "UAGENT_SUBAGENT_MAX_STEPS", {}, 100,
                       kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
                       "delegation", "model rounds per delegated child"),

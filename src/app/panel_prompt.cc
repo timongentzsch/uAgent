@@ -140,33 +140,17 @@ void AwaitPanel(PanelRequest& panel) {
   }
 }
 
-// Everything the panel said since the request, in full: a thread's report
-// reopens its turn or starts another, and each says part of it.
-std::string AnswerSince(const std::string& path, const std::string& prompt) {
-  std::string answer;
+// The panel's answer: what it said last. It finishes the work it was asked
+// for before it answers, so an earlier turn's "waiting on a thread" is not
+// part of it.
+std::string LastAnswer(const std::string& path) {
   SessionLoadResult saved = SessionStore::Inspect(path);
   Conversation conversation;
-  if (saved.record &&
-      std::move(saved.record->state).RestoreConversation(conversation)) {
-    const json& messages = conversation.Messages();
-    size_t asked = messages.size();
-    for (size_t index = messages.size(); index > 0 && asked == messages.size();
-         --index) {
-      const json& message = messages[index - 1];
-      if (JsonValue(message, "role", "") == "user" &&
-          Trim(JsonValue(message, "content", "")) == Trim(prompt)) {
-        asked = index - 1;
-      }
-    }
-    for (size_t index = asked + 1; index < messages.size(); ++index) {
-      if (JsonValue(messages[index], "role", "") != "assistant") continue;
-      const std::string text = JsonValue(messages[index], "content", "");
-      if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
-    }
-    // The request itself was compacted away: what was said last.
-    if (asked == messages.size()) answer = conversation.LastAssistantText();
+  if (!saved.record ||
+      !std::move(saved.record->state).RestoreConversation(conversation)) {
+    return "";
   }
-  return answer;
+  return conversation.LastAssistantText();
 }
 
 // Prints the answer, and why there is none when the turn did not complete.
@@ -215,6 +199,6 @@ int PanelPromptMain(const Options& options) {
             panel.error.empty() ? "panel runtime closed" : panel.error.c_str());
     return 1;
   }
-  return PrintAnswer(panel, AnswerSince(path, options.prompt));
+  return PrintAnswer(panel, LastAnswer(path));
 }
 }  // namespace uagent::session

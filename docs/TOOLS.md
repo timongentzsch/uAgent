@@ -132,10 +132,11 @@ activity ID at once.
 - `mode` is `lean` by default (read and run, no file-editing tools); `full`
   adds the editing tools and lets the child delegate in turn. A child never
   gets a tool its parent has switched off. In a session with no command
-  tool, such as a lead agent, a lean child only reads, so starting one needs no
-  approval.
-- `model` picks the child's route; without it the child runs on the
-  parent's.
+  tool, such as a lead agent, a lean child only reads, so starting one needs
+  no approval, and the tool tells the parent its children cannot run
+  commands.
+- `model` picks the child's route; without it the child runs on the route
+  `subagent.model` names, or on the parent's when that is empty.
 - `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
   one child, within the session's remaining budgets; `limits.memory=false`
   withholds memory.
@@ -148,7 +149,8 @@ activity ID at once.
   `refuters` children (default 1, at most 3) try to refute each finding.
   It returns the verified findings, the refuted ones with a reason, and those
   left unchecked, with no model turn in between. One call starts at most 64
-  children, and any it could not check are reported as unchecked.
+  children. A finding no refuter checked, with `refuters=0` or past that
+  ceiling, is reported unchecked, never verified.
 - Children started in one batch run at once, up to six; other parallel
   calls run four at a time.
 - `followup` resumes the child's private conversation and prepends its

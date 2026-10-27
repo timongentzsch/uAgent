@@ -33,6 +33,8 @@ bool LeanToolset();
 // Budgets handed to a delegated child. Lower than its parent's own, so one
 // flailing subagent cannot spend the whole turn.
 int64_t SubagentMaxSteps();
+// The route a subagent runs on when its call names none; empty: the parent's.
+std::string SubagentModel();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
 int64_t MaxOutputTokens();

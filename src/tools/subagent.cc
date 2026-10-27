@@ -249,7 +249,11 @@ std::string ModelPropertyDescription(const std::vector<Route>& routes,
   // Naming an alias here is an override, not the default. Spelling that out
   // matters: a child sent to an unreachable alias fails outright rather than
   // falling back, so the default must read as the safe choice.
-  std::string description = "child route; omit to run it on your own";
+  const std::string fallback = SubagentModel();
+  std::string description =
+      "child route; omit to run it on " +
+      (fallback.empty() ? std::string("your own")
+                        : fallback + ", the configured default");
   std::string configured = JoinSelections(std::move(aliases));
   if (!configured.empty()) {
     description += " Overrides: " + configured + ".";
@@ -379,8 +383,9 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
                        "mode must be lean or full");
   }
   const std::string requested = NormalizeModelId(
-      JsonValue(arguments, "model", JsonValue(role, "model", "")));
-  // No route named: the parent's own, whatever it is now.
+      JsonValue(arguments, "model", JsonValue(role, "model", SubagentModel())));
+  // No route named, here or in subagent.model: the parent's own, whatever it
+  // is now.
   RouteResolution route = ResolveSideRoute(api, routes, providers, requested);
   if (!route.none.empty()) {
     return ToolFailure(ToolErrorCode::kUnavailable, route.none);
@@ -652,8 +657,8 @@ ToolResult RunFanout(const Api& api, ProcessSupervisor& processes,
       sources.push_back(items[index].get<std::string>());
     }
   }
-  // Refuters past the ceiling are not started: what they would have checked
-  // is reported unchecked, never as verified.
+  // Without refuters, or past the ceiling, a finding nobody checked is
+  // reported unchecked, never as verified.
   const size_t room =
       (kFanoutChildren - items.size()) / std::max<size_t>(1, refuters);
   const size_t checked = refuters > 0 ? std::min(claims.size(), room) : 0;
@@ -675,10 +680,6 @@ ToolResult RunFanout(const Api& api, ProcessSupervisor& processes,
   });
   report["children"] = items.size() + verdicts.size();
   for (size_t claim = 0; claim < claims.size(); ++claim) {
-    if (refuters == 0) {
-      report["verified"].push_back(claims[claim]);
-      continue;
-    }
     if (claim >= checked) {
       report["unchecked"].push_back(claims[claim]);
       continue;

@@ -199,6 +199,9 @@ std::vector<Tool> BuildTools(AppContext& context,
       })) {
     for (Tool& tool : tools) {
       if (tool.name != "subagent") continue;
+      // So a brief does not ask a child for what it cannot do.
+      tool.description +=
+          " Children have only your tools: none of them runs commands.";
       tool.mutating = false;
       tool.mutates = [](const json& a) {
         return JsonValue(a, "mode", "lean") == "full";

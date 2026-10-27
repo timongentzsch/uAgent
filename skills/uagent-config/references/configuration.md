@@ -96,6 +96,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | Setting | Environment | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- | --- |
 | `subagent.depth` | `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
+| `subagent.model` | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | route a subagent runs on when its call names none; empty runs it on its parent's |
 | `subagent.maxSteps` | `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
 | `subagent.maxToolCalls` | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
 | `subagent.timeout` | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |

@@ -56,8 +56,10 @@ Reading and searching inside the workspace needs no approval. Calls that
 change files, run commands, use the network or touch a path outside the
 workspace follow the approval mode: `ask` (the default), `auto` or `yolo`
 (also `/yolo` or `--yolo`), set with `/permissions` and saved as the default
-with `UAGENT_APPROVAL`. The [guide](GUIDE.md#approvals-and-the-sandbox)
-explains the modes; none of them turns the sandbox off.
+with `UAGENT_APPROVAL`. Reading one of your other folders, such as another
+repository in the home folder, always asks a person (`sandbox.read` opens a
+folder). The [guide](GUIDE.md#approvals-and-the-sandbox) explains the modes;
+none of them turns the sandbox off.
 
 `/permissions rules` lists remembered approvals and
 `/permissions forget N|all` removes them.

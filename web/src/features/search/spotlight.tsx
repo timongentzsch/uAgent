@@ -12,7 +12,7 @@ import { folderOf } from "../../shared/display.ts";
 import { useCompact } from "../../shared/layout.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
-import { fuzzy } from "../../shared/fuzzy.ts";
+import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../shared/find.ts";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
@@ -37,7 +37,14 @@ type Row = {
   | { kind: "conversation"; label: string; detail: string }
   | { kind: "hit"; hit: Hit }
   | { kind: "more"; label: string }
-  | { kind: "action"; label: string; detail: string; shortcut?: ShortcutId }
+  | {
+      kind: "action";
+      label: string;
+      detail: string;
+      shortcut?: ShortcutId;
+      // What a command does, shown after its name.
+      about?: string;
+    }
 );
 
 const RECENT = 8;
@@ -201,7 +208,8 @@ export default function Spotlight({
       key: `command:${entry.command}`,
       group: "Actions & commands",
       kind: "action",
-      label: `${entry.command} — ${entry.description}`,
+      label: entry.command,
+      about: entry.description,
       detail: "Command",
       run: () => run(entry),
     }));
@@ -214,7 +222,18 @@ export default function Spotlight({
     run: () => settings(id),
   }));
   const label = (row: Row) => ("label" in row ? row.label : "");
-  const named = (rows: Row[], text: string) => fuzzy(rows, text, label);
+  // A name matches by its letters in order; what a command does only by
+  // whole words, so a long description does not match everything.
+  const named = (rows: Row[], text: string) => {
+    const byName = fuzzy(rows, text, label);
+    return [
+      ...byName,
+      ...rows.filter(
+        (row) =>
+          !byName.includes(row) && "about" in row && matches(text, row.about),
+      ),
+    ];
+  };
 
   // Message hits: one group per place, the open conversation's first and
   // then as the host ranked them; in each, a conversation once, its newest
@@ -350,7 +369,10 @@ export default function Spotlight({
               <span class="spotlight-more">{row.label}</span>
             ) : (
               <>
-                <span class="spotlight-label">{row.label}</span>
+                <span class="spotlight-label">
+                  {row.label}
+                  {"about" in row && row.about && ` — ${row.about}`}
+                </span>
                 <span class="spotlight-detail">{row.detail}</span>
                 {row.kind === "action" && row.shortcut && (
                   <Keys id={row.shortcut} />

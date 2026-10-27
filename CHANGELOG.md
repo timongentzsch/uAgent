@@ -93,7 +93,8 @@
   Spotlight. It finds conversations by name, then the messages that hold
   the words, grouped by folder (the open conversation's first) and under
   each conversation, with every occurrence marked, then the actions,
-  commands and settings the palette had. `>` lists only those; with an
+  commands and settings the palette had (a command by its name, or by
+  whole words of what it does). `>` lists only those; with an
   empty field it lists recent conversations. On a wide window the rows
   around the selected message show beside the list. A message opens its
   conversation there; Esc clears the field, then closes. **Find in

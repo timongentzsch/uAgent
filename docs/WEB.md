@@ -34,8 +34,9 @@ the header come the background agents the lead agent started, a
 divider, then the place's own conversations. Browsing saved history starts no
 model and runs no command.
 
-**New** at the top of the sidebar starts a **Workspace…** (a name) or a
-**Folder…** (a directory on the host) and opens a conversation there.
+**New** at the top of the sidebar opens a **Workspace…** (a name, new or
+existing) at its lead agent, or starts a conversation in a **Folder…** (a
+directory on the host).
 
 - A **workspace** is a folder the host keeps under `~/.uagent/spaces/`,
   created the first time its name is used. Use one for work that belongs to

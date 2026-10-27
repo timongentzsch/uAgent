@@ -51,6 +51,13 @@
 
 ### Changes
 
+- A lead agent has `run`, in a new `readonly` sandbox level it always runs
+  at: commands read the workspace, write only temporary files and reach no
+  network, so they need no approval, and its subagents inherit it. On a
+  Haiku A/B (3 tasks × 3 trials) the same quality cost 20% less and took
+  half the time: subagents made 6 calls each instead of 18, paging no
+  longer through files to count their lines. `sandbox.level=readonly` can
+  be chosen for any conversation.
 - The system prompts say that math in `$…$` or `$$…$$` renders. Asked for
   "the LaTeX" of an equation, a model put it in code fences, sure the chat
   would not typeset it; on Haiku that happened in 5 of 5 runs, and in none

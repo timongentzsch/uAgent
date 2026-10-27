@@ -377,7 +377,7 @@ def test_web_moderator_can_share_an_artifact(root, home, *, binary):
             )
             names = {tool["function"]["name"] for tool in provider.requests[0][1].get("tools", [])}
             assert_true("artifact" in names, names)
-            assert_true(not {"run", "write_file", "scratch"} & names, names)
+            assert_true(not {"write_file", "edit_file", "scratch"} & names, names)
             files = [
                 part
                 for block in value["state"]["view"]["blocks"]

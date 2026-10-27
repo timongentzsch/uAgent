@@ -93,10 +93,12 @@ bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset) {
     std::string_view text;
     SandboxPreset preset;
   };
-  for (const Spelling& spelling : {Spelling{"strict", SandboxPreset::kStrict},
-                                   {"default", SandboxPreset::kDefault},
-                                   {"relaxed", SandboxPreset::kRelaxed},
-                                   {"off", SandboxPreset::kOff}}) {
+  for (const Spelling& spelling :
+       {Spelling{"readonly", SandboxPreset::kReadOnly},
+        {"strict", SandboxPreset::kStrict},
+        {"default", SandboxPreset::kDefault},
+        {"relaxed", SandboxPreset::kRelaxed},
+        {"off", SandboxPreset::kOff}}) {
     if (text == spelling.text) {
       *preset = spelling.preset;
       return true;
@@ -126,6 +128,10 @@ std::string SandboxWritesNote(const SandboxPolicy& policy,
   for (const std::string& root : policy.writable_roots) {
     roots += (roots.empty() ? "" : ", ") + root;
   }
+  if (policy.read_only) {
+    return "commands here only read: they may write temporary files under " +
+           roots + ", and reach no network";
+  }
   if (SandboxWritable(policy, workspace)) {
     std::string note = "commands may write only under " + roots;
     for (const std::string& path : policy.withheld) {
@@ -152,11 +158,21 @@ std::string SandboxWritesNote(const SandboxPolicy& policy,
 SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   SandboxPolicyResult result;
   result.policy.allow_network = inputs.allow_network;
+  result.policy.read_only = inputs.read_only;
   std::vector<std::string> accepted;
-  Offer(inputs.workspace, inputs, &accepted, &result.rejected);
+  if (!inputs.read_only) {
+    Offer(inputs.workspace, inputs, &accepted, &result.rejected);
+  }
   Offer(inputs.tmpdir, inputs, &accepted, &result.rejected);
   for (std::string_view root : kFixedRoots) {
     Offer(root, inputs, &accepted, &result.rejected);
+  }
+  // A detached command's log pump writes there; its logs are µAgent's.
+  if (inputs.read_only) {
+    Offer(inputs.terminal_logs, inputs, &accepted, &result.rejected);
+    FoldNested(&accepted, result.policy.withheld);
+    result.policy.writable_roots = std::move(accepted);
+    return result;
   }
   for (const std::string& cache : inputs.tool_caches) {
     Offer(cache, inputs, &accepted, &result.rejected);

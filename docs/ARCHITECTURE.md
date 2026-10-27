@@ -140,13 +140,14 @@ conversation. The result reaches the parent as an activity completion, which
 an idle parent takes up at once as a turn.
 
 A folder's lead agent (internally a panel) is a session that reads and
-delegates but never writes or runs commands. The sessions it starts are its
-background agents (internally threads).
+delegates but never writes: it has no tool that edits, and its runtime forces
+the `readonly` sandbox level, so its commands write nothing but temporary
+files. The sessions it starts are its background agents (internally threads),
+which run at the default level.
 
-The lead agent asks its questions of subagents: it has the `subagent` tool but
-no tool that edits or runs commands, so its children, which get only what
-their parent has, read and research and change nothing; starting one needs
-no approval. Its plan (goals, decisions, open questions and steps) is saved
+The lead agent asks its questions of subagents: it has the `subagent` tool,
+and its children get only what their parent has, its sandbox included, so
+they read and research and change nothing; starting one needs no approval. Its plan (goals, decisions, open questions and steps) is saved
 beside its session and rebuilt into its context every turn, with the
 subagents and background agents that carry each step's id.
 

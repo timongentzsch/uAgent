@@ -138,8 +138,8 @@ inline constexpr std::string_view kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
-inline constexpr std::string_view kSandboxLevels[] = {"strict", "default",
-                                                      "relaxed", "off"};
+inline constexpr std::string_view kSandboxLevels[] = {
+    "readonly", "strict", "default", "relaxed", "off"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
                                                         "full"};
@@ -426,8 +426,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                           "tools",
                           "how far the OS sandbox confines shell commands: "
-                          "strict (no network), default, relaxed (home "
-                          "writable) or off"),
+                          "readonly (temporary files only, no network; a "
+                          "lead agent's always), strict (no network), "
+                          "default, relaxed (home writable) or off"),
             kSandboxLevels),
         "Sandbox"),
     registry::Named(registry::Bul("sandbox.network", "UAGENT_SANDBOX_NET", {},

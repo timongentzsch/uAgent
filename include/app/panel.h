@@ -52,13 +52,14 @@ void RecordPanelCost(const std::string& folder, double cost);
 // turns and its threads', has reached the daily limit.
 std::string PanelPause(const std::string& folder);
 
-// The moderator reads, researches, delegates and shares completed files. It
-// cannot edit workspace files or run commands, whatever the capability setting
-// allows, and neither can its subagents: a child gets only what its parent has.
+// The lead agent reads, researches, delegates and shares completed files. It
+// cannot edit workspace files, whatever the capability setting allows, and
+// its commands run in the readonly sandbox (session_worker.cc); neither can
+// its subagents: a child gets only its parent's tools and sandbox.
 inline constexpr const char* kPanelTools[] = {
-    "read_path", "grep",     "memory",     "skill",     "uagent",
-    "history",   "thread",   "decide",     "plan",      "ask",
-    "browser",   "artifact", "web_search", "web_fetch", "subagent"};
+    "read_path", "grep",       "run",       "memory",  "skill", "uagent",
+    "history",   "thread",     "decide",    "plan",    "ask",   "browser",
+    "artifact",  "web_search", "web_fetch", "subagent"};
 
 // Whether anything the panel waits for is still ahead: a thread working or
 // not begun, or mail from a thread not yet read or acknowledged. What a

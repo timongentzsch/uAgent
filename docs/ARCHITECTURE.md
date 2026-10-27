@@ -10,7 +10,7 @@ layer.
 | Path | Owns |
 | --- | --- |
 | `src/main.cc` | Entry point: internal modes such as `--session-worker` and `--browser-service`, otherwise the application |
-| `src/cli/` | Flag parsing (`options.cc`), the slash-command registry (`cli.cc`), interactive reads, `--emit-reference` (`reference.cc`) |
+| `src/cli/` | Flag parsing (`options.cc`), the slash-command registry (`cli.cc`), interactive reads |
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
@@ -302,8 +302,8 @@ apply the shared credential and permission policy. See
 
 `include/core/config_registry.h` defines each setting once: its default,
 bounds, sensitivity, activation timing and the scopes it may be saved in.
-Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and the
-generated skill references all read that source.
+Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and
+`uagent inspect` all read that source.
 
 A value comes from the registry's default or one of the scopes
 [Operations](OPERATIONS.md#settings) lists, the later winning: all

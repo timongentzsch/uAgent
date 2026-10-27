@@ -5,33 +5,32 @@ description: Configure, inspect, troubleshoot, or explain µAgent settings, prov
 
 # Configure µAgent
 
-Answer from the running binary first, then from the generated references beside
-this file. Do not load every reference; pick the one the question needs.
+Answer from the running binary, never from memory: it is the installed
+release, and it knows more than any copy of its documentation.
 
 ## Route the question
 
 | Question | Source |
 | --- | --- |
 | What is active right now, and why? | `uagent` action `inspect`, topic `status` or `config` |
-| What does this setting default to, and when does a change apply? | `uagent` action `inspect`, topic `config`, `name` set |
-| Which flags exist? | `uagent` action `inspect`, topic `cli`, or `references/cli.md` |
-| Which slash commands exist? | `uagent` action `inspect`, topic `commands`, or `references/slash-commands.md` |
-| Full setting catalogue | `references/configuration.md` |
-| What is in the system prompt? | `references/system-prompt.md`; how instructions layer onto it: `docs/INSTRUCTIONS.md` in a source checkout |
-| Which prompt is this session actually running? | `uagent` action `inspect`, topic `prompt` (base digest, active sections, overlay) |
-| Which built-in tools and arguments exist? | `uagent` action `inspect`, topic `tools`, or `references/tools.md` |
-| Which model routes are configured, and is a credential set? | `uagent` action `inspect`, topic `routes` |
+| What does this setting default to, and when does a change apply? | `uagent` action `inspect`, topic `config`, `name` set to its key or environment name |
+| Which settings exist? | `uagent` action `inspect`, topic `config`, no `name`: every setting with its key, environment name, type, default, purpose and where it is set |
+| Which flags exist? | `uagent --help`, or `inspect` topic `cli` |
+| Which slash commands exist? | `inspect` topic `commands`, or `/help` |
+| What is in the system prompt? | `uagent --show-system-prompt` (`--json` adds the sources); how instructions layer onto it: `docs/INSTRUCTIONS.md` in a source checkout |
+| Which prompt is this session actually running? | `inspect` topic `prompt` (base digest, active sections, overlay) |
+| Which built-in tools and arguments exist? | `inspect` topic `tools` |
+| Which model routes are configured, and is a credential set? | `inspect` topic `routes` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
-| What is a folder's panel, and how is it opened or limited? | `references/cli.md` (Panel), the `UAGENT_PANEL_*` rows of `references/configuration.md` |
-| What instructions do sessions and panels read? | `uagent` action `inspect`, topic `instructions` |
+| What is a folder's panel, and how is it opened or limited? | `uagent panel --help`, and the `UAGENT_PANEL_*` settings from `inspect` topic `config` |
+| What instructions do sessions and panels read? | `inspect` topic `instructions` |
 | Change instructions | `uagent` action `set_instructions` with `audience` (sessions or panel), `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
 
-`uagent` reports the installed binary, so it beats both these references
-and any recollection when the two disagree. The references are generated from
-the same registries at build time and carry a `manifest.json` naming the
-version they match.
+Do not load every reference; pick the one the question needs. Only
+`self-configuration.md` and `architecture.md` are written by hand; every other
+fact comes from the binary.
 
 ## Workflow
 
@@ -64,8 +63,8 @@ version they match.
   then what is saved for the project folder, then what is saved for all
   conversations, then built-in defaults.
 - Treat `UAGENT_API_KEY`, `OPENROUTER_API_KEY`, keys embedded in
-  `UAGENT_PROVIDERS`, web-search keys, and MCP credentials as secrets. The
-  configuration reference marks them 🔒.
+  `UAGENT_PROVIDERS`, web-search keys, and MCP credentials as secrets. `inspect`
+  reports them as set or unset and never shows the value.
 - Do not add secrets to a repository. Saved settings live in µAgent's own
   private `~/.uagent/config/settings.json`, never in a project.
 - `/model` and `/effort` choose for the conversation they are

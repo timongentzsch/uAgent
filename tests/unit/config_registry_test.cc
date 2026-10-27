@@ -15,7 +15,6 @@
 #include "include/app/self_description.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
-#include "include/cli/reference.h"
 #include "include/core/env.h"
 #include "include/core/runtime_config.h"
 #include "include/core/strings.h"
@@ -284,8 +283,6 @@ void TestSelfDescriptionSchemas() {
   for (const SlashCommandSpec& command : SlashCommandRegistry()) {
     CHECK(command_names.insert(command.name).second);
   }
-
-  CHECK(ReferenceManifest().find(kVersion) != std::string::npos);
 }
 
 // A mistyped command names its nearest neighbour, never a far-off guess.

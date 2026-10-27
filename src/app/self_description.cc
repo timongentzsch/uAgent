@@ -431,4 +431,23 @@ json ToolSurfaceJson() {
   return out;
 }
 
+json BuildProvenanceJson() {
+  const std::string schema_digest =
+      HashHex(JsonDump(json{{"config", ConfigSchemaJson()},
+                            {"cli", CliSchemaJson()},
+                            {"commands", CommandSchemaJson()}}));
+  const json surface = {{"schema", schema_digest},
+                        {"tools", HashHex(JsonDump(ToolSurfaceJson()))}};
+  json provenance = {
+      {"format", 1},
+      {"binary_version", kVersion},
+      {"prompt_digest", HashHex(JsonDump(PromptSurfaceJson()))},
+      {"surface_digest", HashHex(JsonDump(surface))},
+  };
+  // A deterministic release identity, not a host, path, timestamp or other
+  // value that can split equivalent cohorts or disclose local state.
+  provenance["build_id"] = HashHex(JsonDump(provenance));
+  return provenance;
+}
+
 }  // namespace uagent

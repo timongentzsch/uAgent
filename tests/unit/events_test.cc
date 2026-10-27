@@ -16,8 +16,8 @@
 
 #include "include/agent/agent.h"
 #include "include/app/runtime.h"
+#include "include/app/self_description.h"
 #include "include/cli/cli.h"
-#include "include/cli/reference.h"
 #include "include/core/activity.h"
 #include "include/core/config.h"
 #include "include/core/fs.h"
@@ -98,11 +98,10 @@ void TestActivityProjection() {
 }
 
 void TestObservabilityEvents() {
-  json manifest = ReferenceManifestJson();
   json provenance = BuildProvenanceJson();
   CHECK(JsonValue(provenance, "format", 0) == 1);
-  CHECK(provenance["binary_version"] == manifest["version"]);
-  CHECK(provenance["prompt_digest"] == manifest["prompt_digest"]);
+  CHECK(provenance["binary_version"] == kVersion);
+  CHECK(provenance["prompt_digest"] == HashHex(JsonDump(PromptSurfaceJson())));
   CHECK(JsonValue(provenance, "build_id", "").size() == 16);
 
   // The public_type strings are the --json-stream contract that external

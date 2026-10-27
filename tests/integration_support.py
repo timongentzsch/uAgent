@@ -629,16 +629,22 @@ def saved_settings(home, folder=None):
     return document["projects"].get(str(pathlib.Path(folder).resolve()), {})
 
 
-def setting_keys():
+def setting_keys(home, binary):
     """A setting's name in the settings file, by its name in the environment,
-    from the schema the build under test generated."""
-    references = pathlib.Path(__file__).resolve().parent.parent / "skills/uagent-config/references"
-    schema = references / "settings.schema.json"
+    from the schema the build under test writes beside the file. The binary
+    writes it when it loads a valid document, so a fresh home gets an empty one."""
+    path = settings_path(home)
+    schema = path.with_name("settings.schema.json")
+    if not schema.exists():
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"format": 3, "all": {}, "projects": {}}) + "\n")
+        run(home, base_env(home, "http://127.0.0.1:9"), "--show-system-prompt", binary=binary)
     properties = json.loads(schema.read_text())["definitions"]["scope"]["properties"]
     return {held["x-env"]: key for key, held in properties.items() if "x-env" in held}
 
 
-def save_settings(home, folder=None, **values):
+def save_settings(home, folder=None, *, binary, **values):
     """Saves settings from outside, as another process's change arrives:
     the document replaced in one step. Settings are named as the environment
     names them; any other name is a variable. None removes one."""
@@ -649,7 +655,7 @@ def save_settings(home, folder=None, **values):
     scope = document["all"]
     if folder is not None:
         scope = document["projects"].setdefault(str(pathlib.Path(folder).resolve()), {})
-    keys = setting_keys()
+    keys = setting_keys(home, binary)
     for name, value in values.items():
         held = scope if name in keys else scope.setdefault("variables", {})
         held.pop(keys.get(name, name), None)

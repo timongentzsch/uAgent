@@ -167,10 +167,8 @@ scripting. `uagent --help` lists every flag.
 - [Persistence](docs/PERSISTENCE.md)
 - [Accessibility](docs/ACCESSIBILITY.md)
 - [Security](SECURITY.md)
-- Reference, generated from the binary:
-  [flags](skills/uagent-config/references/cli.md),
-  [slash commands](skills/uagent-config/references/slash-commands.md),
-  [settings](skills/uagent-config/references/configuration.md)
+- Reference, read from the binary: `uagent --help` (flags), `/help` (slash
+  commands), `/config` (settings), `uagent inspect` through the agent
 - Internals: [Architecture](docs/ARCHITECTURE.md),
   [Instructions](docs/INSTRUCTIONS.md),
   [Prompt caching](docs/CACHING.md)

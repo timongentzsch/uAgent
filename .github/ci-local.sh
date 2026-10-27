@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs before a push what CI rejects and a macOS checkout does not show:
-# formatting, style, generated references, and GCC 13 with warnings as errors
+# formatting, style, and GCC 13 with warnings as errors
 # plus clang-tidy on the changed sources, inside the Ubuntu image CI uses.
 #
 #   .github/ci-local.sh [BASE]   # BASE defaults to origin/master
@@ -20,7 +20,7 @@ echo "== clang-format, cpplint, ruff"
 units=$(GITHUB_EVENT_NAME=pull_request CI_BASE_SHA=$base python3 .github/changes.py |
   sed -n 's/^tidy=//p')
 
-echo "== GCC 13 -Werror build, generated references, clang-tidy (ubuntu:24.04)"
+echo "== GCC 13 -Werror build, clang-tidy (ubuntu:24.04)"
 docker run --rm \
   -v "$root":/work/uagent:ro \
   -v uagent-ci-build:/work/build \
@@ -32,10 +32,6 @@ docker run --rm \
     cd /work/uagent
     cmake --preset ci-release -B /work/build/release >/dev/null
     cmake --build /work/build/release --parallel "$(nproc)" -- -k
-    rm -rf /tmp/references
-    /work/build/release/uagent --emit-reference /tmp/references
-    diff -ru /work/uagent/skills/uagent-config/references /tmp/references \
-      --exclude=self-configuration.md
     if [ -n "$UNITS" ]; then
       curl -LsSf https://astral.sh/uv/0.11.28/install.sh | sh >/dev/null 2>&1
       cmake --preset tidy -B /work/build/tidy >/dev/null

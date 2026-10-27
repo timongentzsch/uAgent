@@ -80,13 +80,6 @@ constexpr FlagSpec kFlags[] = {
      "pick a saved conversation to continue"},
     {"--version", FlagKind::kPrintVersion, nullptr, nullptr, nullptr,
      "print the installed version"},
-    // Build-time documentation generation; hidden because it is a maintainer
-    // tool, not a way to run the agent.
-    {.flag = "--emit-reference",
-     .kind = FlagKind::kEmitReference,
-     .value = "DIR",
-     .help = "",
-     .text = &Options::reference_dir},
     {"--trust-project-config", FlagKind::kToggle, &Options::trust_project,
      nullptr, nullptr, "trust this workspace's .mcp.json"},
     {"-h", FlagKind::kHelp, nullptr, nullptr, nullptr, ""},
@@ -191,10 +184,6 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
         break;
       case FlagKind::kPrintVersion:
         parsed.action = OptionsAction::kPrintVersion;
-        return parsed;
-      case FlagKind::kEmitReference:
-        parsed.options.reference_dir = std::move(value);
-        parsed.action = OptionsAction::kEmitReference;
         return parsed;
       case FlagKind::kHelp:
         parsed.action = OptionsAction::kHelp;

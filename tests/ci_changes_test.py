@@ -26,7 +26,7 @@ class ChangeSelectionTest(unittest.TestCase):
             "CMakeLists.txt",
             "tests/web_host.py",
             ".github/workflows/ci.yml",
-            "skills/uagent-config/references/system-prompt.md",
+            "skills/uagent-config/SKILL.md",
             "new-directory/file",
         ):
             with self.subTest(path=path):

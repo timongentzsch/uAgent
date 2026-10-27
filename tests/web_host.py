@@ -287,7 +287,7 @@ with (
         }
     # Saved, not exported: what the environment sets cannot be edited in
     # Settings, and the providers are edited there.
-    save_settings(home, UAGENT_PROVIDERS=json.dumps(providers))
+    save_settings(home, binary=args.binary, UAGENT_PROVIDERS=json.dumps(providers))
     with web_host(
         args.binary.resolve(),
         root,

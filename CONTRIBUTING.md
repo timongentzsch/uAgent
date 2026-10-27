@@ -25,13 +25,6 @@ Before a commit, run what CI checks on every change:
 git diff --check
 ```
 
-After changing a flag, slash command, setting or tool, regenerate the
-reference the `uagent-config` skill ships; CI fails when it is stale:
-
-```sh
-build/debug/uagent --emit-reference skills/uagent-config/references
-```
-
 Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
 -Wsign-conversion -Wshadow -Wold-style-cast`, and the presets treat warnings
 as errors. Make a narrowing or signedness change explicit where it happens
@@ -58,7 +51,7 @@ change; CI fails when it differs from a fresh `npm run notices`.
 [Testing](docs/TESTING.md#web-tests).
 
 A macOS build does not show what CI's Linux checks report: cpplint,
-clang-tidy, the generated references and a GCC 13 build with warnings as
+clang-tidy and a GCC 13 build with warnings as
 errors. `.github/ci-local.sh` runs them before a push, the compiler checks
 inside the Ubuntu image CI uses. It needs uv and Docker. The first run builds
 everything and later runs only what changed; clang-tidy reads the changed

@@ -286,7 +286,7 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
     return;
   }
   // Only settings the user actually influenced, unless one was named: the full
-  // schema belongs in the generated reference, not in a terminal dump.
+  // catalogue belongs to `uagent inspect config`, not in a terminal dump.
   bool named = !argument.empty();
   reply.Print("%sconfiguration%s\n", BOLD(), RST());
   for (const json& setting : settings) {

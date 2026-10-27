@@ -856,6 +856,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
     """Safe credential references reach a redacted prompt, even under --yolo."""
     save_settings(
         home,
+        binary=binary,
         LOCAL_PROXY_API_KEY="adjacent-integration-secret",
         UAGENT_PROVIDERS={
             "old": {"base_url": "https://old.example/v1", "api_key": "$LOCAL_PROXY_API_KEY"}
@@ -973,7 +974,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
     the same policy stated earlier: registration and approval share one
     predicate.
     """
-    save_settings(home, UAGENT_MAX_TOOL_CALLS=40)
+    save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=40)
 
     def refuse(_, body):
         names = function_names(body)
@@ -997,7 +998,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
 def test_self_configuration_commits_after_approval(root, home, *, binary):
     """An approved change is saved beside what was there and reports when it
     takes effect."""
-    save_settings(home, UAGENT_MAX_TOOL_CALLS=40, UNKNOWN_KEY="kept")
+    save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=40, UNKNOWN_KEY="kept")
 
     def request_change(_, __):
         return tool_call(
@@ -1043,8 +1044,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
 def test_config_export_and_import_round_trip(root, home, *, binary):
     """Everything saved leaves as one JSON document and comes back as one,
     checked like any other change; a refused document changes nothing."""
-    save_settings(home, UAGENT_MAX_STEPS=7, MY_KEY="kept")
-    save_settings(home, folder=root, UAGENT_MAX_TOOL_CALLS=40)
+    save_settings(home, binary=binary, UAGENT_MAX_STEPS=7, MY_KEY="kept")
+    save_settings(home, binary=binary, folder=root, UAGENT_MAX_TOOL_CALLS=40)
     env = base_env(home, "")
     exported = run(root, env, "config", "export", binary=binary)
     assert_true(exported.returncode == 0, exported.stderr)

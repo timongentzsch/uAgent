@@ -19,7 +19,6 @@ enum class OptionsAction {
   kRun,
   kHelp,
   kPrintVersion,
-  kEmitReference,
 };
 
 struct Options {
@@ -33,7 +32,6 @@ struct Options {
   bool resume_latest = false;
   bool resume_pick = false;
   std::string debug_path;
-  std::string reference_dir;
   std::string prompt;
   std::string control;
   std::vector<std::string> attach_paths;
@@ -50,9 +48,8 @@ struct Options {
   std::map<std::string, std::string> overrides;
 };
 
-// One table drives parsing, `--help` and the generated CLI reference, so a flag
-// cannot be accepted without being documented or documented without being
-// accepted.
+// One table drives parsing and `--help`, so a flag cannot be accepted without
+// being documented or documented without being accepted.
 enum class FlagKind {
   kToggle,       // sets a bool on Options
   kConfig,       // takes a value, forwarded to the config layer as `key`
@@ -63,7 +60,6 @@ enum class FlagKind {
   kControl,      // a native management JSON request; - reads stdin
   kAttach,       // takes a path, repeatable
   kPrintVersion,
-  kEmitReference,
   kHelp,
 };
 

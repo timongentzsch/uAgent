@@ -247,7 +247,6 @@ add_library(
   src/app/panel_history.cc
   src/app/panel_threads.cc
   src/cli/options.cc
-  src/cli/reference.cc
   src/app/runtime.cc
   src/app/self_description.cc
   src/app/artifact.cc

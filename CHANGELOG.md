@@ -81,6 +81,9 @@
   ended (about half an hour after a headless `panel -p` with one).
 - `uagent panel -p` prints the panel's last answer, not also what it said
   before a thread reported ("started a thread, waiting").
+- Web: a dialog's first open fades in its content, not an empty box
+  that its code fills in afterwards. Every dialog's code is loaded once
+  the app has settled, not only some of them.
 - Web: **search** replaces the command palette and the sidebar's filter.
   Ctrl+K (⌘K) opens it as a panel in the middle of the window, like
   Spotlight. It finds conversations by name, then the messages that hold

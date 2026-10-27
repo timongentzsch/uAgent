@@ -12,14 +12,7 @@ import { trackViewport } from "../shared/layout.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import { useResource } from "../shared/use-resource.ts";
 import { api, routes } from "../state/api.ts";
-import {
-  libraryModule,
-  instructionsDialog,
-  scheduledModule,
-  settingsDialog,
-  toolsDialog,
-  statisticsDialog,
-} from "./dialogs.ts";
+import * as dialogs from "./dialogs.ts";
 
 // Remembered per device, so the header's browser slot is right from the
 // first frame instead of appearing once the host answers.
@@ -66,19 +59,14 @@ export function useBoot({
     // the plain-to-markdown height wave across the first seconds and
     // fights the bottom pin). Marker-based chunks warm per text below.
     prefetchMarkdown();
-    // What a click opens, parsed once the shell has settled (the service
-    // worker already holds it), so a first open shows content, not a
-    // placeholder for its code.
+    // Every dialog and page a click opens, parsed once the shell has
+    // settled (the service worker already holds it), so a first open
+    // animates its content, not a placeholder for its code.
     const warm = setTimeout(
       () =>
-        [
-          settingsDialog,
-          libraryModule,
-          scheduledModule,
-          statisticsDialog,
-          toolsDialog,
-          instructionsDialog,
-        ].forEach((load) => preloadDeferred<never>(load).catch(() => {})),
+        Object.values(dialogs).forEach((load) =>
+          preloadDeferred<never>(load).catch(() => {}),
+        ),
       idlePreloadMs,
     );
     return () => clearTimeout(warm);

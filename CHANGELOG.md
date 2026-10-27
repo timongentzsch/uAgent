@@ -67,6 +67,10 @@
   ("Could not resolve host", "nodename nor servname provided", …) now ends
   with the sandbox's note, which says the network is closed. Before, only a
   refused write was explained, and a blocked `curl` read like a DNS outage.
+- A lead agent is no longer told to send every factual question to
+  subagents first. Models followed it in few runs, and its read-only `run`
+  makes answering itself cheap; fanout stays the way to split a question
+  with independent parts.
 - The `uagent` tool says it describes the running build, not the code in
   the workspace, which a model answering a question about the repository
   once mistook it for.

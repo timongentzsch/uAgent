@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // pair that emits one warning per worker.
 delete process.env.NO_COLOR;
 process.env.FORCE_COLOR = "0";
-import { showcaseUrl } from "./tests/showcase-url.js";
+import { devServerUrl } from "./tests/dev-server.js";
 export default defineConfig({
   testDir: "./tests",
   forbidOnly: !!process.env.CI,
@@ -28,10 +28,10 @@ export default defineConfig({
     screenshot: "only-on-failure",
     reducedMotion: "reduce",
   },
-  // The UI showcase (ui.html) is not part of the product build.
+  // render-count.spec.js loads the app from the dev server.
   webServer: {
-    command: `npx vite --port ${new URL(showcaseUrl).port} --strictPort --host 127.0.0.1`,
-    url: showcaseUrl,
+    command: `npx vite --port ${new URL(devServerUrl).port} --strictPort --host 127.0.0.1`,
+    url: devServerUrl,
     // A server already on the port may be another checkout's: fail, not reuse.
     reuseExistingServer: false,
   },
@@ -40,7 +40,7 @@ export default defineConfig({
     {
       name: "webkit",
       testMatch:
-        "**/{btw,guidance-queue,phone-layout,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,showcase,dismiss,history-anchor,scroll-restore,scroll-stick,panel,search}.spec.js",
+        "**/{btw,guidance-queue,phone-layout,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,panel,search}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

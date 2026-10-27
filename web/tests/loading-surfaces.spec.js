@@ -2,7 +2,6 @@ import {
   test,
   expect,
   online,
-  withoutServiceWorker,
   headerAction,
   selectProbeModel,
   startInFolder,
@@ -117,20 +116,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   page,
   host: fixture,
 }, testInfo) => {
-  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  // Held from the start: the app loads this code by itself two seconds in,
-  // and the loading state below is only there to see while it is held.
-  const { promise: settingsGate, resolve: releaseSettings } =
-    Promise.withResolvers();
-  // The dialog's chunk; settings-nav-* and settings-scopes-* belong to the shell and must load.
-  await page.route(
-    /\/assets\/settings-(?!nav-|scopes-)[^/]+\.js$/,
-    async (route) => {
-      await settingsGate;
-      await route.continue();
-    },
-  );
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
@@ -256,38 +242,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(settings).toBeVisible();
   await expect(
-    settings.getByRole("status", { name: "Loading settings…" }),
-  ).toHaveAttribute("aria-busy", "true");
-  await expect(
     settings.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeFocused();
-  // The skeleton can report a mid-growth box on the opening frames
-  // (identical DOM measures 394 then settles at 572), so snapshot it
-  // once two consecutive frames agree instead of sampling one frame.
-  let skeletonLast = -1;
-  await expect
-    .poll(async () => {
-      const height = (await settings.boundingBox())?.height ?? -1;
-      const settled =
-        skeletonLast >= 0 && Math.abs(height - skeletonLast) < 0.5;
-      skeletonLast = height;
-      return settled ? height : -1;
-    })
-    .toBeGreaterThan(0);
-  const settingsLoadingBox = await settings.boundingBox();
-  releaseSettings();
   // The first section loaded: what applies to all conversations.
   await expect(settings.getByText("Detail shown")).toBeVisible();
-  // The loaded form fills in over staged renders (chunk, then config
-  // data), so pin parity once the settled height matches instead of
-  // sampling a mid-render frame. The invariant is unchanged.
-  await expect
-    .poll(async () =>
-      Math.abs(
-        (await settings.boundingBox()).height - settingsLoadingBox.height,
-      ),
-    )
-    .toBeLessThan(6);
   await settings
     .locator(".settings-nav")
     .getByRole("button", { name: "This browser", exact: true })
@@ -463,7 +421,6 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   command,
 }) => {
   await selectProbeModel(command, session);
-  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
   await online(page);
@@ -534,11 +491,6 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
       );
     }),
   ).toBe(true);
-  const { promise: rawGate, resolve: releaseRaw } = Promise.withResolvers();
-  await page.route("**/assets/raw-*.js", async (route) => {
-    await rawGate;
-    await route.continue();
-  });
   const { promise: bodyGate, resolve: releaseRawBody } =
     Promise.withResolvers();
   await page.route("**/api/sessions/*?http=*", async (route) => {
@@ -550,12 +502,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     name: "HTTP request/response",
     exact: true,
   });
-  await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  // The eager dialog shell reserves geometry while unknown code loads.
-  // Once loaded, the real controls stay present while its body data loads.
-  await expect(raw.getByRole("status")).toBeVisible();
-  const rawLoadingBox = await raw.boundingBox();
-  releaseRaw();
+  // The real controls stay present while the body's data loads.
   await expect(
     raw
       .locator(".raw-body")
@@ -563,6 +510,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   ).toBeVisible();
   await expect(raw.locator(".raw-content")).toHaveCount(1);
   await expect(raw.locator(".raw-body")).toHaveCount(1);
+  const rawLoadingBox = await raw.boundingBox();
   releaseRawBody();
   await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
     '\n  "',
@@ -625,7 +573,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   session,
   host: fixture,
 }) => {
-  await withoutServiceWorker(page);
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
   ).json();
@@ -667,11 +614,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.route(`**/api/sessions/${session.id}`, (route) =>
     route.fulfill({ json: snapshot }),
   );
-  const { promise: modelGate, resolve: releaseModel } = Promise.withResolvers();
-  await page.route("**/assets/model-picker-*.js", async (route) => {
-    await modelGate;
-    await route.continue();
-  });
   let requests = 0;
   const { promise: outputGate, resolve: releaseOutput } =
     Promise.withResolvers();
@@ -816,40 +758,4 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await toggle.click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
-  await page
-    .getByRole("button", { name: "Model and effort", exact: true })
-    .click();
-  const picker = page.getByRole("dialog", {
-    name: "Model and effort",
-    exact: true,
-  });
-  await expect(picker.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  await expect(picker.locator(".field-row > .field")).toHaveCount(1);
-  await expect(
-    picker.getByRole("button", { name: "Apply", exact: true }),
-  ).toBeDisabled();
-  const loadingBox = await picker.boundingBox();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const theme of ["light", "dark"]) {
-    await page.evaluate((value) => {
-      document.documentElement.dataset.theme = value;
-    }, theme);
-    await page.setViewportSize({ width: 390, height: 600 });
-    await expect(picker.getByRole("status")).toHaveAccessibleName(
-      "Loading models…",
-    );
-    await expect(picker.locator(".placeholder select")).toHaveCount(1);
-  }
-  await page.evaluate(() => {
-    document.documentElement.dataset.theme = "light";
-  });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  releaseModel();
-  await expect(
-    picker.getByRole("combobox", { name: "Model", exact: true }),
-  ).toBeVisible();
-  const loadedBox = await picker.boundingBox();
-  expect(Math.abs(loadedBox.height - loadingBox.height)).toBeLessThan(3);
-  await page.keyboard.press("Escape");
 });

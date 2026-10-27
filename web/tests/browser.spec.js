@@ -289,6 +289,74 @@ test.describe("phone browser sheet", () => {
     ).toBe(true);
   });
 
+  test("a held touch lets go on cancel, blur and past the screen's edge", async ({
+    page,
+    session,
+  }) => {
+    const { touch } = await import("./rfb-fixture.js");
+    const { remote, dialog } = await openControlled(page, session);
+    const viewport = dialog.getByLabel("Browser viewport");
+    const canvas = dialog.locator(".browser-rfb canvas");
+    await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
+    const box = await canvas.boundingBox();
+    const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
+    const masks = () => remote.pointers.splice(0).map((p) => p.buttons);
+    remote.pointers.length = 0;
+
+    for (const end of ["pointercancel", "blur"]) {
+      await touch(viewport, "pointerdown", 2, ...at(0.3, 0.3));
+      await page.waitForTimeout(500);
+      if (end === "blur")
+        await page.evaluate(() => dispatchEvent(new Event("blur")));
+      else await touch(viewport, end, 2, ...at(0.3, 0.3));
+      await expect.poll(() => remote.pointers.at(-1)?.buttons).toBe(0);
+      expect(masks()).toEqual([1, 0]);
+    }
+
+    // A held drag that ends past the screen's edge still lets go, there.
+    await touch(viewport, "pointerdown", 4, ...at(0.5, 0.9));
+    await page.waitForTimeout(500);
+    const below = [box.x + box.width / 2, box.y + box.height + 40];
+    await touch(viewport, "pointermove", 4, ...below);
+    await touch(viewport, "pointerup", 4, ...below);
+    await expect.poll(() => remote.pointers.at(-1)?.buttons).toBe(0);
+    expect(remote.pointers.at(-1).y).toBe(remote.height - 1);
+    remote.pointers.length = 0;
+
+    // A tap off the letterboxed screen sends nothing.
+    const view = await viewport.boundingBox();
+    const outside = [view.x + view.width / 2, view.y + view.height - 4];
+    if (outside[1] > box.y + box.height) {
+      await touch(viewport, "pointerdown", 3, ...outside);
+      await touch(viewport, "pointerup", 3, ...outside);
+      await page.waitForTimeout(200);
+      expect(remote.pointers).toEqual([]);
+    }
+  });
+
+  test("the remote screen zooms and scrolls by buttons as well as gestures", async ({
+    page,
+    session,
+  }) => {
+    const { remote, dialog } = await openControlled(page, session);
+    const view = dialog.getByRole("group", { name: "View", exact: true });
+    await expect(view).toBeVisible();
+    const rfb = dialog.locator(".browser-rfb");
+    const width = async () => (await rfb.boundingBox()).width;
+    const before = await width();
+    await view.getByRole("button", { name: "Zoom in" }).click();
+    await expect.poll(width).toBeGreaterThan(before);
+    await view.getByRole("button", { name: "Zoom out" }).click();
+    await expect.poll(width).toBeCloseTo(before, 0);
+    remote.pointers.length = 0;
+    await view.getByRole("button", { name: "Scroll down" }).click();
+    // Three wheel-down notches (button 5, mask 16), each pressed and
+    // released.
+    await expect
+      .poll(() => remote.pointers.map((p) => p.buttons))
+      .toEqual([16, 0, 16, 0, 16, 0]);
+  });
+
   test("types live into Chrome with special keys and a sticky Ctrl", async ({
     page,
     session,

@@ -1,12 +1,10 @@
 import type { ComponentProps } from "preact";
-import type ModelPicker from "./model-picker.tsx";
+import ModelPicker from "./model-picker.tsx";
 import { Gauge, ChevronDown } from "lucide-preact";
-import { Deferred, DataText, updateChecked } from "./ui.tsx";
-import { ModelLoading } from "./loading.tsx";
+import { DataText, updateChecked } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import "./model-control.css";
 
-const modelPicker = () => import("./model-picker.tsx");
 function ModelControl(
   props: Omit<ComponentProps<typeof ModelPicker>, "close">,
 ) {
@@ -30,14 +28,7 @@ function ModelControl(
         </>
       }
     >
-      {(close) => (
-        <Deferred
-          load={modelPicker}
-          {...props}
-          close={close}
-          fallback={<ModelLoading close={close} defaults={!props.save} />}
-        />
-      )}
+      {(close) => <ModelPicker {...props} close={close} />}
     </SheetButton>
   );
 }

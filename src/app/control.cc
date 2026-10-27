@@ -10,7 +10,6 @@
 #include "include/app/library.h"
 #include "include/app/permissions.h"
 #include "include/app/schedule.h"
-#include "include/app/tool_categories.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
@@ -30,7 +29,6 @@ json ManagementControl(const json& request) {
   }
   if (kind == "schedule") return ScheduleControl(request);
   if (kind == "permission_rules") return PermissionRulesControl(request);
-  if (kind == "tool_categories") return ToolCategoriesControl(request);
   if (kind == "instructions") {
     // A person edits these directly; an agent asks through uagent.
     const std::string cwd = CanonicalCwd();

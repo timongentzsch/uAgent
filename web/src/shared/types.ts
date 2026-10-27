@@ -795,15 +795,6 @@ export interface ToolCatalogue {
   full_schema_bytes: number;
   tools: ToolCatalogueItem[];
 }
-interface ToolCategory {
-  id: string;
-  name: string;
-  created: number;
-}
-export interface ToolCategories {
-  categories: ToolCategory[];
-  assignments: Record<string, string>;
-}
 // One instruction file a person edits: for every conversation or a folder's
 // panel, yours or the project's.
 export interface InstructionFile {
@@ -835,7 +826,6 @@ export interface CommandResults {
   space: { spaces: Space[] };
   restart_host: { restarting: boolean };
   tools: ToolCatalogue;
-  tool_categories: ToolCategories;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
@@ -931,7 +921,6 @@ export interface CommandInputs {
     profile?: string;
     enabled?: boolean;
   };
-  tool_categories: { action: string; name?: string; category_id?: string };
   activity: {
     operation: string;
     activity_id?: number;

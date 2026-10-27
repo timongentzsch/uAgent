@@ -22,7 +22,6 @@
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
 #include "include/app/thread_link.h"
-#include "include/app/tool_categories.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
 #include "include/core/config_registry.h"
@@ -455,7 +454,7 @@ void TestRetrySafety() {
   CHECK(RemoteErrorCode(routed_error) == "slow");
 }
 
-void TestPermissionAndToolCategoryPolicy() {
+void TestPermissionPolicy() {
   TestWorkspace workspace("permission-policy");
   ApprovalMode approval;
   CHECK(ParseApprovalMode("ask", approval));
@@ -541,20 +540,6 @@ void TestPermissionAndToolCategoryPolicy() {
   CHECK(rules["rules"].size() == 1);
   rules = PermissionRulesControl({{"action", "delete"}, {"key", first}});
   CHECK(rules["rules"].empty());
-
-  json categories =
-      ToolCategoriesControl({{"action", "create"}, {"name", "Custom"}});
-  REQUIRE(categories.contains("categories"));
-  REQUIRE(categories["categories"].size() == 1);
-  const std::string category = JsonValue(categories["categories"][0], "id", "");
-  categories = ToolCategoriesControl({{"action", "assign"},
-                                      {"name", "write_file"},
-                                      {"category_id", category}});
-  CHECK(categories["assignments"]["write_file"] == category);
-  categories =
-      ToolCategoriesControl({{"action", "delete"}, {"category_id", category}});
-  CHECK(categories["categories"].empty());
-  CHECK(categories["assignments"].empty());
 }
 
 void TestAttributedUsageAccumulator() {

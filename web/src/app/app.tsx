@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
 import { command } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
-import { Modal, Deferred, Spinner, ErrorBoundary } from "../shared/ui.tsx";
+import { Modal, ErrorBoundary } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
@@ -44,14 +44,11 @@ import { useCommands } from "./use-commands.ts";
 import { folderOf } from "../shared/display.ts";
 import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
-import {
-  libraryModule,
-  pairing,
-  scheduledModule,
-  spotlightDialog,
-  shortcutsDialog,
-  filesPane,
-} from "./dialogs.ts";
+import Library from "../features/library/library.tsx";
+import Scheduled from "../features/scheduled/scheduled.tsx";
+import Pairing from "../features/pairing/pairing.tsx";
+import Files from "../features/files/files.tsx";
+import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
 // Own scroll restoration from the first paint. history restoration only
 // covers the document; the early opt-out in index.html (<head>, before any
@@ -458,12 +455,7 @@ function App() {
               updateBlocked={updateBlocked}
             />
             {authenticated === false ? (
-              <Deferred
-                load={pairing}
-                paired={refresh}
-                report={report}
-                fallback={<Spinner label="Loading connection form…" surface />}
-              />
+              <Pairing paired={refresh} report={report} />
             ) : (
               <>
                 {/* First stop for a keyboard: past the sessions list. The hash
@@ -531,42 +523,28 @@ function App() {
                         className="files-sheet"
                         close={() => setFilesOpen(false)}
                       >
-                        <Deferred
-                          key={session.id}
-                          load={filesPane}
-                          session={session}
-                        />
+                        <Files key={session.id} session={session} />
                       </Modal>
                     )}
-                    {page !== "chat" && (
-                      <Deferred
-                        key={
-                          page === "library" ? `library:${libraryKind}` : page
-                        }
-                        load={
-                          page === "library" ? libraryModule : scheduledModule
-                        }
+                    {page === "library" && (
+                      <Library
+                        key={libraryKind}
                         initialKind={libraryKind}
                         projects={projects}
                         cwd={session?.cwd || projects[0] || ""}
                         online={online}
                         version={managementVersion}
+                      />
+                    )}
+                    {page === "scheduled" && (
+                      <Scheduled
+                        projects={projects}
+                        cwd={session?.cwd || projects[0] || ""}
+                        online={online}
                         scheduled={catalogue.scheduled}
                         unread={unread}
                         choose={choose}
                         refresh={refresh}
-                        fallback={
-                          <div class="management">
-                            <Spinner
-                              label={
-                                page === "library"
-                                  ? "Loading library…"
-                                  : "Loading scheduled tasks…"
-                              }
-                              surface
-                            />
-                          </div>
-                        }
                       />
                     )}
                     <ChatPage
@@ -593,9 +571,8 @@ function App() {
                         filesOpen &&
                         !compact &&
                         session && (
-                          <Deferred
+                          <Files
                             key={session.id}
-                            load={filesPane}
                             session={session}
                             close={() => setFilesOpen(false)}
                           />
@@ -620,8 +597,7 @@ function App() {
                 close={() => setOverlay(null)}
               >
                 {overlay === "search" ? (
-                  <Deferred
-                    load={spotlightDialog}
+                  <Spotlight
                     sessions={listed}
                     commands={catalogue.commands || []}
                     place={session && folderOf(session)}
@@ -640,7 +616,7 @@ function App() {
                     actions={{ ...shortcutActions, search: undefined }}
                   />
                 ) : (
-                  <Deferred load={shortcutsDialog} />
+                  <ShortcutList />
                 )}
               </Modal>
             )}

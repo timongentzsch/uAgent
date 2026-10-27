@@ -3,22 +3,15 @@ import { ChevronLeft } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useDismiss } from "../../shared/dismiss.ts";
 import { usePhone } from "../../shared/layout.ts";
-import {
-  Button,
-  Deferred,
-  DialogHeader,
-  Group,
-  Row,
-} from "../../shared/ui.tsx";
+import { Button, DialogHeader, Group, Row } from "../../shared/ui.tsx";
 import { SettingsContext, type SettingsProps } from "./context.ts";
-import { SettingRowsLoading } from "./loading.tsx";
+import Configuration from "./configuration.tsx";
 import { McpServers } from "./mcp.tsx";
 import { DevicesPane } from "./panes/devices.tsx";
 import { DisplayPane } from "./panes/display.tsx";
 import { PermissionsPane } from "./panes/permissions.tsx";
 import { SettingsNav } from "./settings-nav.tsx";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
-const configuration = () => import("./configuration.tsx");
 
 // The shell: which scope is open, the list of scopes, and its page.
 export default function Settings(props: SettingsProps) {
@@ -102,15 +95,13 @@ export default function Settings(props: SettingsProps) {
           <p class="settings-scope">{describe(session?.cwd)}</p>
           {pages[current]}
           {(current === "user" || current === "project") && (
-            <Deferred
-              load={configuration}
+            <Configuration
               key={current + session?.cwd}
               scope={current}
               folder={session?.cwd}
               version={props.version}
               online={online}
               sessions={catalogue.sessions}
-              fallback={<SettingRowsLoading />}
             />
           )}
         </div>

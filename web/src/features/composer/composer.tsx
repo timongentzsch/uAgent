@@ -6,12 +6,10 @@ import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
 import {
   Button,
-  Deferred,
   Field,
   IconButton,
   Select,
   Input,
-  Spinner,
   DataText,
   updateChecked,
 } from "../../shared/ui.tsx";
@@ -50,7 +48,7 @@ import {
   ContextSummary,
   SessionSummary,
 } from "../../shared/session-summary.tsx";
-const decisionPanel = () => import("../../shared/decision.tsx");
+import Decision from "../../shared/decision.tsx";
 import {
   maxRecalledPrompts,
   maxRecalledPromptSessions,
@@ -302,8 +300,7 @@ function Composer({
         </section>
       ) : (
         pending && (
-          <Deferred
-            load={decisionPanel}
+          <Decision
             key={pending.id}
             pending={pending}
             session={session.id}
@@ -311,11 +308,6 @@ function Composer({
             act={act}
             online={online}
             report={report}
-            fallback={
-              <section class="decision">
-                <Spinner label="Loading decision…" surface />
-              </section>
-            }
           />
         )
       )}

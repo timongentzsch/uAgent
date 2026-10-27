@@ -283,9 +283,8 @@ before Submit.
 - The conversation menu has **Find in conversation**, **Fork conversation**,
   **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
   **Compact**, **Restart**, **Close conversation** and **Delete**. Tools
-  controls the active schema and groups tools into persistent custom
-  categories. Close a live runtime before deleting its history; project
-  files are unaffected.
+  controls the active schema. Close a live runtime before deleting its
+  history; project files are unaffected.
 
 ### The lead agent
 

@@ -97,4 +97,4 @@ meets.
 | `NO_COLOR` keeps attributes | `test_no_color_keeps_bold_italic_and_dim` in `tests/integration_ui.py` |
 | Reduced motion: the working row redraws once a second | `test_reduced_motion_redraws_the_working_row_once_a_second` in `tests/integration_ui.py` |
 | ASCII fallback | `test_non_utf8_locale_draws_only_ascii` in `tests/integration_ui.py` |
-| Web: no axe WCAG 2.2 AA violations in the component showcase, chat, decisions, ask, settings, the drawer, the Files pane and resize handles; keyboard menus, skip link, forced-colours switch, viewer scroll buttons; axe absent from `dist/` | `web/tests/a11y.spec.js` |
+| Web: no axe WCAG 2.2 AA violations in chat (both colour schemes), decisions, ask, settings, the drawer, the Files pane and resize handles; keyboard menus, skip link, forced-colours switch; axe absent from `dist/` | `web/tests/a11y.spec.js` |

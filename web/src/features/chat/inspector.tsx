@@ -6,7 +6,6 @@ import {
   ContextSummary,
   SessionSummary,
 } from "../../shared/session-summary.tsx";
-import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
 import { useDismiss } from "../../shared/dismiss.ts";
 import { duration } from "../../shared/duration.ts";
 import { useElapsed } from "../../shared/time.ts";
@@ -38,7 +37,6 @@ import { prependHistoryPage } from "../../state/history-page.ts";
 import {
   Button,
   cleanText,
-  Deferred,
   EmptyState,
   Field,
   LoadError,
@@ -53,6 +51,8 @@ import {
   ActivityStatus,
   withAgents,
 } from "../../shared/activity-status.tsx";
+import Raw from "./raw.tsx";
+import { StatisticsContent } from "./statistics.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 import { MessageActions } from "./message-actions.ts";
@@ -65,11 +65,6 @@ type Page = {
   stats?: { blockId?: string };
 };
 
-const statisticsDialog = () =>
-  import("./statistics.tsx").then((module) => ({
-    default: module.StatisticsContent,
-  }));
-const rawDialog = () => import("./raw.tsx");
 // A stable empty list: the history hook compares the newest block each render.
 const noBlocks: readonly { id: string }[] = [];
 
@@ -339,11 +334,7 @@ export default function Inspector({
             </Button>
           )}
           {page.raw ? (
-            <Deferred
-              load={rawDialog}
-              fallback={<Spinner label="Loading full body…" surface />}
-              {...page.raw}
-            />
+            <Raw {...page.raw} />
           ) : (
             detail && (
               <>
@@ -355,13 +346,7 @@ export default function Inspector({
                     not yet be included.
                   </p>
                 )}
-                <Deferred
-                  load={statisticsDialog}
-                  fallback={
-                    <StatisticsLoading
-                      unit={page.stats?.blockId ? "Turn" : undefined}
-                    />
-                  }
+                <StatisticsContent
                   state={childStateOf(detail)}
                   blockId={page.stats?.blockId}
                 />

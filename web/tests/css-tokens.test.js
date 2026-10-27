@@ -65,7 +65,6 @@ const SCALED =
 const SCALE_EXEMPT = new Set([
   "shared/markdown.css",
   "features/browser/browser.css",
-  "showcase.css",
 ]);
 // What may remain once var(...) references are removed: no length with a
 // unit, no bare line-height number (1 collapses an icon's box).

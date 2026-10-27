@@ -1,14 +1,12 @@
 import "./tools.css";
-import { useCallback, useMemo, useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type {
   CommandInputs,
   Session,
-  ToolCategories,
   ToolCatalogue,
   ToolCatalogueItem,
 } from "../../shared/types.ts";
 import {
-  Button,
   DataText,
   Input,
   LoadError,
@@ -16,7 +14,6 @@ import {
   Select,
 } from "../../shared/ui.tsx";
 import { command } from "../../state/api.ts";
-import { useAction } from "../../shared/use-action.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { capitalize } from "../../shared/display.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -68,35 +65,19 @@ export default function Tools({
   busy: boolean;
   changed: () => void;
 }) {
-  const [categories, setCategories] = useState<ToolCategories>({
-    categories: [],
-    assignments: {},
-  });
   const {
     value: catalogue,
-    error: toolError,
+    error,
     setValue: setCatalogue,
     setError,
   } = useResource<ToolCatalogue>(async () => {
-    const [response, categoryResponse] = await Promise.all([
-      command("tools", session, { operation: "catalog" }),
-      command("tool_categories", null, { action: "list" }),
-    ]);
-    if (response.pending || categoryResponse.pending)
+    const response = await command("tools", session, { operation: "catalog" });
+    if (response.pending)
       throw new Error("Tool settings are still loading. Try again shortly.");
-    // The categories are the host's, the same for every conversation.
-    setCategories(categoryResponse.result);
     return response.result;
   }, [session.id, session.generation]);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState("");
-  const [categoryName, setCategoryName] = useState("");
-  const {
-    run: saveCategories,
-    busy: categorySaving,
-    error: categoryError,
-  } = useAction();
-  const error = toolError ?? categoryError;
 
   const update = async (fields: CommandInputs["tools"]) => {
     setError(null);
@@ -114,26 +95,10 @@ export default function Tools({
     }
   };
 
-  const updateCategories = (fields: CommandInputs["tool_categories"]) =>
-    saveCategories(async () => {
-      const response = await command("tool_categories", null, fields);
-      if (response.pending)
-        throw new Error("Tool categories are still saving. Try again shortly.");
-      setCategories(response.result);
-    });
-
-  const categoryLabel = useCallback(
-    (id: string) =>
-      labels[id] ||
-      categories.categories.find((item) => item.id === id)?.name ||
-      id,
-    [categories.categories],
-  );
   const groups = useMemo(() => {
     const found = new Map<string, ToolCatalogueItem[]>();
     for (const tool of (catalogue ?? SAMPLE).tools) {
-      const category =
-        categories.assignments[tool.name] || tool.category || "workspace";
+      const category = tool.category || "workspace";
       if (
         !matches(
           query,
@@ -141,27 +106,19 @@ export default function Tools({
           tool.title,
           tool.description,
           tool.provider,
-          categoryLabel(category),
+          labels[category] || category,
         )
       )
         continue;
       if (!found.has(category)) found.set(category, []);
       found.get(category)!.push(tool);
     }
-    return [...found].sort(([a], [b]) => {
-      const position = (value: string) => {
-        const builtin = categoryOrder.indexOf(value);
-        if (builtin >= 0) return builtin;
-        const custom = categories.categories.findIndex(
-          (category) => category.id === value,
-        );
-        return (
-          categoryOrder.length + (custom >= 0 ? custom : categoryOrder.length)
-        );
-      };
-      return position(a) - position(b);
-    });
-  }, [catalogue, categories, categoryLabel, query]);
+    const position = (id: string) => {
+      const at = categoryOrder.indexOf(id);
+      return at < 0 ? categoryOrder.length : at;
+    };
+    return [...found].sort(([a], [b]) => position(a) - position(b));
+  }, [catalogue, query]);
 
   if (!catalogue && error) return <LoadError error={error} />;
   const shown = catalogue ?? SAMPLE;
@@ -202,75 +159,6 @@ export default function Tools({
         Changes apply between turns. Keeping a stable set improves prompt cache
         reuse.
       </p>
-      <details class="tool-categories">
-        <summary>Categories</summary>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const name = categoryName.trim();
-            if (!name) return;
-            updateCategories({ action: "create", name }).then((saved) => {
-              if (saved) setCategoryName("");
-            });
-          }}
-        >
-          <Input
-            aria-label="New tool category"
-            placeholder="New category"
-            value={categoryName}
-            disabled={!online || categorySaving}
-            onInput={(event) => setCategoryName(event.currentTarget.value)}
-          />
-          <Button
-            type="submit"
-            disabled={!online || categorySaving || !categoryName.trim()}
-          >
-            Add
-          </Button>
-        </form>
-        {categories.categories.map((category) => (
-          <form
-            class="tool-category"
-            key={`${category.id}:${category.name}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              const name = new FormData(event.currentTarget)
-                .get("name")
-                ?.toString()
-                .trim();
-              if (name)
-                updateCategories({
-                  action: "rename",
-                  category_id: category.id,
-                  name,
-                });
-            }}
-          >
-            <Input
-              name="name"
-              aria-label={`Name for ${category.name}`}
-              defaultValue={category.name}
-              disabled={!online || categorySaving}
-            />
-            <Button type="submit" disabled={!online || categorySaving}>
-              Rename
-            </Button>
-            <Button
-              type="button"
-              variant="quiet"
-              disabled={!online || categorySaving}
-              onClick={() =>
-                updateCategories({
-                  action: "delete",
-                  category_id: category.id,
-                })
-              }
-            >
-              Delete
-            </Button>
-          </form>
-        ))}
-      </details>
       {busy && (
         <p class="tools-busy" role="status">
           Finish the current turn before changing tools.
@@ -289,7 +177,7 @@ export default function Tools({
         {groups.map(([category, tools]) => (
           <section class="tool-group" key={category}>
             <h3>
-              <DataText>{categoryLabel(category)}</DataText>
+              <DataText>{labels[category] || category}</DataText>
             </h3>
             {tools.map((tool) => (
               <div
@@ -331,29 +219,6 @@ export default function Tools({
                     {tool.reason && <small class="muted">{tool.reason}</small>}
                   </span>
                 </label>
-                {categories.categories.length > 0 && (
-                  <Select
-                    aria-label={`Category for ${tool.title}`}
-                    value={categories.assignments[tool.name] || ""}
-                    disabled={!online || categorySaving}
-                    onChange={(event) =>
-                      updateCategories({
-                        action: "assign",
-                        name: tool.name,
-                        category_id: event.currentTarget.value,
-                      })
-                    }
-                  >
-                    <option value="">
-                      Default · {labels[tool.category] || tool.category}
-                    </option>
-                    {categories.categories.map((item) => (
-                      <option value={item.id} key={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
               </div>
             ))}
           </section>

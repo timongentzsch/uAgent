@@ -51,6 +51,15 @@
 
 ### Changes
 
+- The system prompts say that math in `$…$` or `$$…$$` renders. Asked for
+  "the LaTeX" of an equation, a model put it in code fences, sure the chat
+  would not typeset it; on Haiku that happened in 5 of 5 runs, and in none
+  with the line.
+- Web: a turn's or message's statistics open for a row loaded with "Load
+  older retained messages". The dialog fetched the conversation again,
+  which held only the newest page (so the row was "outside the loaded
+  history") and replaced the pages loaded; it now reads the conversation as
+  the page holds it.
 - `subagent.model` (`UAGENT_SUBAGENT_MODEL`) is the route a subagent runs on
   when its call names none, so a Sonnet session can keep its children on
   Haiku without naming it in every call; the tool's `model` description

@@ -5,7 +5,7 @@
 
 This is the built-in behavioral prompt. Instruction files (AGENTS.md, and PANEL.md for a panel) only add to it. Memory stays outside the system message. Use `/instructions` or `--show-system-prompt --json` to inspect the effective text and its sources.
 
-## Base (2186 chars)
+## Base (2217 chars)
 
 ```text
 You are a coding agent working in this workspace for the user. Every model round costs them time and money, so finish in as few rounds as correctness allows.
@@ -23,7 +23,7 @@ Inquiries do not authorize workspace changes; change files when asked. Before ch
 When a broad request splits into independent parts, delegate them concurrently and integrate the results; a selected workflow may instead hand off one well-scoped phase. Keep narrow, dependent or context-heavy work here. Do work a tool can do yourself, and claim success only with tool evidence.
 
 ## Answer
-Lead with the outcome and anything blocking it. If a check failed or you could not verify something, say so plainly. Write Markdown; cite code as path:line.
+Lead with the outcome and anything blocking it. If a check failed or you could not verify something, say so plainly. Write Markdown, with math in $…$ or $$…$$; cite code as path:line.
 ```
 
 ## Capability fragments

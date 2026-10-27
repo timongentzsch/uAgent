@@ -86,7 +86,7 @@ test("connection status distinguishes active retries from an offline stop", asyn
 });
 
 for (const width of [390, 1280]) {
-  test(`statistics at ${width}px share controls through code and data loading`, async ({
+  test(`statistics at ${width}px share controls through code loading`, async ({
     page,
     session,
   }) => {
@@ -95,10 +95,6 @@ for (const width of [390, 1280]) {
       await readFile(new URL("../dist/.vite/manifest.json", import.meta.url)),
     );
     const { promise: code, resolve: releaseCode } = Promise.withResolvers();
-    const { promise: data, resolve: releaseData } = Promise.withResolvers();
-    const { promise: dataRequested, resolve: reachedData } =
-      Promise.withResolvers();
-    let holdData = false;
     await page.route(
       `**/${manifest["src/features/chat/statistics.tsx"].file}`,
       async (route) => {
@@ -106,11 +102,9 @@ for (const width of [390, 1280]) {
         await route.continue();
       },
     );
+    // The open conversation's statistics read what the page holds: only
+    // the dialog's code is loaded when it opens.
     await page.route(`**/api/sessions/${session.id}`, async (route) => {
-      if (holdData) {
-        reachedData();
-        await data;
-      }
       const response = await route.fetch();
       const snapshot = await response.json();
       snapshot.state.view.blocks = [
@@ -129,7 +123,6 @@ for (const width of [390, 1280]) {
         name: /^Turn statistics: /,
       });
       await expect(trigger).toBeVisible();
-      holdData = true;
       await trigger.click();
       const dialog = page.getByRole("dialog", {
         name: "Turn statistics",
@@ -144,11 +137,6 @@ for (const width of [390, 1280]) {
       const shell = await geometry(dialog);
       const controls = await geometry(toolbar);
       releaseCode();
-      await dataRequested;
-      await expect(turn).toBeDisabled();
-      expect(await geometry(dialog)).toEqual(shell);
-      expect(await geometry(toolbar)).toEqual(controls);
-      releaseData();
       await expect(turn).toBeEnabled();
       await expect(dialog.locator(".stats").first()).toBeVisible();
       expect(await geometry(dialog)).toEqual(shell);
@@ -159,7 +147,6 @@ for (const width of [390, 1280]) {
       await expect(turn).toHaveAttribute("aria-pressed", "false");
     } finally {
       releaseCode();
-      releaseData();
     }
   });
 }

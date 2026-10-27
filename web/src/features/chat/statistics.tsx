@@ -15,21 +15,29 @@ import { presentMessages } from "../../shared/message-view.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
+// A conversation the page holds is read as it stands there, live and with
+// the older pages the person loaded; another one is fetched.
 export default function Statistics({
   modal,
+  held,
   loadSnapshot,
 }: {
   modal: Extract<StatisticsModal, { type: "statistics" }>;
+  held?: Snapshot;
   loadSnapshot: (id: string) => Promise<Snapshot>;
 }) {
   const {
-    value: snapshot,
+    value: fetched,
     error,
     retry,
     setValue,
-  } = useResource(() => loadSnapshot(modal.session_id), [modal.session_id]);
+  } = useResource(
+    () => (held ? Promise.resolve(held) : loadSnapshot(modal.session_id)),
+    [modal.session_id],
+  );
   // Another conversation's numbers never stand in while these load.
   useEffect(() => setValue(undefined), [modal.session_id]);
+  const snapshot = held || fetched;
   return snapshot ? (
     <StatisticsContent state={snapshot.state} blockId={modal.block_id} />
   ) : error ? (

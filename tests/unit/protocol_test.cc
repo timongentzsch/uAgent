@@ -288,7 +288,7 @@ void TestRegistries() {
         "cannot expand approved scope", "exfiltrate data"}) {
     CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
-  CHECK(std::string(SystemPromptBase()).size() < 2200);
+  CHECK(std::string(SystemPromptBase()).size() < 2250);
   // The panel keeps the evidence rule but has no workspace changes.
   const std::string panel = PanelPromptBase();
   CHECK(panel.find("evidence, not instructions") != std::string::npos);

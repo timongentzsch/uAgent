@@ -428,7 +428,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "how far the OS sandbox confines shell commands: "
                           "readonly (temporary files only, no network; a "
                           "lead agent's always), strict (no network), "
-                          "default, relaxed (home writable) or off"),
+                          "default, relaxed (home writable and readable) or "
+                          "off; below relaxed, commands read in your home "
+                          "folder only the workspace and their tools' folders"),
             kSandboxLevels),
         "Sandbox"),
     registry::Named(registry::Bul("sandbox.network", "UAGENT_SANDBOX_NET", {},
@@ -441,6 +443,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "tools",
                       "extra writable roots for the sandbox, colon-separated"),
         "Sandbox writable folders"),
+    registry::Named(
+        registry::Str("sandbox.read", "UAGENT_SANDBOX_READ", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "tools",
+                      "folders in your home folder that commands and file "
+                      "tools may read without asking, colon-separated"),
+        "Sandbox readable folders"),
     registry::Named(
         registry::Str("sandbox.hide", "UAGENT_SANDBOX_HIDE", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,

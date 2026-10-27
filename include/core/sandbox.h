@@ -39,6 +39,11 @@ struct SandboxPolicy {
   // HiddenPaths(), filled in when a wrapper is built: never read, written or
   // connected to.
   std::vector<std::string> hidden;
+  // The home folder's visible entries (~/Software, ~/Documents, ...) that no
+  // command may read, and the folders inside them it still may: the
+  // workspace, and what commands use there. Reads elsewhere stay open.
+  std::vector<std::string> unreadable;
+  std::vector<std::string> readable;
   bool allow_network = true;
   // The readonly level: commands may write only temporary files, so nothing
   // they do outlasts them. Said to the model when a write is refused.
@@ -71,6 +76,13 @@ struct SandboxInputs {
   // The readonly level: only the temporary roots and the terminal logs are
   // offered, whatever else is listed here.
   bool read_only = false;
+  // The home folder's entries not named with a dot, at a level that confines
+  // reads (readonly, strict, default); empty otherwise.
+  std::vector<std::string> home_entries;
+  // What stays readable inside them besides the workspace and the writable
+  // roots: what the environment points at, sandbox.read and
+  // kReadableHomePaths.
+  std::vector<std::string> read_roots;
   // The workspace already is a repository (its .git is a directory), so its
   // config and hooks exist and must not be rewritten; before `git init` they
   // cannot be denied without denying the init itself.
@@ -113,7 +125,8 @@ std::string SeatbeltProfile(const SandboxPolicy& policy);
 // words so that no quoting rule sits between the parent and the trampoline;
 // denied_writes is not carried because Landlock cannot express it. One
 // `hide=<path>` word follows per hidden path, then one `withhold=<path>` per
-// withheld one.
+// withheld one, one `unread=<path>` per unreadable and one `read=<path>` per
+// readable one.
 std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy);
 // Reads words written by EncodeSandboxPolicy. Reports how many it consumed so
 // the caller can find the command that follows. False leaves *policy
@@ -129,6 +142,10 @@ bool SandboxPathWithin(std::string_view path, std::string_view root);
 // True when a confined command may write `path`: it is a writable root or
 // lies beneath one.
 bool SandboxWritable(const SandboxPolicy& policy, std::string_view path);
+
+// True when a confined command may read `path`: it lies in none of
+// policy.unreadable, or in one of policy.readable.
+bool SandboxReadable(const SandboxPolicy& policy, std::string_view path);
 
 // What a confined command may write, in words, for a reader who met the limit
 // as a bare "Permission denied": the model after a failed command, the person

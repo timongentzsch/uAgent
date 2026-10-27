@@ -34,6 +34,8 @@ In every mode:
     instruction files in `~/.uagent`, and any `.mcp.json`;
   - reading any of those through the file tools, except the trust store and
     the instruction files, which hold no credential;
+  - reading, through the file tools, one of your folders that the sandbox
+    closes to commands (see **Reads** below);
   - the `uagent` tool's `configure` and `set_instructions` actions;
   - `run(sandbox=false)`.
 
@@ -160,24 +162,25 @@ Linux. The sandbox is on by default and is the same in every approval mode.
 One setting chooses how far it goes, `sandbox.level` in the settings file or
 `UAGENT_SANDBOX` in the environment:
 
-| Level | Writes | Network | Hidden stores |
-| --- | --- | --- | --- |
-| `readonly` | temporary files and the terminal logs only, never the workspace | none | yes |
-| `strict` | the roots below | none | yes |
-| `default` | the roots below | allowed | yes |
-| `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | allowed | yes |
-| `off` | unconfined | allowed | no |
+| Level | Writes | Reads | Network | Hidden stores |
+| --- | --- | --- | --- | --- |
+| `readonly` | temporary files and the terminal logs only, never the workspace | not your other folders | none | yes |
+| `strict` | the roots below | not your other folders | none | yes |
+| `default` | the roots below | not your other folders | allowed | yes |
+| `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | open | allowed | yes |
+| `off` | unconfined | open | allowed | no |
 
-Four more settings each adjust one thing and win over the level:
+Five more settings each adjust one thing and win over the level:
 
 | To | Setting | Environment |
 | --- | --- | --- |
 | allow or deny the network whatever the level | `sandbox.network` | `UAGENT_SANDBOX_NET=0` or `1` |
 | let commands write another folder | `sandbox.write` | `UAGENT_SANDBOX_WRITE=/path/a:/path/b` |
+| let commands and the file tools read another of your folders | `sandbox.read` | `UAGENT_SANDBOX_READ=~/Software/other` |
 | hide more paths from commands and the file tools | `sandbox.hide` | `UAGENT_SANDBOX_HIDE=~/.config/mycloud:/path/b` |
 | show a path that is hidden by default | `sandbox.reveal` | `UAGENT_SANDBOX_REVEAL=~/.aws` |
 
-Paths in `sandbox.hide` and `sandbox.reveal` are absolute or start with
+Paths in `sandbox.read`, `sandbox.hide` and `sandbox.reveal` are absolute or start with
 `~/`. All of these settings take effect at the next start of the
 conversation (`/restart`). `/status` names the mechanism and `/context`
 lists every writable root. The agent can call `run(sandbox=false)` for one
@@ -215,9 +218,32 @@ workspace: the web's **New → Workspace…** takes a name and keeps a folder
 for it at `~/.uagent/spaces/<name>`, which is granted like any other
 workspace.
 
-**Reads** are not restricted on either platform, except for the hidden
-stores below. A confined `cat ~/.ssh/config` still pulls the file into model
-context.
+**Reads** are closed in your own folders, the visible entries of the home
+folder (`~/Software`, `~/Documents`, `~/Desktop`, `~/Library`…), below the
+`relaxed` level. A model that climbs out of its workspace into a sibling
+repository answers from code that is not the one it was asked about, and
+your documents are not its business. Inside those folders a command still
+reads:
+
+- the workspace;
+- the writable roots above;
+- `~/Library/Caches` and `~/Library/Developer` (`kReadableHomePaths` in
+  `include/core/defaults.h`);
+- the folders its environment points at: every `PATH` entry, the parent of
+  one named `bin`, and any variable that names a folder (`GOPATH`,
+  `ANDROID_HOME`…), so a toolchain installed in `~/go` or `~/fvm` keeps
+  working;
+- uAgent's own folders and its skill folders;
+- the folders `sandbox.read` adds.
+
+Everything else stays readable: dot-folders such as `~/.config` and
+`~/.gitconfig`, which tools need, and everything outside the home folder. A
+confined `cat ~/.ssh/config` still pulls the file into model context. A
+refused command is told which folder closed and that `sandbox.read` opens
+one. The file tools ask a person before reading a closed folder, even under
+yolo or auto, and refuse it where nobody can answer, as in a subagent. On
+macOS a closed folder cannot be listed; on Linux, Landlock lists its names
+but refuses its files.
 
 **Hidden stores.** With the sandbox on, commands cannot read, write or
 connect to the sockets of these paths (those that exist), and the file tools

@@ -482,17 +482,35 @@ def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, h
         assert_true(any("changed after it was approved" in text for text in seen), (name, seen))
 
 
-def test_sandbox_reads_stay_open(root, home, *, binary):
-    """Reads are deliberately unrestricted, and the suite pins that.
-
-    A sandboxed `cat` of the config still reaches model context. Whoever
-    narrows this later should have to change a test that says so.
-    """
+def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, binary):
+    """The home folder's visible entries are the person's own folders: a
+    command reads none of them but the workspace, and a file tool asks a
+    person, refusing where nobody can answer. Dot-folders and everything
+    outside the home folder stay readable, and sandbox.read opens a folder."""
     require_sandbox(root, home, binary=binary)
-    secret = home / "readable.txt"
-    secret.write_text("read-me-marker\n")
-    output = tool_output(root, sandbox_env(home, ""), f"cat {secret}", binary=binary)
-    assert_true("read-me-marker" in output, f"a sandboxed command could not read: {output}")
+    sibling = home / "Projects" / "other" / "notes.txt"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_text("marker-notes.txt\n")
+    tool_state = home / ".config" / "tool" / "settings.txt"
+    tool_state.parent.mkdir(parents=True)
+    tool_state.write_text("marker-settings.txt\n")
+    outside = root / "outside.txt"
+    outside.write_text("marker-outside.txt\n")
+    env = sandbox_env(home, "")
+    output = tool_output(root, env, f"cat {sibling}", binary=binary)
+    assert_true("marker-notes.txt" not in output, f"a command read {sibling}: {output}")
+    assert_true("sandbox.read" in output, f"the refusal did not say what opens it: {output}")
+    for open_path in (tool_state, outside):
+        assert_true(
+            readable(root, env, open_path, binary=binary), f"a command could not read {open_path}"
+        )
+    refused = file_tool_output(root, env, "read_path", {"path": str(sibling)}, binary=binary)
+    assert_true("marker-notes.txt" not in refused, f"read_path read {sibling} unasked")
+    assert_true("sandbox.read" in refused, refused)
+    opened = sandbox_env(home, "", UAGENT_SANDBOX_READ=str(home / "Projects" / "other"))
+    assert_true(readable(root, opened, sibling, binary=binary), "sandbox.read did not open it")
+    read = file_tool_output(root, opened, "read_path", {"path": str(sibling)}, binary=binary)
+    assert_true("marker-notes.txt" in read, read)
 
 
 def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):

@@ -11,6 +11,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/agent/path_policy.h"
 #include "include/agent/session_role.h"
 #include "include/app/panel.h"
 #include "include/app/permissions.h"
@@ -167,11 +168,14 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& root, const std::string& key,
                   bool mandatory, const json& review) {
   Verdict verdict;
-  // Reaching µAgent's own configuration is the reason a tool escalates by
-  // its path; a tool that escalates for its own reason names it.
-  std::string reason = tool.mandatory_reason.empty()
-                           ? "changes \u00b5Agent's own configuration"
-                           : tool.mandatory_reason;
+  // A tool escalates by its path for reaching µAgent's own configuration or
+  // one of the person's folders; a tool that escalates for its own reason
+  // names it.
+  std::string reason =
+      !tool.mandatory_reason.empty() ? tool.mandatory_reason
+      : UnreadablePath(JsonValue(arguments, "path", std::string()))
+          ? "reads your folders outside the workspace; sandbox.read opens one"
+          : "changes \u00b5Agent's own configuration";
   // What the automatic review made of it, when it was asked: its reasons
   // join the risks, and in words which bar it fell on, or why it could not
   // decide.

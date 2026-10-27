@@ -22,7 +22,8 @@ Tool UagentTool(SelfDescriptionProvider describe,
   auto shown = std::make_shared<std::pair<json, std::string>>();
   Tool tool = MakeTool(
       "uagent",
-      "Inspect this running build: status, cli, commands, config, tools, "
+      "Inspect this running build, not the code in the workspace: status, "
+      "cli, commands, config, tools, "
       "prompt, routes, or instructions (the AGENTS.md and PANEL.md "
       "files sessions and panels read at start). Secrets are never "
       "returned or accepted literally.",

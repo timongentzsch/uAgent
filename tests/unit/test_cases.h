@@ -88,6 +88,7 @@ namespace uagent {
   X(TestSandboxLevels)                            \
   X(TestSandboxWatch)                             \
   X(TestSandboxRendering)                         \
+  X(TestSandboxReads)                             \
   X(TestSandboxTrampolineArgs)                    \
   X(TestSandboxHiddenPaths)                       \
   X(TestSandboxProbe)                             \

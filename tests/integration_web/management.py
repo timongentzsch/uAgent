@@ -15,6 +15,7 @@ from integration_support import (
     tool_results,
     user_texts,
     wait_until,
+    write_session,
 )
 from web_support import web_host
 
@@ -177,6 +178,35 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
                 not client.json("/api/sessions?refresh=1")[1]["sessions"],
                 "deleted draft resurrected on restart",
             )
+
+
+def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
+    """Deleting a conversation removes what sits beside it and what it
+    delegated to a subagent, which is never listed alone. A background agent
+    it started is a conversation of its own and stays."""
+    said = [{"role": "user", "content": "hi"}]
+    lead = write_session(home, "lead", said, cwd=root)
+    owner = str(lead.resolve())
+    subagent = write_session(home, "sub", said, cwd=root, delegation={"parent_session": owner})
+    background = write_session(
+        home,
+        "background",
+        said,
+        cwd=root,
+        kind="thread",
+        delegation={"parent_session": owner, "lifetime": "thread"},
+    )
+    (lead.parent / "lead.json.pinned").write_text("{}")
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            sessions = client.json("/api/sessions")[1]["sessions"]
+            saved = next(item for item in sessions if item.get("title") == "lead")
+            client.command("delete", saved)
+    left = sorted(path.name for path in lead.parent.iterdir())
+    assert_true(not lead.exists() and not subagent.exists(), left)
+    assert_true(not any(name.startswith("lead.json.") for name in left), left)
+    assert_true(background.exists(), left)
 
 
 def test_web_immediate_message_model_control_and_receipts(root, home, *, binary):

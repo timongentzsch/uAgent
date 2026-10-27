@@ -218,9 +218,9 @@ workspace: the web's **New → Workspace…** takes a name and keeps a folder
 for it at `~/.uagent/spaces/<name>`, which is granted like any other
 workspace.
 
-**Reads** are closed in your own folders, the visible entries of the home
-folder (`~/Software`, `~/Documents`, `~/Desktop`, `~/Library`…), below the
-`relaxed` level. A model that climbs out of its workspace into a sibling
+**Reads** are closed in your own folders, below the `relaxed` level: the
+visible entries of the home folder (`~/Software`, `~/Documents`, `~/Desktop`,
+`~/Library`…) and the workspaces in `~/.uagent/spaces`. A model that climbs out of its workspace into a sibling
 repository answers from code that is not the one it was asked about, and
 your documents are not its business. Inside those folders a command still
 reads:
@@ -233,7 +233,7 @@ reads:
   one named `bin`, and any variable that names a folder (`GOPATH`,
   `ANDROID_HOME`…), so a toolchain installed in `~/go` or `~/fvm` keeps
   working;
-- uAgent's own folders and its skill folders;
+- the skill folders;
 - the folders `sandbox.read` adds.
 
 Everything else stays readable: dot-folders such as `~/.config` and

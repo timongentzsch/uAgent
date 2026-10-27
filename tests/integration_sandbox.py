@@ -483,14 +483,18 @@ def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, h
 
 
 def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, binary):
-    """The home folder's visible entries are the person's own folders: a
-    command reads none of them but the workspace, and a file tool asks a
+    """The home folder's visible entries and the workspaces in
+    ~/.uagent/spaces are the person's own folders: a command reads none of
+    them but the workspace, and a file tool asks a
     person, refusing where nobody can answer. Dot-folders and everything
     outside the home folder stay readable, and sandbox.read opens a folder."""
     require_sandbox(root, home, binary=binary)
     sibling = home / "Projects" / "other" / "notes.txt"
     sibling.parent.mkdir(parents=True)
     sibling.write_text("marker-notes.txt\n")
+    space = home / ".uagent" / "spaces" / "other" / "plan.txt"
+    space.parent.mkdir(parents=True)
+    space.write_text("marker-plan.txt\n")
     tool_state = home / ".config" / "tool" / "settings.txt"
     tool_state.parent.mkdir(parents=True)
     tool_state.write_text("marker-settings.txt\n")
@@ -500,6 +504,7 @@ def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, bina
     output = tool_output(root, env, f"cat {sibling}", binary=binary)
     assert_true("marker-notes.txt" not in output, f"a command read {sibling}: {output}")
     assert_true("sandbox.read" in output, f"the refusal did not say what opens it: {output}")
+    assert_true(not readable(root, env, space, binary=binary), f"a command read {space}")
     for open_path in (tool_state, outside):
         assert_true(
             readable(root, env, open_path, binary=binary), f"a command could not read {open_path}"

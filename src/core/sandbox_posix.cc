@@ -264,11 +264,12 @@ SandboxLevel SandboxSupported() {
 
 namespace {
 
-// The person's own folders are the visible entries of the home folder. Open
-// inside them: uAgent's own folders, sandbox.read, kReadableHomePaths, and the
-// folders the environment points a command at -- its PATH, and a variable
-// naming a folder (GOPATH, ANDROID_HOME, ...), where a bin folder brings its
-// parent, which holds the rest of its tool.
+// The person's own folders are the visible entries of the home folder and
+// the workspaces kept in ~/.uagent/spaces. Open inside them: the skill
+// folders, sandbox.read, kReadableHomePaths, and the folders the environment
+// points a command at -- its PATH, and a variable naming a folder (GOPATH,
+// ANDROID_HOME, ...), where a bin folder brings its parent, which holds the
+// rest of its tool.
 void CollectReads(SandboxInputs* inputs) {
   namespace fs = std::filesystem;
   auto canonical = [](const std::string& path) {
@@ -276,14 +277,16 @@ void CollectReads(SandboxInputs* inputs) {
   };
   const std::string home = canonical(UserHome());
   if (home.empty()) return;
-  std::error_code error;
-  for (fs::directory_iterator entry(home, error), end; !error && entry != end;
-       entry.increment(error)) {
-    if (!entry->path().filename().string().starts_with(".")) {
-      inputs->home_entries.push_back(canonical(entry->path().string()));
+  for (const std::string& folder : {home, UagentDir(kSpacesDir)}) {
+    std::error_code error;
+    for (fs::directory_iterator entry(folder, error), end;
+         !error && entry != end; entry.increment(error)) {
+      if (!entry->path().filename().string().starts_with(".")) {
+        inputs->home_entries.push_back(canonical(entry->path().string()));
+      }
     }
   }
-  std::vector<std::string> open = {canonical(GlobalBase())};
+  std::vector<std::string> open;
   for (const fs::path& skills : SkillSearchPath(CanonicalCwd())) {
     open.push_back(canonical(skills.string()));
   }

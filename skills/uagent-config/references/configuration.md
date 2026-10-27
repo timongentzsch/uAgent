@@ -84,9 +84,10 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | --- | --- | --- | --- | --- | --- |
 | `tools.resultChars` | `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
 | `tools.readFileLines` | `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
-| `sandbox.level` | `UAGENT_SANDBOX` | string | `default` | restart-required | how far the OS sandbox confines shell commands: readonly (temporary files only, no network; a lead agent's always), strict (no network), default, relaxed (home writable) or off |
+| `sandbox.level` | `UAGENT_SANDBOX` | string | `default` | restart-required | how far the OS sandbox confines shell commands: readonly (temporary files only, no network; a lead agent's always), strict (no network), default, relaxed (home writable and readable) or off; below relaxed, commands read in your home folder only the workspace and their tools' folders |
 | `sandbox.network` | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
 | `sandbox.write` | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
+| `sandbox.read` | `UAGENT_SANDBOX_READ` | string | empty | restart-required | folders in your home folder that commands and file tools may read without asking, colon-separated |
 | `sandbox.hide` | `UAGENT_SANDBOX_HIDE` | string | empty | restart-required | more paths the sandbox hides from commands and file tools, colon-separated |
 | `sandbox.hideEnv` | `UAGENT_SANDBOX_HIDE_ENV` | string | empty | next-user-turn | more environment variables withheld from commands, MCP servers and delegated agents, comma-separated |
 | `sandbox.reveal` | `UAGENT_SANDBOX_REVEAL` | string | empty | restart-required | paths hidden by default that commands and file tools may read, colon-separated |

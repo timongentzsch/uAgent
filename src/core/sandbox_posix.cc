@@ -27,8 +27,10 @@
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
+#include "include/core/platform.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
+#include "include/core/skills.h"
 #include "include/core/strings.h"
 
 // Everything that has to ask the host what it can enforce, and the Linux
@@ -65,8 +67,9 @@ constexpr uint32_t kRulePathBeneath = 1;
 // Read, directory-read and execute are deliberately absent: an access right
 // left out of handled_access_fs is never checked, which leaves reads exactly as
 // unrestricted as the macOS profile's (allow default) leaves them -- except
-// under a hidden path, below. It also keeps every rule below grantable, since
-// allowed_access must be a subset of what the ruleset handles.
+// under a hidden or unreadable path, below. It also keeps every rule below
+// grantable, since allowed_access must be a subset of what the ruleset
+// handles.
 constexpr uint64_t kWriteAccess = (1ULL << 1) |   // WRITE_FILE
                                   (1ULL << 4) |   // REMOVE_DIR
                                   (1ULL << 5) |   // REMOVE_FILE
@@ -85,9 +88,9 @@ constexpr uint64_t kAccessTruncate = 1ULL << 14;
 // IOCTL_DEV (bit 15) is never handled: the tty ioctls an interactive command
 // issues are not writes to confine, and handling the bit would break them.
 // Reading a file, and from ABI 9 connecting to a unix socket, are handled
-// only to hide paths, and granted everywhere else. Listing stays unhandled:
-// a name is not a secret, and handling it would make every ancestor of a
-// hidden path unlistable.
+// only to hide or close paths, and granted everywhere else. Listing stays
+// unhandled: a name is not a secret, and handling it would make every ancestor
+// of a hidden path unlistable.
 constexpr uint64_t kAccessReadFile = 1ULL << 2;
 constexpr uint64_t kAccessResolveUnix = 1ULL << 16;
 // The rights a rule on a non-directory may carry: EXECUTE, WRITE_FILE,
@@ -183,13 +186,14 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
   if (!policy.allow_network && abi < 4) return Fatal("network confinement");
 
   // Reading, and from ABI 9 connecting to a unix socket, are handled only to
-  // hide paths: granted everywhere except beneath them.
-  const uint64_t hides =
-      policy.hidden.empty()
+  // close paths: granted everywhere except beneath a hidden or unreadable
+  // one, and again inside the readable folders of an unreadable one.
+  const uint64_t reads =
+      policy.hidden.empty() && policy.unreadable.empty()
           ? 0
           : kAccessReadFile | (abi >= 9 ? kAccessResolveUnix : 0);
   RulesetAttr attr{};
-  attr.handled_access_fs = HandledFsAccess(abi) | hides;
+  attr.handled_access_fs = HandledFsAccess(abi) | reads;
   if (!policy.allow_network) {
     attr.handled_access_net = kAccessBindTcp | kAccessConnectTcp;
   }
@@ -212,8 +216,16 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
       return false;
     }
   }
-  if (hides && !AddRulesExcept(ruleset.Get(), "/", hides, policy.hidden)) {
-    return false;
+  if (reads) {
+    std::vector<std::string> closed = policy.hidden;
+    closed.insert(closed.end(), policy.unreadable.begin(),
+                  policy.unreadable.end());
+    if (!AddRulesExcept(ruleset.Get(), "/", reads, closed)) return false;
+    for (const std::string& open : policy.readable) {
+      if (!AddRulesExcept(ruleset.Get(), open, reads, policy.hidden)) {
+        return false;
+      }
+    }
   }
   // No net rule is ever added: handling the two TCP access rights with no rule
   // granting them is itself the deny, and an allow-network policy handles
@@ -251,6 +263,67 @@ SandboxLevel SandboxSupported() {
 }
 
 namespace {
+
+// The person's own folders are the visible entries of the home folder and
+// the workspaces kept in ~/.uagent/spaces. Open inside them: the skill
+// folders, sandbox.read, kReadableHomePaths, and the folders the environment
+// points a command at -- its PATH, and a variable naming a folder (GOPATH,
+// ANDROID_HOME, ...), where a bin folder brings its parent, which holds the
+// rest of its tool.
+void CollectReads(SandboxInputs* inputs) {
+  namespace fs = std::filesystem;
+  auto canonical = [](const std::string& path) {
+    return path.empty() ? std::string() : CanonicalAccessPath(path).string();
+  };
+  const std::string home = canonical(UserHome());
+  if (home.empty()) return;
+  for (const std::string& folder : {home, UagentDir(kSpacesDir)}) {
+    std::error_code error;
+    for (fs::directory_iterator entry(folder, error), end;
+         !error && entry != end; entry.increment(error)) {
+      if (!entry->path().filename().string().starts_with(".")) {
+        inputs->home_entries.push_back(canonical(entry->path().string()));
+      }
+    }
+  }
+  std::vector<std::string> open;
+  for (const fs::path& skills : SkillSearchPath(CanonicalCwd())) {
+    open.push_back(canonical(skills.string()));
+  }
+  for (std::string_view path : kReadableHomePaths) {
+    open.push_back(canonical(home + "/" + std::string(path)));
+  }
+  for (const std::string& raw :
+       SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_READ")))) {
+    open.push_back(canonical(raw));
+  }
+  for (char** entry = ProcessEnvironment(); entry && *entry; ++entry) {
+    const std::string_view text(*entry);
+    const size_t equals = text.find('=');
+    const std::string_view key = text.substr(0, equals);
+    if (equals == std::string_view::npos || key == "PWD" || key == "OLDPWD" ||
+        key == "HOME") {
+      continue;
+    }
+    for (const std::string& raw :
+         SplitPathList(std::string(text.substr(equals + 1)))) {
+      std::error_code missing;
+      if (raw.empty() || raw.front() != '/' ||
+          !fs::is_directory(raw, missing)) {
+        continue;
+      }
+      fs::path folder = canonical(raw);
+      if (folder.filename() == "bin") folder = folder.parent_path();
+      open.push_back(folder.string());
+    }
+  }
+  // The home folder itself would open every entry.
+  for (std::string& path : open) {
+    if (!path.empty() && path != home && SandboxPathWithin(path, home)) {
+      inputs->read_roots.push_back(std::move(path));
+    }
+  }
+}
 
 // Every configured value the sandbox reads, resolved to the canonical absolute
 // paths seatbelt and Landlock both match on. macOS makes this mandatory rather
@@ -307,6 +380,7 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
     }
 #endif
   }
+  if (preset != SandboxPreset::kRelaxed) CollectReads(&inputs);
   return inputs;
 }
 
@@ -337,6 +411,8 @@ SandboxStatus InheritedStatus(const std::string& text) {
   status.policy.writable_roots = paths("roots");
   status.policy.denied_writes = paths("denied");
   status.policy.withheld = paths("withheld");
+  status.policy.unreadable = paths("unreadable");
+  status.policy.readable = paths("readable");
   status.policy.read_only = JsonValue(from, "read_only", false);
   return status;
 }
@@ -418,6 +494,8 @@ std::string SandboxInheritance() {
                    {"roots", status.policy.writable_roots},
                    {"denied", status.policy.denied_writes},
                    {"withheld", status.policy.withheld},
+                   {"unreadable", status.policy.unreadable},
+                   {"readable", status.policy.readable},
                    {"read_only", status.policy.read_only}});
 }
 

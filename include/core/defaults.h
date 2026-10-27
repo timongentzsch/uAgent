@@ -43,6 +43,10 @@ inline constexpr std::string_view kPackageCaches[] = {
 };
 // On macOS, the native cache folder as well (uv keeps using ~/.cache there).
 inline constexpr std::string_view kMacPackageCaches[] = {"Library/Caches"};
+// Folders of the home folder's visible entries that commands still read at a
+// level that confines reads: macOS's caches and its developer tools' state.
+inline constexpr std::string_view kReadableHomePaths[] = {"Library/Caches",
+                                                          "Library/Developer"};
 
 // Markers a tool result carries for the model, which the transcript view,
 // compaction and the memory extractor later find by their opening. Each is

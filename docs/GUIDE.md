@@ -158,9 +158,12 @@ Two separate mechanisms keep a turn in bounds.
   asks nobody. A few actions always ask, such as changing µAgent's own
   settings.
 - **The sandbox** decides what a command can touch, whatever the approval
-  mode: it writes only inside the folder and cannot read your saved logins.
-  `sandbox.level` sets it to `strict`, `default`, `relaxed` or `off`. A
-  command that fails on a path outside the folder is the sandbox working.
+  mode: it writes only inside the folder, cannot read your saved logins, and
+  reads none of your other folders in the home folder (another repository,
+  `~/Documents`), while the tools' own dot-folders stay readable.
+  `sandbox.read` opens a folder. `sandbox.level` sets it to `strict`,
+  `default`, `relaxed` or `off`. A command that fails on a path outside the
+  folder is the sandbox working.
 
 **Auto approval** asks a *decision model*, a model that answers questions
 with probabilities (OpenRouter serves `~typesafe/jev-latest` and

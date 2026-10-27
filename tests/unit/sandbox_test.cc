@@ -340,6 +340,72 @@ void TestSandboxRendering() {
   CHECK(bounded.size() <= kSeatbeltProfileLimit);
 }
 
+// The person's own folders, the home folder's visible entries, close to
+// reads, except the workspace and what commands use in them; dot-folders and
+// everything outside the home folder stay open.
+void TestSandboxReads() {
+  using Paths = std::vector<std::string>;
+  SandboxInputs inputs = BaseInputs();
+  inputs.workspace = "/home/u/Software/work";
+  inputs.home_entries = {"/home/u/Software", "/home/u/Documents", "/home/u/go",
+                         "/home/u/Library"};
+  inputs.read_roots = {"/home/u/go", "/home/u/Library/Caches"};
+  SandboxPolicy policy = BuildSandboxPolicy(inputs).policy;
+  CHECK(policy.unreadable ==
+        Paths({"/home/u/Documents", "/home/u/Library", "/home/u/Software"}));
+  CHECK(policy.readable ==
+        Paths({"/home/u/Library/Caches", "/home/u/Software/work"}));
+  CHECK(SandboxReadable(policy, "/home/u/Software/work/src/a.cc"));
+  CHECK(!SandboxReadable(policy, "/home/u/Software/other/a.cc"));
+  CHECK(!SandboxReadable(policy, "/home/u/Documents/notes.md"));
+  CHECK(SandboxReadable(policy, "/home/u/.gitconfig"));
+  CHECK(SandboxReadable(policy, "/home/u/go/pkg/mod/x.go"));
+  CHECK(SandboxReadable(policy, "/usr/include/stdio.h"));
+  // Said with the folder a command reaches for first, and how to open one.
+  const std::string note = SandboxWritesNote(policy, inputs.workspace);
+  CHECK(note.find("such as /home/u/Software (sandbox.read") !=
+        std::string::npos);
+
+  // The readonly level writes no workspace, and still reads it.
+  inputs.read_only = true;
+  CHECK(SandboxReadable(BuildSandboxPolicy(inputs).policy,
+                        "/home/u/Software/work/a.cc"));
+  inputs.read_only = false;
+
+  // Seatbelt takes the last matching rule: the folders close, the readable
+  // ones open again inside them, and a hidden path closes after both.
+  policy.hidden = {"/home/u/Software/work/.env"};
+  const std::string profile = SeatbeltProfile(policy);
+  const size_t closed =
+      profile.find("(deny file-read-data (subpath \"/home/u/Software\"))");
+  const size_t opened = profile.find(
+      "(allow file-read-data (subpath \"/home/u/Software/work\"))");
+  const size_t hidden = profile.find(
+      "(deny file-read* file-write* (subpath \"/home/u/Software/work/.env\"))");
+  REQUIRE(closed != std::string::npos);
+  CHECK(closed < opened);
+  CHECK(opened < hidden);
+  CHECK(hidden != std::string::npos);
+
+  // Both lists reach the Linux trampoline and a delegated child.
+  std::vector<std::string> words = EncodeSandboxPolicy(policy);
+  words.emplace_back("--");
+  SandboxPolicy decoded;
+  size_t consumed = 0;
+  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
+  CHECK(decoded.unreadable == policy.unreadable);
+  CHECK(decoded.readable == policy.readable);
+  CHECK(words[consumed] == "--");
+
+  // A workspace that is the home folder opens every entry; so does a level
+  // that collects none (relaxed, off).
+  inputs.workspace = "/home/u";
+  CHECK(BuildSandboxPolicy(inputs).policy.unreadable.empty());
+  inputs.workspace = "/home/u/Software/work";
+  inputs.home_entries.clear();
+  CHECK(BuildSandboxPolicy(inputs).policy.unreadable.empty());
+}
+
 void TestSandboxTrampolineArgs() {
   SandboxPolicy policy;
   policy.writable_roots = {"/w", "/private/tmp"};

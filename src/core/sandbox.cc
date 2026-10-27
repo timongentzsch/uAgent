@@ -86,6 +86,33 @@ std::string DenyUnlinkAbove(const std::string& path) {
   return out + ")\n";
 }
 
+// The home folder's visible entries are closed to reads, except the folders
+// inside them commands need: the workspace, the writable roots and the read
+// roots. An entry inside one of those stays open whole.
+void ConfineReads(const SandboxInputs& inputs, SandboxPolicy* policy) {
+  std::vector<std::string> open = inputs.read_roots;
+  open.push_back(inputs.workspace);
+  open.insert(open.end(), policy->writable_roots.begin(),
+              policy->writable_roots.end());
+  for (const std::string& entry : inputs.home_entries) {
+    if (std::none_of(open.begin(), open.end(), [&](const std::string& root) {
+          return SandboxPathWithin(entry, root);
+        })) {
+      policy->unreadable.push_back(entry);
+    }
+  }
+  std::sort(policy->unreadable.begin(), policy->unreadable.end());
+  for (std::string& root : open) {
+    if (std::any_of(policy->unreadable.begin(), policy->unreadable.end(),
+                    [&](const std::string& closed) {
+                      return SandboxPathWithin(root, closed);
+                    })) {
+      policy->readable.push_back(std::move(root));
+    }
+  }
+  FoldNested(&policy->readable, {});
+}
+
 }  // namespace
 
 bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset) {
@@ -122,8 +149,19 @@ bool SandboxWritable(const SandboxPolicy& policy, std::string_view path) {
       [&](const std::string& root) { return SandboxPathWithin(path, root); });
 }
 
-std::string SandboxWritesNote(const SandboxPolicy& policy,
-                              std::string_view workspace) {
+bool SandboxReadable(const SandboxPolicy& policy, std::string_view path) {
+  auto within = [&](const std::vector<std::string>& roots) {
+    return std::any_of(
+        roots.begin(), roots.end(),
+        [&](const std::string& root) { return SandboxPathWithin(path, root); });
+  };
+  return !within(policy.unreadable) || within(policy.readable);
+}
+
+namespace {
+
+std::string WritesNote(const SandboxPolicy& policy,
+                       std::string_view workspace) {
   std::string roots;
   for (const std::string& root : policy.writable_roots) {
     roots += (roots.empty() ? "" : ", ") + root;
@@ -155,6 +193,28 @@ std::string SandboxWritesNote(const SandboxPolicy& policy,
                 : "");
 }
 
+}  // namespace
+
+std::string SandboxWritesNote(const SandboxPolicy& policy,
+                              std::string_view workspace) {
+  std::string note = WritesNote(policy, workspace);
+  if (!policy.unreadable.empty()) {
+    // The folder around the workspace is the one a command reaches for first.
+    auto around =
+        std::find_if(policy.unreadable.begin(), policy.unreadable.end(),
+                     [&](const std::string& closed) {
+                       return SandboxPathWithin(workspace, closed);
+                     });
+    note +=
+        "; in the home folder they read only the workspace and the folders "
+        "their tools use, not other folders such as " +
+        (around != policy.unreadable.end() ? *around
+                                           : policy.unreadable.front()) +
+        " (sandbox.read opens one)";
+  }
+  return note;
+}
+
 SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   SandboxPolicyResult result;
   result.policy.allow_network = inputs.allow_network;
@@ -173,6 +233,7 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
     Offer(inputs.terminal_logs, inputs, &accepted, &result.rejected);
     FoldNested(&accepted, result.policy.withheld);
     result.policy.writable_roots = std::move(accepted);
+    ConfineReads(inputs, &result.policy);
     return result;
   }
   for (const std::string& cache : inputs.tool_caches) {
@@ -204,6 +265,7 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
       result.policy.denied_writes.push_back(inputs.workspace + "/.git/hooks");
     }
   }
+  ConfineReads(inputs, &result.policy);
   return result;
 }
 
@@ -226,8 +288,16 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
     out += "(deny file-write* (subpath " + QuoteSbpl(denied) + "))\n";
   }
   if (!policy.allow_network) out += "(deny network*)\n";
-  // Last, so no writable root grants it back. A unix-socket connect is a
-  // network operation to seatbelt, hence the second rule; the rules match
+  // Reading a file, or listing a folder, is file-read-data; stat-ing it is
+  // not, so a path still resolves through a closed folder.
+  for (const std::string& closed : policy.unreadable) {
+    out += "(deny file-read-data (subpath " + QuoteSbpl(closed) + "))\n";
+  }
+  for (const std::string& open : policy.readable) {
+    out += "(allow file-read-data (subpath " + QuoteSbpl(open) + "))\n";
+  }
+  // Last, so no writable or readable root grants it back. A unix-socket connect
+  // is a network operation to seatbelt, hence the second rule; the rules match
   // paths, so no ancestor may be renamed out from under them either.
   for (const std::string& hidden : policy.hidden) {
     out += "(deny file-read* file-write* (subpath " + QuoteSbpl(hidden) +
@@ -241,7 +311,8 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
 std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
   std::vector<std::string> words;
   words.reserve(policy.writable_roots.size() + policy.hidden.size() +
-                policy.withheld.size() + 2);
+                policy.withheld.size() + policy.unreadable.size() +
+                policy.readable.size() + 2);
   words.emplace_back(policy.allow_network ? "net=1" : "net=0");
   words.emplace_back("roots=" + std::to_string(policy.writable_roots.size()));
   words.insert(words.end(), policy.writable_roots.begin(),
@@ -251,6 +322,12 @@ std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
   }
   for (const std::string& withheld : policy.withheld) {
     words.push_back("withhold=" + withheld);
+  }
+  for (const std::string& closed : policy.unreadable) {
+    words.push_back("unread=" + closed);
+  }
+  for (const std::string& open : policy.readable) {
+    words.push_back("read=" + open);
   }
   return words;
 }
@@ -280,11 +357,17 @@ bool DecodeSandboxPolicy(const std::vector<std::string>& words,
   size_t index = 2 + count;
   policy->hidden.clear();
   policy->withheld.clear();
+  policy->unreadable.clear();
+  policy->readable.clear();
   for (; index < words.size(); ++index) {
     if (words[index].starts_with("hide=/")) {
       policy->hidden.push_back(words[index].substr(5));
     } else if (words[index].starts_with("withhold=/")) {
       policy->withheld.push_back(words[index].substr(9));
+    } else if (words[index].starts_with("unread=/")) {
+      policy->unreadable.push_back(words[index].substr(7));
+    } else if (words[index].starts_with("read=/")) {
+      policy->readable.push_back(words[index].substr(5));
     } else {
       break;
     }

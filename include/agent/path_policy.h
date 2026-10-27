@@ -97,6 +97,15 @@ inline Tool::Run RefusingHidden(Tool::Run run) {
   };
 }
 
+// A path in one of the person's own folders that this session's commands may
+// not read (SandboxReadable): the file tools ask a person for it, as for
+// uAgent's own configuration, so no automatic approval reads it either.
+inline bool UnreadablePath(const std::string& path) {
+  const SandboxStatus& status = SandboxRuntime();
+  return !path.empty() && status.mode == SandboxMode::kEnforced &&
+         !SandboxReadable(status.policy, CanonicalAccessPath(path).string());
+}
+
 enum class PathAccess { kRead, kWrite };
 
 // Reads escalate as well as writes: the user and project config files and a
@@ -106,6 +115,9 @@ enum class PathAccess { kRead, kWrite };
 // what the agent may do next launch.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
+  if (access == PathAccess::kRead && UnreadablePath(path)) {
+    return ApprovalClass::kMandatoryHuman;
+  }
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||

@@ -4,6 +4,16 @@
 
 ### Upgrade notes
 
+- **Commands no longer read your other folders.** Below the `relaxed`
+  level, a command reads, of the home folder's visible entries (`~/Software`,
+  `~/Documents`, `~/Library`…) and the workspaces in `~/.uagent/spaces`, only
+  its own workspace and the folders its tools use (the `PATH` and other
+  folders the environment names, `~/Library/Caches`, the skill folders). Dot-folders and everything outside
+  the home folder stay readable. `read_path` and `grep` ask a person before
+  reading such a folder, even under yolo, and refuse it in a subagent. Add a
+  folder with the new `sandbox.read` setting. In a study, a cheap model's
+  subagents read sibling repositories in most investigations and answered
+  from the wrong code.
 - **Session ids changed.** The session and workspace hash now uses
   FNV-1a's standard offset basis; the old one was missing a digit. Each
   workspace's history folder and every session id therefore have a new
@@ -51,6 +61,9 @@
 
 ### Changes
 
+- The `uagent` tool says it describes the running build, not the code in
+  the workspace, which a model answering a question about the repository
+  once mistook it for.
 - On macOS the sandbox lets commands write the per-user temp folder too
   (`confstr(_CS_DARWIN_USER_TEMP_DIR)`), where `xcrun` caches: with
   `TMPDIR` pointing elsewhere, every `git` printed "couldn't create cache

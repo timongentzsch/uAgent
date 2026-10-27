@@ -64,8 +64,12 @@ bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
   }
   // Confined like a command, unless the entry says `"sandbox": false`. The
   // same refusal applies: a session told to confine that cannot does not spawn.
+  // Its reads stay open: you configured the server, and it lives wherever you
+  // keep it.
   std::vector<std::string> wrapper;
-  const SandboxStatus& sandbox = SandboxRuntime();
+  SandboxStatus sandbox = SandboxRuntime();
+  sandbox.policy.unreadable.clear();
+  sandbox.policy.readable.clear();
   if (JsonValue(conf, "sandbox", true)) {
     if (sandbox.mode == SandboxMode::kRefused) {
       error = "the sandbox cannot be enforced: " + sandbox.reason;

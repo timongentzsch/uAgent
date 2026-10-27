@@ -40,7 +40,8 @@ export function usePlaces({
 }) {
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
-  // A conversation in the workspace or folder typed into the dialog.
+  // A workspace typed into the dialog opens its lead agent; a folder, a new
+  // conversation.
   async function create(event: TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -49,7 +50,7 @@ export function usePlaces({
       const workspace = modal?.type === "new" && modal.place === "workspace";
       await startConversation(
         workspace ? "" : folder,
-        false,
+        workspace,
         workspace ? space.trim() : "",
       );
       setModal(null);

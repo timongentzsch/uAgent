@@ -61,6 +61,9 @@
 
 ### Changes
 
+- Web: **New → Workspace…** opens the workspace at its lead agent, not a
+  new conversation; for an existing workspace that is its lead agent's
+  conversation.
 - A lead agent no longer starts with a warning that its workspace is not
   writable, which at its readonly level it is not on purpose.
 - A command that fails a name lookup while the sandbox denies the network

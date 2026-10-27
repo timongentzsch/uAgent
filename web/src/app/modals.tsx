@@ -286,7 +286,9 @@ export default function Modals({
                 variant="primary"
                 disabled={busy || !online}
               >
-                Start conversation
+                {modal.place === "workspace"
+                  ? "Open workspace"
+                  : "Start conversation"}
               </Button>
             </Actions>
           </form>

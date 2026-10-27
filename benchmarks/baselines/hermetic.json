@@ -29,19 +29,6 @@
       "tool_result_chars": 384,
       "initial_schema_bytes": 11885
     },
-    "browser_outcome_rounds/control": {
-      "score": 6,
-      "checks_total": 6,
-      "model_requests": 3,
-      "tool_calls": 2,
-      "max_batch": 1,
-      "no_action_rounds": 0,
-      "compactions": 0,
-      "max_estimated_context_bytes": 16014,
-      "cumulative_estimated_context_bytes": 46824,
-      "tool_result_chars": 81,
-      "initial_schema_bytes": 11885
-    },
     "cache_hit_diagnosis/compacted": {
       "score": 10,
       "checks_total": 10,
@@ -105,19 +92,6 @@
       "max_estimated_context_bytes": 15600,
       "cumulative_estimated_context_bytes": 45585,
       "tool_result_chars": 150,
-      "initial_schema_bytes": 11885
-    },
-    "live_survey/control": {
-      "score": 5,
-      "checks_total": 5,
-      "model_requests": 2,
-      "tool_calls": 4,
-      "max_batch": 4,
-      "no_action_rounds": 0,
-      "compactions": 0,
-      "max_estimated_context_bytes": 16131,
-      "cumulative_estimated_context_bytes": 31050,
-      "tool_result_chars": 178,
       "initial_schema_bytes": 11885
     },
     "panel_fanout/control": {

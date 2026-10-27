@@ -3,12 +3,11 @@ name: CodeQL
 on:
   push:
     branches: [master]
-  pull_request:
   schedule:
     - cron: "17 3 * * 1"
 
 concurrency:
-  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  group: codeql-${{ github.ref }}
   cancel-in-progress: true
 
 permissions: {}
@@ -32,8 +31,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - id: changes
-        env:
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 .github/changes.py
       - name: Initialize CodeQL
         if: steps.changes.outputs.native == 'true'

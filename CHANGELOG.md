@@ -4,2205 +4,390 @@
 
 ### Upgrade notes
 
-- **Commands no longer read your other folders.** Below the `relaxed`
-  level, a command reads, of the home folder's visible entries (`~/Software`,
-  `~/Documents`, `~/Library`…), the workspaces in `~/.uagent/spaces` and the
-  workspace's neighbours (other projects in the container's `/workspaces`),
-  only its own workspace and the folders its tools use (the `PATH` and other
-  folders the environment names, `~/Library/Caches`, the skill folders). Dot-folders and everything outside
-  the home folder stay readable. `read_path` and `grep` ask a person before
-  reading such a folder, even under yolo, and refuse it in a subagent. Add a
-  folder with the new `sandbox.read` setting. In a study, a cheap model's
-  subagents read sibling repositories in most investigations and answered
-  from the wrong code.
-- **Session ids changed.** The session and workspace hash now uses
-  FNV-1a's standard offset basis; the old one was missing a digit. Each
-  workspace's history folder and every session id therefore have a new
-  name, and conversations saved before are not found.
-- **Threads saved before this version are ordinary conversations.** A
-  thread's link to its panel is now the same `delegation` role a subagent
-  has (with lifetime `thread`), and the old `thread` header is not read.
-- **No compatibility with older saved data.** uAgent is in development and
-  reads only what this version writes. A conversation saved without display
-  metadata, its context window, last prompt or delivered mail, or with
-  text-protocol tool results, is not loaded; turn statistics without direct
-  call counts read as zero; and the web shows only attachments recorded as
-  objects. A folder's panel is saved as `panel.json`, and one saved as
-  `coordinator.json` is not read.
-- **The panel's chat with members is gone.** A panel no longer adds members
-  or holds a group discussion: its moderator asks read-only subagents its
-  questions, in parallel, and keeps a plan of the steps. `add_member`,
-  `panel.chatTurns` (`UAGENT_PANEL_CHAT_TURNS`) and the "Name, …" addressing
-  are removed. Saved members are not converted.
-- **Names and formats from v1.4 and earlier are no longer read.** Before
-  upgrading from v1.4, rename a panel's `COORDINATOR.md` to `PANEL.md` (it
-  is otherwise ignored) and set `sandbox.level` instead of `sandbox.enabled`
-  (`true` is `default`, `false` is `off`); `UAGENT_SANDBOX` takes `strict`,
-  `default`, `relaxed` or `off`, no longer `0`/`1`/`true`/`false`, and an
-  unknown value means the default level, with the sandbox on. A settings
-  file in format 2 needs one run of v1.5 first, which rewrites it. Settings
-  named `coordinator.*` or `UAGENT_COORDINATOR_*`, and conversations saved
-  as kind `coordinator`, are from v1.3 and earlier.
-- **Settings and tasks from v1.3.1 or earlier are no longer read.** A
-  settings file in format 1, a conversation whose model and approval mode
-  were saved before they were kept as settings, and a scheduled task saved
-  with `"permissions": "prompt"` need one run of v1.4 or v1.5 first, which
-  rewrites them; otherwise the settings file is reported unreadable and the
-  others start from the defaults.
-- **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem`
-  (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are
-  removed; it was off by default and unused. The system message is the
-  built-in base followed by instruction files.
-- **A `-p` run is saved like any conversation**, so `-c -p` continues the
-  latest one in the folder. Scripts that ran `-p` many times now leave one
-  history entry per run.
-- **Headless `--json` reports this run's usage.** `usage` and `routes` no
-  longer include what a continued conversation (`-c`, `--resume`) spent
-  before; a conversation another runtime holds gets an error envelope.
+- **Commands no longer read your other folders.** Below the `relaxed` level, commands cannot read the home folder's visible entries, `~/.uagent/spaces` or neighbouring workspaces, only their own workspace and tool folders. Add folders with `sandbox.read`.
+- **Session ids changed.** The session and workspace hash was corrected, so conversations saved before are not found.
+- **Threads saved before this version are ordinary conversations.** The old `thread` header is not read.
+- **No compatibility with older saved data.** Conversations missing display metadata, context window, last prompt, delivered mail or object attachments are not loaded; a panel saved as `coordinator.json` is not read (use `panel.json`).
+- **The panel's chat with members is gone.** `add_member`, `panel.chatTurns` (`UAGENT_PANEL_CHAT_TURNS`) and "Name, ..." addressing are removed; the moderator asks read-only subagents instead. Saved members are not converted.
+- **Names and formats from v1.4 and earlier are no longer read.** Rename `COORDINATOR.md` to `PANEL.md`, set `sandbox.level` instead of `sandbox.enabled`, and note `UAGENT_SANDBOX` takes only `strict`, `default`, `relaxed` or `off`. A format 2 settings file needs one run of v1.5 first.
+- **Settings and tasks from v1.3.1 or earlier are no longer read.** Run v1.4 or v1.5 once to rewrite format 1 settings and tasks saved with `"permissions": "prompt"`.
+- **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem` (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are removed.
+- **A `-p` run is saved like any conversation**, so `-c -p` continues the latest one and scripts leave one history entry per run.
+- **Headless `--json` reports this run's usage only**, not what a continued conversation spent before; a conversation another runtime holds gets an error envelope.
 
 ### Changes
 
-- A refused approval reads "this action was not approved", with the
-  reason when a person is required, instead of "user denied this action".
-  `uagent panel -p` declines for nobody, and its model was told a user had.
-- Deleting a conversation removes everything it left beside its history:
-  its lock, a lead agent's plan, and its subagents' transcripts. Its
-  background agents stay, as conversations of their own.
-- Web: **New → Workspace…** opens the workspace at its lead agent, not a
-  new conversation; for an existing workspace that is its lead agent's
-  conversation.
-- A lead agent no longer starts with a warning that its workspace is not
-  writable, which at its readonly level it is not on purpose.
-- A command that fails a name lookup while the sandbox denies the network
-  ("Could not resolve host", "nodename nor servname provided", …) now ends
-  with the sandbox's note, which says the network is closed. Before, only a
-  refused write was explained, and a blocked `curl` read like a DNS outage.
-- A lead agent is no longer told to send every factual question to
-  subagents first. Models followed it in few runs, and its read-only `run`
-  makes answering itself cheap; fanout stays the way to split a question
-  with independent parts.
-- The `uagent` tool says it describes the running build, not the code in
-  the workspace, which a model answering a question about the repository
-  once mistook it for.
-- On macOS the sandbox lets commands write the per-user temp folder too
-  (`confstr(_CS_DARWIN_USER_TEMP_DIR)`), where `xcrun` caches: with
-  `TMPDIR` pointing elsewhere, every `git` printed "couldn't create cache
-  file … Operation not permitted" first.
-- A lead agent has `run`, in a new `readonly` sandbox level it always runs
-  at: commands read the workspace, write only temporary files and reach no
-  network, so they need no approval, and its subagents inherit it. On a
-  Haiku A/B (3 tasks × 3 trials) the same quality cost 20% less and took
-  half the time: subagents made 6 calls each instead of 18, paging no
-  longer through files to count their lines. `sandbox.level=readonly` can
-  be chosen for any conversation.
-- The system prompts say that math in `$…$` or `$$…$$` renders. Asked for
-  "the LaTeX" of an equation, a model put it in code fences, sure the chat
-  would not typeset it; on Haiku that happened in 5 of 5 runs, and in none
-  with the line.
-- Web: a turn's or message's statistics open for a row loaded with "Load
-  older retained messages". The dialog fetched the conversation again,
-  which held only the newest page (so the row was "outside the loaded
-  history") and replaced the pages loaded; it now reads the conversation as
-  the page holds it.
-- `subagent.model` (`UAGENT_SUBAGENT_MODEL`) is the route a subagent runs on
-  when its call names none, so a Sonnet session can keep its children on
-  Haiku without naming it in every call; the tool's `model` description
-  names it. Empty, the default, keeps the parent's route.
-- A fanout with `refuters=0` reports its findings as unchecked; it used to
-  call them verified though nothing checked them.
-- In a session that cannot run commands, such as a lead agent, the `subagent`
-  tool says its children cannot either, so a brief does not ask them to.
-- A runtime lets go one idle period after its last input, as it should. A
-  signal such as a finished child's (SIGCHLD) used to start the period over,
-  so a lead agent stayed up one more period for every background agent that
-  ended (about half an hour after a headless `panel -p` with one).
-- `uagent panel -p` prints the panel's last answer, not also what it said
-  before a thread reported ("started a thread, waiting").
-- Web: a dialog's first open fades in its content, not an empty box
-  that its code fills in afterwards. Every dialog's code is loaded once
-  the app has settled, not only some of them.
-- Web: **search** replaces the command palette and the sidebar's filter.
-  Ctrl+K (⌘K) opens it as a panel in the middle of the window, like
-  Spotlight. It finds conversations by name, then the messages that hold
-  the words, grouped by folder (the open conversation's first) and under
-  each conversation, with every occurrence marked, then the actions,
-  commands and settings the palette had (a command by its name, or by
-  whole words of what it does). `>` lists only those; with an
-  empty field it lists recent conversations. On a wide window the rows
-  around the selected message show beside the list. A message opens its
-  conversation there; Esc clears the field, then closes. **Find in
-  conversation** (Ctrl+F, or the conversation menu) marks every occurrence
-  in yellow and steps through them with Enter and Shift+Enter, loading
-  older messages and opening folded tool rows to reach one.
-- The panel speaks Claude Code's words: a folder's **lead agent** plans,
-  asks **subagents** and starts **background agents** (until now
-  "moderator" and "threads"), and its board is the **Plan** pane. The web,
-  the docs, the lead agent's prompt and its tool descriptions use these
-  names; commands, settings, files and tool names (`uagent panel`,
-  `panel.*`, `PANEL.md`, `thread`) are unchanged.
-- The web host answers `GET /api/search?q=…`: the rows of every listed
-  conversation (threads and panels included, subagents not) whose text,
-  tool output included, contains the words, ignoring case, with a snippet
-  and how often each row contains them, and how many rows of its
-  conversation do; with `session=ID`, every such row of one conversation. Files that cannot contain the words are skipped
-  unparsed: 500 conversations of 1 MB take about 0.3 s. A panel's `history
-  search` uses the same search and now finds compacted rows too.
-- Case-insensitive matching folds only ASCII letters. Under a UTF-8 locale
-  it used to change bytes inside other characters as well.
-- Web: a subagent on the panel's board shows the tokens it used, which its
-  session header now carries beside its cost.
-- Web: a zoom saved between two steps snaps to the nearer one, so the zoom
-  picker always shows what is applied.
-- Web: a panel's board shows its plan. The goal comes first, then each step
-  with its status. A step opens to its result, the threads working for it,
-  and its subagents with their status and time; a subagent opens in the
-  inspector. Threads that no step names stay under Work. A thread's session
-  carries its `step`, and a running subagent's activity does too.
-- `subagent operation=fanout` runs a question as two rounds without a model
-  turn in between: one child per item answering in a finding schema, then
-  refuters for every finding. Only what held, what was refuted and why, and
-  what stayed unchecked comes back. A panel's moderator uses it for questions
-  with independent parts. On a read-only code review on dev (local Haiku) the
-  same pipeline found 19 verified issues in 150 s, where the panel alone
-  verified 5 in 260 s.
-- A panel works like a research lead. Its moderator has `subagent`,
-  `web_search` and `web_fetch`: it fans a question out to subagents in one
-  batch, each answering in a schema and tagged with its plan step, can have
-  others refute what they found, and records each step's result in the
-  plan, which now counts the subagents of each step. A panel's subagents get
-  only the panel's tools, so they read and change nothing, and starting one
-  needs no approval.
-- The panel keeps a plan: its `state` tool is now `plan`, which adds steps
-  (id, title, status and a short result) to goals, decisions and open
-  questions. The moderator sees the steps every turn, so a restarted panel
-  knows what is done; a thread started with `step` shows it on the board.
-- `subagent` takes a `schema`, and the child answers with JSON of that
-  shape: an answer that is not valid JSON or misses the schema is sent back
-  with the reason, twice at most. `step` records which plan step a child
-  works for, and `list` reports it. A batch of children now runs up to six
-  at once instead of four.
-- Web: a reload looks like the app, not a page loading. Its frame (header,
-  and the sidebar in a wide window) paints before any script runs, about
-  half as soon as the first frame came before; the page it showed, Library
-  and Scheduled included, comes back drawn from samples; and the open
-  conversation is asked for together with the list instead of after it. A
-  host that cannot be reached keeps the app on screen while it is tried
-  again, where it showed the pairing form. Scheduled and the files list draw
-  their rows from samples while they load, and no spinner shows for a load
-  that finishes within 150 ms.
-- The terminal draws a tool row from the transcript row the web shows, live
-  and on resume alike: a resumed command keeps its last output lines, a long
-  result shows its start and end, result rows lose the `[2]` batch ordinal,
-  and an activity poll is an ordinary call and result instead of a "waited
-  on activity" line.
-- The agent's Chrome no longer reads as a test browser: pages see no
-  `navigator.webdriver` and none of the agent's scripts (they run in an
-  isolated world), WebGL renders in software, text is typed key by key,
-  `TZ` and `LANGUAGE` reach Chrome, and the image carries common fonts.
-  Google searches and bahn.de bookings that answered "unusual traffic" or
-  "resembles a bot" now work. PDF links download instead of opening in
-  Chrome's viewer, so the agent can read them.
-- Settings lists each named provider on one line and edits it in a sheet:
-  its name (a rename keeps a hidden key), address, key, protocol and hosted
-  tools. A hosted tool is defined there as the endpoint's API documents it
-  and saved in `hosted_tools`; uAgent sends it with the agent's requests to
-  that provider, shows "Using <tool>" while it runs and replays its call and
-  result on later turns. Lists in Settings have their dividers back.
-- A tool the provider runs no longer turns its streamed input into a
-  nameless call on Anthropic Messages, which retried the step.
-- Statistics read the full usage everywhere: the web turn footer counts
-  cached and cache-written input, `/cost` shows cache writes and per-route
-  hit rates that agree with the total, and the status row's "in" is the
-  whole prompt. Titles, compaction and memory extraction are billed under
-  their own route, and their calls are counted.
-- Spend a background child reports after its turn is journaled as
-  `turn.usage_amended`. Durations and time to first token leave out retry
-  backoff and approval waits. Unused statistics are no longer stored.
-- The context estimate adds what the provider last reported beyond it, so
-  auto-compaction no longer waits for twice the intended size.
-- The agent reads the same memory store as the Library: every file is
-  listed, an oversized one is readable, project memories show their first
-  sentence, a get names the date it was saved, and a conversation run with
-  `--no-memory` is never extracted. The memory index goes only to sessions
-  with a memory tool.
-- The offered tools change only with configuration: `activity` is offered
-  from the first request and a tool at its per-turn limit stays offered, so
-  starting background work no longer rewrites the prompt cache.
-- A panel's daily spend counts what threads from earlier days spend today,
-  and warns when the route reports no cost.
-- The agent's browser reads the page's console (what it logged and the
-  errors it did not catch) and the tab's requests, and can right-click,
-  double-click, drag, press key combinations such as Control+A, go forward
-  and reload. A download that ends after the action that started it is
-  reported with the next browser result instead of going unmentioned.
-- The runtime context (environment, memory index, always-on memories) ends
-  with a closing line. Providers that alternate roles merge it with the user
-  message after it, which then read as the last memory entry's tail, and the
-  model could decline the request as "only memory".
-- A client that joins a running conversation no longer replays older state
-  frames after its snapshot. One of them could say no question was pending
-  while one was, so a terminal joining to answer took the answer for a new
-  message, and the terminal showing the question waited on it.
-- A setting given in the environment resolves `$NAME` references as a saved
-  one does, so `UAGENT_PROVIDERS` can name a key held elsewhere; a `$` that
-  names nothing defined stays as written.
-- `install.sh` says what it found and asks where µAgent runs: in the
-  container (recommended where Docker runs), or here, offering on Linux to
-  install Chrome, TigerVNC and the Chrome policy for the agent's browser.
-  `UAGENT_INSTALL=container|here` chooses without asking; a run without a
-  terminal installs here, as before.
-- The README compares µAgent's footprint with Claude Code, Codex CLI and omp;
-  `benchmarks/compare_agents.py` measures omp with `--omp`.
-- Minimal detail: a reply with calls after it folds into the turn's work
-  row instead of staying below it as the answer.
-- Web: a running turn's state uses the status line's whole width, and a
-  narrow tool row keeps its name beside its chevron.
-- A background command's result now reaches the model, bounded and once,
-  as a subagent's always has. If the conversation is idle when a command or
-  subagent finishes, its result starts a turn, so the agent can end its turn
-  instead of blocking on a wait, and the result is not lost when it does.
-  The tool tells the agent so when work goes to the background. Headless runs
-  (`-p`) still answer once.
-- Guidance sent while `run` waits for a command (`yield_ms: 0`) moves the
-  command to the background and reaches the agent at once, as it already did
-  for an `activity` wait, instead of waiting for the command to exit.
-- A saved conversation's composer shows the model and approval mode it
-  resumes with, instead of "Select model" and the default mode.
-- Web statistics show input tokens (cached and cache-written included, as
-  providers bill them), output tokens (reasoning included) and the cache hit
-  rate, in place of the separate buckets.
-- A long conversation no longer forgets its chosen model, approval mode and
-  fork origin: under display-metadata pressure they could be evicted with
-  the transcript's row data, which sorted after them.
-- Titles and workspace names are limited in characters (256 and 64), as the
-  web's form counts them; the host counted bytes, so a title with accents or
-  emoji could pass the form and then be refused.
-- Zoom in Settings → This browser is a list of steps (50 to 200%) instead of
-  a slider, which rescaled the page under the finger at its first touch.
-- A diagram whose renderer fails to load says so and offers Retry, instead
-  of showing "Rendering diagram…" for good.
-- An approval's choices read the same in the terminal and the web: "Allow
-  for this conversation" and "Always allow this exact action here", which
-  the web now takes from the host instead of its own copies.
-- A typed `/rename` keeps to the same rules as a rename from the web: the
-  title rule, and in a panel's chat the rule for a name there, whose members
-  are told; it used to accept any text.
-- A mail's author travels with it: the person typing the same words as a
-  queued mail, or two mails saying the same thing, no longer swap authors.
-- Web: the time a tool row's background work, an entry in the activity list
-  and the activity viewer's header have been running counts up each second,
-  in whole seconds under a minute, where it stood still until something
-  else redrew it.
-- The project trust store is read within the 16 MiB cap its writer keeps
-  to, and only as a regular file: a larger one, or a link in its place,
-  trusts no project. Session links, memory receipts, detached-job records
-  and mail are read with the same bound.
-- A full receipt table (256 commands per runtime, 512 per host) evicts its
-  oldest completed command, as intended, instead of the one whose random id
-  sorted first: a retry of a command that just completed replays its
-  outcome instead of possibly running it again.
-- A folder on a watched path that appears while the host sets up its file
-  watches (a project's `.uagent/` made just then) is noticed: a file created
-  in it, such as an instructions file, no longer waits for the next wake.
+- Search: Ctrl+K (⌘K) opens a search panel replacing the command palette and sidebar filter; it finds conversations, messages (with occurrences marked), actions, commands and settings. `>` lists commands only.
+- Find in conversation (Ctrl+F) marks every occurrence and steps through them with Enter and Shift+Enter.
+- The web host answers `GET /api/search?q=...` across conversations, tool output included; a panel's `history search` uses it and now finds compacted rows.
+- A lead agent (formerly moderator) has `run` in a new `readonly` sandbox level: it reads the workspace, writes only temporary files, has no network and needs no approval; subagents inherit it. `sandbox.level=readonly` can be chosen for any conversation.
+- Panel terminology follows Claude Code: lead agent, subagents, background agents, Plan pane. Commands, settings, files and tool names are unchanged.
+- The lead agent works like a research lead: it has `subagent`, `web_search` and `web_fetch`, fans questions out in batches, can have findings refuted, and records results in its plan. Panel subagents get only the panel's tools and need no approval.
+- `subagent operation=fanout` runs one child per item and then refuters for each finding, returning what held, what was refuted and what stayed unchecked. With `refuters=0` findings are reported as unchecked.
+- `subagent` takes a `schema` (invalid answers are sent back twice at most) and a `step`; a batch runs up to six children at once.
+- `subagent.model` (`UAGENT_SUBAGENT_MODEL`) sets the route for subagents whose call names none.
+- The panel's `state` tool is now `plan`, with steps (id, title, status, result) besides goals, decisions and open questions; the web board shows the plan with each step's threads and subagents.
+- The lead agent is no longer told to send every question to subagents, and no longer starts with a warning that its workspace is not writable.
+- Deleting a conversation removes its lock, a lead agent's plan and its subagents' transcripts; its background agents stay.
+- Web: **New -> Workspace...** opens the workspace at its lead agent.
+- A refused approval reads "this action was not approved"; `uagent panel -p` declines for nobody and prints only the panel's last answer.
+- A command failing a name lookup while the sandbox denies the network now ends with the sandbox's note that the network is closed.
+- On macOS the sandbox lets commands write the per-user temp folder, which stopped `git` printing cache errors.
+- The system prompts say that `$...$` and `$$...$$` math renders.
+- A background command's result reaches the model once; if the conversation is idle, it starts a turn. Guidance sent while `run` waits (`yield_ms: 0`) moves the command to the background.
+- A runtime lets go one idle period after its last input; a child's SIGCHLD no longer restarts the period.
+- Web: reloads paint the app frame first, restore Library and Scheduled from samples, and keep the app on screen while the host is unreachable; no spinner shows for loads under 150 ms.
+- Web: dialogs fade in with their content; statistics show input (cached and cache-written included), output and cache hit rate; a subagent on the board shows its tokens.
+- Web: zoom in Settings -> This browser is a list of steps (50 to 200%); a saved zoom between steps snaps to the nearer one.
+- Web: running-time counters in tool rows, the activity list and the viewer count up each second; a failed diagram renderer offers Retry.
+- Web: a saved conversation's composer shows the model and approval mode it resumes with.
+- Web: statistics open for rows loaded with "Load older retained messages".
+- Web: a narrow tool row keeps its name beside its chevron and a running turn's state uses the status line's width.
+- Settings lists each named provider on one line and edits it in a sheet, including hosted tools (`hosted_tools`), shown as "Using <tool>" while they run.
+- A provider-run tool no longer turns streamed input into a nameless call on Anthropic Messages.
+- Statistics read full usage everywhere; `/cost` shows cache writes and per-route hit rates; titles, compaction and memory extraction are billed under their own route.
+- The context estimate adds what the provider last reported, so auto-compaction no longer waits for twice the intended size.
+- The agent reads the same memory store as the Library; a conversation run with `--no-memory` is never extracted.
+- The offered tools change only with configuration, so starting background work no longer rewrites the prompt cache.
+- A panel's daily spend counts what earlier threads spend today and warns when the route reports no cost.
+- `browser` reads the page console and requests, and can right-click, double-click, drag, press key combinations, go forward and reload. Late downloads are reported with the next result.
+- The agent's Chrome no longer reads as a test browser (no `navigator.webdriver`, software WebGL, key-by-key typing, `TZ` and `LANGUAGE` passed on, common fonts); PDF links download so the agent can read them.
+- The terminal draws tool rows from the same transcript rows as the web, live and on resume.
+- Minimal detail: a reply with calls after it folds into the turn's work row.
+- `UAGENT_PROVIDERS` and other environment settings resolve `$NAME` references like saved settings.
+- `install.sh` asks whether µAgent runs in the container or here (`UAGENT_INSTALL=container|here`); on Linux it can install Chrome, TigerVNC and the Chrome policy.
+- The README compares µAgent's footprint with Claude Code, Codex CLI and omp; `benchmarks/compare_agents.py --omp` measures omp.
+- An approval's choices read the same in the terminal and the web; a typed `/rename` follows the web's title rules.
+- Titles and workspace names are limited to 256 and 64 characters, counted as characters.
+- A client joining a running conversation no longer gets stale state frames after its snapshot.
+- A long conversation no longer forgets its model, approval mode and fork origin.
+- A mail's author travels with it when two mails say the same thing.
+- Case-insensitive matching folds only ASCII letters.
+- The project trust store and session links, memory receipts, job records and mail are read only up to 16 MiB and only as regular files; a full receipt table evicts the oldest completed command.
+- A folder created while the host sets up file watches (such as `.uagent/`) is noticed.
+- The runtime context ends with a closing line so the model no longer reads the memory index as the whole request.
 
 ## v1.5.0 - 2026-10-20
 
 ### Upgrade notes
 
-- **No model is chosen for you.** The built-in default model
-  (`~deepseek/deepseek-flash-latest`) and the fallback to an endpoint's first
-  model are gone. With no model set, the terminal and the web open the model
-  picker on the first start and save the choice for new conversations, while
-  `-p` and `--json` exit with `no model set` and up to ten of the endpoint's
-  models; set `model` (`UAGENT_MODEL`) to keep scripted runs working.
-- **Background work runs on the conversation's model.** The title, memory
-  extraction and subagents use it unless their setting or the call names
-  another, and say so when there is none; `title.model` is now empty by
-  default (`off` still keeps the first message). With `image.model` empty,
-  images the model cannot read go to the first model of the same endpoint
-  that accepts them, and the warning says to set `image.model` when none does.
-- **Web search off the conversation's endpoint needs `webSearch.model`.** A
-  conversation on an endpoint with a search plugin, such as OpenRouter,
-  searches with its own model; elsewhere `web_search` goes through the first
-  configured endpoint that declares `search_plugin`, only when
-  `webSearch.model` names the model, and is not offered without such an
-  endpoint. `webSearch.backend` is `auto` or `off`; a saved `openrouter`
-  reads as `auto`.
-- **The settings file is format 3, and OpenRouter's settings are options of
-  its endpoint.** `openrouter.provider`, `openrouter.variant` and `pdf.engine`
-  are gone, and `UAGENT_OPENROUTER_PROVIDER`, `UAGENT_OPENROUTER_VARIANT` and
-  `UAGENT_PDF_ENGINE` are no longer read. The file is rewritten the first time
-  it is read: they become `providers.openrouter.options.provider` and
-  `…options.pdf_engine` (still `cloudflare-ai` by default), a saved variant
-  joins the model id, and `webSearch.backend: openrouter` becomes `auto`. A
-  value that refers to a variable (`$NAME`) cannot move and is reported as a
-  setting that no longer exists; in `UAGENT_PROVIDERS` set in the environment,
-  write `options` and `supports` yourself.
-- **A provider's `protocol` is replaced by `supports`.** On rewrite,
-  `"protocol": "openrouter"` becomes the features of an OpenRouter-compatible
-  gateway (`search_plugin`, `provider_routing`, `session_passthrough`,
-  `raw_vendor_ids`, `reasoning_object`, `reasoning_replay_text`,
-  `prompt_cache_control`, `pdf_parser`, `model_variants`, `inline_usage`) and
-  the two options above, and `"protocol": "anthropic"`, which did nothing, is
-  dropped. A provider with an unrecognised protocol is no longer skipped, and
-  `hosted_tools: ["web_search"]` is unchanged.
-- **A routing variant is part of the model id.** `/variant`, the web's
-  Variant field and the `[:variant]` slot of the model name are gone: write `openrouter/vendor/model:nitro:high`, and the endpoint receives
-  `vendor/model:nitro`. Migration appends a saved `openrouter.variant` to the
-  `model` of its scope (or to the model its alias names), drops it where that
-  scope has no `model`, and reports it where `model` refers to a variable.
-- **An address declares what it is.** `UAGENT_BASE_URL` or a provider at
-  `openrouter.ai` gets OpenRouter's dialect, and one at `api.openai.com`
-  OpenAI's, without a `protocol`.
-- **Every request to OpenRouter asks for prompt caching.** The top-level
-  `cache_control` now goes with every model on an endpoint that declares
-  `prompt_cache_control`, not only with `anthropic/…` models; providers that
-  do not cache ignore it.
-- **The model catalogues under `~/.uagent/models/` are fetched again once**,
-  because their key no longer names a protocol.
-- **Commands, MCP servers and file tools no longer see your saved logins.**
-  Besides the browser profile, they now hide `~/.uagent/config` (settings and
-  API keys), `~/.aws`, `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`,
-  `~/.netrc` and `~/.docker/config.json`; `~/.ssh` and the GitHub CLI login
-  stay readable. `sandbox.reveal` (`UAGENT_SANDBOX_REVEAL`) lifts a default
-  and `sandbox.hide` (`UAGENT_SANDBOX_HIDE`) adds your own.
-- **MCP servers run under the sandbox.** They can write the workspace and the
-  usual roots, the package caches included, so `npx` and `uvx` servers start
-  as before (`~/.npm` is now writable for commands too). A server that needs
-  more takes `sandbox.write`, or `"sandbox": false` in its `.mcp.json` entry,
-  which the trust prompt names.
-- **`sandbox.enabled` is now `sandbox.level`** (`UAGENT_SANDBOX`): `strict`,
-  `default`, `relaxed` or `off`. A saved `false` becomes `off` and `true`
-  `default` when the settings are next saved, and `UAGENT_SANDBOX` still takes
-  `0`, `false`, `1` and `true`.
-- **Auto approval asks a decision model, or asks you.** An endpoint that
-  declares `decisions` serves it (OpenRouter does), and without one every call
-  goes to you. Calls that leave the sandbox, `run` and `scratch` while the
-  sandbox is off or not enforced, and calls that always ask never reach the
-  model; it allows only when P(allow) reaches the model's allow bar and none
-  of four risk questions reaches its risk bar, so some calls it allowed before
-  now ask.
-- **Auto approval's settings changed.** `approval.reviewerUrl`
-  (`UAGENT_PERMISSION_URL`) is gone and dropped on rewrite; declare
-  `decisions` on a provider with `options.decisions_url` to use another
-  server. `approval.reviewerModel` takes `[endpoint/]model` and is empty by
-  default (the endpoint's own decision model, `~typesafe/jev-latest` on
-  OpenRouter), and `approval.allowAbove`, `approval.denyAbove` and
-  `approval.vetoAbove` override the model's bars.
-- **Decision requests ask for providers that retain nothing.** Where the
-  endpoint declares `provider_routing` they carry `provider: {zdr: true,
-  data_collection: "deny"}`, which a model with no such provider
-  (`openai/gpt-6-luna-decisions` today) answers with a 404 naming the data
-  policy; `decisions_private: false` in the endpoint's `options` accepts that
-  model's retention.
+- **No model is chosen for you.** The default model and the fallback to an endpoint's first model are gone. Without a model, the terminal and web open the model picker; `-p` and `--json` exit with `no model set`, so set `model` (`UAGENT_MODEL`) for scripts.
+- **Background work runs on the conversation's model.** Title, memory extraction and subagents use it unless their setting names another; `title.model` is empty by default. With `image.model` empty, images go to the first model of the endpoint that accepts them.
+- **Web search off the conversation's endpoint needs `webSearch.model`.** `web_search` goes through the first endpoint declaring `search_plugin` only when `webSearch.model` is set. `webSearch.backend` is `auto` or `off`; a saved `openrouter` reads as `auto`.
+- **The settings file is format 3.** `openrouter.provider`, `openrouter.variant`, `pdf.engine` and their `UAGENT_*` variables are gone; they migrate to `providers.openrouter.options.provider` and `...options.pdf_engine` on first read. `$NAME` values cannot move and are reported; set `options` and `supports` yourself in `UAGENT_PROVIDERS`.
+- **A provider's `protocol` is replaced by `supports`.** On rewrite, `"protocol": "openrouter"` becomes the matching feature list; `"protocol": "anthropic"` is dropped.
+- **A routing variant is part of the model id.** `/variant` and the web's Variant field are gone: write `openrouter/vendor/model:nitro:high`.
+- **An address declares what it is.** `UAGENT_BASE_URL` or a provider at `openrouter.ai` gets OpenRouter's dialect, and `api.openai.com` OpenAI's.
+- **Every request to an endpoint declaring `prompt_cache_control` asks for prompt caching**, not only `anthropic/...` models.
+- **Model catalogues under `~/.uagent/models/` are fetched again once.**
+- **Commands, MCP servers and file tools no longer see saved logins.** `~/.uagent/config`, `~/.aws`, `~/.config/gcloud`, `~/.azure`, `~/.kube`, `~/.gnupg`, `~/.netrc` and `~/.docker/config.json` are hidden; `sandbox.reveal` lifts one and `sandbox.hide` adds your own.
+- **MCP servers run under the sandbox.** A server needing more takes `sandbox.write`, or `"sandbox": false` in its `.mcp.json` entry.
+- **`sandbox.enabled` is now `sandbox.level`** (`UAGENT_SANDBOX`): `strict`, `default`, `relaxed` or `off`; saved `false` becomes `off` and `true` `default`.
+- **Auto approval asks a decision model, or asks you.** An endpoint must declare `decisions` (OpenRouter does); without one every call goes to you, and some calls allowed before now ask.
+- **Auto approval's settings changed.** `approval.reviewerUrl` (`UAGENT_PERMISSION_URL`) is gone; use `options.decisions_url`. `approval.reviewerModel` takes `[endpoint/]model`; `approval.allowAbove`, `denyAbove` and `vetoAbove` override the bars.
+- **Decision requests ask for providers that retain nothing.** A model with no such provider answers 404; set `decisions_private: false` in the endpoint's `options` to accept its retention.
 
 ### Added
 
-- Web: **Files** in a conversation's header shows its folder beside the chat,
-  or as a sheet on a small screen, read only: search across the folder, code
-  with line numbers and highlighting, rendered markdown with its images, and
-  images at full size.
-- Web: the sidebar, a panel's board, Files and its file list resize by
-  dragging their edge or with the arrow keys; each device keeps its widths.
-- `browser`: `upload` gives a file of the conversation's folder to a file
-  field, or to the chooser a button opens, and a click that opens a chooser
-  says to use it. What a page downloads lands in the conversation's
-  `downloads` folder, and the action says so.
-- Auto approval shows why it asked: the risks the decision model saw, their
-  probabilities and the bar that decided, and an endpoint error (no credit, a
-  refused key, an action too large) in words. `tests/reviewer_eval/` holds
-  labelled calls and a script that finds a model's bars with a real key.
-- A provider named like a well-known endpoint states only what differs
-  (`"openrouter": {"options": {"provider": "…"}}` needs no address or key);
-  any other endpoint lists its features in `supports` and their extras in
-  `options`.
-- Sandbox levels: `strict` also denies the network, and `relaxed` also makes
-  your home folder writable except `~/.uagent` and the hidden stores (on
-  Linux, not for a new file made directly in the home folder). An explicit
-  `sandbox.network` or `sandbox.write` still wins over the level.
-- On Linux, a sandboxed command's changes to `.mcp.json` or a repository's
-  `.git/config` and `.git/hooks` are put back when it ends, and the model and
-  you are told; macOS denies the write, as before.
-- `sandbox.hideEnv` (`UAGENT_SANDBOX_HIDE_ENV`, comma-separated) names
-  environment variables that commands, MCP servers and delegated agents never
-  inherit, even when `shell.envAllow` names them.
+- Web: **Files** in a conversation's header shows its folder read-only beside the chat, with search, highlighted code, rendered markdown and images.
+- Web: the sidebar, a panel's board, Files and its file list resize by dragging or arrow keys; widths are kept per device.
+- `browser` `upload` gives a conversation file to a file field or chooser; downloads land in the conversation's `downloads` folder.
+- Auto approval shows why it asked: the risks seen, their probabilities, the deciding bar and endpoint errors in words. `tests/reviewer_eval/` holds labelled calls and a bar-finding script.
+- A provider named like a well-known endpoint states only what differs; other endpoints list features in `supports` and extras in `options`.
+- Sandbox levels: `strict` also denies the network; `relaxed` makes the home folder writable except `~/.uagent` and hidden stores. Explicit `sandbox.network` or `sandbox.write` still wins.
+- On Linux, a sandboxed command's changes to `.mcp.json` or `.git/config` and `.git/hooks` are reverted when it ends, and the model and you are told.
+- `sandbox.hideEnv` (`UAGENT_SANDBOX_HIDE_ENV`) names environment variables that commands, MCP servers and delegated agents never inherit.
 
 ### Changed
 
-- `browser`: a look also lists what can be acted on in open shadow roots and
-  same-site frames, and a click lands there. A control says when it is
-  disabled (listed now, not left out), required, expanded or collapsed, and
-  password fields in shadow roots are masked in screenshots too.
-- Web: a setting's reset sits just before its control as an undo arrow, a
-  saved secret shows as dots in its empty field, and a board row shades once
-  on hover.
-- Web: a workspace's member avatars sit on their own line under its name and
-  mark only their circle on hover, the sidebar's search button sits beside
-  New, and a tool call's input wraps instead of scrolling sideways.
-- Request fields that the OpenRouter protocol used to decide (the PDF plugin,
-  the provider pin, session passthrough, the reasoning object, prompt
-  caching, the usage option) follow the features an endpoint declares, and a
-  well-known endpoint (OpenRouter, OpenAI) is available when its key variable
-  is set. Start diagnostics, the routes `uagent` inspects and a child
-  process's environment (`UAGENT_INTERNAL_FEATURES`,
-  `UAGENT_INTERNAL_ENDPOINT_OPTIONS`) carry `features` in place of `protocol`.
-- Web push and model requests refuse the same address ranges: push adds
-  `192.88.99.0/24` and the IPv6 tunnel prefixes, model requests
-  `2001:db8::/32`. Names and limits that several files spelled are now each
-  defined once.
-- Long answers, large command output and busy event streams cost less:
-  streamed text is appended in place, command output is trimmed in bulk, a
-  checkpoint reaches browsers as the rows it changed (about a quarter of the
-  bytes late in a long conversation), and an attached file is encoded once
-  per turn. The web host holds its lock only to look up devices, and its
-  worker pool grows with open event streams and viewers, so they no longer
-  use up the workers that answer requests.
-- The terminal draws a fast stream at most once a frame (16 ms), repaints
-  once per wake, and lays out the composer again only when the draft, the
-  menu or the width changes, so an `@path` draft no longer lists its
-  directory on every repaint. Its question picker and a detaching terminal
-  sleep until something happens instead of polling.
-- With reduced motion the terminal's spinner holds still and the working row
-  redraws once a second, for the elapsed time, instead of ten times.
+- `browser` looks list controls in open shadow roots and same-site frames, say when a control is disabled, required or expanded, and mask shadow-root password fields in screenshots.
+- Web: settings resets are undo arrows, saved secrets show as dots, workspace avatars sit on their own line, and tool input wraps.
+- Request fields formerly tied to the OpenRouter protocol follow declared endpoint features; diagnostics carry `features` instead of `protocol`.
+- Web push and model requests refuse the same private address ranges.
+- Long answers, large command output and busy event streams cost less, and the web host's worker pool no longer starves under many event streams.
+- The terminal repaints at most once a frame, no longer lists an `@path` directory on every repaint, and holds its spinner still with reduced motion.
 - SECURITY.md describes the sandbox by level.
 
 ### Fixed
 
-- `browser` in the Docker image works with current Chrome again. The managed
-  policy made Chrome 155 refuse every action with `Not allowed`; it now blocks
-  DevTools by its `devtools://` pages, and a native Linux host with the policy
-  installed must install it again (`install.sh` prints the command).
-- `run` no longer refuses a command that starts with `python`, `python3`,
-  `pip` or `pip3`, such as a test command a person gave.
-- `browser`: `type` sets a list (`<select>`) to the option it names and a
-  date, time or color field to its value, such as `2027-03-12` or `19:30`,
-  and refuses a value the field does not take with the form it takes. Before,
-  such fields stayed empty or were refused, and an order form passed 0 of 11
-  checks in 26 to 64 calls where it now passes 11 of 11 in 14.
-- `browser`: several actions from one look work, however many: an element
-  number from an earlier look at the same page still names what that look
-  numbered. Before, every action after the first, and any after the eighth
-  in a batch, was refused for an outdated `view_id`; a point (`x`, `y`) and a
-  scroll still need the latest look.
-- `browser`: "Allow for this conversation" (or always, in this repository) on
-  a browser action covers that action on that site, where it used to ask
-  again on every click. The approval and the automatic reviewer see the
-  target, such as `click [3] button "Delete account" on
-  https://example.com/settings`, instead of `browser click`.
-- `browser`: a page's alert, confirm or prompt no longer stalls the browser.
-  A look reports the dialog, `press Enter` or `Escape` answers it (text typed
-  first answers a prompt), and a page's plea to stay is accepted on
-  navigation.
-- `browser`: a click points at its element first, so menus that open on hover
-  open, waits for an element still moving into place, and names what covers
-  a covered element, such as a cookie banner.
-- `browser`: `type` refuses a password field, including one a reveal toggle
-  shows as text, and points to `fill_saved` or `request_human`.
-- The Docker image carries the bundled skills (`uagent-config`,
-  `browser-use`, `fusion`, `import`) and the documentation; it had only the
-  binary.
-- A message with files sent while a turn runs is taken as guidance for that
-  turn instead of being refused as busy.
-- A panel's threads start in the folder itself when it is not in a git
-  repository, such as a workspace, instead of failing on the worktree.
-- The moderator's messages into a thread's running turn no longer count
-  toward the limit of three restarts in a row.
-- A panel's members answer from the start: the message that has the
-  moderator bring them in begins their round, as does a thread report the
-  moderator passes on. A member's introduction is read by everyone and wakes
-  nobody.
-- A panel's discussion ends with the moderator's answer for the user once the
-  chat falls silent and the threads are done; it wakes no member, and later
-  thread reports reach the moderator alone. A member going idle rechecks a
-  close that was waiting on it, so the round cannot be stranded.
-- `web_fetch` reads PDFs: one is saved and attached to the model's next step.
-  A 404 says to find the page with `web_search` rather than guess its address.
-- The automatic permission review judges a call against the session's first
-  request as well as its latest message, so a panel thread's research is
-  judged by its brief.
-- `read_path` and `grep` read what µAgent wrote for the model, such as
-  command output spilled to `~/.uagent/artifacts`, without asking; writing
-  there still asks.
-- Subagents started in one batch run together; before, five researchers took
-  16 minutes instead of four. Under a session budget, which every panel
-  thread has, they share what is left equally.
-- Subagents the turn waits for are listed, by model, in the web's background
-  work while they run, and each can be stopped there.
-- A turn stopped for repeating a call answers from what it has, as a turn
-  stopped at its step or time limit does.
-- A debug trace records a `repeated_call` fault only for an actual repeat;
-  every call used to log strike 1.
-- A model's input modalities from the endpoint's catalogue survive starting a
-  route, so a text-only model is known as one before its first image is
-  rejected.
-- The web's model picker takes a model the endpoint's catalogue lists on an
-  endpoint no provider names, where it answered `unknown model`.
-- An image the vision model fails to read is tried once per turn, not at
-  every step.
-- The raw detail of a running tool call is paged like any long text.
-- The terminal streams styled text for about the bytes plain text costs.
-  Each repaint used to replay every style of the paragraph, up to six times
-  the bytes per token for a reply with many inline code spans.
+- `browser` in the Docker image works with current Chrome again; a native Linux host with the policy must reinstall it (`install.sh` prints the command).
+- `run` no longer refuses commands starting with `python`, `python3`, `pip` or `pip3`.
+- `browser` `type` sets lists, date, time and color fields and refuses unsupported values; several actions from one look work; approvals cover an action per site and show its target.
+- `browser` handles alert, confirm and prompt dialogs, hovers before clicking, names what covers an element, and refuses password fields (use `fill_saved` or `request_human`).
+- The Docker image carries the bundled skills and documentation.
+- A message with files sent during a turn is taken as guidance instead of refused as busy.
+- A panel's threads start in the folder itself outside a git repository.
+- Panel members answer from the start, discussions close with the moderator's answer, and moderator messages into a thread no longer count toward the restart limit.
+- `web_fetch` reads PDFs, and a 404 points to `web_search`.
+- The automatic review judges a call against the session's first request as well; `read_path` and `grep` read µAgent's own output (such as `~/.uagent/artifacts`) without asking.
+- Subagents started in one batch run together and share a session budget equally; those the turn waits for are listed and stoppable in the web.
+- A turn stopped for repeating a call answers from what it has; the debug trace records `repeated_call` only for real repeats.
+- A text-only model is known as one before its first image is rejected; the web model picker accepts catalogue models on endpoints no provider names; a failed vision read is tried once per turn.
+- The terminal streams styled text with far fewer bytes, and a running tool call's raw detail is paged.
 
 ## v1.4.0 - 2026-10-15
 
 ### Upgrade notes
 
-- **Spaces are now called workspaces; nothing moves.** The folder is still
-  `~/.uagent/spaces/`, and the web protocol keeps its `space` command.
-- **The coordinator is now the panel, and the one you talk to in it its
-  moderator.** Existing coordinators, their threads and their chat members
-  open as they were.
-  - `uagent coord` and `/coord` are `uagent panel` and `/panel`.
-  - Settings are `panel.maxThreads`, `panel.dailySpendUsd`,
-    `panel.chatTurns` and `panel.environment`. A settings file that still
-    names them `coordinator.…` is read as before and saved under the new
-    names. The environment variables are `UAGENT_PANEL_…`; the
-    `UAGENT_COORDINATOR_…` ones are no longer read.
-  - Instructions are `PANEL.md`. A `COORDINATOR.md` is read where no
-    `PANEL.md` exists.
-  - In the chat, `Moderator, …` asks the moderator alone, and no member may
-    be called that.
-- **Web: workspaces and folders are listed apart, and a place's name is its
-  panel.** The sidebar has a section for each. A place is a bold header: a
-  fold, its name (which opens its panel, or starts one), the avatars of the
-  panel's members, **+** for a new conversation there and, for a workspace,
-  its menu. Under it come the threads the panel started, then the place's
-  own conversations; members are no longer rows. Rows are one line: the
-  title and a mark for working, waiting on you or failed; the time and the
-  menu show on hover or focus. Pointing at a member's avatar, in the
-  sidebar, on the board or on a message, shows its card (a sheet on a touch
-  screen) with its model, persona and skills, **Ask**, **Full prompt** and
-  a menu to rename or remove it. The board beside a panel's chat lists its
-  members and its work; what waits on you is no longer repeated there.
-  **New** at the top asks for a workspace's name or a folder's path.
-  Workspaces are drawn with a new icon.
-- **A workspace has a name of its own and can be renamed and deleted.** The
-  name may be several words; the folder under `~/.uagent/spaces/` keeps
-  the name it was made with, so renaming moves nothing. Deleting a workspace
-  removes its conversations and its folder with every file in it.
-- **A chat member is called what its conversation is.** A name may be
-  several words. Renaming a member's conversation renames the member: its
-  earlier messages are shown under the new name, the other members are
-  told, and a message that opens with the old name still reaches it.
-  Renaming a panel's conversation names its moderator. A member whose
-  conversation was renamed before goes by that title from now on.
-- **The text files of versions before 1.3.1 are no longer read.**
-  `~/.uagent/.config`, a project's `.uagent/.config` and the remembered
-  model in `model-preference.json` were taken over into the settings file by
-  1.3.1. Coming from an older version, start 1.3.1 once before this one;
-  otherwise set what they held again with `/config`. A `.uagent/.config` in
-  a project no longer has any meaning and is not protected from commands.
-- **The settings file names settings in words and holds typed values.**
-  `~/.uagent/config/settings.json` is now
-  `{"format": 2, "all": {"model": "…", "limits.maxSteps": 40,
-  "sandbox.enabled": false}, "projects": {…}}`: each setting under the name
-  the configuration reference lists (`limits.maxSteps` for
-  `UAGENT_MAX_STEPS`), its value a number, a boolean, text or, for the
-  providers, an object. What a value refers to as `$NAME` moves under
-  `variables`. The file of the earlier format is rewritten the first time it
-  is read, and `uagent config import` takes either.
-  - The file may be edited by hand. `settings.schema.json` is written beside
-    it for an editor to complete and check it; a name that is no setting or a
-    value its setting does not take is reported at the start and after an
-    edit, and the rest of the file applies.
-  - `/config`, the web's Settings and the `uagent` tool take a setting by
-    either name. Environment variables and flags are unchanged.
-- **`UAGENT_SUBAGENT_MODEL`, `--subagent-model` and
-  `UAGENT_COORDINATOR_MODEL` are gone.** A subagent and a coordinator's
-  thread run on the model of the conversation that starts them, unless that
-  conversation names one in the call (`model`). A coordinator starts on
-  `UAGENT_MODEL`; `/model` inside it still changes it for that folder. A
-  saved value for a removed setting has no effect.
-- **`OPENROUTER_MODEL` and `OPENROUTER_EFFORT` are no longer read.** Name the
-  model with `UAGENT_MODEL` (`model`) and the effort with
-  `UAGENT_REASONING_EFFORT` (`reasoningEffort`); `OPENROUTER_API_KEY` is
-  unchanged.
+- **Spaces are now called workspaces; nothing moves.** The folder is still `~/.uagent/spaces/`.
+- **The coordinator is now the panel, and its lead voice the moderator.** `uagent coord` and `/coord` are `uagent panel` and `/panel`; settings are `panel.*` and variables `UAGENT_PANEL_...` (`UAGENT_COORDINATOR_...` is no longer read); instructions are `PANEL.md` (`COORDINATOR.md` is still read where no `PANEL.md` exists).
+- **Web: workspaces and folders are listed apart, and a place's name is its panel.** Each place is a header with members' avatars, **+** for a new conversation and a menu; hovering a member shows its card with **Ask**, **Full prompt** and rename/remove.
+- **A workspace has its own name and can be renamed and deleted.** Deleting removes its conversations and its folder with every file.
+- **A chat member is called what its conversation is.** Renaming the conversation renames the member and tells the others.
+- **Text files from versions before 1.3.1 are no longer read** (`~/.uagent/.config`, a project's `.uagent/.config`, `model-preference.json`). Start 1.3.1 once first, or set the values again with `/config`.
+- **The settings file names settings in words and holds typed values.** `settings.json` is rewritten to `{"format": 2, "all": {...}, "projects": {...}}` on first read, with `settings.schema.json` beside it; `uagent config import` takes either format. Invalid names or values are reported.
+- **`UAGENT_SUBAGENT_MODEL`, `--subagent-model` and `UAGENT_COORDINATOR_MODEL` are gone.** Subagents and threads run on the starting conversation's model unless the call names one.
+- **`OPENROUTER_MODEL` and `OPENROUTER_EFFORT` are no longer read.** Use `UAGENT_MODEL` and `UAGENT_REASONING_EFFORT`.
 
 ### Added
 
-- Skills and memories that Claude Code and Codex keep can be imported:
-  `/skills import` and `/memory import` list what can be (nested skill
-  folders included, whether or not `UAGENT_OTHER_AGENTS` names the agent),
-  and `NAME` or `all` imports it. A skill folder is copied with its files
-  and its tool names turned into µAgent's, a Claude memory of this project
-  becomes a `project/NAME` memory, and what is too large, forbidden to copy
-  by its license or already present is named and left alone. The Library
-  has the same in its Import button. `$import` condenses Codex's memory
-  summary into global memories.
-- `browser`: `open` takes `path` in place of `url` and shows a self-contained
-  `.html` or `.svg` file from the workspace. The agent no longer has to start
-  a local server to look at a page it wrote; `file://` URLs stay refused.
-- Web: a new conversation can be started by name. A name without a `/` in
-  the folder field opens a space, a folder kept at `~/.uagent/spaces/<name>`
-  and made on first use; commands can write it like any workspace. A bare
-  name used to be read as a path relative to the host's own folder.
-- `browser`: `type` fills a field in one call: with `x`, `y` and `view_id`
-  it clicks the field first, `replace` overwrites what it holds, and `key`
-  is pressed after. `open` with `new_tab` keeps the current page, and `tabs`
-  with `close` closes one. `press` knows the arrow keys, Delete, Space,
-  PageUp, PageDown, Home and End.
-- `browser`: `read` returns a page's text from an offset, or only the lines
-  and links that contain what it searches for; `open` takes the same and
-  answers as `read` does, so a page that is only read is one call. `click`
-  and `type` take the number of an element in place of coordinates.
-- `scratch` takes `code`: the script is written and run in one call.
-- A coordinator's conversation is a chat. `thread` with `add_member` brings
-  in a member under a name, a persona and optionally its own model; `delete`
-  takes one out, after you confirm. Everyone in the chat, the coordinator
-  included, hears every message and decides for itself: it answers, passes,
-  or waits for someone who is typing and is woken by the next message.
-  A message that opens with a name ("Ada, …") asks that participant alone;
-  the others read along without a turn. For
-  one message of yours each participant gets
-  `UAGENT_COORDINATOR_CHAT_TURNS` turns (`coordinator.chatTurns`, 3) and two
-  messages. In the web, members have avatars in the sidebar and on the
-  board, are shown typing, every message carries its
-  author's name, and "Show prompt" on a message shows what its author was
-  sent.
+- `/skills import` and `/memory import` import Claude Code and Codex skills and memories (also in the Library's Import button); `$import` condenses Codex's memory summary.
+- `browser`: `open` takes `path` to show a self-contained `.html` or `.svg` from the workspace.
+- Web: a bare name in the folder field opens a space under `~/.uagent/spaces/<name>`, created on first use.
+- `browser`: `type` fills a field in one call (`x`, `y`, `view_id`, `replace`, `key`); `open` with `new_tab`, `tabs` with `close`; `press` knows arrow keys, Delete, Space, PageUp, PageDown, Home and End.
+- `browser`: `read` returns text from an offset or only matching lines and links; `open` accepts the same; `click` and `type` take an element number.
+- `scratch` takes `code` and writes and runs the script in one call.
+- A coordinator's conversation is a chat: `thread` with `add_member` brings in named members with a persona and optional model, `delete` removes one, and "Ada, ..." asks one alone. Each participant gets `coordinator.chatTurns` (3) turns per message. The web shows avatars, typing, author names and "Show prompt".
 
 ### Changed
 
-- The first screen no longer waits for the provider's model list: when a
-  start needs the catalogue (no model or context window configured), it is
-  kept under `~/.uagent/models/` for a day, so only the first start of the
-  day asks the provider.
-- A session can no longer end up with two runtimes: a lease is held only on
-  the file its path names, and stale runtime files are removed under their
-  lease.
-- `/restart` waits for the runtime to be gone, not for its socket file, and
-  says so when it did not exit in time. A runtime that cannot open its
-  socket says that at once instead of being waited for as a busy session.
-- Mail that wakes a session survives the session being killed before its
-  turn starts, and a second report with the same text as one still waiting
-  is delivered.
-- Usage, cost and the token and cost budgets include what a failed model
-  call was billed.
-- Settings: a value that refers to a variable is checked against what the
-  variable holds and reported like any other invalid value; a save that
-  would overwrite what an editor saved meanwhile is refused with "try
-  again".
-- `uagent coord -p` says on standard error why a run ended without an
-  answer; it used to exit 1 with nothing printed.
-- Settings: named providers are edited as what they are, one block each with
-  its address, its key and the API it speaks, instead of one JSON field. A
-  key is never shown, and one that is not retyped is kept. "Show the file"
-  shows `settings.json` as it stands, with keys and other secrets hidden.
-- `subagent`: an empty `name`, `description` or `directive` is one that was
-  not given. An empty directive used to clear the stored one, so a model
-  that fills in every optional field wiped it on each follow-up and was
-  refused on `message`; a new directive replaces the old.
-- A command started by `run`, a scratch script and an MCP server are no
-  longer told uagent's settings (`UAGENT_MODEL`, `UAGENT_BASE_URL` and the
-  rest). A program that reads them, such as a test of uagent itself, sees
-  what the user's shell would give it. Subagents are told them as before.
-- A turn stopped by its step, tool-call or time limit answers once more from
-  what it has, told that no further tool will run, where it used to end
-  without an answer. The stop still names the limit; `-p` prints the answer
-  and exits 0, and a parent gets its child's answer with the limit noted.
-- Web: at minimal detail a finished turn's row says how long the turn took
-  ("Worked · 6 steps · 1m 12s").
-- Web: the status line above the input counts a running turn's time
-  ("Working · 42s"), at every level of detail.
-- Terminal: the working row counts from the turn's start, also when the
-  terminal attached while the turn was running.
-- `browser`: an action returns the page as text, its elements numbered,
-  and no screenshot; `observe` still returns one. A turn of many steps no
-  longer carries a picture per step.
-- `browser`: a result carries the page's text whole, up to 12,000
-  characters, and says how much more there is and how to read on; it was
-  cut in the middle at the general result limit.
-- The approval for a command outside the sandbox says what it can reach:
-  saved logins, browser sessions and settings.
+- The model catalogue is cached under `~/.uagent/models/` for a day, so the first screen no longer waits for it.
+- A session can no longer end up with two runtimes; `/restart` waits for the runtime to exit and says if it did not.
+- Mail that wakes a session survives the session being killed; duplicate reports are delivered.
+- Usage, cost and budgets include what a failed model call was billed.
+- Settings: variable references are validated, a conflicting save is refused with "try again", providers are edited as one block each with keys never shown, and "Show the file" hides secrets.
+- `uagent coord -p` says on standard error why a run ended without an answer.
+- `subagent`: an empty `name`, `description` or `directive` counts as not given.
+- Commands, scratch scripts and MCP servers are no longer told uagent's own settings.
+- A turn stopped by its step, tool-call or time limit answers once more from what it has; `-p` prints it and exits 0.
+- Web and terminal: a running turn's time is counted ("Working - 42s") and minimal detail shows how long a finished turn took.
+- `browser`: actions return the page as numbered text without a screenshot (`observe` still returns one), and results carry up to 12,000 characters of text with how to read on.
+- The approval for a command outside the sandbox says it can reach saved logins, browser sessions and settings.
 
 ### Fixed
 
-- `browser`: a second browser service on one machine, such as another web
-  host with its own browser data folder, starts on a free X display. Both
-  used display :99, so the second one's browser never opened.
-- `browser`: a request for the user's help is kept while its conversation
-  runs. When the browser data folder differed from the home folder (the
-  Docker image, many installs), the request showed as a card but was dropped
-  within seconds: Open browser took no control and Done answered nothing.
-- `memory`: `list` and `search` accept the empty `key` and `content` that
-  models send for unused fields; they were refused.
-- `subagent`: `limits.seconds` stops a background child too. It was applied
-  only by a parent that waited, so a child started in the background ran
-  until someone stopped it.
-- A new conversation is titled when the session runs on an endpoint that
-  cannot take the title model's name: its own model writes the title. The
-  default title model is an OpenRouter name, so on any other endpoint the
-  request failed and the first message stayed as the title.
-- `run`: output longer than a result may be keeps its beginning and its end.
-  Only the end was kept, so reading a file's first lines through `run`
-  returned its last.
-- `activity`: `wait` with the id of a detached command waits for it. It
-  refused the id that `run` had just given out for it.
-- Stopping a subagent stops the commands and subagents it started. A stopped
-  child killed its own children outright, so theirs were left running.
-- What a stopped subagent had spent counts toward the session's usage and
-  budgets. Only a child that finished reported it.
-- `browser`: Enter sends a form and types a line break, and Backspace
-  deletes. The keys reached only a page's own listeners.
-- Web: a file the agent shared stays visible at the `minimal` level. It was
-  folded into "Worked · N steps" with the rest of the turn's calls, so the
-  preview appeared only after opening that row.
-- `scratch`: a result names what the run left in the workspace root. A
-  script runs in the workspace, so a chart saved by a bare name lands there;
-  the model looked for it beside the script and then searched the disk.
-- Sandbox: a session whose workspace cannot be granted, such as one started
-  in the home directory, says so at startup and to the model, and a refused
-  write names the writable roots. The hint claimed writes were confined to
-  the workspace and pointed at `/context`, which the model cannot run.
-  Where such a workspace also holds a path hidden from commands, the note
-  adds that a running command cannot read files made there later.
+- `browser`: a second browser service on one machine starts on a free X display; a user-help request survives while its conversation runs; Enter, Backspace and line breaks work.
+- `memory`: `list` and `search` accept empty `key` and `content`.
+- `subagent`: `limits.seconds` stops background children; stopping a subagent stops what it started and counts its spend.
+- A new conversation is titled by its own model on endpoints that cannot take the title model's name.
+- `run`: long output keeps its beginning and end.
+- `activity`: `wait` accepts the id of a detached command.
+- Web: a shared file stays visible at the `minimal` level.
+- `scratch`: a result names what the run left in the workspace root.
+- Sandbox: a workspace that cannot be granted (such as the home directory) is reported at startup, and a refused write names the writable roots.
 
 ## v1.3.1 - 2026-10-06
 
 ### Fixed
 
-- Keys typed ahead are no longer lost when the terminal shows the
-  conversation again, as `/verbosity` does: a line that arrived with the
-  command is sent after the redraw.
+- Keys typed ahead are no longer lost when the terminal redraws the conversation, as `/verbosity` does.
 
 ## v1.3.0 - 2026-10-06
 
 ### Upgrade notes
 
-- **Settings are saved by µAgent, not in text files you edit.** What is saved
-  for all conversations and for each project folder is one private document,
-  `~/.uagent/config/settings.json`, changed with `/config`, the web's
-  Settings or the `uagent` tool, and moved between hosts with
-  `uagent config export` and `uagent config import FILE`.
-  - `~/.uagent/.config` is taken over on the first start and kept as
-    `.config.imported`; it is not read again, and editing it has no effect.
-  - A project's `.uagent/.config` is taken over the first time a
-    conversation starts in that folder, if its content is what was approved
-    when the workspace was trusted, or with `--trust-project-config`.
-    Otherwise it is ignored. Project settings are no longer files in the
-    project, so nothing asks to trust them; workspace trust is about
-    `.mcp.json` alone.
-  - `UAGENT_CONFIG_FILE` is gone.
-  - A change to a setting is refused only when that same setting changed
-    since its preview; other settings changed meanwhile are kept.
-- **Yolo no longer turns the command sandbox off.** It means nobody is
-  asked; confinement is `UAGENT_SANDBOX`, the same in every approval mode. A
-  setup that relied on `--yolo` or `UAGENT_APPROVAL=yolo` to run commands
-  unconfined now needs `UAGENT_SANDBOX=0` as well, and `run(sandbox=false)`
-  still asks a person under yolo.
-- A subagent runs its commands under the sandbox of the conversation that
-  delegated to it. It was launched in yolo, which lifted the sandbox whatever
-  its parent's mode. The delegation's approval now says so.
-- A coordinator's thread cannot be put in yolo: `/permissions yolo` there is
-  refused, and a saved or flagged yolo reads as Auto.
-- A scheduled task's permission is an approval mode by its own name: `ask`
-  where it was `prompt` (a saved `prompt` still asks). A run keeps its
-  task's mode when its runtime starts again, where it fell back to the
-  default after a host restart.
-Settings that left the registry are no longer read. A config file that still
-names one loads as before and the line has no effect.
-
-- `/model`, `/effort` and `/variant` choose for the conversation they are
-  typed in and nothing else. They no longer become the model of every later
-  conversation: for that, `/model X --default`, "Also use for new
-  conversations" in the web, or `UAGENT_MODEL` in the config. A model an
-  earlier version remembered (`config/model-preference.json`) is saved as
-  `UAGENT_MODEL` on the first start and the file removed.
-- A conversation that never chose a model follows the configured one, so
-  changing `UAGENT_MODEL` reaches it at its next start. Conversations saved
-  before this release keep the model they recorded.
-- `/config` names the scope a value comes from (All conversations, This
-  project, This conversation, Environment, Command line) where it printed
-  `user`, `project`, `environment` or `cli`.
-- Removed: `/verbose`. `/verbosity full` shows what it did, `/verbosity
-  default` puts it back; unlike `/verbose` the level is saved and shared (see
-  Added). `--verbosity full` sets it for one terminal without saving.
-- Removed: `UAGENT_STEERING` (it gated nothing) and
-  `UAGENT_OPENROUTER_FALLBACKS`. A provider pinned with
-  `UAGENT_OPENROUTER_PROVIDER` no longer falls back to another.
-- Removed: `UAGENT_WEB_SEARCH_EFFORT`. Put the effort on the search model
-  instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
-  the provider's default applies.
-- Removed: `UAGENT_PRUNE_SUPERSEDED_READS`, an experiment that stayed off.
-- Tool parameters have one plain type each. `run` and `scratch` lose the
-  optional `description` label (a "string or null" a provider's tool-call
-  conversion cut the arguments at), and `session` takes one `session_id`;
-  `broadcast` still reaches every linked session.
-- Removed: `/link` and `/peers`, and with them token links between sessions.
-  The `session` tool still reaches sessions that share a workspace under
-  yolo, which link by themselves; a link file made from a token is still
-  honoured until its sessions are gone.
-- Web: typed `/quit` no longer closes the conversation's runtime (in a
-  terminal it only detaches). Use Close session in the conversation menu.
-- Merged: `UAGENT_FIRST_EVENT_TIMEOUT` and `UAGENT_STREAM_IDLE_TIMEOUT` are
-  one `UAGENT_STREAM_TIMEOUT` (300 s), the stream silence allowed before the
-  first event or between events.
-- Fixed values now, at what was each default: `UAGENT_TOOL_CONCURRENCY` (4),
-  `UAGENT_MAX_BACKGROUND_JOBS` (8), `UAGENT_MCP_STARTUP_GRACE` (2 s),
-  `UAGENT_MEMORY_IDLE_SECONDS` (6 hours), `UAGENT_WEB_SEARCH_ENGINE` (`auto`),
-  and `UAGENT_WEB_SEARCH_CONTEXT_SIZE` and `UAGENT_IMAGE_DETAIL` (the
-  provider's default).
-- Set per provider now: `UAGENT_WIRE_API`, `UAGENT_HOSTED_TOOLS`,
-  `UAGENT_MODEL_FEATURES` and `UAGENT_PROVIDER_PROTOCOL` are the `wire_api`,
-  `hosted_tools`, `features` and `protocol` keys of a provider in
-  `UAGENT_PROVIDERS`. An endpoint named only by `UAGENT_BASE_URL` speaks
-  Chat Completions; one that needs anything else becomes a named provider,
-  selected as `UAGENT_MODEL=name/model`.
-- No longer settings: `UAGENT_TOOLSET`, `UAGENT_HEADLESS_PROGRESS`,
-  `UAGENT_USAGE_FILE`, `UAGENT_AUTO_COMPACT_TOKENS` and
-  `UAGENT_PROMPT_OVERLAY`. A parent agent hands them to its children, and
-  the eval harness sets the overlay with `--prompt-overlay`.
-- A config file can no longer set a `UAGENT_INTERNAL_*` name.
+- **Settings are saved by µAgent, not in text files you edit.** They live in `~/.uagent/config/settings.json`, changed with `/config`, the web's Settings or the `uagent` tool, and moved with `uagent config export` and `uagent config import FILE`. `~/.uagent/.config` is imported once; a project's `.uagent/.config` is imported if it matches what was trusted or with `--trust-project-config`. `UAGENT_CONFIG_FILE` is gone.
+- **Yolo no longer turns the command sandbox off.** Setups that relied on `--yolo` or `UAGENT_APPROVAL=yolo` for unconfined commands also need `UAGENT_SANDBOX=0`.
+- A subagent runs commands under its delegating conversation's sandbox, and a coordinator's thread cannot be put in yolo.
+- A scheduled task's `prompt` permission is now `ask` (a saved `prompt` still asks), and a run keeps its task's mode after a host restart.
+- `/model`, `/effort` and `/variant` apply only to the conversation they are typed in. For new conversations use `/model X --default`, the web's "Also use for new conversations", or `UAGENT_MODEL`.
+- A conversation that never chose a model follows the configured one.
+- `/config` names the scope a value comes from (All conversations, This project, This conversation, Environment, Command line).
+- Removed: `/verbose` (use `/verbosity full`), `UAGENT_STEERING`, `UAGENT_OPENROUTER_FALLBACKS` (a pinned provider no longer falls back), `UAGENT_WEB_SEARCH_EFFORT` (use `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`) and `UAGENT_PRUNE_SUPERSEDED_READS`.
+- Tool parameters simplified: `run` and `scratch` lose the optional `description`, and `session` takes one `session_id`.
+- Removed: `/link` and `/peers` and token links between sessions. Web: typed `/quit` no longer closes the runtime; use Close session.
+- `UAGENT_FIRST_EVENT_TIMEOUT` and `UAGENT_STREAM_IDLE_TIMEOUT` merged into `UAGENT_STREAM_TIMEOUT` (300 s).
+- Now fixed at their old defaults: `UAGENT_TOOL_CONCURRENCY`, `UAGENT_MAX_BACKGROUND_JOBS`, `UAGENT_MCP_STARTUP_GRACE`, `UAGENT_MEMORY_IDLE_SECONDS`, `UAGENT_WEB_SEARCH_ENGINE`, `UAGENT_WEB_SEARCH_CONTEXT_SIZE`, `UAGENT_IMAGE_DETAIL`.
+- Set per provider now: `UAGENT_WIRE_API`, `UAGENT_HOSTED_TOOLS`, `UAGENT_MODEL_FEATURES` and `UAGENT_PROVIDER_PROTOCOL` are the `wire_api`, `hosted_tools`, `features` and `protocol` keys in `UAGENT_PROVIDERS`; a `UAGENT_BASE_URL` endpoint speaks Chat Completions only.
+- No longer settings: `UAGENT_TOOLSET`, `UAGENT_HEADLESS_PROGRESS`, `UAGENT_USAGE_FILE`, `UAGENT_AUTO_COMPACT_TOKENS`, `UAGENT_PROMPT_OVERLAY` (use `--prompt-overlay` in evals). A config file cannot set `UAGENT_INTERNAL_*`.
 
 ### Added
 
-- Verbosity: one display setting, `UAGENT_VERBOSITY` (`minimal`, `default`,
-  `full`), for the terminal and the web. `minimal` shows the answer and one
-  "Worked · N steps" row per turn, with failures and prompts still on rows of
-  their own; `full` shows thinking, every call, its arguments and its output.
-  `/verbosity LEVEL` or Detail in a web conversation's menu changes it
-  everywhere and restyles what is already shown; `--verbosity` pins one
-  terminal for one run. The model never sees it.
-- Web: tool calls fold into the same groups the terminal shows ("Explored ·
-  4 calls").
-- Web: the conversation menu exports the transcript, compacts and restarts
-  the conversation; typed `/restart` does the same.
-- `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
-  lines that open with a spoken label (`you:`, `tool:`, `result:`,
-  `approval needed:`), with no cursor movement, animation or non-ASCII glyphs.
-  `UAGENT_REDUCED_MOTION=1` holds the spinner still. See
-  [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
-- The web app meets WCAG 2.2 AA, checked with axe-core: zoom is allowed,
-  fields and lights have visible edges and high-contrast and forced-colours
-  styles, a screen reader hears when a turn starts, needs you or ends, a new
-  decision takes focus, and menus, the composer, image markup and the remote
-  screen work from the keyboard.
-- Undo: `/changes` lists the files the last turn's edit, write and delete
-  tools changed, and `/undo [FILE]` puts them back whole. A file changed since
-  is kept and says so; shell commands' changes are not tracked. The model is
-  told which files were reverted at its next step. Up to 2 MiB per file and
-  64 MiB per session are kept, beside the session.
-- Approvals name their risks (runs commands, makes changes, uses the network,
-  outside this folder), in the terminal and on the approval event.
-- "Queue next": a steer sent with `queue: true` waits for the running turn to
-  end and then runs as its own turn.
-- `uagent --web` prints a link beside the pairing code that pairs a browser
-  on opening, and the first terminal session in a home says what to try and
-  which keys to know.
-- The `/` command menu in the terminal: Up and Down highlight a command, Tab
-  or Enter takes it, and scattered letters match (`/mdl` finds `/model`). A
-  mistyped command asks `did you mean /model?`. The status row leads with
-  route, approval mode, context left and cost, and a running turn shows
-  `Esc stop · Ctrl+B background` while the row has room.
-- Web: one "N need you" count across every folder heads the sidebar and opens
-  each waiting decision, with its folder and question, to answer in place. The
-  same count shows in the tab title and the installed app's badge, and a
-  notification opens the session at its decision.
-- Web: a command palette (Ctrl/⌘+K, or the search button in the sidebar)
-  finds conversations, folders, slash commands and settings by letters in
-  order, with each item's shortcut. `?` lists the shortcuts; Alt+↑/↓ step
-  through conversations.
-- Web: a pairing link (`#pair=<code>`) pairs on opening, and a refused code
-  says it expired.
-- Web: **Queue next** (Alt+Enter) on the status line above the composer, once
-  a running turn has a draft, holds the message until the turn ends; its row
-  reads "Queued for after this turn".
-- Web: after a turn stopped short the status line reads **Stopped**, with
-  **Continue** beside it.
-- Web: the composer keeps one shape while idle, running, stopped and waiting
-  on a decision. Its buttons hold their places: the primary is Send, or Stop
-  while a turn runs with nothing to send. A decision opens above the input,
-  which waits read-only until it is answered.
-- Web: Settings, Display has **Animations**: Off stops every animation and
-  transition on this device (a working spinner still turns); System follows
-  the device's reduced-motion setting.
-- Web: a turn that changed files ends with its receipt (files, lines, cost,
-  time), which opens the files with **Undo** each and **Undo all**.
+- Verbosity: `UAGENT_VERBOSITY` (`minimal`, `default`, `full`) for terminal and web, changed with `/verbosity LEVEL` or Detail in the web menu; `--verbosity` pins one terminal.
+- Web: tool calls fold into groups as in the terminal; the conversation menu exports, compacts and restarts (`/restart`).
+- `uagent --plain` (`UAGENT_PLAIN=1`) for screen readers and `UAGENT_REDUCED_MOTION=1`; see docs/ACCESSIBILITY.md. The web app meets WCAG 2.2 AA.
+- Undo: `/changes` lists files the last turn's edit, write and delete tools changed, and `/undo [FILE]` restores them; shell changes are not tracked.
+- Approvals name their risks (runs commands, makes changes, uses the network, outside this folder).
+- "Queue next": a steer sent with `queue: true` runs as its own turn after the running one; the web has it as Alt+Enter.
+- `uagent --web` prints a pairing link; the web pairs from `#pair=<code>`.
+- Terminal: the `/` menu with fuzzy matching and "did you mean" hints, and a status row with route, approval mode, context left and cost.
+- Web: one "N need you" count across folders, shown in the tab title and app badge, with answers in place.
+- Web: command palette (Ctrl/⌘+K), `?` for shortcuts, Alt+Up/Down to step through conversations.
+- Web: after a stopped turn the status line shows **Stopped** with **Continue**.
+- Web: the composer keeps one shape while idle, running, stopped and waiting on a decision.
+- Web: Settings, Display has **Animations** (Off or System).
+- Web: a turn that changed files ends with a receipt that opens the files with **Undo** and **Undo all**.
 
 ### Changed
 
-- Settings have one model of scope, the same in the terminal and the
-  web: All conversations, This project, the environment and command line for a
-  run, and above them This conversation (its model and approval mode, kept
-  with it). A conversation's model and permission mode are `UAGENT_MODEL` and
-  `UAGENT_APPROVAL` chosen at its scope, not mechanisms of their own:
-  `/config conversation KEY=VALUE` sets them like any setting, and a settings
-  list shows what each scope holds and which one applies.
-- A session's runtime stops after 15 minutes with nothing to do (no turn, no
-  queued message, no running command, no terminal attached), and with it its
-  MCP servers. The next message, or a setting changed on the conversation
-  (model, permissions, tools), starts it again with its model and permission
-  mode: in the web the composer stays, with no Resume step, and the `session`
-  tool starts a coordinator or thread its message found stopped. Coordinators
-  follow the same rule (15 minutes, was 10). A runtime that ends with nothing
-  under way reads as saved, not interrupted.
-- `ask` takes up to 8 questions (was 4) and headers up to 24 characters
-  (12 stays the aim); one that is too long is refused by name. In the web the
-  questions are answered a page at a time, with a review before Submit when
-  there are three or more.
-- Web: every dialog closes on a tap outside it, and a sidebar row shows one
-  status mark.
-- A reconnecting web client reads its backlog a batch at a time; state frames,
-  published events and streamed text are no longer copied on the way through.
-- A changed setting applies from your next message wherever it is read when
-  used: limits, output caps, attachment size, sub-agent and coordinator
-  budgets and models, the search and image models, history retention. A
-  restart is asked for only where it is needed: the route and credentials,
-  the sandbox, the tool set, memory on or off, and MCP.
-- Web: the `/` list offers only what the page has no control for. Commands
-  with their own control (`/attach`, `/model`, `/models`, `/effort`,
-  `/variant`, `/yolo`, `/sessions`, `/agents`, `/ps`, `/cost`, `/changes`,
-  `/undo`, `/help`) are listed at the terminal only; typed in the web they
-  still run.
-- `/tell` is gone: the model messages other sessions with its `session` tool,
-  and nothing else used the command.
-- Web: Settings is arranged by what a setting reaches: All conversations,
-  This project, This browser and Host. A setting is a row with its name and
-  the value that applies. **Reset all to defaults** clears what is saved for
-  all conversations, and **Remove all overrides** what a project overrides.
-- Every setting has a plain name ("Steps per turn", "Title model"), which the
-  host states along with its value, where it comes from and what it follows;
-  `/config` and `/debug-config` print the same facts.
-- Web: a coordinator's threads nest under its folder header, and a row that
-  waits on you, works or failed carries an icon beside its words. The
-  coordinator's help is a one-line subtitle.
-- Web: an approval is a card: the command or diff, the folder and its risks,
-  with **Deny**, **Allow for session** and **Allow once** in one row; **More
-  options** holds the **Always allow this exact action here** box and
-  **+ guidance**. A long preview scrolls inside about six lines. Numbered
-  choices are cards, not a dropdown. Settings names the repository's rules *Allowed actions*.
-- Web: a send or decision reply that fails stays where it was made, with
-  **Retry**, instead of the page's error banner; a refused message no longer
-  also returns to the composer. Reconnecting shows as a pill, the running
-  composer reads "Add guidance… (Esc to stop)", and YOLO mode is red.
-- Web: the light theme's diff green and red are darker, to meet WCAG AA on
-  their tinted lines.
+- Settings have one scope model in terminal and web: All conversations, This project, Environment and command line, and This conversation (`/config conversation KEY=VALUE`).
+- A session's runtime stops after 15 minutes idle (coordinators too, was 10) and restarts on the next message or setting change; the web composer stays, with no Resume step.
+- `ask` takes up to 8 questions and headers up to 24 characters; the web answers a page at a time.
+- Web: every dialog closes on a tap outside it; a reconnecting client reads its backlog in batches.
+- A changed setting applies from the next message; a restart is asked only for route, credentials, sandbox, tool set, memory and MCP.
+- Web: the `/` list omits commands that have their own control (`/attach`, `/model`, `/effort`, `/yolo` and others); they still run when typed. `/tell` is gone.
+- Web: Settings is arranged as All conversations, This project, This browser and Host, with **Reset all to defaults** and **Remove all overrides**; settings have plain names, also printed by `/config` and `/debug-config`.
+- Web: coordinator threads nest under their folder, approvals are cards with **Deny**, **Allow for session** and **Allow once**, failed sends show **Retry**, YOLO mode is red, and the light theme's diff colors meet WCAG AA.
 
 ### Fixed
 
-- Starting a stopped conversation's runtime: a runtime that ends before it
-  can be reached is noticed at once and its reason given, instead of "session
-  runtime did not become ready" after five seconds. A conversation whose
-  folder was deleted says so. Commands that arrive while it starts (a
-  settings screen sends several) wait for the start and then run in order,
-  where they were refused as "stale worker generation", "session not ready"
-  or "this control requires an idle session"; only a running turn still
-  refuses a setting. A runtime that stays silent is stopped, so none is left
-  half-started.
-- A model's malformed tool call is answered with an error it can correct
-  instead of ending the turn, and every other model fault (an empty or cut-off
-  response, tool markup in prose, a call without a name) is told to the model
-  before it can end one.
-- `scratch` runs any script in its folder: a turn is no longer held to the
-  first one it ran.
-- A rejected enum value names the allowed ones.
-- Browser: when a turn ends only the tab the agent was on stays open; watching
-  no longer keeps an idle Chrome running; a human request whose conversation
-  no longer runs is dropped; Chrome skips component and on-device model
-  downloads and bounds its page cache.
-- Browser: the agent's current tab was forgotten at every Chrome start, so
-  the status showed no page and a popup was not followed until a tab was
-  selected by hand.
-- A coordinator and its threads are linked by where their sessions are kept,
-  whatever mode they run in and before any of them has used the tool, so
-  threads can message each other and their coordinator with the `session`
-  tool. The tool names a session by the id boards and lists
-  show, and a refused message points at `list`.
-- A thread's finished turn reaches its coordinator with the answer in it (the
-  first 1,500 characters), so the coordinator no longer calls `history` to
-  read it.
-- Web: a message from another session or a thread event is shown as an event
-  row with its sender, not as a message of yours.
-- A file diff is shown whole in the web and the terminal; past its opening it
-  is read from a file kept with the session, for as long as the conversation.
-- The `session` tool lists sessions without a prompt.
-- A stream error sent as a bare string keeps its text and is classified on
-  the Responses and Anthropic dialects too.
-- A command that `pkill -f` matched and killed says so.
-- Web: a sheet returns focus to its button in Safari; a notice replaces an
-  older error in the banner; the mention list keeps its selected option in
-  view.
-- Data races found by ThreadSanitizer: flags shared with signal handlers are
-  atomics, the session journal has its own lock, and the mail rate limiter
-  and the settings store are never destroyed at exit while a thread may still
-  use them.
+- Starting a stopped conversation's runtime reports why it failed at once, queues commands that arrive during the start, and stops a silent runtime.
+- A model's malformed tool call or other fault (empty response, tool markup in prose, call without a name) is answered with a correctable error instead of ending the turn.
+- `scratch` runs any script in its folder; a rejected enum value names the allowed ones.
+- Browser: only the agent's tab stays open when a turn ends, idle Chrome is not kept running by watching, and the current tab is remembered across Chrome starts.
+- A coordinator and its threads can message each other with the `session` tool, and a thread's finished turn reaches its coordinator with the first 1,500 characters of its answer.
+- Web: messages from other sessions show as event rows; file diffs are shown whole; a command killed by `pkill -f` says so; Safari focus, banner and mention-list fixes.
+- Stream errors sent as a bare string keep their text on the Responses and Anthropic dialects; the `session` tool lists sessions without a prompt.
+- Data races found by ThreadSanitizer were fixed.
+
 
 ## v1.2.0 - 2026-09-30
 
 ### Upgrade notes
 
-- Messages between sessions and to subagents now live in
-  `~/.uagent/mail/`. Guidance still waiting in the old
-  `~/.uagent/sessions/inbox/` from an earlier version is not delivered and
-  ages out with retention.
-- A coordinator's `thread delete` closes a running session first; `thread
-  stop` still only interrupts its turn.
+- Messages between sessions and subagents now live in `~/.uagent/mail/`. Guidance still waiting in the old `~/.uagent/sessions/inbox/` is not delivered.
+- A coordinator's `thread delete` closes a running session first; `thread stop` still only interrupts its turn.
+- `system-prompt.json`, `/prompt` and the `prompt` control kind are gone; use `AGENTS.md` and the Instructions screen instead.
+- 48 internal limits are no longer settings and the old names are not read; only `UAGENT_HISTORY_DAYS` remains for retention. The child delegation depth variable is `UAGENT_INTERNAL_DEPTH`.
+- Persistent subagents (`persistent=true`), agent teams (`UAGENT_TEAM`, `broadcast`, `hops`) and the `guide` session command are removed. `~/.uagent/collaborators/` is unused and can be deleted.
 
 ### Added
 
-- A coordinator per folder (`uagent coord`, `uagent coord -p`, the icon on each
-  folder in the web): it reads the folder's sessions, delegates work to
-  threads (ordinary sessions, sandboxed, in a worktree by default) within a
-  thread cap and a daily spend limit, and decides the approvals their Auto mode
-  cannot settle, yielding to you when unsure. Decisions waiting on you show
-  above its composer; `/coord`, `/board` and `/open` reach it from any
-  terminal session. It idles out when unused.
-- An `ask` tool: the agent puts 1 to 4 questions with options to you and
-  waits. Answer by choosing, in your own words, or with an image, in the web
-  or with an arrow-key picker in the terminal. A thread's questions go to its
-  coordinator first, which answers or hands them to you.
-
-- The image viewer zooms like a document viewer: − / + / Fit controls,
-  ⌘/Ctrl+wheel and ⌘/Ctrl with −, + and 0, with the level against the image's
-  real size. Annotation zooms the same way; two fingers pinch the image.
-- Slash commands with a screen (`/config`, `/permissions`, `/mcp`, `/tools`,
-  `/rename`, `/memory`, `/skills`, `/schedule`) open it in the web UI when
-  typed without an argument.
+- Coordinator per folder (`uagent coord`, `uagent coord -p`, folder icon in the web): delegates work to sandboxed threads within a thread cap and daily spend limit, and settles approvals Auto mode cannot.
+- `/coord`, `/board` and `/open` reach the coordinator from any terminal session.
+- `ask` tool: the agent asks you 1 to 4 questions with options; answer by choice, text or image. A thread's questions go to its coordinator first.
+- `ask` options can include an image or a monospace preview, shown as cards in the web.
+- Image viewer zoom: -, +, Fit, Cmd/Ctrl+wheel, keyboard shortcuts and pinch. Annotation zooms the same way.
+- Slash commands with a screen (`/config`, `/permissions`, `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`) open it in the web UI when typed without an argument.
 
 ### Changed
 
-- Sessions, coordinators, threads and subagents message each other through a
-  durable mailbox each (`~/.uagent/mail/`) that wakes the recipient at once:
-  a running one reads a message at its next step, even after its final
-  answer, and an idle one starts a turn on it. A coordinator hears a finished
-  thread within milliseconds instead of after a 20-second batch, a message to
-  a finished subagent runs it again, and an idle parent takes up a subagent's
-  result as soon as it finishes. Floods, loops and oversized messages are
-  refused with a reason rather than dropped.
-- Web: panels open as sheets from the edge (from below on a phone), with the
-  same focus, Escape and back behaviour as every dialog: statistics, raw
-  context and HTTP, instructions, tools, the model, permission and activity
-  controls. A row's ⋯ actions stay a dropdown.
-- `ask` options can show what they mean: an image the agent made in the
-  workspace (a mockup, screenshot or diagram; its description is the alt
-  text) and a short monospace preview. The web shows them as cards, single
-  or multiple choice; a terminal shows the focused option's preview and
-  image path.
-- Instructions replace system-prompt documents. Sessions read `AGENTS.md`
-  (yours in `~/.uagent/`, then the project's), coordinators also
-  `COORDINATOR.md`; they only add to the built-in base, are read when a
-  session starts, and are edited on one **Instructions** screen, with
-  `/instructions`, or by an agent through `uagent set_instructions` with your
-  approval. `system-prompt.json`, its scopes and modes, `/prompt` and the
-  `prompt` control kind are gone; `adapt_system` keeps only the conversation's
-  self-directive.
-
-- Rewind never loses work. Your messages' menu offers **Edit from here**
-  (continue in a fork cut before the message, with it back in the composer)
-  and **Fork from here** (keep the message and its reply). `/rewind N` does
-  the same by number, and a bare `/rewind` lists the numbers. The original
-  conversation stays as it was; files on disk are not changed. The in-place
-  truncation and the `rewind` command kind are gone.
-- 48 internal limits are fixed in the binary instead of being settings: sizes
-  and counts for tool output, requests and responses, delegation, hosted
-  search, memory, skills, MCP, attachments, project instructions and the trace
-  archive, artifact retention except `UAGENT_HISTORY_DAYS`, and Chrome's
-  15-minute idle stop. Their defaults are unchanged; the old names are no
-  longer read. `web_fetch` follows `UAGENT_ATTACHMENT_MB`, and delegated
-  children never inline always-on memory.
-- The delegation depth handed to child processes is `UAGENT_INTERNAL_DEPTH`.
-- Delegated children are ordinary saved sessions: each lives in the
-  workspace's history with a `delegation` header naming its parent and role,
-  stays out of the session list, and hears its parent through the same inbox
-  as linked sessions. `~/.uagent/collaborators/` is no longer used and can be
-  deleted.
-- Removed persistent subagents (`persistent=true`), agent teams
-  (`UAGENT_TEAM`, `broadcast`, `hops`) and the `guide` session command.
-  `followup` resumes a child's conversation as before.
+- Sessions, coordinators, threads and subagents message each other through durable mailboxes that wake the recipient at once; floods, loops and oversized messages are refused with a reason.
+- Web panels open as sheets from the edge (from below on a phone) with the same focus, Escape and back behaviour as dialogs.
+- Instructions replace system-prompt documents: sessions read `AGENTS.md` (yours in `~/.uagent/`, then the project's), coordinators also `COORDINATOR.md`. Edit them on the Instructions screen, with `/instructions`, or via `uagent set_instructions` with approval.
+- Rewind no longer loses work: **Edit from here** and **Fork from here** in a message's menu, and `/rewind N` does the same. The original conversation and files on disk are unchanged.
+- Delegated children are ordinary saved sessions in the workspace history, hidden from the session list.
 
 ### Fixed
 
-- A coordinator can delete sessions: `thread close` ends a runtime, and
-  delete closes it first. A socket left by a crashed runtime no longer blocks
-  deletion.
-- On a phone, the sessions drawer slides in again instead of appearing in
-  place, and a sheet no longer sits off the edge at small zoom levels.
-- The web session list shows sessions a coordinator creates or deletes
-  without a refresh, and a session closed by the coordinator reads as closed,
-  not interrupted.
-- Files the agent attached mid-turn no longer count as your messages, so
-  message numbers, `/fork N`, `/rewind N` and `/share` line up with what
-  you wrote.
-- Scrolling with a mouse wheel in WebKit browsers (Safari, and Linux WebKit's
-  animated scrolling) is no longer swallowed when content above the paragraph
-  you are reading changes size at that moment.
-- Reloading the web page while an answer streams no longer freezes it at the
-  reloaded text, and a tool that is still running keeps its row. The host
-  sends browsers the rows of its own view of the conversation (whole rows and
-  streamed appends), so a browser never re-derives them from raw events. A
-  tool call and its result are one row everywhere, including history.
-- Tall images fit whole in the viewer instead of overflowing it.
-- `/sessions` in a wide browser window focuses the conversation search.
-- The UI showcase no longer throws on load.
+- A coordinator can delete sessions; a socket left by a crashed runtime no longer blocks deletion.
+- Phone: the sessions drawer slides in again and sheets no longer sit off the edge at small zoom.
+- The web session list updates without refresh when a coordinator creates or deletes sessions.
+- Files the agent attached mid-turn no longer count as your messages, so `/fork N`, `/rewind N` and `/share` numbers line up.
+- Mouse-wheel scrolling in WebKit browsers is no longer swallowed when content above changes size.
+- Reloading the web page during a streaming answer no longer freezes it, and a running tool keeps its row.
+- Tall images fit the viewer; `/sessions` in a wide window focuses search.
 
 ## v1.1.1 - 2026-09-28
 
 ### Fixed
 
-- The web host restarting itself after a settings change no longer races
-  its own stop signal: the restart wakes the stop loop directly instead of
-  from a detached timer thread, which could write to the stop pipe while it
-  was closing. v1.1.0 was tagged but not published because of this.
+- The web host restarting itself after a settings change no longer races its own stop signal. v1.1.0 was tagged but not published because of this.
 
 ## v1.1.0 - 2026-09-27
 
 ### Upgrade notes
 
-- `UAGENT_APPROVAL` accepts `ask`, `auto` or `yolo`; the old `prompt`
-  spelling is gone (an unknown value still means `ask`).
-- The web host now reads `UAGENT_WEB_BIND`, `UAGENT_BROWSER_DATA` and
-  `UAGENT_BROWSER_IDLE_MINUTES` from the config file as well, not only from
-  its environment.
-- Running sessions restart on upgrade and installed web apps must reload:
-  workers now report their binary in the connection handshake, and the old
-  pending-decision field and `.sock.binary` marker are gone.
+- `UAGENT_APPROVAL` accepts `ask`, `auto` or `yolo`; the old `prompt` spelling and the legacy integer permission override are no longer read.
+- The web host also reads `UAGENT_WEB_BIND`, `UAGENT_BROWSER_DATA` and `UAGENT_BROWSER_IDLE_MINUTES` from the config file.
+- Running sessions restart on upgrade and installed web apps must reload.
 - An empty setting (`KEY=`) now means "use the default" everywhere.
-- The legacy integer permission override is no longer read; set
-  `UAGENT_APPROVAL` to `ask`, `auto` or `yolo`.
-- `scratch` no longer takes `code` or `packages`: write the script under
-  `.uagent/scratch` with `write_file` (dependencies in its PEP 723 header) and
-  run it with `scratch`.
+- `scratch` no longer takes `code` or `packages`: write the script under `.uagent/scratch` with `write_file` (dependencies in a PEP 723 header) and run it with `scratch`.
 
 ### Added
 
-- Annotate images in the web viewer: pen strokes and numbered pins with
-  notes, attached as a marked-up copy that replaces the draft image.
-- Every setting behaves the same: its value shows as text, default
-  included, with **Reset** while it is changed; values set by the
-  environment are locked. **Reset all to defaults** resets a scope (and this
-  device's display settings) but keeps API keys. A change that needs a
-  restart offers one: running conversations restart when idle and keep
-  their history; the web host re-execs itself for its own settings.
-- Terminal parity: `/config` lists changed settings and resets a scope,
-  `/restart` restarts the conversation, `/mcp [retry|on|off NAME]` mirrors
-  the MCP settings, `/rename TITLE`, and `/permissions rules` / `forget`.
-- Settings → **MCP servers**: every configured server of the open
-  conversation, grouped as global or project, with its state, tools and
-  failure reason. Retry a failed server or switch one off and on; the switch
-  edits `disabled` in the defining `.mcp.json` and applies at once.
-- Chrome stops by itself after `UAGENT_BROWSER_IDLE_MINUTES` (default 15)
-  without browser work, unless a person holds or is asked for it, and starts
-  again on the next action.
-- Tool rows read as a headline ("Edited src/a.ts +12 −3") with a status dot.
-  Diffs, a command's last output lines, shared files and links to started
-  work stay visible without expanding; a command's output is one scrollable
-  box. Every call carries an intent (explore, research, edit, verify, run,
-  setup, delegate), declared by `run`/`scratch` or inferred from read-only
-  commands, and consecutive calls of one intent fold into Explored,
-  Researched, Verified or Edited. Memory and background receipts use the
-  same row.
-  The terminal prints the same headline, tail and links.
-- A file the agent shares previews inline in the conversation: images,
-  sandboxed HTML (its own scripts now run) and PDFs on desktop.
-- Attachments read the same everywhere: images as thumbnails that open an
-  in-app viewer, other files as cards naming their type and size. Images a
-  tool adds to context (a browser screenshot, a read image) show on that
-  tool's row, and the composer keeps its files in one scrolling strip.
-- Closing the browser hands control back to the agent; an agent step waits
-  while you drive instead of asking, and the browser can be watched without
-  taking control. The browser icon shows when the agent is using it.
-
+- Image annotation in the web viewer: pen strokes and numbered pins with notes, attached as a marked-up copy.
+- Uniform settings: values show as text with **Reset** when changed, environment-set values are locked, **Reset all to defaults** keeps API keys, and changes needing a restart offer one.
+- Terminal parity: `/config` lists changed settings and resets a scope, `/restart`, `/mcp [retry|on|off NAME]`, `/rename TITLE`, `/permissions rules` and `forget`.
+- Settings → **MCP servers**: state, tools and failure reason per server, with retry and on/off switch.
+- Chrome stops after `UAGENT_BROWSER_IDLE_MINUTES` (default 15) without browser work and restarts on the next action.
+- Tool rows read as a headline with a status dot; diffs, last output lines and links stay visible. Consecutive calls of one intent fold into Explored, Researched, Verified or Edited.
+- Shared files preview inline: images, sandboxed HTML and PDFs on desktop.
+- Attachments look the same everywhere: image thumbnails open a viewer, other files show as cards with type and size.
+- Closing the browser hands control back to the agent, and the browser can be watched without taking control.
 - Web Push is built into release archives and the Docker image.
-- Tool rows show each call the way the tool describes it: a command verbatim,
-  a script as highlighted code, small arguments as fields, and Markdown
-  results rendered. The terminal prints the same parts under `/verbose`.
-- Timestamps show the date when it matters and follow per-device settings:
-  a 12-hour, 24-hour or locale clock, and smart, relative or absolute stamps.
-- The browser performs `/rewind` and `/share`, recalls sent prompts with
-  Up/Down, stops a turn with Esc and moves a command to the background from
-  the activity panel.
-- `$fusion` coordinates one opt-in retained sidekick through blocking handoffs.
-  The same event-driven session worker preserves its supervised activities,
-  charges cumulative usage deltas to the lead, and appears consistently in CLI
-  and web collaborator views; the lead still owns decisions and final review.
-  Handoffs tighten budgets to the parent remainder, require correlated guidance
-  receipts, preserve cancellation status, and stop after an abrupt parent exit.
-- Shared session runtimes: terminal and web clients submit commands to one private
-  socket and consume the same ordered events. Client exit or web restart detaches
-  without stopping the session. Correlated receipts reject conflicting retries
-  and stale replies; reconnect never automatically repeats uncertain work.
-- `scratch` accepts script arguments; `grep` supports literal searches and
-  returning only the names of files with matching content.
-- Image attachments accept HEIC/HEIF phone photos and SVG diagrams: HEIC
-  normalizes to JPEG and SVG rasterizes to PNG before the normal
-  size-budgeted vision flow, so providers only ever see supported bytes.
-  Unconvertible files fail with an actionable error instead of degrading
-  the route.
-- New sessions are named in the background from the first real prompt by
-  `UAGENT_TITLE_MODEL` (default the latest DeepSeek Flash route; `off`
-  keeps the first line). A rename always wins over a late title.
-- A persistent work button under the input counts running commands and
-  sidekicks and opens their list; it stays clickable when idle.
-- Settings open as sections in a sidebar (General, Models, Permissions,
-  Agent, Devices, Advanced, Developer); phones drill in from a list.
+- Timestamps follow per-device settings: 12-hour, 24-hour or locale clock; smart, relative or absolute stamps.
+- The browser performs `/rewind` and `/share`, recalls prompts with Up/Down, stops a turn with Esc and backgrounds a command from the activity panel.
+- `$fusion` coordinates one opt-in retained sidekick through blocking handoffs; usage is charged to the lead.
+- Terminal and web clients share one session runtime; closing a client or restarting the web host detaches without stopping the session.
+- `scratch` accepts script arguments; `grep` supports literal searches and listing only matching file names.
+- Image attachments accept HEIC/HEIF (converted to JPEG) and SVG (rasterized to PNG); unconvertible files fail with a clear error.
+- New sessions are titled in the background from the first prompt; a rename always wins.
+- A work button under the input counts running commands and sidekicks and opens their list.
+- Settings open as sidebar sections (General, Models, Permissions, Agent, Devices, Advanced, Developer); phones drill in from a list.
+- Web conversations and drafts are cached in IndexedDB for offline reading, with pinned downloads and cleanup on logout.
+- Mermaid fences render locally.
 
 ### Changed
 
-- The agent can use the browser's saved logins but never read them. With the
-  sandbox on, commands cannot read the browser data directory or reach its
-  sockets (Linux 7.1+ via Landlock, macOS via Seatbelt), and the file tools
-  refuse it. Screenshots mask password fields, including revealed ones;
-  `back` refuses non-HTTP(S) history; `deploy/chrome-policy.json` blocks
-  Chrome's local password pages, `view-source:` and DevTools (installed by
-  the Docker image; `install.sh` prints the one-time `sudo` command).
-- Dialogs, sheets, popovers and toasts animate in and out from one set of
-  motion tokens, and the system back gesture closes the topmost dialog, sheet
-  or page. Settings is a full-screen sheet on phones with grouped rows that
-  save themselves. Streaming replies render formatted as they arrive, code
-  inside its box from the first line. Every screen uses the shared controls.
-- The browser opens as one full-screen sheet on phones (landscape too) with a
-  fixed layout: the live screen fills it and one bar holds status, tools and
-  **Take over**/**Done**. Notices and the clipboard card float over the
-  screen, so no state moves anything, and handing control over no longer
-  reconnects the screen. Touch drives Chrome directly: tap clicks, drag
-  scrolls, hold-and-drag drags or selects, two-finger tap right-clicks, pinch
-  zooms. **Open browser** on the agent's request takes over in one tap and
-  **Done** returns to the chat.
-- Browser actions wait for the page to settle and return a fresh screenshot,
-  follow a tab the action opens, add `back`, and flag a suspected bot check or
-  rate limit so the agent can hand off with `request_human` or try another
-  source. While the user drives, actions fail at once instead of waiting.
-  Screenshot pixels now match click coordinates after scrolling.
-- Loading and resuming keep the layout still on phones: the header keeps its
-  buttons from the first frame, the conversation loads behind one skeleton,
-  a resumed app keeps its content and only labels a reconnect that takes
-  longer than a second, and notices float over the app. Return on the phone
-  keyboard writes a new line; Send sends. Dialogs and sheets slide in.
-
-- Approvals ask one plain question; the terminal shows its key hints once and
-  the browser shows one button per option.
-- The terminal status row shows elapsed time, the Esc and Ctrl+B hints,
-  running agents and commands, context left and the approval mode.
-- `/verbose` is a terminal view setting: the runtime always records full tool
-  output and routine memory outcomes, so older rows can still be expanded.
-- Builds without the web host (`-DUAGENT_WEB=OFF`) leave out the browser.
-- Web steering queues guidance without aborting the turn, so steering no
-  longer reports an interruption or kills running tools; passive waits
-  yield on the queued message. The browser's session cost and counters
-  update mid-turn through live (non-checkpoint) state publishes. One
-  status LED (hollow idle, filled attached, breathing while running)
-  replaces the presence dot, activity glyph and connection glyphs in the
-  sidebar, under the composer and on the connection chip. Markdown
-  tables scroll instead of squeezing their columns, long tool labels
-  truncate while their status metadata stays intact, and sidebar rows no
-  longer advertise offline cache state (pin state lives in the
-  conversation menu).
-- Tool activity uses native operation metadata and optional shell/script intent;
-  successful adjacent exploration groups consistently across terminal and web
-  history. Intent never grants permission or proves absence of side effects.
-- `read_path` loads media through the existing model-capability pipeline, replacing
-  the model-facing `attach` tool. `uagent` combines inspection and human-approved
-  configuration; the former tool names are removed.
-- Memory changes have visible receipts in web history; background extraction
-  notices are retained. Terminal replay uses recorded completion status.
-- Replace sidecars, filesystem inboxes and terminal mirroring with runtime
-  checkpoints and bounded event replay. Share native state projection across
-  the runtime and web adapter; retain distinct compaction and turn records.
-- Reconnect scheduled runs after web restart without resubmitting their prompts.
-- Remove duplicate build-matrix legs and obsolete ownership tests; retain focused
-  cross-client, cancellation, security and platform coverage.
-- One agent step renders one web card: the µ header, timestamp and menu
-  appear once per step, follow-up bodies share the step, and thinking and
-  tool rows use body type.
-- Mobile rotation preserves layout scale and respects landscape safe areas;
-  long tool labels remain compact. Scratch receipts retain execution output.
-
-- Remove `show_image`, terminal image rendering/replay and its settings. MCP
-  images use the shared attachment size limit and remain model-readable.
-
-- Persist native turn summaries for shared terminal/web statistics and use
-  compact monochrome terminal styling.
-- Prepare capability-aware attachment payloads from retained originals, with
-  bounded image normalization and explicit delivery labels.
-- Cache web conversations and drafts in IndexedDB for offline reading, with
-  pinned downloads, bounded storage and logout cleanup.
-- Render Mermaid fences locally through lazy loading and isolated SVG images.
-- Remove the old `adapt_system.instructions` API, duplicate OpenRouter flag,
-  image-only web display path and archive ID guessing. Prompt writes use the
-  scoped revision contract; custom routes use `UAGENT_PROVIDER_PROTOCOL`.
-
-- Remove slopscan and duplicate audit/lint work. Keep deterministic telemetry
-  and source contracts; make personal history and host reports opt-in.
-- Consolidate cache parity and test support, run source-only CI checks once,
-  and move MCP/skill implementation out of shared headers.
-- Install bundled skills only under the selected prefix and documentation in
-  its source-relative layout; preserve user-owned skills and configuration.
-- `write_file` creates new files by default; replacing a file requires explicit
-  `overwrite=true`. Normalize irrelevant grep context and clarify conditional
-  tool arguments, including activity waits.
-- Complete MCP discovery, subscriptions and bounded input continuations while
-  preserving tool arguments, response correlation and cancellation.
-- The conversation is compact: no marks or indents, a one-line user bar,
-  a reply's time and menu on hover, and about half the spacing.
-- The status line sits above the input; context and session totals stay
-  below it.
-- An expanded tool row is one column: short arguments and a raw link join
-  its info line, and the command and output boxes align. A failed call
-  reads red without an icon.
+- The agent can use the browser's saved logins but never read them: with the sandbox on, commands and file tools cannot reach the browser data; screenshots mask password fields; `deploy/chrome-policy.json` blocks Chrome's password pages, `view-source:` and DevTools.
+- Dialogs, sheets, popovers and toasts share motion tokens, and the system back gesture closes the topmost one. Settings is a full-screen sheet on phones.
+- On phones the browser opens as one full-screen sheet with touch control (tap, drag, hold-drag, two-finger right-click, pinch) and **Take over**/**Done**.
+- Browser actions wait for the page to settle, return a fresh screenshot, follow new tabs, add `back`, and flag suspected bot checks; screenshot pixels match click coordinates after scrolling.
+- Phone loading and resuming keep the layout still; Return on the phone keyboard writes a new line.
+- Approvals ask one plain question; the terminal status row shows elapsed time, hints, running agents, context left and approval mode.
+- `/verbose` is a terminal view setting; full tool output is always recorded.
+- `-DUAGENT_WEB=OFF` builds leave out the browser.
+- Web steering queues guidance without aborting the turn. One status LED replaces the presence dot and activity glyphs; Markdown tables scroll.
+- `read_path` loads media, replacing the model-facing `attach` tool; `uagent` combines inspection and approved configuration.
+- Memory changes have visible receipts in web history; scheduled runs reconnect after a web restart without resubmitting prompts.
+- One agent step renders one web card; mobile rotation keeps layout scale and respects safe areas.
+- The conversation is compact, with the status line above the input and totals below it; an expanded tool row is one column and failed calls read red.
+- Attachments are prepared per model capability with explicit delivery labels.
+- `write_file` creates new files by default; replacing needs `overwrite=true`.
+- MCP discovery, subscriptions and input continuations are complete.
+- Bundled skills install only under the selected prefix; user-owned skills and configuration are preserved. Custom routes use `UAGENT_PROVIDER_PROTOCOL`.
 
 ### Removed
 
-- `UAGENT_TITLE_MODEL`: it was documented but never read; titles use the
-  conversation's route.
-- `/trace`: the tool input/output view and `/verbose` show the same detail;
-  headless `--json` keeps its `trace` field.
-- The self-improvement controller and its skill; trace metrics and live
-  authority checks moved to `benchmarks/`.
-- The GitHub `action.yml`.
-- `UAGENT_WEB_SEARCH_URL` and `UAGENT_WEB_SEARCH_API_KEY`: web search uses the
-  side-model route. The `anthropic` protocol value is accepted as an alias
-  only; the wire API decides the dialect.
+- `UAGENT_TITLE_MODEL` (documented but never read), `/trace` (headless `--json` keeps its `trace` field), `show_image` with terminal image rendering, the self-improvement controller and skill, and the GitHub `action.yml`.
+- `UAGENT_WEB_SEARCH_URL` and `UAGENT_WEB_SEARCH_API_KEY`: web search uses the side-model route. `anthropic` remains only as a protocol alias.
 
 ### Fixed
 
-- `/share` failed in every live session because it re-took the session lease
-  its own worker held.
-- Audio and video attachments are accepted only on Chat Completions routes;
-  other routes report them as unsupported instead of dropping them silently.
-- `permissions.json` is protected like the other configuration files, MCP
-  servers no longer inherit a file-size limit, and non-UTF-8 locales fall back
-  to UTF-8 or ASCII instead of measuring text as zero width.
-- Restore effective-prompt scrolling, centralize dialog spacing and size controls,
-  and distinguish interface scale from conversation text size with live previews.
-- Keep configuration edits stable during initial rendering; remove the delayed
-  effect that could overwrite a newly typed value.
-
-- Render scratch output as an ordinary tool result instead of hiding it behind
-  a repeated script diff. Mark truncated whole-file diffs.
-- Preserve model/tool Unicode content when UI symbols fall back to ASCII.
-- Wake the idle terminal when SIGINT reaches another thread, so the second
-  Ctrl+C exits reliably and restores terminal modes.
-- Unsent drafts survive a reload or an evicted installed app, and a failed
-  reconnect retries with backoff.
-- `/http INDEX` keeps every exchange of the turn, not just the latest.
-- Diff shading runs to the end of long lines when scrolled.
-- Message statistics are titled and scoped as a message, turn statistics
-  as a turn.
-- The installed iOS app draws under a dark status bar, the page has a
-  favicon, and the UI showcase allows pinch-zoom.
-- Reloading the web UI no longer shifts the layout: the shell renders from the
-  first frame with the last conversation list, title and composer state, and
-  only the transcript fills in. A saved conversation shows **Resume** from the
-  start instead of swapping it in after connecting.
-- Loading placeholders for Settings, configuration rows, statistics, tools and
-  the system prompt match their loaded layouts instead of showing a spinner or
-  generic bars.
-- The system prompt's Scope field no longer renders at the prompt editor's
-  height.
+- `/share` failed in every live session.
+- Audio and video attachments are accepted only on Chat Completions routes; other routes report them as unsupported.
+- `permissions.json` is protected like other config files, MCP servers no longer inherit a file-size limit, and non-UTF-8 locales fall back to UTF-8 or ASCII.
+- Configuration edits no longer get overwritten by a newly typed value during initial rendering.
+- Scratch output shows as an ordinary tool result; truncated whole-file diffs are marked.
+- The second Ctrl+C exits reliably and restores terminal modes.
+- Unsent drafts survive a reload or an evicted installed app; failed reconnects retry with backoff.
+- `/http INDEX` keeps every exchange of the turn; diff shading reaches the end of long lines.
+- The installed iOS app draws under a dark status bar and has a favicon.
+- Reloading the web UI no longer shifts the layout, and saved conversations show **Resume** from the start.
 
 ## v1.0.0 - 2026-09-03
 
-### Added
+### Upgrade notes
 
-- Native hosted web search now reports one provider-neutral lifecycle across
-  OpenAI Responses and Anthropic Messages. The terminal shows `searching the
-  web` while a provider-side search is active, then restores the prior
-  reasoning ticker or waiting status; application subscribers and
-  `--json-stream` receive transient `response.hosted_tool` events without
-  exposing generated queries or turning server tools into executable calls.
-
-- `scratch` runs a `.sh` script as well as a `.py` one, chosen by the path's
-  extension. Half of every shell byte this agent sends is already a byte-exact
-  repeat within the same session -- 3.08 MB of 6.18 MB across 18,564 measured
-  `run` calls, spread over 8,551 distinct commands rather than a few outliers --
-  and `scratch` was the one tool that could save a script and rerun it by path
-  for a few dozen bytes, but only for Python. The heaviest repeats were already
-  scripts: `uv run python - <<'PY'`, `ruby <<'RUBY'`, `git apply <<'PATCH'`.
-  A `.sh` script takes no packages, runs under `sh`, and stays inside the OS
-  sandbox with no escape hatch, so it is strictly more confined than `run`.
-
-- Tab after `@` completes a path, one segment at a time from the directory the
-  token already names, in the same rows below the draft that slash commands
-  use. This is a token cost, not only an ergonomic one: a draft that says "the
-  turn file" spends a grep and a read round locating what a completed
-  `@src/agent/turn.cc` would have named outright.
-- Ctrl+X Ctrl+E opens the draft in `$VISUAL` or `$EDITOR` and takes back what
-  it saves, readline's spelling of the same gesture. The composer holds 16KB
-  and draws newlines as a glyph, which is writable but not somewhere to
-  compose a long prompt.
-
-### Changed
-
-- Yolo mode now disables the OS sandbox as well as approval prompts. This
-  applies equally to `--yolo`, `UAGENT_APPROVAL=yolo`, and an interactive
-  `/yolo` toggle; toggling it off restores confinement for the next command.
-
-- The memory index carries an opening clause for each global memory instead of
-  a bare key. A key says a memory exists and not what it holds, so the globals
-  the always-on slice has no room for were listed every session and never
-  opened. Global scope only: a global's body is already eligible for every
-  request through that slice, while project-scoped bodies are deliberately
-  never injected, and a hook there would put every workspace's notes into every
-  prompt.
-- The always-on memory slice admits the smallest global memories rather than
-  the most recently written. Measured on a real store, that is seven standing
-  preferences in the prompt instead of four, out of twenty-one: every global is
-  one the user asked to apply everywhere, so fitting more of them is the point.
-  Age was also the wrong key for a second reason -- a consolidation pass, a
-  checkout or an editor save rewrites mtimes and would silently reshuffle which
-  preferences are live, while size changes only when the content does. What the
-  slice drops is still listed in the memory index and fetchable by name.
-
-- `subagent` charges one description for five ceilings. `max_steps`,
-  `max_tool_calls`, `max_seconds`, `max_cost` and `memory` become one `limits`
-  object; every capability is unchanged, including per-call tightening and the
-  clamp-and-report on the host ceiling, which now names `limits.seconds` rather
-  than `max_seconds`. `ClampToolArguments` resolves one level of nesting so this
-  needed no local exception. The `model` description carries the grammar for a
-  provider-scoped route instead of enumerating every configured provider;
-  `uagent_info topic=routes` reports the roster.
-- `scratch` is advertised only when `uv` or `python3` is on PATH. It runs under
-  uv when present and falls back to `python3`, so a host with neither could
-  only ever answer it with an error.
-- `benchmarks/audit.py --check` runs as the `token_audit` CTest gate. It has
-  measured the bytes charged to every request since it was written and nothing
-  ran it, which is how a schema regression reached the tree with the
-  measurement already on disk. Only the machine-independent axes can fail a
-  build; binary size and peak RSS stay reported.
-- Release builds precompile the vendored `third_party/json.hpp`. It reaches 82
-  of the ~90 translation units and costs 0.75s in each, about a third of a
-  clean build; the header is vendored and never changes, so the precompiled
-  header is stable. Eight of the heaviest units drop from 17.9s to 13.9s and a
-  clean release build from 19s to 16s. The `tidy` preset disables it, because
-  `run-clang-tidy` cannot consume an `-include-pch` from a different clang.
-
-- MCP compatibility break: the legacy `initialize` / protocol `2025-11-25`
-  lifecycle is replaced by stateless `server/discover` negotiation for
-  `2026-07-28`, and a configured required server now aborts startup when it
-  cannot initialize instead of being skipped with a warning.
-- MCP launch now prepares argv before `fork()` and keeps the multithreaded
-  child path allocation-free until `exec`, avoiding inherited allocator-lock
-  deadlocks.
-- Generated-token budgets now complement dollar budgets: `UAGENT_MAX_TURN_TOKENS`
-  and `UAGENT_SESSION_TOKEN_BUDGET` stop between model rounds with one-response
-  overshoot, include side-route usage, persist across resume, and appear in the
-  headless `stop` metadata. Delegated children receive only the remaining
-  session allowance, and late child usage no longer discards a parent answer
-  that already completed. `--token-budget` and the GitHub Action input set the
-  session ceiling.
-- Durable collaborator sessions use the existing debug age/count retention
-  bounds. A launched follow-up consumes queued guidance even if execution later
-  fails, failed children remain resumable, and metadata-save failures preserve
-  completed answers with a warning.
-- Session format 2 is no longer resumed. µAgent now rejects it explicitly
-  instead of inferring message kinds from ambiguous roles; current format-3
-  sessions require their persisted tool-display map.
-- A newline delivered in the same terminal input batch as bracketed paste is
-  inserted into the draft instead of submitting it unexpectedly.
-- Release archives no longer bundle the Node-based `find-skills` skill.
-
-- `self-improve` now runs one bounded personal prompt-overlay experiment instead
-  of proposing broad repository changes from incomplete session evidence. Its
-  installed runner pre-registers control/treatment limits, rejects cohort and
-  cost drift, calculates the verdict, emits human-approved configuration
-  proposals, and restores exact overlay snapshots without retaining trial
-  prompts or session text.
-- Live eval authority now has an explicit non-billable cheap-route mode. The
-  operator must attest the exact route as both cheap and non-billable; the eval
-  never infers that from its name and enforces global-bounded session,
-  model-call, tool-call, output-token, and wall-clock limits in each child.
-- Self-improvement rounds can pre-register `paired-success` guardrails. Resource
-  comparisons then use only matched tasks where both variants succeed, while a
-  control-only success still rejects and a treatment-only success counts as a
-  capability gain without rewarding fast failure.
-
-### Fixed
-
-- The Linux sandbox trampoline named itself by `argv[0]`, which only the
-  agent's own startup records. Any other program linking the runtime and
-  spawning a confined command therefore built a wrapper whose `argv[0]` was
-  empty and failed every spawn with `cannot spawn shell: No such file or
-  directory`. It now asks the kernel for the running image via
-  `/proc/self/exe`, which also covers an agent invoked as a bare `uagent`
-  resolved from `PATH` -- a name `exec` cannot use. The unit binary honours
-  `--sandbox-child` like the agent does, so its cases exercise real
-  confinement rather than bypassing it, and the trampoline argv is now
-  asserted to name an executable file.
-
-### Removed
-
-- The text-protocol fallback is gone. It let a route that rejected native tool
-  calls keep working by having the model emit
-  `[uagent_tool_call]{...}[/uagent_tool_call]` blocks, and across 60 real
-  sessions and 7,660 recorded tool calls it activated exactly zero times, while
-  costing a branch in the hottest paths: the turn loop, the tool loop, the
-  transcript printer, the compaction summariser, the trace builder and the
-  capability negotiator each carried a second protocol. A route that rejects
-  native tool calls now fails with the provider's own message instead of
-  degrading, `native_tools` is no longer a negotiable capability, and tool
-  output is no longer delimiter-escaped on its way back to the model because
-  there is no syntax left for it to imitate. `text_protocol` is gone from the
-  JSONL tool-call projection and the session journal.
-
-  Recognizing *other* harnesses' call syntax is unaffected and slightly wider:
-  a bracketed marker followed immediately by `{` now joins the angle-bracket
-  forms, so a model that emits call syntax as content is still suppressed and
-  asked for a real call rather than having the markup printed as an answer.
-  Detection stays broader than execution, and execution is now zero.
-
-## v0.9.0 - 2026-08-27
+- MCP break: the `initialize` / `2025-11-25` lifecycle is replaced by `server/discover` negotiation for `2026-07-28`, and a required server that cannot initialize now aborts startup.
+- Session format 2 is no longer resumed.
+- Yolo mode (`--yolo`, `UAGENT_APPROVAL=yolo`, `/yolo`) now also disables the OS sandbox.
+- The text-protocol fallback is removed: a route that rejects native tool calls fails with the provider's message.
+- The `subagent` tool's `max_steps`, `max_tool_calls`, `max_seconds`, `max_cost` and `memory` arguments became one `limits` object.
 
 ### Added
 
-- A running `message` now reaches a delegated child between its steps instead
-  of waiting for the next follow-up, the working row names the newest child and
-  what it is doing rather than counting it, and `/agents` lists the workspace's
-  collaborators with their status, elapsed time, and last progress line.
-  Collaborator IDs are short (`agent-1a2b3c4d`), which every spawn, follow-up,
-  and mention pays for.
-
-- Commands the agent runs are confined by the OS — `sandbox-exec` on macOS,
-  Landlock on Linux — and it is on by default. Writes reach the workspace, the
-  temporary directories, the package caches and whatever `UAGENT_SANDBOX_WRITE`
-  adds; `~/.uagent` and every ancestor of it are refused, so a shell command
-  can no longer reach the config, the trust store or the job records that the
-  file tools already asked a person about. Reads stay open and so does the
-  network, unless `UAGENT_SANDBOX_NET=0`. `run(sandbox=false)` escapes for one
-  command and always asks a person, which a headless or delegated run answers
-  no. A kernel that cannot enforce runs unconfined and says so at startup;
-  a session that asked for the sandbox by name refuses to run commands instead.
-  `UAGENT_SANDBOX=0` turns the whole thing off. `/status` names the mechanism
-  and `/context` lists the writable roots.
-- The composer answers the two gestures every other agent CLI has: Shift+Enter
-  (or Alt+Enter) keeps a draft open on a new line, and Tab completes a command
-  from the rows that appear under the draft as soon as it starts with `/`. The
-  rows live inside the block the composer erases, so they never reach
-  scrollback, and Enter still submits whichever way the terminal spells it.
-- `/init`, `/review [TARGET]` and `/diff` run as ordinary turns, with `/resume`
-  and `/permissions` as aliases for `/sessions` and `/yolo`.
-- A call that needs approval offers three answers instead of yes or no: once,
-  always for this tool — and, for a shell call, that command's first word —
-  for the rest of the session, or a refusal in words, which denies the call and
-  reaches the model as steering rather than a bare no.
-- An idle Ctrl+C asks before it exits: the status row says `ctrl+c again to
-  quit`, and the confirming press still leaves through the signal path, so the
-  terminal is restored the same way and the shell still sees 130. While a turn
-  or a child process is running, SIGINT keeps killing what it always killed.
-- A delegated child reports why it stopped. The headless envelope gained a
-  `stop` object — the reason in a vocabulary a caller can branch on
-  (`max_steps`, `max_tool_calls`, `turn_deadline`, `turn_cost`,
-  `session_budget`, `repeated_calls`, `completed`), what it consumed, and the
-  limits that were in force. `subagent` runs its child with `--json` and
-  renders that, so a parent sees `[child stopped: max_tool_calls after 1
-  step(s) … rerun with that ceiling raised, or use this partial result as it
-  is]` instead of guessing from prose. A child that produces no envelope has
-  its raw output returned and labelled as raw.
-- `subagent` takes `max_seconds`, `max_cost` and `memory`. A caller may tighten
-  any of them freely; loosening is bounded by the host ceiling
-  (`UAGENT_SUBAGENT_TIMEOUT`, the session budget, the session's memory switch)
-  and a clamp is reported in the result rather than applied silently. Memory
-  can be denied to a child but never granted beyond what the session allows.
-- `uagent_info topic=routes` reports the model routes and named providers this
-  build can reach, the selection grammar that names one, and whether each
-  carries a credential — never the credential itself. The route table was the
-  one part of the configuration the agent could not read: `UAGENT_PROVIDERS` is
-  a composite secret, so `topic=config` returns its metadata and withholds its
-  value, leaving a model to guess a selection. A guess that resolves to the
-  wrong endpoint fails as an authentication error rather than as the typo it
-  is, which is what 37 `invalid local API key` and 12 `unknown provider`
-  failures in this machine's history look like.
-- `uagent_configure` can write `UAGENT_PROVIDERS`, the one composite secret,
-  without a credential ever passing through a tool argument. An `api_key` must
-  be an exact environment-variable reference, which the config loader expands
-  at startup; `base_url` must be an http(s) endpoint carrying no credential,
-  query or fragment; any other interpolation is refused. The approval preview
-  diffs the pretty-printed JSON with every literal key already on disk
-  redacted, so a route can be added or renamed while the secret stays where the
-  user put it. Setting a plain secret is still refused, but unsetting one is
-  not: removing a credential needs no credential.
-- `delete_file` removes a regular file and reports the removed lines as a
-  receipt, so an approval prompt shows what is about to be lost. Directories,
-  non-regular files and missing paths are refused by the same path policy the
-  other file tools use.
-- `write_file` and `edit_file` preview the diff they would apply at the
-  approval prompt instead of a one-line summary, so consent is given against
-  the change rather than against its description.
-- Math in answers renders to Unicode through a shared transliteration table:
-  Greek, operators, super- and subscripts, fractions and roots. Unknown
-  commands survive verbatim rather than being dropped.
-- A session whose executable has been replaced on disk says so at the next
-  turn, which closes the loop after an improvement round is installed.
-- `benchmarks/eval.py` scores end-to-end agent behavior against declarative
-  scenarios in `benchmarks/scenarios/*.json` — answer content and shape, files
-  read, forbidden tools, model rounds, batch width, deduplication, request
-  bytes, workspace immutability — and compares the result with a committed
-  baseline. CTest gates it, so a change that costs rounds, drops a batch or
-  loses an answer fails the build instead of being argued about. The same
-  scenarios replay against a live route with `--run --model`.
-- `uagent --emit-reference` now also emits `system-prompt.md` and `tools.md`,
-  covering every advertised tool with its schema size and the sessions that pay
-  for it, and the manifest carries a prompt and tool-schema digest. The bytes that
-  steer the model get the same drift gate as the bytes that configure it: a
-  reworded prompt section or a changed tool schema is a reviewable diff.
-- `UAGENT_PROMPT_OVERLAY` names a JSON file that replaces base-prompt sections
-  for an experiment, so two prompt variants can be measured without rebuilding.
-  It changes prompt text only — tools, approvals, capabilities and limits stay
-  host-owned — and an absent or malformed overlay leaves the shipped prompt
-  byte for byte.
-- `tests/integration.py` and `uagent_tests` both select cases with `--test`,
-  `-k` and `--list`, and a failing `CHECK` names its file as well as its line.
-  Integration cases are discovered from their module in source order and core
-  cases from the one list that declares them, so a case that exists runs, and
-  no second registration can disagree with the first.
-- The `self-improve` skill runs one measured improvement iteration: real-session
-  evidence first, then Pareto-constrained proposals across hardware, tokens,
-  readability, capability, timing and generality, a slop scan, and committed
-  baselines as the gate.
-- `benchmarks/slopscan.py` finds slop that already exists in the tree — code
-  after an unconditional return, a declaration nothing calls, a block repeated
-  in two files, a doc naming a file that is gone — because centralising is what
-  creates those and none of them appear in the next diff. Counts are baselined
-  and the audit gates them.
-- `benchmarks/audit.py` prints that dashboard for one build and fails on a
-  regression, including an anti-overfitting check that compares the scenario
-  suite's tool mix with the mix real sessions actually used.
-- `benchmarks/session_metrics.py` now also reports non-ok results by tool and
-  status, time spent per tool, and context filled per tool, so an iteration
-  starts from where the cost actually is.
-- Eval scenarios carry a `regression` or `capability` tier, and the report adds
-  rounds that asked for nothing and the failure-category vector.
-- `uagent_info` topic `prompt` reports the system prompt actually in effect:
-  base digest and size, the sections an overlay may replace, which conditional
-  capability sections are active, and the overlay identity. It reports the
-  surface rather than copying message zero back into the transcript.
-
-- `uagent_configure` persists a change to µAgent's own configuration through a
-  typed request against registered settings only. µAgent parses the current
-  file line-preservingly, applies the edit, re-parses the candidate to confirm
-  every value reads back as written and no unrelated setting moved, then shows
-  an exact redacted diff. The commit is a compare-and-swap against the bytes
-  the human approved, so an external edit in between is rejected rather than
-  merged. Credentials are refused, unknown keys are refused, and project scope
-  cannot grant its own trust. A project-scope commit re-records the workspace
-  trust snapshot, carrying the previously approved `.mcp.json` over unchanged,
-  so an approved edit does not make µAgent forget trust it already has and
-  cannot silently extend trust to a swapped-in server list.
-- Atomic writes now fsync the parent directory after the rename, so a replaced
-  file survives power loss rather than only being replaced atomically.
-- One authoritative registry describes every `UAGENT_*` setting: default,
-  bounds, category, reload policy and sensitivity. Runtime getters, the config
-  loader, diagnostics and the generated documentation all read the same
-  descriptors, and a getter naming an unregistered setting fails to compile.
-- `uagent_info` answers questions about the running binary — status, flags,
-  slash commands, configuration schema with effective values and provenance,
-  and the live tool surface. It is inspect-only, assembled on demand, and
-  reports secrets only as set or unset.
-- `/status` gives the everyday view (version, route, effort, approval mode,
-  budgets, restart-required settings) and `/debug-config` explains where each
-  active value came from. `/context` remains the deep next-request view.
-- `uagent --emit-reference DIR` generates release-matched skill references from
-  the same registries, with a manifest naming the version and a schema hash.
-  CI regenerates and fails on drift, so documentation cannot silently rot.
-- Process hardening at startup: core dumps disabled, `PR_SET_DUMPABLE` cleared
-  on Linux, and `LD_*`/`DYLD_*` loader-injection variables removed before any
-  child process can inherit them.
-
-### Fixed
-
-- A clamped pacing hint says so. `grep`'s `context`, `run`'s `yield_ms` and
-  output cap, `activity`'s `wait_ms` and `subagent`'s ceilings are pulled to
-  their bound before validation, which spares a wasted round, but the
-  substitution was silent: a call asking for 40 lines of context received 10
-  and read as though 40 had been honoured. The result now leads with `[clamped
-  context to 10 of 40 requested]`. `subagent` already reported the clamps it
-  applies against host ceilings; the schema clamps beneath it did not.
-- An argument rejected for crossing a bound names both numbers. `` `context`
-  is above its maximum `` said neither what was sent nor what the limit was,
-  so the corrected call was a guess. Minima, maxima, string lengths and item
-  counts now read `` `context` is 40, above its maximum 10 ``. The pacing hints
-  that once failed this way are clamped rather than rejected now, so this
-  serves the bounds that still reject: lengths, item counts, and the ceilings
-  a caller cannot clamp past.
-- `adapt_system` enforces the length its own schema advertises. The declared
-  `maxLength` was never checked against the directive it received, and an
-  oversized one was accepted into memory and only rejected later, by the
-  session store, as incomplete state — so every save for the rest of the run
-  was refused and the transcript went with it. The call is now rejected on
-  arrival, naming the size given and the limit.
-- `NO_COLOR` silences the markdown renderer too. Inline code, fenced block
-  bodies and math asked whether stdout was a terminal, while every other colour
-  accessor asks whether colour is enabled, so those three still painted under
-  `NO_COLOR=1` — and since the reset that closes them does honour the setting,
-  entering a code span opened a colour that nothing closed. All three now
-  follow the one rule the rest already followed.
-- A turn that fails to compact says why. After `· provider context limit
-  reached — compacting once`, a failed compaction recorded the provider's
-  reason and ended the turn without ever emitting it, so the screen simply
-  stopped. It now reports the failure like every other error exit.
-- One slow MCP server no longer takes its neighbours with it. A single startup
-  deadline was shared across every server's handshake and tool listing, so a
-  server that hung spent the budget of servers whose replies were already
-  waiting in their pipes, and those were shut down for exceeding a deadline
-  they had never used. Each server now gets its own, as tool refresh already
-  did.
-- Waiting on one activity no longer blocks behind another. The completion
-  sweep took each candidate's interaction lock before testing whether the
-  caller had asked about that activity at all, so a wait could sit behind an
-  unrelated tool interaction for as long as that interaction ran. The id and
-  kind tests read fields fixed when the id is assigned, and now happen first.
-- `read_path` says when it returned fewer lines than were asked for. A `limit`
-  above the configured ceiling was reduced in silence and the header said only
-  `more available`, which is exactly what a genuine end of range looks like. It
-  now names the effective and the requested count.
-- `read_path` no longer decodes bytes that are not text. A PNG or an object
-  file was read line by line and answered with pages of replacement characters
-  that cost context and said nothing. It is now refused by name, and the
-  refusal points at `attach`, which hands the same bytes over as an attachment.
-- A failed process keeps its log. Completed logs under the result cap were
-  deleted as disposable, which holds only when the caller received the whole
-  thing — and a failure is summarised on its way back, bounded to 2,048 bytes
-  for a delegated child. A child failing with 2–8 KB of output therefore had
-  the remainder destroyed at the moment someone needed it. Failure is now a
-  second reason to keep the log as a private artifact, whatever its size, and
-  the pointer to it is printed outside the summarised diagnostics rather than
-  inside them, where it was being squeezed away.
-- A foreground `subagent` is no longer cut off after 30 seconds. It inherited
-  `UAGENT_TOOL_TIMEOUT` like any other call, so `background=false` died at the
-  per-call budget however long the work took, which made the `max_steps` and
-  `max_tool_calls` ceilings unreachable: no child runs 100 model rounds in
-  thirty seconds. It is now bounded by `max_seconds` when given and by the turn
-  otherwise, as `run`, `scratch` and `activity` already were.
-- An `activity` wait lasts as long as it was asked to. The tool inherited
-  `UAGENT_TOOL_TIMEOUT`, thirty seconds by default, so a `wait_ms` of five
-  minutes — which the schema offers and the caller chose — was cut at thirty
-  seconds and cost a model round every half minute; one session in this
-  repository's history spent fourteen rounds and seven minutes of wall clock
-  that way, in streaks of up to four. Waiting holds no process and no lock, so
-  the budget that stops a runaway command had nothing to protect here, while
-  `run` and `scratch`, which do occupy a process, were already exempt. The turn
-  deadline still bounds a wait, and Escape and queued steering still return
-  from one immediately; a truncation now names the deadline that caused it.
-
-- The `edit_file` approval prompt shows the edit that will happen. It applied
-  the edits itself to render the diff, so it disagreed with the edit in six
-  ways: it could not see a stripped line-number prefix or a normalised line
-  ending, it silently dropped an edit that was already applied and everything
-  after it, and where the edit refuses outright — an `old` that is absent, one
-  that matches several times without `replace_all`, a result past the byte
-  limit — it showed a diff of the preceding edits as though they would be
-  written. Both paths now go through one function, and a refusal is previewed
-  as the refusal.
-
-- An `activity` wait says what ended it. A tool call may not outlive
-  `UAGENT_TOOL_TIMEOUT`, 30 seconds by default, so a longer `wait_ms` was cut
-  short and still reported as a plain timeout — indistinguishable from the
-  requested wait elapsing, and an invitation to give up on an activity that was
-  running normally. All three wait paths now report how long they actually
-  waited, whether the tool timeout truncated it, and that calling again
-  continues. The readiness-marker path was the worst of them: on expiry it
-  returned the log with no indication that the marker had never appeared.
+- Hosted web search reports one lifecycle across OpenAI Responses and Anthropic Messages; the terminal shows `searching the web` and `--json-stream` emits `response.hosted_tool` events.
+- `scratch` runs `.sh` scripts as well as `.py`, chosen by extension; shell scripts stay inside the OS sandbox.
+- Tab after `@` completes a path one segment at a time.
+- Ctrl+X Ctrl+E opens the draft in `$VISUAL` or `$EDITOR`.
 
 ### Changed
 
-- Stopping an activity is an operation, not a tool. `activity_stop(id)` became
-  `activity(operation=stop, id=...)`, beside the list, poll, wait, write and
-  resize operations that already own the same id, capability set and detached
-  visibility. It was the last part of the domain reachable under a second name,
-  and one schema fewer is one fewer to choose wrongly between. Stop is still a
-  mutation and is still approved as one.
-- The interactive surface reads like the tools it sits beside. The banner
-  states the version and working directory, the startup context row shows three
-  sources and a count instead of every path it knows, and the first prompt is
-  preceded by the few commands worth knowing. The idle row carries the
-  headroom as `NN% left` and a `/help for shortcuts` hint, the working row says
-  `Working` and `Esc to interrupt`, and command descriptions took the wording
-  Codex and opencode already share.
-- A blocking wait names what it waits on. The working row shows `wait ·
-  activity 42` for as long as the call blocks, `N activity(s)` became `1
-  activity` or `2 activities`, and a detached command says it keeps running
-  while you work rather than that its completion is observational.
-- The request carries less of itself. Memory moved out of the system message —
-  the prefix a provider caches, and the place authority lives — into the
-  runtime context, where a change costs only what follows it. The Capabilities
-  section stopped restating the tool schemas it introduces, and `adapt_system`,
-  `uagent_info` and `subagent` stopped saying the same thing twice in one
-  description. Hermetic system prompt 2,993 to 2,712 chars, schemas 8,534 to
-  8,193, always-on 5,295 to 5,101 B; every scenario sends 1,139 fewer
-  characters at an unchanged score. What a shorter description does to a
-  model's behaviour is not visible to a scripted scenario and needs a live A/B.
-- `benchmarks/audit.py` reports the bill a used machine pays beside the
-  hermetic floor. The probe runs with `--no-memory` in an empty HOME, so stored
-  memories and installed skills — charged on every real request — were
-  invisible to it. A second probe copies them into a throwaway HOME; the row is
-  reported and never gated, because one machine's memories cannot baseline
-  another's.
-- `benchmarks/slopscan.py` exits non-zero on a count above its baseline without
-  being asked to. The old `--check` flag meant a caller who wired the scan into
-  a script and forgot it got a silent pass, which is the one failure a gate
-  cannot afford. CI now runs the scan, so the baseline holds without anyone
-  remembering to run it.
-- `slopscan.py --self-test` runs every check against `tests/fixtures/slop`,
-  which plants exactly one instance of each, and fails unless each check finds
-  precisely its own. Every real count is zero, and a check that had quietly
-  stopped matching anything would print the same thing.
-- The repeated-explanation check now joins each run of prose before looking for
-  a sentence. It matched within single lines, and prose here wraps at about 79
-  columns, so nearly nothing it was meant to catch could reach it. A run ends
-  at a blank line or at any list item, heading, table row or quote, because
-  joining a bullet list produces sentences spanning two bullets that nobody
-  wrote, and fenced code is skipped rather than read as prose.
-- `ruff` enforces `ARG` and `ERA` from `pyproject.toml`, the set the improvement
-  loop already applied by hand, so CI and the loop check the same thing.
-- Session journals record a digest of each tool call's arguments and the error
-  code of each failed result. Values still never reach the journal, so a later
-  reader can tell an identical repeated call from a new one, and name which
-  failure a tool hit, without anything leaking.
-- `uagent_info` is withheld from lean delegated children, which saves about a
-  kilobyte of schema on every one of their requests. A child is briefed for a
-  task rather than left to introspect the harness.
-- Diff receipts show whole lines and a realistic edit in full, capped at 400
-  lines rather than 80, so a review is not truncated where it matters while a
-  very large replace still cannot take the scrollback with it.
-- The rolling activity ticker and the styled-block renderer moved to
-  `include/core/style.h`, leaving one implementation of chasing a live edge.
-- A repeated `grep` with identical arguments collapses to a receipt when its
-  result is byte-identical and still in recent context, matching `read_path`.
-- `uagent_configure` is registered only where a person can actually approve it.
-  The approver already denied every non-interactive call, so a piped or
-  delegated run was paying about a kilobyte of schema per request for a
-  guaranteed refusal.
-- Prompt authoring moved from `include/agent/protocol.h` to
-  `include/agent/prompt.h` plus `src/agent/prompt.cc`, leaving the header with
-  tool-call parsing alone. Rewording the prompt now rebuilds one translation
-  unit instead of nine.
-- `/effort` and `/variant` now persist to the same saved selection `/model`
-  writes. Previously both changed only the live session while the bundled skill
-  documented them as persistent; a session with nothing saved says so instead.
-- The release-installed skill tree outranks the mutable `~/.uagent/skills`
-  copy, so a stale user-level copy can no longer shadow release-matched
-  content. A workspace skill still overrides both.
-- The `uagent-config` skill is a router: it selects one generated reference or
-  `uagent_info` per question instead of loading a 243-line document every time.
-- Editing `~/.uagent/.config`, a project config, the trust store or `.mcp.json`
-  through the built-in file tools now requires an explicit human decision that
-  `--yolo`, `UAGENT_APPROVAL=yolo` and `/yolo` cannot bypass, and that a
-  headless or delegated run denies rather than assuming.
-
-### Performance
-
-- Turn-time hot paths are unchanged: across 15 interleaved Release runs every
-  benchmark delta sits inside the baseline's own interquartile spread.
-  Descriptors are `constexpr` and each binding resolves its descriptor at
-  compile time, so config load performs no lookups.
-- Startup is unchanged within measurement drift; repeated 120-sample
-  interleaved runs disagreed on the sign of a sub-0.25 ms difference, so no
-  regression is claimed. The binary grows 201 KB, of which 14 KB is
-  relocatable descriptor data. No static initializers were added.
-
-## v0.8.0 - 2026-08-25
-
-### Added
-
-- Routes now declare `wire_api` independently as `chat_completions`,
-  `responses`, or `anthropic_messages`. Canonical conversation, function-call,
-  citation, usage, retry, and rendering state stays provider-neutral while
-  request encoding, headers, endpoints, and streamed event decoding live in
-  focused wire adapters.
-- OpenAI Responses and Anthropic Messages support fragmented answer/reasoning
-  streams, native function calls and results, opaque reasoning replay, hosted
-  search results and citations, normalized usage, structured errors, and
-  non-mutating retries. Anthropic `pause_turn` continuations replay encrypted
-  search data and are bounded per turn.
-- `UAGENT_PROVIDERS` accepts explicit `wire_api` and `hosted_tools` metadata at
-  provider or model scope. The same metadata is preserved by named-route
-  switching and delegated children; unknown transport/protocol values are
-  rejected rather than guessed.
-- CodeQL analyzes C++ on main, pull requests, and a weekly schedule. Tag release
-  jobs create one deterministic checksum manifest, sign it keylessly with
-  Sigstore, attest every published asset through GitHub OIDC, and scope elevated
-  permissions to that trusted job.
-
-### Changed
-
-- `UAGENT_WEB_SEARCH_BACKEND=auto` prefers native hosted search only when the
-  active Responses or Anthropic route explicitly declares `web_search`, then
-  falls back to the separately configured OpenRouter search function. `openrouter`
-  forces only that separate route and `off` withholds both; model names,
-  provider labels, and endpoint URLs never imply hosted-tool support.
-- Binary archives include the complete release-matched skill tree under
-  `share/uagent/skills`. Discovery is relocatable from the executable, source
-  installs still refresh the user copy, and CI compares every packaged skill
-  file with the tracked source before publication.
-- The 4,351-line Python integration suite is now a 52-line ordered runner plus
-  domain modules. The 1,773-line C++ tool suite is split across its six existing
-  behavioral boundaries. Automated AST/body comparison found all original
-  tests unchanged and in the same deterministic group order.
-- Nine-run Release medians against v0.7.0 on the same host kept common hot paths
-  within 1.5% (TTY Markdown -0.3%, plain SSE +1.0%, headless SSE +1.0%); schema
-  size stayed 6,420 bytes and the binary grew 2.8%. A cached 128-message Chat
-  payload encoded in about 8 µs; full Chat, Responses, and Anthropic adapter
-  encodes took about 131, 266, and 234 µs. Hermetic quality, request count,
-  tool count, usage, and roughly 10.3 MiB peak RSS were unchanged.
+- The memory index shows an opening clause for each global memory, and the always-on slice admits the smallest global memories first.
+- `scratch` is advertised only when `uv` or `python3` is on PATH.
+- `UAGENT_MAX_TURN_TOKENS` and `UAGENT_SESSION_TOKEN_BUDGET` (and `--token-budget`) cap generated tokens, include side-route usage, persist across resume and appear in headless `stop` metadata.
+- Collaborator sessions use the existing debug age/count retention; failed children remain resumable.
+- A newline in the same input batch as a bracketed paste is inserted instead of submitting.
+- Release archives no longer bundle the `find-skills` skill.
+- `self-improve` runs one bounded personal prompt-overlay experiment and emits human-approved configuration proposals.
 
 ### Fixed
 
-- Ordinary terminal input can no longer grow the decoder queue without bound.
-  An over-limit unread burst is dropped atomically, bracketed paste remains
-  streamed and bounded, and the decoder immediately accepts fresh input after
-  the overflow is acknowledged.
-- Chat Completions payload caching strips opaque Responses/Anthropic replay
-  state after a route switch. Responses continuations preserve completed output
-  item order, avoiding duplicate or reordered function calls when native search
-  and client tools occur in one response.
-- Binary packaging disables macOS AppleDouble metadata, rejects unsafe archive
-  member types and paths, and verifies the installed executable and exact skill
-  contents before upload.
+- Confined commands no longer fail with `cannot spawn shell` on Linux when the agent is not started by its own startup path.
+- MCP launch no longer risks allocator-lock deadlocks in the child process.
 
-### Security
+## Before v1.0.0
 
-- New releases publish GitHub build-provenance attestations and a keyless
-  Sigstore bundle for `SHA256SUMS`; the composite Action verifies repository,
-  workflow, tag ref, hosted builder, attestation, and selected digest before
-  extraction. The immutable v0.7.0 path retains its original checksum-only
-  verification.
-
-## v0.7.0 - 2026-08-25
-
-### Fixed
-
-- Tool-originated attachment messages identify the originating call beside each
-  path, so images queued by parallel `attach` calls remain unambiguous on the
-  next model inference.
-- Activity polling is semantic rather than a blind identical-call counter.
-  Productive reads reset the state; two consecutive no-change polls prompt one
-  bounded `wait`; a third terminates cleanly. Mixed batches with useful work do
-  not count as a polling loop.
-- The SIGCHLD wake dispatcher no longer writes its marker byte to unused file
-  descriptor slots. Under a PTY those zero-valued slots were stdin, so enough
-  child exits could inject control bytes into a long tool-call record.
-- Persistent-composer output is record-framed across arbitrary pipe reads.
-  Long multiline calls remain complete and cyan on every physical line, live
-  Markdown tails stay replaceable, and completed records enter scrollback
-  atomically rather than being mistaken for streaming text.
-- Equivalent deterministic tool rejections now stop after the third round,
-  before a fourth model request. Repetition checks use canonical execution
-  arguments, so irrelevant provider-materialized fields cannot disguise a
-  retry or turn a non-blocking activity into a wait.
-- Activity input now distinguishes invalid dimensions, a non-PTY activity, a
-  closed input descriptor, descriptor duplication failure, and `ioctl`, write,
-  or signal failure, with the matching error category and actionable message.
-- Delegated-child failures report the configured route, failure stage, bounded
-  head/tail diagnostics, and a remedy. The harness explicitly preserves the
-  selected provider, model, pricing, and privacy policy instead of silently
-  falling back.
-- Delegated children no longer duplicate the parent's always-on memory block,
-  which produced a misleading truncation warning in child logs.
-- Public `tool.call` JSONL no longer exposes raw argument values. The new
-  `uagent.event.v2` projection carries only argument keys and JSON types, a
-  normalized operation, and structured validation issue metadata;
-  sensitive debug/internal history remains complete.
-
-### Changed
-
-- `web_search` now accepts one required `queries` array instead of two
-  overlapping singular/plural inputs.
-- Tool argument validation now reports stable issue codes and fields. Provider
-  arguments remain unchanged in history, while a separate canonical copy drives
-  validation, approval, policy, and execution.
-- Whole-file replacement is now the dedicated `write_file` operation;
-  `edit_file` accepts only ordered exact replacements. Empty writes remain valid,
-  and neither schema exposes mutually exclusive optional operations.
-- `activity` now requires an explicit `list`, `poll`, `wait`, `write`, or
-  `resize` operation. Irrelevant provider-materialized fields are removed only
-  from the execution copy, so field presence can no longer turn a wait into a
-  write or resize.
-- `attach` no longer carries a per-turn call cap of its own. Four was a limit
-  on the wrong axis: it withdrew the tool from the schema once the count was
-  reached, while queued count and total byte limits already refuse with a
-  reason.
-- Seven-run Release medians against v0.6.0 on the same host showed no hot-path
-  regression above 0.7%: TTY Markdown was -0.2%, plain SSE +0.7%, and headless
-  SSE -0.3%. The executable grew 3.3% and the built-in schema grew 298 bytes
-  (4.9%) for the explicit file/activity contracts.
-
-## v0.6.0 - 2026-08-24
-
-### Fixed
-
-- Ctrl+C, SIGTERM or SIGHUP out of the interactive composer left the terminal
-  in raw mode: the handler reset colour and bracketed paste but never restored
-  the line discipline, so the surviving shell had no echo and no line editing
-  until `stty sane`. The composer now publishes its saved and raw `termios` to
-  the signal layer, which restores the cooked settings before `_exit`, and
-  writes its escapes to the real terminal rather than into the REPL's own
-  stdout pipe, where they were discarded on the way out.
-- Ctrl+Z suspended the agent in raw mode and resumed it without repainting.
-  SIGTSTP now drops raw mode and bracketed paste before stopping, and SIGCONT
-  re-arms both and asks the event loop for a full repaint.
-- Terminal escapes in model, tool and file content were only neutralized when
-  stdout was a TTY, so a redirected transcript kept them verbatim and replayed
-  them at whoever later ran `cat` on it. Sanitizing is now unconditional.
-- Four `std::filesystem::exists` calls used the throwing overload. Under
-  `-fno-exceptions` a lookup error there — EACCES on a parent directory, ELOOP,
-  ENAMETOOLONG — was an `abort()` mid-turn with no session save.
-- An OSC or DCS reply from the terminal — a colour query answer, a clipboard
-  payload — surrendered its introducer as an unknown sequence and then typed
-  its payload into the composer. String sequences are now decoded to their BEL
-  or ST terminator, bounded, and discarded past the bound; X10 mouse reports
-  (`ESC [ M b x y`) no longer leak their three coordinate bytes as text.
-- A table header was reprinted by erasing as many rows as its *markdown source*
-  occupied. `**bold**` is eight columns of source and four on screen, so a
-  header whose markup crossed a wrap boundary ate a line of transcript above
-  the table. Rows are now counted from the rendered line.
-- A turn interrupted while its tools were running recorded the outcome but not
-  the error, so a headless run cancelled at that moment exited 0 and reported
-  whatever partial answer existed. It now exits 1 with `interrupted`, like
-  every other interruption.
-
-- A provider error injected mid-stream discarded a whole turn's work. Such a
-  frame is now retried when it arrived before any answer text, tool call,
-  annotation or usage — the attempt left nothing to replay — and the bare
-  `{"type":"api_error","message":…}` shape some providers send is read as the
-  error it is instead of dropped as an unrecognized frame.
-- Parallel tool calls streamed without an `index` piled into one slot, so a
-  single call arrived carrying two tools' arguments and was rejected. Fragments
-  without an index are keyed by call id instead.
-- A numeric pacing hint outside its schema bounds — `yield_ms`, `context`,
-  `wait_ms`, a page size — rejected the call, spending a model round to say
-  "use the maximum". Those arguments are clamped into range; identifiers are
-  not, and a fractional value is still a type error.
-- An `activity` receipt named only its target, so a resize read as a bare poll
-  and a write as a size with no operation. Each argument set now names its
-  verb.
-- Streaming markdown measured display width by counting UTF-8 lead bytes, so a
-  line containing CJK, emoji, or combining marks reported the wrong row count
-  and redrawn tables erased the wrong number of rows.
-- The compiler-family guard in CMake was assigned an unevaluated expression and
-  always tested true, so warnings-as-errors applied to every compiler and the
-  "sanitizers require Clang or GCC" refusal could never fire.
-- `web_fetch` now rejects loopback, private, link-local, reserved, and other
-  non-public resolved destinations on every redirect connection, closing an
-  SSRF path to local services and cloud metadata endpoints.
-
-### Added
-
-- `NO_COLOR`, `TERM=dumb` and `CLICOLOR_FORCE` are honoured. Colour and
-  terminal capability are now separate questions: suppressing colour no longer
-  suppresses cursor control, spinners or inline images, and forcing it works
-  down a pipe.
-- `UAGENT_HEADLESS_PROGRESS=1` echoes every durable event as one stderr line.
-  It is set for background children, whose stderr already lands in the log the
-  parent polls, so a delegated run is traceable while it works; the stdout
-  answer contract is unchanged.
-- Attached documents are parsed deliberately on OpenRouter routes: requests
-  that carry one send the `file-parser` plugin, with the engine chosen by
-  `UAGENT_PDF_ENGINE` (free `cloudflare-ai` by default) rather than left to an
-  unseen provider default. A route that refuses documents outright is now
-  negotiated down like image input, and the attachment continues as a path the
-  model can reach another way. Once a route is known to refuse documents, none
-  is encoded for it again: the part is never built, so a large file is not read
-  and base64'd only to be stripped.
-
-### Changed
-
-- File descriptors are owned by a move-only `Fd` type instead of a bare `int`
-  paired with a `close` on every early return, and the process supervisor's I/O
-  thread is a `std::jthread` whose stop token carries cancellation: a
-  `std::stop_callback` wakes the poll, so the shutdown handshake is one call
-  rather than a flag plus a manual pipe write.
-- Mutex-guarded state carries `UAGENT_GUARDED_BY` annotations, documenting lock ownership, and the build adds `-Wconversion -Wsign-conversion
-  -Wshadow -Wold-style-cast`. clang-tidy runs the `bugprone`, `performance`,
-  `misc` and `clang-analyzer` families rather than a hand-picked few.
-- The streaming markdown renderer bounds the three buffers a model could grow
-  without limit — the current line, an unterminated math span, and table rows —
-  degrading to plain output at the bound instead of accumulating. Measuring
-  rendered rows costs 2.6% on the TTY markdown benchmark.
-- `Agent::DrainBackground` splits into the memory-receipt pass and the activity
-  delivery pass (146 lines to 35).
-- A second fuzz target covers the composer's terminal input decoder: arbitrary
-  bytes fed whole and in fragments must decode identically.
-- Two constructor parameters and one enumerator were renamed so `-Wshadow` is
-  clean on GCC as well as Clang; GCC also warns for a parameter that shadows
-  its own field and for an enumerator that shadows a namespace-scope constant.
-- `Agent::Turn` was a 385-line function holding two dozen locals; the step loop
-  now hands a `TurnLoop` to named phases (`PrepareStep`, `HandleFailedResponse`,
-  `HandleEmptyResponse`, `ExecuteToolCalls`, …) that report what the loop does
-  next. Behavior is unchanged; the recoveries are individually readable.
-- The working row names the active route exactly as the idle row does. When a
-  rolling reasoning ticker is competing for the same columns the route yields
-  first: it does not change during a turn, and a fully qualified route id can
-  otherwise leave the ticker too narrow to read.
-- Streaming markdown hands a whole chunk to stdio once instead of taking the
-  stream lock for every character, which was about a third of render cost, and
-  `TerminalSafe` no longer rebuilds a string byte by byte when nothing in it
-  needs escaping.
-- The reasoning ticker normalizes its buffer once per drawn frame rather than
-  once per streamed token: the renderer applies the transform, so the ui layer
-  still owns what "displayable" means.
-- Subagents default to 100 model rounds and 240 tool calls, up from 25 and 60 —
-  the parent runs unbounded, and cost, wall clock and the session budget are
-  the limits that protect a delegated run. A call may set `max_steps` or
-  `max_tool_calls` for one child.
-- `web_fetch` downloads up to the attachment budget rather than a fixed 2 MiB,
-  which had truncated an ordinary arXiv paper, and it now points at `run` plus
-  `attach` when the bytes are a document rather than markup.
-- Converted HTML keeps its headings, table cells and `<pre>` indentation, and
-  no longer leaks attribute markup into the text.
-- A resumed session redraws the diff an edit produced instead of collapsing it
-  to a grey summary line. Receipts are kept beside the transcript, so the
-  model's copy of a tool result is unchanged, and they leave when their turn
-  does.
-- Tool calls are always shown in full. Only results are shortened outside
-  `/verbose`, so a decision is never abbreviated in the scrollback while its
-  output is.
-- Hosted `web_search` is OpenRouter's `openrouter:web_search` only. The OpenAI
-  Responses backend is gone, `UAGENT_WEB_SEARCH_BACKEND` takes `auto`,
-  `openrouter` or `off`, and the model-facing tool, citations, bounds and usage
-  accounting are unchanged.
-- `subagent` is bounded per turn by `UAGENT_SUBAGENT_CALLS_PER_TURN` (32)
-  instead of by the live-activity slot count, so sequential delegation waves are
-  no longer refused while no child is running. Concurrency remains bounded by
-  `UAGENT_MAX_BACKGROUND_JOBS` and cost by the session budget.
-- Request payloads reuse the serialized prefix of the previous request instead
-  of re-serializing the whole history, byte for byte, so provider-side prefix
-  caching is unaffected.
-- Redirected terminal output is line buffered rather than unbuffered, so the
-  renderer's existing flush budget governs writes.
-- Permission modes and the `run` yield bounds are single-sourced in
-  `include/core/limits.h`.
-
-### Removed
-
-- The `openai_stream` fuzz target, which asserted nothing beyond "does not
-  crash"; SSE framing remains fuzzed.
-
-## v0.5.0 - 2026-08-20
-
-### Added
-
-- One provider-independent model-selection grammar for the conversation,
-  image, subagent, web-search, and memory routes.
-- Provider context, cache, cost, endpoint, and session-wide usage reporting.
-- Bounded `web_fetch` support for retrieving cited pages without a browser.
-- A quality-aware efficiency harness comparing normal and forced-compaction
-  runs across request count, tool use, tokens, cache, cost, latency, RSS,
-  schema size, and binary size.
-
-### Changed
-
-- Compaction now retains recent real user instructions independently of the
-  generated handoff, reinjects runtime context, and preserves prior summaries
-  within a bounded prose budget.
-- Context-overflow recovery, provider usage normalization, reasoning replay,
-  status presentation, and semantic observability now share centralized,
-  provider-neutral paths.
-- Native mode now executes only structured provider tool calls; the text
-  compatibility protocol is enabled only after an explicit provider downgrade.
-- The working row reports used and total context through the same formatter as
-  the persistent status row.
-- Foreground activity handling, terminal input, notices, and configuration
-  reporting were consolidated and hardened while preserving the native
-  single-binary runtime.
-
-### Fixed
-
-- Cache-token extraction across OpenAI-compatible provider response shapes.
-- Strict chat-template compatibility by keeping exactly one initial system
-  message and normalizing later harness context as user messages.
-- Linux warnings-as-errors failures, Python and C++ formatting drift, terminal
-  escape fragmentation, background wakeups, and session status rendering.
-
-## v0.4.0 - 2026-08-13
-
-- Published Linux x86_64, Linux ARM64, and macOS ARM64 archives with SHA-256
-  checksums. See the GitHub release for the complete generated notes.
+Releases v0.4.0 to v0.9.0 are in the git tags: <https://github.com/timongentzsch/uAgent/tags>.

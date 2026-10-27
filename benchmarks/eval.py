@@ -7,32 +7,21 @@ good run. Scores and round counts are compared against committed baselines, so a
 change that makes the agent spend more rounds, drop a batch, stop deduplicating
 or lose its answer fails a gate instead of being argued about.
 
-The hermetic suite scripts the provider, so it measures *harness* behavior — the
-part this repository owns — not model quality. `--run --model` replays the
-same scenarios against a real route as the periodic reality check. Live runs
-require explicit route authority: either reported cost with a hard USD budget,
-or an operator-declared non-billable cheap route with hard session, model-call,
-tool-call, output-token, and wall-clock limits. Cheapness is never inferred from
-a model name.
+The suite scripts the provider, so it measures *harness* behavior — the part
+this repository owns — not model quality.
 
     python3 benchmarks/eval.py build/debug/uagent --check
     python3 benchmarks/eval.py build/debug/uagent --update
-    python3 benchmarks/eval.py build/debug/uagent --scenario CASE --trials 5
-    python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
-        --scenario CASE --trials 5 --cost-authority authority.json
+    python3 benchmarks/eval.py build/debug/uagent --scenario CASE
 """
 
 from __future__ import annotations
 
 import argparse
-import collections
 import hashlib
 import json
-import math
 import os
-import random
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,8 +32,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "benchmarks" / "scenarios"
 BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "hermetic.json"
-SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "alternating_trials.json"
-CHEAP_AUTHORITY_SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "cheap_authority.json"
+# The route name every scripted case is run against.
+MODEL = "eval"
 
 # One HTTP/SSE fixture serves the integration suite and this harness; a second
 # copy would drift from the transport the tests actually exercise.
@@ -59,14 +48,6 @@ from run_trace import (  # noqa: E402
     read_trace,
 )
 from run_trace import trace_metrics as run_trace_metrics  # noqa: E402
-from live_authority import (  # noqa: E402
-    AuthorityError,
-    account_reported_cost,
-    account_result,
-    apply_authority,
-    load_authority,
-    normalize_route_authority,
-)
 from session_metrics import provenance_cohort, safe_provenance  # noqa: E402
 
 # isort: on
@@ -252,24 +233,13 @@ def as_list(value: Any) -> list[str]:
 # --- running -----------------------------------------------------------------
 
 
-def copy_user_config(home: Path) -> None:
-    source = Path.home() / ".uagent" / "config" / "settings.json"
-    if source.is_file():
-        target = home / ".uagent" / "config" / "settings.json"
-        target.parent.mkdir(parents=True)
-        shutil.copyfile(source, target)
-        target.chmod(0o600)
-
-
 def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) -> dict[str, str]:
-    env = dict(os.environ)
-    if mock is not None:
-        # A mocked scenario declares its inputs; it never inherits them. Run
-        # from inside a live session the shell carries that session's route --
-        # UAGENT_INTERNAL_WIRE_API alone makes the binary speak a dialect this
-        # mock does not serve -- and every case fails for a reason the scenario
-        # is not about. Names this function sets below are reapplied deliberately.
-        env = {key: value for key, value in env.items() if not key.startswith("UAGENT_")}
+    # A scenario declares its inputs; it never inherits them. Run from inside a
+    # live session the shell carries that session's route --
+    # UAGENT_INTERNAL_WIRE_API alone makes the binary speak a dialect this
+    # mock does not serve -- and every case fails for a reason the scenario
+    # is not about. Names this function sets below are reapplied deliberately.
+    env = {key: value for key, value in os.environ.items() if not key.startswith("UAGENT_")}
     env.update(
         {
             "UAGENT_MEMORY": "0",
@@ -292,24 +262,22 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
         env["UAGENT_INTERNAL_TOOLSET"] = arguments.toolset
     else:
         env.pop("UAGENT_INTERNAL_TOOLSET", None)
-    if mock is not None:
-        # Keep the hermetic loopback transport independent of runner-level proxy
-        # configuration (notably macOS system libcurl behavior).
-        for name in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY"):
-            env.pop(name, None)
-            env.pop(name.lower(), None)
-        env["NO_PROXY"] = "127.0.0.1,localhost"
-        env["no_proxy"] = env["NO_PROXY"]
-        env.update(
-            {
-                "UAGENT_BASE_URL": mock.url,
-                "UAGENT_API_KEY": "evaluation-placeholder",
-                "UAGENT_CONTEXT": "16384",
-                "UAGENT_REQUEST_TIMEOUT": "10",
-                "UAGENT_STREAM_TIMEOUT": "5",
-            }
-        )
-        env.pop("UAGENT_PROVIDERS", None)
+    # Keep the loopback transport independent of runner-level proxy
+    # configuration (notably macOS system libcurl behavior).
+    for name in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY"):
+        env.pop(name, None)
+        env.pop(name.lower(), None)
+    env["NO_PROXY"] = "127.0.0.1,localhost"
+    env["no_proxy"] = env["NO_PROXY"]
+    env.update(
+        {
+            "UAGENT_BASE_URL": mock.url,
+            "UAGENT_API_KEY": "evaluation-placeholder",
+            "UAGENT_CONTEXT": "16384",
+            "UAGENT_REQUEST_TIMEOUT": "10",
+            "UAGENT_STREAM_TIMEOUT": "5",
+        }
+    )
     return env
 
 
@@ -323,12 +291,7 @@ def run_case(
     binary: Path,
     scenario: dict[str, Any],
     variant: str,
-    model: str,
     arguments,
-    *,
-    trial: int = 1,
-    trial_seed: int = 0,
-    budget: float | None = None,
 ):
     with tempfile.TemporaryDirectory(prefix="uagent-eval-") as temp:
         root = Path(temp)
@@ -340,13 +303,8 @@ def run_case(
         before = snapshot(workspace)
         trace_path = root / "trace.jsonl"
 
-        script = None
-        mock = None
-        if not arguments.run:
-            script = Script(scenario.get("script", []), scenario.get("capture", {}))
-            mock = Server([script])
-        else:
-            copy_user_config(home)
+        script = Script(scenario.get("script", []), scenario.get("capture", {}))
+        mock = Server([script])
         # Saved conversations the folder already has, for a panel to read.
         for saved in scenario.get("sessions", []):
             write_session(
@@ -361,9 +319,6 @@ def run_case(
             scratch = root / "tmp"
             scratch.mkdir(exist_ok=True)
             env["TMPDIR"] = str(scratch)
-            authority = arguments.cost_authority_data["routes"][model] if arguments.run else None
-            if authority is not None:
-                apply_authority(env, authority)
             prompt = str(scenario["prompt"])
             prompt = prompt.replace("${workspace}", str(workspace))
             prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
@@ -375,14 +330,13 @@ def run_case(
                 f"--debug={trace_path}",
                 *(["--yolo"] if scenario.get("yolo") else []),
                 "--model",
-                model,
+                MODEL,
+                "--budget",
+                "0.10",
+                "-p",
+                prompt,
             ]
-            if not arguments.run or authority["mode"] == "reported-cost":
-                cli.extend(["--budget", str(arguments.max_cost if budget is None else budget)])
-            cli.extend(["-p", prompt])
             process_timeout = arguments.timeout + 15
-            if authority is not None and authority["mode"] == "non-billable-cheap":
-                process_timeout = min(arguments.timeout, authority["limits"]["max_session_seconds"])
             started = time.monotonic()
             try:
                 process = subprocess.run(
@@ -409,8 +363,7 @@ def run_case(
             # outlive the case.
             stop_sessions(home)
             remove_runtime(home)
-            if mock is not None:
-                mock.close()
+            mock.close()
 
         try:
             envelope = json.loads(process.stdout)
@@ -418,7 +371,7 @@ def run_case(
             envelope = {}
         metrics = trace_metrics(read_trace(trace_path))
         answer = str(envelope.get("answer") or "")
-        bodies = script.bodies if script else []
+        bodies = script.bodies
         checks = evaluate(
             scenario,
             variant,
@@ -434,13 +387,7 @@ def run_case(
             # A capability scenario is a hill to climb and does not gate the
             # build; it graduates into the regression tier once it holds green.
             "tier": scenario.get("tier", "regression"),
-            "live_only": bool(scenario.get("live_only")),
             "variant": variant,
-            "model": model,
-            "authority_mode": authority["mode"] if authority is not None else "hermetic",
-            "trial": trial,
-            "trial_seed": trial_seed,
-            "route": metrics["route"] if arguments.run else model,
             "cohort": metrics["cohort"],
             "provenance": metrics["provenance"],
             "elapsed_seconds": round(elapsed, 3),
@@ -450,9 +397,6 @@ def run_case(
             "tool_calls": metrics["tool_calls"],
             "max_batch": metrics["max_batch"],
             "no_action_rounds": metrics["no_action_rounds"],
-            # Which tools a live run reached for, which is the whole question
-            # when the scenario does not script them.
-            "tools_used": sorted({call["name"] for call in metrics["calls"]}),
             "compactions": metrics["compactions"],
             "cumulative_estimated_context_bytes": metrics["cumulative_estimated_context_bytes"],
             "estimated_context_bytes_progression": metrics["estimated_context_bytes_progression"],
@@ -481,7 +425,7 @@ def run_case(
                 / max(sum(1 for value in checks.values() if value), 1)
             ),
             "answer": answer,
-            "script_misses": script.misses if script else [],
+            "script_misses": script.misses,
             "error": envelope.get("error")
             or (process.stderr.strip()[-400:] if process.returncode else None),
         }
@@ -682,28 +626,19 @@ def compare(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dic
 
 
 def variant_comparisons(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Forced compaction must not cost quality.
-
-    This holds for live routes too, where no committed baseline applies: the
-    control run of the same scenario and model is the reference.
-    """
-    by_case = {
-        (result["scenario"], result["model"], result.get("trial", 1), result["variant"]): result
-        for result in results
-    }
+    """Forced compaction must not cost quality."""
+    by_case = {(result["scenario"], result["variant"]): result for result in results}
     comparisons = []
-    for (scenario, model, trial, variant), result in by_case.items():
-        if variant != "compacted":
-            continue
-        control = by_case.get((scenario, model, trial, "control"))
-        if control is None:
+    for (scenario, variant), result in by_case.items():
+        control = by_case.get((scenario, "control"))
+        if variant != "compacted" or control is None:
             continue
         regressions = []
         if result["score"] < control["score"]:
             regressions.append(f"compacted score {control['score']} → {result['score']}")
         comparisons.append(
             {
-                "key": f"{scenario}/{model}/trial-{trial}/compacted-vs-control",
+                "key": f"{scenario}/compacted-vs-control",
                 "status": "regression" if regressions else "ok",
                 "regressions": regressions,
                 "passed": not regressions,
@@ -737,123 +672,6 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
     BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
     BASELINE_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"baseline written: {BASELINE_PATH.relative_to(ROOT)} ({len(results)} cases)")
-
-
-# --- repeated trials and live cost authority --------------------------------
-
-
-def wilson_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
-    if trials <= 0:
-        return (0.0, 0.0)
-    probability = successes / trials
-    denominator = 1 + z * z / trials
-    center = (probability + z * z / (2 * trials)) / denominator
-    radius = (
-        z
-        * math.sqrt(probability * (1 - probability) / trials + z * z / (4 * trials * trials))
-        / denominator
-    )
-    return (max(0.0, center - radius), min(1.0, center + radius))
-
-
-def pass_probabilities(successes: int, trials: int, requested_k: int) -> dict[str, Any]:
-    if trials <= 0:
-        return {
-            "trials": 0,
-            "successes": 0,
-            "k": 0,
-            "pass@1": 0.0,
-            "pass@k": 0.0,
-            "pass^k": 0.0,
-            "pass@1_ci95": [0.0, 0.0],
-        }
-    k = min(max(1, requested_k), trials)
-    denominator = math.comb(trials, k)
-    pass_at_k = 1.0
-    if trials - successes >= k:
-        pass_at_k -= math.comb(trials - successes, k) / denominator
-    pass_power_k = math.comb(successes, k) / denominator if successes >= k else 0.0
-    low, high = wilson_interval(successes, trials)
-    return {
-        "trials": trials,
-        "successes": successes,
-        "k": k,
-        "pass@1": round(successes / trials, 6),
-        "pass@k": round(pass_at_k, 6),
-        "pass^k": round(pass_power_k, 6),
-        "pass@1_ci95": [round(low, 6), round(high, 6)],
-    }
-
-
-def trial_summaries(results: list[dict[str, Any]], requested_k: int) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = collections.defaultdict(
-        list
-    )
-    for result in results:
-        key = (
-            str(result.get("scenario") or "?"),
-            str(result.get("variant") or "control"),
-            str(result.get("model") or "?"),
-            str(result.get("route") or result.get("model") or "?"),
-            str(result.get("cohort") or "?"),
-        )
-        grouped[key].append(result)
-    summaries = []
-    for key, trials in sorted(grouped.items()):
-        scenario, variant, model, route, cohort = key
-        successful = sum(bool(result.get("passed")) for result in trials)
-        statistics = pass_probabilities(successful, len(trials), requested_k)
-        statistics.update(
-            {
-                "scenario": scenario,
-                "variant": variant,
-                "model": model,
-                "route": route,
-                "cohort": cohort,
-                "mean_model_requests": round(
-                    sum(int(result.get("model_requests") or 0) for result in trials) / len(trials),
-                    3,
-                ),
-                "mean_cumulative_context_bytes": round(
-                    sum(
-                        int(result.get("cumulative_estimated_context_bytes") or 0)
-                        for result in trials
-                    )
-                    / len(trials)
-                ),
-                "mean_tool_result_chars": round(
-                    sum(int(result.get("tool_result_chars") or 0) for result in trials)
-                    / len(trials)
-                ),
-            }
-        )
-        summaries.append(statistics)
-    return summaries
-
-
-# The runner cannot prove that a live route stays inside its authority.
-LiveCostBlocker = AuthorityError
-
-
-def validate_live_plan(authority: dict[str, Any], jobs: list[tuple[Any, ...]], trials: int) -> None:
-    sessions = collections.Counter(model for _, _, model in jobs)
-    for model, count in sessions.items():
-        declaration = authority["routes"][model]
-        if declaration["mode"] != "non-billable-cheap":
-            continue
-        planned = count * trials
-        maximum = declaration["limits"]["max_sessions"]
-        if planned > maximum:
-            raise LiveCostBlocker(
-                f"live evaluation blocked: {model} plans {planned} sessions, above its cheap "
-                f"authority limit of {maximum}"
-            )
-
-
-def deterministic_jobs(jobs: list[tuple[Any, ...]], seed: int, trial: int) -> list[tuple[Any, ...]]:
-    ordered = list(jobs)
-    random.Random(seed + trial).shuffle(ordered)
-    return ordered
 
 
 def eval_self_test() -> int:
@@ -909,130 +727,20 @@ def eval_self_test() -> int:
             pass
         else:
             raise AssertionError(f"accepted invalid predicate: {invalid}")
-    fixture = json.loads(SELF_TEST_PATH.read_text(encoding="utf-8"))
-    summary = trial_summaries(fixture["results"], fixture["k"])
-    failures = []
-    if len(summary) != 1:
-        failures.append(f"produced {len(summary)} trial groups, want 1")
-    else:
-        for field, expected in fixture["expected"].items():
-            if summary[0].get(field) != expected:
-                failures.append(f"{field}={summary[0].get(field)}, want {expected}")
-    for planted in fixture["blocked_cost_cases"]:
-        try:
-            account_reported_cost(planted["result"], planted["spent"], planted["cap"])
-        except LiveCostBlocker:
-            continue
-        failures.append(f"cost guard accepted planted case {planted['name']}")
-    cheap_document = json.loads(CHEAP_AUTHORITY_SELF_TEST_PATH.read_text(encoding="utf-8"))
-    cheap = normalize_route_authority("provider/model", cheap_document["routes"]["provider/model"])
-    if cheap["mode"] != "non-billable-cheap":
-        failures.append("valid cheap authority did not normalize")
-    reported = normalize_route_authority(
-        "fixture/reported", {"reports_cost": True, "enforces_hard_budget": True}
-    )
-    if reported["mode"] != "reported-cost":
-        failures.append("valid reported-cost authority did not normalize")
-    blocked_authorities = [
-        {
-            "name": "unlimited-model-calls-in-live-eval",
-            "value": {
-                "non_billable": True,
-                "cheap": True,
-                "limits": {**cheap["limits"], "max_model_calls": 0},
-            },
-        },
-        {
-            "name": "cheap-without-explicit-cheap-flag",
-            "value": {"non_billable": True, "limits": cheap["limits"]},
-        },
-        {
-            "name": "string-false-authority-flags",
-            "value": {
-                "non_billable": "false",
-                "cheap": "false",
-                "limits": cheap["limits"],
-            },
-        },
-        {
-            "name": "cheap-limit-above-global-ceiling",
-            "value": {
-                "non_billable": True,
-                "cheap": True,
-                "limits": {**cheap["limits"], "max_model_calls": 9},
-            },
-        },
-    ]
-    for planted in blocked_authorities:
-        try:
-            normalize_route_authority("provider/model", planted["value"])
-        except AuthorityError:
-            continue
-        failures.append(f"authority guard accepted planted case {planted['name']}")
-    env = {}
-    apply_authority(env, cheap)
-    expected_env = {
-        "UAGENT_MAX_STEPS": "3",
-        "UAGENT_MAX_TOOL_CALLS": "4",
-        "UAGENT_MAX_TOKENS": "512",
-        "UAGENT_MAX_TURN_SECONDS": "30",
-    }
-    for name, expected in expected_env.items():
-        if env.get(name) != expected:
-            failures.append(f"cheap authority env {name}={env.get(name)}, want {expected}")
-    try:
-        validate_live_plan(
-            {"routes": {"provider/model": cheap}},
-            [(None, None, "provider/model")],
-            3,
-        )
-    except LiveCostBlocker:
-        pass
-    else:
-        failures.append("cheap session-count guard accepted 3 sessions above limit 2")
-    try:
-        account_result(
-            {
-                "model": "provider/model",
-                "model_requests": 4,
-                "tool_calls": 0,
-                "elapsed_seconds": 1,
-                "usage": {"output": 1, "cost_reported": False},
-            },
-            cheap,
-            0.0,
-            0.0,
-        )
-    except LiveCostBlocker:
-        pass
-    else:
-        failures.append("cheap post-run guard accepted excess model calls")
-    jobs = [("a",), ("b",), ("c",)]
-    if deterministic_jobs(jobs, 17, 2) != deterministic_jobs(jobs, 17, 2):
-        failures.append("trial ordering was not deterministic")
-    print(f"planted alternating trials  {summary}")
-    print(f"planted cost blocks         {len(fixture['blocked_cost_cases'])}")
-    print(f"planted authority blocks    {len(blocked_authorities) + 2}")
-    for failure in failures:
-        print(f"SELF-TEST FAILED: {failure}")
-    return 1 if failures else 0
+    return 0
 
 
 # --- reporting ---------------------------------------------------------------
 
 
-def print_results(results, comparisons, summaries):
+def print_results(results, comparisons):
     print(
         f"{'scenario/variant':<38} {'score':>7} {'req':>4} {'idle':>5} {'tools':>6} "
         f"{'batch':>5} {'maxctx':>7} {'cumctx':>8} {'results':>8} {'wall':>7}"
     )
-    repeated = any(int(result.get("trial") or 1) > 1 for result in results)
     for result in results:
-        label = baseline_key(result)
-        if repeated:
-            label += f"#t{result['trial']}"
         print(
-            f"{label:<38} "
+            f"{baseline_key(result):<38} "
             f"{result['score']}/{result['checks_total']:<5} "
             f"{result['model_requests']:>4} {result['no_action_rounds']:>5} "
             f"{result['tool_calls']:>6} "
@@ -1051,16 +759,6 @@ def print_results(results, comparisons, summaries):
         print(f"{comparison['status'].upper()}: {comparison['key']}: {detail}")
     for note in graduation_notes(results):
         print(f"GRADUATE: {note}")
-    for summary in summaries:
-        print(
-            "TRIALS: "
-            f"{summary['scenario']}/{summary['variant']} {summary['model']} "
-            f"cohort={summary['cohort']} n={summary['trials']} "
-            f"pass@1={summary['pass@1']:.3f} "
-            f"pass@{summary['k']}={summary['pass@k']:.3f} "
-            f"pass^{summary['k']}={summary['pass^k']:.3f} "
-            f"CI95={summary['pass@1_ci95']} rounds={summary['mean_model_requests']:.2f}"
-        )
 
 
 def parse_args():
@@ -1072,22 +770,9 @@ def parse_args():
     parser.add_argument("--update", action="store_true", help="rewrite the committed baseline")
     parser.add_argument("--report", type=Path, help="write the full JSON report")
     parser.add_argument("--prompt-overlay", type=Path, help="prompt overlay JSON for every run")
-    parser.add_argument("--run", action="store_true", help="allow opt-in live provider calls")
-    parser.add_argument("--model", action="append", default=[], help="model route; repeatable")
-    parser.add_argument(
-        "--cost-authority",
-        type=Path,
-        help="route authority for reported-cost or explicitly non-billable cheap live runs",
-    )
-    parser.add_argument("--max-cost", type=float, default=0.10, help="aggregate reported USD cap")
-    parser.add_argument("--trials", type=int, default=1, help="fresh isolated runs per case")
-    parser.add_argument("--pass-k", type=int, default=0, help="k for pass@k and pass^k")
-    parser.add_argument("--seed", type=int, default=0, help="deterministic trial ordering seed")
     parser.add_argument("--timeout", type=int, default=120, help="seconds per run")
     parser.add_argument("--toolset", choices=("full", "lean"), default="full")
-    parser.add_argument(
-        "--self-test", action="store_true", help="validate trial statistics and cost guards"
-    )
+    parser.add_argument("--self-test", action="store_true", help="validate the harness helpers")
     arguments = parser.parse_args()
     if arguments.self_test:
         return arguments
@@ -1096,58 +781,18 @@ def parse_args():
     arguments.binary = arguments.binary.resolve()
     if not arguments.binary.is_file():
         parser.error(f"binary does not exist: {arguments.binary}")
-    if arguments.max_cost < 0:
-        parser.error("--max-cost cannot be negative")
     if arguments.timeout <= 0:
         parser.error("--timeout must be positive")
-    if arguments.trials <= 0:
-        parser.error("--trials must be positive")
-    if arguments.pass_k < 0:
-        parser.error("--pass-k cannot be negative")
-    if arguments.pass_k == 0:
-        arguments.pass_k = min(3, arguments.trials)
-    if arguments.trials > 1 and not arguments.scenario:
-        parser.error("repeated trials require at least one explicit --scenario")
-    if arguments.run and not arguments.model:
-        parser.error("--run requires at least one --model")
-    if arguments.model and not arguments.run:
-        parser.error("--model makes provider calls and therefore requires --run")
-    if arguments.update and arguments.run:
-        parser.error("baselines are hermetic; --update cannot use live runs")
-    if arguments.update and arguments.trials != 1:
-        parser.error("baseline updates require --trials 1")
-    if arguments.cost_authority and not arguments.run:
-        parser.error("--cost-authority is only used with --run")
-    if arguments.run:
-        try:
-            arguments.cost_authority_data = load_authority(
-                arguments.cost_authority, arguments.model
-            )
-            if (
-                any(
-                    declaration["mode"] == "reported-cost"
-                    for declaration in arguments.cost_authority_data["routes"].values()
-                )
-                and arguments.max_cost <= 0
-            ):
-                parser.error("reported-cost live routes require a positive --max-cost")
-        except LiveCostBlocker as error:
-            parser.error(f"live evaluation blocked: {error}")
     return arguments
 
 
 def graduation_notes(results: list[dict[str, Any]]) -> list[str]:
-    """A capability scenario that holds green belongs in the regression tier.
-
-    A live-only scenario never does: hermetically its script hands it the
-    answer, so gating it would assert nothing. Suggesting it every run would
-    only teach the reader to skip these lines.
-    """
+    """A capability scenario that holds green belongs in the regression tier."""
     return [
         f"{baseline_key(result)}: capability scenario is green — set "
         f'"tier": "regression" to gate it'
         for result in results
-        if result["tier"] == "capability" and result["passed"] and not result["live_only"]
+        if result["tier"] == "capability" and result["passed"]
     ]
 
 
@@ -1155,84 +800,25 @@ def main() -> int:
     arguments = parse_args()
     if arguments.self_test:
         return eval_self_test()
-    scenarios = load_scenarios(arguments.scenario)
-    models = arguments.model if arguments.run else ["eval"]
     jobs = []
-    for scenario in scenarios:
+    for scenario in load_scenarios(arguments.scenario):
         variants = scenario.get("variants", ["control"])
         if arguments.variant:
             variants = [name for name in variants if name in arguments.variant]
-        for model in models:
-            for variant in variants:
-                jobs.append((scenario, variant, model))
+        jobs.extend((scenario, variant) for variant in variants)
     if not jobs:
         raise SystemExit("no scenario variants selected")
-    if arguments.run:
-        try:
-            validate_live_plan(arguments.cost_authority_data, jobs, arguments.trials)
-        except LiveCostBlocker as error:
-            raise SystemExit(str(error)) from error
 
-    results = []
-    spent = 0.0
-    blocker = None
-    for trial in range(1, arguments.trials + 1):
-        for scenario, variant, model in deterministic_jobs(jobs, arguments.seed, trial):
-            declaration = arguments.cost_authority_data["routes"][model] if arguments.run else None
-            reported = declaration is not None and declaration["mode"] == "reported-cost"
-            remaining = arguments.max_cost - spent if reported else None
-            if reported and remaining <= 1e-9:
-                blocker = LiveCostBlocker(
-                    f"live evaluation stopped at the ${arguments.max_cost:.6f} aggregate ceiling"
-                )
-                break
-            result = run_case(
-                arguments.binary,
-                scenario,
-                variant,
-                model,
-                arguments,
-                trial=trial,
-                trial_seed=arguments.seed + trial,
-                budget=remaining,
-            )
-            results.append(result)
-            if arguments.run:
-                try:
-                    spent = account_result(result, declaration, spent, arguments.max_cost)
-                except LiveCostBlocker as error:
-                    blocker = error
-                    break
-        if blocker:
-            break
-
-    comparisons = variant_comparisons(results)
-    if not arguments.run:
-        comparisons += compare(results, load_baseline())
-    summaries = trial_summaries(results, arguments.pass_k)
-    print_results(results, comparisons, summaries)
-    if blocker:
-        print(f"BLOCKED: live evaluation {blocker}", file=sys.stderr)
+    results = [
+        run_case(arguments.binary, scenario, variant, arguments) for scenario, variant in jobs
+    ]
+    comparisons = variant_comparisons(results) + compare(results, load_baseline())
+    print_results(results, comparisons)
     if arguments.update:
         write_baseline(results)
-    selected_authorities = arguments.cost_authority_data["routes"] if arguments.run else {}
-    reported_selected = any(
-        declaration["mode"] == "reported-cost" for declaration in selected_authorities.values()
-    )
-    cheap_routes = {
-        model: declaration["limits"]
-        for model, declaration in selected_authorities.items()
-        if declaration["mode"] == "non-billable-cheap"
-    }
-    cheap_sessions = collections.Counter(
-        result["model"]
-        for result in results
-        if result.get("authority_mode") == "non-billable-cheap"
-    )
     report = {
         "schema": "uagent.eval.v2",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "live": arguments.run,
         "binary": {
             "path": str(arguments.binary),
             "bytes": arguments.binary.stat().st_size,
@@ -1240,37 +826,12 @@ def main() -> int:
         },
         "toolset": arguments.toolset,
         "prompt_overlay": str(arguments.prompt_overlay) if arguments.prompt_overlay else None,
-        "trial_policy": {
-            "trials": arguments.trials,
-            "pass_k": arguments.pass_k,
-            "seed": arguments.seed,
-        },
-        "live_authority": {
-            "sha256": (arguments.cost_authority_data.get("sha256") if arguments.run else None),
-            "routes": {
-                model: declaration["mode"] for model, declaration in selected_authorities.items()
-            },
-        },
-        "aggregate_cost": {
-            "ceiling": arguments.max_cost if arguments.run and reported_selected else None,
-            "reported": round(spent, 9) if arguments.run and reported_selected else None,
-            "authoritative": bool(arguments.run and reported_selected and not blocker),
-        },
-        "non_billable_cheap": {
-            "routes": cheap_routes,
-            "sessions": dict(sorted(cheap_sessions.items())),
-            "authoritative": bool(arguments.run and cheap_routes and not blocker),
-        },
-        "blocker": str(blocker) if blocker else None,
         "results": results,
-        "trial_summaries": summaries,
         "comparisons": comparisons,
     }
     if arguments.report:
         arguments.report.parent.mkdir(parents=True, exist_ok=True)
         arguments.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    if blocker:
-        return 2
     if not all(result["passed"] for result in results if result["tier"] == "regression"):
         return 1
     if arguments.check and not all(item["passed"] for item in comparisons):

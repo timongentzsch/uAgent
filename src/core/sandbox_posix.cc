@@ -264,12 +264,12 @@ SandboxLevel SandboxSupported() {
 
 namespace {
 
-// The person's own folders are the visible entries of the home folder and
-// the workspaces kept in ~/.uagent/spaces. Open inside them: the skill
-// folders, sandbox.read, kReadableHomePaths, and the folders the environment
-// points a command at -- its PATH, and a variable naming a folder (GOPATH,
-// ANDROID_HOME, ...), where a bin folder brings its parent, which holds the
-// rest of its tool.
+// Closed: the visible entries of the home folder, of ~/.uagent/spaces and of
+// the folder that holds the workspace, whose other entries are other
+// projects. Open inside them: the skill folders, sandbox.read,
+// kReadableHomePaths, and the folders the environment points a command at --
+// its PATH, and a variable naming a folder (GOPATH, ANDROID_HOME, ...), where
+// a bin folder brings its parent, which holds the rest of its tool.
 void CollectReads(SandboxInputs* inputs) {
   namespace fs = std::filesystem;
   auto canonical = [](const std::string& path) {
@@ -277,12 +277,19 @@ void CollectReads(SandboxInputs* inputs) {
   };
   const std::string home = canonical(UserHome());
   if (home.empty()) return;
-  for (const std::string& folder : {home, UagentDir(kSpacesDir)}) {
+  const std::string around = fs::path(CanonicalCwd()).parent_path().string();
+  for (const std::string& folder : {home, UagentDir(kSpacesDir), around}) {
+    // The root's entries are the system's.
+    if (folder == "/") continue;
     std::error_code error;
     for (fs::directory_iterator entry(folder, error), end;
          !error && entry != end; entry.increment(error)) {
-      if (!entry->path().filename().string().starts_with(".")) {
-        inputs->home_entries.push_back(canonical(entry->path().string()));
+      // A neighbour that holds the home folder, uAgent's state and the tools'
+      // config with it, is closed only by the home folder's own entries.
+      const std::string path = canonical(entry->path().string());
+      if (!entry->path().filename().string().starts_with(".") &&
+          !SandboxPathWithin(home, path)) {
+        inputs->closed_folders.push_back(path);
       }
     }
   }
@@ -317,9 +324,9 @@ void CollectReads(SandboxInputs* inputs) {
       open.push_back(folder.string());
     }
   }
-  // The home folder itself would open every entry.
+  // The root (the parent of /bin) or the home folder would open every entry.
   for (std::string& path : open) {
-    if (!path.empty() && path != home && SandboxPathWithin(path, home)) {
+    if (!path.empty() && path != "/" && path != home) {
       inputs->read_roots.push_back(std::move(path));
     }
   }

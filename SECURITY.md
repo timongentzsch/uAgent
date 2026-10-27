@@ -220,7 +220,10 @@ workspace.
 
 **Reads** are closed in your own folders, below the `relaxed` level: the
 visible entries of the home folder (`~/Software`, `~/Documents`, `~/Desktop`,
-`~/Library`…) and the workspaces in `~/.uagent/spaces`. A model that climbs out of its workspace into a sibling
+`~/Library`…), the workspaces in `~/.uagent/spaces`, and the workspace's
+neighbours, the other entries of the folder that holds it, as other
+projects in the container's `/workspaces` are. A neighbour that holds the
+home folder is closed only by the home folder's own entries. A model that climbs out of its workspace into a sibling
 repository answers from code that is not the one it was asked about, and
 your documents are not its business. Inside those folders a command still
 reads:

@@ -483,9 +483,9 @@ def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, h
 
 
 def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, binary):
-    """The home folder's visible entries and the workspaces in
-    ~/.uagent/spaces are the person's own folders: a command reads none of
-    them but the workspace, and a file tool asks a
+    """The home folder's visible entries, the workspaces in ~/.uagent/spaces
+    and the workspace's neighbours are closed: a command reads none of them
+    but the workspace, and a file tool asks a
     person, refusing where nobody can answer. Dot-folders and everything
     outside the home folder stay readable, and sandbox.read opens a folder."""
     require_sandbox(root, home, binary=binary)
@@ -498,13 +498,17 @@ def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, bina
     tool_state = home / ".config" / "tool" / "settings.txt"
     tool_state.parent.mkdir(parents=True)
     tool_state.write_text("marker-settings.txt\n")
-    outside = root / "outside.txt"
-    outside.write_text("marker-outside.txt\n")
+    # The workspace's neighbour is another project, as in /workspaces.
+    neighbour = root / "neighbour.txt"
+    neighbour.write_text("marker-neighbour.txt\n")
+    outside = pathlib.Path(os.environ["TMPDIR"]) / f"{root.name}-outside.txt"
+    outside.write_text(f"marker-{outside.name}\n")
     env = sandbox_env(home, "")
     output = tool_output(root, env, f"cat {sibling}", binary=binary)
     assert_true("marker-notes.txt" not in output, f"a command read {sibling}: {output}")
     assert_true("sandbox.read" in output, f"the refusal did not say what opens it: {output}")
-    assert_true(not readable(root, env, space, binary=binary), f"a command read {space}")
+    for closed in (space, neighbour):
+        assert_true(not readable(root, env, closed, binary=binary), f"a command read {closed}")
     for open_path in (tool_state, outside):
         assert_true(
             readable(root, env, open_path, binary=binary), f"a command could not read {open_path}"
@@ -536,7 +540,7 @@ def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
         # descendant: its /proc root must not reach the files either.
         "proc": f"grep -q login-secret "
         f"{shlex.quote(f'/proc/{os.getpid()}/root{profile}/Login Data')}",
-        "control": f"grep -q read-me-marker {root / 'readable.txt'}",
+        "control": f"grep -q read-me-marker {ws / 'readable.txt'}",
         # Last, since it succeeds unsandboxed. A renamed profile would be out
         # from under every rule that names it.
         "rename": f"mv {profile} {profile}.moved",
@@ -579,7 +583,7 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
     profile = pathlib.Path(os.path.realpath(root)) / "browser"
     profile.mkdir()
     (profile / "Login Data").write_text("login-secret\n")
-    (root / "readable.txt").write_text("read-me-marker\n")
+    (workspace(root) / "readable.txt").write_text("read-me-marker\n")
     # Bound and reached by a relative name: the full path can exceed the
     # small limit a unix socket address has.
     listener = socket.socket(socket.AF_UNIX)

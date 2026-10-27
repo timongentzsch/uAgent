@@ -409,7 +409,7 @@ def test_auto_permission_never_reviews_outside_the_folder(root, home, *, binary)
     )
     assert_true(requests == [], requests)
     assert_true(not outside.exists(), outside)
-    assert_true("denied" in tool, tool)
+    assert_true("not approved" in tool, tool)
 
 
 def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *, binary):
@@ -429,7 +429,7 @@ def test_auto_permission_never_reviews_commands_without_a_sandbox(root, home, *,
             environment={"UAGENT_SANDBOX": "off"},
         )
         assert_true(requests == [], (name, requests))
-        assert_true("denied" in tool, (name, tool))
+        assert_true("not approved" in tool, (name, tool))
 
 
 def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):

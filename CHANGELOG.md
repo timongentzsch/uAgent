@@ -61,6 +61,9 @@
 
 ### Changes
 
+- A refused approval reads "this action was not approved", with the
+  reason when a person is required, instead of "user denied this action".
+  `uagent panel -p` declines for nobody, and its model was told a user had.
 - Web: **New → Workspace…** opens the workspace at its lead agent, not a
   new conversation; for an existing workspace that is its lead agent's
   conversation.

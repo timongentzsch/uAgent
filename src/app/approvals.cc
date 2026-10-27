@@ -113,11 +113,12 @@ bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
   return confined_thread;
 }
 
-// The outcome of an approval: who refused, for the model, is a person by
-// default.
+// The outcome of an approval. A refusal says what was not approved, not who
+// refused it: a person may have declined, or a client with nobody behind it
+// (`uagent panel -p`) declined for them.
 struct Verdict {
   bool granted = true;
-  std::string refusal = "user denied this action";
+  std::string refusal = "this action was not approved";
 };
 
 // The automatic permission review's verdict, or nothing when it asks for a
@@ -210,6 +211,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
     request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
                                    {{"value", "n"}, {"label", "Deny"}}});
     verdict.granted = Confirm(std::move(request));
+    verdict.refusal += " (" + reason + ")";
   } else {
     request.options = ApprovalOptions();
     bool cancelled = false;

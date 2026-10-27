@@ -6,8 +6,9 @@
 
 - **Commands no longer read your other folders.** Below the `relaxed`
   level, a command reads, of the home folder's visible entries (`~/Software`,
-  `~/Documents`, `~/Library`…) and the workspaces in `~/.uagent/spaces`, only
-  its own workspace and the folders its tools use (the `PATH` and other
+  `~/Documents`, `~/Library`…), the workspaces in `~/.uagent/spaces` and the
+  workspace's neighbours (other projects in the container's `/workspaces`),
+  only its own workspace and the folders its tools use (the `PATH` and other
   folders the environment names, `~/Library/Caches`, the skill folders). Dot-folders and everything outside
   the home folder stay readable. `read_path` and `grep` ask a person before
   reading such a folder, even under yolo, and refuse it in a subagent. Add a

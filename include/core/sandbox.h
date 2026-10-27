@@ -76,10 +76,11 @@ struct SandboxInputs {
   // The readonly level: only the temporary roots and the terminal logs are
   // offered, whatever else is listed here.
   bool read_only = false;
-  // The home folder's entries not named with a dot, and the workspaces in
-  // ~/.uagent/spaces, at a level that confines reads (readonly, strict,
-  // default); empty otherwise.
-  std::vector<std::string> home_entries;
+  // The folders closed to reads at a level that confines them (readonly,
+  // strict, default), empty otherwise: the person's own -- the home folder's
+  // entries not named with a dot and the workspaces in ~/.uagent/spaces --
+  // and the workspace's neighbours, as other projects in /workspaces are.
+  std::vector<std::string> closed_folders;
   // What stays readable inside them besides the workspace and the writable
   // roots: what the environment points at, sandbox.read and
   // kReadableHomePaths.

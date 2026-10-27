@@ -352,8 +352,8 @@ void TestSandboxReads() {
   using Paths = std::vector<std::string>;
   SandboxInputs inputs = BaseInputs();
   inputs.workspace = "/home/u/Software/work";
-  inputs.home_entries = {"/home/u/Software", "/home/u/Documents", "/home/u/go",
-                         "/home/u/Library"};
+  inputs.closed_folders = {"/home/u/Software", "/home/u/Documents",
+                           "/home/u/go", "/home/u/Library"};
   inputs.read_roots = {"/home/u/go", "/home/u/Library/Caches"};
   SandboxPolicy policy = BuildSandboxPolicy(inputs).policy;
   CHECK(policy.unreadable ==
@@ -402,12 +402,22 @@ void TestSandboxReads() {
   CHECK(decoded.readable == policy.readable);
   CHECK(words[consumed] == "--");
 
+  // In a container, projects sit side by side outside the home folder: the
+  // workspace's neighbours close. One inside a closed folder adds nothing.
+  SandboxInputs container = BaseInputs();
+  container.workspace = "/workspaces/a";
+  container.closed_folders = {"/workspaces/a", "/workspaces/b"};
+  CHECK(BuildSandboxPolicy(container).policy.unreadable ==
+        Paths({"/workspaces/b"}));
+  inputs.closed_folders.push_back("/home/u/Software/other");
+  CHECK(BuildSandboxPolicy(inputs).policy.unreadable == policy.unreadable);
+
   // A workspace that is the home folder opens every entry; so does a level
   // that collects none (relaxed, off).
   inputs.workspace = "/home/u";
   CHECK(BuildSandboxPolicy(inputs).policy.unreadable.empty());
   inputs.workspace = "/home/u/Software/work";
-  inputs.home_entries.clear();
+  inputs.closed_folders.clear();
   CHECK(BuildSandboxPolicy(inputs).policy.unreadable.empty());
 }
 

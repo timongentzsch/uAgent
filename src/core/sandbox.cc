@@ -94,14 +94,14 @@ void ConfineReads(const SandboxInputs& inputs, SandboxPolicy* policy) {
   open.push_back(inputs.workspace);
   open.insert(open.end(), policy->writable_roots.begin(),
               policy->writable_roots.end());
-  for (const std::string& entry : inputs.home_entries) {
+  for (const std::string& entry : inputs.closed_folders) {
     if (std::none_of(open.begin(), open.end(), [&](const std::string& root) {
           return SandboxPathWithin(entry, root);
         })) {
       policy->unreadable.push_back(entry);
     }
   }
-  std::sort(policy->unreadable.begin(), policy->unreadable.end());
+  FoldNested(&policy->unreadable, {});
   for (std::string& root : open) {
     if (std::any_of(policy->unreadable.begin(), policy->unreadable.end(),
                     [&](const std::string& closed) {

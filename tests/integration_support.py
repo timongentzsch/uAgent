@@ -639,7 +639,12 @@ def setting_keys(home, binary):
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({"format": 3, "all": {}, "projects": {}}) + "\n")
-        run(home, base_env(home, "http://127.0.0.1:9"), "--show-system-prompt", binary=binary)
+        run(
+            home,
+            base_env(home, "http://127.0.0.1:9"),
+            "--show-system-prompt",
+            binary=pathlib.Path(binary).resolve(),
+        )
     properties = json.loads(schema.read_text())["definitions"]["scope"]["properties"]
     return {held["x-env"]: key for key, held in properties.items() if "x-env" in held}
 

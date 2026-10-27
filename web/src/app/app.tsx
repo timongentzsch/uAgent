@@ -41,6 +41,7 @@ import { useBoot } from "./use-boot.ts";
 import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
+import { folderOf } from "../shared/display.ts";
 import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import {
@@ -360,7 +361,9 @@ function App() {
     choose(order[nextIndex(at, key, order.length)].id);
   };
   const shortcutActions = {
-    search: () => setOverlay("search"),
+    // ⌘K again closes it, as Spotlight's own key does.
+    search: () =>
+      setOverlay((current) => (current === "search" ? null : "search")),
     // Only over an open conversation; elsewhere the browser's own find.
     find:
       page === "chat" && session
@@ -611,8 +614,9 @@ function App() {
               <Modal
                 key={overlay}
                 title={overlay === "search" ? "Search" : "Keyboard shortcuts"}
-                layout="sheet"
+                layout={overlay === "search" ? "spotlight" : "sheet"}
                 size="narrow"
+                header={overlay !== "search"}
                 close={() => setOverlay(null)}
               >
                 {overlay === "search" ? (
@@ -620,6 +624,7 @@ function App() {
                     load={spotlightDialog}
                     sessions={listed}
                     commands={catalogue.commands || []}
+                    place={session && folderOf(session)}
                     choose={choose}
                     find={(id: string, words: string, sequence: number) => {
                       void choose(id);

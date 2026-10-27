@@ -66,6 +66,8 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
                 == [f"quokka {n}" for n in range(3, 8)],
                 found[ids["many"]],
             )
+            # Each hit knows how many rows of its conversation hold the words.
+            assert_true(all(hit["rows"] == 8 for hit in found[ids["many"]]), found[ids["many"]])
             assert_true(
                 [(hit["kind"], hit["count"]) for hit in found[ids["alpha"]]]
                 == [(user, 1), (assistant, 2)],

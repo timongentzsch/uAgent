@@ -1,14 +1,26 @@
-/* Search fills its sheet: the search stays put and the results take
-   the rest of the height and scroll. */
+/* Search: its field on top, then the results, and on a wide screen the
+   rows around the selected hit beside them. As tall as its results, up to
+   the dialog's limit, past which the results scroll. */
 .spotlight {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
-  height: 100%;
+  flex: 1;
   min-height: 0;
+  padding: var(--space-3);
+  gap: var(--space-2);
+}
+.spotlight > .text-control {
+  font-size: var(--font-title);
+}
+.spotlight-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--gap);
 }
 .spotlight-results {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -20,24 +32,41 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A message hit: its conversation and place, then the words around it. */
-.spotlight-hit {
-  display: flex;
+/* A hit sits under its conversation: two lines of the words around it, so
+   its mark always shows. */
+.spotlight-snippet,
+.spotlight-more {
   flex: 1;
-  flex-direction: column;
   min-width: 0;
-}
-.spotlight-line {
-  display: flex;
-  gap: var(--gap);
-  min-width: 0;
-}
-.spotlight-snippet {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding-left: var(--space-4);
   color: var(--muted);
   font-size: var(--font-small);
+}
+.spotlight-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  text-align: start;
+}
+.spotlight-preview {
+  flex: 0 0 45%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-left: var(--gap);
+  border-left: var(--border);
+  font-size: var(--font-small);
+}
+.spotlight-preview-row {
+  margin: 0 0 var(--space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.spotlight-preview-row strong {
+  display: block;
+  color: var(--muted);
 }
 .spotlight-detail,
 .spotlight-empty {

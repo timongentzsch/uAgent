@@ -262,12 +262,16 @@ before Submit.
 ### Finding and managing conversations
 
 - **Search**: Ctrl+K (⌘K on a Mac), the search button atop the sidebar or
-  `/sessions` opens it. It lists conversations and folders by name (letters
-  in order, prefixes first), then the messages of every conversation that
-  hold the words (threads and panels included, tool output too), each with
-  the words around them, then actions, slash commands and settings. A
-  message opens its conversation at that message, with find open on the
-  words.
+  `/sessions` opens it, as a panel in the middle of the window (atop the
+  screen on a phone). An empty field lists recent conversations. Words list
+  conversations and folders by name (letters in order, prefixes first),
+  then the messages that hold them (threads and panels included, tool
+  output too): grouped by folder, the open conversation's first, and under
+  each conversation its newest three with the words marked, then a row for
+  the rest. Actions, slash commands and settings follow; `>` lists only
+  those. On a wide window the rows around the selected message show beside
+  the list. A message opens its conversation at that message, with find
+  open on the words. Esc clears the field, then closes.
 - **Find in a conversation**: Ctrl+F (⌘F), or **Find in conversation** in
   its menu, marks every occurrence in yellow, the current one stronger, and
   says which of how many it is. Enter and Shift+Enter (or the arrows) step to

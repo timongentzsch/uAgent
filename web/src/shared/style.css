@@ -52,6 +52,8 @@
   --chat-min: calc(360rem / 14);
   --popover: calc(320rem / 14);
   --sheet: calc(560rem / 14);
+  --spotlight: calc(640rem / 14);
+  --spotlight-wide: calc(960rem / 14);
   /* Controls and spacing use rem throughout so zoom also changes density.
      Fixed pixel floors made the 50–75% range mostly cosmetic. Every
      button, field and menu item is --control tall; a row is --row tall,
@@ -1232,6 +1234,30 @@ dialog[data-layout="panel"] {
 dialog[data-layout="panel"] > .dialog-body,
 dialog[data-layout="sheet"] > .dialog-body {
   flex: 1;
+}
+/* Spotlight: search over everything, centered in the upper part of the
+   window as a launcher is, as tall as its results. A phone pins it to the
+   top, clear of the keyboard. */
+dialog[data-layout="spotlight"] {
+  --dialog-width: var(--spotlight);
+  top: calc(
+    var(--viewport-top) + var(--safe-top) + var(--content-height) * 0.15
+  );
+  transform: translateX(-50%);
+  max-height: calc(var(--content-height) * 0.7);
+}
+dialog[data-layout="spotlight"]:has(.spotlight-preview) {
+  --dialog-width: var(--spotlight-wide);
+}
+@media (max-width: 600px) {
+  dialog[data-layout="spotlight"] {
+    top: calc(var(--viewport-top) + var(--safe-top));
+    left: calc(var(--viewport-left) + var(--safe-left));
+    transform: none;
+    width: var(--content-width);
+    max-height: var(--content-height);
+    border-width: 0 0 1px;
+  }
 }
 /* Sheet: full content height at the right edge, beside the conversation;
    the mirror of the sidebar drawer. Full screen on a phone. */

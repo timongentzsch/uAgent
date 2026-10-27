@@ -62,10 +62,14 @@ test("search finds words in another conversation and opens it at them", async ({
       name: "Search conversations, messages, commands and settings",
     })
     .fill("quokka");
-  const hit = search
+  // Grouped by place, then by conversation: its name once, its hits under
+  // it, each with the words marked.
+  const group = search.getByRole("group").filter({ hasText: "Needle" });
+  await expect(group.getByRole("option").first()).toContainText("Needle");
+  await expect(group.getByRole("option").first()).toContainText("3 matches");
+  const hit = group
     .getByRole("option")
     .filter({ hasText: "Where did the quokka go?" });
-  await expect(hit).toContainText("Needle");
   await expect(hit.locator("mark")).toHaveText("quokka");
   await hit.click();
   // The row is pages back: they load until it is there, in view.
@@ -128,4 +132,76 @@ test("nothing found says so", async ({ page, host }) => {
   await expect(
     findBar(page).getByRole("button", { name: "Next match" }),
   ).toBeDisabled();
+});
+
+// Spotlight's own shape and keys: centered high, every hit marked, places in
+// their order, more under a conversation, ">" for commands, Esc stepping back.
+test("search is a centered panel that groups, marks and steps back", async ({
+  page,
+  host,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  const far = `${"Ordinary words go on for a while. ".repeat(8)}a wombat`;
+  await saveHistory(host, "far.json", {
+    id: "far",
+    title: "Far",
+    turns: 6,
+    messages: Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 ? "assistant" : "user",
+      content: index % 2 ? `${far} ${index}` : `Question ${index}`,
+    })),
+  });
+  await saveHistory(host, "elsewhere.json", {
+    id: "elsewhere",
+    title: "Elsewhere",
+    turns: 1,
+    cwd: host.home,
+    messages: [
+      { role: "user", content: "a wombat elsewhere" },
+      { role: "assistant", content: "noted" },
+    ],
+  });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  // The open conversation's place leads.
+  await page.getByRole("button", { name: /Elsewhere/ }).click();
+  await page.keyboard.press(`${mod}+k`);
+  const search = page.getByRole("dialog", { name: "Search" });
+  const box = await search.boundingBox();
+  expect(Math.abs(box.x + box.width / 2 - 640)).toBeLessThan(4);
+  expect(box.y).toBeLessThan(800 / 3);
+  const field = search.getByRole("combobox");
+  await field.fill("wombat");
+  const groups = search.getByRole("group");
+  await expect(groups.first()).toContainText("Elsewhere");
+  // Every hit shows its mark, however far into its message the words are.
+  const hits = search.locator(".spotlight-snippet");
+  await expect(hits).toHaveCount(4);
+  for (const hit of await hits.all())
+    await expect(hit.locator("mark")).toHaveText("wombat");
+  await expect(search).toContainText("3 more in this conversation");
+  // The selected hit (under the first conversation) shows its neighbourhood
+  // beside the list.
+  await field.press("ArrowDown");
+  await expect(search.getByLabel("Preview").locator("mark")).not.toHaveCount(0);
+  // ">" lists only actions, commands and settings.
+  await field.fill(">shortcut");
+  await expect(search.getByRole("group").first()).toContainText(
+    "Actions & commands",
+  );
+  await expect(search.locator(".spotlight-snippet")).toHaveCount(0);
+  // Esc clears first, then closes.
+  await field.press("Escape");
+  await expect(field).toHaveValue("");
+  await expect(search).toBeVisible();
+  await field.press("Escape");
+  await expect(search).toHaveCount(0);
+  // A phone has no preview.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.keyboard.press(`${mod}+k`);
+  await search.getByRole("combobox").fill("wombat");
+  await expect(search.locator(".spotlight-snippet").first()).toBeVisible();
+  await search.getByRole("combobox").press("ArrowDown");
+  await expect(search.getByLabel("Preview")).toHaveCount(0);
 });

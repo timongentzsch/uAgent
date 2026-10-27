@@ -90,13 +90,13 @@ export async function openProbePanel(page, session, command, request) {
 export async function saveHistory(
   host,
   file,
-  { id, title, turns, messages, kinds },
+  { id, title, turns, messages, kinds, cwd },
 ) {
   const directory = `${host.home}/.uagent/history`;
   await mkdir(directory, { recursive: true });
   const header = {
     format: 3,
-    cwd: host.project,
+    cwd: cwd || host.project,
     model: "test",
     session_id: id,
     title,

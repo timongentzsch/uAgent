@@ -82,9 +82,14 @@
 - `uagent panel -p` prints the panel's last answer, not also what it said
   before a thread reported ("started a thread, waiting").
 - Web: **search** replaces the command palette and the sidebar's filter.
-  Ctrl+K (⌘K) finds conversations by name, the messages of every
-  conversation that hold the words, and the actions, commands and settings
-  the palette had; a message opens its conversation there. **Find in
+  Ctrl+K (⌘K) opens it as a panel in the middle of the window, like
+  Spotlight. It finds conversations by name, then the messages that hold
+  the words, grouped by folder (the open conversation's first) and under
+  each conversation, with every occurrence marked, then the actions,
+  commands and settings the palette had. `>` lists only those; with an
+  empty field it lists recent conversations. On a wide window the rows
+  around the selected message show beside the list. A message opens its
+  conversation there; Esc clears the field, then closes. **Find in
   conversation** (Ctrl+F, or the conversation menu) marks every occurrence
   in yellow and steps through them with Enter and Shift+Enter, loading
   older messages and opening folded tool rows to reach one.
@@ -97,8 +102,8 @@
 - The web host answers `GET /api/search?q=…`: the rows of every listed
   conversation (threads and panels included, subagents not) whose text,
   tool output included, contains the words, ignoring case, with a snippet
-  and how often each row contains them; with `session=ID`, every such row of
-  one conversation. Files that cannot contain the words are skipped
+  and how often each row contains them, and how many rows of its
+  conversation do; with `session=ID`, every such row of one conversation. Files that cannot contain the words are skipped
   unparsed: 500 conversations of 1 MB take about 0.3 s. A panel's `history
   search` uses the same search and now finds compacted rows too.
 - Case-insensitive matching folds only ASCII letters. Under a UTF-8 locale

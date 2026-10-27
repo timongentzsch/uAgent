@@ -61,6 +61,8 @@
 
 ### Changes
 
+- A lead agent no longer starts with a warning that its workspace is not
+  writable, which at its readonly level it is not on purpose.
 - A command that fails a name lookup while the sandbox denies the network
   ("Could not resolve host", "nodename nor servname provided", …) now ends
   with the sandbox's note, which says the network is closed. Before, only a

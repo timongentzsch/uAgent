@@ -869,6 +869,18 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
         )
     assert_true(code == 0, output)
     assert_true(b"cannot write the workspace" in output, f"startup was silent: {output!r}")
+    # At the readonly level, a lead agent's, an unwritable workspace is the
+    # point, and startup does not warn about it.
+    with Server([event({"content": "ready-ok"})]) as server:
+        code, output = run_pty(
+            workspace(root),
+            sandbox_env(home, server.url, UAGENT_SANDBOX="readonly"),
+            [(b"/status\n", b"sandbox"), b"", b"/q\n"],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(code == 0, output)
+    assert_true(b"Start in a project folder" not in output, output)
 
 
 def test_sandbox_grants_a_space_and_not_the_state_beside_it(root, home, *, binary):

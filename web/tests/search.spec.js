@@ -191,6 +191,12 @@ test("search is a centered panel that groups, marks and steps back", async ({
     "Actions & commands",
   );
   await expect(search.locator(".spotlight-snippet")).toHaveCount(0);
+  // A command's description matches by whole words, not scattered letters.
+  const permissions = search.getByRole("option", { name: /^\/permissions/ });
+  await field.fill(">wombat");
+  await expect(search.getByText("No command matches.")).toBeVisible();
+  await field.fill(">approval");
+  await expect(permissions).toHaveCount(1);
   // Esc clears first, then closes.
   await field.press("Escape");
   await expect(field).toHaveValue("");

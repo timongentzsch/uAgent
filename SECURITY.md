@@ -240,10 +240,11 @@ Everything else stays readable: dot-folders such as `~/.config` and
 `~/.gitconfig`, which tools need, and everything outside the home folder. A
 confined `cat ~/.ssh/config` still pulls the file into model context. A
 refused command is told which folder closed and that `sandbox.read` opens
-one. The file tools ask a person before reading a closed folder, even under
-yolo or auto, and refuse it where nobody can answer, as in a subagent. On
-macOS a closed folder cannot be listed; on Linux, Landlock lists its names
-but refuses its files.
+one. A stdio MCP server you configured reads as before: it lives wherever
+you keep it. The file tools ask a person before reading a closed folder,
+even under yolo or auto, and refuse it where nobody can answer, as in a
+subagent. On macOS a closed folder cannot be listed; on Linux, Landlock
+lists its names but refuses its files.
 
 **Hidden stores.** With the sandbox on, commands cannot read, write or
 connect to the sockets of these paths (those that exist), and the file tools

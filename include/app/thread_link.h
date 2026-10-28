@@ -4,8 +4,8 @@
 #include <optional>
 #include <string>
 
+#include "include/agent/session_links.h"
 #include "include/core/json.h"
-#include "include/core/mailbox.h"
 
 namespace uagent::session {
 // A thread's link to the panel that started it, from the thread's
@@ -51,7 +51,7 @@ class ThreadLink {
   std::string path_, id_;
   int streak_ = 0;           // turns the panel started since anyone else spoke
   bool panel_last_ = false;  // the newest message was the panel's
-  std::optional<Mail> unsent_;
+  std::optional<SessionMail> unsent_;
 };
 }  // namespace uagent::session
 #endif

@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 import re
 import shlex
 import signal
@@ -18,11 +19,13 @@ from integration_support import (
     budget,
     descendant_pids,
     event,
+    fnv1a64,
     function_names,
     has_message,
     run,
     run_dialog,
     saved_json_files,
+    session_files,
     tool_call,
     tool_calls,
     tool_results,
@@ -39,7 +42,7 @@ def child_sessions(home):
     return saved_json_files(home / ".uagent" / "history", "*/agent-*.json")
 
 
-STARTED = "[started] subagent id "
+STARTED = "[started] subagent "
 
 
 def launched(texts):
@@ -54,9 +57,9 @@ def wait_round():
 
 def collaborator(text):
     """The child id a resume note names."""
-    match = re.search(r"\[collaborator (agent-[^;\]]+)", text)
+    match = re.search(r"\[collaborator (agent-[^;\]]+)|\[started\] subagent (agent-\S+) ", text)
     assert_true(match is not None, text)
-    return match.group(1)
+    return match.group(1) or match.group(2)
 
 
 def subagent_batch(prompts, usage=None, **arguments):
@@ -1193,7 +1196,11 @@ def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
         results = tool_results(messages)
         if any("stopped" in result for result in results[1:]):
             return event({"content": "child-stopped"})
-        started = re.search(r"\[started\] subagent id (\d+)", results[0]) if results else None
+        started = (
+            re.search(r"\[started\] subagent agent-\S+ \(activity (\d+)\)", results[0])
+            if results
+            else None
+        )
         if started:
             wait_until(lambda: all(p.exists() for p in pids), "the child tree did not start")
             return tool_call("activity", {"operation": "stop", "id": int(started.group(1))})
@@ -1303,3 +1310,109 @@ def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):
         result = run(root, env, "--yolo", "-p", "delegate", timeout=30, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "clamp-reported-ok", result.stdout)
+
+
+def start_peer(root, home, binary, *flags):
+    """A saved session in a folder, made to look served by a runtime."""
+    workspace = root / "peers"
+    workspace.mkdir()
+    with Server([event({"content": "b-first"})]) as server:
+        result = run(workspace, base_env(home, server.url), *flags, "-p", "b", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    [peer] = session_files(home)
+    runtime = pathlib.Path(f"/tmp/uagent-{os.getuid()}-{fnv1a64(str(home / '.uagent'))}")
+    runtime.mkdir(mode=0o700, exist_ok=True)
+    (runtime / f"{fnv1a64(str(peer))}.sock").touch()
+    return workspace, peer
+
+
+def message_peer(workspace, home, peer, binary, *args):
+    """A second session asks the session tool for its peers and messages the
+    one it finds; returns that last tool result."""
+    seen = {}
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if not results:
+            return tool_call("session", {"operation": "list"})
+        if len(results) == 1:
+            return tool_call(
+                "session",
+                {
+                    "operation": "message",
+                    "session_id": fnv1a64(str(peer)),
+                    "prompt": "ping from a",
+                },
+                call_id="send",
+            )
+        seen["result"] = results[-1]
+        return event({"content": "a-done"})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), *args, "-p", "a", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    return seen["result"]
+
+
+def resume_peer(workspace, home, peer, binary, *args):
+    """The peer takes its next turn; returns what its model was sent."""
+    later = time.time() + 100
+    os.utime(peer, (later, later))
+    sent = []
+
+    def route(_, body):
+        sent.append(json.dumps(body["messages"]))
+        return event({"content": "b-again"})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), *args, "-c", "-p", "b", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    return "".join(sent)
+
+
+def test_yolo_sessions_in_a_folder_message_each_other(root, home, *, binary):
+    workspace, peer = start_peer(root, home, binary, "--yolo")
+    sent = message_peer(workspace, home, peer, binary, "--yolo")
+    assert_true("sent to session" in sent, sent)
+    seen = resume_peer(workspace, home, peer, binary, "--yolo")
+    assert_true("ping from a" in seen and "[session" in seen, seen)
+    assert_true(not list((home / ".uagent" / "mail").glob("*/new/*.json")), "mail left")
+
+
+def test_a_peer_in_ask_mode_does_not_take_a_yolo_session_mail(root, home, *, binary):
+    workspace, peer = start_peer(root, home, binary)
+    sent = message_peer(workspace, home, peer, binary, "--yolo")
+    assert_true("it arrives while that session is in yolo mode" in sent, sent)
+    seen = resume_peer(workspace, home, peer, binary)
+    assert_true("approval ask" in seen and "ping from a" not in seen, seen)
+    assert_true(len(list((home / ".uagent" / "mail").glob("*/new/*.json"))) == 1, "mail kept")
+
+
+def test_a_delegated_child_in_yolo_reaches_no_peer(root, home, *, binary):
+    workspace, peer = start_peer(root, home, binary, "--yolo")
+    reached = []
+
+    def route(_, body):
+        messages = body["messages"]
+        results = tool_results(messages)
+        if "child task" in user_texts(messages):
+            if not results:
+                return tool_call(
+                    "session",
+                    {
+                        "operation": "message",
+                        "session_id": fnv1a64(str(peer)),
+                        "prompt": "from the child",
+                    },
+                )
+            reached.append(results[-1])
+            return event({"content": "child-done"})
+        if results:
+            return event({"content": "parent-done"})
+        return tool_call("subagent", {"prompt": "child task", "background": False})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "a", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true(reached and "not linked" in reached[0], reached)
+    assert_true(not list((home / ".uagent" / "mail").glob("*/new/*.json")), "mail left")

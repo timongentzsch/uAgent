@@ -87,7 +87,6 @@ json MailToJson(const Mail& mail) {
           {"id", mail.id},
           {"from", mail.from},
           {"to", mail.to},
-          {"type", mail.type},
           {"sender_path", mail.sender_path},
           {"hops", mail.hops},
           {"created_ms", mail.created_ms},
@@ -100,22 +99,19 @@ bool MailFromJson(const json& value, Mail& mail) {
   mail.id = JsonValue(value, "id", "");
   mail.from = JsonValue(value, "from", "");
   mail.to = JsonValue(value, "to", "");
-  mail.type = JsonValue(value, "type", "");
   mail.sender_path = JsonValue(value, "sender_path", "");
   mail.hops = JsonValue(value, "hops", 0);
   mail.created_ms = JsonValue(value, "created_ms", int64_t{0});
   mail.expires_ms = JsonValue(value, "expires_ms", int64_t{0});
   mail.body = JsonValue(value, "body", json::object());
-  return ValidId(mail.id) && !mail.type.empty() && mail.body.is_object();
+  return ValidId(mail.id) && mail.body.is_object();
 }
 
-Mail MailFrom(const std::string& sender_path, std::string to, const char* type,
-              json body) {
+Mail MailFrom(const std::string& sender_path, std::string to, json body) {
   Mail mail;
   mail.from = MailboxIdFor(sender_path);
   mail.sender_path = sender_path;
   mail.to = std::move(to);
-  mail.type = type;
   mail.body = std::move(body);
   return mail;
 }
@@ -135,9 +131,8 @@ std::string MailboxDir(const std::string& id) {
   return dir;
 }
 
-std::string SendMail(Mail mail) {
+std::string SendMail(Mail mail, bool rate_limited) {
   if (!ValidId(mail.to)) return "unknown recipient " + mail.to;
-  if (mail.type.empty()) return "a message needs a type";
   if (mail.hops >= kMailMaxHops) {
     return "not sent: it has been forwarded " + std::to_string(mail.hops) +
            " times, which looks like a loop";
@@ -158,8 +153,7 @@ std::string SendMail(Mail mail) {
   size_t count = 0;
   for (auto& [path, pending] : ReadPending(dir)) {
     if (named ? pending.id == mail.id
-              : pending.from == mail.from && pending.type == mail.type &&
-                    pending.body == mail.body) {
+              : pending.from == mail.from && pending.body == mail.body) {
       return "";  // the same message is still waiting
     }
     ++count;
@@ -168,10 +162,7 @@ std::string SendMail(Mail mail) {
     return "not sent: the recipient has " + std::to_string(count) +
            " messages waiting; try again after it has read them";
   }
-  // A thread's events are its panel's to hear, however many: the rate
-  // is for what sessions write to each other.
-  const bool event = mail.type == kMailTaskCompleted || mail.type == kMailAsk;
-  if (!event && OverRate(mail.from)) {
+  if (rate_limited && OverRate(mail.from)) {
     return "not sent: at most " + std::to_string(kMailSenderPerMinute) +
            " messages a minute; wait before sending more";
   }

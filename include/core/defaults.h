@@ -53,7 +53,7 @@ inline constexpr std::string_view kReadableHomePaths[] = {"Library/Caches",
 // written in one place and read in another; one constant keeps the two from
 // drifting, and the tests pin that the reader accepts what the writer emits.
 inline constexpr char kDetachedMarker[] = "[detached] pid ";
-inline constexpr char kStartedSubagentMarker[] = "[started] subagent id ";
+inline constexpr char kStartedSubagentMarker[] = "[started] subagent ";
 inline constexpr char kRunningActivityMarker[] = "[running] activity ";
 // Appended by ArtifactHint(); StripArtifactHint() removes it.
 inline constexpr char kCapturedLogMarker[] = "\n[captured log: ";

@@ -19,47 +19,16 @@ namespace uagent {
 namespace {
 constexpr size_t kDeliveredIds = 256;
 
-std::string Stem(const std::string& path) {
-  return std::filesystem::path(path).stem().string();
-}
-
-std::string ParentSession(const json& delegation) {
-  return MailboxIdFor(JsonValue(delegation, "parent_session", ""));
-}
-
-// Who may talk to whom: linked sessions, a delegated session (a subagent or
-// a panel's thread) and its parent, and children of one parent. The
-// sender's own session header says which it is.
+// Who may talk to whom is MayMail's; this process is the recipient. A thread
+// carries its role in its options, a subagent in its environment, and both
+// know it before a header is saved.
 bool MailAllowed(const Mail& mail, const std::string& own_path,
                  const json& role) {
-  // The parent, by its session or, without one, by its owner id. A thread
-  // carries its role in its options, a subagent in its environment.
-  const json delegation =
-      OwnDelegation().empty() ? ThreadRole(role) : OwnDelegation();
-  const std::string parent = ParentSession(delegation);
-  if (!mail.from.empty() &&
-      (mail.from == parent ||
-       mail.from == JsonValue(delegation, "parent", ""))) {
-    return true;
-  }
-  if (mail.sender_path.empty() || MailboxIdFor(mail.sender_path) != mail.from) {
-    return false;
-  }
-  const std::string own = MailboxIdFor(own_path);
-  const json sender = SessionHeader(mail.sender_path);
-  const std::string sender_parent = ParentSession(DelegationOf(sender));
-  if (!sender_parent.empty() &&
-      (sender_parent == own || sender_parent == parent)) {
-    return true;
-  }
-  // A thread asks during its first turn, before its header is saved; until
-  // then its mail names its folder.
-  const std::string folder = JsonValue(mail.body, "folder", "");
-  if (sender.empty() && !folder.empty() &&
-      MailboxIdFor(PanelPath(folder)) == own) {
-    return true;
-  }
-  return SharesLink(Stem(mail.sender_path), Stem(own_path));
+  MailParty to = SessionParty(own_path);
+  to.delegation = OwnDelegation().empty() ? ThreadRole(role) : OwnDelegation();
+  if (mail.sender_path.empty()) return MayMail(OwnerParty(mail.from), to);
+  return MailboxIdFor(mail.sender_path) == mail.from &&
+         MayMail(SessionParty(mail.sender_path), to);
 }
 }  // namespace
 
@@ -92,7 +61,6 @@ bool Agent::DeliverMail(bool hold) {
     // Mail wakes its recipient: an idle one starts a turn on it.
     Arrive(text, mail.id);
     DebugLog("mail_delivered", {{"id", mail.id},
-                                {"type", mail.type},
                                 {"from", mail.from},
                                 {"latency_ms", NowMillis() - mail.created_ms}});
   }

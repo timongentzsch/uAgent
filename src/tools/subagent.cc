@@ -15,13 +15,13 @@
 
 #include "include/agent/activity.h"
 #include "include/agent/child_agent.h"
+#include "include/agent/session_links.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
-#include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/tools/shell.h"
@@ -160,11 +160,17 @@ ToolResult MessageAgent(const ActivitySupervisor& processes,
                        "message requires text");
   }
   // A parent without a session file is known to its child by its owner id.
-  const std::string own = OwnSessionFile();
-  Mail mail = MailFrom(own, MailboxIdFor(AgentPath(id)), kMailSteer,
-                       {{"text", "[parent guidance]\n" + text}});
-  if (own.empty()) mail.from = processes.Owner();
-  error = SendMail(std::move(mail));
+  error = SendSessionMail(
+      {.from_path = OwnSessionFile(),
+       .from_owner = processes.Owner(),
+       .to_path = AgentPath(id),
+       .text = text,
+       .kind = MailKind::kGuidance,
+       // A child still running has not saved its role.
+       .to_delegation = role.empty()
+                            ? json{{"parent", processes.Owner()},
+                                   {"parent_session", OwnSessionFile()}}
+                            : role});
   return error.empty() ? ToolSuccess("sent to agent " + id)
                        : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
@@ -546,7 +552,9 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
                     ChildAgentConstraintNotes(clamped);
   }
   if (child.launched) {
-    result.output += ChildAgentResumeNote(id);
+    // A child still running is named in its launch receipt; the note says how
+    // to resume one that has answered.
+    if (child.wait_status) result.output += ChildAgentResumeNote(id);
     result.parts = json::array({LinkPart("agent", id, "Open agent")});
   }
   return result;

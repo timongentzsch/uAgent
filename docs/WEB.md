@@ -54,6 +54,8 @@ with line numbers and highlighting, Markdown rendered with its images
 (**Source** shows the text), and an image at full size on a click; any other
 file offers a download. What is open is read again when a turn ends.
 
+![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
+
 Drag the edge of the sidebar, the plan, Files or its list to resize it, or
 focus the edge and use the arrow keys (Shift for larger steps). A
 double-click or Enter restores the default width. Each device keeps its own

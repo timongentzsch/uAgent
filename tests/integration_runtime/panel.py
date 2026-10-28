@@ -32,7 +32,7 @@ from session_support import SessionClient, runtime_directory, stop_sessions
 
 def _spawn(title, objective, *, environment="local"):
     """A thread spawn's arguments; `environment=None` leaves it to the setting."""
-    spawn = {"action": "spawn", "title": title, "objective": objective}
+    spawn = {"title": title, "objective": objective}
     return spawn | ({"environment": environment} if environment else {})
 
 
@@ -64,7 +64,10 @@ PANEL_TOOLS = {
     "memory",
     "skill",
     "uagent",
+    "uagent_configure",
+    "uagent_instructions",
     "history",
+    "thread_spawn",
     "thread",
     "decide",
     "ask",
@@ -74,6 +77,7 @@ PANEL_TOOLS = {
     "web_search",
     "web_fetch",
     "subagent",
+    "subagent_fanout",
 }
 
 
@@ -212,7 +216,7 @@ def test_a_thread_started_for_a_step_shows_it_on_the_board(root, home, *, binary
         if "[background agent event" in text:
             return event({"content": "ack"})
         if not tool_results(body["messages"]):
-            return tool_call("thread", _spawn("Tag", "tag it") | {"step": "s1"})
+            return tool_call("thread_spawn", _spawn("Tag", "tag it") | {"step": "s1"})
         return event({"content": "spawned"})
 
     with Server([route]) as server:
@@ -230,18 +234,18 @@ def test_a_spawn_without_its_brief_is_turned_away_and_stops_the_turn(root, home,
     """A spawn missing its fields never reaches the tool: each time the model
     is told what spawn needs and what its call carried, and the third such
     round ends the turn, which then answers from what it has."""
-    responses = [tool_call("thread", {"action": "spawn"}) for _ in range(3)]
+    responses = [tool_call("thread_spawn", {}) for _ in range(3)]
     responses.append(event({"content": "answered-after-the-loop"}))
     with Server(responses) as server:
         result = run(root, base_env(home, server.url), "panel", "-p", "delegate", binary=binary)
         assert_true(result.stdout.strip() == "answered-after-the-loop", result.stdout)
         assert_true(len(server.requests) == 4, len(server.requests))
-        told = "`title` and `objective` are required for spawn; this call carried only `action`"
+        told = "`title` and `objective` are required; this call carried nothing"
         messages = server.requests[-1][1]["messages"]
         results = tool_results(messages)
         assert_true(len(results) == 3 and all(told in text for text in results), results)
         # The person and the model both learn why the turn stopped.
-        stop = "model repeated an equivalent rejected thread call 3 times: " + told
+        stop = "model repeated an equivalent rejected thread_spawn call 3 times: " + told
         assert_true(result.returncode == 1 and stop in result.stderr, result)
         assert_true(stop in json.dumps(messages, ensure_ascii=False), messages[-1])
         sessions = session_files(home)
@@ -363,7 +367,7 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
             return event({"content": "thread-report: 3 files"})
         if not tool_results(body["messages"]):
             return tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("Count files", "count the files"),
             )
         return event({"content": "spawned-ok"})
@@ -415,7 +419,7 @@ def test_a_headless_panel_waits_for_a_slow_thread(root, home, *, binary):
             return event({"content": "slow-report"})
         if not tool_results(body["messages"]):
             return tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("Slow one", "take your time"),
             )
         return event({"content": "spawned-ok"})
@@ -466,7 +470,7 @@ def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
         if tool_results(body["messages"]):
             return event({"content": "spawned-ok"})
         return tool_call(
-            "thread",
+            "thread_spawn",
             _spawn("Count files", "count the files"),
         )
 
@@ -509,10 +513,10 @@ def society(root, home, binary, *, stopped):
     client = {}
 
     def spawn(name):
-        return (f"spawn-{name}", "thread", _spawn(name.capitalize(), f"{name}-task"))
+        return (f"spawn-{name}", "thread_spawn", _spawn(name.capitalize(), f"{name}-task"))
 
     def message(peer, text):
-        return tool_call("session", {"operation": "message", "session_id": peer, "prompt": text})
+        return tool_call("session_message", {"session_id": peer, "prompt": text})
 
     def alpha(body, text):
         results = tool_results(body["messages"])
@@ -547,7 +551,7 @@ def society(root, home, binary, *, stopped):
             "the second thread was never saved",
             timeout=20,
         )
-        return tool_call("session", {"operation": "list"})
+        return tool_call("session", {})
 
     def beta(body, text):
         results = tool_results(body["messages"])
@@ -626,7 +630,7 @@ def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
     with Server(
         [
             tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("More", "more"),
             ),
             event({"content": "refused-ok"}),
@@ -668,7 +672,9 @@ def test_panel_counts_what_older_threads_spend_today(root, home, *, binary):
             }
         )
     )
-    with Server([tool_call("thread", _spawn("More", "more")), event({"content": "ok"})]) as server:
+    with Server(
+        [tool_call("thread_spawn", _spawn("More", "more")), event({"content": "ok"})]
+    ) as server:
         env = base_env(home, server.url)
         env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"
         result = run(root, env, "panel", "-p", "more", binary=binary)
@@ -820,7 +826,7 @@ def test_guidance_into_a_working_thread_is_no_restart(root, home, *, binary):
         results = tool_results(body["messages"])
         if not results:
             return tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("Slow", "slow work"),
             )
         if len(results) <= 4:
@@ -846,9 +852,9 @@ def test_a_thread_outside_git_runs_in_place_unless_a_worktree_is_asked_for(root,
         results = tool_results(body["messages"])
         spawn = _spawn("Here", "list files", environment=None)
         if not results:
-            return tool_call("thread", spawn)
+            return tool_call("thread_spawn", spawn)
         if len(results) == 1:
-            return tool_call("thread", {**spawn, "environment": "worktree"})
+            return tool_call("thread_spawn", {**spawn, "environment": "worktree"})
         return event({"content": "spawned"})
 
     with Server([route]) as server:
@@ -930,12 +936,12 @@ def test_panel_caps_working_threads_in_worktrees(root, home, *, binary):
                 [
                     (
                         "call-1",
-                        "thread",
+                        "thread_spawn",
                         _spawn("First", "first", environment=None),
                     ),
                     (
                         "call-2",
-                        "thread",
+                        "thread_spawn",
                         _spawn("Second", "second", environment=None),
                     ),
                 ]
@@ -987,7 +993,7 @@ def test_panel_closes_an_idle_thread(root, home, *, binary):
             return tool_call("thread", {"action": "close", "session_id": spawned["session_id"]})
         if not results:
             return tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("Idle", "idle"),
             )
         return event({"content": "spawned-ok"})
@@ -1056,7 +1062,7 @@ def _spawn_then(decide):
             return event({"content": "panel-ack"})
         if not results:
             return tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("Write", "write out.txt"),
             )
         return event({"content": "spawned-ok"})
@@ -1087,7 +1093,7 @@ def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, 
         if results or "[background agent event" in text:
             return event({"content": "panel-ack"})
         return tool_call(
-            "thread",
+            "thread_spawn",
             _spawn("Write", "write and run"),
         )
 
@@ -1176,7 +1182,7 @@ def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
             return event({"content": "ack"})
         if not tool_results(body["messages"]):
             return tool_call(
-                "thread",
+                "thread_spawn",
                 _spawn("Run", "run it"),
             )
         return event({"content": "spawned-ok"})
@@ -1218,9 +1224,8 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
                 call_id="call-4",
             ),
             tool_call(
-                "uagent",
+                "uagent_instructions",
                 {
-                    "action": "set_instructions",
                     "audience": "panel",
                     "scope": "user",
                     "text": "Be reckless.",

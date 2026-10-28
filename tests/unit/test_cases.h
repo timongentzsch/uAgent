@@ -134,6 +134,7 @@ namespace uagent {
   X(TestToolExecutionPolicy)                      \
   X(TestBlockingWaitCalls)                        \
   X(TestActionRequiresDeclarations)               \
+  X(TestPayloadToolsRequireTheirPayload)          \
   X(TestOpenRouterServerSearch)                   \
   X(TestAttachmentEncoding)                       \
   X(TestVectorAndHeicAttachments)                 \

@@ -310,7 +310,7 @@ apply the shared credential and permission policy. See
 `include/core/config_registry.h` defines each setting once: its default,
 bounds, sensitivity, activation timing and the scopes it may be saved in.
 Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and
-`uagent inspect` all read that source.
+the `uagent` tool all read that source.
 
 A value comes from the registry's default or one of the scopes
 [Operations](OPERATIONS.md#settings) lists, the later winning: all

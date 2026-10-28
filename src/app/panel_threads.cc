@@ -211,39 +211,55 @@ ToolResult Diff(const SessionInfo& info) {
 }
 }  // namespace
 
-Tool ThreadTool(const std::string& folder,
-                std::function<std::string()> own_model) {
+Tool ThreadSpawnTool(const std::string& folder,
+                     std::function<std::string()> own_model) {
   Tool tool = MakeTool(
-      "thread",
-      "Delegate work to background agents: ordinary sessions that edit and run "
-      "code for you. spawn starts one on a brief (output, done_when and "
+      "thread_spawn",
+      "Delegate work to a background agent: an ordinary session that edits "
+      "and runs code for you, started on a brief (output, done_when and "
       "boundaries add to it; environment worktree or local; step, the plan "
-      "step it works for). message guides a running session in this folder, "
-      "or restarts your own background agent (three restarts in a row at "
-      "most, then ask the user); stop interrupts its turn; close ends its "
-      "runtime; diff shows what it changed; delete closes and removes a "
-      "session, and its worktree if nothing would be lost, after the user "
-      "confirms. One background agent per independent part; keep dependent "
-      "steps in one. A question that only needs reading goes to a subagent "
-      "instead.",
+      "step it works for). One background agent per independent part; keep "
+      "dependent steps in one. A question that only needs reading goes to a "
+      "subagent instead.",
       json::parse(R"json({"type":"object","properties":{
-        "action":{"type":"string",
-          "enum":["spawn","message","stop","close","diff","delete"]},
-        "session_id":{"type":"string"},
-        "title":{"type":"string"},
-        "objective":{"type":"string"},
+        "title":{"type":"string","minLength":1},
+        "objective":{"type":"string","minLength":1},
         "output":{"type":"string"},
         "done_when":{"type":"string"},
         "boundaries":{"type":"string"},
         "environment":{"type":"string","enum":["worktree","local"]},
         "model":{"type":"string"},
-        "step":{"type":"string","maxLength":64},
-        "text":{"type":"string"}},
-        "required":["action"]})json"),
+        "step":{"type":"string","maxLength":64}},
+        "required":["title","objective"]})json"),
       [folder, own_model = std::move(own_model)](const json& a,
                                                  const ToolContext&) {
+        return Spawn(folder, a, own_model);
+      });
+  tool.capabilities = Capability(ToolCapability::kDelegate);
+  tool.category = "collaborate";
+  tool.intent = "delegate";
+  tool.summary = [](const json& a) { return JsonValue(a, "title", ""); };
+  tool.header = Verbs("Delegating", "Delegated");
+  return tool;
+}
+
+Tool ThreadTool(const std::string& folder) {
+  Tool tool = MakeTool(
+      "thread",
+      "Manage a background agent or another session in this folder. message "
+      "guides a running session, or restarts your own background agent "
+      "(three restarts in a row at most, then ask the user); stop interrupts "
+      "its turn; close ends its runtime; diff shows what it changed; delete "
+      "closes and removes a session, and its worktree if nothing would be "
+      "lost, after the user confirms.",
+      json::parse(R"json({"type":"object","properties":{
+        "action":{"type":"string",
+          "enum":["message","stop","close","diff","delete"]},
+        "session_id":{"type":"string"},
+        "text":{"type":"string"}},
+        "required":["action","session_id"]})json"),
+      [folder](const json& a, const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
-        if (action == "spawn") return Spawn(folder, a, own_model);
         return WithSession(folder, a, [&](const SessionInfo& info) {
           if (action == "message") {
             return Message(info, folder, JsonValue(a, "text", ""));
@@ -254,13 +270,7 @@ Tool ThreadTool(const std::string& folder,
           return Delete(info, folder);
         });
       });
-  tool.action_requires = {"action",
-                          {{"spawn", {"title", "objective"}},
-                           {"message", {"session_id", "text"}},
-                           {"stop", {"session_id"}},
-                           {"close", {"session_id"}},
-                           {"diff", {"session_id"}},
-                           {"delete", {"session_id"}}}};
+  tool.action_requires = {"action", {{"message", {"text"}}}};
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.intent = "delegate";
@@ -272,8 +282,7 @@ Tool ThreadTool(const std::string& folder,
   };
   tool.mandatory_reason = "deleting a session";
   tool.summary = [](const json& a) {
-    return JsonValue(a, "action", "") + " " +
-           JsonValue(a, "title", JsonValue(a, "session_id", ""));
+    return JsonValue(a, "action", "") + " " + JsonValue(a, "session_id", "");
   };
   tool.header = Verbs("Delegating", "Delegated");
   return tool;

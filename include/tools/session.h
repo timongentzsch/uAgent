@@ -25,10 +25,12 @@ namespace uagent {
 ToolResult MessageSession(const std::string& id, const std::string& text,
                           int hops = 0);
 
-// Text-only peer messaging for every toolset, lean included. `start` starts
-// the runtime of a panel or thread that a message found stopped; any
-// other session reads its mail when it is next opened.
-Tool SessionTool(
+// Text-only peer messaging for every toolset, lean included: `session` lists
+// the peers, `session_message` writes to them. `start` starts the runtime
+// of a panel or thread that a message found stopped; any other session reads
+// its mail when it is next opened.
+Tool SessionTool();
+Tool SessionMessageTool(
     const std::function<void(const std::string& path)>& start = {});
 
 }  // namespace uagent

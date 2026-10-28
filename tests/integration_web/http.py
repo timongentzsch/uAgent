@@ -24,7 +24,11 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
     answer = "Exact raw answer α🙂"
     with Server([lambda _, _body: event({"content": answer})]) as provider:
         with web_host(
-            binary, root, home, provider.url, extra_env={"UAGENT_API_KEY": "private-http-test-key"}
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={"UAGENT_API_KEY": "private-http-test-key", "UAGENT_CONTEXT": "32768"},
         ) as (client, code, _, _):
             client.pair(code)
             config = client.command("config")["result"]

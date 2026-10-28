@@ -8,8 +8,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "include/agent/activity.h"
@@ -256,16 +258,17 @@ void TestToolExecutionPolicy() {
   Tool memory_tool = mutate;
   memory_tool.name = "memory";
   Tool config_tool = inspect;
-  config_tool.name = "uagent";
+  config_tool.name = "uagent_configure";
   config_tool.capabilities = 0;
   std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate};
-  ApplyToolPolicy(pinned, {.tool_allowlist = {"read_path", "memory", "uagent"},
-                           .error = ""});
-  // uagent stays: its writes (settings, instructions) always need the user.
+  ApplyToolPolicy(
+      pinned, {.tool_allowlist = {"read_path", "memory", "uagent_configure"},
+               .error = ""});
+  // uagent_configure stays: its writes always need the user.
   CHECK(pinned.size() == 3);
   CHECK(FindTool(pinned, "read_path") != nullptr);
   CHECK(FindTool(pinned, "memory") != nullptr);
-  CHECK(FindTool(pinned, "uagent") != nullptr);
+  CHECK(FindTool(pinned, "uagent_configure") != nullptr);
 
   namespace fs = std::filesystem;
   fs::path log_root = fs::temp_directory_path() /
@@ -436,22 +439,17 @@ void TestBlockingWaitCalls() {
   CHECK(ToolCallBlocks(activity, {{"wait_ms", 5000}}));
 }
 
-// Every multi-action tool turns a bare action away before it runs, naming
-// the fields that action needs and that the call carried only the action.
+// Every multi-action tool turns an action away before it runs when it
+// carries only what the schema itself requires, naming the fields that action
+// needs and what the call carried.
 void TestActionRequiresDeclarations() {
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor);
   AddPanelTools(tools, "/nonexistent-folder", [] { return std::string(); });
-  tools.push_back(SessionTool());
   const Api api(RuntimeConfig{});
   const std::vector<Route> routes;
   const std::vector<Endpoint> providers;
   tools.push_back(SubagentTool(api, supervisor, routes, providers, false));
-  tools.push_back(
-      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
-                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-                   return ConfigProposal{};
-                 }));
 #ifdef UAGENT_BROWSER
   tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
                               [](const std::string&, const std::string&,
@@ -465,23 +463,66 @@ void TestActionRequiresDeclarations() {
     CHECK(ToolDescription(tool).find(" Required per " + table.field + ": ") !=
           std::string::npos);
     for (const auto& [action, fields] : table.actions) {
-      auto issue = FindToolArgumentIssue(tool, {{table.field, action}});
+      json call = {{table.field, action}};
+      for (const json& name : JsonValue(tool.parameters, "required", json())) {
+        call[name.get<std::string>()] = action;
+      }
+      auto issue = FindToolArgumentIssue(tool, call);
       CHECK(issue && issue->code == "schema.required" &&
             issue->field == fields.front() &&
-            issue->message.ends_with(" required for " + action +
-                                     "; this call carried only `" +
-                                     table.field + "`"));
+            issue->message.find(" required for " + action +
+                                "; this call carried only `") !=
+                std::string::npos);
     }
   }
-  std::vector<std::string> multi_action = {"activity", "history", "memory",
-                                           "plan",     "session", "subagent",
-                                           "thread",   "uagent"};
+  std::vector<std::string> multi_action = {"activity", "history",  "memory",
+                                           "plan",     "subagent", "thread"};
 #ifdef UAGENT_BROWSER
   multi_action.emplace_back("browser");
 #endif
   std::ranges::sort(declared);
   std::ranges::sort(multi_action);
   CHECK(declared == multi_action);
+}
+
+// An action with its own payload is a tool of its own, so the schema itself
+// requires that payload and a provider that enforces schemas sees it.
+void TestPayloadToolsRequireTheirPayload() {
+  ActivitySupervisor supervisor;
+  std::vector<Tool> tools;
+  AddPanelTools(tools, "/nonexistent-folder", [] { return std::string(); });
+  tools.push_back(SessionMessageTool());
+  const Api api(RuntimeConfig{});
+  const std::vector<Route> routes;
+  const std::vector<Endpoint> providers;
+  tools.push_back(
+      SubagentFanoutTool(api, supervisor, routes, providers, false));
+  tools.push_back(UagentConfigureTool(
+      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+        return ConfigProposal{};
+      },
+      std::make_shared<ConfigApprovals>()));
+  tools.push_back(UagentInstructionsTool());
+  const std::vector<std::pair<std::string, std::string>> expected = {
+      {"thread_spawn", R"(["title","objective"])"},
+      {"session_message", R"(["prompt"])"},
+      {"subagent_fanout", R"(["items","prompt","finding"])"},
+      {"uagent_configure", R"(["scope","changes"])"},
+      {"uagent_instructions", R"(["audience","scope","text"])"}};
+  for (const auto& [name, required] : expected) {
+    const Tool* tool = FindTool(tools, name);
+    CHECK(tool && tool->parameters["required"] == json::parse(required));
+    CHECK(tool && tool->action_requires.field.empty());
+    const auto issue =
+        tool ? FindToolArgumentIssue(*tool, json::object()) : std::nullopt;
+    CHECK(issue && issue->code == "schema.required" &&
+          issue->message.ends_with("; this call carried nothing"));
+  }
+  // An empty title is no title.
+  const Tool* spawn = FindTool(tools, "thread_spawn");
+  CHECK(spawn &&
+        FindToolArgumentIssue(*spawn, {{"title", ""}, {"objective", "o"}})
+            .has_value());
 }
 
 }  // namespace uagent

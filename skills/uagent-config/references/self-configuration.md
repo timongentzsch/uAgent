@@ -1,10 +1,10 @@
 # Changing µAgent configuration
 
-`uagent` with `action=configure` persists a setting. It accepts only
+`uagent_configure` persists a setting. It accepts only
 registered setting names, shows the user an exact diff, and commits nothing
 until they approve it. `--yolo` does not apply. An approved preview is good
-for five minutes. A headless or delegated run cannot commit at all: `inspect`
-still works, `configure` is rejected, and the answer is a proposal for the
+for five minutes. A headless or delegated run cannot commit at all: `uagent`
+still inspects, `uagent_configure` is not offered, and the answer is a proposal for the
 user to apply themselves with `/config user KEY=VALUE` or
 `/config project KEY=VALUE`.
 
@@ -15,13 +15,13 @@ else was saved meanwhile and skips the approval.
 
 ## Procedure
 
-1. Read the current effective value and its source with `uagent` action `inspect`, topic
+1. Read the current effective value and its source with `uagent`, topic
    `config`, `name` set to the exact setting. Report which layer currently
    wins: a command-line flag, a process variable or the conversation's own
    choice keeps shadowing a saved setting after it is changed.
 2. Check the `takes_effect` field. Saying a change is live when it needs a
    restart is the failure this step exists to prevent.
-3. Call `uagent` with `action=configure` and `scope` `user` for all
+3. Call `uagent_configure` with `scope` `user` for all
    conversations, or `project` for the conversations in this folder. Pass
    `changes` with one entry per setting: `key`, `operation` (`set` or
    `unset`) and, for `set`, `value` as a string. Web host settings

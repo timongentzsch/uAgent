@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 #define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
-// The uagent tool: lets the model inspect this build and propose, never
-// apply, a configuration change.
+// The uagent tools: the model inspects this build and proposes, never
+// applies, a change to its settings or instructions.
 
 #include <functional>
 #include <memory>
@@ -21,16 +21,20 @@ namespace uagent {
 using ConfigProposalFactory = std::function<ConfigProposal(
     ConfigProposalScope, const std::vector<ConfigChange>&)>;
 
-// Requests a persistent configuration change. The tool prepares and previews;
-// the mandatory-human approval lane decides, and only an approved proposal can
-// be committed. There is deliberately no commit argument the model can set.
 using SelfDescriptionProvider =
     std::function<json(SelfTopic, const std::string&)>;
 using ConfigApprovals = ApprovedProposals<ConfigProposal>;
 
-Tool UagentTool(SelfDescriptionProvider describe,
-                const ConfigProposalFactory& prepare = {},
-                const std::shared_ptr<ConfigApprovals>& store = {});
+// Inspects this build; offered everywhere.
+Tool UagentTool(SelfDescriptionProvider describe);
+
+// The two writing tools, offered only where a person can approve. Each
+// prepares and previews; the mandatory-human approval lane decides, and only
+// what was approved is written. There is deliberately no commit argument the
+// model can set.
+Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
+                         const std::shared_ptr<ConfigApprovals>& store);
+Tool UagentInstructionsTool();
 
 }  // namespace uagent
 

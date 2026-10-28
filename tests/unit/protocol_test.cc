@@ -387,7 +387,7 @@ void TestRegistries() {
           "answer directly") != std::string::npos);
   CHECK(!subagent_properties.contains("provider"));
   // The grammar for naming a provider-scoped route, not the roster: the roster
-  // is what uagent action=inspect topic=routes reports, and enumerating it here
+  // is what uagent topic=routes reports, and enumerating it here
   // was charged to every request.
   CHECK(subagent_properties["model"]["description"].get<std::string>().find(
             "<provider>/MODEL") != std::string::npos);

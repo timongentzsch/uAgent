@@ -1672,8 +1672,12 @@ void TestSessionMail() {
   SetApprovalMode(ApprovalMode::kAsk);
   CHECK(LinkedSessionPath(HashHex(tool_b)).empty());
   SetApprovalMode(ApprovalMode::kYolo);
-  // Listing needs no prompt, and shows the linked peer.
-  CHECK(!FindToolArgumentIssue(SessionTool(), {{"operation", "list"}}));
+  // Listing takes nothing and shows the linked peer; a message needs a
+  // prompt.
+  CHECK(!FindToolArgumentIssue(SessionTool(), json::object()));
+  CHECK(FindToolArgumentIssue(SessionMessageTool(),
+                              {{"session_id", HashHex(tool_b)}})
+            .has_value());
   bool saw_peer = false;
   for (const json& row : SessionSummaries()) {
     if (JsonValue(row, "id", "") == HashHex(tool_b)) {

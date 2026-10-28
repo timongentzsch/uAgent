@@ -176,6 +176,7 @@ void TestPythonTool() {
   };
   for (const Tool& tool : python_tools) CHECK(plain(tool.parameters));
   CHECK(plain(SessionTool().parameters));
+  CHECK(plain(SessionMessageTool().parameters));
 
   CHECK(
       ToolRunScratch(supervisor, root, "other.rb").output.find(".js or .mjs") !=

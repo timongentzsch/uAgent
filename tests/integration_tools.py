@@ -910,9 +910,8 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
 
     def request_change(_, __):
         return tool_call(
-            "uagent",
+            "uagent_configure",
             {
-                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
             },
@@ -928,7 +927,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             root,
             base_env(home, server.url),
             [
-                (b"configure providers\n", b"Allow uagent?"),
+                (b"configure providers\n", b"Allow uagent_configure?"),
                 (b"y\n", b"composite-config-ok"),
                 b"/quit\n",
             ],
@@ -937,7 +936,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"Allow uagent?" in output, output)
+        assert_true(b"Allow uagent_configure?" in output, output)
         assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
         assert_true(b"adjacent-integration-secret" not in output, output)
         # Status redraws may insert cursor controls before the colored line.
@@ -969,9 +968,8 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
 
     def request_change(_, __):
         return tool_call(
-            "uagent",
+            "uagent_configure",
             {
-                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
             },
@@ -996,13 +994,13 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"Allow uagent?" not in output, output)
+        assert_true(b"Allow uagent_configure?" not in output, output)
         assert_true(literal.encode() not in output, output)
         assert_true(not saved_settings(home), saved_settings(home))
 
 
 def test_self_configuration_requires_a_person(root, home, *, binary):
-    """With nobody to ask, the tool is not offered and nothing saved changes.
+    """With nobody to ask, the tools are not offered and nothing saved changes.
 
     The approver denies a mandatory-human call whenever no interactive
     terminal is attached, so advertising the schema to a piped run would spend
@@ -1015,8 +1013,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
     def refuse(_, body):
         names = function_names(body)
         assert_true("uagent" in names, names)
-        tool = next(t["function"] for t in body["tools"] if t["function"]["name"] == "uagent")
-        assert_true(tool["parameters"]["properties"]["action"]["enum"] == ["inspect"], tool)
+        assert_true(not {"uagent_configure", "uagent_instructions"} & set(names), names)
         # The escape hatch is closed too: writing the saved settings directly
         # stays a mandatory-human mutation.
         assert_true("write_file" in names, names)
@@ -1038,9 +1035,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
 
     def request_change(_, __):
         return tool_call(
-            "uagent",
+            "uagent_configure",
             {
-                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "120"}],
             },
@@ -1061,7 +1057,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
             root,
             env,
             [
-                (b"raise the limit\n", b"Allow uagent?"),
+                (b"raise the limit\n", b"Allow uagent_configure?"),
                 (b"y\n", b"configure-ok"),
                 b"/quit\n",
             ],

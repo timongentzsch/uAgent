@@ -60,9 +60,27 @@ std::string PanelPause(const std::string& folder);
 // its commands run in the readonly sandbox (session_worker.cc); neither can
 // its subagents: a child gets only its parent's tools and sandbox.
 inline constexpr const char* kPanelTools[] = {
-    "read_path", "grep",       "run",       "memory",  "skill", "uagent",
-    "history",   "thread",     "decide",    "plan",    "ask",   "browser",
-    "artifact",  "web_search", "web_fetch", "subagent"};
+    "read_path",
+    "grep",
+    "run",
+    "memory",
+    "skill",
+    "uagent",
+    "uagent_configure",
+    "uagent_instructions",
+    "history",
+    "thread_spawn",
+    "thread",
+    "decide",
+    "plan",
+    "ask",
+    "browser",
+    "artifact",
+    "web_search",
+    "web_fetch",
+    "subagent",
+    "subagent_fanout",
+};
 
 // Whether anything the panel waits for is still ahead: a thread working or
 // not begun, or mail from a thread not yet read or acknowledged. What a

@@ -15,12 +15,24 @@
 #include "include/core/strings.h"
 
 namespace uagent {
-Tool UagentTool(SelfDescriptionProvider describe,
-                const ConfigProposalFactory& prepare,
-                const std::shared_ptr<ConfigApprovals>& store) {
-  // The file text an instructions diff was shown against, so the write can
-  // refuse when the file changed while the user read the diff.
-  auto shown = std::make_shared<std::pair<json, std::string>>();
+namespace {
+// What both writing tools share: every call needs a person, whatever the
+// approval mode, and a rejected call does not echo its arguments.
+void RequireHuman(Tool& tool) {
+  tool.mutating = true;
+  tool.approval_class = [](const json&) {
+    return ApprovalClass::kMandatoryHuman;
+  };
+  tool.redact_invalid_arguments = true;
+  tool.capabilities = 0;
+  tool.available_in_lean = false;
+  tool.category = "system";
+  tool.intent = "setup";
+  tool.header = Verbs("Configuring", "Configured");
+}
+}  // namespace
+
+Tool UagentTool(SelfDescriptionProvider describe) {
   Tool tool = MakeTool(
       "uagent",
       "Inspect this running build, not the code in the folder: status, "
@@ -30,25 +42,71 @@ Tool UagentTool(SelfDescriptionProvider describe,
       "returned or accepted literally.",
       {{"type", "object"},
        {"properties",
-        {{"action",
-          {{"type", "string"},
-           {"enum",
-            json::array({"inspect", "configure", "set_instructions"})}}},
-         {"topic",
+        {{"topic",
           {{"type", "string"},
            {"enum", json::array({"status", "cli", "commands", "config", "tools",
                                  "prompt", "routes", "instructions"})}}},
-         {"audience",
-          {{"type", "string"},
-           {"enum", json::array({"sessions", "panel"})},
-           {"description",
-            "set_instructions: AGENTS.md (every session) or PANEL.md"}}},
-         {"text",
-          {{"type", "string"},
-           {"description", "set_instructions: the whole new file, Markdown"}}},
          {"name",
-          {{"type", "string"}, {"description", "exact setting or tool name"}}},
-         {"scope",
+          {{"type", "string"},
+           {"description", "exact setting or tool name"}}}}}},
+      [describe = std::move(describe)](const json& arguments,
+                                       const ToolContext&) -> ToolResult {
+        if (JsonValue(arguments, "topic", "") == "instructions") {
+          return ToolSuccess(JsonDump(InstructionFiles(CanonicalCwd()), 2));
+        }
+        SelfTopic topic = SelfTopic::kStatus;
+        if (!ParseSelfTopic(JsonValue(arguments, "topic", "status"), topic)) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments, "unknown topic");
+        }
+        json value = describe(topic, Trim(JsonValue(arguments, "name", "")));
+        if (topic == SelfTopic::kPrompt) {
+          value.erase("inherited");
+          value.erase("last_sent");
+        }
+        // The whole catalogue answers "which settings exist", so it is
+        // returned complete but one line shorter per setting; a name asks
+        // for the full facts of one.
+        const bool catalogue = topic == SelfTopic::kConfig &&
+                               JsonValue(arguments, "name", "").empty();
+        if (catalogue) {
+          for (json& setting : value["settings"]) {
+            json brief = json::object();
+            for (const char* field : {"key", "name", "type", "default",
+                                      "effective", "source", "description"}) {
+              if (setting.contains(field)) brief[field] = setting[field];
+            }
+            setting = std::move(brief);
+          }
+        }
+        std::string output = JsonDump(value, 2);
+        int64_t limit = topic == SelfTopic::kPrompt || catalogue
+                            ? static_cast<int64_t>(output.size())
+                            : -1;
+        return ToolSuccess(std::move(output), limit);
+      });
+  // Inspection survives restricted policies.
+  tool.capabilities = 0;
+  tool.parallel_safe = true;
+  tool.available_in_lean = false;
+  tool.category = "system";
+  tool.intent = "setup";
+  tool.summary = [](const json& arguments) {
+    return JsonValue(arguments, "topic", "status") + " " +
+           JsonValue(arguments, "name", "");
+  };
+  tool.header = Verbs("Inspecting", "Inspected");
+  return tool;
+}
+
+Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
+                         const std::shared_ptr<ConfigApprovals>& store) {
+  Tool tool = MakeTool(
+      "uagent_configure",
+      "Change registered UAGENT_* settings by an exact diff the user "
+      "approves (YOLO cannot); inspect config with uagent first.",
+      {{"type", "object"},
+       {"properties",
+        {{"scope",
           {{"type", "string"},
            {"enum", json::array({"user", "project"})},
            {"description",
@@ -71,68 +129,10 @@ Tool UagentTool(SelfDescriptionProvider describe,
                   "takes only the providers to add or change, as a JSON "
                   "object; null removes one"}}}}},
              {"required", json::array({"key", "operation"})}}}}}}},
-       {"required", json::array({"action"})}},
-      [describe = std::move(describe), store, shown](
-          const json& arguments, const ToolContext&) -> ToolResult {
-        const std::string action = JsonValue(arguments, "action", "");
-        if (action == "inspect" &&
-            JsonValue(arguments, "topic", "") == "instructions") {
-          return ToolSuccess(JsonDump(InstructionFiles(CanonicalCwd()), 2));
-        }
-        if (action == "set_instructions") {
-          // Reaching here means the user approved this exact text.
-          bool panel = false, project = false;
-          ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                                 JsonValue(arguments, "scope", ""), panel,
-                                 project);
-          std::optional<std::string> base;
-          if (shown->first == arguments) base = shown->second;
-          const std::string error =
-              WriteInstructionFile(panel, project, CanonicalCwd(),
-                                   JsonValue(arguments, "text", ""), base);
-          return error.empty()
-                     ? ToolSuccess("saved; new and restarted sessions read it")
-                     : ToolFailure(ToolErrorCode::kProcessFailed, error);
-        }
-        if (action == "inspect") {
-          SelfTopic topic = SelfTopic::kStatus;
-          if (!ParseSelfTopic(JsonValue(arguments, "topic", "status"), topic)) {
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "unknown topic");
-          }
-          json value = describe(topic, Trim(JsonValue(arguments, "name", "")));
-          if (topic == SelfTopic::kPrompt) {
-            value.erase("inherited");
-            value.erase("last_sent");
-          }
-          // The whole catalogue answers "which settings exist", so it is
-          // returned complete but one line shorter per setting; a name asks
-          // for the full facts of one.
-          const bool catalogue = topic == SelfTopic::kConfig &&
-                                 JsonValue(arguments, "name", "").empty();
-          if (catalogue) {
-            for (json& setting : value["settings"]) {
-              json brief = json::object();
-              for (const char* field : {"key", "name", "type", "default",
-                                        "effective", "source", "description"}) {
-                if (setting.contains(field)) brief[field] = setting[field];
-              }
-              setting = std::move(brief);
-            }
-          }
-          std::string output = JsonDump(value, 2);
-          int64_t limit = topic == SelfTopic::kPrompt || catalogue
-                              ? static_cast<int64_t>(output.size())
-                              : -1;
-          return ToolSuccess(std::move(output), limit);
-        }
-        // Reaching this point means the human approved the preview built from
-        // these exact arguments; the stored proposal carries the bytes they
-        // saw.
-        if (!store) {
-          return ToolFailure(ToolErrorCode::kPermissionDenied,
-                             "configuration unavailable");
-        }
+       {"required", json::array({"scope", "changes"})}},
+      // Reaching here means the human approved the preview built from these
+      // exact arguments; the stored proposal carries the bytes they saw.
+      [store](const json& arguments, const ToolContext&) -> ToolResult {
         std::optional<ConfigProposal> taken = store->Take(arguments);
         if (!taken || !taken->ok) {
           return ToolFailure(
@@ -150,74 +150,30 @@ Tool UagentTool(SelfDescriptionProvider describe,
         }
         return ToolSuccess(report);
       });
-  const auto writes = [](const json& arguments) {
-    const std::string action = JsonValue(arguments, "action", "");
-    return action == "configure" || action == "set_instructions";
-  };
-  tool.mutates = writes;
-  tool.redact_invalid_arguments = true;
-  tool.approval_class = [writes](const json& arguments) {
-    return writes(arguments) ? ApprovalClass::kMandatoryHuman
-                             : ApprovalClass::kNone;
-  };
-  // Looking is not changing: what only a change takes is dropped from an
-  // inspect call, which some models send along empty for every field.
-  tool.canonicalize = [](json& arguments) {
-    if (JsonValue(arguments, "action", "") != "inspect") return;
-    for (const char* field : {"scope", "changes", "text", "audience"}) {
-      arguments.erase(field);
-    }
-  };
-  tool.validate =
-      [prepare](const json& arguments) -> std::optional<ToolArgumentIssue> {
-    if (JsonValue(arguments, "action", "") == "inspect") return std::nullopt;
-    if (!prepare) {
-      return ArgumentIssue("config.unavailable",
-                           "configuration requires an interactive human");
-    }
-    if (JsonValue(arguments, "action", "") == "set_instructions") {
-      if (JsonValue(arguments, "text", "").size() > ProjectDocBytes()) {
-        return ArgumentIssue("instructions.text",
-                             "set_instructions takes at most " +
-                                 std::to_string(ProjectDocBytes() / 1024) +
-                                 " KiB of text",
-                             "text");
-      }
-      return std::nullopt;
-    }
-    if (arguments.contains("topic") || arguments.contains("name")) {
-      return ArgumentIssue("config.configure",
-                           "configure does not accept topic or name");
-    }
-    // The schema has already held scope to user or project.
+  RequireHuman(tool);
+  // The proposal these arguments ask for. The schema has already held scope
+  // to user or project.
+  const auto propose = [prepare](const json& arguments) {
     ConfigProposalScope scope = ConfigProposalScope::kUser;
     ParseConfigScope(JsonValue(arguments, "scope", ""), scope);
     std::vector<ConfigChange> changes;
-    std::string error;
-    if (!ParseConfigChanges(arguments, changes, error)) {
-      return ArgumentIssue("config.changes", error, "changes");
+    ConfigProposal proposal;
+    if (!ParseConfigChanges(arguments, changes, proposal.error)) {
+      return proposal;
     }
-    ConfigProposal proposal = prepare(scope, changes);
-    if (!proposal.ok) {
-      return ArgumentIssue("config.rejected", proposal.error, "changes");
-    }
-    return std::nullopt;
+    return prepare(scope, changes);
+  };
+  tool.validate =
+      [propose](const json& arguments) -> std::optional<ToolArgumentIssue> {
+    const ConfigProposal proposal = propose(arguments);
+    if (proposal.ok) return std::nullopt;
+    return ArgumentIssue("config.rejected", proposal.error, "changes");
   };
   // A genuine one-liner: this is the call label, and it also reaches the debug
   // trace and compaction evidence, so the diff must not be built here.
   tool.summary = [](const json& arguments) {
-    if (JsonValue(arguments, "action", "") == "set_instructions") {
-      return JsonValue(arguments, "scope", "") + " " +
-             JsonValue(arguments, "audience", "") + " instructions";
-    }
-    if (JsonValue(arguments, "action", "") == "inspect") {
-      return JsonValue(arguments, "topic", "status") + " " +
-             JsonValue(arguments, "name", "");
-    }
-    std::string scope = Trim(JsonValue(arguments, "scope", ""));
-    const json* list = JsonArray(arguments, "changes");
     std::string detail;
-    if (list) {
+    if (const json* list = JsonArray(arguments, "changes")) {
       for (const json& entry : *list) {
         if (!detail.empty()) detail += ", ";
         detail += Trim(JsonValue(entry, "key", ""));
@@ -226,61 +182,83 @@ Tool UagentTool(SelfDescriptionProvider describe,
         }
       }
     }
-    return scope + " \u00b7 " + detail;
+    return JsonValue(arguments, "scope", "") + " · " + detail;
   };
   // Built only when a person is about to be asked. Preparing here also records
   // the proposal, so the bytes shown are exactly the bytes that can commit.
-  tool.approval_preview = [prepare, store, shown](const json& arguments) {
-    if (JsonValue(arguments, "action", "") == "set_instructions") {
-      bool panel = false, project = false;
-      ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                             JsonValue(arguments, "scope", ""), panel, project);
-      const auto path = InstructionPath(panel, project, CanonicalCwd());
-      *shown = {arguments, ReadInstructionFile(path)};
-      return ConfigUnifiedDiff(shown->second, JsonValue(arguments, "text", ""),
-                               path.string()) +
-             "\nNew and restarted sessions read it.";
-    }
-    ConfigProposalScope scope = ConfigProposalScope::kUser;
-    std::vector<ConfigChange> changes;
-    std::string error;
-    if (!ParseConfigScope(Trim(JsonValue(arguments, "scope", "")), scope) ||
-        !ParseConfigChanges(arguments, changes, error)) {
-      return std::string("invalid configuration request");
-    }
-    ConfigProposal proposal = prepare(scope, changes);
+  tool.approval_preview = [propose, store](const json& arguments) {
+    ConfigProposal proposal = propose(arguments);
     if (!proposal.ok) return "cannot apply: " + proposal.error;
     std::string preview = proposal.Preview();
     const auto expires = proposal.expires;
     store->Put(arguments, std::move(proposal), expires);
     return preview;
   };
-  // Inspection survives restricted policies; configure still requires a human.
-  tool.capabilities = 0;
-  if (prepare) {
-    tool.description +=
-        " configure changes registered UAGENT_* settings by an exact diff "
-        "the user approves (YOLO cannot); inspect config first. "
-        "set_instructions replaces one whole file once the user approves the "
-        "exact text.";
-    tool.action_requires = {
-        "action",
-        {{"configure", {"scope", "changes"}},
-         {"set_instructions", {"audience", "scope", "text"}}}};
-  } else {
-    tool.parallel_safe = true;
-    tool.parameters["properties"]["action"]["enum"] = json::array({"inspect"});
-    tool.parameters["properties"].erase("scope");
-    tool.parameters["properties"].erase("changes");
-    tool.parameters["properties"].erase("text");
-    tool.parameters["properties"].erase("audience");
-  }
-  tool.available_in_lean = false;
-  tool.intent = "setup";
-  tool.header = [](const json& arguments) {
-    return JsonValue(arguments, "action", "") == "inspect"
-               ? json{{"verb", {"Inspecting", "Inspected"}}}
-               : json{{"verb", {"Configuring", "Configured"}}};
+  return tool;
+}
+
+Tool UagentInstructionsTool() {
+  // The file text the diff was shown against, so the write can refuse when
+  // the file changed while the user read the diff.
+  auto shown = std::make_shared<std::pair<json, std::string>>();
+  Tool tool = MakeTool(
+      "uagent_instructions",
+      "Replace one whole instructions file once the user approves the exact "
+      "text.",
+      {{"type", "object"},
+       {"properties",
+        {{"audience",
+          {{"type", "string"},
+           {"enum", json::array({"sessions", "panel"})},
+           {"description", "AGENTS.md (every session) or PANEL.md"}}},
+         {"scope",
+          {{"type", "string"},
+           {"enum", json::array({"user", "project"})},
+           {"description",
+            "user for all conversations; project for this folder"}}},
+         {"text",
+          {{"type", "string"},
+           {"description", "the whole new file, Markdown"}}}}},
+       {"required", json::array({"audience", "scope", "text"})}},
+      // Reaching here means the user approved this exact text.
+      [shown](const json& arguments, const ToolContext&) {
+        bool panel = false, project = false;
+        ParseInstructionTarget(JsonValue(arguments, "audience", ""),
+                               JsonValue(arguments, "scope", ""), panel,
+                               project);
+        std::optional<std::string> base;
+        if (shown->first == arguments) base = shown->second;
+        const std::string error =
+            WriteInstructionFile(panel, project, CanonicalCwd(),
+                                 JsonValue(arguments, "text", ""), base);
+        return error.empty()
+                   ? ToolSuccess("saved; new and restarted sessions read it")
+                   : ToolFailure(ToolErrorCode::kProcessFailed, error);
+      });
+  RequireHuman(tool);
+  tool.validate =
+      [](const json& arguments) -> std::optional<ToolArgumentIssue> {
+    if (JsonValue(arguments, "text", "").size() <= ProjectDocBytes()) {
+      return std::nullopt;
+    }
+    return ArgumentIssue("instructions.text",
+                         "text takes at most " +
+                             std::to_string(ProjectDocBytes() / 1024) + " KiB",
+                         "text");
+  };
+  tool.summary = [](const json& arguments) {
+    return JsonValue(arguments, "scope", "") + " " +
+           JsonValue(arguments, "audience", "") + " instructions";
+  };
+  tool.approval_preview = [shown](const json& arguments) {
+    bool panel = false, project = false;
+    ParseInstructionTarget(JsonValue(arguments, "audience", ""),
+                           JsonValue(arguments, "scope", ""), panel, project);
+    const auto path = InstructionPath(panel, project, CanonicalCwd());
+    *shown = {arguments, ReadInstructionFile(path)};
+    return ConfigUnifiedDiff(shown->second, JsonValue(arguments, "text", ""),
+                             path.string()) +
+           "\nNew and restarted sessions read it.";
   };
   return tool;
 }

@@ -33,6 +33,11 @@ ToolResult MessageAgent(const ActivitySupervisor& processes,
 Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
                   const std::vector<Route>& routes,
                   const std::vector<Endpoint>& providers, bool debug);
+// One lean child per item, then refuters for each finding; only what held
+// comes back.
+Tool SubagentFanoutTool(const Api& api, ActivitySupervisor& processes,
+                        const std::vector<Route>& routes,
+                        const std::vector<Endpoint>& providers, bool debug);
 
 }  // namespace uagent
 

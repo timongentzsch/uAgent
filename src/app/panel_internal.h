@@ -49,8 +49,9 @@ double SpentToday(const std::string& folder,
                   const std::vector<SessionInfo>& threads,
                   const std::vector<bool>& working);
 Tool HistoryTool(const std::string& folder);
-Tool ThreadTool(const std::string& folder,
-                std::function<std::string()> own_model);
+Tool ThreadSpawnTool(const std::string& folder,
+                     std::function<std::string()> own_model);
+Tool ThreadTool(const std::string& folder);
 Tool DecideTool(const std::string& folder);
 
 }  // namespace uagent::panel

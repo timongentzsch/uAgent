@@ -1,4 +1,5 @@
 import gzip
+import http.client
 import json
 import threading
 import time
@@ -457,6 +458,58 @@ def test_web_bundle_is_served_gzipped_and_plain_to_a_client_that_cannot_take_it(
                 and body == (dist / "icon-192.png").read_bytes(),
                 headers,
             )
+
+
+def test_api_json_is_compressed_for_a_client_that_takes_it_and_revalidated_files_answer_304(
+    root, home, *, binary
+):
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            path = f"/api/sessions/{session['id']}"
+            plain_status, plain, plain_headers = client.request(path)
+            assert_true(
+                plain_status == 200 and "Content-Encoding" not in plain_headers, plain_headers
+            )
+            assert_true(len(plain) > 1024, len(plain))
+            status, body, headers = client.request(path, headers={"Accept-Encoding": "gzip"})
+            assert_true(status == 200 and headers["Content-Encoding"] == "gzip", headers)
+            assert_true(len(body) < len(plain) and gzip.decompress(body) == plain, headers)
+            # A small body is not worth compressing.
+            status, body, headers = client.request(
+                "/api/sessions/none", headers={"Accept-Encoding": "gzip"}
+            )
+            assert_true("Content-Encoding" not in headers, headers)
+            # The event stream is never compressed or buffered.
+            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=10)
+            connection.request(
+                "GET",
+                "/api/events",
+                headers={
+                    "Origin": client.origin,
+                    "Cookie": client.cookie,
+                    "Accept-Encoding": "gzip",
+                },
+            )
+            response = connection.getresponse()
+            assert_true(
+                response.status == 200
+                and response.getheader("Content-Type", "").startswith("text/event-stream")
+                and response.getheader("Content-Encoding") is None,
+                response.getheaders(),
+            )
+            connection.close()
+            # index.html, sw.js and the renderer list revalidate by ETag.
+            for asset in ("/", "/sw.js", "/renderer-assets.json"):
+                status, body, headers = client.request(asset)
+                assert_true(status == 200 and headers["ETag"], (asset, headers))
+                status, body, headers = client.request(
+                    asset, headers={"If-None-Match": headers["ETag"]}
+                )
+                assert_true(status == 304 and body == b"", (asset, status))
+                status, _, _ = client.request(asset, headers={"If-None-Match": '"other"'})
+                assert_true(status == 200, asset)
 
 
 def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(

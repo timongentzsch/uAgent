@@ -64,3 +64,36 @@ test("an event stream refused mid-restart reconnects on its own", async ({
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   expect(refused).toBeGreaterThan(2);
 });
+
+test("a reconnect reopens the event stream at its cursor and reads nothing again", async ({
+  page,
+  session,
+  command,
+}) => {
+  await selectProbeModel(command, session);
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const requests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/"))
+      requests.push(url.pathname + url.search);
+  });
+  await page.evaluate(() => {
+    dispatchEvent(new Event("offline"));
+    dispatchEvent(new Event("online"));
+  });
+  await expect
+    .poll(() => requests.some((path) => path.startsWith("/api/events?cursor=")))
+    .toBe(true);
+  await online(page);
+  // The catalogue and the open conversation are the ones already held.
+  expect(requests.filter((path) => path.startsWith("/api/sessions"))).toEqual(
+    [],
+  );
+  // Events still arrive on the resumed stream.
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Hello there");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".message.response").first()).toBeVisible();
+});

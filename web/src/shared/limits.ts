@@ -17,11 +17,14 @@ export const maxDiagramEdges = 300;
 export const maxDiagramSvgChars = 512_000;
 export const maxDiagramCacheEntries = 24;
 export const maxHighlightChars = 32 * 1024;
+// Highlighted code blocks kept, so one that streamed in is not highlighted
+// again when its reply is rendered whole.
+export const maxHighlightCacheEntries = 64;
 // A file opened in the files pane is highlighted whole up to this size.
 export const maxFileHighlightChars = 256 * 1024;
 
 // Cache/rendering policies, measured in JS characters rather than provider tokens.
-export const maxPreparedMarkdownChars = 4_000_000;
+export const maxPreparedMarkdownChars = 1_000_000;
 // Up to this size a streaming reply's finished part is parsed as a whole
 // (lists and references across blank lines stay intact); past it, only new
 // blocks are parsed and appended, so cost stays flat as the reply grows.
@@ -53,6 +56,8 @@ export const maxSpaceNameChars = 64;
 export const defaultZoom = 100;
 // Drafts are saved once typing pauses this long, and when the page hides.
 export const draftSaveDelayMs = 500;
+// The conversation list is kept this long after it last changed.
+export const catalogueSaveDelayMs = 1_000;
 // A second press of Stop within this is the first one bouncing, not a decision.
 export const stopGuardMs = 500;
 // The first reconnect delay; it doubles with each failure up to

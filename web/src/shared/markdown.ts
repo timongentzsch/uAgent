@@ -140,10 +140,13 @@ export async function renderMarkdownBlocks(
 
 // `env` carries link references between parts parsed separately (a long
 // streaming reply appends new blocks instead of re-parsing).
+// `plain` leaves code unhighlighted: a fence still being written would be
+// highlighted again on every frame, and is once it closes.
 export function markdownBlocks(
   text: string,
   line = 0,
   env: Record<string, unknown> = {},
+  plain = false,
 ): MarkdownBlock[] {
   void plugins(text);
   // Only a file's own links may be relative: in a reply they would point
@@ -158,6 +161,9 @@ export function markdownBlocks(
   }
   const lines = text.split(/\n/);
   const blocks: MarkdownBlock[] = [];
+  const options = plain
+    ? { ...markdown.options, highlight: null }
+    : markdown.options;
   for (let start = 0; start < tokens.length;) {
     let end = start + 1;
     if (tokens[start].nesting === 1) {
@@ -175,11 +181,7 @@ export function markdownBlocks(
     blocks.push({
       key: `${map[0] + line}:${token.type}`,
       source,
-      html: markdown.renderer.render(
-        tokens.slice(start, end),
-        markdown.options,
-        env,
-      ),
+      html: markdown.renderer.render(tokens.slice(start, end), options, env),
       code:
         token.type === "fence" || token.type === "code_block"
           ? {
@@ -200,6 +202,18 @@ const DELIMITER = /^[\s|:]*-[\s|:-]*$/;
 // Nothing but list, heading, quote or rule markers and setext underlines.
 const MARKERS = /^\s*(?:(?:[-=*_+#>]+|\d+[.)]?)\s*)+$/;
 
+// Whether the text ends inside a code fence that has not closed.
+export function endsInFence(text: string): boolean {
+  let open = "";
+  for (const line of text.split("\n")) {
+    const fence = line.match(FENCE)?.[1];
+    if (!fence) continue;
+    if (!open) open = fence;
+    else if (fence[0] === open[0] && fence.length >= open.length) open = "";
+  }
+  return !!open;
+}
+
 // Closes what a streaming reply has left open in its last block, for display
 // only, so it renders formatted instead of as raw syntax (the rules of
 // Vercel's remend): emphasis, strikethrough and inline code close; a half
@@ -210,15 +224,7 @@ const MARKERS = /^\s*(?:(?:[-=*_+#>]+|\d+[.)]?)\s*)+$/;
 // table line waits for its end, a table for its delimiter row, and a line of
 // bare markers for its first word.
 export function healTail(text: string): string {
-  const lines = text.split("\n");
-  let open = "";
-  for (const line of lines) {
-    const fence = line.match(FENCE)?.[1];
-    if (!fence) continue;
-    if (!open) open = fence;
-    else if (fence[0] === open[0] && fence.length >= open.length) open = "";
-  }
-  if (open) return text;
+  if (endsInFence(text)) return text;
   if ((text.match(/\$\$/g) || []).length % 2) return `${text}\n$$`;
   // Only the block being written is healed.
   const cut = text.search(/\n[ \t]*\n(?![\s\S]*\n[ \t]*\n)/);

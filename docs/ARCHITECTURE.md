@@ -60,7 +60,12 @@ points up this order; its `KNOWN` set lists the remaining exceptions.
 The web host embeds the built `web/dist` (`npm ci && npm run build` in `web/`,
 or CI's `web-dist` artifact). Text assets are gzipped at build time and served
 with `Content-Encoding: gzip`, or inflated for a client that does not accept
-it. [Contributing](../CONTRIBUTING.md) says how to build it.
+it. `index.html`, `sw.js` and the other files outside `/assets/` carry an
+ETag and answer `If-None-Match` with 304. API JSON over 1 KiB is gzipped for a
+client that accepts it, by a post-routing handler that touches nothing else:
+assets keep their own encoding, the event stream is not JSON and a range
+request is answered plain.
+[Contributing](../CONTRIBUTING.md) says how to build it.
 
 ## Session runtime and clients
 

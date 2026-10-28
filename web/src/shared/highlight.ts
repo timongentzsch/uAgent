@@ -16,7 +16,11 @@ import go from "highlight.js/lib/languages/go";
 import rust from "highlight.js/lib/languages/rust";
 import dockerfile from "highlight.js/lib/languages/dockerfile";
 import cmake from "highlight.js/lib/languages/cmake";
-import { maxFileHighlightChars, maxHighlightChars } from "./limits.ts";
+import {
+  maxFileHighlightChars,
+  maxHighlightCacheEntries,
+  maxHighlightChars,
+} from "./limits.ts";
 for (const [name, grammar] of Object.entries({
   javascript,
   typescript,
@@ -36,10 +40,27 @@ for (const [name, grammar] of Object.entries({
   cmake,
 }))
   hljs.registerLanguage(name, grammar);
+// Least recently used first: a Map iterates in insertion order.
+const highlighted = new Map<string, string>();
+function highlightBlock(text: string, language: string) {
+  const key = `${language}\0${text}`;
+  const kept = highlighted.get(key);
+  if (kept !== undefined) {
+    highlighted.delete(key);
+    highlighted.set(key, kept);
+    return kept;
+  }
+  const html = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+  highlighted.set(key, html);
+  const oldest = highlighted.keys().next();
+  if (highlighted.size > maxHighlightCacheEntries && !oldest.done)
+    highlighted.delete(oldest.value);
+  return html;
+}
 export function install(markdown: InstanceType<typeof MarkdownIt>) {
   markdown.options.highlight = (text, language) =>
     hljs.getLanguage(language) && text.length <= maxHighlightChars
-      ? hljs.highlight(text, { language, ignoreIllegals: true }).value
+      ? highlightBlock(text, language)
       : "";
 }
 

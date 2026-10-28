@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  endsInFence,
   healTail,
   markdownBlocks,
   renderMarkdown,
@@ -172,4 +173,17 @@ test("a file's relative images and links resolve in its folder", async () => {
   // A reply's relative links stay text, as before.
   const reply = await renderMarkdown("[guide](./GUIDE.md) ![shot](a.png)");
   assert.doesNotMatch(reply, /<a |<img /);
+});
+
+test("a code fence still being written is not highlighted until it closes", async () => {
+  const open = "```js\nconst a = 1;";
+  const closed = `${open}\n\`\`\``;
+  assert.equal(endsInFence(open), true);
+  assert.equal(endsInFence(closed), false);
+  assert.equal(endsInFence("```js\nx\n```\n\n~~~\ny"), true);
+  // Waits for the highlighter to install.
+  await renderMarkdownBlocks(closed);
+  assert.match(markdownBlocks(open)[0].html, /hljs-/);
+  assert.doesNotMatch(markdownBlocks(open, 0, {}, true)[0].html, /hljs-/);
+  assert.match(markdownBlocks(closed, 0, {}, false)[0].html, /hljs-/);
 });

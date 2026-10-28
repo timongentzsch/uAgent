@@ -159,11 +159,9 @@ ToolResult DelegatedActivityLimitError() {
 // cannot must not spawn anyway. That would be a silent unsandboxed command --
 // the one outcome the sandbox exists to rule out, arriving without a word.
 std::string SandboxWrapperFor(const ShellCommand& spec,
+                              const SandboxStatus& status,
                               std::vector<std::string>* wrapper) {
-  // The sandbox follows its own setting in every approval mode: yolo means
-  // nobody is asked, not that nothing is confined.
   if (!spec.sandbox) return {};
-  const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kRefused) {
     return "the sandbox cannot be enforced: " + status.reason +
            ". Set UAGENT_SANDBOX=off to run commands unconfined";
@@ -184,9 +182,9 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
 // What a wrapped command may not change but this host cannot deny, recorded
 // before it runs; null when nothing is wrapped or the host denies it outright.
 std::shared_ptr<const SandboxWatch> WatchUnenforced(
-    const std::vector<std::string>& wrapper) {
+    const SandboxStatus& status, const std::vector<std::string>& wrapper) {
   if (wrapper.empty()) return nullptr;
-  std::vector<std::string> paths = SandboxUnenforcedWrites(SandboxRuntime());
+  std::vector<std::string> paths = SandboxUnenforcedWrites(status);
   return paths.empty() ? nullptr
                        : std::make_shared<const SandboxWatch>(std::move(paths));
 }
@@ -197,7 +195,8 @@ std::shared_ptr<const SandboxWatch> WatchUnenforced(
 // introduced is the one that explains itself worst. Added only to a wrapped
 // command that actually failed, and it names the roots: the model cannot run
 // /context, and probing for them costs it a round per guess.
-std::string SandboxHint(const std::string& output) {
+std::string SandboxHint(const SandboxStatus& status,
+                        const std::string& output) {
   static constexpr std::string_view kDenied[] = {"Operation not permitted",
                                                  "Permission denied"};
   static constexpr std::string_view kOffline[] = {
@@ -209,9 +208,8 @@ std::string SandboxHint(const std::string& output) {
       return output.find(phrase) != std::string::npos;
     });
   };
-  if (says(kDenied) ||
-      (!SandboxRuntime().policy.allow_network && says(kOffline))) {
-    return "\n[sandbox: " + SandboxNote() + "]";
+  if (says(kDenied) || (!status.policy.allow_network && says(kOffline))) {
+    return "\n[sandbox: " + SandboxNote(status) + "]";
   }
   return {};
 }
@@ -307,11 +305,15 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
     return {ToolFailure(ToolErrorCode::kInvalidArguments,
                         "shell must be a non-empty executable name or path")};
   }
+  // One status for the whole command: the approval mode picks it, and can
+  // change while the command runs.
+  const SandboxStatus& sandbox = SandboxRuntime();
   std::vector<std::string> wrapper;
-  if (std::string error = SandboxWrapperFor(spec, &wrapper); !error.empty()) {
+  if (std::string error = SandboxWrapperFor(spec, sandbox, &wrapper);
+      !error.empty()) {
     return {ToolFailure(ToolErrorCode::kUnavailable, error)};
   }
-  std::shared_ptr<const SandboxWatch> watch = WatchUnenforced(wrapper);
+  std::shared_ptr<const SandboxWatch> watch = WatchUnenforced(sandbox, wrapper);
   if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper, watch);
 
   // Everything below is the supervised foreground lifecycle.
@@ -467,7 +469,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                          /*failed=*/!ExitedOk(status));
     ToolResult result = build(std::move(output), status);
     if (!result.Ok() && !wrapper.empty()) {
-      result.output += SandboxHint(result.output);
+      result.output += SandboxHint(sandbox, result.output);
     }
     result.output += SandboxRestoreNote(watch.get(), CanonicalCwd());
     result.artifact = std::move(artifact);

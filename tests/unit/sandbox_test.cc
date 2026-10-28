@@ -10,8 +10,10 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/path_policy.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/sandbox_watch.h"
 #include "tests/unit/test_support.h"
 
@@ -238,6 +240,53 @@ void TestSandboxLevels() {
   REQUIRE(SandboxPolicyFromJson(SandboxPolicyJson(crowded), &decoded));
   CHECK(decoded.hidden == crowded.hidden);
   CHECK(decoded.withheld == crowded.withheld);
+}
+
+// Yolo raises the default level to relaxed while it holds, and only that
+// level; switching back restores the default level's own status.
+void TestSandboxFollowsYolo() {
+  CHECK(YoloSandboxPreset(SandboxPreset::kDefault) == SandboxPreset::kRelaxed);
+  for (SandboxPreset kept : {SandboxPreset::kReadOnly, SandboxPreset::kRelaxed,
+                             SandboxPreset::kOff}) {
+    CHECK(YoloSandboxPreset(kept) == kept);
+  }
+
+  const ApprovalMode prior = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kAsk);
+  const SandboxStatus& asked = SandboxRuntime();
+  if (asked.mode == SandboxMode::kEnforced && asked.preset == "default") {
+    const std::string home = CanonicalAccessPath(UserHome()).string();
+    const std::string base = CanonicalAccessPath(GlobalBase()).string();
+    CHECK(!HasRoot(asked.policy, home));
+    CHECK(asked.policy.withheld.empty());
+    SetApprovalMode(ApprovalMode::kYolo);
+    const SandboxStatus& raised = SandboxRuntime();
+    CHECK(&raised != &asked);
+    CHECK(raised.preset == "relaxed (yolo)");
+    CHECK(raised.mode == SandboxMode::kEnforced);
+    CHECK(raised.policy.allow_network == asked.policy.allow_network);
+    CHECK(SandboxWritable(raised.policy, home + "/Documents/notes.txt"));
+    CHECK(raised.policy.withheld == std::vector<std::string>{base});
+    CHECK(raised.policy.unreadable.empty());
+    CHECK(SandboxReadable(raised.policy, home + "/Documents/notes.txt"));
+    // The file tools' work area follows it: the home folder, not ~/.uagent.
+    CHECK(WithinWorkArea(home + "/Documents/notes.txt", "/nonexistent/ws"));
+    CHECK(!WithinWorkArea(base + "/config/settings.json", "/nonexistent/ws"));
+    // Composed once: asked again, the same status.
+    CHECK(&SandboxRuntime() == &raised);
+    CHECK(SandboxDiagnosticJson()["level"] == "relaxed (yolo)");
+    // A child is started under it, whatever its own mode.
+    const json inherited = json::parse(SandboxInheritance());
+    CHECK(inherited["preset"] == "relaxed (yolo)");
+    SandboxPolicy carried;
+    REQUIRE(SandboxPolicyFromJson(inherited["policy"], &carried));
+    CHECK(carried.withheld == raised.policy.withheld);
+    SetApprovalMode(ApprovalMode::kAuto);
+    CHECK(&SandboxRuntime() == &asked);
+    CHECK(SandboxDiagnosticJson()["level"] == "default");
+    CHECK(!WithinWorkArea(home + "/Documents/notes.txt", "/nonexistent/ws"));
+  }
+  SetApprovalMode(prior);
 }
 
 // Where Landlock cannot deny a write, it is undone and said.

@@ -209,7 +209,7 @@ std::string Application::ResumeAtStartup() {
     }
   }
   if (!source.empty() && PathExists(source)) {
-    // A thread's sandbox, budget and approval limit are applied by its
+    // A thread's sandbox, budget and approval default are applied by its
     // runtime; continued without one it would have none, and lose its role on
     // saving.
     if (!channel_ && JsonValue(SessionHeader(source), kSessionHeaderKind, "") ==

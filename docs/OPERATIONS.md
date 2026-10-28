@@ -240,8 +240,8 @@ retry one or switch it.
   folder: see [Sandboxing](../SECURITY.md#sandboxing).
 - **`sudo` or `ping` fails on Linux.** The sandbox sets `no_new_privs`, so
   setuid binaries fail inside it. Privileged work needs `UAGENT_SANDBOX=off`
-  or an approved `run(sandbox=false)`. `--yolo` stops the questions, not the
-  sandbox.
+  or an approved `run(sandbox=false)`. `--yolo` stops the questions and
+  raises the `default` level to `relaxed`; it never turns the sandbox off.
 - **Every command is refused, or startup reports `degraded`.** The Linux
   kernel has no Landlock (it needs 5.13 or newer). With `UAGENT_SANDBOX` set
   explicitly, every command is refused; with it unset, commands run

@@ -13,13 +13,14 @@ restricted account for untrusted code.
 ## What the agent may do without asking
 
 The approval mode decides who is asked; the sandbox decides what a command
-can write. They are separate: no approval mode turns the sandbox off.
+can reach. No approval mode turns the sandbox off, but yolo raises the
+`default` level to `relaxed` (see [Sandboxing](#sandboxing)).
 
 | Mode | Set with | Effect |
 | --- | --- | --- |
 | `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the folder |
 | `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call that leaves the sandbox or the folder, and every `run` or `scratch` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
-| `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed |
+| `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed, at the `relaxed` level where the level is `default` |
 
 In every mode:
 
@@ -45,17 +46,25 @@ Two kinds of session act for you unattended:
 
 - A **subagent** approves its own tool calls; approving the delegation is the
   gate, and the approval says so. It runs its commands under the sandbox of
-  the session that delegated to it, whatever its own configuration says.
+  the session that delegated to it, as that sandbox was when it started
+  (`relaxed` from a yolo session at the `default` level), whatever its own
+  configuration says.
 - A **lead agent** always runs at the `readonly` level, whatever the
   settings say, and so do its subagents: its commands read the folder and
   change nothing, so they run without review. `sandbox.network` and
   `sandbox.write` do not widen that level. A `/btw` conversation forked
   from it runs in the ordinary sandbox and so gets no `run`.
-- A lead agent's **background agent** cannot be put in yolo: `/permissions yolo` is refused
-  there and a saved or flagged yolo reads as auto. Its sandbox is always on.
-  While that sandbox is enforced, its `run` and `scratch` commands and its
-  file changes inside the folder run without review; everything else goes
-  through its approval mode.
+- A lead agent's **background agent** runs in auto unless a mode is chosen
+  for its own conversation (`/permissions`, `--yolo`, or the web's approval
+  control); the saved setting does not reach it. Its sandbox is always on, at
+  the `default` level, or `relaxed` while it is in yolo. While that sandbox
+  is enforced, its `run` and `scratch` commands and its file changes inside
+  the folder run without review; everything else goes through its approval
+  mode. What would ask a person goes to its lead agent first, which decides
+  or passes it to you, and to you after five minutes. Once you write to the
+  background agent yourself, what its turn still asks comes to you directly:
+  in a turn your message started, or one you wrote into while it ran.
+  What always needs a person never goes to the lead agent.
 
 ## Trust boundaries
 
@@ -166,7 +175,7 @@ matters.
 
 The OS confines the commands the agent runs (`run`, `scratch`) and the stdio
 MCP servers it starts: `sandbox-exec` (Seatbelt) on macOS, Landlock on
-Linux. The sandbox is on by default and is the same in every approval mode.
+Linux. The sandbox is on by default, in every approval mode.
 
 One setting chooses how far it goes, `sandbox.level` in the settings file or
 `UAGENT_SANDBOX` in the environment:
@@ -177,6 +186,15 @@ One setting chooses how far it goes, `sandbox.level` in the settings file or
 | `default` | the roots below | not your other folders | allowed | yes |
 | `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | open | allowed | yes |
 | `off` | unconfined | open | allowed | no |
+
+**Yolo raises `default` to `relaxed`.** While a session's approval mode is
+yolo and its level is `default`, its commands run at `relaxed`: they read
+anywhere and write the home folder, except `~/.uagent` and the hidden
+stores. The browser profile, µAgent's settings and the credential stores
+stay out of reach. The change holds from the next command after `/yolo`,
+`/permissions` or the web's control, and `/status` names the level in
+effect (`relaxed (yolo)`). `readonly`, `relaxed` and `off`, set explicitly,
+stay as they are; a lead agent stays at `readonly`.
 
 A value that is no level (`strict` included, which is gone) is not read as
 `default`: commands are refused until it is fixed, so a typo cannot open the
@@ -196,8 +214,8 @@ Paths in `sandbox.read`, `sandbox.hide` and `sandbox.reveal` are absolute or sta
 `~/`. All of these settings take effect at the next start of the
 conversation (`/restart`). `/status` names the mechanism and `/context`
 lists every writable root. The agent can call `run(sandbox=false)` for one
-command, which a person must approve. `--yolo` stops the questions, not the
-confinement.
+command, which a person must approve. `--yolo` stops the questions and
+raises `default` to `relaxed`; it never turns the sandbox off.
 
 **Writes** are what the sandbox restricts. A confined command may write:
 
@@ -265,8 +283,9 @@ confined `cat ~/.ssh/config` still pulls the file into model context. A
 refused command is told which folder closed and that `sandbox.read` opens
 one. A stdio MCP server you configured reads as before: it lives wherever
 you keep it. The file tools ask a person before reading or changing a
-closed folder (a failed edit shows lines of the file), even under yolo or
-auto, and refuse it where nobody can answer, as in a subagent. `/status`
+closed folder (a failed edit shows lines of the file), even under auto, and
+refuse it where nobody can answer, as in a subagent. Yolo at the `default`
+level closes none. `/status`
 lists the folders opened for reading. On macOS a closed folder cannot be listed; on Linux, Landlock
 lists its names but refuses its files.
 
@@ -330,7 +349,9 @@ edit.
 command, hidden stores included, with the folder and the package caches
 writable, so a server started with `npx` or `uvx` works. Its network follows
 the level and `sandbox.network`. A server that needs more can get a root
-through `sandbox.write`. An entry that sets `"sandbox": false` runs
+through `sandbox.write`. A server keeps the sandbox it was started with:
+one started under yolo keeps `relaxed` when the mode changes, and one
+started before keeps `default`. An entry that sets `"sandbox": false` runs
 unconfined, in the folder's `.mcp.json` or in `~/.mcp.json`. The prompt that
 asks you to trust a folder's `.mcp.json` names the servers that would run
 unconfined, and a changed entry asks again like any other change to the file.

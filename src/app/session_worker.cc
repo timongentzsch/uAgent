@@ -143,15 +143,17 @@ class WorkerChannel final : public ApplicationChannel {
     }
     json data = event.data;
     if (event.type == AppType(EventId::kApprovalRequested)) {
+      std::lock_guard lock(mutex_);
       // A thread's approval that Auto could not settle goes to its
-      // panel first; one reserved for a person never does.
-      if (link_ && !JsonValue(data, "mandatory_human", false)) {
+      // panel first, unless the person started or wrote into this turn and
+      // is there to answer it; one reserved for a person never does.
+      if (link_ && !person_turn_ &&
+          !JsonValue(data, "mandatory_human", false)) {
         data["route"] = kRoutePanel;
         link_->Ask(JsonValue(data, "id", ""), "approval request",
                    "asks to run " + JsonValue(data, "tool", ""),
                    JsonValue(data, "preview", ""), title_);
       }
-      std::lock_guard lock(mutex_);
       approval_ = data;
     }
     if (event.type == AppType(EventId::kTurnStarted)) {
@@ -273,7 +275,7 @@ class WorkerChannel final : public ApplicationChannel {
       decision_["questions"] = request.questions;
       // A thread's questions go to its panel first, as its approvals
       // do; a person is notified only if it yields or does not answer.
-      if (link_) {
+      if (link_ && !person_turn_) {
         decision_["route"] = kRoutePanel;
         link_->Ask(request.id, "question", "asks the user",
                    JsonDump(request.questions), title_);
@@ -349,6 +351,7 @@ class WorkerChannel final : public ApplicationChannel {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
+      person_turn_ = false;
       state_["turn_status"] = kIdleStatus;
       state_["phase"] = "idle";
       ClearAbort();
@@ -458,6 +461,11 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
  private:
+  // A message sent by a client with no origin: the person's own, not the
+  // panel's brief or message.
+  static bool FromPerson(const SessionCommand& parsed) {
+    return JsonValue(parsed.raw, "origin", "").empty();
+  }
   // A new user or background turn supersedes the preceding turn's stop/error.
   // Publish this transition immediately, before waiting for a model response.
   void BeginTurn() UAGENT_REQUIRES(mutex_) {
@@ -721,6 +729,8 @@ class WorkerChannel final : public ApplicationChannel {
            .attachments = AttachmentsToJson(attachments),
            .images = std::move(images),
            .after_turn = JsonValue(parsed.raw, "queue", false)});
+      // The person wrote into the turn: what it still asks is theirs.
+      if (FromPerson(parsed)) person_turn_ = true;
     }
     SendState();
   }
@@ -781,6 +791,7 @@ class WorkerChannel final : public ApplicationChannel {
     busy_ = true;
     turn_active_ =
         !input.text.starts_with("/") || !SlashCommandPrompt(slash).empty();
+    person_turn_ = turn_active_ && FromPerson(parsed);
     if (turn_active_) BeginTurn();
     input_ = std::move(input);
     input_command_ = parsed.request_id;
@@ -803,6 +814,9 @@ class WorkerChannel final : public ApplicationChannel {
   bool closed_ UAGENT_GUARDED_BY(mutex_) = false;
   bool busy_ UAGENT_GUARDED_BY(mutex_) = true;
   bool turn_active_ UAGENT_GUARDED_BY(mutex_) = false;
+  // The running turn is the person's: their message started it or arrived
+  // while it ran. Not the panel's brief or message, mail or queued guidance.
+  bool person_turn_ UAGENT_GUARDED_BY(mutex_) = false;
   const bool panel_ = false;
   std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ UAGENT_GUARDED_BY(mutex_) = false;
@@ -862,7 +876,7 @@ int WorkerMain(int argc, char** argv) {
   // A thread runs sandboxed and within its budget however its runtime is
   // started again, so a restart never widens it: not even a sandbox policy
   // inherited through the environment stands in for its own. Its approval
-  // mode is held to Auto where the mode is resolved (PermissionControl).
+  // mode defaults to Auto where the mode is resolved (PermissionControl).
   // A lead agent's commands only read, so its "never changes anything"
   // holds by the OS and not by its prompt, and so do its subagents', which
   // inherit the policy.

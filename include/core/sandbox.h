@@ -105,6 +105,10 @@ enum class SandboxPreset { kReadOnly, kDefault, kRelaxed, kOff };
 // *preset alone.
 bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset);
 
+// The level a session's commands run at while its approval mode is yolo:
+// default is raised to relaxed; readonly, relaxed and off stay as they are.
+SandboxPreset YoloSandboxPreset(SandboxPreset configured);
+
 struct SandboxPolicyResult {
   SandboxPolicy policy;
   // Roots dropped by the rules above, as they were offered, so the startup
@@ -192,14 +196,20 @@ struct SandboxStatus {
   std::vector<std::string> rejected;
   // Why the mode is kDegraded or kRefused. Empty otherwise.
   std::string reason;
+  // The sandbox.level in effect, as /status names it: "default", or
+  // "relaxed (yolo)" where yolo raised it. A child carries its parent's.
+  std::string preset;
 };
 
-// Reads the configuration, composes the policy and probes the host once. Every
-// spawn asks; none of the answers can change while the process runs.
+// Reads the configuration, composes the policy and probes the host once, and
+// at the default level composes it once more at relaxed the first time yolo
+// asks. Returns the one for the approval mode now: every spawn asks, so a
+// mode switched mid-session holds from the next command. Neither status is
+// ever rebuilt, so the reference stays good.
 const SandboxStatus& SandboxRuntime();
 
 // That status as the value of UAGENT_INTERNAL_SANDBOX, which makes a child
-// agent run under exactly it.
+// agent run under exactly it, whatever its own approval mode.
 std::string SandboxInheritance();
 
 // One object describing how this session confines its commands: mode,
@@ -207,9 +217,10 @@ std::string SandboxInheritance();
 // Shared by session_ready, /status and /context so all three cannot drift.
 json SandboxDiagnosticJson();
 
-// SandboxWritesNote for this session and its folder. The hidden paths are
-// counted on Linux only: seatbelt denies them by rule, so nothing goes stale.
-std::string SandboxNote();
+// SandboxWritesNote for `status` and this session's folder. The hidden paths
+// are counted on Linux only: seatbelt denies them by rule, so nothing goes
+// stale.
+std::string SandboxNote(const SandboxStatus& status);
 
 // SandboxNote when this session's commands cannot write its own folder;
 // empty otherwise. A home directory is the usual case: it holds ~/.uagent, so

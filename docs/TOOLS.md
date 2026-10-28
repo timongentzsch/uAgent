@@ -43,7 +43,7 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
 | `thread_spawn`, `thread`, `decide`, `plan`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start background agents (`thread_spawn`); guide, stop and remove them (`thread`); answer what a background agent asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
 | `session`, `session_message` | list linked sessions, and message them; an idle one starts a turn on the message | always; a lead agent and its background agents are linked, and so are YOLO sessions in one folder |
-| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first |
+| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first, except in a turn the user started or wrote into |
 | `subagent`, `subagent_fanout` | delegate a subtask to a durable child session, or one prompt over many items with each finding checked | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, lead agents and background agents) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
@@ -63,8 +63,9 @@ folder follow the approval mode: `ask` (the default), `auto` or `yolo`
 (also `/yolo` or `--yolo`), set with `/permissions` and saved as the default
 with `UAGENT_APPROVAL`. Reading one of your other folders, such as another
 repository in the home folder, always asks a person (`sandbox.read` opens a
-folder). The [guide](GUIDE.md#approvals-and-the-sandbox) explains the modes;
-none of them turns the sandbox off.
+folder), except under yolo, which opens them. The
+[guide](GUIDE.md#approvals-and-the-sandbox) explains the modes; none of them
+turns the sandbox off.
 
 `/permissions rules` lists remembered approvals and
 `/permissions forget N|all` removes them.

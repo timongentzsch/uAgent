@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <iterator>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -408,6 +409,15 @@ void CollectReads(SandboxInputs* inputs) {
   }
 }
 
+// The relaxed level: the home folder writable around ~/.uagent, and none of
+// your folders closed to reads.
+void Relax(SandboxInputs* inputs) {
+  const std::string home = UserHome();
+  if (!home.empty()) inputs->open_home = CanonicalAccessPath(home).string();
+  inputs->closed_folders.clear();
+  inputs->read_roots.clear();
+}
+
 // Every configured value the sandbox reads, resolved to the canonical absolute
 // paths seatbelt and Landlock both match on. macOS makes this mandatory rather
 // than tidy: /tmp there is a symlink to /private/tmp, and a profile naming the
@@ -446,7 +456,6 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
   }
   const std::string home = UserHome();
   if (!home.empty()) {
-    if (preset == SandboxPreset::kRelaxed) inputs.open_home = canonical(home);
     // A root that does not exist grants nothing, and the tool could not then
     // make its own folder beneath a closed one.
     for (std::string_view cache : kPackageCaches) {
@@ -470,7 +479,11 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
                         worktree.common_dir + "/refs",
                         worktree.common_dir + "/logs"};
   }
-  if (preset != SandboxPreset::kRelaxed) CollectReads(&inputs);
+  if (preset == SandboxPreset::kRelaxed) {
+    Relax(&inputs);
+  } else {
+    CollectReads(&inputs);
+  }
   return inputs;
 }
 
@@ -490,6 +503,7 @@ SandboxStatus InheritedStatus(const std::string& text) {
   status.mode = static_cast<SandboxMode>(mode);
   status.level = SandboxSupported();
   status.reason = JsonValue(from, "reason", "");
+  status.preset = JsonValue(from, "preset", "");
   if (!SandboxPolicyFromJson(JsonValue(from, "policy", json()),
                              &status.policy)) {
     status.mode = SandboxMode::kRefused;
@@ -499,11 +513,23 @@ SandboxStatus InheritedStatus(const std::string& text) {
   return status;
 }
 
-SandboxStatus BuildStatus() {
+// The status at the configured level and, when yolo would raise that level,
+// the inputs of the raised one: made from the configured level's at start, so
+// it follows the configuration the session started with, not one changed
+// since.
+struct ConfiguredSandbox {
   SandboxStatus status;
+  std::optional<SandboxInputs> raised;
+};
+
+ConfiguredSandbox BuildStatus() {
+  ConfiguredSandbox configured;
+  SandboxStatus& status = configured.status;
+  // A child runs under its parent's status whatever its own approval mode.
   if (const std::string inherited = EnvStr("UAGENT_INTERNAL_SANDBOX");
       !inherited.empty()) {
-    return InheritedStatus(inherited);
+    status = InheritedStatus(inherited);
+    return configured;
   }
   // A level somebody wrote down that names no level -- a typo, or `strict`,
   // which is gone -- must not quietly become the default, which opens the
@@ -520,9 +546,10 @@ SandboxStatus BuildStatus() {
     status.reason =
         "sandbox.level is not a level (readonly, default, relaxed or off); "
         "to deny the network set sandbox.network=false with the default level";
-    return status;
+    return configured;
   }
-  if (preset == SandboxPreset::kOff) return status;
+  status.preset = level;
+  if (preset == SandboxPreset::kOff) return configured;
   status.level = SandboxSupported();
   // Test-only, and only ever stricter: it can make an enforceable host look
   // unenforceable, never the other way round.
@@ -542,7 +569,7 @@ SandboxStatus BuildStatus() {
 #else
         "this host has no usable sandbox mechanism";
 #endif
-    return status;
+    return configured;
   }
   SandboxInputs inputs = CollectInputs(preset);
   // Denying the network on a host that can only confine writes would be a
@@ -554,12 +581,28 @@ SandboxStatus BuildStatus() {
     status.mode = SandboxMode::kRefused;
     status.reason =
         "this kernel's Landlock cannot restrict the network (needs ABI 4)";
-    return status;
+    return configured;
   }
   SandboxPolicyResult built = BuildSandboxPolicy(inputs);
   status.policy = std::move(built.policy);
   status.rejected = std::move(built.rejected);
   status.mode = SandboxMode::kEnforced;
+  if (YoloSandboxPreset(preset) != preset) {
+    Relax(&inputs);
+    configured.raised = std::move(inputs);
+  }
+  return configured;
+}
+
+// The configured status raised to relaxed, for yolo. The same host and
+// network, so nothing the configured one passed is asked again.
+SandboxStatus RaisedStatus(const ConfiguredSandbox& configured) {
+  SandboxStatus status = configured.status;
+  if (!configured.raised) return status;
+  SandboxPolicyResult built = BuildSandboxPolicy(*configured.raised);
+  status.policy = std::move(built.policy);
+  status.rejected = std::move(built.rejected);
+  status.preset = "relaxed (yolo)";
   return status;
 }
 
@@ -577,14 +620,18 @@ const char* MechanismName() {
 }  // namespace
 
 const SandboxStatus& SandboxRuntime() {
-  static const SandboxStatus kStatus = BuildStatus();
-  return kStatus;
+  static const ConfiguredSandbox kConfigured = BuildStatus();
+  if (!kConfigured.raised || !ApprovalIsYolo()) return kConfigured.status;
+  // Composed on first use, once and thread-safely, like the one above.
+  static const SandboxStatus kRaised = RaisedStatus(kConfigured);
+  return kRaised;
 }
 
 std::string SandboxInheritance() {
   const SandboxStatus& status = SandboxRuntime();
   return JsonDump({{"mode", static_cast<int>(status.mode)},
                    {"reason", status.reason},
+                   {"preset", status.preset},
                    {"policy", SandboxPolicyJson(status.policy)}});
 }
 
@@ -607,7 +654,8 @@ json SandboxDiagnosticJson() {
   }
   // Landlock restricts TCP and nothing else, so calling it "no network" on
   // Linux would promise a UDP closure that is not there.
-  std::string summary = std::string(MechanismName()) + ": writes";
+  std::string summary =
+      std::string(MechanismName()) + ", " + status.preset + ": writes";
   if (!status.policy.allow_network) {
 #if defined(__linux__)
     summary += " + no outbound tcp";
@@ -617,6 +665,7 @@ json SandboxDiagnosticJson() {
   }
   return {{"mode", "enforced"},
           {"mechanism", MechanismName()},
+          {"level", status.preset},
           {"network", status.policy.allow_network ? "allowed" : "denied"},
           {"roots", status.policy.writable_roots},
           {"readable", status.policy.readable},
@@ -624,8 +673,8 @@ json SandboxDiagnosticJson() {
           {"summary", std::move(summary)}};
 }
 
-std::string SandboxNote() {
-  SandboxPolicy policy = SandboxRuntime().policy;
+std::string SandboxNote(const SandboxStatus& status) {
+  SandboxPolicy policy = status.policy;
 #if defined(__linux__)
   policy.hidden = HiddenPaths();
 #endif
@@ -646,7 +695,7 @@ std::string SandboxWorkspaceRefusal() {
       SandboxWritable(status.policy, CanonicalCwd())) {
     return {};
   }
-  return SandboxNote();
+  return SandboxNote(status);
 }
 
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {

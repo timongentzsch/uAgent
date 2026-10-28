@@ -450,8 +450,6 @@ export interface Permissions {
   mode: string;
   default: string;
   effective?: string;
-  // The mode no choice here can exceed, where the conversation has one.
-  limit?: string;
 }
 interface PermissionRule {
   key: string;

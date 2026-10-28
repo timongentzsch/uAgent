@@ -11,6 +11,9 @@ inline constexpr const char* kSessionKindPanel = "panel";
 inline constexpr const char* kSessionKindThread = "thread";
 // A thread's decision with this route is its panel's to answer.
 inline constexpr const char* kRoutePanel = "panel";
+// The origin of a thread's first message, its panel's brief: a turn the
+// panel starts, though not one of the messages its streak counts.
+inline constexpr const char* kOriginBrief = "brief";
 
 // Whether a session's options or header name it a thread of a panel.
 inline bool IsThread(const json& session) {

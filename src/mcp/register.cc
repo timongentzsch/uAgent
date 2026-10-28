@@ -65,7 +65,7 @@ bool McpStartConfigured(McpServer& server, int64_t& discovery_id,
   // Confined like a command, unless the entry says `"sandbox": false`. The
   // same refusal applies: a session told to confine that cannot does not spawn.
   // Its reads stay open: you configured the server, and it lives wherever you
-  // keep it.
+  // keep it. It keeps the sandbox of the approval mode it was started in.
   std::vector<std::string> wrapper;
   SandboxStatus sandbox = SandboxRuntime();
   sandbox.policy.unreadable.clear();

@@ -344,6 +344,10 @@ and the plan. In the web:
   the inspector. Below, **Background agents** lists those no step names. A
   background agent's menu renames or removes it. What needs you is above
   the input and in the sidebar's "need you" count.
+- A background agent's approvals and questions go to its lead agent first.
+  Once you write in the background agent's own chat, those of that turn
+  come to you directly. Its approval control offers every mode, yolo
+  included.
 
 ### Settings
 

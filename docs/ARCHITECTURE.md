@@ -150,7 +150,7 @@ A folder's lead agent (internally a panel) is a session that reads and
 delegates but never writes: it has no tool that edits, and its runtime forces
 the `readonly` sandbox level, so its commands write nothing but temporary
 files. The sessions it starts are its background agents (internally threads),
-which run at the default level.
+which run at the default level, or relaxed while in yolo.
 
 The lead agent asks its questions of subagents: it has the `subagent` tool,
 and its children get only what their parent has, its sandbox included, so
@@ -167,9 +167,9 @@ background agents.
   the next model step, including after a final answer, which reopens the turn.
 - An idle runtime starts a turn on mail meant to wake it. A headless child
   answers mail that arrives after its last step before it exits.
-- A background agent's finished turns and questions reach its lead agent
-  within milliseconds, starting the lead agent's runtime when none runs. At
-  the daily spend limit its mail waits.
+- A background agent's finished turns, and its questions in turns the person
+  did not start or write into, reach its lead agent within milliseconds, starting the lead
+  agent's runtime when none runs. At the daily spend limit its mail waits.
 - A sender is refused, visibly, past 64 pending messages, 20 a minute or 8
   forwards (`include/core/mailbox.h`).
 

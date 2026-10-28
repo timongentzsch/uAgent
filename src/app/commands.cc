@@ -22,6 +22,7 @@
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
 #include "include/core/runtime_config.h"
+#include "include/core/sandbox.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -227,13 +228,18 @@ CommandReply RunSlashCommand(AppSession& session,
       reply.Print("%s\n", JsonDump(result).c_str());
       return reply;
     }
-    case SlashCommandId::kYolo:
+    case SlashCommandId::kYolo: {
       result = PermissionControl(session.context,
                                  {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
-      reply.Note(Tone::kNeutral, ApprovalIsYolo()
-                                     ? "yolo on — automatic ordinary approvals"
-                                     : "yolo off");
+      // Yolo can raise the sandbox's level, so the note says which holds.
+      const std::string& level = SandboxRuntime().preset;
+      reply.Note(Tone::kNeutral,
+                 std::string(ApprovalIsYolo()
+                                 ? "yolo on — automatic ordinary approvals"
+                                 : "yolo off") +
+                     (level.empty() ? "" : "; sandbox " + level));
       break;
+    }
     case SlashCommandId::kCompact:
       session.ActiveAgent().Compact();
       SteeringState().Take();

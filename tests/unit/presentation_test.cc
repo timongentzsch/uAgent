@@ -7,6 +7,7 @@
 #include <chrono>
 #include <clocale>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -176,13 +177,16 @@ void TestTreeRows() {
 
   // Only an explicitly non-UTF-8 locale downgrades; an unset one is no
   // evidence that the terminal is incapable.
-  const char* prior_lc_all = getenv("LC_ALL");
+  // Copied: setenv may free the string getenv returned.
+  const char* lc_all = getenv("LC_ALL");
+  const std::optional<std::string> prior_lc_all =
+      lc_all ? std::optional<std::string>(lc_all) : std::nullopt;
   setenv("LC_ALL", "C", 1);
   CHECK(!ResolveUnicodeEnabled());
   setenv("LC_ALL", "en_US.UTF-8", 1);
   CHECK(ResolveUnicodeEnabled());
   if (prior_lc_all) {
-    setenv("LC_ALL", prior_lc_all, 1);
+    setenv("LC_ALL", prior_lc_all->c_str(), 1);
   } else {
     unsetenv("LC_ALL");
   }

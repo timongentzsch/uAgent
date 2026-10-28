@@ -171,9 +171,9 @@ export function NodeBody({
   const { read, inspect, activity } = useContext(MessageActions);
   const load = useBlockReader(session, read);
   const body = node.body;
-  // A stored whole diff loads as the row opens; other long bodies when
+  // A diff cut short loads whole as the row opens; other long bodies when
   // asked for.
-  const [wantFull, setWantFull] = useState(!!node.change_path);
+  const [wantFull, setWantFull] = useState(body?.kind === "diff");
   const full = useResource(
     (signal) =>
       online && wantFull && body?.truncated

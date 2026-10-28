@@ -203,8 +203,6 @@ export interface Node {
   streaming?: boolean;
   input?: ToolPart[];
   parts?: ToolPart[];
-  // Set when a diff body is only the opening of a stored whole.
-  change_path?: string;
   files?: Asset[];
   deliveries?: Delivery[];
   unavailable_images?: number;

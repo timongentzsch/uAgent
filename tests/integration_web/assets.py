@@ -496,9 +496,13 @@ def test_web_rows_show_output_while_the_model_reads_hints(root, home, *, binary)
 def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binary):
     lines = [f"line {index:04d} of a long file" for index in range(2000)]
     content = "\n".join([*lines, "LAST_DIFF_LINE", ""])
+    # The turn waits after the write, so the diff is read while it runs and
+    # again once it is saved.
+    release = threading.Event()
 
     def responder(_, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
+            release.wait(budget(10))
             return event({"content": "written"})
         return tool_call("write_file", {"path": "long.txt", "content": content}, call_id="long")
 
@@ -508,40 +512,63 @@ def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binar
             session = client.create(root)
             client.command("permissions", session, mode="yolo")
             client.command("submit", session, text="Write the long file")
+
+            def diff_row(value):
+                return next(
+                    (
+                        block
+                        for block in value["state"]["view"]["blocks"]
+                        if block.get("body", {}).get("kind") == "diff"
+                    ),
+                    None,
+                )
+
+            def whole(row):
+                diff = ""
+                offset = 0
+                while True:
+                    status, page, _ = client.json(
+                        f"/api/sessions/{session['id']}?detail={row['id']}&offset={offset}"
+                    )
+                    assert_true(status == 200, page)
+                    diff += page["text"]
+                    if not page["more"]:
+                        return diff
+                    offset = page["next"]
+
+            try:
+                value = client.until(
+                    session,
+                    lambda value: diff_row(value) is not None and value["metadata"]["turn_active"],
+                )
+                row = diff_row(value)
+                # Its path stays with the host, which serves the whole diff
+                # while the turn runs.
+                assert_true("change_path" not in row, row)
+                live = whole(row)
+            finally:
+                release.set()
             value = client.until(
                 session,
                 lambda value: (
                     "written" in json.dumps(value) and not value["metadata"]["turn_active"]
                 ),
             )
-            row = next(
-                block
-                for block in value["state"]["view"]["blocks"]
-                if block.get("body", {}).get("kind") == "diff"
-            )
             # It is kept with the session's edits, so it lasts as long as the
-            # conversation and leaves with it; its path stays with the host.
-            assert_true("change_path" not in row, row)
+            # conversation and leaves with it.
             stored = list((home / ".uagent" / "history").rglob("*.json.edits/diff-*"))
             assert_true(len(stored) == 1, stored)
             # The row carries the diff's opening, within a fact and a frame.
             # The counts are facts; the diff holds only its lines.
+            row = diff_row(value)
             change = row["body"]["text"]
             assert_true(row["body"]["kind"] == "diff" and row["body"]["truncated"], row)
             assert_true(change.startswith("+line 0000 of a long file\n"), row)
             assert_true(row["result"]["added"] == 2001 and row["result"]["removed"] == 0, row)
             assert_true(len(change) <= 16 * 1024 and "…" not in change, row)
-            diff = ""
-            offset = 0
-            while True:
-                status, page, _ = client.json(
-                    f"/api/sessions/{session['id']}?detail={row['id']}&offset={offset}"
-                )
-                assert_true(status == 200, page)
-                diff += page["text"]
-                if not page["more"]:
-                    break
-                offset = page["next"]
+            # The same whole diff, live and saved.
+            diff = whole(row)
+            assert_true(live == diff, (len(live), len(diff)))
             assert_true(diff.startswith(change), diff[:200])
             assert_true(diff.endswith("+line 1999 of a long file\n+LAST_DIFF_LINE\n"), diff[-200:])
             assert_true(diff.count("\n") == 2001, diff.count("\n"))

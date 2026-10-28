@@ -209,9 +209,19 @@ std::string SandboxHint(const SandboxStatus& status,
     });
   };
   if (says(kDenied) || (!status.policy.allow_network && says(kOffline))) {
-    return "\n[sandbox: " + SandboxNote(status) + "]";
+    return "[sandbox: " + SandboxNote(status) + "]";
   }
   return {};
+}
+
+// A receipt with nothing to show but where the work went: its hint tells the
+// model, and its link takes a person there.
+ToolResult LinkResult(std::string hint, json link) {
+  ToolResult result = ToolSuccess("");
+  result.hint = std::move(hint);
+  result.body_kind = "link";
+  result.parts = json::array({std::move(link)});
+  return result;
 }
 
 // A detached terminal outlives the turn that starts it: its output goes to a
@@ -224,11 +234,12 @@ ShellCommandResult StartDetachedShell(
   const std::string& cmd = spec.command;
   if (std::optional<DetachedActivity> existing =
           FindRunningDetachedActivity(cmd)) {
-    return {ToolSuccess(kDetachedMarker + std::to_string(existing->pid) +
-                        ", log: " + existing->log +
-                        " — reused existing live activity id " +
-                        std::to_string(existing->pid) +
-                        "; verify readiness with activity output")};
+    return {LinkResult(kDetachedMarker + std::to_string(existing->pid) +
+                           ", log: " + existing->log +
+                           " — reused existing live activity id " +
+                           std::to_string(existing->pid) +
+                           "; verify readiness with activity output",
+                       LinkPart("activity", existing->pid, "Open activity"))};
   }
   ScopedTempFile pending(UagentDir(kTerminalLogsDir) + "/pending-" +
                          std::to_string(getpid()) + "-XXXXXX");
@@ -279,12 +290,11 @@ ShellCommandResult StartDetachedShell(
   if (!supervisor.TryAdd(std::move(job), MaxActivities())) {
     return fail_and_reap(ActivityLimitError());
   }
-  ToolResult detached =
-      ToolSuccess(kDetachedMarker + std::to_string(pid) + ", log: " + log +
-                  " — activity id " + std::to_string(pid) +
-                  "; verify readiness with activity output");
-  detached.parts = json::array({LinkPart("activity", pid, "Open activity")});
-  return {std::move(detached), std::nullopt, /*launched=*/true};
+  return {LinkResult(kDetachedMarker + std::to_string(pid) + ", log: " + log +
+                         " — activity id " + std::to_string(pid) +
+                         "; verify readiness with activity output",
+                     LinkPart("activity", pid, "Open activity")),
+          std::nullopt, /*launched=*/true};
 }
 
 }  // namespace
@@ -468,10 +478,11 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
         KeepCompletedLog(log, ToolResultCap(),
                          /*failed=*/!ExitedOk(status));
     ToolResult result = build(std::move(output), status);
+    result.body_kind = "tail";
     if (!result.Ok() && !wrapper.empty()) {
-      result.output += SandboxHint(sandbox, result.output);
+      AddHint(result, SandboxHint(sandbox, result.output));
     }
-    result.output += SandboxRestoreNote(watch.get(), CanonicalCwd());
+    AddHint(result, SandboxRestoreNote(watch.get(), CanonicalCwd()));
     result.artifact = std::move(artifact);
     return ShellCommandResult{std::move(result), status, /*launched=*/true};
   };
@@ -488,16 +499,16 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
     ActivityTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     return finish([&cmd](std::string output, int status) {
-      output += FmtExit(status, /*show_ok=*/false);
+      ToolResult result = ExitResult(std::move(output), status);
       // pkill -f and its kin match on the whole command line, and this
       // command's own shell carries the pattern in its.
       if (WIFSIGNALED(status) && (cmd.find("pkill -f") != std::string::npos ||
                                   cmd.find("pgrep -f") != std::string::npos)) {
-        output +=
-            "\n[the pattern matched this command's own shell; match "
-            "the process name instead, e.g. pkill -x NAME]";
+        AddHint(result,
+                "[the pattern matched this command's own shell; match the "
+                "process name instead, e.g. pkill -x NAME]");
       }
-      return ProcessResult(std::move(output), status);
+      return result;
     });
   }
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
@@ -530,18 +541,19 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
             /*launched=*/true};
   }
   if (is_subagent) {
-    ToolResult started = ToolSuccess(
-        kStartedSubagentMarker + agent_id + " (activity " +
-        std::to_string(activity_id) + ")" +
-        (supervisor.WakesSession()
-             ? "; its result reaches you when it ends, even after this turn; "
-               "inspect activity output for progress"
-             : "; completion is added to the next natural model call without "
-               "starting one; inspect activity output for progress/readiness, "
-               "or wait when the next step is blocked"));
-    started.parts =
-        json::array({LinkPart("activity", activity_id, "Open activity")});
-    return {std::move(started), std::nullopt, /*launched=*/true};
+    return {
+        LinkResult(kStartedSubagentMarker + agent_id + " (activity " +
+                       std::to_string(activity_id) + ")" +
+                       (supervisor.WakesSession()
+                            ? "; its result reaches you when it ends, even "
+                              "after this turn; inspect activity output for "
+                              "progress"
+                            : "; completion is added to the next natural model "
+                              "call without starting one; inspect activity "
+                              "output for progress/readiness, or wait when the "
+                              "next step is blocked"),
+                   LinkPart("activity", activity_id, "Open activity")),
+        std::nullopt, /*launched=*/true};
   }
   std::string initial_output;
   {
@@ -550,18 +562,19 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
         LimitOutput(session->pending_output.Drain(), interaction_cap);
     session->last_used = std::chrono::steady_clock::now();
   }
-  std::string output = kRunningActivityMarker + std::to_string(activity_id) +
-                       (handed_off ? " moved to background; " : "; ") +
-                       (supervisor.WakesSession()
-                            ? "it keeps running while you work, and its "
-                              "result reaches you when it ends, even after "
-                              "this turn"
-                            : "it keeps running while you work; poll or wait "
-                              "on it for output");
-  if (!initial_output.empty()) output += "\n" + initial_output;
-  ToolResult running = ToolSuccess(std::move(output));
-  running.parts =
-      json::array({LinkPart("activity", activity_id, "Open activity")});
+  ToolResult running = LinkResult(
+      kRunningActivityMarker + std::to_string(activity_id) +
+          (handed_off ? " moved to background; " : "; ") +
+          (supervisor.WakesSession()
+               ? "it keeps running while you work, and its result reaches "
+                 "you when it ends, even after this turn"
+               : "it keeps running while you work; poll or wait on it for "
+                 "output"),
+      LinkPart("activity", activity_id, "Open activity"));
+  if (!initial_output.empty()) {
+    running.output = std::move(initial_output);
+    running.body_kind = "tail";
+  }
   return {std::move(running), std::nullopt, /*launched=*/true};
 }
 
@@ -746,10 +759,8 @@ ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
     if (count > kChangedNames) {
       changed += " +" + std::to_string(count - kChangedNames) + " more";
     }
-    std::string& output = result.result.output;
     if (count > 0) {
-      output += (output.empty() || output.back() == '\n' ? "" : "\n");
-      output += "[changed in the folder: " + changed + "]";
+      AddHint(result.result, "[changed in the folder: " + changed + "]");
     }
   }
   if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {
@@ -762,10 +773,9 @@ ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
         "error: Python execution failed." + hint + "\n" + result.result.output;
   }
   if (!result.result.Ok()) {
-    result.result.output =
-        "[execution " +
-        std::string(CompletionStatusName(result.result.status)) + "]\n" +
-        result.result.output;
+    AddHint(result.result,
+            "[execution " +
+                std::string(CompletionStatusName(result.result.status)) + "]");
   }
   return std::move(result.result);
 }
@@ -838,21 +848,18 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
   int exit_code = execution.wait_status && WIFEXITED(wait_status)
                       ? WEXITSTATUS(wait_status)
                       : -1;
-  if (exit_code == 1) return ToolSuccess("(no matches)");
-  if (exit_code == 141) {
-    std::string suffix = FmtExit(wait_status, false);
-    if (output.size() >= suffix.size()) {
-      output.resize(output.size() - suffix.size());
-    }
-  } else if (!outcome.Ok()) {
-    if (outcome.error == ToolErrorCode::kProcessFailed) {
-      return ToolFailure(ToolErrorCode::kProcessFailed,
-                         "search command failed:\n" + output);
-    }
-    outcome.output = std::move(output);
+  const std::string unit = files_only || matching_files ? "file" : "line";
+  if (exit_code == 1) return ListResult("(no matches)", 0, unit);
+  // 141: head closed the pipe on a producer with more to say.
+  if (exit_code != 141 && !outcome.Ok()) {
+    outcome.output = outcome.error == ToolErrorCode::kProcessFailed
+                         ? std::string(kToolErrorPrefix) +
+                               "search command failed:\n" + output
+                         : std::move(output);
+    outcome.body_kind = "text";
     return outcome;
   }
-  if (output == "(no output)") return ToolSuccess("(no matches)");
+  if (output == "(no output)") return ListResult("(no matches)", 0, unit);
 
   bool byte_limited = static_cast<int64_t>(output.size()) >= bytes;
   size_t scan = 0, cut = std::string::npos;
@@ -867,14 +874,16 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
   if (lines < max_results && scan < output.size()) ++lines;
   bool more_results = cut != std::string::npos && cut < output.size();
   if (more_results) output.resize(cut);
-  std::string header =
+  const int64_t shown = std::min(lines, max_results);
+  ToolResult result = ListResult(std::move(output), shown, unit);
+  AddHint(
+      result,
       "[" + std::string(ripgrep ? "ripgrep" : "grep") +
-      (files_only ? " files · " : " · ") +
-      std::to_string(std::min(lines, max_results)) +
-      (more_results ? "+ result lines; more available" : " result lines") +
-      "]\n";
-  if (byte_limited) header += "[output byte limit reached]\n";
-  return ToolSuccess(header + output);
+          (files_only ? " files · " : " · ") + std::to_string(shown) +
+          (more_results ? "+ result lines; more available" : " result lines") +
+          "]");
+  if (byte_limited) AddHint(result, "[output byte limit reached]");
+  return result;
 }
 
 }  // namespace uagent

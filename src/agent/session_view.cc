@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
-#include "include/core/defaults.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -117,13 +116,51 @@ bool IsBlankLine(std::string_view line) {
   return line.find_first_not_of(" \t\r") == std::string_view::npos;
 }
 
-// Stored user text keeps the "Attached:" trailer for the model; readers see
-// the text they typed, with the attachments shown from their own records.
-std::string DisplayText(const json& message) {
-  std::string text = Text(message);
-  if (JsonValue(message, "role", "") == "tool") {
-    return StripModelHints(std::move(text));
+// Receipt facts live under the call's detail id. A message whose id
+// metadata was never recorded still carries the call id, so scan by it
+// before admitting the receipt is gone. Message-metadata entries carry
+// call ids too but never a receipt name, so they cannot self-match.
+const json* FindToolFacts(const json& facts, const std::string& detail_id,
+                          const std::string& call_id,
+                          std::string* resolved_id) {
+  const auto direct = facts.find(detail_id);
+  if (direct != facts.end() && direct->is_object() && !direct->empty()) {
+    if (resolved_id) *resolved_id = detail_id;
+    return &*direct;
   }
+  for (auto it = facts.begin(); it != facts.end(); ++it) {
+    if (!call_id.empty() && it->is_object() &&
+        JsonValue(*it, "call_id", "") == call_id && it->contains("name")) {
+      if (resolved_id) *resolved_id = it.key();
+      return &*it;
+    }
+  }
+  return nullptr;
+}
+
+// A tool result message's facts, and its detail id through `detail_id`.
+const json* ResultFactsOf(const json& facts, uint64_t sequence,
+                          const json& message, std::string* detail_id) {
+  const std::string call_id = JsonValue(message, "tool_call_id", "");
+  const std::string key = "m-" + std::to_string(sequence);
+  const json* metadata = JsonObject(facts, key.c_str());
+  *detail_id = metadata ? JsonValue(*metadata, "detail_id", "t-" + call_id)
+                        : "t-" + call_id;
+  return FindToolFacts(facts, *detail_id, call_id, detail_id);
+}
+
+// What a person reads of a message. A tool result's message holds the
+// model's hints too, so its own output comes from its facts. Stored user
+// text keeps the "Attached:" trailer for the model; readers see the text
+// they typed, with the attachments shown from their own records.
+std::string DisplayText(const json& facts, uint64_t sequence,
+                        const json& message) {
+  if (JsonValue(message, "role", "") == "tool") {
+    std::string detail_id;
+    const json* found = ResultFactsOf(facts, sequence, message, &detail_id);
+    return found ? JsonValue(*found, "output", "") : std::string();
+  }
+  std::string text = Text(message);
   const json* content = JsonArray(message, "content");
   if (!content) return text;
   for (const json& part : *content) {
@@ -265,21 +302,26 @@ json LiveToolRow(const json& data) {
           {"arguments", Utf8Trunc(JsonText(arguments), 1024)},
           {"activity", JsonValue(data, "activity", json::object())},
           {"view", JsonValue(data, "view", json(nullptr))},
-          {"status", "running"},
+          {"state", "running"},
           {"text", ""}};
 }
 
 json LiveToolResult(const json& data) {
-  // The row shows the output as a person reads it, without model hints.
-  const std::string text = StripModelHints(JsonValue(data, "result", ""));
+  // The output is what a person reads; the model's hints never reach it.
+  const std::string text = JsonValue(data, "result", "");
   json row = {{"id", JsonValue(data, "detail_id", "")},
               {"kind", "tool_result"},
               {"activity", JsonValue(data, "activity", json::object())},
-              {"status", JsonValue(data, "completion_status",
-                                   JsonValue(data, "status", "complete"))},
+              {"state", JsonValue(data, "state", "ok")},
+              {"result", JsonValue(data, "facts", json::object())},
+              {"body_kind", JsonValue(data, "body_kind", "text")},
               {"duration_ms", JsonValue(data, "duration_ms", 0.0)},
               {"text", Utf8Trunc(text, kPreviewChars - 3)},
               {"truncated", text.size() > kPreviewChars}};
+  if (const std::string code = JsonValue(data, "error_code", "none");
+      code != "none") {
+    row["error_code"] = code;
+  }
   if (data.contains("parts")) row["parts"] = data["parts"];
   return row;
 }
@@ -396,28 +438,6 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
 }
 
 namespace {
-// Receipt facts live under the call's detail id. A message whose id
-// metadata was never recorded still carries the call id, so scan by it
-// before admitting the receipt is gone. Message-metadata entries carry
-// call ids too but never a receipt name, so they cannot self-match.
-const json* FindToolFacts(const json& facts, const std::string& detail_id,
-                          const std::string& call_id,
-                          std::string* resolved_id) {
-  const auto direct = facts.find(detail_id);
-  if (direct != facts.end() && direct->is_object() && !direct->empty()) {
-    if (resolved_id) *resolved_id = detail_id;
-    return &*direct;
-  }
-  for (auto it = facts.begin(); it != facts.end(); ++it) {
-    if (!call_id.empty() && it->is_object() &&
-        JsonValue(*it, "call_id", "") == call_id && it->contains("name")) {
-      if (resolved_id) *resolved_id = it.key();
-      return &*it;
-    }
-  }
-  return nullptr;
-}
-
 // One message's rows: the message itself, and for an assistant message one
 // row per tool call, keyed by the call's detail id like its result row, so
 // the two join into one wherever they meet.
@@ -426,7 +446,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
   const json& facts = conversation.DisplayFacts();
   std::string id = "m-" + std::to_string(sequence);
   const json& message = *entry.message;
-  std::string text = DisplayText(message);
+  std::string text = DisplayText(facts, sequence, message);
   json block = {{"id", id},
                 {"sequence", sequence},
                 {"kind", entry.kind},
@@ -441,6 +461,9 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                           "agent_id",
                           "command",
                           "status",
+                          "state",
+                          "result",
+                          "body_kind",
                           "request_id",
                           "route",
                           "served_by",
@@ -516,50 +539,33 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                     {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
                     {"arguments",
                      Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
-                    {"status", JsonValue(detail, "status", "running")},
+                    {"state", JsonValue(detail, "state", "running")},
                     {"activity", JsonValue(detail, "activity", json::object())},
                     {"text", ""}};
         if (detail.contains("view")) row["view"] = detail["view"];
-        if (detail.contains("exchange_path")) {
-          row["exchange_path"] = detail["exchange_path"];
-        }
         rows.push_back(std::move(row));
       }
     }
   }
   if (entry.kind == "tool_result") {
-    std::string call_id = JsonValue(message, "tool_call_id", "");
-    std::string detail_id = JsonValue(metadata, "detail_id", "t-" + call_id);
-    const json* found = FindToolFacts(facts, detail_id, call_id, &detail_id);
+    std::string detail_id;
+    const json* found = ResultFactsOf(facts, sequence, message, &detail_id);
     const json& detail = found ? *found : kNone;
-    // Retained rows finished by definition: a missing receipt is a gap in
-    // history, never live activity (live rows stream separately). Say so
-    // explicitly instead of counterfeiting a "running" state.
-    const bool receipt_missing = found == nullptr;
     block["id"] = detail_id;
-    block["call_id"] = call_id;
+    block["call_id"] = JsonValue(message, "tool_call_id", "");
     block["activity"] = JsonValue(detail, "activity", json::object());
     block["name"] = JsonValue(detail, "name", "tool");
-    block["status"] =
-        JsonValue(detail, "status", receipt_missing ? "complete" : "running");
-    if (detail.contains("duration_ms")) {
-      block["duration_ms"] = detail["duration_ms"];
-    }
+    // Retained rows finished by definition: a missing receipt is a gap in
+    // history, never live activity (live rows stream separately).
+    block["state"] = JsonValue(detail, "state", "ok");
     block["detail_id"] = detail_id;
-    block["change"] = JsonValue(detail, "change", "");
-    if (detail.contains("change_path")) {
-      block["change_path"] = detail["change_path"];
-    }
-    if (detail.contains("parts")) block["parts"] = detail["parts"];
-    // The preview keeps the start of a long result; its end is where a
-    // command reports how it went, so rows can show that tail.
-    if (text.size() > kPreviewChars) {
-      block["tail"] = text.substr(Utf8BoundaryAfter(text, text.size() - 512));
+    block["truncated"] = JsonValue(detail, "truncated", false);
+    block["content_complete"] = !JsonValue(detail, "truncated", false);
+    for (const char* key : {"result", "body_kind", "error_code", "duration_ms",
+                            "change", "change_path", "parts", "tail"}) {
+      if (detail.contains(key)) block[key] = detail[key];
     }
     block["artifact"] = detail.contains("artifact");
-    if (detail.contains("exchange_path")) {
-      block["exchange_path"] = detail["exchange_path"];
-    }
   }
   if (const json* parts = JsonArray(message, "content")) {
     block["unavailable_images"] =
@@ -655,14 +661,6 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
     if (!change.empty()) {
       text += "\n\nRecorded change\n" + change;
     }
-    if (text.empty()) {
-      for (const auto& [sequence, entry] : Index()) {
-        if (entry.kind == "tool_result" &&
-            "t-" + JsonValue(*entry.message, "tool_call_id", "") == id) {
-          text = Text(*entry.message);
-        }
-      }
-    }
   } else if (id.starts_with("m-")) {
     uint64_t sequence = 0;
     const auto [end, error] =
@@ -672,7 +670,7 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
       const auto& entries = Index();
       auto entry = entries.find(sequence);
       if (entry != entries.end() && Visible(entry->second)) {
-        text = DisplayText(*entry->second.message);
+        text = DisplayText(facts, sequence, *entry->second.message);
       }
     }
   } else {
@@ -682,7 +680,7 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
       if (entry.kind == "assistant" &&
           JsonValue(JsonValue(facts, key.c_str(), json::object()),
                     "response_id", "") == id) {
-        text = DisplayText(*entry.message);
+        text = DisplayText(facts, sequence, *entry.message);
       }
     }
   }
@@ -759,7 +757,8 @@ json TranscriptView::Search(const std::string& query, size_t limit) const {
         entry.kind != "tool_result") {
       continue;
     }
-    const std::string text = DisplayText(*entry.message);
+    const std::string text =
+        DisplayText(conversation_.DisplayFacts(), sequence, *entry.message);
     const std::string folded = AsciiLower(text);
     const size_t first = folded.find(needle);
     if (first == std::string::npos) continue;
@@ -802,23 +801,6 @@ json ConversationDetail(const Conversation& conversation, const std::string& id,
 json ConversationExchange(const Conversation& conversation,
                           const std::string& id, size_t offset) {
   return TranscriptView(conversation).Exchange(id, offset);
-}
-
-std::string StripModelHints(std::string text) {
-  for (std::string_view hint :
-       {kRunningActivityMarker, kStartedSubagentMarker, kDetachedMarker}) {
-    if (text.starts_with(hint)) {
-      const size_t end = text.find('\n');
-      text.erase(0, end == std::string::npos ? text.size() : end + 1);
-      break;
-    }
-  }
-  const size_t line = text.rfind(kCollaboratorMarker);
-  if (line != std::string::npos && text.back() == ']' &&
-      text.find('\n', line + 1) == std::string::npos) {
-    text.resize(line);
-  }
-  return text;
 }
 
 std::string StripAttachedTrailer(const std::string& text) {

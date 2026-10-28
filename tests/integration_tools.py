@@ -390,9 +390,10 @@ def test_grep_tool_round_trip(root, home, *, binary):
 
     def final(_, body):
         # A pacing hint past its bound is clamped rather than rejected, and the
-        # result leads with the reduction instead of implying it got 40.
+        # model is told of the reduction instead of being left to think it got
+        # 40.
         result = tool_results(body["messages"])[-1]
-        clamped = result.startswith("[clamped context to 10 of 40 requested]")
+        clamped = result.endswith("[clamped context to 10 of 40 requested]")
         return event({"content": "grep-ok" if clamped else f"grep-bad {result[:120]}"})
 
     with Server(
@@ -716,8 +717,7 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
         def verify_output(_, body):
             results = tool_results(body["messages"])
             readable = any(
-                text.startswith("[running · activity ") and "server-ready" in text
-                for text in results
+                "[running · activity " in text and "server-ready" in text for text in results
             )
             return event({"content": "terminal-ok" if readable else "terminal-bad"})
 
@@ -815,7 +815,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home, *, binary
     def stop_group(_, body):
         result = tool_results(body["messages"])[-1]
         os.kill(state["child"], 0)
-        tracked = result.startswith(f"[detached · activity {state['pid']} ")
+        tracked = f"[detached · activity {state['pid']} " in result
         return (
             tool_call("activity", {"operation": "stop", "id": state["pid"]})
             if tracked

@@ -99,6 +99,32 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
   AppendLineDiff(display, old_lines, new_lines, diff);
 }
 
+// The lines `content` changes in `previous`; an empty body when none.
+EditDisplay WholeFileDiff(const std::string& previous,
+                          const std::string& content) {
+  std::vector<std::string_view> old_lines = DiffLines(previous);
+  std::vector<std::string_view> new_lines = DiffLines(content);
+  LineDiff diff = TrimCommonLines(old_lines, new_lines);
+  EditDisplay display;
+  if (diff.old_end == diff.prefix && diff.new_end == diff.prefix) {
+    return display;
+  }
+  display.added = static_cast<int64_t>(diff.new_end - diff.prefix);
+  display.removed = static_cast<int64_t>(diff.old_end - diff.prefix);
+  AppendLineDiff(display, old_lines, new_lines, diff);
+  return display;
+}
+
+EditDisplay DeletedFileDiff(const std::string& previous) {
+  std::vector<std::string_view> old_lines = DiffLines(previous);
+  std::vector<std::string_view> new_lines;
+  LineDiff diff{0, old_lines.size(), 0};
+  EditDisplay display;
+  display.removed = static_cast<int64_t>(old_lines.size());
+  AppendLineDiff(display, old_lines, new_lines, diff);
+  return display;
+}
+
 ToolResult FileOpenFailure(const std::string& path) {
   std::error_code error(errno, std::generic_category());
   return ToolFailure(FileToolError(error), "cannot open " + path);
@@ -227,7 +253,8 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
     header += "; limit " + std::to_string(kReadFileMaxLines) + " of " +
               std::to_string(requested_lines) + " requested";
   }
-  ToolResult result = ToolSuccess(header + "]\n" + out);
+  ToolResult result = ListResult(std::move(out), last - first + 1, "line");
+  result.hint = header + "]";
   if (!output_limited) result.read_range = ReadRange{path, first, last};
   return result;
 }
@@ -546,18 +573,20 @@ ToolResult ToolEditFile(const std::string& path,
     return std::move(*refusal);
   }
   if (run.replacements == 0) {
-    return ToolSuccess("already applied " + path + " (" +
-                       Plural(run.already_applied, "edit") + ")");
+    ToolResult applied = ToolSuccess("already applied " + path + " (" +
+                                     Plural(run.already_applied, "edit") + ")");
+    applied.facts.no_change = true;
+    return applied;
   }
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (!write.Ok()) return write;
-  ToolResult result = ToolSuccess(
+  ToolResult result = ChangeResult(
       "edited " + path + " (" + Plural(run.replacements, "replacement") +
-      " across " + Plural(edits.size(), "edit") + "; " +
-      std::to_string(original_size) + " -> " + std::to_string(data.size()) +
-      " bytes)");
-  result.display = DiffReceipt("Edited", path, run.display);
+          " across " + Plural(edits.size(), "edit") + "; " +
+          std::to_string(original_size) + " -> " + std::to_string(data.size()) +
+          " bytes)",
+      std::move(run.display.body), run.display.added, run.display.removed);
   result.effect = FileEffect{CanonicalAccessPath(path).string(), true,
                              std::move(original), HashHex(data), original_mode};
   return result;
@@ -625,11 +654,11 @@ std::optional<std::string> SmallDirectoryPreview(
     if (!LikelyTextFile(entry_path)) return std::nullopt;
   }
 
-  std::string preview = listing + "\n[small directory contents]\n";
+  std::string preview = listing;
   for (const std::string& entry : entries) {
     ToolResult read = ToolReadFile((fs::path(dir) / entry).string(), 1, -1);
     if (!read.Ok()) return std::nullopt;
-    preview += "\n";
+    preview += "\n==> " + entry + " <==\n";
     preview += read.output;
     if (static_cast<int64_t>(preview.size()) > ReadFileResultChars()) {
       return std::nullopt;
@@ -668,12 +697,12 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
     return ToolFailure(ToolErrorCode::kNotFound,
                        "path does not exist: " + path);
   }
+  // Binary/oversized still deletes, just without a diff.
   ToolResult result = ToolSuccess("deleted " + path);
-  // Binary/oversized still deletes, just without a diff receipt.
-  if (!effect.before || effect.before->empty()) {
-    result.display = "Deleted " + DisplayPath(path) + "\n";
-  } else {
-    result.display = DeletedFileDiffDisplay(path, *effect.before);
+  if (effect.before && !effect.before->empty()) {
+    EditDisplay diff = DeletedFileDiff(*effect.before);
+    result = ChangeResult(std::move(result.output), std::move(diff.body),
+                          diff.added, diff.removed);
   }
   result.effect = std::move(effect);
   return result;
@@ -701,22 +730,22 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
                              existed ? previous : std::nullopt,
                              HashHex(content), original_mode};
   if (!previous) return result;
-  result.display = WholeFileDiffDisplay(path, *previous, content, existed);
-  return result;
+  EditDisplay diff = WholeFileDiff(*previous, content);
+  if (diff.body.empty()) {
+    result.facts.no_change = true;
+    return result;
+  }
+  ToolResult change = ChangeResult(
+      std::move(result.output), std::move(diff.body), diff.added, diff.removed);
+  change.effect = std::move(result.effect);
+  return change;
 }
 
 std::string WholeFileDiffDisplay(const std::string& path,
                                  const std::string& previous,
                                  const std::string& content, bool existed) {
-  std::vector<std::string_view> old_lines = DiffLines(previous);
-  std::vector<std::string_view> new_lines = DiffLines(content);
-  LineDiff diff = TrimCommonLines(old_lines, new_lines);
-  if (diff.old_end == diff.prefix && diff.new_end == diff.prefix) return "";
-
-  EditDisplay display;
-  display.added = static_cast<int64_t>(diff.new_end - diff.prefix);
-  display.removed = static_cast<int64_t>(diff.old_end - diff.prefix);
-  AppendLineDiff(display, old_lines, new_lines, diff);
+  EditDisplay display = WholeFileDiff(previous, content);
+  if (display.body.empty()) return "";
   return DiffReceipt(existed ? "Replaced" : "Created", path, display);
 }
 
@@ -731,13 +760,7 @@ std::string WriteDiffPreview(const std::string& path,
 
 std::string DeletedFileDiffDisplay(const std::string& path,
                                    const std::string& previous) {
-  std::vector<std::string_view> old_lines = DiffLines(previous);
-  std::vector<std::string_view> new_lines;
-  LineDiff diff{0, old_lines.size(), 0};
-  EditDisplay display;
-  display.removed = static_cast<int64_t>(old_lines.size());
-  AppendLineDiff(display, old_lines, new_lines, diff);
-  return DiffReceipt("Deleted", path, display);
+  return DiffReceipt("Deleted", path, DeletedFileDiff(previous));
 }
 
 ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
@@ -778,24 +801,29 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
                      ? available
                      : static_cast<size_t>(limit);
   size_t end = begin + count;
-  std::string out = "[" + p + " entries " + std::to_string(offset) + "-" +
-                    std::to_string(end) + " of " +
-                    std::to_string(entries.size()) + "]\n";
+  std::string out;
   for (size_t i = begin; i < end; ++i) {
     out += entries[i];
     out += '\n';
   }
+  const std::string header = "[" + p + " entries " + std::to_string(offset) +
+                             "-" + std::to_string(end) + " of " +
+                             std::to_string(entries.size()) + "]";
 
   constexpr size_t kPreviewFiles = 4;
-  if (!include_small_files || offset != 1 || end != entries.size() ||
-      entries.size() > kPreviewFiles) {
-    return ToolSuccess(std::move(out));
+  std::optional<std::string> preview;
+  if (include_small_files && offset == 1 && end == entries.size() &&
+      entries.size() <= kPreviewFiles) {
+    preview = SmallDirectoryPreview(p, entries, out);
   }
-  if (std::optional<std::string> preview =
-          SmallDirectoryPreview(p, entries, out)) {
-    return ToolSuccess(std::move(*preview), ReadFileResultChars());
+  ToolResult result = ListResult(preview ? std::move(*preview) : std::move(out),
+                                 static_cast<int64_t>(count), "entry");
+  result.hint = header;
+  if (preview) {
+    AddHint(result, "[small directory contents]");
+    result.result_chars = ReadFileResultChars();
   }
-  return ToolSuccess(std::move(out));
+  return result;
 }
 
 }  // namespace uagent

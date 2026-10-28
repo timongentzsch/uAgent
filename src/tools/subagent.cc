@@ -520,6 +520,7 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
     result.output = ChildAgentRecoverEnvelope(std::move(result.output),
                                               result.artifact->path);
   }
+  if (child.wait_status) result.body_kind = "markdown";
   if (result.Ok()) {
     // A launch receipt is process-supervisor output, not a malformed
     // child answer. Only a process that actually completed can have a
@@ -540,7 +541,7 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
   if (child.launched) {
     // A child still running is named in its launch receipt; the note says how
     // to resume one that has answered.
-    if (child.wait_status) result.output += ChildAgentResumeNote(id);
+    if (child.wait_status) AddHint(result, ChildAgentResumeNote(id));
     result.parts = json::array({LinkPart("agent", id, "Open agent")});
   }
   return result;
@@ -757,7 +758,6 @@ void Delegating(Tool& tool) {
     }
     return parts;
   };
-  tool.output_view = "markdown";
 }
 
 }  // namespace
@@ -848,30 +848,19 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
   };
   // Rows and traces name the work; approval_preview keeps the full form with
   // the route and flags, since that is what a person approves.
-  tool.summary = [describe](const json& arguments) {
-    const std::string operation = JsonValue(arguments, "operation", "spawn");
-    if (operation == "list" || operation == "message") {
-      return describe(arguments);
-    }
-    const std::string name = JsonValue(arguments, "name", "");
-    return (name.empty() ? std::string("Subagent") : name) + " · " +
-           FirstLine(JsonValue(arguments, "prompt", ""));
-  };
-  tool.header = [](const json& arguments) {
+  tool.headline = [](const json& arguments) {
     const std::string operation = JsonValue(arguments, "operation", "spawn");
     const std::string name = JsonValue(arguments, "name", "");
     const std::string task = FirstLine(JsonValue(arguments, "prompt", ""));
-    if (operation == "list") {
-      return json{{"verb", {"Listing", "Listed"}}, {"target", "agents"}};
-    }
+    if (operation == "list") return Headline{"Listing", "Listed", "agents"};
     if (operation == "message") {
-      return json{{"verb", {"Messaging", "Messaged"}},
-                  {"target", JsonValue(arguments, "agent_id", name)}};
+      return Headline{"Messaging", "Messaged",
+                      JsonValue(arguments, "agent_id", name)};
     }
-    return json{
-        {"verb", operation == "followup" ? json{"Following up", "Followed up"}
-                                         : json{"Delegating", "Delegated"}},
-        {"target", name.empty() ? task : name + ": " + task}};
+    const bool followup = operation == "followup";
+    return Headline{followup ? "Following up" : "Delegating",
+                    followup ? "Followed up" : "Delegated",
+                    name.empty() ? task : name + ": " + task};
   };
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
@@ -954,14 +943,9 @@ Tool SubagentFanoutTool(const Api& api, ActivitySupervisor& processes,
                          context);
       });
   Delegating(tool);
-  tool.summary = [](const json& arguments) {
-    const json* items = JsonArray(arguments, "items");
-    return "[fanout " + std::to_string(items ? items->size() : 0) + " items] " +
-           JsonValue(arguments, "prompt", "");
-  };
-  tool.header = [](const json& arguments) {
-    return json{{"verb", {"Fanning out", "Fanned out"}},
-                {"target", FirstLine(JsonValue(arguments, "prompt", ""))}};
+  tool.headline = [](const json& arguments) {
+    return Headline{"Fanning out", "Fanned out",
+                    FirstLine(JsonValue(arguments, "prompt", ""))};
   };
   return tool;
 }

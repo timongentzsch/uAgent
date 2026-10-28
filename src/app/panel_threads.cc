@@ -240,8 +240,9 @@ Tool ThreadSpawnTool(const std::string& folder,
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.intent = "delegate";
-  tool.summary = [](const json& a) { return JsonValue(a, "title", ""); };
-  tool.header = Verbs("Delegating", "Delegated");
+  tool.headline = [](const json& a) {
+    return Headline{"Delegating", "Delegated", JsonValue(a, "title", "")};
+  };
   return tool;
 }
 
@@ -283,10 +284,15 @@ Tool ThreadTool(const std::string& folder) {
                : ApprovalClass::kNone;
   };
   tool.mandatory_reason = "deleting a session";
-  tool.summary = [](const json& a) {
-    return JsonValue(a, "action", "") + " " + JsonValue(a, "session_id", "");
+  tool.headline = [](const json& a) {
+    const std::string action = JsonValue(a, "action", "");
+    const std::string target = JsonValue(a, "session_id", "");
+    if (action == "message") return Headline{"Messaging", "Messaged", target};
+    if (action == "stop") return Headline{"Stopping", "Stopped", target};
+    if (action == "close") return Headline{"Closing", "Closed", target};
+    if (action == "diff") return Headline{"Diffing", "Diffed", target};
+    return Headline{"Deleting", "Deleted", target};
   };
-  tool.header = Verbs("Delegating", "Delegated");
   return tool;
 }
 
@@ -362,10 +368,11 @@ Tool DecideTool(const std::string& folder) {
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
-  tool.summary = [](const json& a) {
-    return JsonValue(a, "decision", "") + " " + JsonValue(a, "session_id", "");
+  tool.headline = [](const json& a) {
+    return Headline{
+        "Deciding", "Decided",
+        JsonValue(a, "decision", "") + " " + JsonValue(a, "session_id", "")};
   };
-  tool.header = Verbs("Deciding", "Decided");
   return tool;
 }
 

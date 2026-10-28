@@ -219,15 +219,17 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         }
         if (!result.text.empty()) {
           std::string evidence = CitationEvidence(result.annotations);
-          std::string output =
-              "[web search result; refetch only if verification is "
-              "necessary]\n" +
-              result.text;
+          std::string output = std::move(result.text);
           if (!evidence.empty()) output += "\n\nSource evidence:\n" + evidence;
+          ToolResult answer = ToolSuccess(std::move(output));
+          answer.body_kind = "markdown";
+          answer.hint =
+              "[web search result; refetch only if verification is "
+              "necessary]";
           if (result.truncated) {
-            output += "\n[truncated; narrow the query]";
+            AddHint(answer, "[truncated; narrow the query]");
           }
-          return ToolSuccess(std::move(output));
+          return answer;
         }
         if (response.body.is_object() && response.body.contains("error") &&
             response.body["error"].is_object()) {
@@ -243,19 +245,18 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   t.capabilities = Capability(ToolCapability::kInspect) |
                    Capability(ToolCapability::kExternal);
   t.needs_approval = [](const json&) { return true; };
-  t.summary = [](const json& a) {
-    auto queries = a.find("queries");
-    if (queries == a.end() || !queries->is_array()) return std::string();
-    std::string summary;
-    for (const json& query : *queries) {
-      if (!query.is_string()) continue;
-      summary +=
-          (summary.empty() ? "" : " | ") + FirstLine(query.get<std::string>());
+  t.headline = [](const json& a) {
+    std::string target;
+    if (const json* queries = JsonArray(a, "queries")) {
+      for (const json& query : *queries) {
+        if (!query.is_string()) continue;
+        target +=
+            (target.empty() ? "" : " | ") + FirstLine(query.get<std::string>());
+      }
     }
-    return summary;
+    return Headline{"Searching the web for", "Searched the web for", target};
   };
   t.parallel_safe = true;
-  t.header = Verbs("Searching the web for", "Searched the web for");
   t.intent = "research";
   t.parameters["properties"]["queries"]["maxItems"] = WebSearchMaxUses();
   // The request budget is per attempt (see Api::Post); the tool deadline has

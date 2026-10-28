@@ -112,7 +112,7 @@ export function StatisticsContent({
               .join(" · "),
           ],
           ["Tool", call?.name || "—"],
-          ["Status", block.status || "—"],
+          ["Status", ("state" in block && block.state) || "—"],
           ["Duration", duration(took)],
           ["TTFT", duration(reply?.ttft_ms)],
           ["Throughput", rate(reply?.tokens_per_second)],

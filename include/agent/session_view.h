@@ -44,11 +44,6 @@ json ConversationView(const Conversation& conversation, uint64_t before = 0);
 json LastMessageView(const Conversation& conversation);
 // A user message's text without the "Attached:" path trailer the model sees.
 std::string StripAttachedTrailer(const std::string& text);
-// A tool result without the hints written for the model only: a leading
-// "[running] activity …" / "[started] subagent …" / "[detached] pid …" line
-// and a subagent's final "[collaborator …]" resume line. Rows link to that
-// work through their parts instead.
-std::string StripModelHints(std::string text);
 // Upserts one block by id and returns it (nullptr once evicted from the
 // bounded view).
 const json* MergeDisplayBlock(json& view, const json& block);

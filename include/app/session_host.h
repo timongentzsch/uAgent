@@ -126,8 +126,7 @@ struct ScheduleTick {
 };
 
 struct SnapshotQuery {
-  bool has_before = false, has_detail = false, raw = false, artifact = false,
-       has_http = false;
+  bool has_before = false, has_detail = false, raw = false, has_http = false;
   std::string before{}, detail{}, http{}, part{}, offset{};
 };
 

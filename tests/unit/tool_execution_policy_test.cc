@@ -54,9 +54,9 @@ void TestToolExecutionPolicy() {
     activities.push_back({{"id", id},
                           {"category", "explore"},
                           {"groupable", true},
-                          {"status", "success"}});
+                          {"state", "ok"}});
   }
-  activities[2]["status"] = "failed";
+  activities[2]["state"] = "failed";
   activities[4]["groupable"] = false;
   GroupToolActivities(activities);
   CHECK(activities[0]["group"] == activities[1]["group"]);
@@ -352,12 +352,6 @@ void TestToolExecutionPolicy() {
   fs::remove_all(log_root);
 
   ActivitySupervisor task_processes;
-  Activity task_header{.pid = 7,
-                       .cmd = "uagent -p 'very long delegated prompt'",
-                       .kind = ActivityKind::kSubagent};
-  CHECK(ActivityResultHeader(task_header) == "[Activity result: subagent 7]");
-  CHECK(ActivityResultHeader(task_header).find("delegated prompt") ==
-        std::string::npos);
   ActivityCompletion task_completion;
   task_completion.activity_id = 7;
   task_completion.kind = ActivityKind::kSubagent;
@@ -371,8 +365,9 @@ void TestToolExecutionPolicy() {
                        .immediate = true,
                        .activity_kind = ActivityKind::kSubagent})
           .result;
-  CHECK(launched.output.starts_with(kStartedSubagentMarker));
-  CHECK(StripModelHints(launched.output).empty());
+  // The launch is a hint and a link: a person has nothing to read.
+  CHECK(launched.hint.starts_with(kStartedSubagentMarker));
+  CHECK(launched.output.empty() && launched.body_kind == "link");
   CHECK(task_processes.JoinableCount() == 1);
   std::vector<Activity> tasks = task_processes.Snapshot();
   CHECK(tasks.size() == 1);

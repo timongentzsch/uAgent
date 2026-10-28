@@ -56,8 +56,7 @@ std::vector<std::string> ChildAgentCommand(bool debug,
 std::string ChildAgentAnswer(std::string output,
                              const std::vector<std::string>& clamped);
 
-// The last line of a subagent's result: how the model resumes it. The
-// conversation view strips it by its opening (StripModelHints).
+// How the model resumes a subagent, a line of its result's hint.
 inline std::string ChildAgentResumeNote(const std::string& id) {
   return kCollaboratorMarker + id +
          "; resume with subagent operation=followup]";

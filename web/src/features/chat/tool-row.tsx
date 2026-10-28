@@ -10,7 +10,7 @@ import {
 } from "../../shared/ui.tsx";
 import DiffView from "../../shared/diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { cleanText, isFailedStatus } from "../../shared/display.ts";
+import { cleanText } from "../../shared/display.ts";
 import type {
   Activity,
   FilePart,
@@ -21,6 +21,7 @@ import type {
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
+import { HostContext } from "../../state/host-context.ts";
 import { useElapsed } from "../../shared/time.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { coarsePointer } from "../../shared/layout.ts";
@@ -61,9 +62,26 @@ function ToolInput({ parts }: { parts: ToolPart[] }) {
               </Fragment>
             ))}
           </dl>
+        ) : part.kind === "link" && part.to === "browser" ? (
+          <BrowserLink key={index} label={part.label} />
         ) : null,
       )}
     </>
+  );
+}
+
+// A call working in the browser opens it, as the header's button does.
+function BrowserLink({ label }: { label: string }) {
+  const host = useContext(HostContext);
+  if (!host) return <p class="small muted">{label}</p>;
+  return (
+    <Button
+      variant="quiet"
+      class="tool-link"
+      onClick={() => host.setModal({ type: "browser" })}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -167,7 +185,7 @@ export function ToolRow({
   // Work the call started keeps the row in the present tense until it ends.
   let { title, subtitle } = getToolRow(block, running || !!live);
   if (live) subtitle = [live.status, elapsed].filter(Boolean).join(" · ");
-  const failed = isFailedStatus(block.status);
+  const failed = block.state === "failed";
   // Short one-line arguments read as facts beside the tool's name; long or
   // multi-line ones stay blocks below.
   const brief = ([, value]: [string, string]) =>
@@ -234,15 +252,15 @@ export function ToolRow({
             Recent output only. Connect to load the full result.
           </p>
         )}
-        {loadFull && !expanding && online && block.view?.output !== "tail" && (
+        {loadFull && !expanding && online && block.body_kind !== "tail" && (
           <Button variant="quiet" class="tool-link" onClick={loadFull}>
             Load full output
           </Button>
         )}
         {expanding && <Skeleton label="Loading full tool output…" />}
         {loadError && <LoadError error={loadError} retry={retry} />}
-        {block.view?.output === "tail" ? null : text ? (
-          block.view?.output === "markdown" ? (
+        {block.body_kind === "tail" ? null : text ? (
+          block.body_kind === "markdown" ? (
             <div class="tool-output">
               <Markdown text={output} />
             </div>
@@ -281,11 +299,11 @@ export function ToolInline({
   open?: OpenLink;
 }) {
   const call = block.kind === "tool_result" ? block : undefined;
-  const diff = call?.change?.includes("\n") ? call.change : "";
+  const diff = call?.change || "";
   // Until the full text loads, a truncated result shows its end.
   const more = !!block.truncated && !loaded;
   const output =
-    block.view?.output === "tail"
+    block.body_kind === "tail"
       ? cleanText((more && call?.tail) || text || "").trim()
       : "";
   const parts = block.parts || [];
@@ -293,7 +311,12 @@ export function ToolInline({
   if (!diff && !output && !parts.length && !files.length) return null;
   return (
     <div class="tool-inline">
-      {diff && <DiffView text={cleanText(diff)} />}
+      {diff && (
+        <DiffView
+          text={cleanText(diff)}
+          counts={[call?.result?.added ?? 0, call?.result?.removed ?? 0]}
+        />
+      )}
       {output && (
         <OutputBox
           text={output}

@@ -151,58 +151,19 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     return std::nullopt;
   };
   activity.intent = "run";
-  activity.header = [](const json& a) {
+  activity.headline = [](const json& a) {
     const std::string operation = JsonValue(a, "operation", "");
-    const std::string id = std::to_string(JsonValue(a, "id", int64_t{0}));
-    if (operation == "list") {
-      return json{{"verb", {"Listing", "Listed"}}, {"target", "activities"}};
-    }
+    const std::string target =
+        "activity " + std::to_string(JsonValue(a, "id", int64_t{0}));
+    if (operation == "list") return Headline{"Listing", "Listed", "activities"};
     if (operation == "wait") {
-      return json{{"verb", {"Waiting for", "Waited for"}},
-                  {"target", "activities"}};
+      return Headline{"Waiting for", "Waited for", "activities"};
     }
-    if (operation == "stop") {
-      return json{{"verb", {"Stopping", "Stopped"}},
-                  {"target", "activity " + id}};
-    }
+    if (operation == "stop") return Headline{"Stopping", "Stopped", target};
     if (operation == "write" || operation == "resize") {
-      return json{{"verb", {"Sending input to", "Sent input to"}},
-                  {"target", "activity " + id}};
+      return Headline{"Sending input to", "Sent input to", target};
     }
-    return json{{"verb", {"Checking", "Checked"}},
-                {"target", "activity " + id}};
-  };
-  activity.summary = [](const json& a) {
-    std::string operation = JsonValue(a, "operation", "");
-    int64_t id = JsonValue(a, "id", int64_t{0});
-    int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
-    std::string wait =
-        wait_ms > 0
-            ? " · wait≤" + FmtDuration(static_cast<double>(wait_ms) / 1000.0)
-            : std::string();
-    if (operation == "list") return std::string("list activities");
-    if (operation == "wait") {
-      return "wait for " + JsonValue(a, "mode", "any") + " · " +
-             (a.contains("ids") ? JsonDump(a["ids"]) : "all current") + wait;
-    }
-    std::string target = "activity " + std::to_string(id);
-    if (operation == "write") {
-      return "write " +
-             FmtBytes(static_cast<int64_t>(JsonValue(a, "chars", "").size())) +
-             " → " + target + wait;
-    }
-    if (operation == "resize") {
-      return "resize " + std::to_string(JsonValue(a, "rows", int64_t{0})) +
-             "×" + std::to_string(JsonValue(a, "cols", int64_t{0})) + " → " +
-             target + wait;
-    }
-    if (operation == "stop") return "stop " + target;
-    if (operation == "poll" && a.contains("until")) {
-      return "await " + TerminalSafe(JsonValue(a, "until", "")) + " · " +
-             target + wait;
-    }
-    if (operation == "poll") return "poll " + target + wait;
-    return std::string("activity");
+    return Headline{"Checking", "Checked", target};
   };
 }
 

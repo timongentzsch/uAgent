@@ -31,6 +31,29 @@
 #include "include/tools/tool.h"
 
 namespace uagent {
+namespace {
+
+// A row for work that ended outside a tool call, in the same shape as a
+// call's: its headline, how it ended and its output. The caller adds what
+// links it to the work.
+json Receipt(const Headline& headline, std::string_view state,
+             const ResultFacts& facts, std::string text,
+             std::string_view body_kind, json parts) {
+  json view = {{"verb", {headline.present, headline.past}}};
+  if (!headline.target.empty()) view["target"] = headline.target;
+  return {{"text", std::move(text)},
+          {"view", std::move(view)},
+          {"state", state},
+          {"result", ResultJson(facts, state, -1)},
+          {"body_kind", body_kind},
+          {"parts", std::move(parts)},
+          {"activity",
+           {{"label", headline.target.empty()
+                          ? headline.past
+                          : headline.past + " " + headline.target}}}};
+}
+
+}  // namespace
 
 // One finished extraction: its receipt decides what the memory event records,
 // and only a change or a failure is worth a line on screen.
@@ -62,11 +85,7 @@ void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
       // the cause, which is how eight failures came to be labelled with a
       // condition that did not fail anything. `HeadTail` keeps the
       // same convention: errors live at the end.
-      // ArtifactHint appends a captured-log pointer after everything else, so
-      // it is the last line whenever output was spilled to a file. It is
-      // structure, never the cause; drop it before looking for one.
-      std::string output =
-          StripArtifactHint(RedactMemorySecrets(completion.output));
+      std::string output = RedactMemorySecrets(completion.output);
       std::string_view tail(output);
       while (!tail.empty()) {
         size_t line = tail.find_last_not_of("\r\n");
@@ -110,29 +129,32 @@ void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
     std::string line = "Memory " + label;
     if (!event.key.empty()) line += " · " + event.key;
     // The same row shape as a memory tool call: verb, key, link.
-    const json verb =
-        event.action == "created"   ? json{"Saving memory", "Saved memory"}
-        : event.action == "updated" ? json{"Updating memory", "Updated memory"}
-        : event.action == "deleted" ? json{"Forgetting memory", "Forgot memory"}
-        : warning ? json{"Saving memory", "Could not save memory"}
-                  : json{"Checking memory", "Checked memory"};
+    const Headline headline =
+        event.action == "created"
+            ? Headline{"Saving memory", "Saved memory", event.key}
+        : event.action == "updated"
+            ? Headline{"Updating memory", "Updated memory", event.key}
+        : event.action == "deleted"
+            ? Headline{"Forgetting memory", "Forgot memory", event.key}
+        : warning
+            ? Headline{"Saving memory", "Could not save memory", event.key}
+            : Headline{"Checking memory", "Checked memory", event.key};
     json parts = json::array();
     if (!event.key.empty() && event.action != "deleted") {
       parts.push_back(LinkPart("memory", event.key, "Open memory"));
     }
-    json block = conversation_.RecordEntry(
-        {{"text", line + (event.preview.empty() ? "" : "\n" + event.preview)},
-         {"memory",
-          {{"action", event.action},
-           {"key", event.key},
-           {"automatic", event.automatic},
-           {"minor", minor}}},
-         {"view",
-          {{"verb", verb}, {"target", event.key}, {"output", "markdown"}}},
-         {"parts", std::move(parts)},
-         {"activity", {{"category", "memory"}, {"label", line}}},
-         {"status", warning ? "failed" : "completed"},
-         {"turn_root", turn_root_}});
+    ResultFacts facts;
+    facts.no_change = event.action == "no_change";
+    if (event.action == "receipt_unavailable") facts.outcome = event.action;
+    json block = Receipt(headline, warning ? "failed" : "ok", facts,
+                         event.preview, "markdown", std::move(parts));
+    block["activity"]["category"] = "memory";
+    block["memory"] = {{"action", event.action},
+                       {"key", event.key},
+                       {"automatic", event.automatic},
+                       {"minor", minor}};
+    block["turn_root"] = turn_root_;
+    block = conversation_.RecordEntry(std::move(block));
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
     // The preview continues the notice, indented under its dot.
     if (!event.preview.empty()) line += "\n  " + event.preview;
@@ -161,8 +183,6 @@ void Agent::DeliverActivityCompletions(
   bool first = true;
   for (const ActivityCompletion& completion : completions) {
     if (completion.kind == ActivityKind::kMemory) continue;
-    std::string header = ActivityResultHeader(completion);
-
     const bool succeeded = ExitedOk(completion.status);
     PresentationRecord record;
     record.status = succeeded ? PresentationStatus::kSucceeded
@@ -175,36 +195,28 @@ void Agent::DeliverActivityCompletions(
     if (!label.empty()) {
       record.title += " · " + Utf8Trunc(label, kStatusLabelBytes);
     }
-    const json completion_activity = {
-        {"category",
-         completion.kind == ActivityKind::kSubagent ? "delegate" : "run"},
-        {"label", record.title}};
-    std::string text = record.title + (succeeded ? " completed" : " failed");
-    if (!completion.output.empty()) text += "\n" + completion.output;
     const bool agent = completion.kind == ActivityKind::kSubagent &&
                        !completion.source_id.empty();
-    json block = conversation_.RecordEntry(
-        {{"text", std::move(text)},
-         {"view",
-          {{"verb",
-            json{agent ? "Delegating" : "Running",
-                 succeeded ? (agent ? "Delegated" : "Finished") : "Failed"}},
-           {"target",
-            Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
-           {"output", "tail"}}},
-         {"parts",
-          json::array(
-              {agent ? LinkPart("agent", completion.source_id, "Open agent")
-                     : LinkPart("activity", completion.activity_id,
-                                "Open activity")})},
-         {"activity_id", completion.activity_id},
-         // The full command travels with the record (bounded): rows and
-         // titles abbreviate, but the popup and history must not lose it
-         // when the supervisor no longer retains the activity.
-         {"command", Utf8Trunc(completion.command, kActivityCommandBytes)},
-         {"activity", completion_activity},
-         {"agent_id", completion.source_id},
-         {"status", succeeded ? "completed" : "failed"}});
+    ResultFacts facts;
+    facts.exit = ExitFacts(completion.status);
+    json block = Receipt(
+        {agent ? "Delegating" : "Running",
+         succeeded ? (agent ? "Delegated" : "Finished") : "Failed",
+         Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
+        succeeded ? "ok" : "failed", facts, completion.output, "tail",
+        json::array({agent
+                         ? LinkPart("agent", completion.source_id, "Open agent")
+                         : LinkPart("activity", completion.activity_id,
+                                    "Open activity")}));
+    block["activity"]["category"] =
+        completion.kind == ActivityKind::kSubagent ? "delegate" : "run";
+    block["activity_id"] = completion.activity_id;
+    // The full command travels with the record (bounded): rows and titles
+    // abbreviate, but the popup and history must not lose it when the
+    // supervisor no longer retains the activity.
+    block["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
+    block["agent_id"] = completion.source_id;
+    block = conversation_.RecordEntry(std::move(block));
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
     Event display{
         EventId::kActivityCompleted,
@@ -218,14 +230,13 @@ void Agent::DeliverActivityCompletions(
     display.presentation = std::move(record);
     Emit(std::move(display));
 
-    std::string note = header + "\n" + completion.output +
-                       FmtExit(completion.status, /*show_ok=*/true);
+    std::string note = ActivityCompletionText(completion, completion.output);
     size_t separator = first ? 0 : 2;
     if (batch.size() + separator + note.size() > kAutomaticBatchBytes) {
-      note = header + "\n" + HeadTail(completion.output, 512) +
-             "\n[completion reduced; use activity for the retained "
-             "transcript]" +
-             FmtExit(completion.status, /*show_ok=*/true);
+      note = ActivityCompletionText(
+          completion, HeadTail(completion.output, 512) +
+                          "\n[completion reduced; use activity for the "
+                          "retained transcript]");
       ++reduced;
     }
     if (!first) batch += "\n\n";

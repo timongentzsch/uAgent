@@ -29,9 +29,28 @@ async function seed(page, host) {
         },
       ],
     },
-    { role: "tool", tool_call_id: "call-1", content: "found a quokka here" },
+    // The message holds the model's hint too; a person reads, and search
+    // finds, the output its facts keep.
+    {
+      role: "tool",
+      tool_call_id: "call-1",
+      content: "found a quokka here\n[exit code 0]",
+    },
   );
   kinds.push("assistant", "tool_result");
+  const display = {
+    ids: messages.map((_, index) => index + 1),
+    next: messages.length + 1,
+    facts: {
+      "t-call-1": {
+        name: "run",
+        call_id: "call-1",
+        state: "ok",
+        result: { word: "1ms" },
+        output: "found a quokka here",
+      },
+    },
+  };
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await saveHistory(host, "needle.json", {
@@ -40,6 +59,7 @@ async function seed(page, host) {
     turns: 80,
     messages,
     kinds,
+    display,
   });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByRole("button", { name: /Needle/ })).toBeVisible();

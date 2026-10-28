@@ -440,9 +440,8 @@ void TestRegistries() {
                                      {"mode", "lean"}})
               .find("lean: reading and running") != std::string::npos);
   }
-  // Operations that hand over no authority say no more than the summary.
-  const json list_call{{"operation", "list"}};
-  CHECK(subagent.approval_preview(list_call) == subagent.summary(list_call));
+  // Operations that hand over no authority say only what they do.
+  CHECK(subagent.approval_preview({{"operation", "list"}}) == "list agents");
 }
 
 void TestCommandAndDisplayRegistries() {

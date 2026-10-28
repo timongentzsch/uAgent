@@ -41,13 +41,7 @@ import { routes } from "../../state/api.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
-import {
-  capitalize,
-  diffCounts,
-  formatStat,
-  isRunningStatus,
-  statusLine,
-} from "../../shared/display.ts";
+import { capitalize, formatStat, isRunning } from "../../shared/display.ts";
 import { DetailContext } from "../../shared/verbosity.ts";
 
 // The inspector opens a block's own work; a link part names it.
@@ -140,7 +134,6 @@ function MessageView({ block, online, session }: MessageProps) {
   const deliveries = "deliveries" in block ? block.deliveries : undefined;
   const unavailableImages =
     "unavailable_images" in block ? block.unavailable_images : undefined;
-  const took = "duration_ms" in block ? block.duration_ms : undefined;
   const load = useBlockReader(session, read);
   const fullText = useResource(
     (signal) =>
@@ -256,7 +249,7 @@ function MessageView({ block, online, session }: MessageProps) {
       />
     );
   const actor = userOwned || row || agentRow ? null : block.kind;
-  const running = took == null && isRunningStatus(block.status);
+  const running = row && isRunning(block.state);
   const assets = routes.assets(session.id);
   const header = !row;
   return (
@@ -272,19 +265,12 @@ function MessageView({ block, online, session }: MessageProps) {
       {header && (
         <header>
           {actor && <span class="actor">{actor}</span>}
-          {block.status && (
-            <span class="muted">
-              {statusLine({
-                status: block.status,
-                duration_ms: took,
-              })}
-            </span>
-          )}
+          {outgoing?.status && <span class="muted">{outgoing.status}</span>}
           <Time value={block.time} />
-          {recall && outgoing && recallable(block, online) && (
+          {recall && outgoing && recallable(outgoing, online) && (
             <IconButton
               label={
-                unsent(block)
+                unsent(outgoing)
                   ? "Return message to composer"
                   : "Recall guidance to composer"
               }
@@ -406,10 +392,10 @@ function MessageView({ block, online, session }: MessageProps) {
               : "Show full message"}
         </Button>
       )}
-      {(outgoing?.error || (resend && unsent(block))) && (
-        <p role="alert" class={unsent(block) ? "failure unsent" : undefined}>
-          {outgoing?.error || block.status}
-          {resend && outgoing && unsent(block) && (
+      {outgoing && (outgoing.error || (resend && unsent(outgoing))) && (
+        <p role="alert" class={unsent(outgoing) ? "failure unsent" : undefined}>
+          {outgoing.error || outgoing.status}
+          {resend && unsent(outgoing) && (
             <Button
               size="compact"
               disabled={!online}
@@ -461,18 +447,16 @@ class Message extends Component<MessageProps> {
 // what they did, the status what their edits changed.
 function GroupRow(props: MessageProps) {
   const steps = props.block.children || [];
-  const running = steps.some(
-    (step) =>
-      !("duration_ms" in step && step.duration_ms != null) &&
-      isRunningStatus(step.status),
+  const running = steps.some((step) =>
+    step.kind === "tool_result" || step.kind === "activity"
+      ? isRunning(step.state)
+      : !("duration_ms" in step && step.duration_ms != null),
   );
   const lines = formatStat(
     steps.reduce<[number, number]>(
       (sum, step) => {
-        const [added, removed] = diffCounts(
-          "change" in step ? step.change : undefined,
-        );
-        return [sum[0] + added, sum[1] + removed];
+        const result = "result" in step ? step.result : undefined;
+        return [sum[0] + (result?.added ?? 0), sum[1] + (result?.removed ?? 0)];
       },
       [0, 0],
     ),

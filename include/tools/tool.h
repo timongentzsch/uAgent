@@ -61,9 +61,6 @@ struct ToolArtifact {
 };
 
 std::string ArtifactHint(const ToolArtifact& artifact);
-// `output` without a trailing ArtifactHint, which is structure and never the
-// cause of a failure.
-std::string StripArtifactHint(std::string output);
 
 struct ReadRange {
   std::string path;
@@ -84,18 +81,45 @@ struct FileEffect {
   std::optional<uint32_t> before_mode = std::nullopt;
 };
 
+// What a result was, as facts every client words the same way (ResultWord).
+// An unset fact was not reported, which is not the same as zero.
+struct ResultFacts {
+  struct Exit {
+    int code = 0;
+    int signal = 0;  // the signal that ended it; `code` then means nothing
+  };
+  std::optional<Exit> exit = std::nullopt;
+  std::optional<int64_t> added = std::nullopt;    // lines a change added
+  std::optional<int64_t> removed = std::nullopt;  // and removed
+  std::optional<int64_t> items = std::nullopt;    // what the result counts
+  std::string unit = {};  // the singular noun `items` counts: "line"
+  // Why a call ended as it did beyond its state: denied, rejected, invalid,
+  // limit, unavailable, timed_out. The tool loop sets it.
+  std::string outcome = {};
+  std::string reason = {};  // a short why, for a refused call
+  bool no_change = false;   // it found or changed nothing new
+};
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
+  // What the call returned: the model reads it and a person sees it.
   std::string output;
+  // Text for the model only, which the tool loop appends to `output`: how
+  // to read the result and what to do next. A person never sees it.
+  std::string hint;
+  ResultFacts facts;
+  // How a client draws the body: text, markdown, tail (its last lines stay
+  // visible), diff (`diff` is the body), image, link or fields.
+  std::string body_kind = "text";
   ToolErrorCode error = ToolErrorCode::kNone;
   std::optional<ToolArtifact> artifact;
   std::optional<ReadRange> read_range;
   // Optional model-facing override for this call. Most tools inherit their
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
-  std::string display;  // optional terminal-only receipt
-  // The whole receipt, once the turn loop has cut `display` to its opening.
-  std::string display_path;
+  std::string diff;  // what a change did, as diff lines; never model-facing
+  // The whole diff, once the turn loop has cut `diff` to its opening.
+  std::string diff_path;
   // Display-only view parts shown on the row without expanding it, never
   // model-facing: links to work the call started and files it shared.
   json parts = nullptr;
@@ -103,7 +127,6 @@ struct ToolResult {
   // Opaque identity of a failed exact edit: target, original revision and old
   // text. Reads cannot erase this identity; different revisions do not collide.
   std::string recovery_key;
-  bool no_change = false;  // activity poll found nothing new
   bool activity_terminal = false;
 
   bool Ok() const { return status == CompletionStatus::kSuccess; }
@@ -113,6 +136,38 @@ ToolResult ToolSuccess(std::string output, int64_t result_chars = -1);
 ToolResult ToolFailure(ToolErrorCode error, std::string output);
 ToolResult ToolCancelled(std::string output);
 ToolResult ToolTimedOut(std::string output);
+// A process that ended with `wait_status`: a success on a clean exit, else a
+// failure. The exit is a fact, and the hint tells the model a bad one.
+ToolResult ExitResult(std::string output, int wait_status);
+// The model's "[exit code N]" / "[killed by signal N]" for `wait_status`; ""
+// for a clean exit unless `show_ok`.
+std::string ExitHint(int wait_status, bool show_ok);
+// How `wait_status` ended a process, as a fact; unset when it did not end.
+std::optional<ResultFacts::Exit> ExitFacts(int wait_status);
+// A change: `output` tells the model, `diff` shows a person, and the counts
+// are its facts.
+ToolResult ChangeResult(std::string output, std::string diff, int64_t added,
+                        int64_t removed);
+// A result that lists `items` of `unit`.
+ToolResult ListResult(std::string output, int64_t items, std::string unit);
+// Adds a line to the model's hint; leading newlines of `line` are dropped.
+void AddHint(ToolResult& result, std::string_view line);
+// `result` as the model reads it: its output, then its hints.
+std::string ModelText(const ToolResult& result);
+// What the model gets after the output, whatever cap cuts the output: the
+// hint, then where a captured log is kept, each on a line of its own.
+std::string ModelHint(const ToolResult& result);
+
+// The one state vocabulary of rows and receipts: ok, failed or cancelled once
+// finished, "running" before.
+const char* ResultState(CompletionStatus status);
+// The words a row's result reads as, from its facts and state, then its
+// duration when one is given (>= 0): "exit 2 · 1.4s", "+3 −1 · 20ms".
+std::string ResultWord(const ResultFacts& facts, std::string_view state,
+                       double duration_ms);
+// The facts as a row carries them, with their word.
+json ResultJson(const ResultFacts& facts, std::string_view state,
+                double duration_ms);
 
 struct ToolContext {
   ToolContext() = default;
@@ -175,9 +230,15 @@ struct ActionRequires {
   std::vector<std::pair<std::string, std::vector<std::string>>> actions;
 };
 
+// A call's headline: "Editing a.ts" while it runs, "Edited a.ts" after.
+struct Headline {
+  std::string present;
+  std::string past;
+  std::string target = {};
+};
+
 struct Tool {
   using Run = std::function<ToolResult(const json&, const ToolContext&)>;
-  using Summary = std::function<std::string(const json&)>;
   using Approval = std::function<bool(const json&)>;
   using Validate = std::function<std::optional<ToolArgumentIssue>(const json&)>;
   using Canonicalize = std::function<void(json&)>;
@@ -187,7 +248,7 @@ struct Tool {
   // assuming consent.
   using Classify = std::function<ApprovalClass(const json&)>;
   // Full, possibly multi-line text shown only when asking a person to approve
-  // this call. `summary` stays a one-liner for labels, traces and evidence.
+  // this call. The headline stays a one-liner for labels, traces and evidence.
   using Preview = std::function<std::string(const json&)>;
   // What a remembered approval of a call covers: calls with the same
   // subject need no new one. Unset means its exact arguments.
@@ -195,9 +256,9 @@ struct Tool {
   // How a call's input reads to a person, as ToolView parts. Unset means the
   // generic view: short strings and scalars as fields, long text as code.
   using Present = std::function<json(const json&)>;
-  // The row's headline: {"verb": [present, past], "target"?}. Without a
-  // target the summary is used; unset means "Calling/Called <title>".
-  using Header = std::function<json(const json&)>;
+  // What a call reads as. Unset means "Calling/Called <title>" and the
+  // default target (DefaultTarget).
+  using Headlines = std::function<Headline(const json&)>;
 
   std::string name;
   std::string category;  // workspace, execute, web, collaborate, memory, mcp
@@ -210,14 +271,10 @@ struct Tool {
   std::string intent;
   Approval mutates;  // argument-dependent mutation (e.g. memory save)
   Run run;
-  Canonicalize canonicalize;  // materialized provider args -> operation args
-  Validate validate;          // semantic issue before approval/execution
-  Summary summary;            // args -> one-line display
-  Present present;            // args -> ToolView input parts
-  Header header;              // args -> ToolView verb and target
-  // How the result reads: "text" (a log, expanded on demand), "markdown", or
-  // "tail" (its last lines stay visible, e.g. a command's output).
-  std::string output_view = "text";
+  Canonicalize canonicalize;   // materialized provider args -> operation args
+  Validate validate;           // semantic issue before approval/execution
+  Headlines headline;          // args -> verb and target
+  Present present;             // args -> ToolView input parts
   bool parallel_safe = false;  // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
   Approval needs_approval;   // dynamic policy (e.g. external read)
@@ -309,21 +366,27 @@ std::string ToolDescription(const Tool& tool);
 
 json ToolParameters(const Tool& tool);
 
-// One-line display for a call: the tool's own formatter, else `path` (the
-// common case), else the raw args. Shared by the approval prompt and the
-// call trace so both name the same action the same way.
+// The first short, one-line string argument, which names most calls; "" when
+// there is none.
+std::string DefaultTarget(const json& args);
+// What a call reads as: the tool's own headline, else "Calling/Called
+// <title>" with the default target. `tool` may be null for a tool that is
+// gone.
+Headline ToolHeadline(const Tool* tool, const json& args);
+// The call in one line, its past verb and target ("Ran make test"): for
+// labels, traces and evidence.
 std::string ToolSummary(const Tool& t, const json& args);
 
 // What every client renders for a call, from a closed vocabulary:
-//   {"verb": [present, past], "target", "input": [part...],
-//    "output": "text" | "markdown" | "tail"}
+//   {"verb": [present, past], "target", "input": [part...]}
 // The headline reads "Editing a.ts" while running and "Edited a.ts" after;
 // `input` shows on expand. A part is one of
 //   {"kind": "command", "text"}                  a shell line, verbatim
 //   {"kind": "code", "text", "language", "label"} a body: script, JSON, prose
 //   {"kind": "fields", "rows": [[label, value]]}  small scalar arguments
 //   {"kind": "file", "id", "name", "mime", "bytes"} a file the user can open
-//   {"kind": "link", "to": "agent"|"activity"|"memory", "id", "label"}
+//   {"kind": "link", "to": "agent"|"activity"|"memory"|"browser", "id",
+//    "label"}
 // File and link parts come from ToolResult.parts and stay visible on the row.
 // The result itself is the tool message (or its diff), so it is not repeated
 // here. `tool` may be null for a call whose tool is gone: the generic view.
@@ -331,8 +394,8 @@ json ToolView(const Tool* tool, const json& args);
 json CommandPart(std::string text);
 json CodePart(std::string text, std::string language, std::string label = "");
 json LinkPart(std::string to, json id, std::string label);
-// A header with a fixed verb pair; the target is the call's summary.
-Tool::Header Verbs(std::string present, std::string past);
+// A headline with a fixed verb pair and the default target.
+Tool::Headlines Verbs(std::string present, std::string past);
 // Generic parts for `args`, leaving out `skip` (arguments another part or the
 // result already shows). Labels (`intent`, `description`) are never repeated.
 json GenericInputParts(const json& args,

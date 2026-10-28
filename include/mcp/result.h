@@ -46,6 +46,7 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
                        "exceeded continuation limits");
   }
   std::string text;
+  std::string hint;  // where saved images went, for the model
   ToolErrorCode local_error = ToolErrorCode::kNone;
   if (r.contains("content") && r["content"].is_array()) {
     for (const json& c : r["content"]) {
@@ -56,6 +57,9 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
       } else if (type == "image") {
         ToolResult image = ToolImageResult(c, source_call_id, "mcp", kMcpDir);
         text += image.output;
+        if (!image.hint.empty()) {
+          hint += (hint.empty() ? "" : "\n") + image.hint;
+        }
         if (!image.Ok() && local_error == ToolErrorCode::kNone) {
           local_error = image.error;
         }
@@ -78,13 +82,13 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
                     : "(empty result)";
   }
   if (is_error && !text.starts_with("error")) text = "error: " + text;
-  if (is_error) {
-    return ToolFailure(ToolErrorCode::kRemoteError, std::move(text));
-  }
-  if (local_error != ToolErrorCode::kNone) {
-    return ToolFailure(local_error, std::move(text));
-  }
-  return ToolSuccess(std::move(text));
+  ToolResult result =
+      is_error ? ToolFailure(ToolErrorCode::kRemoteError, std::move(text))
+      : local_error != ToolErrorCode::kNone
+          ? ToolFailure(local_error, std::move(text))
+          : ToolSuccess(std::move(text));
+  result.hint = std::move(hint);
+  return result;
 }
 
 // cap without splitting a UTF-8 codepoint

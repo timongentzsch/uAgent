@@ -39,7 +39,6 @@ void Master::Snapshot(const Request& request, Response& response) {
   query.has_before = request.has_param("before");
   query.has_detail = request.has_param("detail");
   query.raw = request.has_param("raw");
-  query.artifact = request.has_param("artifact");
   query.has_http = request.has_param("http");
   query.before = request.get_param_value("before");
   query.detail = request.get_param_value("detail");

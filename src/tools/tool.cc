@@ -2,6 +2,8 @@
 
 #include "include/tools/tool.h"
 
+#include <sys/wait.h>
+
 #include <algorithm>
 #include <cctype>
 #include <functional>
@@ -15,6 +17,8 @@
 #include "include/core/defaults.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/platform.h"
+#include "include/core/strings.h"
 #include "include/core/time.h"
 
 namespace uagent {
@@ -55,14 +59,6 @@ std::string ArtifactHint(const ToolArtifact& artifact) {
          "not read it whole]";
 }
 
-std::string StripArtifactHint(std::string output) {
-  const size_t hint = output.find(kCapturedLogMarker);
-  if (hint != std::string::npos) {
-    output.resize(hint);
-  }
-  return output;
-}
-
 ToolResult ToolSuccess(std::string output, int64_t result_chars) {
   ToolResult result;
   result.output = std::move(output);
@@ -93,6 +89,133 @@ ToolResult ToolTimedOut(std::string output) {
   ToolResult result;
   result.status = CompletionStatus::kTimedOut;
   result.output = std::move(output);
+  return result;
+}
+
+ToolResult ExitResult(std::string output, int wait_status) {
+  ToolResult result =
+      ExitedOk(wait_status)
+          ? ToolSuccess(std::move(output))
+          : ToolFailure(ToolErrorCode::kProcessFailed, std::move(output));
+  result.facts.exit = ExitFacts(wait_status);
+  result.hint = ExitHint(wait_status, /*show_ok=*/false);
+  return result;
+}
+
+std::optional<ResultFacts::Exit> ExitFacts(int wait_status) {
+  if (WIFEXITED(wait_status)) {
+    return ResultFacts::Exit{.code = WEXITSTATUS(wait_status)};
+  }
+  if (WIFSIGNALED(wait_status)) {
+    return ResultFacts::Exit{.signal = WTERMSIG(wait_status)};
+  }
+  return std::nullopt;
+}
+
+std::string ExitHint(int wait_status, bool show_ok) {
+  if (WIFEXITED(wait_status)) {
+    return WEXITSTATUS(wait_status) != 0 || show_ok
+               ? "[exit code " + std::to_string(WEXITSTATUS(wait_status)) + "]"
+               : "";
+  }
+  if (WIFSIGNALED(wait_status)) {
+    return "[killed by signal " + std::to_string(WTERMSIG(wait_status)) + "]";
+  }
+  return "";
+}
+
+ToolResult ChangeResult(std::string output, std::string diff, int64_t added,
+                        int64_t removed) {
+  ToolResult result = ToolSuccess(std::move(output));
+  result.diff = std::move(diff);
+  result.body_kind = "diff";
+  result.facts.added = added;
+  result.facts.removed = removed;
+  return result;
+}
+
+ToolResult ListResult(std::string output, int64_t items, std::string unit) {
+  ToolResult result = ToolSuccess(std::move(output));
+  result.facts.items = items;
+  result.facts.unit = std::move(unit);
+  return result;
+}
+
+void AddHint(ToolResult& result, std::string_view line) {
+  line.remove_prefix(std::min(line.find_first_not_of('\n'), line.size()));
+  if (line.empty()) return;
+  if (!result.hint.empty()) result.hint += '\n';
+  result.hint += line;
+}
+
+std::string ModelHint(const ToolResult& result) {
+  std::string hint = result.hint.empty() ? "" : "\n" + result.hint;
+  if (result.artifact) hint += ArtifactHint(*result.artifact);
+  // A hint alone does not start on an empty line.
+  if (result.output.empty() && !hint.empty()) hint.erase(0, 1);
+  return hint;
+}
+
+std::string ModelText(const ToolResult& result) {
+  return result.output + ModelHint(result);
+}
+
+const char* ResultState(CompletionStatus status) {
+  switch (status) {
+    case CompletionStatus::kSuccess:
+      return "ok";
+    case CompletionStatus::kCancelled:
+      return "cancelled";
+    case CompletionStatus::kFailed:
+    case CompletionStatus::kTimedOut:
+      return "failed";
+  }
+  return "failed";
+}
+
+std::string ResultWord(const ResultFacts& facts, std::string_view state,
+                       double duration_ms) {
+  std::string word;
+  if (!facts.outcome.empty()) {
+    word = facts.outcome;
+    std::ranges::replace(word, '_', ' ');
+    if (!facts.reason.empty()) word += ": " + facts.reason;
+  } else if (facts.exit && facts.exit->signal != 0) {
+    word = "killed";
+  } else if (facts.exit && facts.exit->code != 0) {
+    word = "exit " + std::to_string(facts.exit->code);
+  } else if (facts.added.value_or(0) != 0 || facts.removed.value_or(0) != 0) {
+    word = "+" + std::to_string(facts.added.value_or(0)) + " −" +
+           std::to_string(facts.removed.value_or(0));
+  } else if (facts.no_change) {
+    word = "no change";
+  } else if (facts.items) {
+    word = Plural(*facts.items, facts.unit);
+  } else if (state == "failed" || state == "cancelled") {
+    word = state;
+  }
+  if (duration_ms < 0) return word;
+  std::string took = FmtDuration(duration_ms / 1000);
+  return word.empty() ? took : word + " · " + took;
+}
+
+json ResultJson(const ResultFacts& facts, std::string_view state,
+                double duration_ms) {
+  json result = {{"word", ResultWord(facts, state, duration_ms)}};
+  if (facts.exit) {
+    result["exit"] = facts.exit->signal != 0
+                         ? json{{"signal", facts.exit->signal}}
+                         : json{{"code", facts.exit->code}};
+  }
+  if (facts.added) result["added"] = *facts.added;
+  if (facts.removed) result["removed"] = *facts.removed;
+  if (facts.items) {
+    result["items"] = *facts.items;
+    result["unit"] = facts.unit;
+  }
+  if (!facts.outcome.empty()) result["outcome"] = facts.outcome;
+  if (!facts.reason.empty()) result["reason"] = facts.reason;
+  if (facts.no_change) result["no_change"] = true;
   return result;
 }
 
@@ -432,15 +555,30 @@ json ToolParameters(const Tool& tool) {
   return parameters;
 }
 
-// One-line display for a call: the tool's own formatter, else `path` (the
-// common case), else the raw args. Shared by the approval prompt and the
-// call trace so both name the same action the same way.
-std::string ToolSummary(const Tool& t, const json& args) {
-  if (t.summary) return t.summary(args);
-  if (args.contains("path") && args["path"].is_string()) {
-    return args["path"].get<std::string>();
+std::string DefaultTarget(const json& args) {
+  constexpr size_t kTargetChars = 160;
+  if (!args.is_object()) return {};
+  for (const auto& [key, value] : args.items()) {
+    if (key == "intent" || !value.is_string()) continue;
+    const std::string& text = value.get_ref<const std::string&>();
+    if (!text.empty() && text.size() <= kTargetChars &&
+        text.find('\n') == std::string::npos) {
+      return text;
+    }
   }
-  return JsonDump(args);
+  return {};
+}
+
+Headline ToolHeadline(const Tool* tool, const json& args) {
+  if (tool && tool->headline) return tool->headline(args);
+  const std::string title = tool ? ToolTitle(*tool) : "tool";
+  return {"Calling " + title, "Called " + title, DefaultTarget(args)};
+}
+
+std::string ToolSummary(const Tool& t, const json& args) {
+  Headline headline = ToolHeadline(&t, args);
+  return headline.target.empty() ? headline.past
+                                 : headline.past + " " + headline.target;
 }
 
 json CommandPart(std::string text) {
@@ -506,24 +644,20 @@ json LinkPart(std::string to, json id, std::string label) {
           {"label", std::move(label)}};
 }
 
-Tool::Header Verbs(std::string present, std::string past) {
-  return [present = std::move(present), past = std::move(past)](const json&) {
-    return json{{"verb", {present, past}}};
-  };
+Tool::Headlines Verbs(std::string present, std::string past) {
+  return
+      [present = std::move(present), past = std::move(past)](const json& args) {
+        return Headline{present, past, DefaultTarget(args)};
+      };
 }
 
 json ToolView(const Tool* tool, const json& args) {
-  json view = tool && tool->header ? tool->header(args) : json::object();
-  if (!view.contains("verb")) {
-    const std::string title = tool ? ToolTitle(*tool) : "tool";
-    view["verb"] = {"Calling " + title, "Called " + title};
-  }
-  if (!view.contains("target") && tool) {
-    view["target"] = ToolSummary(*tool, args);
-  }
-  view["input"] =
-      tool && tool->present ? tool->present(args) : GenericInputParts(args);
-  view["output"] = tool ? tool->output_view : "text";
+  Headline headline = ToolHeadline(tool, args);
+  json view = {
+      {"verb", {std::move(headline.present), std::move(headline.past)}},
+      {"input",
+       tool && tool->present ? tool->present(args) : GenericInputParts(args)}};
+  if (!headline.target.empty()) view["target"] = std::move(headline.target);
   return view;
 }
 

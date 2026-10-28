@@ -13,7 +13,6 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
-#include "include/agent/session_view.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -69,20 +68,32 @@ void Agent::PushToolResultMessage(const ToolCall& call, json message) {
 void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
                              const ToolResult& original, double duration_ms) {
   conversation_.AddStatistics({{"tool_ms", duration_ms}});
-  json facts = {
-      {"name", call.name},
-      {"status", CompletionStatusName(original.status)},
-      {"duration_ms", duration_ms},
-      {"output", Utf8Trunc(StripModelHints(original.output), kPreviewChars)},
-      {"truncated", original.output.size() > kPreviewChars},
-      {"change", original.display}};
-  if (!original.display_path.empty()) {
-    facts["change_path"] = original.display_path;
+  // The row as a person reads it: the output without the model's hints, and
+  // its facts. The tool message below is what the model reads.
+  const std::string& output = original.output;
+  const char* state = ResultState(original.status);
+  json facts = {{"name", call.name},
+                {"state", state},
+                {"result", ResultJson(original.facts, state, duration_ms)},
+                {"body_kind", original.body_kind},
+                {"duration_ms", duration_ms},
+                {"output", Utf8Trunc(output, kPreviewChars)},
+                {"truncated", output.size() > kPreviewChars},
+                {"change", original.diff}};
+  // The preview keeps the start of a long result; its end is where a command
+  // reports how it went, so rows can show that tail.
+  if (output.size() > kPreviewChars) {
+    facts["tail"] =
+        output.substr(Utf8BoundaryAfter(output, output.size() - 512));
   }
+  if (original.error != ToolErrorCode::kNone) {
+    facts["error_code"] = ToolErrorCodeName(original.error);
+  }
+  if (!original.diff_path.empty()) facts["change_path"] = original.diff_path;
   if (retain_exchanges_) {
     json exchange = {
         {"request", {{"name", call.name}, {"arguments", call.args}}},
-        {"response", original.output},
+        {"response", ModelText(original)},
         {"status", CompletionStatusName(original.status)},
         {"complete", true}};
     std::string body = JsonDump(exchange);
@@ -116,7 +127,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   }
   json message = {
       {"role", "tool"}, {"tool_call_id", call.id}, {"content", result}};
-  if (original.Ok() && original.read_range && result == original.output) {
+  if (original.Ok() && original.read_range && result == ModelText(original)) {
     const ReadRange& range = *original.read_range;
     message[kReadRangeField] = {range.path, range.first, range.last};
   }
@@ -210,18 +221,22 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
       {"id", call.id},
       {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},
       {"label", task.label},
-      {"groupable", valid &&
-                        (required == ApprovalClass::kNone ||
-                         (required == ApprovalClass::kYoloEligibleMutation &&
-                          ApprovalIsYolo())) &&
-                        call.name != "skill"}};
+      {"groupable",
+       valid && (required == ApprovalClass::kNone ||
+                 (required == ApprovalClass::kYoloEligibleMutation &&
+                  ApprovalIsYolo()))}};
   task.activity["response_id"] = call.response_id;
   task.activity["call_id"] = call.id;
   task.activity["occurrence_id"] = call.occurrence_id;
   task.activity["detail_id"] = call.detail_id;
-  task.activity["status_label"] =
-      tool ? StatusLabel(ToolTitle(*tool) + " · " + task.label)
-           : StatusLabel(call.name);
+  if (tool) {
+    const Headline headline = ToolHeadline(tool, arguments);
+    task.activity["status_label"] = StatusLabel(
+        headline.target.empty() ? headline.present
+                                : headline.present + " " + headline.target);
+  } else {
+    task.activity["status_label"] = StatusLabel(call.name);
+  }
   json view = ToolView(task.tool, task.args);
   // A rejected call shows the arguments it sent, not a confident headline.
   if (task.issue) view.erase("verb");
@@ -351,7 +366,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     // row carries its opening. It is kept with the session's edits, where it
     // lasts as long as the conversation; a run without a session file keeps
     // it with the retained exchanges.
-    if (std::string& diff = task.result.display;
+    if (std::string& diff = task.result.diff;
         diff.size() > kChangePreviewChars) {
       if (!edits_.Directory().empty()) {
         CreatePrivateDirectories(edits_.Directory());
@@ -360,15 +375,15 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                               ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
                               : edits_.Directory() + "/diff-XXXXXX");
       if (file && WriteAll(file.Get(), diff)) {
-        task.result.display_path = file.Release();
+        task.result.diff_path = file.Release();
       }
       diff = Utf8Prefix(std::move(diff), kChangePreviewChars);
     }
     json activity = task.activity;
-    activity["status"] = CompletionStatusName(task.result.status);
-    // This receipt comes from the operation, never from shell intent.
-    if (task.result.Ok() && !task.result.display.empty()) {
-      activity["label"] = FirstLine(task.result.display);
+    activity["state"] = ResultState(task.result.status);
+    // A change keeps its own row: its diff comes from the operation, never
+    // from shell intent.
+    if (task.result.Ok() && !task.result.diff.empty()) {
       activity["groupable"] = false;
     }
     activities.push_back(std::move(activity));
@@ -421,7 +436,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     const CallTask& task = tasks[index];
     if (IsActivityPoll(task)) {
       activity_polls.push_back({JsonValue(task.args, "id", int64_t{0}),
-                                task.result.Ok(), task.result.no_change,
+                                task.result.Ok(), task.result.facts.no_change,
                                 task.result.activity_terminal});
     }
     if (!task.issue) continue;

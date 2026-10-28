@@ -213,8 +213,8 @@ SnapshotResult SessionHost::HttpSnapshot(HostSession& session,
 
 std::optional<SnapshotResult> SessionHost::LiveDetail(
     HostSession& session, const SnapshotQuery& query) {
-  // The live view names a row's stored exchange, or its diff stored whole.
-  const char* stored = query.raw ? "exchange_path" : "change_path";
+  // The live view names a row's diff stored whole; a stored exchange is read
+  // from the saved conversation.
   std::string path;
   json inline_exchange = nullptr;
   bool turn_active = false;
@@ -228,31 +228,11 @@ std::optional<SnapshotResult> SessionHost::LiveDetail(
     }
     const json* view = JsonObject(session.state, "view");
     const json* blocks = view ? JsonArray(*view, "blocks") : nullptr;
-    if (blocks) {
+    if (blocks && !query.raw) {
       for (const json& block : *blocks) {
         if (JsonValue(block, "detail_id", "") == query.detail) {
-          path = JsonValue(block, stored, "");
+          path = JsonValue(block, "change_path", "");
           break;
-        }
-        if (const json* tools = JsonArray(block, "tools")) {
-          auto found =
-              std::find_if(tools->begin(), tools->end(), [&](const json& tool) {
-                return JsonValue(tool, "detail_id", "") == query.detail;
-              });
-          if (found != tools->end()) {
-            path = JsonValue(*found, stored, "");
-            const json retained_request = {
-                {"name", JsonValue(*found, "name", "")},
-                {"arguments", JsonValue(*found, "arguments", "")}};
-            if (!inline_exchange.is_null()) {
-              inline_exchange["request"] = retained_request;
-            } else if (path.empty()) {
-              inline_exchange = {{"request", retained_request},
-                                 {"response", ""},
-                                 {"complete", false}};
-            }
-            if (!path.empty()) break;
-          }
         }
       }
     }
@@ -279,15 +259,8 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
     const auto& conversation = history->conversation;
     if (query.has_detail) {
       size_t offset = ClampedOffset(query.offset);
-      json detail =
-          query.raw ? history->view.Exchange(query.detail, offset)
-          : query.artifact
-              ? ReadPrivateArtifact(
-                    JsonValue(JsonValue(conversation.DisplayFacts(),
-                                        query.detail.c_str(), json::object()),
-                              "artifact", ""),
-                    offset)
-              : history->view.Detail(query.detail, offset);
+      json detail = query.raw ? history->view.Exchange(query.detail, offset)
+                              : history->view.Detail(query.detail, offset);
       const int status = detail.contains("error") ? 404 : 200;
       return {std::move(detail), status};
     }

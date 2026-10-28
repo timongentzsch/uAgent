@@ -89,13 +89,12 @@ inline bool WaitForActivityDrain(
   }
 }
 
-// The completion notes a caller would see: each header over its output.
+// The completion notes the model reads: each header over its output.
 std::vector<std::string> CompletionNotes(ActivitySupervisor& supervisor) {
   std::vector<std::string> notes;
   for (const ActivityCompletion& completion :
        ActivityTakeCompletedDetails(supervisor)) {
-    notes.push_back(ActivityResultHeader(completion) + "\n" +
-                    completion.output);
+    notes.push_back(ActivityCompletionText(completion, completion.output));
   }
   return notes;
 }
@@ -542,7 +541,10 @@ void TestActivitySessions() {
         pipeline, {},
         {.command = "sh -c 'echo failed; exit 7' | tail -n 1", .tty = tty});
     CHECK(failed.result.error == ToolErrorCode::kProcessFailed);
-    CHECK(failed.result.output.find("exit code 7") != std::string::npos);
+    // The exit is a fact; the model still reads it, a person does not.
+    CHECK(failed.result.facts.exit && failed.result.facts.exit->code == 7);
+    CHECK(failed.result.hint.find("exit code 7") != std::string::npos);
+    CHECK(failed.result.output.find("exit code") == std::string::npos);
     CHECK(failed.wait_status.has_value());
   }
   // An explicitly requested POSIX shell retains its own semantics.
@@ -565,7 +567,8 @@ void TestActivitySessions() {
     ToolResult completed =
         ToolActivityWait(pipeline, {ActivityId(pipeline_jobs.back())}, "all",
                          BudgetMs(2000), {});
-    CHECK(completed.output.find("exit code 7") != std::string::npos);
+    CHECK(ModelText(completed).find("exit code 7") != std::string::npos);
+    CHECK(completed.facts.exit && completed.facts.exit->code == 7);
   }
 
   ToolContext context{std::chrono::steady_clock::now() +
@@ -578,8 +581,8 @@ void TestActivitySessions() {
     ToolResult yielded = public_run->run(
         {{"command", "sleep 60"}, {"yield_ms", kMinYieldMs}}, context);
     CHECK(yielded.Ok());
-    CHECK(yielded.output.starts_with(kRunningActivityMarker));
-    CHECK(!StripModelHints(yielded.output).starts_with(kRunningActivityMarker));
+    CHECK(yielded.hint.starts_with(kRunningActivityMarker));
+    CHECK(!yielded.output.starts_with(kRunningActivityMarker));
     for (const Activity& job : automatic_yield.Snapshot()) {
       CHECK_OK(ToolActivityStop(automatic_yield, ActivityId(job)));
     }
@@ -608,7 +611,7 @@ void TestActivitySessions() {
         activity ? activity->run({{"operation", "poll"}, {"id", id}}, context)
                  : ToolFailure(ToolErrorCode::kInternal, "missing activity");
     CHECK(initial.output.find("(no new output)") != std::string::npos);
-    CHECK(initial.no_change);
+    CHECK(initial.facts.no_change);
     CHECK(activity && activity
                           ->run({{"operation", "resize"},
                                  {"id", id},
@@ -634,7 +637,7 @@ void TestActivitySessions() {
           std::string::npos);
     CHECK((input.output + completed.output).find("got:hello") !=
           std::string::npos);
-    CHECK(completed.output.find("exit code 0") != std::string::npos);
+    CHECK(ModelText(completed).find("exit code 0") != std::string::npos);
   }
 
   // A persisted PID must never authorize signalling a different process that
@@ -676,7 +679,7 @@ void TestActivitySessions() {
     ToolResult poll = ToolActivityOutput(detached_reader, pid);
     CHECK(poll.Ok());
     CHECK(poll.activity_terminal);
-    CHECK(poll.output.starts_with("[exited · activity "));
+    CHECK(poll.hint.starts_with("[exited · activity "));
     ToolResult stopped = ToolActivityStop(detached_reader, pid);
     CHECK(stopped.Ok());
     CHECK(stopped.output.find("already exited") != std::string::npos);
@@ -776,16 +779,16 @@ void TestActivityWaitAndDelivery() {
     ToolResult capped = ToolActivityWait(capped_wait, {id}, "all", 300000,
                                          context.WithTimeout(1));
     CHECK(capped.Ok());
-    CHECK(capped.output.find("requested, capped by the turn deadline") !=
+    CHECK(capped.hint.find("requested, capped by the turn deadline") !=
           std::string::npos);
-    CHECK(capped.output.find("call again to keep waiting") !=
-          std::string::npos);
+    CHECK(capped.hint.find("call again to keep waiting") != std::string::npos);
+    CHECK(capped.facts.no_change);
     // Reaching wait_ms on its own is a different fact and must not blame the
     // deadline, or the caller learns to ignore the distinction.
     ToolResult plain = ToolActivityWait(capped_wait, {id}, "all", 300, context);
     CHECK(plain.Ok());
-    CHECK(plain.output.find("[waited ") != std::string::npos);
-    CHECK(plain.output.find("capped by") == std::string::npos);
+    CHECK(plain.hint.find("[waited ") != std::string::npos);
+    CHECK(plain.hint.find("capped by") == std::string::npos);
   }
 
   ActivitySupervisor closed_input;
@@ -870,7 +873,7 @@ void TestActivityWaitAndDelivery() {
     steering_yield.Wake();
     output_waiter.join();
     CHECK(yielded_output.Ok());
-    CHECK(yielded_output.output.find("wait yielded for queued steering") !=
+    CHECK(yielded_output.hint.find("wait yielded for queued steering") !=
           std::string::npos);
     CHECK(steering_yield.IsLive(id));
     CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
@@ -884,7 +887,7 @@ void TestActivityWaitAndDelivery() {
       RunShellCommand(no_duplicate_completion, context,
                       {.command = "printf once; sleep 0.5", .yield_ms = 250});
   const bool yielded_once_output =
-      yielded_once.result.output.find("\nonce") != std::string::npos;
+      yielded_once.result.output.find("once") != std::string::npos;
   std::vector<Activity> once_jobs = no_duplicate_completion.Snapshot();
   CHECK(once_jobs.size() == 1);
   if (!once_jobs.empty()) {
@@ -893,7 +896,7 @@ void TestActivityWaitAndDelivery() {
                          "all", BudgetMs(2000), context);
     CHECK(final.Ok());
     const bool final_once_output =
-        final.output.find("\nonce") != std::string::npos;
+        final.output.find("once") != std::string::npos;
     // Scheduling may put the first read on either side of the yield deadline.
     // Whichever call receives the bytes owns them; completion must not replay
     // them or lose them.
@@ -928,7 +931,7 @@ void TestActivityWaitAndDelivery() {
       ToolResult replay =
           ToolActivityOutput(bounded_completion, ActivityId(bounded_jobs[0]), 0,
                              {}, context, 8000);
-      CHECK(replay.output.find("complete transcript replay") !=
+      CHECK(replay.hint.find("complete transcript replay") !=
             std::string::npos);
     }
   }
@@ -954,7 +957,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(marker.output.find("Server ready") != std::string::npos);
     ToolResult no_duplicate = ToolActivityOutput(incremental, id);
     CHECK(no_duplicate.output.find("Server ready") == std::string::npos);
-    CHECK(no_duplicate.no_change);
+    CHECK(no_duplicate.facts.no_change);
     ToolResult final =
         ToolActivityWait(incremental, {id}, "all", BudgetMs(2000), context);
     CHECK(final.Ok());
@@ -1093,7 +1096,7 @@ void TestActivityWaitAndDelivery() {
   CHECK(handoff.RequestForegroundBackground());
   foreground.join();
   CHECK(handoff_result.result.Ok());
-  CHECK(handoff_result.result.output.find("moved to background") !=
+  CHECK(handoff_result.result.hint.find("moved to background") !=
         std::string::npos);
   std::vector<Activity> handed_off = handoff.Snapshot();
   CHECK(handed_off.size() == 1);
@@ -1157,7 +1160,7 @@ void TestDetachedActivityOwnership() {
         ToolActivityWait(detached_wait, {ActivityId(waited_jobs[0])}, "all",
                          BudgetMs(5000), context);
     CHECK_OK(waited);
-    CHECK(waited.output.find("waited-for") != std::string::npos);
+    CHECK(ModelText(waited).find("waited-for") != std::string::npos);
   }
 
   // A detached command that fails while something it started lives on is
@@ -1183,7 +1186,7 @@ void TestDetachedActivityOwnership() {
     ToolResult failed =
         ToolActivityWait(detached_failure, {ActivityId(failed_jobs[0])}, "all",
                          BudgetMs(5000), context);
-    CHECK(failed.output.find("exit code 7") != std::string::npos);
+    CHECK(ModelText(failed).find("exit code 7") != std::string::npos);
   }
 
   // Stopping an ordinary supervised job owns that job's log, but not a

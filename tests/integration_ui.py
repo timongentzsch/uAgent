@@ -321,7 +321,9 @@ def test_long_diff_prints_whole_live_and_on_resume(root, home, *, binary):
         ):
             code, output = run_pty(root, env, payload, args=args, startup_marker=b"", binary=binary)
             assert_true(code == 0, output[-2000:])
-            assert_true(b"long.txt (+2001 -0)" in output, output[-2000:])
+            # The headline and the facts' words; this terminal draws ASCII.
+            assert_true(b"Wrote long.txt" in output, output[-2000:])
+            assert_true(b"+2001 -0" in output, output[-2000:])
             assert_true(b"    +line 1999 of a long file\x1b" in output, output[-2000:])
             assert_true(b"    +LAST_DIFF_LINE\x1b" in output, output[-2000:])
 

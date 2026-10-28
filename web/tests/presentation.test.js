@@ -3,10 +3,9 @@ import { duration } from "../src/shared/duration.ts";
 import {
   diffCounts,
   diffLineClass,
-  isRunningStatus,
+  isRunning,
   servedBy,
   servedByRows,
-  statusLine,
 } from "../src/shared/display.ts";
 import { getToolRow } from "../src/features/chat/tool-preview.ts";
 import { test } from "node:test";
@@ -119,20 +118,11 @@ test("compact quantities use decimal units and promote rounded thresholds", () =
     assert.equal(bytes(value), result);
 });
 
-test("running rows never read as not recorded", () => {
-  for (const status of [undefined, "", "running", "pending", "not recorded"]) {
-    assert.ok(isRunningStatus(status), JSON.stringify(status));
-    assert.equal(statusLine({ status }), "Running\u2026");
-  }
-  assert.ok(!isRunningStatus("succeeded"));
-  assert.equal(
-    statusLine({ category: "execute", status: "running" }),
-    "execute \u00b7 Running\u2026",
-  );
-  assert.equal(
-    statusLine({ status: undefined, duration_ms: 1500 }),
-    "Done \u00b7 1.5s",
-  );
+test("a row runs until it has a finished state", () => {
+  for (const state of [undefined, "running"])
+    assert.ok(isRunning(state), JSON.stringify(state));
+  for (const state of ["ok", "failed", "cancelled"])
+    assert.ok(!isRunning(state), state);
 });
 
 test("change receipts classify git-style lines", () => {
@@ -294,7 +284,7 @@ test("tool rows read as the view's verb and target", () => {
     kind: "tool_result",
     name: "edit_file",
     text: "ok",
-    status: "success",
+    state: "ok",
   };
   assert.equal(getToolRow(base).title, "edit_file");
   assert.equal(
@@ -306,9 +296,13 @@ test("tool rows read as the view's verb and target", () => {
   const done = getToolRow({
     ...base,
     view,
-    change: "Edited a.txt (+2 -1)\n@@ -1 +1 @@\n-old\n+new\n+more",
+    change: "@line 1\n-old\n+new\n+more\n",
+    result: { word: "+2 −1 · 20ms", added: 2, removed: 1 },
   });
   assert.equal(done.title, "Edited a.txt");
+  // The host words the result; the row shows its word as it is.
+  assert.equal(done.subtitle, "+2 −1 · 20ms");
+  assert.equal(getToolRow({ ...base, view }, true).subtitle, "Running…");
   assert.match(done.subtitle, /^\+2 \u22121 · /);
 });
 
@@ -335,11 +329,11 @@ test("consecutive tools stay flat rows in order", () => {
   assert.equal(rows[6].activity?.category, "execute");
 });
 
-const call = (id, category, status = "success") => ({
+const call = (id, category, state = "ok") => ({
   id,
   kind: "tool_result",
   call_id: id,
-  status,
+  state,
   activity: { category },
 });
 
@@ -588,12 +582,10 @@ test("a streamed row refolds only the last fold", () => {
   );
 });
 
-test("an edit's counts come from its receipt, also when the diff is cut", () => {
-  // The host cuts a long diff's body; its first line keeps the totals.
-  const cut = "Edited a.ts (+812 -40)\n@@ -1,3 +1,3 @@\n-old\n+new\n";
-  assert.deepEqual(diffCounts(cut), [812, 40]);
-  // A diff without the host's summary is counted line by line.
-  assert.deepEqual(diffCounts("diff\n+a\n+b\n-c\n--- x\n+++ y"), [2, 1]);
+test("a diff without stated counts is counted line by line", () => {
+  assert.deepEqual(diffCounts("@line 2\n+a\n+b\n-c\n--- x\n+++ y"), [2, 1]);
+  // An approval preview's head line is not a change.
+  assert.deepEqual(diffCounts("Created a.ts (+2 -0)\n+a\n+b\n"), [2, 0]);
 });
 
 test("call details and statistics name the upstream that served each call", () => {

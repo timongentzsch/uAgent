@@ -90,7 +90,7 @@ export async function openProbePanel(page, session, command, request) {
 export async function saveHistory(
   host,
   file,
-  { id, title, turns, messages, kinds, cwd },
+  { id, title, turns, messages, kinds, cwd, display },
 ) {
   const directory = `${host.home}/.uagent/history`;
   await mkdir(directory, { recursive: true });
@@ -111,7 +111,7 @@ export async function saveHistory(
     context_window: 0,
     usage: {},
     last_sent_prompt: "",
-    display: {},
+    display: display || {},
     delivered_mail: [],
   };
   const path = `${directory}/${file}`;

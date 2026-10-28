@@ -30,14 +30,14 @@ int64_t ResultCharLimit(const CallTask& task) {
   return task.tool ? task.tool->result_chars : -1;
 }
 
-// Keep recovery metadata at the tail even when a result must be shortened.
-// The artifact itself stays out of context; only this small locator rides with
-// the result.
+// Keep the hints at the tail even when a result must be shortened: the
+// artifact itself stays out of context; only its small locator rides with the
+// result.
 std::string ModelResultText(const ToolResult& result, int64_t cap) {
   std::string output = result.output;
   if (cap < 0) cap = ToolResultCap();
-  if (!result.artifact) return LimitOutput(std::move(output), cap);
-  std::string hint = ArtifactHint(*result.artifact);
+  std::string hint = ModelHint(result);
+  if (hint.empty()) return LimitOutput(std::move(output), cap);
   if (cap <= 0) return output + hint;
   size_t limit = static_cast<size_t>(cap);
   if (hint.size() >= limit) return Utf8Prefix(std::move(hint), limit);
@@ -110,6 +110,7 @@ std::vector<std::string> ModelFacingToolResults(
 
 json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
                     int64_t step) {
+  const char* state = ResultState(task.result.status);
   json data = {
       {"turn", turn},
       {"step", step},
@@ -126,8 +127,12 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"issue_field", task.issue ? task.issue->field : std::string()},
       {"duration_ms", task.duration_ms},
       {"result", task.result.output},
+      {"hint", task.result.hint},
       {"result_chars", task.result.output.size()},
-      {"no_change", task.result.no_change},
+      {"state", state},
+      {"facts", ResultJson(task.result.facts, state, task.duration_ms)},
+      {"body_kind", task.result.body_kind},
+      {"no_change", task.result.facts.no_change},
       {"activity_terminal", task.result.activity_terminal},
       {"artifact_path",
        task.result.artifact ? task.result.artifact->path : std::string()},
@@ -142,8 +147,31 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
   return data;
 }
 
-void EmitToolResultObservation(const CallTask& task, const ToolCall& call,
+namespace {
+// Why the loop ended a call as it did, beside its state.
+std::string Outcome(const CallTask& task) {
+  const std::string& status = task.trace_status;
+  if (status == "denied" || status == "rejected") return status;
+  if (status == "invalid_argument" || status == "malformed_arguments") {
+    return "invalid";
+  }
+  if (status == "call_limit") return "limit";
+  if (status == "unknown_tool" || status == "inactive_tool") {
+    return "unavailable";
+  }
+  if (task.result.status == CompletionStatus::kTimedOut) return "timed_out";
+  return task.result.facts.outcome;
+}
+}  // namespace
+
+void EmitToolResultObservation(CallTask& task, const ToolCall& call,
                                int64_t turn, int64_t step) {
+  ResultFacts& facts = task.result.facts;
+  facts.outcome = Outcome(task);
+  if (task.issue &&
+      (facts.outcome == "rejected" || facts.outcome == "invalid")) {
+    facts.reason = Utf8Trunc(FirstLine(task.issue->message), 80);
+  }
   Emit(Event{EventId::kToolResult, ToolResultData(task, call, turn, step)});
 }
 
@@ -190,7 +218,6 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   call_context.approved = task.approved;
   json start = ToolCallData(call, turn, step);
   start["activity"] = task.activity;
-  start["view"] = ToolView(task.tool, task.args);
   call_context.progress = [start](const std::string& label) {
     json update = start;
     update["activity"]["status_label"] = label;
@@ -209,14 +236,10 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   const int64_t limit = ResultCharLimit(task);
   task.result.output = LimitOutput(std::move(task.result.output),
                                    limit < 0 ? ToolResultCap() : limit);
-  // A hint pulled to its bound is still a reduced request. Leading the result
-  // with the reduction keeps it out of reach of the cap that trims the tail.
-  if (!task.clamped.empty()) {
-    std::string notes;
-    for (const std::string& one : task.clamped) {
-      notes += "[clamped " + one + "]\n";
-    }
-    task.result.output = notes + task.result.output;
+  // A hint pulled to its bound is still a reduced request, said where no cap
+  // cuts it.
+  for (const std::string& one : task.clamped) {
+    AddHint(task.result, "[clamped " + one + "]");
   }
   if (SteeringState().Requested()) {
     task.result.status = CompletionStatus::kCancelled;

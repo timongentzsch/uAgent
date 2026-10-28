@@ -86,6 +86,37 @@ interface ToolActivity {
   label?: string;
   group?: { id: string; label: string };
 }
+// One state vocabulary for every call and receipt.
+export type RowState = "running" | "ok" | "failed" | "cancelled";
+// What a finished call's result was. The host words it: `word` is the
+// whole subtitle ("exit 1 · 2.3s"); the facts behind it are for reading.
+export interface ResultFacts {
+  word: string;
+  exit?: { code?: number; signal?: number };
+  added?: number;
+  removed?: number;
+  items?: number;
+  unit?: string;
+  outcome?: string;
+  reason?: string;
+  no_change?: boolean;
+}
+// How a row draws its body: a "tail" keeps a command's last lines visible.
+export type BodyKind =
+  | "text"
+  | "markdown"
+  | "tail"
+  | "diff"
+  | "image"
+  | "link"
+  | "fields";
+// The half of a tool row and a receipt that says how it ended.
+interface Finished {
+  // Missing means it has not finished.
+  state?: RowState;
+  result?: ResultFacts;
+  body_kind?: BodyKind;
+}
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
   | { kind: "command"; text: string }
@@ -102,17 +133,15 @@ export interface FilePart {
 }
 export interface LinkPart {
   kind: "link";
-  to: "agent" | "activity" | "memory";
+  to: "agent" | "activity" | "memory" | "browser";
   id: string | number;
   label: string;
 }
-// "Editing a.ts" while running, "Edited a.ts" after; input shows on expand
-// and a "tail" result keeps its last lines visible.
+// "Editing a.ts" while running, "Edited a.ts" after; input shows on expand.
 export interface ToolView {
   verb?: [string, string];
   target?: string;
   input?: ToolPart[];
-  output?: "text" | "markdown" | "tail";
 }
 export interface TurnSummary {
   usage_reported?: boolean;
@@ -165,7 +194,6 @@ interface BlockBase {
   truncated?: boolean;
   text_bytes?: number;
   content_complete?: boolean;
-  status?: string;
   turn_root?: string;
 }
 // How an attachment reached the model.
@@ -184,6 +212,8 @@ interface Answered {
 // What a person typed, or mail from another session or the harness.
 export interface UserBlock extends BlockBase, Answered {
   kind: "user";
+  // Where a message of yours is on its way (see outgoingStatus).
+  status?: string;
   request_id?: string;
   session_id?: string;
   files?: Asset[];
@@ -227,7 +257,7 @@ export interface AssistantBlock extends BlockBase, Answered {
   usage_reported?: boolean;
 }
 // One tool call and its result, joined into one row.
-export interface ToolBlock extends BlockBase, Answered {
+export interface ToolBlock extends BlockBase, Answered, Finished {
   kind: "tool_result";
   response_id?: string;
   occurrence_id?: string;
@@ -238,13 +268,14 @@ export interface ToolBlock extends BlockBase, Answered {
   view?: ToolView;
   activity?: ToolActivity;
   duration_ms?: number;
+  error_code?: string;
+  // The diff lines of what the call changed; its counts are in `result`.
   change?: string;
   change_path?: string; // set when `change` is only a stored diff's opening
   // Parts that stay visible on the row: files shared, work started.
   parts?: ToolPart[];
   // The end of a result whose text preview holds only its start.
   tail?: string;
-  exchange_path?: string;
   // A retained result whose receipt is gone.
   artifact?: boolean;
   // Files a tool's attachment block brought; the page joins them to the row.
@@ -252,7 +283,7 @@ export interface ToolBlock extends BlockBase, Answered {
 }
 // A note the host adds: a finished background command or agent, or a memory
 // saved, changed or forgotten.
-export interface ActivityBlock extends BlockBase {
+export interface ActivityBlock extends BlockBase, Finished {
   kind: "activity";
   incoming?: number;
   activity_id?: number;
@@ -289,7 +320,7 @@ export type Block =
 export type ActivityTarget = Pick<
   ActivityBlock,
   | "id"
-  | "status"
+  | "state"
   | "text"
   | "command"
   | "activity"

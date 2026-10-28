@@ -300,9 +300,14 @@ Agent::Approver MakeApprover(AppContext* app) {
     json review = json::object();
     std::string request_id =
         "approval-" + std::to_string(sequence.fetch_add(1) + 1);
-    const std::string raw_payload = tool.approval_preview
-                                        ? tool.approval_preview(arguments)
-                                        : ToolSummary(tool, arguments);
+    // Without a preview of its own, a call is approved as what it targets,
+    // or as all of its arguments when nothing short names it.
+    std::string raw_payload = tool.approval_preview
+                                  ? tool.approval_preview(arguments)
+                                  : ToolHeadline(&tool, arguments).target;
+    if (!tool.approval_preview && raw_payload.empty()) {
+      raw_payload = JsonDump(arguments);
+    }
     // The model judges only what the sandbox contains: a call that names a
     // path outside the folder, or a command with no enforced sandbox around
     // it, goes to the person, as a mandatory one does.

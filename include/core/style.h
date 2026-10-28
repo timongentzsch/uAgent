@@ -50,7 +50,6 @@ enum class Mark {
   kFailed,
   kStatus,
   kChange,
-  kSkill,
   kNote,
   kWarn,
   kError

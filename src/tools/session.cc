@@ -36,8 +36,8 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   if (peer.empty()) {
     return ToolFailure(ToolErrorCode::kPermissionDenied,
                        "session " + id +
-                           " is not linked with this one; operation=list "
-                           "shows the sessions that are");
+                           " is not linked with this one; the session tool "
+                           "lists the sessions that are");
   }
   const std::string error = SendSessionMail({.from_path = OwnSessionFile(),
                                              .to_path = peer,
@@ -52,43 +52,50 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                                              "is in yolo mode"));
 }
 
-Tool SessionTool(const std::function<void(const std::string& path)>& start) {
-  json parameters = json{
-      {"type", "object"},
-      {"properties",
-       {{"operation",
-         {{"type", "string"},
-          {"enum", json::array({"list", "message"})},
-          {"description", "list linked/linkable sessions or message one"}}},
-        {"session_id",
-         {{"type", "string"}, {"description", "peer session id for message"}}},
-        {"broadcast",
-         {{"type", "boolean"},
-          {"description", "message only: fan out to every linked session"}}},
-        {"prompt", {{"type", "string"}, {"description", "message text"}}},
-        {"hops",
-         {{"type", "integer"},
-          {"minimum", 0},
-          {"maximum", 8},
-          {"description",
-           "message only: peer-forward count for loop clamping"}}}}}};
+Tool SessionTool() {
   Tool tool = MakeTool(
       "session",
-      "Message another uagent session linked with this one (a "
-      "panel's threads, and live yolo sessions in the same folder). list "
-      "shows linked, then linkable sessions; message reaches the peer at its "
-      "next "
-      "step, or starts its turn when it is idle; broadcast reaches every "
-      "linked session. Unlinked "
-      "sessions are refused.",
+      "List the uagent sessions linked with this one (a panel's threads, and "
+      "live yolo sessions in the same folder), then the linkable ones; "
+      "session_message reaches them.",
+      {{"type", "object"}, {"properties", json::object()}},
+      [](const json&, const ToolContext&) {
+        std::vector<json> peers = SessionSummaries();
+        return ToolSuccess(peers.empty() ? "no linked sessions"
+                                         : JsonDump(peers, 2));
+      });
+  tool.available_in_lean = true;
+  tool.category = "system";
+  tool.intent = "delegate";
+  tool.header = [](const json&) {
+    return json{{"verb", {"Listing", "Listed"}}, {"target", "sessions"}};
+  };
+  return tool;
+}
+
+Tool SessionMessageTool(
+    const std::function<void(const std::string& path)>& start) {
+  json parameters =
+      json{{"type", "object"},
+           {"properties",
+            {{"session_id",
+              {{"type", "string"}, {"description", "peer session id"}}},
+             {"broadcast",
+              {{"type", "boolean"},
+               {"description", "fan out to every linked session"}}},
+             {"prompt", {{"type", "string"}, {"minLength", 1}}},
+             {"hops",
+              {{"type", "integer"},
+               {"minimum", 0},
+               {"maximum", 8},
+               {"description", "peer-forward count for loop clamping"}}}}},
+           {"required", json::array({"prompt"})}};
+  Tool tool = MakeTool(
+      "session_message",
+      "Message a session linked with this one, by session_id, or every "
+      "linked one with broadcast: it reads the prompt at its next step, or "
+      "starts a turn on it when idle. Unlinked sessions are refused.",
       parameters, [start](const json& arguments, const ToolContext&) {
-        std::string operation = JsonValue(arguments, "operation", "list");
-        if (operation == "list") {
-          std::vector<json> peers = SessionSummaries();
-          return ToolSuccess(peers.empty() ? "no linked sessions"
-                                           : JsonDump(peers, 2));
-        }
-        std::string prompt = JsonValue(arguments, "prompt", "");
         std::vector<std::string> targets;
         std::string single = JsonValue(arguments, "session_id", "");
         if (!single.empty()) targets.push_back(single);
@@ -101,8 +108,9 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
         }
         if (targets.empty()) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "message requires session_id or broadcast");
+                             "name a session_id, or broadcast");
         }
+        const std::string prompt = JsonValue(arguments, "prompt", "");
         const int hops =
             static_cast<int>(JsonValue(arguments, "hops", int64_t{0}));
         std::string combined;
@@ -119,15 +127,10 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
         }
         return ToolSuccess(combined);
       });
-  // session_id or broadcast stays a check in run: broadcast may be false.
-  tool.action_requires = {"operation", {{"message", {"prompt"}}}};
   tool.available_in_lean = true;
+  tool.category = "system";
   tool.intent = "delegate";
-  tool.header = [](const json& arguments) {
-    return JsonValue(arguments, "operation", "") == "list"
-               ? json{{"verb", {"Listing", "Listed"}}, {"target", "sessions"}}
-               : json{{"verb", {"Messaging", "Messaged"}}};
-  };
+  tool.header = Verbs("Messaging", "Messaged");
   return tool;
 }
 

@@ -1547,9 +1547,7 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
 
     def ask_config(_, body):
         assert_true("uagent" in function_names(body), function_names(body))
-        return tool_call(
-            "uagent", {"action": "inspect", "topic": "config", "name": "UAGENT_MAX_TOOL_CALLS"}
-        )
+        return tool_call("uagent", {"topic": "config", "name": "UAGENT_MAX_TOOL_CALLS"})
 
     def ask_status(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -1559,13 +1557,13 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true(setting["source"] == "user", setting)
         assert_true(setting["default"] == 0, setting)
         assert_true(setting["takes_effect"] == "next-user-turn", setting)
-        return tool_call("uagent", {"action": "inspect", "topic": "status"}, call_id="call-2")
+        return tool_call("uagent", {"topic": "status"}, call_id="call-2")
 
     def ask_prompt(_, body):
         status = json.loads(tool_results(body["messages"])[-1])
         assert_true(status["version"], status)
         assert_true(status["approval"] == "yolo", status)
-        return tool_call("uagent", {"action": "inspect", "topic": "routes"}, call_id="call-3")
+        return tool_call("uagent", {"topic": "routes"}, call_id="call-3")
 
     def ask_routes(_, body):
         # A model that cannot read the route table guesses a selection, and a
@@ -1583,7 +1581,7 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true("high" in described["efforts"], described)
         # The table names routes; it never carries what authenticates them.
         assert_true("canary-route-key" not in json.dumps(described), described)
-        return tool_call("uagent", {"action": "inspect", "topic": "prompt"}, call_id="call-4")
+        return tool_call("uagent", {"topic": "prompt"}, call_id="call-4")
 
     def finish(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -1625,7 +1623,7 @@ def test_uagent_tool_lists_every_setting(root, home, *, binary):
     save_settings(home, binary=binary, UAGENT_MAX_TOOL_CALLS=120)
 
     def ask(_, _body):
-        return tool_call("uagent", {"action": "inspect", "topic": "config"})
+        return tool_call("uagent", {"topic": "config"})
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]

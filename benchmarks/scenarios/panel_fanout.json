@@ -19,8 +19,8 @@
       "when": {"tool_results": 0},
       "respond": {
         "tool_calls": [
-          {"id": "readme", "name": "thread", "arguments": {"action": "spawn", "title": "README install section", "objective": "Add an Install section to README.md", "done_when": "README.md has an Install section"}},
-          {"id": "changelog", "name": "thread", "arguments": {"action": "spawn", "title": "CHANGELOG 0.2.0", "objective": "Add a 0.2.0 entry to CHANGELOG.md", "done_when": "CHANGELOG.md lists 0.2.0"}}
+          {"id": "readme", "name": "thread_spawn", "arguments": {"title": "README install section", "objective": "Add an Install section to README.md", "done_when": "README.md has an Install section"}},
+          {"id": "changelog", "name": "thread_spawn", "arguments": {"title": "CHANGELOG 0.2.0", "objective": "Add a 0.2.0 entry to CHANGELOG.md", "done_when": "CHANGELOG.md lists 0.2.0"}}
         ]
       }
     },

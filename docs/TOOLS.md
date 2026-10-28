@@ -11,18 +11,19 @@ approved.
 | limit every session to kinds of tools | `UAGENT_TOOL_CAPABILITIES`, a comma-separated list of `inspect`, `execute`, `mutate`, `delegate`, `external` |
 | choose how calls are approved | `/permissions ask\|auto\|yolo`; see [Approval](#approval) |
 
-The exact schemas and their sizes come from the `uagent` tool's `inspect`
-action with topic `tools`. A tool with several actions lists the fields each
-one needs in its description. A call missing one does not run: the model is
-told every missing field and what the call carried, and the third such round
-in a turn ends it.
+The exact schemas and their sizes come from the `uagent` tool with topic
+`tools`. An action that carries its own payload is a tool of its own, so its
+schema requires those fields; a tool with several actions lists the fields
+each one needs in its description. A call missing one does not run: the
+model is told every missing field and what the call carried, and the third
+such round in a turn ends it.
 
 ## Inventory
 
 The set is built when a session starts and refreshed when an MCP server's
 tool list changes. "Full toolset" means every session except a `lean`
 subagent, which reads and runs but gets no file-editing, memory, `uagent` or
-`subagent` tool.
+`subagent` tools.
 
 | Tool | Purpose | Available |
 | --- | --- | --- |
@@ -35,14 +36,15 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
-| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
+| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions) | full toolset |
+| `uagent_configure`, `uagent_instructions` | change settings, or replace an instructions file, by an exact diff a person approves | full toolset, only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
-| `thread`, `decide`, `plan`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start, guide, stop and remove background agents (`thread`); answer what a background agent asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
-| `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a lead agent and its background agents are linked, and so are YOLO sessions in one folder |
+| `thread_spawn`, `thread`, `decide`, `plan`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start background agents (`thread_spawn`); guide, stop and remove them (`thread`); answer what a background agent asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
+| `session`, `session_message` | list linked sessions, and message them; an idle one starts a turn on the message | always; a lead agent and its background agents are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first |
-| `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
+| `subagent`, `subagent_fanout` | delegate a subtask to a durable child session, or one prompt over many items with each finding checked | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, lead agents and background agents) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a lead agent or a lean child |
@@ -149,8 +151,8 @@ activity ID at once.
   brief tells it the format; an answer that does not parse or fit goes back
   to it with the reason, twice at most, after which it stands as written.
 - `step` names the plan step the child works for; `list` reports it.
-- `fanout` runs `prompt` once per entry of `items` (put in its `{item}`),
-  each child answering with findings of the `finding` schema. Then
+- `subagent_fanout` runs `prompt` once per entry of `items` (put in its
+  `{item}`), each child answering with findings of the `finding` schema. Then
   `refuters` children (default 1, at most 3) try to refute each finding.
   It returns the verified findings, the refuted ones with a reason, and those
   left unchecked, with no model turn in between. One call starts at most 64

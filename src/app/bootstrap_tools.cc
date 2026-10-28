@@ -74,23 +74,23 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // A tool-less child remains useful for constrained internal tasks.
   if (toolset == "none") return {};
-  ConfigProposalFactory prepare;
+  tools.push_back(UagentTool([app = &context](SelfTopic topic,
+                                              const std::string& name) {
+    return DescribeSelf(
+        topic, name,
+        SelfDescriptionInputs{app->config_manager, app->runtime.config,
+                              app->runtime.api, app->tools, app->agent.get()});
+  }));
   if (InteractiveApprovalAvailable() &&
       (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {
-    prepare = [app = &context](ConfigProposalScope scope,
-                               const std::vector<ConfigChange>& changes) {
-      return PrepareConfigProposal(scope, changes, app->config_manager);
-    };
+    tools.push_back(UagentConfigureTool(
+        [app = &context](ConfigProposalScope scope,
+                         const std::vector<ConfigChange>& changes) {
+          return PrepareConfigProposal(scope, changes, app->config_manager);
+        },
+        std::make_shared<ConfigApprovals>()));
+    tools.push_back(UagentInstructionsTool());
   }
-  tools.push_back(UagentTool(
-      [app = &context](SelfTopic topic, const std::string& name) {
-        return DescribeSelf(
-            topic, name,
-            SelfDescriptionInputs{app->config_manager, app->runtime.config,
-                                  app->runtime.api, app->tools,
-                                  app->agent.get()});
-      },
-      prepare, std::make_shared<ConfigApprovals>()));
   if (OffersWebSearch(api, context.provider.providers)) {
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));
@@ -158,10 +158,14 @@ std::vector<Tool> BuildTools(AppContext& context,
     tools.push_back(
         SubagentTool(api, runtime.processes, context.provider.routes,
                      context.provider.providers, context.options.debug));
+    tools.push_back(
+        SubagentFanoutTool(api, runtime.processes, context.provider.routes,
+                           context.provider.providers, context.options.debug));
   }
   // Peer sessions are text-only and isolation-gated by links, so the session
-  // tool is safe in every toolset, lean included.
-  tools.push_back(SessionTool([](const std::string& path) {
+  // tools are safe in every toolset, lean included.
+  tools.push_back(SessionTool());
+  tools.push_back(SessionMessageTool([](const std::string& path) {
     std::string ignored;  // the mail is queued either way
     session::Wake(JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
                   ignored);
@@ -222,7 +226,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   // thread is not.
   if (!commands || read_only) {
     for (Tool& tool : tools) {
-      if (tool.name != "subagent") continue;
+      if (!tool.delegates) continue;
       // So a brief does not ask a child for what it cannot do.
       tool.description +=
           commands

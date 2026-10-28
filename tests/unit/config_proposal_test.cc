@@ -291,36 +291,27 @@ void TestConfigProposalAndCommit() {
             std::chrono::steady_clock::now() - std::chrono::seconds(1));
   CHECK(!store.Take(arguments));  // expired
 
-  Tool configure =
-      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
-                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-                   ConfigProposal rejected;
-                   rejected.error = "specific rejection";
-                   return rejected;
-                 },
-                 std::make_shared<ConfigApprovals>());
-  const json inspect = {{"action", "inspect"}, {"topic", "config"}};
-  CHECK(RequiredApproval(configure, inspect) == ApprovalClass::kNone);
-  CHECK(configure.run(inspect, {}).Ok());
-  CHECK(!configure.validate(inspect));
-  // What only a change takes is dropped from an inspect call before it is
-  // judged: models that fill every field send it along empty.
-  json filled = {{"action", "inspect"}, {"topic", "config"},
-                 {"scope", ""},         {"changes", json::array()},
-                 {"text", ""},          {"audience", ""}};
-  CanonicalizeToolArguments(configure, filled, nullptr);
-  CHECK(filled == (json{{"action", "inspect"}, {"topic", "config"}}));
-  CHECK(!configure.validate(filled));
-  CHECK(RequiredApproval(configure, {{"action", "configure"}}) ==
-        ApprovalClass::kMandatoryHuman);
-  Tool restricted =
+  // Inspecting needs no one and survives restricted policies; each writing
+  // tool needs a person, whatever it is asked.
+  Tool inspect =
       UagentTool([](SelfTopic, const std::string&) { return json::object(); });
-  CHECK(restricted.parameters["properties"]["action"]["enum"] ==
-        json::array({"inspect"}));
-  CHECK(restricted.capabilities == 0);
-  CHECK(restricted.validate({{"action", "configure"}}).has_value());
-  auto issue = configure.validate({{"action", "configure"},
-                                   {"scope", "user"},
+  const json config = {{"topic", "config"}};
+  CHECK(RequiredApproval(inspect, config) == ApprovalClass::kNone);
+  CHECK(inspect.run(config, {}).Ok());
+  CHECK(inspect.capabilities == 0);
+  CHECK(!inspect.parameters["properties"].contains("changes"));
+  Tool configure = UagentConfigureTool(
+      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+        ConfigProposal rejected;
+        rejected.error = "specific rejection";
+        return rejected;
+      },
+      std::make_shared<ConfigApprovals>());
+  CHECK(RequiredApproval(configure, json::object()) ==
+        ApprovalClass::kMandatoryHuman);
+  CHECK(RequiredApproval(UagentInstructionsTool(), json::object()) ==
+        ApprovalClass::kMandatoryHuman);
+  auto issue = configure.validate({{"scope", "user"},
                                    {"changes",
                                     {{{"key", "UAGENT_MAX_STEPS"},
                                       {"operation", "set"},

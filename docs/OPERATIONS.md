@@ -36,11 +36,11 @@ environment name the same way, inside a JSON value such as
 `UAGENT_PROVIDERS` too; there a `$` that names nothing defined stays as
 written.
 
-Change settings with `/config`, the web's Settings, the agent's `uagent` tool
-(you approve the exact change) or an editor; `settings.schema.json` beside
-the file lets an editor complete and check it. An unknown name, or a value
-its setting does not take, is reported and skipped; the rest applies, and
-the file keeps what you wrote.
+Change settings with `/config`, the web's Settings, the agent's
+`uagent_configure` tool (you approve the exact change) or an editor;
+`settings.schema.json` beside the file lets an editor complete and check it.
+An unknown name, or a value its setting does not take, is reported and
+skipped; the rest applies, and the file keeps what you wrote.
 
 ```text
 /config                                  what is set, and where from

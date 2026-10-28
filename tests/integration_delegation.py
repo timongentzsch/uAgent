@@ -715,9 +715,8 @@ def test_a_fanout_keeps_only_what_its_refuters_cannot_refute(root, home, *, bina
         if results := tool_results(messages):
             return event({"content": results[0]})
         return tool_call(
-            "subagent",
+            "subagent_fanout",
             {
-                "operation": "fanout",
                 "items": ["a", "b"],
                 "prompt": "find in {item}",
                 "finding": finding,
@@ -754,9 +753,8 @@ def test_a_fanout_without_refuters_verifies_nothing(root, home, *, binary):
         if results := tool_results(messages):
             return event({"content": results[0]})
         return tool_call(
-            "subagent",
+            "subagent_fanout",
             {
-                "operation": "fanout",
                 "items": ["a", "b"],
                 "prompt": "find in {item}",
                 "finding": finding,
@@ -1327,19 +1325,18 @@ def start_peer(root, home, binary, *flags):
 
 
 def message_peer(workspace, home, peer, binary, *args):
-    """A second session asks the session tool for its peers and messages the
-    one it finds; returns that last tool result."""
+    """A second session lists its peers and messages the one it finds;
+    returns that last tool result."""
     seen = {}
 
     def route(_, body):
         results = tool_results(body["messages"])
         if not results:
-            return tool_call("session", {"operation": "list"})
+            return tool_call("session", {})
         if len(results) == 1:
             return tool_call(
-                "session",
+                "session_message",
                 {
-                    "operation": "message",
                     "session_id": fnv1a64(str(peer)),
                     "prompt": "ping from a",
                 },
@@ -1398,9 +1395,8 @@ def test_a_delegated_child_in_yolo_reaches_no_peer(root, home, *, binary):
         if "child task" in user_texts(messages):
             if not results:
                 return tool_call(
-                    "session",
+                    "session_message",
                     {
-                        "operation": "message",
                         "session_id": fnv1a64(str(peer)),
                         "prompt": "from the child",
                     },

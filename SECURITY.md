@@ -38,7 +38,7 @@ In every mode:
     the instruction files, which hold no credential;
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
-  - the `uagent` tool's `configure` and `set_instructions` actions;
+  - the `uagent_configure` and `uagent_instructions` tools;
   - `run(sandbox=false)`.
 
 Two kinds of session act for you unattended:

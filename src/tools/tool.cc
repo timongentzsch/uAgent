@@ -151,12 +151,10 @@ std::string ToolCategory(const Tool& tool) {
   if (!tool.category.empty()) return tool.category;
   if (tool.provider.starts_with("mcp:")) return "mcp";
   if (tool.name == "web_search" || tool.name == "web_fetch") return "web";
-  if (tool.name == "subagent") return "collaborate";
   if (tool.name == "memory" || tool.name == "skill") return "memory";
   if (tool.name == "run" || tool.name == "scratch" || tool.name == "activity") {
     return "execute";
   }
-  if (tool.name == "uagent" || tool.name == "session") return "system";
   return "workspace";
 }
 
@@ -176,12 +174,11 @@ bool ProfileEnabled(std::string_view profile, const Tool& tool) {
   if (profile == "research") {
     return category == "workspace" || category == "web" ||
            category == "collaborate" || category == "memory" ||
-           tool.name == "activity" || tool.name == "uagent" ||
-           tool.name == "session";
+           category == "system" || tool.name == "activity";
   }
-  static const std::unordered_set<std::string> kMinimal = {
-      "read_path", "grep", "run", "activity", "uagent", "session"};
-  return kMinimal.contains(tool.name);
+  static const std::unordered_set<std::string> kMinimal = {"read_path", "grep",
+                                                           "run", "activity"};
+  return category == "system" || kMinimal.contains(tool.name);
 }
 
 }  // namespace

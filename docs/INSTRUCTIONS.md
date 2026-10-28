@@ -40,9 +40,8 @@ not. Editors never write through a symbolic link.
   editable in place.
 - Terminal: `/instructions` shows it; `/instructions edit sessions|panel
   user|project` opens `$VISUAL` or `$EDITOR`.
-- Agents: `uagent` action `inspect` topic `instructions`, and
-  `set_instructions` with `audience`, `scope` and the whole `text`; the user
-  approves the exact diff.
+- Agents: `uagent` topic `instructions`, and `uagent_instructions` with
+  `audience`, `scope` and the whole `text`; the user approves the exact diff.
 - Scripts: `uagent --control` with `kind=instructions`, `action=show|set`,
   optional `cwd`, and for `set` the `audience`, `scope` and `text`.
 

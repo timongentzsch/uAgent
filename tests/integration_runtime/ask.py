@@ -241,9 +241,8 @@ def test_a_threads_question_goes_to_its_panel(root, home, *, binary):
             return event({"content": "panel-ack"})
         if not results:
             return tool_call(
-                "thread",
+                "thread_spawn",
                 {
-                    "action": "spawn",
                     "title": "Database",
                     "objective": "pick a database",
                     "environment": "local",

@@ -34,6 +34,7 @@ using panel::DecideTool;
 using panel::HistoryTool;
 using panel::OwnThread;
 using panel::SpentToday;
+using panel::ThreadSpawnTool;
 using panel::ThreadTool;
 using panel::Today;
 using panel::Unavailable;
@@ -174,7 +175,7 @@ Tool PlanTool(const std::string& folder) {
       "id, with a short result once it ends. Give a step's id to the "
       "background agents that work for it. Lessons about the user go to "
       "memory; your "
-      "standing instructions are PANEL.md (uagent set_instructions).",
+      "standing instructions are PANEL.md (uagent_instructions).",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string","enum":["show","set","append","clear","step"]},
         "block":{"type":"string","enum":["goals","decisions","open_questions","steps"]},
@@ -441,7 +442,8 @@ bool ThreadsOwe(const std::string& folder) {
 void AddPanelTools(std::vector<Tool>& tools, const std::string& folder,
                    std::function<std::string()> own_model) {
   tools.push_back(HistoryTool(folder));
-  tools.push_back(ThreadTool(folder, std::move(own_model)));
+  tools.push_back(ThreadSpawnTool(folder, std::move(own_model)));
+  tools.push_back(ThreadTool(folder));
   tools.push_back(DecideTool(folder));
   tools.push_back(PlanTool(folder));
   // The panel keeps what it learns about you without being asked and

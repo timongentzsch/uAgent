@@ -30,8 +30,7 @@ namespace uagent {
 namespace {
 
 // Enough to show the shape of a configured roster without charging the whole
-// list to every request; uagent action=inspect topic=routes reports all of
-// them.
+// list to every request; uagent topic=routes reports all of them.
 constexpr size_t kAdvertisedRoutes = 4;
 constexpr size_t kAgentNameMax = 32;
 constexpr size_t kAgentDescriptionMax = 280;
@@ -266,7 +265,7 @@ std::string ModelPropertyDescription(const std::vector<Route>& routes,
   if (!providers.empty()) {
     description +=
         " Or <provider>/MODEL for a configured provider; uagent "
-        "action=inspect topic=routes lists them.";
+        "topic=routes lists them.";
   }
   return description;
 }
@@ -598,14 +597,10 @@ ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
                      const json& arguments, const ToolContext& context) {
   const json items = JsonValue(arguments, "items", json::array());
   const std::string prompt = JsonValue(arguments, "prompt", "");
-  const json* finding = JsonObject(arguments, "finding");
-  if (items.empty() || items.size() > kFanoutItems || !finding ||
-      prompt.find("{item}") == std::string::npos ||
-      !std::ranges::all_of(items, &json::is_string)) {
-    return ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "fanout needs 1 to " + std::to_string(kFanoutItems) +
-            " items as strings, a prompt with {item}, and a finding schema");
+  const json finding = JsonValue(arguments, "finding", json::object());
+  if (prompt.find("{item}") == std::string::npos) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "prompt needs {item}, where each item goes");
   }
   const auto refuters = static_cast<size_t>(
       std::clamp<int64_t>(JsonValue(arguments, "refuters", int64_t{1}), 0, 3));
@@ -629,7 +624,7 @@ ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
   const json findings_schema = {
       {"type", "object"},
       {"required", {"findings"}},
-      {"properties", {{"findings", {{"type", "array"}, {"items", *finding}}}}}};
+      {"properties", {{"findings", {{"type", "array"}, {"items", finding}}}}}};
   ParallelFor(items.size(), context, [&](size_t index) {
     std::string brief = prompt;
     brief.replace(brief.find("{item}"), 6, items[index].get<std::string>());
@@ -702,48 +697,92 @@ ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
   return result;
 }
 
+// The fields both delegating tools hand to a child: its plan step, model and
+// ceilings.
+json ChildProperties(const std::vector<Route>& routes,
+                     const std::vector<Endpoint>& providers) {
+  return {
+      {"step",
+       {{"type", "string"},
+        {"maxLength", kAgentStepMax},
+        {"description", "the plan step this child works for"}}},
+      {"model",
+       {{"type", "string"},
+        {"description", ModelPropertyDescription(routes, providers)}}},
+      // One object rather than five siblings: each of these needed a sentence
+      // saying "optional ceiling for this child", and that sentence is charged
+      // to every request that advertises the tool. Grouped, it is said once.
+      {"limits",
+       {{"type", "object"},
+        {"additionalProperties", false},
+        {"properties",
+         {{"steps", {{"type", "integer"}, {"minimum", 1}, {"maximum", 500}}},
+          {"tool_calls",
+           {{"type", "integer"}, {"minimum", 1}, {"maximum", 500}}},
+          {"seconds", {{"type", "integer"}, {"minimum", 1}, {"maximum", 3600}}},
+          {"cost", {{"type", "number"}, {"minimum", 0}}},
+          {"memory", {{"type", "boolean"}}}}},
+        {"description",
+         "optional ceilings; omitted fields inherit the defaults, larger "
+         "values are clamped, memory=false denies memory"}}}};
+}
+
+// What both delegating tools are.
+void Delegating(Tool& tool) {
+  tool.clamped_arguments = {"limits.steps", "limits.tool_calls",
+                            "limits.seconds"};
+  // Same reasoning as run, scratch and activity: the per-call budget stops a
+  // command running away, and a child the caller is waiting for is neither
+  // unsupervised nor unbounded — limits.seconds and the turn bound it, and
+  // Escape still returns immediately.
+  tool.timeout_s = 0;
+  // Children of one batch run side by side, each in its own process.
+  tool.parallel_safe = true;
+  tool.mutating = true;
+  tool.capabilities = Capability(ToolCapability::kDelegate);
+  tool.category = "collaborate";
+  tool.delegates = true;
+  tool.retain_output = true;
+  tool.available_in_lean = false;
+  // Concurrency is enforced by the spawn path (RunShellCommand reserves an
+  // activity slot bounded by activities.maxConcurrent); this is only a runaway
+  // ceiling.
+  tool.max_calls_per_turn = SubagentCallsPerTurn();
+  tool.present = [](const json& arguments) {
+    json parts = json::array();
+    const std::string prompt = JsonValue(arguments, "prompt", "");
+    if (!prompt.empty()) parts.push_back(CodePart(prompt, "markdown", "task"));
+    for (json& part : GenericInputParts(arguments, {"prompt"})) {
+      parts.push_back(std::move(part));
+    }
+    return parts;
+  };
+  tool.output_view = "markdown";
+}
+
 }  // namespace
 
 Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
                   const std::vector<Route>& routes,
                   const std::vector<Endpoint>& providers, bool debug) {
-  json properties = {
+  json properties = ChildProperties(routes, providers);
+  properties.update(json{
       {"operation",
        {{"type", "string"},
-        {"enum",
-         json::array({"spawn", "followup", "message", "list", "fanout"})},
+        {"enum", json::array({"spawn", "followup", "message", "list"})},
         {"default", "spawn"},
         {"description",
-         "spawn by default; followup, message or list children; fanout"}}},
+         "spawn by default; followup, message or list children"}}},
       {"agent_id", {{"type", "string"}, {"description", "child id"}}},
       {"name",
        {{"type", "string"},
         {"maxLength", 32},
         {"description", "reusable role, e.g. api-reviewer"}}},
-      {"step",
-       {{"type", "string"},
-        {"maxLength", kAgentStepMax},
-        {"description", "the plan step this child works for"}}},
       {"schema",
        {{"type", "object"},
         {"description",
          "JSON Schema of the child's answer; it answers with that JSON "
          "only"}}},
-      {"items",
-       {{"type", "array"},
-        {"maxItems", kFanoutItems},
-        {"items", {{"type", "string"}}},
-        {"description", "fanout: one child per item, put in prompt's {item}"}}},
-      {"finding",
-       {{"type", "object"},
-        {"description", "fanout: JSON Schema of one finding"}}},
-      {"refuters",
-       {{"type", "integer"},
-        {"minimum", 0},
-        {"maximum", 3},
-        {"description",
-         "fanout: children that try to refute each finding; "
-         "default 1"}}},
       {"description",
        {{"type", "string"},
         {"maxLength", 280},
@@ -768,26 +807,7 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
       {"mode",
        {{"type", "string"},
         {"enum", json::array({"lean", "full"})},
-        {"description", "lean default; full includes implementation tools"}}},
-      {"model",
-       {{"type", "string"},
-        {"description", ModelPropertyDescription(routes, providers)}}},
-      // One object rather than five siblings: each of these needed a sentence
-      // saying "optional ceiling for this child", and that sentence is charged
-      // to every request that advertises the tool. Grouped, it is said once.
-      {"limits",
-       {{"type", "object"},
-        {"additionalProperties", false},
-        {"properties",
-         {{"steps", {{"type", "integer"}, {"minimum", 1}, {"maximum", 500}}},
-          {"tool_calls",
-           {{"type", "integer"}, {"minimum", 1}, {"maximum", 500}}},
-          {"seconds", {{"type", "integer"}, {"minimum", 1}, {"maximum", 3600}}},
-          {"cost", {{"type", "number"}, {"minimum", 0}}},
-          {"memory", {{"type", "boolean"}}}}},
-        {"description",
-         "optional ceilings; omitted fields inherit the defaults, larger "
-         "values are clamped, memory=false denies memory"}}}};
+        {"description", "lean default; full includes implementation tools"}}}});
   Tool tool = MakeTool(
       "subagent",
       "Delegate an isolated subtask whose compact result saves parent "
@@ -796,52 +816,24 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
       "its next step or runs a finished one again; the activity tool waits "
       "on, reads or stops it. Name the reusable role and describe it at "
       "spawn, and put what you already found into the prompt so the child "
-      "does not look it up again. fanout runs prompt once per item, has "
-      "refuters check each finding, and returns only what held.",
+      "does not look it up again.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
-        return JsonValue(arguments, "operation", "") == "fanout"
-                   ? RunFanout(api, processes, routes, providers, debug,
-                               arguments, context)
-                   : RunSubagent(api, processes, routes, providers, debug,
-                                 arguments, context);
+        return RunSubagent(api, processes, routes, providers, debug, arguments,
+                           context);
       });
   tool.action_requires = {"operation",
                           {{"spawn", {"prompt"}},
                            {"followup", {"agent_id", "prompt"}},
-                           {"message", {"agent_id", "prompt"}},
-                           {"fanout", {"items", "prompt", "finding"}}}};
-  tool.clamped_arguments = {"limits.steps", "limits.tool_calls",
-                            "limits.seconds"};
-  // Same reasoning as run, scratch and activity: the per-call budget stops a
-  // command running away, and a child the caller is waiting for is neither
-  // unsupervised nor unbounded — limits.seconds and the turn bound it, and
-  // Escape still returns immediately.
-  tool.timeout_s = 0;
-  // Children of one batch run side by side, each in its own process.
-  tool.parallel_safe = true;
-  tool.mutating = true;
-  tool.capabilities = Capability(ToolCapability::kDelegate);
-  tool.delegates = true;
-  tool.retain_output = true;
-  tool.available_in_lean = false;
-  // Concurrency is enforced by the spawn path (RunShellCommand reserves an
-  // activity slot bounded by activities.maxConcurrent); this is only a runaway
-  // ceiling.
-  tool.max_calls_per_turn = SubagentCallsPerTurn();
+                           {"message", {"agent_id", "prompt"}}}};
+  Delegating(tool);
   auto describe = [&api, &routes, &providers](const json& arguments) {
     std::string operation = JsonValue(arguments, "operation", "spawn");
     if (operation == "list") return std::string("list agents");
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string id = JsonValue(arguments, "agent_id", "");
     if (operation == "message") return "[message " + id + "] " + prompt;
-    if (operation == "fanout") {
-      return "[fanout " +
-             std::to_string(
-                 JsonValue(arguments, "items", json::array()).size()) +
-             " items] " + prompt;
-    }
     std::string label = RouteSelection(
         ResolveSideRoute(api, routes, providers,
                          NormalizeModelId(JsonValue(arguments, "model", "")))
@@ -858,8 +850,7 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
   // the route and flags, since that is what a person approves.
   tool.summary = [describe](const json& arguments) {
     const std::string operation = JsonValue(arguments, "operation", "spawn");
-    if (operation == "list" || operation == "message" ||
-        operation == "fanout") {
+    if (operation == "list" || operation == "message") {
       return describe(arguments);
     }
     const std::string name = JsonValue(arguments, "name", "");
@@ -877,24 +868,11 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
       return json{{"verb", {"Messaging", "Messaged"}},
                   {"target", JsonValue(arguments, "agent_id", name)}};
     }
-    if (operation == "fanout") {
-      return json{{"verb", {"Fanning out", "Fanned out"}}, {"target", task}};
-    }
     return json{
         {"verb", operation == "followup" ? json{"Following up", "Followed up"}
                                          : json{"Delegating", "Delegated"}},
         {"target", name.empty() ? task : name + ": " + task}};
   };
-  tool.present = [](const json& arguments) {
-    json parts = json::array();
-    const std::string prompt = JsonValue(arguments, "prompt", "");
-    if (!prompt.empty()) parts.push_back(CodePart(prompt, "markdown", "task"));
-    for (json& part : GenericInputParts(arguments, {"prompt"})) {
-      parts.push_back(std::move(part));
-    }
-    return parts;
-  };
-  tool.output_view = "markdown";
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides
@@ -937,6 +915,53 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
              ? ", memory on"
              : ", memory off");
     return preview;
+  };
+  return tool;
+}
+
+Tool SubagentFanoutTool(const Api& api, ActivitySupervisor& processes,
+                        const std::vector<Route>& routes,
+                        const std::vector<Endpoint>& providers, bool debug) {
+  json properties = ChildProperties(routes, providers);
+  properties.update(json{
+      {"items",
+       {{"type", "array"},
+        {"minItems", 1},
+        {"maxItems", kFanoutItems},
+        {"items", {{"type", "string"}}},
+        {"description", "one child per item, put in prompt's {item}"}}},
+      {"prompt",
+       {{"type", "string"},
+        {"description", "standalone brief with {item} where each item goes"}}},
+      {"finding",
+       {{"type", "object"}, {"description", "JSON Schema of one finding"}}},
+      {"refuters",
+       {{"type", "integer"},
+        {"minimum", 0},
+        {"maximum", 3},
+        {"description",
+         "children that try to refute each finding; default 1"}}}});
+  Tool tool = MakeTool(
+      "subagent_fanout",
+      "Run prompt as one lean subagent per item, have refuters check each "
+      "finding, and return only what held.",
+      {{"type", "object"},
+       {"properties", std::move(properties)},
+       {"required", json::array({"items", "prompt", "finding"})}},
+      [&api, &routes, &providers, debug, &processes](
+          const json& arguments, const ToolContext& context) {
+        return RunFanout(api, processes, routes, providers, debug, arguments,
+                         context);
+      });
+  Delegating(tool);
+  tool.summary = [](const json& arguments) {
+    return "[fanout " +
+           std::to_string(JsonValue(arguments, "items", json::array()).size()) +
+           " items] " + JsonValue(arguments, "prompt", "");
+  };
+  tool.header = [](const json& arguments) {
+    return json{{"verb", {"Fanning out", "Fanned out"}},
+                {"target", FirstLine(JsonValue(arguments, "prompt", ""))}};
   };
   return tool;
 }

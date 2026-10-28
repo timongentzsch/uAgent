@@ -385,22 +385,34 @@ json ToolSurfaceJson() {
   ActivitySupervisor supervisor;
   Api api;
   UsageAccumulator usage;
+  // Named, not temporaries: the subagent tools' handlers capture routes and
+  // providers by reference, so they must outlive the tools.
+  const std::vector<Route> routes;
+  const std::vector<Endpoint> providers;
   const std::string workspace = CanonicalAccessPath(".");
   std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
   conditional.emplace_back(
-      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
-                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-                   return ConfigProposal{};
-                 },
-                 std::make_shared<ConfigApprovals>()),
-      "inspect always; configure requires interactive approval");
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); }),
+      "always");
+  conditional.emplace_back(
+      UagentConfigureTool(
+          [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+            return ConfigProposal{};
+          },
+          std::make_shared<ConfigApprovals>()),
+      "interactive approval");
+  conditional.emplace_back(UagentInstructionsTool(), "interactive approval");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   conditional.emplace_back(
-      SubagentTool(api, supervisor, {}, {}, /*debug=*/false),
+      SubagentTool(api, supervisor, routes, providers, /*debug=*/false),
+      "delegation depth");
+  conditional.emplace_back(
+      SubagentFanoutTool(api, supervisor, routes, providers, /*debug=*/false),
       "delegation depth");
   conditional.emplace_back(SessionTool(), "always");
+  conditional.emplace_back(SessionMessageTool(), "always");
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
 #ifdef UAGENT_BROWSER
   conditional.emplace_back(

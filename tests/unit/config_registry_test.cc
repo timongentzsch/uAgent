@@ -36,8 +36,6 @@ struct GetterCheck {
 // default -- fails here rather than drifting quietly.
 constexpr const char* kBoolSettings[] = {
     "UAGENT_SANDBOX_NET",
-    "UAGENT_MARKDOWN",
-    "UAGENT_TRUST_PROJECT_CONFIG",
 };
 
 constexpr GetterCheck kIntGetters[] = {
@@ -154,7 +152,7 @@ void TestConfigRegistryContract() {
   CHECK(AttachmentLimitMb() ==
         FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->minimum);
 
-  // The diagnostic that feeds /context, /debug-config and uagent never
+  // The diagnostic that feeds /context, /config KEY and uagent never
   // carries a credential.
   ScopedEnv route_key("OPENROUTER_API_KEY", "canary-secret-value");
   json diagnostic = RuntimeConfig::FromEnvironment().DiagnosticJson();
@@ -240,10 +238,6 @@ void TestStrictBooleanSettings() {
   CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "ON"}}).memory_enabled);
   CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "wat"}}).memory_enabled);
   CHECK(RuntimeConfig::FromValues({}).memory_enabled);
-  // An empty value means "use the default" from a file and the environment
-  // alike, and struct defaults are the registry's.
-  CHECK(RuntimeConfig::FromValues({{"UAGENT_PERMISSION_ALLOW_ABOVE", ""}})
-            .permission_allow_above.empty());
 }
 
 void TestSelfDescriptionSchemas() {

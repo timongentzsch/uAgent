@@ -292,40 +292,6 @@ json ExportSettings(std::string& error) {
   return Valid(document) ? document : EmptyDocument();
 }
 
-bool ParseSettings(const json& document, AllSettings& settings,
-                   std::string& error) {
-  if (!Valid(document)) {
-    error =
-        "expected {\"format\": 3, \"all\": {setting: value}, "
-        "\"projects\": {folder: {setting: value}}}";
-    return false;
-  }
-  std::vector<std::string> problems;
-  settings.all = DecodeScope(document["all"], "", &problems);
-  for (const auto& [folder, scope] : document["projects"].items()) {
-    settings.projects[folder] = DecodeScope(scope, folder + ": ", &problems);
-  }
-  if (problems.empty()) return true;
-  error = problems.front();
-  return false;
-}
-
-std::string ReplaceSettings(const AllSettings& settings) {
-  std::string error = ReadSettings("").error;
-  if (!error.empty()) return error;
-  PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
-  if (!store.Ready()) return error;
-  json document = EmptyDocument();
-  document["all"] = EncodeScope(settings.all);
-  for (const auto& [folder, scope] : settings.projects) {
-    document["projects"][folder] = EncodeScope(scope);
-  }
-  store.Data() = std::move(document);
-  store.Save(error);
-  WriteSchema();
-  return error;
-}
-
 std::string ChangeSettings(
     const std::string& folder,
     const std::function<std::string(SettingValues& scope)>& change) {

@@ -238,13 +238,8 @@ const char* UsageText() {
       row.append(column - row.size(), ' ');
       listing += row + spec.help + "\n";
     }
-    return synopsis +
-           "\n       uagent panel [options]"
-           "\n       uagent config export | import FILE\n\n" +
-           listing +
+    return synopsis + "\n       uagent panel [options]\n\n" + listing +
            "  panel                   open this folder's panel\n"
-           "  config export           print everything saved, as JSON\n"
-           "  config import FILE|-    replace it with such a document\n"
            "\nsettings: what is saved for all conversations, then for this "
            "project (/config, or the web settings); process UAGENT_* "
            "variables override both, and the flags above override all "

@@ -166,7 +166,7 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 "/api/command", {**payload, "request_id": "e" * 32, "text": "/fork"}
             )
             assert_true(status == 409 and "conversation controls" in denied["error"], denied)
-            for index, bare in enumerate(("/model", "/models")):
+            for index, bare in enumerate(("/model",)):
                 status, denied, _ = client.json(
                     "/api/command",
                     {**payload, "request_id": f"b{index:031x}", "text": bare},

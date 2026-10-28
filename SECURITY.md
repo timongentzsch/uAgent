@@ -109,8 +109,7 @@ Two kinds of session act for you unattended:
 - Automatic memory extraction processes at most one idle saved session. Its
   child receives the configured model credential and only the memory tool.
   Transcript text and event previews are redacted for known credential forms
-  before model requests and memory writes; `UAGENT_MEMORY_REDACT_KEYWORDS`
-  adds site-specific assignment keywords. Codex and Claude memories are
+  before model requests and memory writes. Codex and Claude memories are
   read-only, untrusted evidence. Redaction is defense in depth, not a
   guarantee that every secret is recognized: it finds keyword assignments,
   bearer tokens, private keys and known vendor token prefixes, not a bare
@@ -339,8 +338,8 @@ refuses the command rather than running it under a truncated profile.
 Sessions and debug logs may contain source, prompts, commands, output and
 reasoning. They are private (owner-only files) but not encrypted, and are
 pruned by age and count; [Persistence](docs/PERSISTENCE.md) lists each kind,
-its retention and how to remove it. `uagent config export` prints everything
-saved, API keys included; treat its output as a secret.
+its retention and how to remove it. `config/settings.json` holds saved API
+keys in clear text; treat it as a secret.
 
 Do not attach secrets or enable debug logging unless disclosure is
 acceptable. If a credential appears in a prompt, attachment, result or trace,

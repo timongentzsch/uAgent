@@ -177,13 +177,13 @@ test.describe("mobile navigation and commands", () => {
       page.getByRole("dialog", { name: "Full content" }),
     ).toContainText('"topic": "status"');
     await page.keyboard.press("Escape");
-    await prompt.fill("/ctx");
+    await prompt.fill("/context");
     await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Raw context", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
-    await prompt.fill("/commands");
+    await prompt.fill("/help");
     await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Full content" }),

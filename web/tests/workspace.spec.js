@@ -104,7 +104,7 @@ test("appearance and configuration remain usable at large scales", async ({
   ).toBeVisible();
   const find = page.getByLabel("Find a setting");
   // A setting only a terminal uses is listed too, and says who reads it.
-  await find.fill("UAGENT_MARKDOWN");
+  await find.fill("UAGENT_PLAIN");
   await expect(form).toContainText("read by the terminal");
   await find.fill("no such setting");
   await expect(form).toContainText("No setting matches.");

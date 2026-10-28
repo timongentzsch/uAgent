@@ -79,8 +79,6 @@ int64_t SubagentTimeoutSeconds() {
 // also clamp any thinking budget derived from it.
 int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
-bool MarkdownEnabled() { return BoolSetting(Cfg("UAGENT_MARKDOWN")); }
-
 bool HeadlessProgressEnabled() {
   return EnvStr("UAGENT_INTERNAL_HEADLESS_PROGRESS") == "1";
 }
@@ -155,17 +153,10 @@ constexpr FieldBinding<double> kDoubleOptions[] = {
 constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_APPROVAL"), &RuntimeConfig::approval},
     {&Cfg("UAGENT_PERMISSION_MODEL"), &RuntimeConfig::permission_model},
-    {&Cfg("UAGENT_PERMISSION_ALLOW_ABOVE"),
-     &RuntimeConfig::permission_allow_above},
-    {&Cfg("UAGENT_PERMISSION_DENY_ABOVE"),
-     &RuntimeConfig::permission_deny_above},
-    {&Cfg("UAGENT_PERMISSION_VETO_ABOVE"),
-     &RuntimeConfig::permission_veto_above},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
     {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
     {&Cfg("UAGENT_TITLE_MODEL"), &RuntimeConfig::title_model},
-    {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };
 constexpr FieldBinding<bool> kBoolOptions[] = {
     {&Cfg("UAGENT_MEMORY"), &RuntimeConfig::memory_enabled},

@@ -154,7 +154,6 @@ void TestGrepTool() {
     CHECK(run->parameters["properties"].contains("detach"));
     CHECK(run->parameters["properties"].contains("shell"));
     CHECK(run->timeout_s == 0);
-    CHECK(run->command_policy);
     CHECK(static_cast<bool>(run->validate));
     CHECK(!run->validate({{"command", "cmake --build build"}}));
     CHECK(!run->validate({{"command", "python3 -m unittest"}}));
@@ -174,17 +173,9 @@ void TestGrepTool() {
   CHECK(read && !read->needs_approval({{"path", spilled}}));
   CHECK(read && read->needs_approval({{"path", "/etc/hosts"}}));
   CHECK(grep && !grep->needs_approval({{"pattern", "x"}, {"path", spilled}}));
-  auto evaluator_tools = BuiltinTools(supervisor, root);
-  const Tool* write = FindTool(evaluator_tools, "write_file");
+  auto full_tools = BuiltinTools(supervisor, root);
+  const Tool* write = FindTool(full_tools, "write_file");
   CHECK(write && write->needs_approval({{"path", spilled}}));
-  ApplyToolPolicy(evaluator_tools,
-                  {.allowed = Capability(ToolCapability::kInspect),
-                   .tool_allowlist = {"grep", "read_path", "run"},
-                   .run_allowlist = {"python3 slow_analysis.py"},
-                   .error = ""});
-  const Tool* evaluator_run = FindTool(evaluator_tools, "run");
-  CHECK(evaluator_run &&
-        !evaluator_run->validate({{"command", "python3 slow_analysis.py"}}));
   const Tool* python = FindTool(lean_tools, "scratch");
   CHECK(python != nullptr);
   CHECK(python && ToolDescription(*python).find(

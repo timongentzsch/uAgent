@@ -35,14 +35,14 @@ extern bool g_unicode;
 // The plain profile, for screen readers and transcripts: append-only rows that
 // open with a spoken label, ASCII glyphs, no cursor control and no animation.
 extern bool g_plain;
-// Off for plain and for reduced motion: the spinner holds a still label.
+// Off for plain: the spinner holds a still label.
 extern bool g_motion;
 extern std::atomic<int> g_signal_tty;
 bool ResolveColorEnabled(bool tty);
 bool ResolveAttributesEnabled(bool tty);
 bool ResolveUnicodeEnabled();
 // Narrows what InitializeProcess resolved, once the configuration is known.
-void ApplyTerminalProfile(bool plain, bool reduced_motion);
+void ApplyTerminalProfile(bool plain);
 // Conversation text is always UTF-8, so width measurement needs a multibyte
 // LC_CTYPE even when the environment names none. False when none exists.
 bool EnsureUtf8Ctype();

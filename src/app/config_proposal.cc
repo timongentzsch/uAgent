@@ -379,43 +379,6 @@ ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
   return Prepare(scope, nullptr, manager, /*direct_user=*/true);
 }
 
-std::string CheckSavedSettings(AllSettings& settings) {
-  auto check = [](SettingValues& scope, unsigned wanted) {
-    for (auto& [name, held] : scope) {
-      const ConfigDescriptor* descriptor = FindConfigDescriptor(name);
-      // Any other name is what a value refers to as $NAME.
-      if (!descriptor) continue;
-      // What a reference resolves to is what is checked; as written is what
-      // is kept. It is the saved value that is resolved, under a name the
-      // environment cannot hold, so no variable stands in for it.
-      std::string value = held, error;
-      if (held.find('$') != std::string::npos) {
-        EnvValues values = scope;
-        std::set<std::string> resolving;
-        values["="] = held;
-        value = ResolveEnvValue("=", values, resolving);
-      }
-      if ((descriptor->scopes & wanted) == 0) {
-        return name + " cannot be set at this scope";
-      }
-      if ((descriptor->sensitivity == Sensitivity::kCompositeSecret &&
-           !ValidateProviderProposal(value, error, /*direct_user=*/true)) ||
-          !ValidSettingValue(*descriptor, value, error)) {
-        return error;
-      }
-      if (held.find('$') == std::string::npos) held = value;
-    }
-    return std::string();
-  };
-  std::string error = check(settings.all, kScopeUser);
-  for (auto& [folder, scope] : settings.projects) {
-    if (!error.empty()) break;
-    error = check(scope, kScopeProject);
-    if (!error.empty()) error = folder + ": " + error;
-  }
-  return error;
-}
-
 bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error) {
   if (!proposal.ok) {
     error = "no approved proposal to commit";

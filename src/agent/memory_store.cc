@@ -29,12 +29,10 @@
 
 namespace uagent {
 
-// Assignment keywords whose value is redacted. UAGENT_MEMORY_REDACT_KEYWORDS
-// appends to this list; it can never shorten it, so a typo cannot disable
-// redaction. Keywords are matched literally (escaped before they reach the
-// pattern) because this input is user configuration, not a trusted regex:
-// -fno-exceptions makes a malformed std::regex fatal, and an arbitrary pattern
-// invites catastrophic backtracking over every memory body.
+// Assignment keywords whose value is redacted. Keywords are matched literally
+// (escaped before they reach the pattern): -fno-exceptions makes a malformed
+// std::regex fatal, and an arbitrary pattern invites catastrophic backtracking
+// over every memory body.
 const std::vector<std::string>& RedactKeywords() {
   static const std::vector<std::string> kKeywords = [] {
     std::vector<std::string> all = CredentialKeyStems();
@@ -42,22 +40,6 @@ const std::vector<std::string>& RedactKeywords() {
          {"api-key", "apikey", "access-token", "accesstoken", "auth_token",
           "auth-token", "authtoken"}) {
       all.emplace_back(variant);
-    }
-    constexpr size_t kMaxExtra = 32;
-    constexpr size_t kMaxKeywordBytes = 64;
-    std::string configured = SettingText(Cfg("UAGENT_MEMORY_REDACT_KEYWORDS"));
-    size_t added = 0;
-    for (size_t begin = 0; begin <= configured.size() && added < kMaxExtra;) {
-      size_t end = configured.find(',', begin);
-      std::string keyword = Trim(configured.substr(
-          begin, end == std::string::npos ? std::string::npos : end - begin));
-      // An empty alternative would match everywhere and redact the whole text.
-      if (!keyword.empty() && keyword.size() <= kMaxKeywordBytes) {
-        all.push_back(std::move(keyword));
-        ++added;
-      }
-      if (end == std::string::npos) break;
-      begin = end + 1;
     }
     return all;
   }();

@@ -72,7 +72,7 @@ int Terminal::Run(const std::vector<std::string>& attachments) {
     // A conversation that has no model yet starts at the picker, once.
     if (needs_model && !model_asked_) {
       model_asked_ = true;
-      Send({{"kind", "submit"}, {"text", "/models all"}});
+      Send({{"kind", "submit"}, {"text", "/model all"}});
     }
     g_streaming = running ? 1 : 0;
     SetQuitGesture(true);

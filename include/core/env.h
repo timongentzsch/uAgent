@@ -38,7 +38,6 @@ std::string SubagentModel();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
 int64_t MaxOutputTokens();
-bool MarkdownEnabled();
 // A delegated child echoes one line per durable event to stderr, which is the
 // only way its parent can tell work from a stall before the answer arrives.
 bool HeadlessProgressEnabled();

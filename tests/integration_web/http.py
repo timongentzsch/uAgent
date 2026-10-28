@@ -299,8 +299,8 @@ def test_web_slash_registry_and_attachment_retention(root, home, *, binary):
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             catalog = client.json("/api/sessions")[1]
-            help_command = next(row for row in catalog["commands"] if row["command"] == "/help")
-            assert_true("/commands" in help_command["aliases"], help_command)
+            quit_command = next(row for row in catalog["commands"] if row["command"] == "/quit")
+            assert_true("/exit" in quit_command["aliases"], quit_command)
             session = client.create(root)
             client.command("submit", session, text=f"/attach {attached}")
             client.until(

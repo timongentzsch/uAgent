@@ -456,8 +456,7 @@ void TestCommandAndDisplayRegistries() {
   CHECK(command.argument == "full");
   command = ParseSlashCommand("/context");
   CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
-  command = ParseSlashCommand("/ctx");
-  CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
+  CHECK(!ParseSlashCommand("/ctx").spec);
   CHECK(!ParseSlashCommand("/recap").spec);
   command = ParseSlashCommand("/memory");
   CHECK(command.spec && command.spec->id == SlashCommandId::kMemory);
@@ -469,8 +468,7 @@ void TestCommandAndDisplayRegistries() {
   // supervisor rather than asking the model to go and look.
   CHECK(SlashCommandPrompt(command).empty());
   CHECK(!ParseSlashCommand("/unknown").spec);
-  command = ParseSlashCommand("/resume");
-  CHECK(command.spec && command.spec->id == SlashCommandId::kSessions);
+  CHECK(!ParseSlashCommand("/resume").spec);
 
   // Prompt commands: the spelling is local, the work is an ordinary turn, and
   // /review carries whatever the caller named as its target.
@@ -601,7 +599,7 @@ void TestModelCatalogParsing() {
                                                 "Contributor"}}})}});
   CHECK(models && models->size() == 1);
   if (models && !models->empty()) {
-    // The display name survives parsing so /models can match it; the id
+    // The display name survives parsing so /model can match it; the id
     // stays the only selection key.
     CHECK((*models)[0].id == "meta/muse-spark-1.3");
     CHECK((*models)[0].name == "Meta: Muse Spark 1.3 Contributor");

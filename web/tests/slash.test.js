@@ -7,9 +7,12 @@ import {
 } from "../src/features/composer/slash.ts";
 import { fuzzy, fuzzyScore, matches } from "../src/shared/fuzzy.ts";
 const commands = [
-  { command: "/help", aliases: ["/commands"], argument: "" },
+  { command: "/help", aliases: [], argument: "" },
+  { command: "/quit", aliases: ["/exit"], argument: "" },
   { command: "/model", aliases: [], argument: "NAME" },
-  { command: "/models", aliases: [], argument: "[QUERY]" },
+  { command: "/rename", aliases: [], argument: "TITLE" },
+  { command: "/config", aliases: [], argument: "[KEY]" },
+  { command: "/context", aliases: [], argument: "" },
   {
     command: "/clear",
     aliases: [],
@@ -19,13 +22,14 @@ const commands = [
   },
 ];
 test("slash completion uses the CLI common-prefix and argument rules", () => {
-  assert.equal(slashCompletion(slashMatches(commands, "/mo")), "/model");
+  assert.equal(slashCompletion(slashMatches(commands, "/co")), "/con");
+  assert.equal(slashCompletion(slashMatches(commands, "/mo")), "/model ");
   assert.equal(slashCompletion(slashMatches(commands, "/h")), "/help");
-  assert.equal(slashCompletion(slashMatches(commands, "/models")), "/models ");
+  assert.equal(slashCompletion(slashMatches(commands, "/rename")), "/rename ");
   for (const text of ["hello /h", "/model name", "/help\nmore", ""])
     assert.deepEqual(slashMatches(commands, text), []);
-  assert.deepEqual(parseSlash(commands, "/commands"), {
-    name: "/help",
+  assert.deepEqual(parseSlash(commands, "/exit"), {
+    name: "/quit",
     argument: "",
     clientOnly: false,
   });

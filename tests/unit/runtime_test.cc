@@ -208,7 +208,6 @@ void TestRuntimeConfigAndRequests() {
       {"UAGENT_MAX_TURN_COST", "nan"},
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
-      {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
   };
   for (const auto& entry : kRuntimeEnv) setenv(entry.first, entry.second, 1);
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
@@ -221,7 +220,6 @@ void TestRuntimeConfigAndRequests() {
   CHECK(config.max_turn_cost == 0);
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
-  CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   json diagnostics = config.DiagnosticJson();
   CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
   CHECK(diagnostics.value("max_turn_tokens", int64_t{0}) == 123);
@@ -229,7 +227,6 @@ void TestRuntimeConfigAndRequests() {
   CHECK(diagnostics.value("web_search_model", "") == config.web_search_model);
   CHECK(diagnostics.value("web_search_backend", "") ==
         config.web_search_backend);
-  CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
   for (const auto& entry : kRuntimeEnv) unsetenv(entry.first);
   RuntimeConfig defaults;
   CHECK(defaults.max_steps == 0);

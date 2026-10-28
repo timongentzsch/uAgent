@@ -96,14 +96,6 @@ std::string Percent(double probability) {
 
 bool IsProbability(double value) { return value >= 0 && value <= 1; }
 
-// A bar from its setting; text that is no probability leaves the bar alone.
-void Override(double& bar, const std::string& text) {
-  double value = 0;
-  if (ParseFiniteDouble(text.c_str(), value) && IsProbability(value)) {
-    bar = value;
-  }
-}
-
 // The number under `key` when it is a probability.
 bool Probability(const json& object, const char* key, double& value) {
   const auto found = object.find(key);
@@ -277,8 +269,7 @@ const json& ReviewQuestions() {
   return kQuestions;
 }
 
-ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model,
-                         const RuntimeConfig& config) {
+ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model) {
   ReviewBars bars = kStrictBars;
   const json* table = JsonObject(endpoint.options, "decision_bars");
   if (const json* row = table ? JsonObject(*table, model.c_str()) : nullptr) {
@@ -287,9 +278,6 @@ ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model,
     Probability(*row, "deny", bars.deny);
     Probability(*row, "veto", bars.veto);
   }
-  Override(bars.allow, config.permission_allow_above);
-  Override(bars.deny, config.permission_deny_above);
-  Override(bars.veto, config.permission_veto_above);
   return bars;
 }
 
@@ -351,7 +339,6 @@ AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars) {
 }
 
 AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
-                                      const RuntimeConfig& config,
                                       UsageAccumulator& usage,
                                       const ReviewedCall& call) {
   AutoPermissionReview result;
@@ -409,7 +396,7 @@ AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
   }
   const json* answers = JsonObject(response.body, "answers");
   return JudgeAnswers(answers ? *answers : json::object(),
-                      ReviewBarsFor(endpoint, model, config));
+                      ReviewBarsFor(endpoint, model));
 }
 
 }  // namespace uagent

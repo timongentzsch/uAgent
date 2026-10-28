@@ -84,20 +84,19 @@ void TestMcpContractHelpers() {
   CHECK(McpResolveRoots({{"command", "server"},
                          {"roots", json::array({"root with space"})},
                          {"__uagent_config_dir", root_fixture.string()}},
-                        "", roots, error));
+                        roots, error));
   CHECK(roots.size() == 1);
   CHECK(roots[0]["uri"].get<std::string>().find("root%20with%20space") !=
         std::string::npos);
-  json global_roots;
-  CHECK(McpResolveRoots({{"command", "server"}}, configured_root.string(),
-                        global_roots, error));
-  CHECK(global_roots.size() == 1);
+  json default_roots;
+  CHECK(McpResolveRoots({{"command", "server"}}, default_roots, error));
+  CHECK(default_roots.size() == 1);
   unsetenv("UAGENT_MCP_MISSING_ROOT");
   json invalid_roots;
   CHECK(!McpResolveRoots({{"command", "server"},
                           {"roots", json::array({"$UAGENT_MCP_MISSING_ROOT"})},
                           {"__uagent_config_dir", root_fixture.string()}},
-                         "", invalid_roots, error));
+                         invalid_roots, error));
   CHECK(error.find("expanded to empty") != std::string::npos);
   CHECK(McpFileUri(std::filesystem::path("/tmp/\xc3\xa9")) ==
         "file:///tmp/%C3%A9");

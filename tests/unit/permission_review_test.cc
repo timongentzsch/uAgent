@@ -114,30 +114,20 @@ void TestPermissionReview() {
   CHECK(undecided.decision == Decision::kAsk);
   CHECK(!undecided.error.empty());
 
-  // A model's bars are its row of the endpoint's table, then the settings.
+  // A model's bars are its row of the endpoint's table.
   const Endpoint openrouter = OpenRouterEndpoint();
-  const RuntimeConfig defaults = RuntimeConfig::FromValues({});
-  ReviewBars jev = ReviewBarsFor(openrouter, "~typesafe/jev-latest", defaults);
+  ReviewBars jev = ReviewBarsFor(openrouter, "~typesafe/jev-latest");
   CHECK(jev.allow == 0.85 && jev.deny == 0.95 && jev.veto == 0.9);
-  ReviewBars luna =
-      ReviewBarsFor(openrouter, "openai/gpt-6-luna-decisions", defaults);
+  ReviewBars luna = ReviewBarsFor(openrouter, "openai/gpt-6-luna-decisions");
   CHECK(luna.allow == 0.85 && luna.veto == 0.9);
   // A model nobody calibrated is held to the strict bars.
-  ReviewBars unknown = ReviewBarsFor(openrouter, "other/model", defaults);
+  ReviewBars unknown = ReviewBarsFor(openrouter, "other/model");
   CHECK(unknown.allow == 0.9 && unknown.deny == 0.95 && unknown.veto == 0.3);
   // A row that is no probability keeps the strict bar.
   Endpoint careless = openrouter;
   careless.options["decision_bars"]["careless"] = {{"allow", -1}, {"veto", 2}};
-  ReviewBars kept = ReviewBarsFor(careless, "careless", defaults);
+  ReviewBars kept = ReviewBarsFor(careless, "careless");
   CHECK(kept.allow == 0.9 && kept.veto == 0.3);
-  const RuntimeConfig tuned =
-      RuntimeConfig::FromValues({{"UAGENT_PERMISSION_ALLOW_ABOVE", "0.97"},
-                                 {"UAGENT_PERMISSION_DENY_ABOVE", "wat"},
-                                 {"UAGENT_PERMISSION_VETO_ABOVE", "2"}});
-  ReviewBars overridden =
-      ReviewBarsFor(openrouter, "~typesafe/jev-latest", tuned);
-  CHECK(overridden.allow == 0.97);
-  CHECK(overridden.deny == 0.95 && overridden.veto == 0.9);
 
   // The review asks an endpoint that serves decision models, and says so when
   // there is none: nothing else stands in.

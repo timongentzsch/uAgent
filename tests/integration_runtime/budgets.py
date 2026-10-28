@@ -97,33 +97,23 @@ def test_turn_cost_is_unlimited_by_default(root, home, *, binary):
 
 
 def test_tool_policy_scopes_schema_and_runtime(root, home, *, binary):
-    marker = root / "tool-policy-marker"
-
-    def request_forbidden(_, body):
+    def advertised(_, body):
         names = function_names(body)
-        if names != {"grep", "read_path", "run"}:
+        if names != {"grep", "read_path"}:
             return event({"content": f"bad-schema:{sorted(names)}"})
-        return tool_call("run", {"command": f"touch {marker}"})
+        return event({"content": "policy-ok"})
 
-    def verify_rejected(_, body):
-        results = tool_results(body["messages"])
-        rejected = any("not allowed by tool policy" in result for result in results)
-        return event({"content": "policy-ok" if rejected else "policy-bad"})
-
-    with Server([request_forbidden, verify_rejected]) as server:
+    with Server([advertised]) as server:
         env = base_env(home, server.url)
         env.update(
             {
                 "UAGENT_TOOL_CAPABILITIES": "inspect",
                 "UAGENT_INTERNAL_TOOL_ALLOWLIST": json.dumps(["grep", "read_path", "run"]),
-                "UAGENT_INTERNAL_TOOL_RUN_ALLOWLIST": json.dumps(["python3 slow_analysis.py"]),
-                "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
         result = run(root, env, "--yolo", "-p", "inspect only", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "policy-ok", result.stdout)
-        assert_true(not marker.exists(), marker)
 
 
 def test_tool_call_budget_is_unlimited_by_default(root, home, *, binary):

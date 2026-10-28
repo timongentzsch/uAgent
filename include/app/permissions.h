@@ -61,9 +61,8 @@ struct AutoPermissionReview {
 const json& ReviewQuestions();
 
 // The bars for `model` at `endpoint`: its row of `decision_bars`, else the
-// strict ones, then the settings that name a bar.
-ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model,
-                         const RuntimeConfig& config);
+// strict ones.
+ReviewBars ReviewBarsFor(const Endpoint& endpoint, const std::string& model);
 
 // The verdict the answers of a decisions request give under `bars`.
 AutoPermissionReview JudgeAnswers(const json& answers, const ReviewBars& bars);
@@ -77,7 +76,6 @@ struct ReviewedCall {
 // Asks the decision model `route` names; with no endpoint serving one the
 // review says so and asks.
 AutoPermissionReview ReviewPermission(Api& api, const RouteResolution& route,
-                                      const RuntimeConfig& config,
                                       UsageAccumulator& usage,
                                       const ReviewedCall& call);
 

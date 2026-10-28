@@ -54,14 +54,10 @@ struct RuntimeConfig : TurnBudgets {
   int64_t mcp_timeout_s{};
   std::string approval;
   std::string permission_model;
-  std::string permission_allow_above;
-  std::string permission_deny_above;
-  std::string permission_veto_above;
   std::string web_search_backend;
   std::string web_search_model;
   std::string image_model;
   std::string title_model;
-  std::string mcp_roots;
   bool memory_enabled{};
   bool memory_generate{};
 

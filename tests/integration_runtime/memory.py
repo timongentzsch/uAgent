@@ -94,10 +94,7 @@ def test_memory_reaches_context_by_scope(root, home, *, binary):
         assert_true(elsewhere.stdout.strip() == "isolated-ok", elsewhere.stdout)
 
 
-def test_configured_redaction_keywords_apply(root, home, *, binary):
-    # The keyword list is read once per process, so this needs a fresh agent
-    # rather than a unit test. Configured keywords must extend the built-ins,
-    # never replace them, and must be matched literally.
+def test_memory_redacts_credentials(root, home, *, binary):
     workspace = root / "redact-workspace"
     workspace.mkdir()
     # Global memories carry their body into the request; project ones are
@@ -105,9 +102,7 @@ def test_configured_redaction_keywords_apply(root, home, *, binary):
     global_dir = global_memory_dir(home)
     global_dir.mkdir(parents=True, exist_ok=True)
     (global_dir / "creds.md").write_text(
-        "db_dsn=postgres://user/redact-dsn-sentinel\n"
-        "passwd=redact-passwd-sentinel\n"
-        "harmless value 42\n",
+        "passwd=redact-passwd-sentinel\nharmless value 42\n",
         encoding="utf-8",
     )
 
@@ -116,8 +111,7 @@ def test_configured_redaction_keywords_apply(root, home, *, binary):
         # whole request rather than one message.
         sent = "\n".join(str(message.get("content", "")) for message in body["messages"])
         valid = (
-            "redact-dsn-sentinel" not in sent
-            and "redact-passwd-sentinel" not in sent
+            "redact-passwd-sentinel" not in sent
             and "[REDACTED]" in sent
             and "harmless value 42" in sent
         )
@@ -125,8 +119,6 @@ def test_configured_redaction_keywords_apply(root, home, *, binary):
 
     with Server([verify]) as server:
         env = base_env(home, server.url)
-        # ".*" must be treated as a literal keyword, not a pattern.
-        env["UAGENT_MEMORY_REDACT_KEYWORDS"] = "db_dsn, .*"
         result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "redact-ok", result.stdout)

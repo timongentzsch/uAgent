@@ -163,9 +163,6 @@ CommandReply RunSlashCommand(AppSession& session,
       }
       break;
     }
-    case SlashCommandId::kModels:
-      HandleModels(session, command.argument, reply);
-      break;
     case SlashCommandId::kModel:
       HandleModel(session, command.argument, reply);
       break;
@@ -295,9 +292,6 @@ CommandReply RunSlashCommand(AppSession& session,
       return reply;
     case SlashCommandId::kStatus:
       HandleStatus(session, reply);
-      break;
-    case SlashCommandId::kDebugConfig:
-      HandleDebugConfig(session, command.argument, reply);
       break;
     case SlashCommandId::kAttach:
       HandleAttach(session, command.argument, reply);

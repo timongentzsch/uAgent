@@ -493,7 +493,7 @@ void TestActivityBar() {
   CHECK(second.starts_with("⠙"));
   CHECK(wrapped.starts_with("⠋"));
   CHECK(first != second);
-  // Reduced motion holds it still.
+  // Plain mode holds it still.
   g_motion = false;
   CHECK(ActivityBar(Working(std::chrono::milliseconds(100))).starts_with("⠋"));
   g_motion = true;

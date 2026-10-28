@@ -194,30 +194,15 @@ void TestToolExecutionPolicy() {
   Tool mutate = unbounded;
   mutate.name = "mutate";
   mutate.capabilities = Capability(ToolCapability::kMutate);
-  Tool exact_run = unbounded;
-  exact_run.name = "run";
-  exact_run.parameters = {{"type", "object"},
-                          {"properties", {{"command", {{"type", "string"}}}}},
-                          {"required", {"command"}}};
-  exact_run.capabilities = Capability(ToolCapability::kExecute) |
-                           Capability(ToolCapability::kMutate);
-  exact_run.command_policy = true;
-  std::vector<Tool> restricted{inspect, mutate, exact_run};
+  std::vector<Tool> restricted{inspect, mutate};
   ApplyToolPolicy(restricted, {.allowed = Capability(ToolCapability::kInspect),
-                               .tool_allowlist = {"inspect", "run"},
-                               .run_allowlist = {"python3 slow_analysis.py"},
+                               .tool_allowlist = {"inspect", "mutate"},
                                .error = ""});
   CHECK(FindTool(restricted, "inspect") != nullptr);
   CHECK(FindTool(restricted, "mutate") == nullptr);
-  const Tool* allowed_run = FindTool(restricted, "run");
-  CHECK(allowed_run != nullptr);
-  CHECK(allowed_run &&
-        !allowed_run->validate({{"command", "python3 slow_analysis.py"}}));
-  CHECK(allowed_run &&
-        allowed_run->validate({{"command", "python3 other.py"}}));
 
   // An allowlist (a panel's) keeps only its named tools, even when
-  // every capability is allowed and an exact run is authorized.
+  // every capability is allowed.
   Tool read_tool = inspect;
   read_tool.name = "read_path";
   Tool memory_tool = mutate;
@@ -225,10 +210,8 @@ void TestToolExecutionPolicy() {
   Tool config_tool = inspect;
   config_tool.name = "uagent";
   config_tool.capabilities = 0;
-  std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate,
-                           exact_run};
+  std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate};
   ApplyToolPolicy(pinned, {.tool_allowlist = {"read_path", "memory", "uagent"},
-                           .run_allowlist = {"python3 slow_analysis.py"},
                            .error = ""});
   // uagent stays: its writes (settings, instructions) always need the user.
   CHECK(pinned.size() == 3);

@@ -46,7 +46,8 @@ A model is named `[provider/]model[:effort]`, for example
 the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
 `:floor` or `:free`) is part of the name: `openrouter/vendor/model:nitro:high`.
 
-- `/models QUERY` searches the models your key offers and selects one.
+- `/model QUERY` searches the models your key offers and selects one; `/model
+  all` lists every catalogue.
 - `/model NAME` chooses for this conversation; `/model NAME --default` also
   saves it for new ones. `/effort LEVEL` sets the reasoning effort.
 - With no model set, the first start opens the model picker and saves your
@@ -134,7 +135,7 @@ Delete the file to ask again.
 | save for this project folder | `/config project KEY=VALUE` |
 | set this conversation's model or approval mode | `/config conversation KEY=VALUE` |
 | remove a saved value | `/config user unset KEY` |
-| move settings between hosts | `uagent config export`, `uagent config import FILE` |
+| see one setting, scope by scope | `/config KEY` |
 
 `KEY` is a setting's name (`limits.maxSteps`) or its environment name
 (`UAGENT_MAX_STEPS`). A flag overrides the environment, which overrides the
@@ -182,9 +183,8 @@ else that always asks: those go to you.
 - Automatic decisions are checked again on later calls, so a restriction you
   add later takes effect.
 - The bars are part of the endpoint's data, found with `tests/reviewer_eval`.
-  `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove`
-  override them; `approval.reviewerModel` (`[endpoint/]model`) chooses
-  another decision model.
+  `approval.reviewerModel` (`[endpoint/]model`) chooses another decision
+  model.
 
 `/changes` lists the files the last turn changed and `/undo` puts them back
 (in the web, Undo under the turn). Changes a shell command made are not

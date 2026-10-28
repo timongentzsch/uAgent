@@ -109,7 +109,7 @@ void ResolveTerminalProfile(const Options& options) {
     ParseBool(settings.Get(key), value);
     return value;
   };
-  ApplyTerminalProfile(on("UAGENT_PLAIN"), on("UAGENT_REDUCED_MOTION"));
+  ApplyTerminalProfile(on("UAGENT_PLAIN"));
 }
 
 // Report a startup failure in whichever shape the caller asked for. Emit is a
@@ -268,9 +268,6 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
-  if (argc > 1 && std::string_view(argv[1]) == "config") {
-    return ConfigMain(argc, argv);
-  }
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }

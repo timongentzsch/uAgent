@@ -41,11 +41,10 @@ high-contrast theme, applies.
 
 ### Reduced motion
 
-`UAGENT_REDUCED_MOTION=1` holds the spinner still: the working row changes
-only when the work it names changes, and its elapsed time once a second.
-Plain mode implies it. To keep either setting, save it once from a session,
-for example `/config user UAGENT_PLAIN=1`. Both apply when a terminal next
-starts.
+Plain mode holds the spinner still: the working row changes only when the
+work it names changes, and its elapsed time once a second. To keep it, save it
+once from a session, for example `/config user UAGENT_PLAIN=1`; it applies
+when a terminal next starts.
 
 ### Other
 
@@ -95,6 +94,5 @@ meets.
 | Plain mode: no cursor control, labelled rows, ASCII only | `test_plain_mode_writes_labelled_lines_without_cursor_control` in `tests/integration_ui.py` |
 | Plain row marks | `tests/unit/presentation_test.cc` |
 | `NO_COLOR` keeps attributes | `test_no_color_keeps_bold_italic_and_dim` in `tests/integration_ui.py` |
-| Reduced motion: the working row redraws once a second | `test_reduced_motion_redraws_the_working_row_once_a_second` in `tests/integration_ui.py` |
 | ASCII fallback | `test_non_utf8_locale_draws_only_ascii` in `tests/integration_ui.py` |
 | Web: no axe WCAG 2.2 AA violations in chat (both colour schemes), decisions, ask, settings, the drawer, the Files pane and resize handles; keyboard menus, skip link, forced-colours switch; axe absent from `dist/` | `web/tests/a11y.spec.js` |

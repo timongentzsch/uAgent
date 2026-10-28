@@ -161,22 +161,6 @@ void TestSettingsStore() {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "$COUNT");
   }
 
-  // Settings handed over whole are taken whole or not at all.
-  {
-    TestWorkspace handed_over("settings-store-handed");
-    const json now = {{"format", 3},
-                      {"all", {{"model", "old"}, {"limits.maxSteps", 9}}},
-                      {"projects", {{"/p", {{"sandbox.level", "off"}}}}}};
-    AllSettings handed;
-    std::string why;
-    CHECK(ParseSettings(now, handed, why) && handed.projects.count("/p"));
-    CHECK(handed.all.at("UAGENT_MAX_STEPS") == "9");
-    json wrong = now;
-    wrong["all"]["no.such.setting"] = 1;
-    CHECK(!ParseSettings(wrong, handed, why));
-    CHECK(why.find("no.such.setting is not a setting") != std::string::npos);
-  }
-
   // A document that cannot be read is reported and never saved over; one an
   // earlier release wrote in format 2 is one of them.
   for (const char* broken :

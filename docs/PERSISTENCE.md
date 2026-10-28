@@ -52,14 +52,13 @@ No settings are read from a project folder. µAgent reads from it only
 ## Settings
 
 [Operations](OPERATIONS.md#settings) describes the settings document and how
-to change, export and import it. On disk:
+to change it. On disk:
 
 - µAgent writes `config/settings.json` under a lock and keeps
   `config/settings.schema.json` beside it for editors.
 - A document that cannot be parsed is refused, never read as empty: the error
   names the file to fix or remove, and nothing is saved over it.
-- The format is 3, written since v1.5.0; an earlier format is not read, and
-  `uagent config import` takes format 3 only.
+- The format is 3, written since v1.5.0; an earlier format is not read.
 
 ## Sessions
 

@@ -61,23 +61,9 @@ std::string ChangeSettings(
     const std::string& folder,
     const std::function<std::string(SettingValues& scope)>& change);
 
-// Everything saved, scope by scope: what a backup holds, or another host is
-// given.
-struct AllSettings {
-  SettingValues all;
-  std::map<std::string, SettingValues> projects;
-};
 // Everything saved, as the document spells it. `error` says why it is not
 // all there.
 json ExportSettings(std::string& error);
-// A document from a backup or another host, in this format, as scopes. False
-// with why it is not one: unlike a document edited in place, one handed over
-// is taken whole or not at all.
-bool ParseSettings(const json& document, AllSettings& settings,
-                   std::string& error);
-// Replaces everything saved; the values are the caller's to check. Returns
-// why it was not saved.
-std::string ReplaceSettings(const AllSettings& settings);
 
 // The JSON Schema of the document, for an editor: written beside it as
 // settings.schema.json, which the document names.

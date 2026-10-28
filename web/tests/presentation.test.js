@@ -404,6 +404,19 @@ test("default folds the calls the host grouped, and no others", () => {
   );
 });
 
+test("a reply of blank lines is no row", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    { id: "m1", kind: "assistant", text: "\n\n" },
+    { id: "m2", kind: "assistant", text: "", reasoning: " \n" },
+    { id: "m3", kind: "assistant", text: "Done." },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["u1", "m3"],
+  );
+});
+
 test("minimal folds a turn's work into one row before its answer", () => {
   const turn = [
     { id: "u1", kind: "user", text: "go" },

@@ -167,6 +167,14 @@ enum class ApprovalClass {
   kMandatoryHuman,
 };
 
+// The fields each value of a multi-action tool's discriminating argument
+// needs, which one flat schema cannot say. FindToolArgumentIssue checks them
+// beside `required`, and ToolDescription lists them for the model.
+struct ActionRequires {
+  std::string field;  // the discriminating argument: action or operation
+  std::vector<std::pair<std::string, std::vector<std::string>>> actions;
+};
+
 struct Tool {
   using Run = std::function<ToolResult(const json&, const ToolContext&)>;
   using Summary = std::function<std::string(const json&)>;
@@ -225,6 +233,8 @@ struct Tool {
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
   int64_t result_chars = -1;        // -1 = global result cap
   int64_t max_calls_per_turn = -1;  // -1 = global turn budget
+  // The fields each action needs, beside `parameters`' own `required`.
+  ActionRequires action_requires = {};
   // Numeric pacing hints — a yield, a context radius, a page size — where a
   // value outside the schema's bounds means "as much as allowed", not a
   // mistake. Clamping them into range costs nothing; rejecting spends a whole
@@ -339,7 +349,8 @@ std::string ToolTitle(const Tool& tool);
 std::optional<ToolArgumentIssue> FindSchemaIssue(const json& schema,
                                                  const json& value,
                                                  const std::string& name);
-// Structured argument validation against a tool's JSON schema.
+// Structured argument validation against a tool's JSON schema, then its
+// action_requires.
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args);
 

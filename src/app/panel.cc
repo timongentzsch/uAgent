@@ -97,9 +97,6 @@ constexpr size_t kPlanSteps = 24;
 // stay.
 ToolResult SetStep(const std::string& folder, json& pinned, const json& a) {
   const std::string id = JsonValue(a, "id", "");
-  if (id.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "step requires id");
-  }
   json steps = JsonValue(pinned, "steps", json::array());
   auto found = std::find_if(steps.begin(), steps.end(), [&](const json& step) {
     return JsonValue(step, "id", "") == id;
@@ -151,11 +148,8 @@ ToolResult Plan(const std::string& folder, const json& a) {
       value = text;
     } else if (action == "append") {
       value += (value.empty() ? "" : "\n") + text;
-    } else if (action == "clear") {
-      value.clear();
     } else {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "unknown action " + action);
+      value.clear();
     }
     if (value.size() > kPinnedBytes) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
@@ -191,6 +185,11 @@ Tool PlanTool(const std::string& folder) {
         "result":{"type":"string","maxLength":1024}},
         "required":["action"]})json"),
       [folder](const json& a, const ToolContext&) { return Plan(folder, a); });
+  tool.action_requires = {"action",
+                          {{"set", {"block", "text"}},
+                           {"append", {"block", "text"}},
+                           {"clear", {"block"}},
+                           {"step", {"id"}}}};
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.summary = [](const json& a) {

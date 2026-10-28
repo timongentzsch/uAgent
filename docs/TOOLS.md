@@ -12,7 +12,10 @@ approved.
 | choose how calls are approved | `/permissions ask\|auto\|yolo`; see [Approval](#approval) |
 
 The exact schemas and their sizes come from the `uagent` tool's `inspect`
-action with topic `tools`.
+action with topic `tools`. A tool with several actions lists the fields each
+one needs in its description. A call missing one does not run: the model is
+told every missing field and what the call carried, and the third such round
+in a turn ends it.
 
 ## Inventory
 
@@ -103,7 +106,7 @@ Every `activity` call names one `operation`:
 | `list` | |
 | `poll` | `id`; optional `wait_ms` and `until` (a readiness marker) |
 | `wait` | `wait_ms`; optional `ids` (default: all) and `mode=any\|all` |
-| `write` | `id`, `chars`; an empty string is a valid write and `\u0003` interrupts the process group |
+| `write` | `id`; optional `chars`: left out or empty is a valid write, and `\u0003` interrupts the process group |
 | `resize` | `id`, `rows` and `cols` in 1..1000; PTY activities only |
 | `stop` | `id`; sends TERM, then KILL, to the process group and removes its records and logs |
 

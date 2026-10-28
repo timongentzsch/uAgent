@@ -257,6 +257,7 @@ class Agent {
     std::string issue_code;
     std::string issue_field;
     std::string operation;
+    std::string message;  // what the model was told
   };
 
   // What the step loop does next. kRetryStep repeats the step without

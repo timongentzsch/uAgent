@@ -361,7 +361,7 @@ void TestFileTools() {
   fs::path empty_file = root / "empty";
   if (write_tool) {
     CHECK(InvalidToolArgument(*write_tool, {{"path", empty_file.string()}}) ==
-          "`content` is required");
+          "`content` is required; this call carried only `path`");
     CHECK(write_tool->run({{"path", empty_file.string()}, {"content", ""}}, {})
               .Ok());
     CHECK(fs::exists(empty_file));

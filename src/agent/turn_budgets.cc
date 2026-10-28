@@ -176,15 +176,12 @@ bool Agent::StopForRepeatedRejections(
     int64_t rounds = ++loop.recovery.rejection_rounds[key];
     if (rounds < kRejectedCallStopAfter) continue;
 
-    std::string message = "model repeated an equivalent rejected " +
-                          rejection.tool + " call " +
-                          std::to_string(kRejectedCallStopAfter) + " times (" +
-                          rejection.issue_code;
-    if (!rejection.issue_field.empty()) {
-      message += ": " + rejection.issue_field;
-    }
-    message += ")";
-    FailBudget(state, TurnStopReason::kRepeatedCalls, std::move(message));
+    // The model answers from this notice, so it repeats what the rejection
+    // said, down to what the call carried.
+    FailBudget(state, TurnStopReason::kRepeatedCalls,
+               "model repeated an equivalent rejected " + rejection.tool +
+                   " call " + std::to_string(kRejectedCallStopAfter) +
+                   " times: " + rejection.message);
     DebugLog("deterministic_rejection_loop",
              {{"turn", turn_id_},
               {"step", loop.step},

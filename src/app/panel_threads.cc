@@ -45,10 +45,6 @@ ToolResult Spawn(const std::string& folder, const json& a,
                  const std::function<std::string()>& own_model) {
   const std::string title = Utf8Prefix(JsonValue(a, "title", ""), 120);
   const std::string objective = JsonValue(a, "objective", "");
-  if (title.empty() || objective.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "spawn needs a title and an objective");
-  }
   const std::string panel = PanelId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_PANEL_MAX_THREADS"));
   const std::vector<SessionInfo> threads = OwnThreads(folder);
@@ -150,7 +146,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
 // within their ceiling, where the user's own sessions would not.
 ToolResult Message(const SessionInfo& info, const std::string& folder,
                    const std::string& text) {
-  if (text.empty() || text.size() > kMessageBytes) {
+  if (text.size() > kMessageBytes) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "a message needs 1 to " + std::to_string(kMessageBytes) +
                            " bytes of text");
@@ -220,18 +216,16 @@ Tool ThreadTool(const std::string& folder,
   Tool tool = MakeTool(
       "thread",
       "Delegate work to background agents: ordinary sessions that edit and run "
-      "code "
-      "for you. spawn starts one on a brief (title, objective, output, "
-      "done_when, boundaries; environment worktree or local; step, the plan "
-      "step it works for). message "
-      "guides a running session in this folder, or restarts your own "
-      "background agent (session_id, text; three restarts in a row at most, "
-      "then ask "
-      "the user); stop interrupts its turn; close ends its runtime; diff shows "
-      "what it changed; delete closes and removes a session, and its "
-      "worktree if nothing would be lost, after the user confirms. One "
-      "background agent per independent part; keep dependent steps in one. "
-      "A question that only needs reading goes to a subagent instead.",
+      "code for you. spawn starts one on a brief (output, done_when and "
+      "boundaries add to it; environment worktree or local; step, the plan "
+      "step it works for). message guides a running session in this folder, "
+      "or restarts your own background agent (three restarts in a row at "
+      "most, then ask the user); stop interrupts its turn; close ends its "
+      "runtime; diff shows what it changed; delete closes and removes a "
+      "session, and its worktree if nothing would be lost, after the user "
+      "confirms. One background agent per independent part; keep dependent "
+      "steps in one. A question that only needs reading goes to a subagent "
+      "instead.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string",
           "enum":["spawn","message","stop","close","diff","delete"]},
@@ -257,11 +251,16 @@ Tool ThreadTool(const std::string& folder,
           if (action == "stop") return Stop(info);
           if (action == "close") return Close(info);
           if (action == "diff") return Diff(info);
-          if (action == "delete") return Delete(info, folder);
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "unknown action " + action);
+          return Delete(info, folder);
         });
       });
+  tool.action_requires = {"action",
+                          {{"spawn", {"title", "objective"}},
+                           {"message", {"session_id", "text"}},
+                           {"stop", {"session_id"}},
+                           {"close", {"session_id"}},
+                           {"diff", {"session_id"}},
+                           {"delete", {"session_id"}}}};
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
   tool.intent = "delegate";

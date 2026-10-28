@@ -354,12 +354,6 @@ static ToolResult MemoryAction(const std::string& action,
                                const std::string& key,
                                const std::optional<std::string>& content,
                                const std::filesystem::path& cwd) {
-  if (action != "get" && action != "set" && action != "forget" &&
-      action != "list" && action != "search") {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "action must be get, set, forget, list, or "
-                       "search");
-  }
   // Models fill unused fields with "": that is the same as leaving them out.
   const bool has_text = content.has_value() && !content->empty();
   if (action == "list") {
@@ -415,8 +409,7 @@ static ToolResult MemoryAction(const std::string& action,
     return AccessMemory(name, scope, std::nullopt, true, cwd);
   }
   return ToolFailure(ToolErrorCode::kInvalidArguments,
-                     action + (action == "set" ? " requires content"
-                                               : " does not accept content"));
+                     action + " does not accept content");
 }
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,

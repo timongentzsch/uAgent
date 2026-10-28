@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -14,12 +15,17 @@
 #include "include/agent/activity.h"
 #include "include/agent/agent.h"
 #include "include/agent/session_view.h"
+#include "include/app/panel.h"
+#include "include/app/uagent_tool.h"
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
 #include "include/core/tool_activity.h"
 #include "include/tools/ask.h"
+#include "include/tools/browser.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/shell.h"
+#include "include/tools/subagent.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -100,7 +106,7 @@ void TestToolExecutionPolicy() {
       {"required", {"value"}},
       {"additionalProperties", false}};
   CHECK(InvalidToolArgument(tool, {{"nested", json::object()}}) ==
-        "`nested.value` is required");
+        "`nested.value` is required; `nested` carried nothing");
   CHECK(InvalidToolArgument(tool,
                             {{"nested", {{"value", true}, {"extra", true}}}}) ==
         "unknown argument `nested.extra`");
@@ -108,6 +114,48 @@ void TestToolExecutionPolicy() {
       {"type", "string"}, {"description", "provider argument"}};
   CHECK(ToolParameters(tool)["properties"]["timeout"] ==
         tool.parameters["properties"]["timeout"]);
+
+  // Per-action fields: every missing one is named with what the call
+  // carried, an empty string counts as not given, an unknown action is the
+  // enum's to reject, and a left-out action is the schema's default.
+  Tool spawner;
+  spawner.name = "spawner";
+  spawner.description = "Starts things.";
+  spawner.parameters = {{"type", "object"},
+                        {"properties",
+                         {{"action",
+                           {{"type", "string"},
+                            {"enum", {"spawn", "stop"}},
+                            {"default", "spawn"}}},
+                          {"title", {{"type", "string"}}},
+                          {"objective", {{"type", "string"}}},
+                          {"session_id", {{"type", "string"}}}}}};
+  spawner.action_requires = {
+      "action", {{"spawn", {"title", "objective"}}, {"stop", {"session_id"}}}};
+  CHECK(InvalidToolArgument(spawner, {{"action", "spawn"}}) ==
+        "`title` and `objective` are required for spawn; this call carried "
+        "only `action`");
+  CHECK(InvalidToolArgument(spawner, {{"action", "spawn"},
+                                      {"title", "T"},
+                                      {"objective", ""},
+                                      {"session_id", ""}}) ==
+        "`objective` is required for spawn; this call carried only `action` "
+        "and `title`");
+  CHECK(InvalidToolArgument(spawner, {{"title", "T"}}) ==
+        "`objective` is required for spawn; this call carried only `title`");
+  CHECK(InvalidToolArgument(
+            spawner, {{"action", "spawn"}, {"title", "T"}, {"objective", "O"}})
+            .empty());
+  CHECK(InvalidToolArgument(spawner, {{"action", "stop"}, {"session_id", "s"}})
+            .empty());
+  auto unknown = FindToolArgumentIssue(spawner, {{"action", "launch"}});
+  CHECK(unknown && unknown->code == "schema.enum");
+  auto missing = FindToolArgumentIssue(spawner, {{"action", "stop"}});
+  CHECK(missing && missing->code == "schema.required" &&
+        missing->field == "session_id");
+  CHECK(ToolDescription(spawner) ==
+        "Starts things. Required per action: spawn: title, objective; stop: "
+        "session_id.");
 
   ToolContext base{std::chrono::steady_clock::now() + std::chrono::seconds(30)};
   ToolContext bounded = base.WithTimeout(2);
@@ -386,6 +434,54 @@ void TestBlockingWaitCalls() {
   activity.blocking_wait_default_ms = 0;
   CHECK(!ToolCallBlocks(activity, json::object()));
   CHECK(ToolCallBlocks(activity, {{"wait_ms", 5000}}));
+}
+
+// Every multi-action tool turns a bare action away before it runs, naming
+// the fields that action needs and that the call carried only the action.
+void TestActionRequiresDeclarations() {
+  ActivitySupervisor supervisor;
+  std::vector<Tool> tools = BuiltinTools(supervisor);
+  AddPanelTools(tools, "/nonexistent-folder", [] { return std::string(); });
+  tools.push_back(SessionTool());
+  const Api api(RuntimeConfig{});
+  const std::vector<Route> routes;
+  const std::vector<Endpoint> providers;
+  tools.push_back(SubagentTool(api, supervisor, routes, providers, false));
+  tools.push_back(
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   return ConfigProposal{};
+                 }));
+#ifdef UAGENT_BROWSER
+  tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
+                              [](const std::string&, const std::string&,
+                                 bool*) { return std::string(); }));
+#endif
+  std::vector<std::string> declared;
+  for (const Tool& tool : tools) {
+    const ActionRequires& table = tool.action_requires;
+    if (table.field.empty()) continue;
+    declared.push_back(tool.name);
+    CHECK(ToolDescription(tool).find(" Required per " + table.field + ": ") !=
+          std::string::npos);
+    for (const auto& [action, fields] : table.actions) {
+      auto issue = FindToolArgumentIssue(tool, {{table.field, action}});
+      CHECK(issue && issue->code == "schema.required" &&
+            issue->field == fields.front() &&
+            issue->message.ends_with(" required for " + action +
+                                     "; this call carried only `" +
+                                     table.field + "`"));
+    }
+  }
+  std::vector<std::string> multi_action = {"activity", "history", "memory",
+                                           "plan",     "session", "subagent",
+                                           "thread",   "uagent"};
+#ifdef UAGENT_BROWSER
+  multi_action.emplace_back("browser");
+#endif
+  std::ranges::sort(declared);
+  std::ranges::sort(multi_action);
+  CHECK(declared == multi_action);
 }
 
 }  // namespace uagent

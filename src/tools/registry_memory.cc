@@ -19,7 +19,7 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
                     "key":{"type":"string",
                       "description":"exact project/<name> or global/<name> key; codex/<name> and claude/<name> are read-only; search text for search; omit for list"},
                     "content":{"type":"string",
-                      "description":"durable lesson; required only for set"}},
+                      "description":"durable lesson"}},
                     "required":["action"]})json");
   bool automatic_extraction = !EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE").empty();
   bool automatic_write = false;
@@ -60,6 +60,11 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
     std::string action = JsonValue(a, "action", "");
     return action == "set" || action == "forget";
   };
+  memory.action_requires = {"action",
+                            {{"get", {"key"}},
+                             {"set", {"key", "content"}},
+                             {"forget", {"key"}},
+                             {"search", {"key"}}}};
   memory.capabilities = Capability(ToolCapability::kInspect) |
                         Capability(ToolCapability::kMutate);
   memory.available_in_lean = false;

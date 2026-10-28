@@ -126,6 +126,7 @@ namespace uagent {
   X(TestSessionMail)                              \
   X(TestToolExecutionPolicy)                      \
   X(TestBlockingWaitCalls)                        \
+  X(TestActionRequiresDeclarations)               \
   X(TestOpenRouterServerSearch)                   \
   X(TestAttachmentEncoding)                       \
   X(TestVectorAndHeicAttachments)                 \

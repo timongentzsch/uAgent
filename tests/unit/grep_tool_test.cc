@@ -237,6 +237,7 @@ void TestGrepTool() {
   CHECK(materialized_write.contains("chars"));
   CHECK(materialized_write["chars"] == "");
   CHECK(!materialized_write.contains("rows"));
+  CHECK(activity && !FindToolArgumentIssue(*activity, materialized_write));
   CHECK(activity && !activity->validate(materialized_write));
   CHECK(activity && !activity->mutates(materialized_poll));
   CHECK(activity && activity->mutates(materialized_write));
@@ -245,9 +246,9 @@ void TestGrepTool() {
       activity ? activity->validate({{"operation", "resize"}, {"id", 3}})
                : std::nullopt;
   CHECK(resize_issue && resize_issue->code == "activity.invalid_dimensions");
-  auto id_issue =
-      activity ? activity->validate({{"operation", "poll"}}) : std::nullopt;
-  CHECK(id_issue && id_issue->code == "activity.missing_id");
+  CHECK(activity &&
+        InvalidToolArgument(*activity, {{"operation", "poll"}}) ==
+            "`id` is required for poll; this call carried only `operation`");
   CHECK(activity && InvalidToolArgument(
                         *activity, {{"operation", "poll"}, {"id", "bad"}}) ==
                         "`id` must be integer");
@@ -317,9 +318,9 @@ void TestGrepTool() {
   CHECK(materialized_stop == json({{"operation", "stop"}, {"id", 3}}));
   CHECK(activity && !activity->validate(materialized_stop));
   CHECK(activity && activity->mutates(materialized_stop));
-  auto stop_id_issue =
-      activity ? activity->validate({{"operation", "stop"}}) : std::nullopt;
-  CHECK(stop_id_issue && stop_id_issue->code == "activity.missing_id");
+  CHECK(activity &&
+        InvalidToolArgument(*activity, {{"operation", "stop"}}) ==
+            "`id` is required for stop; this call carried only `operation`");
   CHECK(activity && activity->summary(materialized_stop) == "stop activity 3");
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==

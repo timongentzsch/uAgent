@@ -31,10 +31,10 @@
   min-height: var(--row);
   font-size: var(--font-small);
 }
+/* The line is there either way, so its time always shows; only an answer's
+   menu waits for the pointer, as clutter beside every reply. */
 @media (hover: hover) and (pointer: fine) {
-  .message.response:not(:hover, :focus-within)
-    > header
-    > :is(time, .action-menu) {
+  .message.response:not(:hover, :focus-within) > header > .action-menu {
     opacity: 0;
   }
 }

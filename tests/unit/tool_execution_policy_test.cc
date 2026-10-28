@@ -11,8 +11,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "include/agent/activity.h"
 #include "include/agent/agent.h"
-#include "include/agent/jobs.h"
 #include "include/agent/session_view.h"
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
@@ -300,19 +300,19 @@ void TestToolExecutionPolicy() {
   RemoveLog(fallback_log.string());
   fs::remove_all(log_root);
 
-  ProcessSupervisor task_processes;
-  BgJob task_header{.pid = 7,
-                    .cmd = "uagent -p 'very long delegated prompt'",
-                    .kind = ActivityKind::kSubagent};
-  CHECK(BgResultHeader(task_header) == "[Background result: subagent id 7]");
-  CHECK(BgResultHeader(task_header).find("delegated prompt") ==
+  ActivitySupervisor task_processes;
+  Activity task_header{.pid = 7,
+                       .cmd = "uagent -p 'very long delegated prompt'",
+                       .kind = ActivityKind::kSubagent};
+  CHECK(ActivityResultHeader(task_header) == "[Activity result: subagent 7]");
+  CHECK(ActivityResultHeader(task_header).find("delegated prompt") ==
         std::string::npos);
-  BackgroundCompletion task_completion;
+  ActivityCompletion task_completion;
   task_completion.activity_id = 7;
   task_completion.kind = ActivityKind::kSubagent;
   task_completion.command = "uagent -p 'very long delegated prompt'";
-  CHECK(BgResultHeader(task_completion) ==
-        "[Background result: subagent id 7]");
+  CHECK(ActivityResultHeader(task_completion) ==
+        "[Activity result: subagent 7]");
   ToolResult launched =
       RunShellCommand(task_processes, base,
                       {.command = "sleep 10",
@@ -323,19 +323,19 @@ void TestToolExecutionPolicy() {
   CHECK(launched.output.starts_with(kStartedSubagentMarker));
   CHECK(StripModelHints(launched.output).empty());
   CHECK(task_processes.JoinableCount() == 1);
-  std::vector<BgJob> tasks = task_processes.Snapshot();
+  std::vector<Activity> tasks = task_processes.Snapshot();
   CHECK(tasks.size() == 1);
   std::vector<pid_t> task_ids;
   task_ids.reserve(tasks.size());
-  for (const BgJob& job : tasks) task_ids.push_back(job.pid);
-  CHECK(BgCancelSubagents(task_processes) == 1);
+  for (const Activity& job : tasks) task_ids.push_back(job.pid);
+  CHECK(ActivityCancelSubagents(task_processes) == 1);
   CHECK(!task_processes.PendingCount());
   if (!task_ids.empty()) CHECK(!ProcessGroupAlive(task_ids[0]));
 
   {
     TestWorkspace memory_workspace("automatic-memory-write-limit");
     setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "test-source", 1);
-    ProcessSupervisor memory_processes;
+    ActivitySupervisor memory_processes;
     std::vector<Tool> memory_tools = BuiltinTools(memory_processes);
     unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
     const Tool* memory = FindTool(memory_tools, "memory");

@@ -12,9 +12,9 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity.h"
 #include "include/agent/agent.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"
 #include "include/api/citations.h"
@@ -182,7 +182,7 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
-  DrainBackground();
+  DrainActivities();
   AccountSideUsage(&state.metrics.usage);
   if (TurnTokenBudgetExceeded(state, /*before_model=*/true)) {
     return StepFlow::kEndTurn;
@@ -232,7 +232,7 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   state.line_open = false;
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
   bool steering_applied = ApplyQueuedSteering(loop);
-  if (cancelled) BgCancelSubagents(processes_);
+  if (cancelled) ActivityCancelSubagents(processes_);
   if (foreground_interrupted) {
     if (steering_applied) return StepFlow::kNextStep;
     return InterruptTurn(state);

@@ -16,9 +16,9 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity_supervisor.h"
 #include "include/agent/child_agent.h"
 #include "include/agent/memory_store.h"
-#include "include/agent/process.h"
 #include "include/agent/session_store.h"
 #include "include/api/client.h"
 #include "include/core/child_env.h"
@@ -170,7 +170,7 @@ std::string FilteredTranscript(const SessionRecord& session) {
 
 }  // namespace
 
-std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
+std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
                                  const std::filesystem::path& cwd,
                                  const std::string& current_session) {
   SweepOrphanedReceipts(cwd);

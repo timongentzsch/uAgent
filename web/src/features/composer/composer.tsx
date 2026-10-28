@@ -38,10 +38,7 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import {
-  ActivityButton,
-  ActivityStatus,
-} from "../../shared/activity-status.tsx";
+import { ActivityButton, TurnStatus } from "../../shared/activity-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import {
@@ -321,10 +318,10 @@ function Composer({
       {/* The state above the input: counts live on ActivityButton below it. */}
       <div class="activities">
         <div class="status-line">
-          <span class="activity-toggle">
-            <ActivityStatus
+          <span class="turn-status-row">
+            <TurnStatus
               phase={
-                detached || state?.activity || (state ? "Ready" : "Loading…")
+                detached || state?.turn_status || (state ? "Ready" : "Loading…")
               }
               running={running}
               started={state?.turn_started_ms}

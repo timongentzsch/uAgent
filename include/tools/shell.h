@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/core/child_env.h"
 #include "include/core/json.h"
 #include "include/tools/tool.h"
@@ -50,7 +50,7 @@ struct ShellCommand {
       ChildEnvironmentPolicy::kSanitized;
 };
 
-ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
+ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,
                                    ShellCommand command);
 
@@ -65,7 +65,7 @@ std::optional<std::filesystem::path> ScratchScriptPath(
     std::string& error);
 // Runs a script the agent wrote there with the file tools: .py under uv (its
 // PEP 723 header names the dependencies), .sh under sh.
-ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
+ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
                           const std::filesystem::path& workspace,
                           const std::string& relative_path,
                           const json& args = {},
@@ -77,7 +77,7 @@ struct GrepOptions {
   bool literal = false;         // fixed text, not a regex
   bool matching_files = false;  // list the files with a match, not the lines
 };
-ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
+ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const GrepOptions& options = {},
                     const ToolContext& context = {});
 

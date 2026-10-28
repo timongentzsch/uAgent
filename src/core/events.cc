@@ -15,10 +15,10 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/activity.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/core/turn_status.h"
 #include "include/ui/presentation.h"
 
 namespace uagent {
@@ -65,7 +65,7 @@ constexpr EventPolicy kPolicies[] = {
      nullptr, EventRedaction::kNone},
     {EventId::kResponseRetry, "response.retry", nullptr, nullptr, nullptr,
      EventRedaction::kNone},
-    {EventId::kActivityStatus, "activity.status", nullptr, nullptr, nullptr,
+    {EventId::kTurnStatus, "turn.status", nullptr, nullptr, nullptr,
      EventRedaction::kNone},
     {EventId::kReasoningDelta, "response.reasoning.delta", nullptr, nullptr,
      nullptr, EventRedaction::kNone},
@@ -263,8 +263,8 @@ json JournalProjection(const Event& event) {
 // log. The parent exposes its latest checkpoint without a second event bus.
 void EchoHeadlessProgress(const Event& event) {
   static const bool kEnabled = HeadlessProgressEnabled();
-  if (!kEnabled || event.id != EventId::kActivityStatus) return;
-  const std::string line = JsonValue(event.data, "activity", "");
+  if (!kEnabled || event.id != EventId::kTurnStatus) return;
+  const std::string line = JsonValue(event.data, "turn_status", "");
   fprintf(stderr, "%s%s\n", kHeadlessProgressPrefix,
           TerminalSafe(line).c_str());
 }
@@ -404,7 +404,7 @@ void SessionJournal::ClearLocked() {
 
 Observability::Observability()
     : terminal_(std::make_unique<TerminalPresenter>()),
-      activity_(std::make_unique<ActivityProjection>()) {}
+      activity_(std::make_unique<TurnStatus>()) {}
 
 Observability::~Observability() {
   Shutdown();
@@ -514,7 +514,7 @@ void Observability::Emit(Event event) noexcept {
   // A subscriber may emit a newer lifecycle event recursively. Never publish
   // the older projection after it. Concurrent producers hold delivery_mutex_.
   if (activity_revision && activity_revision == activity_->Revision()) {
-    Emit(Event{EventId::kActivityStatus, activity_->Status()});
+    Emit(Event{EventId::kTurnStatus, activity_->Status()});
   }
 }
 

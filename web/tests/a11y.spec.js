@@ -150,7 +150,7 @@ for (const scheme of ["dark", "light"])
     await prompt.fill("Hello there");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.locator(".message.response").first()).toBeVisible();
-    await expect(page.locator(".composer .activity-caption")).toHaveText(
+    await expect(page.locator(".composer .turn-status-caption")).toHaveText(
       "Ready",
     );
     expect(await violations(page)).toEqual([]);

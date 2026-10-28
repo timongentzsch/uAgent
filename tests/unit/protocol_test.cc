@@ -371,7 +371,7 @@ void TestRegistries() {
   CHECK(CapabilityPrompt({}).empty());
 
   Api delegation_api(RuntimeConfig{});
-  ProcessSupervisor delegation_processes;
+  ActivitySupervisor delegation_processes;
   // Named, not a temporary: SubagentTool's handlers capture routes and
   // providers by reference and outlive this call, so a temporary here is a
   // dangling read the moment the preview or the handler runs.
@@ -486,8 +486,8 @@ void TestCommandAndDisplayRegistries() {
   CHECK(!ValidEffort("extreme"));
   CHECK(DisplayTrunc("abcdef", 4) == "abc…");
   CHECK(DisplayTail("abcdef", 4) == "cdef");
-  CHECK(ActivityLabel("thinking · abcdef", 15) == "thinking · cdef");
-  CHECK(ActivityLabel("thinking · abcdef", 15).find("…") == std::string::npos);
+  CHECK(StatusLabel("thinking · abcdef", 15) == "thinking · cdef");
+  CHECK(StatusLabel("thinking · abcdef", 15).find("…") == std::string::npos);
   CHECK(DisplayWidth(DisplayTrunc("abcdef", 4)) <= 4);
   CHECK(DisplayRows("1234567890", 10) == 1);
   CHECK(DisplayRows("1234567890X", 10) == 2);

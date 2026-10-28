@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/api/client.h"
 #include "include/app/import.h"
 #include "include/core/defaults.h"
@@ -350,7 +350,7 @@ void TestImportFromOtherAgents() {
   ParseSkillFrontMatter(loaded, nullptr, &required);
   CHECK(required == std::vector<std::string>({"run", "read_path"}));
   // Every name a vendor tool maps to is a tool the registry has.
-  ProcessSupervisor tool_processes;
+  ActivitySupervisor tool_processes;
   std::vector<Tool> registered = BuiltinTools(tool_processes);
   Api tool_api;
   UsageAccumulator tool_usage;

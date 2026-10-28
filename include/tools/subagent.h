@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/api/client.h"
 #include "include/core/json.h"
 #include "include/providers/providers.h"
@@ -22,15 +22,15 @@ namespace uagent {
 // This session's children, one object each: id, name, description, model,
 // mode, label, status, and the activity id while one runs. Shared with the
 // TUI and the web so `/agents` and the tool's `list` cannot drift apart.
-std::vector<json> AgentSummaries(const ProcessSupervisor& processes);
-json InspectAgent(const ProcessSupervisor& processes, const std::string& id,
+std::vector<json> AgentSummaries(const ActivitySupervisor& processes);
+json InspectAgent(const ActivitySupervisor& processes, const std::string& id,
                   const json& request = json::object());
 // Guidance a running child reads at its next step, or an idle one at its next
 // followup.
-ToolResult MessageAgent(const ProcessSupervisor& processes,
+ToolResult MessageAgent(const ActivitySupervisor& processes,
                         const std::string& id, const std::string& text);
 
-Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
+Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
                   const std::vector<Route>& routes,
                   const std::vector<Endpoint>& providers, bool debug);
 

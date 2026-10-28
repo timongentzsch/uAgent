@@ -661,7 +661,7 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
             pid = int(pid_file.read_text(encoding="utf-8"))
             assert_true(launched.returncode == 0, launched.stderr)
             assert_true("launched" in launched.stdout, launched.stdout)
-            assert_true("background work" in launched.stdout, launched.stdout)
+            assert_true("activities" in launched.stdout, launched.stdout)
             assert_true("[detached] activity" in launched.stdout, launched.stdout)
             os.kill(pid, 0)
 

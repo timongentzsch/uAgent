@@ -85,7 +85,7 @@ void TestPromptRequestParity() {
   TestWorkspace workspace("prompt-request");
   Api api{RuntimeConfig{}};
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   Agent agent(
       api, tools, processes, usage,

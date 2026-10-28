@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -15,7 +15,7 @@
 namespace uagent {
 
 void RegisterActivityTool(std::vector<Tool>& tools,
-                          ProcessSupervisor& supervisor) {
+                          ActivitySupervisor& supervisor) {
   json schema = json::parse(
       R"json({"type":"object","additionalProperties":false,"properties":{
                   "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
@@ -121,7 +121,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
   // Waiting is not work: no process runs, nothing is held. The tool timeout
   // exists to stop a command from running away, and applying it here truncated
   // the caller's own wait_ms — the schema offers five minutes and the default
-  // budget granted thirty seconds, so a long job cost a round every half
+  // budget granted thirty seconds, so a long activity cost a round every half
   // minute. `run` and `scratch`, which do occupy a process, are already exempt
   // for the same reason. The turn deadline still bounds this, and Escape and
   // queued steering still return immediately.

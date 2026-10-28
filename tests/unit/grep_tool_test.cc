@@ -8,8 +8,8 @@
 #include <system_error>
 #include <vector>
 
-#include "include/agent/jobs.h"
-#include "include/agent/process.h"
+#include "include/agent/activity.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/tools/files.h"
@@ -31,7 +31,7 @@ void TestGrepTool() {
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile(ignored.string(), "needle ignored\n")
             .output.starts_with("wrote "));
-  ProcessSupervisor supervisor;
+  ActivitySupervisor supervisor;
   ToolResult result =
       ToolGrep(supervisor, "needle", root.string(), {.glob = "*.cpp"});
   CHECK(result.output.find("one.cpp") != std::string::npos);
@@ -68,14 +68,15 @@ void TestGrepTool() {
   CHECK(paths.Ok());
   CHECK(paths.output.find("one.cpp") != std::string::npos);
   CHECK(paths.output.find("needle one") == std::string::npos);
-  for (pid_t pid = 999981; pid < 999981 + kMaxBackgroundJobs; ++pid) {
-    CHECK(supervisor.TryAdd({.pid = pid, .cmd = "busy"}, kMaxBackgroundJobs));
+  for (pid_t pid = 999981; pid < 999981 + kMaxBackgroundActivities; ++pid) {
+    CHECK(supervisor.TryAdd({.pid = pid, .cmd = "busy"},
+                            kMaxBackgroundActivities));
   }
   ToolResult limited = ToolGrep(supervisor, "needle", root.string());
   CHECK(limited.error == ToolErrorCode::kLimitExceeded);
-  CHECK(limited.output.find("background job limit") != std::string::npos);
+  CHECK(limited.output.find("activity limit") != std::string::npos);
   CHECK(supervisor.TakeAllForShutdown().size() ==
-        static_cast<size_t>(kMaxBackgroundJobs));
+        static_cast<size_t>(kMaxBackgroundActivities));
 
   ToolContext activity_context{std::chrono::steady_clock::now() +
                                std::chrono::seconds(5)};
@@ -90,7 +91,7 @@ void TestGrepTool() {
                          .immediate = true})
             .result.Ok());
   std::vector<int64_t> activity_ids;
-  for (const BgJob& job : supervisor.Snapshot()) {
+  for (const Activity& job : supervisor.Snapshot()) {
     activity_ids.push_back(ActivityId(job));
   }
   CHECK(activity_ids.size() == 2);

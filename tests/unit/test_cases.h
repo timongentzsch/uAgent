@@ -45,10 +45,10 @@ namespace uagent {
   X(TestFileTools)                                \
   X(TestEditJournal)                              \
   X(TestMathTransliteration)                      \
-  X(TestActivityProjection)                       \
+  X(TestTurnStatus)                               \
   X(TestReasoningPartReconciliation)              \
   X(TestHostedSearchStatusRow)                    \
-  X(TestActivityBar)                              \
+  X(TestTurnStatusBar)                            \
   X(TestDiffLineColoring)                         \
   X(TestToolRowsDrawLiveAsResumed)                \
   X(TestStatusBarDropsByPriority)                 \
@@ -108,7 +108,7 @@ namespace uagent {
   X(TestWireStreamHostedSearch)                   \
   X(TestWireHostedToolDefinitions)                \
   X(TestWireStreamMalformedValues)                \
-  X(TestBackgroundValidation)                     \
+  X(TestActivityValidation)                       \
   X(TestSignalAndFileWatch)                       \
   X(TestActivityBufferAndAdmission)               \
   X(TestActivityStateGraph)                       \

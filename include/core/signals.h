@@ -43,10 +43,10 @@ extern std::atomic<bool> g_thread_abort;
 inline constexpr int kMcpMax = 64;  // tracked MCP server processes
 extern SignalFlag g_mcp_pids[kMcpMax];
 // Supervised processes, foreground and background, that SIGINT kills.
-inline constexpr int kBgMax = 64;
-extern SignalFlag g_bg_pids[kBgMax];
+inline constexpr int kActivityMax = 64;
+extern SignalFlag g_activity_pids[kActivityMax];
 // Those of them that are child agents, which are asked to stop, not killed.
-extern SignalFlag g_agent_pids[kBgMax];
+extern SignalFlag g_agent_pids[kActivityMax];
 
 // Pid slot tables read by the signal handler. Parallel tool workers claim slots
 // concurrently, so writers serialise here; the handler only ever reads.

@@ -14,7 +14,7 @@
 namespace uagent {
 
 class Api;
-class ProcessSupervisor;
+class ActivitySupervisor;
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content);
@@ -37,7 +37,7 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
 
 // One bounded idle-session extraction job; the child reads only the source and
 // receives only the memory tool.
-std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
+std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
                                  const std::filesystem::path& cwd,
                                  const std::string& current_session);
 // Called by that child as it ends: the session it read is marked done, or

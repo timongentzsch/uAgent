@@ -515,7 +515,7 @@ void HandleTools(AppSession& session, const std::string& argument,
 // supervisor knows about the ones still running. The id is the join key: it is
 // what the spawn stamped on the job, and it is what the human types back.
 json AgentsJson(const AppSession& session) {
-  const ProcessSupervisor& processes = session.Runtime().processes;
+  const ActivitySupervisor& processes = session.Runtime().processes;
   std::vector<SubagentView> live = processes.SubagentViews();
   json rows = json::array();
   for (json& record : AgentSummaries(processes)) {

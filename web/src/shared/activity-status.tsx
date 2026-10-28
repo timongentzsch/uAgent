@@ -42,7 +42,7 @@ export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
         ...child,
         id: undefined,
         agent_id: child.id,
-        kind: "agent",
+        kind: "subagent",
         status: child.status || "idle",
       })),
   ];
@@ -50,7 +50,7 @@ export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
 
 function activityLabel(items: Activity[] = []) {
   const running = items.filter(active);
-  const agents = running.filter((item) => item.kind === "agent").length;
+  const agents = running.filter((item) => item.kind === "subagent").length;
   const commands = running.length - agents;
   return [
     agents && plural(agents, "agent"),
@@ -59,7 +59,7 @@ function activityLabel(items: Activity[] = []) {
     .filter(Boolean)
     .join(" · ");
 }
-export function ActivityStatus({
+export function TurnStatus({
   phase = "Ready",
   running,
   started,
@@ -104,14 +104,14 @@ export function ActivityStatus({
       ? stopped
       : phase;
   return (
-    <span class="activity-status">
+    <span class="turn-status">
       <StatusLed
         state={running && !pending ? "running" : present ? "active" : "idle"}
       />
-      <span class="activity-caption" title={caption}>
+      <span class="turn-status-caption" title={caption}>
         {caption}
       </span>
-      {detail && <span class="activity-counts"> · {detail}</span>}
+      {detail && <span class="turn-status-counts"> · {detail}</span>}
       {announce && (
         <span
           class="sr-only"
@@ -161,7 +161,7 @@ function ActivityButtonView({
           ) : (
             <span>
               <span class="long">
-                <DataText>No background work</DataText>
+                <DataText>No activity</DataText>
               </span>
               <span class="short">
                 <DataText>Idle</DataText>
@@ -229,7 +229,7 @@ export function ActivityControls({
     );
   return (
     <>
-      {item.kind !== "agent" && item.detached === false && (
+      {item.kind !== "subagent" && item.detached === false && (
         <IconButton
           label="Move to background"
           disabled={!online || busy}
@@ -263,7 +263,9 @@ function ActivityRow({
   open: () => void;
 }) {
   const name =
-    item.kind === "agent" ? item.name || item.label : item.label || "Command";
+    item.kind === "subagent"
+      ? item.name || item.label
+      : item.label || "Command";
   const elapsed = useElapsed(active(item), item.started_ms);
   return (
     <li class="activity-row">
@@ -273,7 +275,7 @@ function ActivityRow({
         disabled={!online}
         onClick={open}
       >
-        {item.kind === "agent" ? <Bot /> : <Terminal />}
+        {item.kind === "subagent" ? <Bot /> : <Terminal />}
         <span class="activity-text">
           <strong>{cleanText(name || "")}</strong>
           <small>

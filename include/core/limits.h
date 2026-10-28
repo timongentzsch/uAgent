@@ -93,10 +93,10 @@ inline constexpr size_t kUsageProgressBytes = KiB(1);
 inline constexpr int64_t kStreamBatchIntervalMs = 12;
 inline constexpr size_t kStreamBatchBytes = KiB(8);
 // Short activity captions are presentation policies, not model limits.
-inline constexpr size_t kActivityLabelBytes = 160;
+inline constexpr size_t kStatusLabelBytes = 160;
 // A background job's full command, kept with its row and its result.
 inline constexpr size_t kActivityCommandBytes = KiB(8);
-inline constexpr size_t kActivityLineBytes = 192;
+inline constexpr size_t kStatusLineBytes = 192;
 
 // Turn-loop recovery stages. A valid repeated call gets two model-facing
 // corrections before the high ceiling prevents an unbounded paid loop.
@@ -194,15 +194,15 @@ inline constexpr int64_t kDefaultYieldMs = 10000;
 inline constexpr int64_t kActivityInputSettleMs = 250;
 
 // Concurrent supervised activities in one session.
-inline constexpr int64_t kMaxBackgroundJobs = 8;
+inline constexpr int64_t kMaxBackgroundActivities = 8;
 // Background slots held back from delegated children. Subagents, foreground
-// commands and background jobs share the kMaxBackgroundJobs pool (detached
-// terminals are counted separately), so an unbounded fan-out of children would
-// leave the parent unable to build, test or search -- the very work it needs
-// in order to check what those children produced.
-inline constexpr int64_t kDelegatedJobHeadroom = 2;
-inline constexpr int64_t kMaxDelegatedJobs =
-    kMaxBackgroundJobs - kDelegatedJobHeadroom;
+// commands and background jobs share the kMaxBackgroundActivities pool
+// (detached terminals are counted separately), so an unbounded fan-out of
+// children would leave the parent unable to build, test or search -- the very
+// work it needs in order to check what those children produced.
+inline constexpr int64_t kDelegatedActivityHeadroom = 2;
+inline constexpr int64_t kMaxDelegatedActivities =
+    kMaxBackgroundActivities - kDelegatedActivityHeadroom;
 
 // Resource ceilings. They bound runaway input and disk use; none is a
 // preference a user should have to tune.
@@ -260,7 +260,7 @@ inline constexpr size_t kMcpDescriptionChars = 400;
 inline constexpr int64_t kHistoryFiles = 200;
 inline constexpr int64_t kDebugDays = 14;
 inline constexpr int64_t kDebugFiles = 50;
-inline constexpr int64_t kBgDays = 7;
+inline constexpr int64_t kActivityDays = 7;
 // The pass over every artifact directory runs at most this often; its stamp
 // file lives in the global base.
 inline constexpr char kMaintenanceStamp[] = ".maintained";
@@ -268,7 +268,7 @@ inline constexpr int64_t kMaintenanceIntervalHours = 24;
 // How often a stoppable log pump looks up from its pipe to see whether it was
 // asked to stop.
 inline constexpr int kLogPumpPollMs = 100;
-inline constexpr int64_t kBgFiles = 200;
+inline constexpr int64_t kActivityFiles = 200;
 inline constexpr int64_t kMcpLogDays = 7;
 inline constexpr int64_t kMcpLogFiles = 100;
 inline constexpr int64_t kTerminalDays = 7;

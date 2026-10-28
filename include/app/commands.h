@@ -63,7 +63,7 @@ json PermissionControl(AppContext& context, const json& request);
 // own mode or "default", the mode in effect, the one it inherits, and for a
 // thread the limit.
 json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread);
-json ActivityControl(ProcessSupervisor& processes, const json& request);
+json ActivityControl(ActivitySupervisor& processes, const json& request);
 std::string ActivityText(const json& result);
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);
 

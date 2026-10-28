@@ -82,7 +82,7 @@ bool PersistentComposer() { return PersistentComposerFlag(); }
 
 namespace {
 
-struct TerminalActivityState {
+struct TerminalStatusState {
   std::mutex mutex;
   uint64_t next UAGENT_GUARDED_BY(mutex) = 0;
   struct Entry {
@@ -92,38 +92,38 @@ struct TerminalActivityState {
   std::vector<Entry> active UAGENT_GUARDED_BY(mutex);
 };
 
-TerminalActivityState& TerminalActivities() {
-  static TerminalActivityState state;
+TerminalStatusState& TerminalStatuses() {
+  static TerminalStatusState state;
   return state;
 }
 
 }  // namespace
 
-uint64_t BeginTerminalActivity(std::string label) {
-  TerminalActivityState& state = TerminalActivities();
+uint64_t BeginTerminalStatus(std::string label) {
+  TerminalStatusState& state = TerminalStatuses();
   std::lock_guard<std::mutex> lock(state.mutex);
   state.active.push_back({++state.next, std::move(label)});
   return state.next;
 }
 
-void UpdateTerminalActivity(uint64_t id, const std::string& label) {
-  TerminalActivityState& state = TerminalActivities();
+void UpdateTerminalStatus(uint64_t id, const std::string& label) {
+  TerminalStatusState& state = TerminalStatuses();
   std::lock_guard<std::mutex> lock(state.mutex);
-  for (TerminalActivityState::Entry& entry : state.active) {
+  for (TerminalStatusState::Entry& entry : state.active) {
     if (entry.id == id) entry.label = label;
   }
 }
 
-void EndTerminalActivity(uint64_t id) {
-  TerminalActivityState& state = TerminalActivities();
+void EndTerminalStatus(uint64_t id) {
+  TerminalStatusState& state = TerminalStatuses();
   std::lock_guard<std::mutex> lock(state.mutex);
-  std::erase_if(state.active, [id](const TerminalActivityState::Entry& entry) {
+  std::erase_if(state.active, [id](const TerminalStatusState::Entry& entry) {
     return entry.id == id;
   });
 }
 
-std::string CurrentTerminalActivity() {
-  TerminalActivityState& state = TerminalActivities();
+std::string CurrentTerminalStatus() {
+  TerminalStatusState& state = TerminalStatuses();
   std::lock_guard<std::mutex> lock(state.mutex);
   return state.active.empty() ? std::string() : state.active.back().label;
 }

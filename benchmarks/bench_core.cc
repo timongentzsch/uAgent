@@ -107,7 +107,7 @@ void BenchmarkStream() {
 }
 
 // Burst benchmark through actual event delivery, comparing identical main
-// and two child workloads with activity projection inactive/active. No wire
+// and two child workloads with turn-status projection inactive/active. No wire
 // or browser/network timing is implied by this native measurement.
 void BenchmarkActivity(bool labels) {
   constexpr size_t kSessions = 3;
@@ -121,7 +121,7 @@ void BenchmarkActivity(bool labels) {
       Observability events;
       size_t captions = 0;
       events.Subscribe([&](const AppEvent& event) {
-        if (event.type == "activity.status") ++captions;
+        if (event.type == "turn.status") ++captions;
       });
       if (labels) events.Emit(Event{EventId::kTurnStarted, {{"turn", 1}}});
       events.Emit(Event{EventId::kResponseStarted,
@@ -308,10 +308,10 @@ void BenchmarkTerminalPaint(bool styled) {
         region.SetTail(std::move(update.tail));
       }
       region.SetStatus(StatusBarLine(
-          ActivityBar({.elapsed = std::chrono::steady_clock::now() - started,
-                       .context_used = 12000,
-                       .context_window = 200000,
-                       .model = "benchmark-model"})));
+          TurnStatusBar({.elapsed = std::chrono::steady_clock::now() - started,
+                         .context_used = 12000,
+                         .context_window = 200000,
+                         .model = "benchmark-model"})));
       const RawComposer::Layout draft = composer.View();
       region.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
       region.Flush();
@@ -369,7 +369,7 @@ void BenchmarkLongConversation(std::string path) {
   }
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   Agent agent(api, tools, processes, usage,
               [](const Tool&, const json&, int64_t) { return "denied"; });
@@ -494,7 +494,7 @@ int RunBenchmarks(const std::string& session) {
   wire_benchmark(WireApi::kChatCompletions, "encode Chat Completions");
   wire_benchmark(WireApi::kResponses, "encode Responses");
   wire_benchmark(WireApi::kAnthropicMessages, "encode Anthropic Messages");
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   auto lean_tools = BuiltinTools(processes, CanonicalAccessPath("."));
   const json cached_tools = ToolSchemas(lean_tools);
   for (WireApi wire : {WireApi::kChatCompletions, WireApi::kResponses,

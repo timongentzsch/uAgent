@@ -319,7 +319,7 @@ std::string ChildAgentAnswer(std::string output,
 }
 
 std::optional<ToolResult> ChildAgentBudgetBlock(
-    const Api& api, const ProcessSupervisor& processes, double& remaining_cost,
+    const Api& api, const ActivitySupervisor& processes, double& remaining_cost,
     int64_t& remaining_tokens) {
   remaining_cost = api.config.session_budget - api.session_cost;
   remaining_tokens =

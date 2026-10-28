@@ -119,7 +119,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "searches every provider",
      kNoViewer | kTerminal},
     {SlashCommandId::kProcesses, "/ps", "[ID [output|stop]]",
-     "inspect or stop background work", kTerminal},
+     "inspect or stop activities", kTerminal},
     {SlashCommandId::kQuit, "/quit", "",
      "leave; the conversation keeps running and can be resumed",
      kNoViewer | kClientOnly | kTerminal},

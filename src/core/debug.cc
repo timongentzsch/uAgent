@@ -70,7 +70,8 @@ std::string LocalDay() {
 }
 
 std::string UsageLedger() {
-  return UagentDir(kBgDir) + "/usage-" + std::to_string(getpid()) + ".jsonl";
+  return UagentDir(kActivityDir) + "/usage-" + std::to_string(getpid()) +
+         ".jsonl";
 }
 
 DebugSink::~DebugSink() { Stop(); }

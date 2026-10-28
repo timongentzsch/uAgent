@@ -66,7 +66,7 @@ inline constexpr const char* kMemoryDir = "memory";
 inline constexpr const char* kHistoryDir = "history";
 inline constexpr const char* kWorktreesDir = "worktrees";
 inline constexpr const char* kSessionsDir = "sessions";
-inline constexpr const char* kBgDir = "bg";
+inline constexpr const char* kActivityDir = "activity";
 inline constexpr const char* kTerminalsDir = "terminals";
 // Detached logs sit one level below their records rather than beside them. A
 // record names the log to remove and the process group to kill, so a writer

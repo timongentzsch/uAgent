@@ -116,10 +116,10 @@ export function applySessionEvent(
     if (data.context_tokens !== undefined)
       state.context_tokens = data.context_tokens;
   }
-  if (event.kind === "activity")
+  if (event.kind === "turn_status")
     state = {
       ...(state || {}),
-      activity: event.activity,
+      turn_status: event.turn_status,
       phase: event.phase,
     };
   if (event.type === "activities.changed")

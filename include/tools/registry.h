@@ -10,14 +10,14 @@
 #include <filesystem>
 #include <vector>
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/core/fs.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
 std::vector<Tool> BuiltinTools(
-    ProcessSupervisor& supervisor,
+    ActivitySupervisor& supervisor,
     const std::filesystem::path& workspace = CanonicalAccessPath("."));
 
 }  // namespace uagent

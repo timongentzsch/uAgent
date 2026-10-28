@@ -528,7 +528,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       if (spinner_) spinner_->Stop();
       if (state_) state_->Text(event.text);
       break;
-    case EventId::kActivityStatus: {
+    case EventId::kTurnStatus: {
       const std::string phase = JsonValue(event.data, "phase", "idle");
       const bool animate =
           event.render && phase != "idle" && phase != "finishing" &&
@@ -538,7 +538,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
         if (spinner_) spinner_->Stop();
       } else {
         const std::string label =
-            TerminalSafe(JsonValue(event.data, "activity", "Working"));
+            TerminalSafe(JsonValue(event.data, "turn_status", "Working"));
         if (!spinner_) spinner_ = std::make_unique<TerminalSpinner>(false);
         spinner_->SetLabel(label);
         spinner_->Start();

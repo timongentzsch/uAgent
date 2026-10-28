@@ -74,7 +74,7 @@ Steering& SteeringState();
 // Passive waits use queued guidance as a soft-yield condition. The input owner
 // must publish the queue entry before waking the process supervisor.
 bool SteeringYieldRequested();
-// Pollable companion for waits on state outside ProcessSupervisor, such as a
+// Pollable companion for waits on state outside ActivitySupervisor, such as a
 // detached log owned by another uagent process.
 int SteeringWakeFd();
 

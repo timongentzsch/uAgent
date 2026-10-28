@@ -53,7 +53,7 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
 - With no model set, the first start opens the model picker and saves your
   choice as `/model NAME --default` does. `-p` and `--json` never choose for
   you: they exit with an error that lists up to ten of the endpoint's models.
-- Background jobs use your conversation's model unless you name one: the
+- Background activities use your conversation's model unless you name one: the
   title (`title.model`, or `off`), memory extraction and subagents. Image
   reading does too when that model accepts images; otherwise it uses the
   first model of the same endpoint that does, or tells you to set

@@ -49,7 +49,7 @@ void TestPythonTool() {
 
   const char* prior_path_value = getenv("PATH");
   std::string prior_path = prior_path_value ? prior_path_value : "";
-  ProcessSupervisor supervisor;
+  ActivitySupervisor supervisor;
   std::vector<Tool> python_tools = BuiltinTools(supervisor, root);
   const Tool* run = FindTool(python_tools, "run");
   CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);

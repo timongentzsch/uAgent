@@ -319,7 +319,7 @@ export interface Activity {
   id?: number;
   activity_id?: number;
   agent_id?: string;
-  kind?: "agent" | "command";
+  kind?: "subagent" | "command";
   label?: string;
   name?: string;
   description?: string;
@@ -485,7 +485,7 @@ export interface Session {
   pending?: boolean;
   // What it waits on you for: "approval", "ask", …, and its prompt.
   pending_prompt?: string;
-  activity?: string;
+  turn_status?: string;
   activities?: Activity[];
   guidance?: number;
   error?: string;
@@ -509,7 +509,7 @@ export interface State {
   // Why a panel holds its threads' events (today's spend limit).
   paused?: string;
   statistics?: Statistics;
-  activity?: string;
+  turn_status?: string;
   activities?: Activity[];
   agents?: Agent[];
   // A panel's plan.
@@ -679,7 +679,7 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   presence?: "active" | "";
   checkpoint?: boolean;
   updated?: number;
-  activity?: string;
+  turn_status?: string;
 }
 export type HostEvent = HostEnvelope &
   (
@@ -689,7 +689,7 @@ export type HostEvent = HostEnvelope &
     | {
         kind:
           | "event"
-          | "activity"
+          | "turn_status"
           | "metadata"
           | "activated"
           | "deactivated"

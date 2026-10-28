@@ -20,7 +20,7 @@ extern char** environ;
 #include <variant>
 #include <vector>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/bootstrap.h"

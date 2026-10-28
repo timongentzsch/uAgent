@@ -127,7 +127,7 @@ struct StreamCtx {
     // Captions consume new text only; a corrected final snapshot resets its
     // bounded line reader. Transcript reconciliation never enters replay.
     const bool complete_line =
-        fragment.complete && span.bytes <= kActivityLineBytes;
+        fragment.complete && span.bytes <= kStatusLineBytes;
     data["reasoning_text"] =
         complete_line ? res->reasoning.substr(span.offset, span.bytes)
                       : addition;

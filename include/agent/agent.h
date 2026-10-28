@@ -21,9 +21,9 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity_supervisor.h"
 #include "include/agent/conversation.h"
 #include "include/agent/edit_journal.h"
-#include "include/agent/process.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/trace.h"
@@ -41,7 +41,7 @@
 namespace uagent {
 struct Mail;
 
-struct BackgroundCompletion;
+struct ActivityCompletion;
 struct CallTask;
 enum class TurnStopReason;
 enum class Fault;
@@ -57,7 +57,7 @@ class Agent {
   using ToolRefresher =
       std::function<bool(std::chrono::steady_clock::time_point)>;
 
-  Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
+  Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
         UsageAccumulator& side_usage, Approver approve,
         ToolRefresher refresh_tools = {},
         ProjectInstructions project_instructions = {},
@@ -190,10 +190,10 @@ class Agent {
   // The drain reaps and deletes each log, so its caller owns the only copy.
   // With `start_turn`, a result handed to the model also starts a turn: an
   // idle session takes up its background work's result as it arrives.
-  bool DrainBackground(bool start_turn = false);
-  void ReportMemoryCompletion(BackgroundCompletion& completion);
+  bool DrainActivities(bool start_turn = false);
+  void ReportMemoryCompletion(ActivityCompletion& completion);
   void DeliverActivityCompletions(
-      const std::vector<BackgroundCompletion>& completions);
+      const std::vector<ActivityCompletion>& completions);
 
   // Takes this session's pending mail (core/mailbox.h) into the conversation:
   // a wake or step message as queued guidance, which the host starts a turn
@@ -230,7 +230,7 @@ class Agent {
   // One attachment message for `attachments`, or a note saying why they
   // could not be attached; true when they were.
   bool PushAttachments(const std::vector<Attachment>& attachments);
-  // Starts the side call that names this session; DrainBackground applies
+  // Starts the side call that names this session; DrainActivities applies
   // its answer unless the user renamed the session meanwhile.
   void StartTitle(const std::string& user_input);
 
@@ -433,7 +433,7 @@ class Agent {
 
   Api& api_;
   std::vector<Tool>& tools_;
-  ProcessSupervisor& processes_;
+  ActivitySupervisor& processes_;
   UsageAccumulator& side_usage_;
   json schemas_;  // request-shaped tool schemas, rebuilt after MCP changes
   ToolSelection tool_selection_;

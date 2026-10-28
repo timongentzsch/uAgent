@@ -40,7 +40,7 @@ inline ActivityCounts CountActivities(const json& state) {
   if (!rows) return counts;
   for (const json& row : *rows) {
     if (JsonValue(row, "status", "") != "running") continue;
-    if (JsonValue(row, "kind", "") == "agent") {
+    if (JsonValue(row, "kind", "") == "subagent") {
       ++counts.subagents;
       std::string progress = JsonValue(row, "progress", "");
       if (!progress.empty()) {

@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_CORE_ACTIVITY_H_
-#define UAGENT_INCLUDE_CORE_ACTIVITY_H_
+#ifndef UAGENT_INCLUDE_CORE_TURN_STATUS_H_
+#define UAGENT_INCLUDE_CORE_TURN_STATUS_H_
 
 #include <cstdint>
 #include <map>
@@ -16,13 +16,13 @@ namespace uagent {
 enum class EventId : uint16_t;
 
 // What a session with nothing running says.
-inline constexpr const char* kIdleActivity = "Ready";
+inline constexpr const char* kIdleStatus = "Ready";
 
 // Presentation policies only: these values never enter model history or
 // authorize execution. Work is proportional to new text, with bounded storage.
-std::string ActivityLabel(std::string_view text);
+std::string StatusLabel(std::string_view text);
 
-class ActivityProjection {
+class TurnStatus {
  public:
   bool Consume(EventId id, const json& data);
   const json& Status() const { return status_; }
@@ -51,4 +51,4 @@ class ActivityProjection {
 };
 
 }  // namespace uagent
-#endif  // UAGENT_INCLUDE_CORE_ACTIVITY_H_
+#endif  // UAGENT_INCLUDE_CORE_TURN_STATUS_H_

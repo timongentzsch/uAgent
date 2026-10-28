@@ -86,7 +86,7 @@ session limit and the lead agent's daily cost limit.
 | trace pruning | newest 64 KiB protected; results from 32 KiB pruned | |
 | automatic compaction | 85% of projected context | `UAGENT_AUTO_COMPACT_PCT` |
 | compacted-trace archive | 16 MiB | |
-| background jobs / foreground tool workers | 8 (6 open to subagents) / 4, 6 for a batch of subagents | |
+| background activities / foreground tool workers | 8 (6 open to subagents) / 4, 6 for a batch of subagents | |
 | `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | |
 | activity output buffer | 1 MiB, equal head and tail | |
 | retained finished activities | 16 | |
@@ -175,7 +175,7 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
 
 Commands, delegated tasks and detached terminals share activity IDs. `/ps`
 lists them, `/ps ID output` shows one and `/ps ID stop` ends it; the status
-bar counts them as `bg:N`. [Tools](TOOLS.md#activities) describes how they
+bar counts them as `act:N`. [Tools](TOOLS.md#activities) describes how they
 start, what outlives the conversation and how results are delivered.
 
 ## Images

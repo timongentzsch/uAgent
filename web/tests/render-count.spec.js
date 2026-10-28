@@ -266,7 +266,7 @@ test("streaming renders only what changed", async ({ page }) => {
           activities: [
             {
               id: 1,
-              kind: "agent",
+              kind: "subagent",
               agent_id: "child",
               status: "running",
               progress: `step ${index}`,
@@ -316,7 +316,7 @@ test("streaming renders only what changed", async ({ page }) => {
           activities: [
             {
               id: 1,
-              kind: "agent",
+              kind: "subagent",
               agent_id: "child",
               status: "running",
               progress: `later ${index}`,
@@ -369,16 +369,16 @@ test("state frames and an open dialog leave the shell alone", async ({
   await open(page);
   const turn = { ...SESSIONS[0], status: "running", turn_active: true };
   // A turn's state frames: the same metadata each time, then twenty
-  // activity frames that change only the caption.
+  // turn-status frames that change only the caption.
   const frames = await page.evaluate(async (metadata) => {
     await testMark();
     for (let index = 0; index < 20; index++) {
       testSend({
         kind: "state",
         phase: "working",
-        state: { phase: "working", activity: "Working" },
+        state: { phase: "working", turn_status: "Working" },
         pending: null,
-        metadata: { ...metadata, activity: "Working" },
+        metadata: { ...metadata, turn_status: "Working" },
       });
       await testFrame();
     }
@@ -386,10 +386,10 @@ test("state frames and an open dialog leave the shell alone", async ({
     await testMark();
     for (let index = 0; index < 20; index++) {
       testSend({
-        kind: "activity",
-        activity: `Reading file ${index}`,
+        kind: "turn_status",
+        turn_status: `Reading file ${index}`,
         phase: "working",
-        metadata: { ...metadata, activity: `Reading file ${index}` },
+        metadata: { ...metadata, turn_status: `Reading file ${index}` },
       });
       await testFrame();
     }

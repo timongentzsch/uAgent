@@ -202,7 +202,7 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         assert_true(target.read_text(encoding="utf-8") == "Keep repository fixes concise.", target)
         assert_true(len(server.requests) == 5, server.requests)
         assert_true(b"memory-extract-user-sentinel" not in output, output)
-        assert_true(b"Background result" not in output, output)
+        assert_true(b"Activity result" not in output, output)
 
         # A completed source is not processed again. Disabling generation also
         # prevents a changed source from becoming eligible.
@@ -376,7 +376,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
                 return server.requests
 
             # Shutdown gives a background group 500ms before SIGKILL
-            # (BgShutdownAll in jobs.cc), and the extractor releases its claim
+            # (ActivityShutdownAll in activity.cc), and the extractor releases its claim
             # as it exits -- so a child too slow to unwind loses the race and
             # the claim outlives it. That is
             # a liveness cost the stale-claim sweep reclaims after 15 minutes,

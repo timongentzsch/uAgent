@@ -17,7 +17,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | undo journal: each turn's changed files as they were before it, and whole diffs | `<session>.json.edits/{index.json,<turn>-<hash>,diff-*}` |
 | debug traces | `sessions/*.jsonl` |
 | captured large outputs and HTTP exchanges | `artifacts/*` |
-| background command logs | `bg/*` |
+| activity logs | `activity/*` |
 | detached terminal records and logs | `terminals/<pid>.json`, `terminals/logs/*` |
 | delegated children | `history/<folder-hash>/agent-<id>.json`, sessions whose header carries `delegation` |
 | mail between sessions, panels and children | `mail/<id>/{new,cur}/*.json` |
@@ -150,7 +150,7 @@ count are kept.
 | `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` (30) / 200 |
 | `sessions/` | 14 / 50 |
 | `mail/` | 14 (undelivered mail expires after a day) |
-| `bg/`, `artifacts/` | 7 / 200 |
+| `activity/`, `artifacts/` | 7 / 200 |
 | `mcp/` | 7 / 100 |
 | `models/` | 7 (a catalogue older than a day is fetched again) |
 | exited detached terminals | 7, removed with their logs |

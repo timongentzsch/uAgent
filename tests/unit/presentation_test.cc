@@ -13,10 +13,10 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/session_view.h"
 #include "include/cli/options.h"
-#include "include/core/activity.h"
 #include "include/core/defaults.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/turn_status.h"
 #include "include/tools/registry.h"
 #include "include/tools/tool.h"
 #include "include/ui/display.h"
@@ -25,8 +25,8 @@
 namespace uagent {
 namespace {
 
-ActivityView Working(std::chrono::milliseconds elapsed) {
-  ActivityView view;
+TurnStatusView Working(std::chrono::milliseconds elapsed) {
+  TurnStatusView view;
   view.elapsed = elapsed;
   view.context_used = 12000;
   view.context_window = 1300000;
@@ -421,40 +421,40 @@ void TestHostedSearchStatusRow() {
   const bool prior = g_tty;
   g_tty = true;
   TerminalPresenter presenter;
-  ActivityProjection projection;
+  TurnStatus projection;
   auto send = [&](EventId id, json data = json::object()) {
     data["turn"] = 1;
     Event event{id, data};
     event.render = true;
     presenter.Consume(event);
     if (projection.Consume(id, data)) {
-      Event status{EventId::kActivityStatus, projection.Status()};
+      Event status{EventId::kTurnStatus, projection.Status()};
       status.render = true;
       presenter.Consume(status);
     }
   };
   send(EventId::kTurnStarted);
   send(EventId::kResponseStarted);
-  CHECK(CurrentTerminalActivity() == "Waiting for model");
+  CHECK(CurrentTerminalStatus() == "Waiting for model");
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "started"}});
   send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "searching"}});
   send(EventId::kReasoningDelta, {{"text", "**Checking release notes**\n"}});
-  CHECK(CurrentTerminalActivity() == "Searching the web");
+  CHECK(CurrentTerminalStatus() == "Searching the web");
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "completed"}});
-  CHECK(CurrentTerminalActivity() == "Searching the web");
+  CHECK(CurrentTerminalStatus() == "Searching the web");
   // Any other tool the provider runs is named while it runs.
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "started"}});
-  CHECK(CurrentTerminalActivity() == "Using code_execution");
+  CHECK(CurrentTerminalStatus() == "Using code_execution");
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "completed"}});
-  CHECK(CurrentTerminalActivity() == "Searching the web");
+  CHECK(CurrentTerminalStatus() == "Searching the web");
   send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
-  CHECK(CurrentTerminalActivity() == "Thinking · Checking release notes");
+  CHECK(CurrentTerminalStatus() == "Thinking · Checking release notes");
   send(EventId::kAnswerDelta);
-  CHECK(CurrentTerminalActivity().empty());
+  CHECK(CurrentTerminalStatus().empty());
   send(EventId::kTurnStopped);
-  CHECK(CurrentTerminalActivity().empty());
+  CHECK(CurrentTerminalStatus().empty());
   const std::string corrected = CaptureStdout([&] {
     TerminalPresenter verbose;
     verbose.SetDetail(DetailFor("full"));
@@ -479,27 +479,28 @@ void TestHostedSearchStatusRow() {
 // The working row used to be assembled inside the REPL loop, where nothing
 // could reach it. These pin the parts that are pure arithmetic on the view:
 // the frame clock, which counters appear, and the label/counter split.
-void TestActivityBar() {
+void TestTurnStatusBar() {
   bool prior = g_tty;
   bool prior_color = g_color;
   g_tty = true;
   g_color = true;
 
   // Spinner advances one frame per 100ms and wraps after ten.
-  std::string first = ActivityBar(Working(std::chrono::milliseconds(0)));
-  std::string second = ActivityBar(Working(std::chrono::milliseconds(100)));
-  std::string wrapped = ActivityBar(Working(std::chrono::milliseconds(1000)));
+  std::string first = TurnStatusBar(Working(std::chrono::milliseconds(0)));
+  std::string second = TurnStatusBar(Working(std::chrono::milliseconds(100)));
+  std::string wrapped = TurnStatusBar(Working(std::chrono::milliseconds(1000)));
   CHECK(first.starts_with("⠋"));
   CHECK(second.starts_with("⠙"));
   CHECK(wrapped.starts_with("⠋"));
   CHECK(first != second);
   // Plain mode holds it still.
   g_motion = false;
-  CHECK(ActivityBar(Working(std::chrono::milliseconds(100))).starts_with("⠋"));
+  CHECK(
+      TurnStatusBar(Working(std::chrono::milliseconds(100))).starts_with("⠋"));
   g_motion = true;
 
   // Elapsed renders at one decimal; context always shows.
-  CHECK(ActivityBar(Working(std::chrono::milliseconds(1500))).find("1.5s") !=
+  CHECK(TurnStatusBar(Working(std::chrono::milliseconds(1500))).find("1.5s") !=
         std::string::npos);
   CHECK(first.find("ctx 12k/1.3M") != std::string::npos);
 
@@ -510,47 +511,47 @@ void TestActivityBar() {
   CHECK(ContextLeftSummary(2000, 1000) == "0% left");
   CHECK(ContextLeftSummary(10, 0).empty());
 
-  ActivityView unknown = Working(std::chrono::milliseconds(0));
+  TurnStatusView unknown = Working(std::chrono::milliseconds(0));
   unknown.context_window = 0;
-  std::string unknown_bar = ActivityBar(unknown);
+  std::string unknown_bar = TurnStatusBar(unknown);
   CHECK(unknown_bar.find("ctx 12k") != std::string::npos);
   CHECK(unknown_bar.find("ctx 12k/") == std::string::npos);
 
   // The working row names the route exactly as the idle row does, and an
   // unset route adds no segment.
-  ActivityView routed = Working(std::chrono::milliseconds(1500));
+  TurnStatusView routed = Working(std::chrono::milliseconds(1500));
   routed.model = "openrouter/deepseek/deepseek-v4-flash:high";
-  std::string routed_bar = ActivityBar(routed);
+  std::string routed_bar = TurnStatusBar(routed);
   CHECK(routed_bar.find("openrouter/deepseek/deepseek-v4-flash:high") !=
         std::string::npos);
   CHECK(routed_bar.find("openrouter/deepseek/deepseek-v4-flash:high · 1.5s") !=
         std::string::npos);
   CHECK(first.find("openrouter") == std::string::npos);
 
-  // Counters are omitted at zero rather than rendered as "bg:0".
-  CHECK(first.find("bg:") == std::string::npos);
+  // Counters are omitted at zero rather than rendered as "act:0".
+  CHECK(first.find("act:") == std::string::npos);
   CHECK(first.find("steer:") == std::string::npos);
 
-  ActivityView busy = Working(std::chrono::milliseconds(0));
+  TurnStatusView busy = Working(std::chrono::milliseconds(0));
   busy.background = 2;
   busy.queued = 3;
   busy.foreground = 1;
   {
     FixedWidth columns(120);
-    std::string loaded = ActivityBar(busy);
-    CHECK(loaded.find("bg:2") != std::string::npos);
+    std::string loaded = TurnStatusBar(busy);
+    CHECK(loaded.find("act:2") != std::string::npos);
     CHECK(loaded.find("steer:3") != std::string::npos);
     // The keys that act on the turn close the row; one foreground command
     // reads as the bare hint, more than one is counted.
     CHECK(loaded.ends_with(" · Esc stop · Ctrl+B background"));
     busy.foreground = 2;
-    CHECK(ActivityBar(busy).find("Ctrl+B background 2 commands") !=
+    CHECK(TurnStatusBar(busy).find("Ctrl+B background 2 commands") !=
           std::string::npos);
   }
   // The hint is the first thing a narrow row gives up, before the counters.
   {
     FixedWidth columns(60);
-    std::string narrow = ActivityBar(busy);
+    std::string narrow = TurnStatusBar(busy);
     CHECK(narrow.find("Esc stop") == std::string::npos);
     CHECK(narrow.find("steer:3") != std::string::npos);
   }
@@ -559,43 +560,43 @@ void TestActivityBar() {
   // progress line: a parent that is only waiting on a child would otherwise
   // say "Working" for as long as the child runs.
   CHECK(first.find("agents:") == std::string::npos);
-  ActivityView delegated = Working(std::chrono::milliseconds(0));
+  TurnStatusView delegated = Working(std::chrono::milliseconds(0));
   delegated.subagents = 2;
   delegated.subagent = "agent-1a2b3c4d: · reading";
-  std::string delegated_bar = ActivityBar(delegated);
+  std::string delegated_bar = TurnStatusBar(delegated);
   CHECK(delegated_bar.find("agents:2") != std::string::npos);
   CHECK(delegated_bar.find("agent-1a2b3c4d: · reading") != std::string::npos);
   CHECK(delegated_bar.find("Working") == std::string::npos);
   // The line is another process's terminal output, so escapes must not reach
   // the row -- a child could otherwise repaint the parent's screen.
   delegated.subagent = "agent-1a2b3c4d: \033[2Jwiped";
-  CHECK(ActivityBar(delegated).find("\033[2J") == std::string::npos);
+  CHECK(TurnStatusBar(delegated).find("\033[2J") == std::string::npos);
   // The model round posts an activity of its own, and it is the one label the
   // child's progress outranks: without this the branch above is unreachable
   // for the entire time a parent spends waiting on its children.
   delegated.subagent = "agent-1a2b3c4d: · reading";
   {
-    TerminalActivityLabel waiting(kWaitingActivity);
-    CHECK(ActivityBar(delegated).find("agent-1a2b3c4d: · reading") !=
+    TerminalStatusLabel waiting(kWaitingStatus);
+    CHECK(TurnStatusBar(delegated).find("agent-1a2b3c4d: · reading") !=
           std::string::npos);
   }
   // Anything that names actual work keeps the row.
   {
-    TerminalActivityLabel running("run · make");
-    std::string busy_bar = ActivityBar(delegated);
+    TerminalStatusLabel running("run · make");
+    std::string busy_bar = TurnStatusBar(delegated);
     CHECK(busy_bar.find("run · make") != std::string::npos);
     CHECK(busy_bar.find("agent-1a2b3c4d") == std::string::npos);
     CHECK(busy_bar.find("agents:2") != std::string::npos);
   }
 
   // Interrupting replaces the idle "Working" label.
-  ActivityView interrupting = Working(std::chrono::milliseconds(0));
+  TurnStatusView interrupting = Working(std::chrono::milliseconds(0));
   interrupting.interrupting = true;
-  CHECK(ActivityBar(interrupting).find("Interrupting") != std::string::npos);
+  CHECK(TurnStatusBar(interrupting).find("Interrupting") != std::string::npos);
   CHECK(first.find("Working") != std::string::npos);
   // A child's progress never displaces what this process is doing itself.
   interrupting.subagent = "agent-1a2b3c4d: · reading";
-  CHECK(ActivityBar(interrupting).find("Interrupting") != std::string::npos);
+  CHECK(TurnStatusBar(interrupting).find("Interrupting") != std::string::npos);
 
   g_tty = prior;
   g_color = prior_color;
@@ -632,7 +633,7 @@ void TestStatusBarDropsByPriority() {
   }
   CHECK(wide ==
         "anthropic/claude-sonnet-4-5 · Ask · 99% left · $0.4200 · "
-        "est. ctx 12k/1.3M · bg:1 · 18k in · 3.4k out · cache 33% · "
+        "est. ctx 12k/1.3M · act:1 · 18k in · 3.4k out · cache 33% · "
         "full · /help for shortcuts");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the

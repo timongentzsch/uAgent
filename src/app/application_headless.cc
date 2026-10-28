@@ -159,7 +159,7 @@ int Application::RunHeadless() {
   // process alive long enough to publish completion and drain retained state.
   while (runtime_.processes.JoinableCount() > 0 && !stopping()) {
     uint64_t generation = runtime_.processes.Generation();
-    if (!agent_.DrainBackground()) {
+    if (!agent_.DrainActivities()) {
       (void)runtime_.processes.WaitForChange(generation, deadline);
     }
     agent_.AccountSideUsage();

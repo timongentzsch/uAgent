@@ -451,7 +451,7 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
                 lambda value: (
                     value["metadata"]["status"] == "idle"
                     and any(
-                        "[completed background tasks" in json.dumps(body["messages"])
+                        "[completed activities" in json.dumps(body["messages"])
                         for _, body in provider.requests
                     )
                 ),
@@ -545,7 +545,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                         for row in value["state"].get("activities", [])
                     )
                     and any(
-                        "[background work finished" in json.dumps(body["messages"])
+                        "[activity finished" in json.dumps(body["messages"])
                         for _, body in provider.requests
                     )
                 ),
@@ -616,7 +616,7 @@ def test_web_lists_the_children_a_turn_waits_on_and_stops_one(root, home, *, bin
                             [
                                 r
                                 for r in value["state"].get("activities", [])
-                                if r["kind"] == "agent"
+                                if r["kind"] == "subagent"
                             ]
                         )
                         == 2

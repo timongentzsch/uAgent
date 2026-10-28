@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/api/client.h"
 #include "include/core/child_env.h"
 #include "include/core/defaults.h"
@@ -97,7 +97,7 @@ std::string OwnSessionId();
 // refusal to hand back, or nothing when the call may proceed, and reports the
 // cost and generated-token budgets the child should inherit.
 std::optional<ToolResult> ChildAgentBudgetBlock(
-    const Api& api, const ProcessSupervisor& processes, double& remaining_cost,
+    const Api& api, const ActivitySupervisor& processes, double& remaining_cost,
     int64_t& remaining_tokens);
 
 // The model a delegated child runs by default, and the one-line runtime

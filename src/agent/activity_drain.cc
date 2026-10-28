@@ -13,11 +13,11 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/agent/agent.h"
 #include "include/agent/conversation.h"
-#include "include/agent/jobs.h"
 #include "include/agent/memory_store.h"
-#include "include/agent/process.h"
 #include "include/agent/protocol.h"
 #include "include/core/debug.h"
 #include "include/core/defaults.h"
@@ -34,7 +34,7 @@ namespace uagent {
 
 // One finished extraction: its receipt decides what the memory event records,
 // and only a change or a failure is worth a line on screen.
-void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
+void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
   bool success = ExitedOk(completion.status);
   MemoryEvent event;
   std::string receipt_error;
@@ -76,8 +76,7 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
         std::string_view candidate =
             start == std::string_view::npos ? tail : tail.substr(start + 1);
         if (!Trim(std::string(candidate)).empty()) {
-          event.preview =
-              Utf8Trunc(std::string(candidate), kActivityLabelBytes);
+          event.preview = Utf8Trunc(std::string(candidate), kStatusLabelBytes);
           break;
         }
         tail = start == std::string_view::npos ? std::string_view()
@@ -151,31 +150,30 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
 // Everything that is not a memory extraction: a notice and a presentation
 // record each, and one bounded batch message for the model.
 void Agent::DeliverActivityCompletions(
-    const std::vector<BackgroundCompletion>& completions) {
+    const std::vector<ActivityCompletion>& completions) {
   const size_t delivered = static_cast<size_t>(std::count_if(
       completions.begin(), completions.end(), [](const auto& completion) {
         return completion.kind != ActivityKind::kMemory;
       }));
   constexpr size_t kAutomaticBatchBytes = KiB(12);
-  std::string batch = "[completed background tasks; bounded]\n";
+  std::string batch = "[completed activities; bounded]\n";
   size_t reduced = 0;
   bool first = true;
-  for (const BackgroundCompletion& completion : completions) {
+  for (const ActivityCompletion& completion : completions) {
     if (completion.kind == ActivityKind::kMemory) continue;
-    std::string header = BgResultHeader(completion);
+    std::string header = ActivityResultHeader(completion);
 
     const bool succeeded = ExitedOk(completion.status);
     PresentationRecord record;
     record.status = succeeded ? PresentationStatus::kSucceeded
                               : PresentationStatus::kFailed;
-    record.title = completion.kind == ActivityKind::kSubagent
-                       ? "Subagent"
-                       : "Background task";
+    record.title =
+        completion.kind == ActivityKind::kSubagent ? "Subagent" : "Activity";
     std::string label = completion.display_label.empty()
                             ? FirstLine(completion.command)
                             : completion.display_label;
     if (!label.empty()) {
-      record.title += " · " + Utf8Trunc(label, kActivityLabelBytes);
+      record.title += " · " + Utf8Trunc(label, kStatusLabelBytes);
     }
     const json completion_activity = {
         {"category",
@@ -191,8 +189,8 @@ void Agent::DeliverActivityCompletions(
           {{"verb",
             json{agent ? "Delegating" : "Running",
                  succeeded ? (agent ? "Delegated" : "Finished") : "Failed"}},
-           {"target", Utf8Trunc(label.empty() ? record.title : label,
-                                kActivityLabelBytes)},
+           {"target",
+            Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
            {"output", "tail"}}},
          {"parts",
           json::array(
@@ -242,14 +240,14 @@ void Agent::DeliverActivityCompletions(
            {{"count", delivered}, {"reduced", reduced}});
 }
 
-bool Agent::DrainBackground(bool start_turn) {
+bool Agent::DrainActivities(bool start_turn) {
   bool changed = false;
   // Take one snapshot. A memory child can become drainable at any instant; two
   // separate takes let the generic pass steal a child that completed just
   // after the memory-only pass, bypassing its receipt and audit handling.
-  std::vector<BackgroundCompletion> completions =
-      BgTakeCompletedDetails(processes_);
-  for (BackgroundCompletion& completion : completions) {
+  std::vector<ActivityCompletion> completions =
+      ActivityTakeCompletedDetails(processes_);
+  for (ActivityCompletion& completion : completions) {
     if (completion.kind == ActivityKind::kMemory) {
       ReportMemoryCompletion(completion);
     }
@@ -263,7 +261,7 @@ bool Agent::DrainBackground(bool start_turn) {
     changed = true;
   }
   if (delivered && start_turn) {
-    Arrive(HarnessNote("background work finished", "Its result is above."));
+    Arrive(HarnessNote("activity finished", "Its result is above."));
   }
   if (DrainAttachments()) changed = true;
   {

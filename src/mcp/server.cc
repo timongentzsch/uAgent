@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/core/child_env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"

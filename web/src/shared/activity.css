@@ -1,19 +1,19 @@
 /* The activity sheet on the status line, and the inspector sheet. */
 
-.activity-status {
+.turn-status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
   max-width: 100%;
 }
-.activity-caption {
+.turn-status-caption {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.activity-counts {
+.turn-status-counts {
   flex-shrink: 0;
 }
 @container app (max-height: 500px) {

@@ -8,11 +8,11 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/jobs.h"
-#include "include/agent/process.h"
+#include "include/agent/activity.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/api/retry.h"
-#include "include/core/activity.h"
 #include "include/core/term.h"
+#include "include/core/turn_status.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
 #include "include/ui/presentation.h"
@@ -252,18 +252,18 @@ void TestSseChunkPartitions() {
 
   // Display normalization for the reasoning ticker: decoration and line
   // structure collapse, but text that only looks like markup is preserved.
-  CHECK(ActivityLabel("first line\nlatest line\n") == "first line latest line");
-  CHECK(ActivityLabel("  padded latest  ") == "padded latest");
-  CHECK(ActivityLabel(
+  CHECK(StatusLabel("first line\nlatest line\n") == "first line latest line");
+  CHECK(StatusLabel("  padded latest  ") == "padded latest");
+  CHECK(StatusLabel(
             "**Map invariants****Detail implementation****Plan provider**") ==
         "Map invariants Detail implementation Plan provider");
-  CHECK(ActivityLabel("C# and snake_case use 2*3") ==
+  CHECK(StatusLabel("C# and snake_case use 2*3") ==
         "C# and snake_case use 2*3");
   // Shortened from the front of its detail, by whole words: a word the cut
   // falls before stays, one it falls inside goes.
-  CHECK(ActivityLabel("Thinking · alpha beta gamma", 21) ==
+  CHECK(StatusLabel("Thinking · alpha beta gamma", 21) ==
         "Thinking · beta gamma");
-  CHECK(ActivityLabel("Thinking · alpha beta gamma", 20) == "Thinking · gamma");
+  CHECK(StatusLabel("Thinking · alpha beta gamma", 20) == "Thinking · gamma");
 
   std::string final_line =
       event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
@@ -322,10 +322,10 @@ void TestSseChunkPartitions() {
   CHECK(html_stream.show == StreamCtx::Show::kPrint);
   CHECK(!html.suppressed);
 
-  uint64_t activity = BeginTerminalActivity("working");
-  UpdateTerminalActivity(activity, "thinking · compact preview");
-  CHECK(CurrentTerminalActivity() == "thinking · compact preview");
-  EndTerminalActivity(activity);
+  uint64_t activity = BeginTerminalStatus("working");
+  UpdateTerminalStatus(activity, "thinking · compact preview");
+  CHECK(CurrentTerminalStatus() == "thinking · compact preview");
+  EndTerminalStatus(activity);
 
   std::map<int, ToolCall> missing_id = {
       {0, ToolCall{"", "read_file", R"({"path":"x"})"}}};
@@ -552,10 +552,10 @@ void TestSseFraming() {
   CHECK(!bounded.Error().empty());
 }
 
-void TestBackgroundValidation() {
+void TestActivityValidation() {
   namespace fs = std::filesystem;
-  ProcessSupervisor supervisor;
-  auto add_job = [&](BgJob job) {
+  ActivitySupervisor supervisor;
+  auto add_job = [&](Activity job) {
     CHECK(supervisor.TryAdd(std::move(job), 100));
   };
   add_job({.pid = 999998, .kind = ActivityKind::kDetached});

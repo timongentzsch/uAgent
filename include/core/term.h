@@ -100,19 +100,19 @@ inline void TerminalClearToEnd() {
   fflush(stdout);
 }
 // The transient activity registry shown while a call is in flight.
-uint64_t BeginTerminalActivity(std::string label);
-void UpdateTerminalActivity(uint64_t id, const std::string& label);
-void EndTerminalActivity(uint64_t id);
-std::string CurrentTerminalActivity();
+uint64_t BeginTerminalStatus(std::string label);
+void UpdateTerminalStatus(uint64_t id, const std::string& label);
+void EndTerminalStatus(uint64_t id);
+std::string CurrentTerminalStatus();
 
 // Names what a blocking call waits on, for as long as it blocks.
-class TerminalActivityLabel {
+class TerminalStatusLabel {
  public:
-  explicit TerminalActivityLabel(std::string label)
-      : id_(BeginTerminalActivity(std::move(label))) {}
-  ~TerminalActivityLabel() { EndTerminalActivity(id_); }
-  TerminalActivityLabel(const TerminalActivityLabel&) = delete;
-  TerminalActivityLabel& operator=(const TerminalActivityLabel&) = delete;
+  explicit TerminalStatusLabel(std::string label)
+      : id_(BeginTerminalStatus(std::move(label))) {}
+  ~TerminalStatusLabel() { EndTerminalStatus(id_); }
+  TerminalStatusLabel(const TerminalStatusLabel&) = delete;
+  TerminalStatusLabel& operator=(const TerminalStatusLabel&) = delete;
 
  private:
   uint64_t id_;
@@ -122,7 +122,7 @@ class TerminalActivityLabel {
 // the placeholder every other label is more informative than -- so a status
 // row with something concrete to say may spend those columns on that instead.
 // One spelling, because that decision is a comparison against this string.
-inline constexpr const char* kWaitingActivity = "Working";
+inline constexpr const char* kWaitingStatus = "Working";
 
 // The spinner the working row and a blocking call both animate: braille, or
 // |/-\\ where the locale cannot show it, one frame per period.
@@ -144,7 +144,7 @@ class TerminalSpinner {
     if (active_ || !enabled || !g_tty) return;
     active_ = true;
     std::lock_guard<std::mutex> starting(mutex_);
-    activity_id_ = BeginTerminalActivity(label_);
+    activity_id_ = BeginTerminalStatus(label_);
     if (PersistentComposer()) return;
     done_ = false;
     thread_ = std::thread([this] {
@@ -182,7 +182,7 @@ class TerminalSpinner {
       std::lock_guard<std::mutex> lock(mutex_);
       label_ = label;
     }
-    UpdateTerminalActivity(activity_id_, label);
+    UpdateTerminalStatus(activity_id_, label);
     wake_.notify_one();
   }
 
@@ -197,7 +197,7 @@ class TerminalSpinner {
       thread_.join();
       TerminalClearToEnd();
     }
-    EndTerminalActivity(activity_id_);
+    EndTerminalStatus(activity_id_);
     active_ = false;
   }
 
@@ -210,7 +210,7 @@ class TerminalSpinner {
   uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_ =
       std::chrono::steady_clock::now();
-  std::string label_ UAGENT_GUARDED_BY(mutex_) = kWaitingActivity;
+  std::string label_ UAGENT_GUARDED_BY(mutex_) = kWaitingStatus;
   std::thread thread_;
 };
 

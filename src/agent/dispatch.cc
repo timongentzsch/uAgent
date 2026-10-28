@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/agent/protocol.h"
 #include "include/api/client.h"
 #include "include/core/checked.h"

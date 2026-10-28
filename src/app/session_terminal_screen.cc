@@ -36,7 +36,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
     // The worker's clock, so a terminal attached mid-turn counts from the
     // turn's start and not from its own.
     const int64_t now = NowMillis();
-    return ActivityBar(
+    return TurnStatusBar(
         {.elapsed = std::chrono::milliseconds(std::max(
              int64_t{0}, now - JsonValue(state, "turn_started_ms", now))),
          .context_used = used,
@@ -49,14 +49,15 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
          .subagent = std::move(counts.subagent)});
   }
   const json permissions = JsonValue(state, "permissions", json::object());
-  return StatusBar(UsageFromJson(JsonValue(state, "usage", json::object())),
-                   {.activity = JsonValue(state, "activity", "Connecting"),
-                    .context_used = used,
-                    .context_window = window,
-                    .model = route,
-                    .approval = JsonValue(permissions, "effective", "ask"),
-                    .verbosity = std::string(verbosity),
-                    .background = counts.background + counts.subagents});
+  return StatusBar(
+      UsageFromJson(JsonValue(state, "usage", json::object())),
+      {.turn_status = JsonValue(state, "turn_status", "Connecting"),
+       .context_used = used,
+       .context_window = window,
+       .model = route,
+       .approval = JsonValue(permissions, "effective", "ask"),
+       .verbosity = std::string(verbosity),
+       .background = counts.background + counts.subagents});
 }
 
 // What a pending approval or question says above its prompt.

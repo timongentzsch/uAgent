@@ -451,7 +451,7 @@ test.describe("composer footer", () => {
             cost: 1234.56,
           },
           activities: [
-            { id: 12, kind: "agent", status: "running", label: "Research" },
+            { id: 12, kind: "subagent", status: "running", label: "Research" },
             { id: 13, kind: "command", status: "running", label: "Build" },
           ],
         };

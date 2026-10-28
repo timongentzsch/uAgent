@@ -1018,7 +1018,7 @@ dialog.sidebar:not([open]) {
     scale: 0.97;
   }
 }
-.activity-toggle {
+.turn-status-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -1435,7 +1435,7 @@ dialog section {
   :root {
     --control: var(--touch);
   }
-  .activity-toggle,
+  .turn-status-row,
   .activity-button,
   .metrics > button {
     min-height: var(--control-m);
@@ -1443,14 +1443,14 @@ dialog section {
   /* Dense rows keep their 32px look but take a 44px touch: an invisible
      hit area extends above and below, never over a neighbour. */
   :where(
-    .activity-toggle,
+    .turn-status-row,
     .activity-button,
     .metrics > button,
     .message button
   ) {
     position: relative;
   }
-  .activity-toggle::after,
+  .turn-status-row::after,
   .activity-button::after,
   .metrics > button::after,
   .message button::after {

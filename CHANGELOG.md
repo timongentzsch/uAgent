@@ -15,6 +15,7 @@
 - **Removed commands:** `/debug-config` (use `/config KEY`, which now also shows the conversation's own value), `/models` (use `/model QUERY` or `/model all`), the aliases `/new`, `/ctx`, `/commands` and `/resume` (`/reset`, `/context`, `/help`, `/sessions`), and `uagent config export` and `uagent config import` (copy `~/.uagent/config/settings.json`).
 - **Removed settings:** `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove` (set `decision_bars` on the provider), `mcp.roots` (set `roots` per server in `.mcp.json`), `project.trustConfig` (use `--trust-project-config`), `memory.redactKeywords`, `terminal.markdown` and `terminal.reducedMotion` (use `--plain`); `UAGENT_INTERNAL_TOOL_RUN_ALLOWLIST` is gone.
 - **Background work is called activity everywhere.** The turn's status line is now `turn_status` on the wire (frame kind, session state and metadata field; event `turn.status`), activity rows have `kind` `command`, `subagent`, `memory` or `detached` (was `agent`), result headers read `[Activity result: <kind> <id> ...]`, mail says `[activity finished`, the status row counts `act:N`, and the activity logs live in `~/.uagent/activity/` (was `bg/`). Old logs under `bg/` are left in place.
+- **The `strict` sandbox level is gone.** Use `sandbox.network` off (`UAGENT_SANDBOX_NET=0`) with `default`. A saved or exported `strict`, or any value that is no level, refuses every command and says so, rather than becoming `default` with the network open.
 - **A `-p` run is saved like any conversation**, so `-c -p` continues the latest one and scripts leave one history entry per run.
 - **Headless `--json` reports this run's usage only**, not what a continued conversation spent before; a conversation another runtime holds gets an error envelope.
 
@@ -75,6 +76,10 @@
 - Case-insensitive matching folds only ASCII letters.
 - The project trust store and session links, memory receipts, job records and mail are read only up to 16 MiB and only as regular files; a full receipt table evicts the oldest completed command.
 - A folder created while the host sets up file watches (such as `.uagent/`) is noticed.
+- Sandbox: a file tool's failed edit in a closed folder no longer returns lines of the file under yolo; writing there asks like reading does.
+- Sandbox: `sandbox.read=~/folder` opens the home folder's `folder`; a `~/bin` on `PATH` is readable; `~/go` opens while `GOPATH` is unset; `~/Library/Python` stays readable on macOS; `~/.git-credentials` is hidden with the other credential stores.
+- Sandbox: a linked git worktree whose repository is in a closed folder (a sibling worktree, a lead agent's thread worktree) can use git there: its git directories open for reading, and a commit may write the worktree's git directory and the shared `objects`, `refs` and `logs`.
+- `/status` and `/context` list the folders the sandbox opens for reading; a policy too large for the sandbox says it counts closed folders as well as writable roots.
 - The runtime context ends with a closing line so the model no longer reads the memory index as the whole request.
 - The terminal status line counts commands running behind the turn (backgrounded or detached) as `bg:` and only the ones the turn waits on as foreground; backgrounded commands used to be counted as foreground.
 - Text cut from the middle is cut at one rule everywhere: the cap includes the marker, the marker reads `[N bytes omitted]`, and a character is never split.

@@ -114,12 +114,11 @@ enum class PathAccess { kRead, kWrite };
 // folder .mcp.json carry provider keys and server credentials, so pulling
 // one into context is itself the harm. The trust store and instruction files
 // are the exceptions -- they hold no secret, so only writing them changes
-// what the agent may do next launch.
+// what the agent may do next launch. A closed folder asks for either: a write
+// can hand back what it holds, as an edit that fails to match does.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
-  if (access == PathAccess::kRead && UnreadablePath(path)) {
-    return ApprovalClass::kMandatoryHuman;
-  }
+  if (UnreadablePath(path)) return ApprovalClass::kMandatoryHuman;
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||

@@ -235,8 +235,8 @@ retry one or switch it.
 - **Every command is refused, or startup reports `degraded`.** The Linux
   kernel has no Landlock (it needs 5.13 or newer). With `UAGENT_SANDBOX` set
   explicitly, every command is refused; with it unset, commands run
-  unconfined and startup says so. Denying the network (`UAGENT_SANDBOX=strict`
-  or `UAGENT_SANDBOX_NET=0`) on a kernel whose Landlock cannot restrict it
+  unconfined and startup says so. Denying the network
+  (`UAGENT_SANDBOX_NET=0`) on a kernel whose Landlock cannot restrict it
   (before ABI 4) also refuses every command.
 - **A command cannot read a credentials file.** The sandbox hides µAgent's
   settings, other tools' credential stores and similar paths, and the file

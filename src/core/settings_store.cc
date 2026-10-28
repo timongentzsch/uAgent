@@ -149,9 +149,11 @@ bool KindFits(const ConfigDescriptor& descriptor, const json& held) {
 
 // A scope of the document as settings. With `problems`, what cannot be taken
 // is named there, each with `where` before it, and left out; without, every
-// value of a setting is taken as it stands.
+// value of a setting is taken as it stands. `invalid` collects the keys of
+// settings whose value was left out.
 SettingValues DecodeScope(const json& scope, const std::string& where,
-                          std::vector<std::string>* problems) {
+                          std::vector<std::string>* problems,
+                          std::vector<std::string>* invalid = nullptr) {
   SettingValues values;
   const auto report = [&](std::string problem) {
     if (problems) problems->push_back(where + std::move(problem));
@@ -178,6 +180,7 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
     }
     std::string text = Text(held);
     if (problems && !KindFits(*descriptor, held)) {
+      if (invalid) invalid->push_back(key);
       report(key + " expects " +
              (descriptor->type == ConfigType::kBool     ? "true or false"
               : descriptor->type == ConfigType::kString ? "text"
@@ -189,6 +192,7 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
     if (std::string checked = text, problem;
         problems && text.find('$') == std::string::npos &&
         !ValidSettingValue(*descriptor, checked, problem, key)) {
+      if (invalid) invalid->push_back(key);
       report(std::move(problem));
       continue;
     }
@@ -209,6 +213,7 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
       ++held;
       continue;
     }
+    if (invalid) invalid->emplace_back(descriptor->key);
     report(std::move(problem));
     held = values.erase(held);
   }
@@ -263,9 +268,10 @@ SavedSettings ReadSettings(const std::string& folder) {
     return saved;
   }
   std::vector<std::string> problems;
-  saved.all = DecodeScope(document["all"], "", &problems);
+  saved.all = DecodeScope(document["all"], "", &problems, &saved.invalid_keys);
   if (const json* project = JsonObject(document["projects"], folder.c_str())) {
-    saved.project = DecodeScope(*project, "this folder: ", &problems);
+    saved.project =
+        DecodeScope(*project, "this folder: ", &problems, &saved.invalid_keys);
   }
   saved.warning = Joined(problems);
   // Once a run: a build newer than the schema beside the document replaces

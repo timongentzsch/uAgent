@@ -160,8 +160,8 @@ Two separate mechanisms keep a turn in bounds.
   mode: it writes only inside the folder, cannot read your saved logins, and
   reads none of your other folders in the home folder (another repository,
   `~/Documents`), while the tools' own dot-folders stay readable.
-  `sandbox.read` opens a folder. `sandbox.level` sets it to `strict`,
-  `default`, `relaxed` or `off`. A command that fails on a path outside the
+  `sandbox.read` opens a folder. `sandbox.level` sets it to `readonly`,
+  `default`, `relaxed` or `off`; `sandbox.network` turns the network off. A command that fails on a path outside the
   folder is the sandbox working.
 
 **Auto approval** asks a *decision model*, a model that answers questions

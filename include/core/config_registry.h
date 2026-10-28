@@ -138,8 +138,8 @@ inline constexpr std::string_view kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
-inline constexpr std::string_view kSandboxLevels[] = {
-    "readonly", "strict", "default", "relaxed", "off"};
+inline constexpr std::string_view kSandboxLevels[] = {"readonly", "default",
+                                                      "relaxed", "off"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
                                                         "full"};
@@ -427,8 +427,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "tools",
                           "how far the OS sandbox confines shell commands: "
                           "readonly (temporary files only, no network; a "
-                          "lead agent's always), strict (no network), "
-                          "default, relaxed (home writable and readable) or "
+                          "lead agent's always), default, relaxed "
+                          "(home writable and readable) or "
                           "off; below relaxed, commands read in your home "
                           "folder only this folder and their tools' folders"),
             kSandboxLevels),

@@ -164,10 +164,13 @@ One setting chooses how far it goes, `sandbox.level` in the settings file or
 | Level | Writes | Reads | Network | Hidden stores |
 | --- | --- | --- | --- | --- |
 | `readonly` | temporary files and the terminal logs only, never the folder | not your other folders | none | yes |
-| `strict` | the roots below | not your other folders | none | yes |
 | `default` | the roots below | not your other folders | allowed | yes |
 | `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | open | allowed | yes |
 | `off` | unconfined | open | allowed | no |
+
+A value that is no level (`strict` included, which is gone) is not read as
+`default`: commands are refused until it is fixed, so a typo cannot open the
+network a stricter level would have closed.
 
 Five more settings each adjust one thing and win over the level:
 
@@ -195,6 +198,10 @@ confinement.
   `include/core/defaults.h`; grant another with `sandbox.write`);
 - `~/.uagent/terminals/logs`, where a detached activity's log pump writes;
 - the roots `sandbox.write` adds;
+- in a linked git worktree, the worktree's own git directory and the shared
+  repository's `objects`, `refs` and `logs`, so a commit works; the shared
+  `config` and `hooks` stay unwritable on macOS, and on Linux are only as
+  protected as the folder's own `.git/config` is;
 - at the `relaxed` level, your home folder.
 
 Everything else is refused. `~/.uagent` is never granted, and a requested
@@ -229,12 +236,16 @@ reads:
 
 - the folder;
 - the writable roots above;
-- `~/Library/Caches` and `~/Library/Developer` (`kReadableHomePaths` in
-  `include/core/defaults.h`);
+- `~/Library/Caches`, `~/Library/Developer` and `~/Library/Python`
+  (`kReadableHomePaths` in `include/core/defaults.h`);
 - the folders its environment points at: every `PATH` entry, the parent of
-  one named `bin`, and any variable that names a folder (`GOPATH`,
-  `ANDROID_HOME`…), so a toolchain installed in `~/go` or `~/fvm` keeps
-  working;
+  one named `bin` (the `bin` itself when that parent is the home folder), and
+  any variable that names a folder (`GOPATH`, `ANDROID_HOME`…), so a
+  toolchain installed in `~/go` or `~/fvm` keeps working; `~/go` is open
+  while `GOPATH` is unset;
+- a linked git worktree's git directory and the repository's shared one,
+  when the repository itself is in a closed folder (only those directories,
+  not the main checkout), after checking that they belong to each other;
 - the skill folders;
 - the folders `sandbox.read` adds.
 
@@ -243,9 +254,10 @@ Everything else stays readable: dot-folders such as `~/.config` and
 confined `cat ~/.ssh/config` still pulls the file into model context. A
 refused command is told which folder closed and that `sandbox.read` opens
 one. A stdio MCP server you configured reads as before: it lives wherever
-you keep it. The file tools ask a person before reading a closed folder,
-even under yolo or auto, and refuse it where nobody can answer, as in a
-subagent. On macOS a closed folder cannot be listed; on Linux, Landlock
+you keep it. The file tools ask a person before reading or changing a
+closed folder (a failed edit shows lines of the file), even under yolo or
+auto, and refuse it where nobody can answer, as in a subagent. `/status`
+lists the folders opened for reading. On macOS a closed folder cannot be listed; on Linux, Landlock
 lists its names but refuses its files.
 
 **Hidden stores.** With the sandbox on, commands cannot read, write or
@@ -257,7 +269,8 @@ refuse them in every mode:
 - `~/.uagent/config`: the saved settings and API keys, the trust store and
   remembered approvals;
 - other tools' credential stores: `~/.aws`, `~/.config/gcloud`, `~/.azure`,
-  `~/.kube`, `~/.gnupg`, `~/.netrc` and `~/.docker/config.json`
+  `~/.kube`, `~/.gnupg`, `~/.netrc`, `~/.git-credentials` and
+  `~/.docker/config.json`
   (`kHiddenCredentialStores` in
   [`include/core/defaults.h`](include/core/defaults.h)).
 
@@ -283,10 +296,10 @@ a hidden path: `/`, `/home`, your home directory, `~/.uagent`, `~/.config`
 and `~/.docker`. Files in any other folder, a repository among them, are
 unaffected. A session whose folder is one of those folders is told so.
 
-**Network.** Outbound access is allowed except at the `strict` level,
-because git, npm and pip need it. Denying it (`strict`, or `sandbox.network`
-off) blocks all IP traffic on macOS and TCP (bind and connect) on Linux,
-where Landlock cannot express the rest.
+**Network.** Outbound access is allowed, because git, npm and pip need it.
+Denying it (`sandbox.network` off, or the `readonly` level) blocks all IP
+traffic on macOS and TCP (bind and connect) on Linux, where Landlock cannot
+express the rest.
 
 **Inside the folder**, a sandboxed command cannot change `.mcp.json` or,
 in a repository, `.git/config` and `.git/hooks` (which your own git would
@@ -327,11 +340,12 @@ Besides `off`, a session can run unconfined in two ways, both reported:
   startup warning, a `capability.changed` event, `sandbox.mode=degraded`, and
   commands run unconfined. A session that requested the sandbox explicitly,
   in the environment or a saved setting, refuses to run commands instead. So
-  does one that denies the network (`strict`, or `sandbox.network` off) on a
+  does one that denies the network (`sandbox.network` off) on a
   kernel whose Landlock cannot restrict it (before ABI 4).
 
-On macOS, a sandbox profile larger than 64 KiB (very many writable roots)
-refuses the command rather than running it under a truncated profile.
+On macOS, a sandbox profile larger than 64 KiB, and on Linux a policy larger
+than 96 KiB (very many writable roots or closed folders), refuses the
+command rather than running it under a truncated one.
 
 ## Sensitive data
 

@@ -253,6 +253,9 @@ inline constexpr int64_t kMcpPages = 100;
 inline constexpr size_t kMaxMcpTools = 256;
 inline constexpr size_t kMcpConfigBytes = MiB(1);
 inline constexpr size_t kMcpResponseBytes = MiB(16);
+// The Linux sandbox trampoline receives its policy as one argv word, which the
+// kernel caps at 128 KiB.
+inline constexpr size_t kSandboxPolicyArgBytes = KiB(96);
 inline constexpr size_t kMcpSchemaBytes = KiB(256);
 inline constexpr size_t kMcpLogBytes = MiB(16);
 inline constexpr size_t kMcpDescriptionChars = 400;

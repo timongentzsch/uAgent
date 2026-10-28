@@ -516,10 +516,90 @@ def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, bina
     refused = file_tool_output(root, env, "read_path", {"path": str(sibling)}, binary=binary)
     assert_true("marker-notes.txt" not in refused, f"read_path read {sibling} unasked")
     assert_true("sandbox.read" in refused, refused)
+    # A failed edit hands back lines of the file, so writing asks as reading does.
+    edited = file_tool_output(
+        root,
+        env,
+        "edit_file",
+        {"path": str(sibling), "edits": [{"old": "no such text", "new": "x"}]},
+        binary=binary,
+    )
+    assert_true("marker-notes.txt" not in edited, f"edit_file leaked {sibling}: {edited}")
+    assert_true("sandbox.read" in edited, edited)
     opened = sandbox_env(home, "", UAGENT_SANDBOX_READ=str(home / "Projects" / "other"))
     assert_true(readable(root, opened, sibling, binary=binary), "sandbox.read did not open it")
     read = file_tool_output(root, opened, "read_path", {"path": str(sibling)}, binary=binary)
     assert_true("marker-notes.txt" in read, read)
+    # The documented ~/ spelling means the home folder, not a folder named ~.
+    tilde = sandbox_env(home, "", UAGENT_SANDBOX_READ="~/Projects/other")
+    assert_true(readable(root, tilde, sibling, binary=binary), "sandbox.read=~/... opened nothing")
+
+
+def test_sandbox_opens_the_tools_the_environment_names(root, home, *, binary):
+    """A bin folder on PATH opens its parent, or itself when the parent is the
+    home folder; Go's default ~/go opens while GOPATH is unset."""
+    require_sandbox(root, home, binary=binary)
+    tool = home / "bin" / "mytool"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("marker-mytool\n")
+    go = home / "go" / "pkg" / "mod" / "gotool"
+    go.parent.mkdir(parents=True)
+    go.write_text("marker-gotool\n")
+    plain = sandbox_env(home, "")
+    plain.pop("GOPATH", None)
+    assert_true(readable(root, plain, go, binary=binary), "~/go stayed closed")
+    assert_true(not readable(root, plain, tool, binary=binary), "~/bin was open without PATH")
+    on_path = dict(plain, PATH=f"{home / 'bin'}:{os.environ['PATH']}")
+    assert_true(readable(root, on_path, tool, binary=binary), "~/bin on PATH stayed closed")
+    elsewhere = dict(plain, GOPATH=str(root / "gopath"))
+    assert_true(not readable(root, elsewhere, go, binary=binary), "~/go opened with GOPATH set")
+
+
+def git(*arguments, cwd):
+    import subprocess
+
+    identity = ["-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", *identity, *arguments], cwd=cwd, check=True, capture_output=True)
+
+
+def test_sandbox_lets_a_linked_worktree_use_its_repository(root, home, *, binary):
+    """A worktree's git directories sit beside the main checkout, in a folder
+    the sandbox closes. git status, add and commit work in the worktree, and
+    the main checkout stays closed."""
+    require_sandbox(root, home, binary=binary)
+    main = root / "main-repo"
+    main.mkdir()
+    git("init", "-q", "-b", "main", cwd=main)
+    (main / "secret.txt").write_text("marker-main-secret\n")
+    git("add", ".", cwd=main)
+    git("commit", "-qm", "base", cwd=main)
+    git("worktree", "add", "-q", "-b", "wt", str(workspace(root)), cwd=main)
+    env = sandbox_env(home, "", GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t")
+    env.update(GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+    status = tool_output(root, env, "git status --short && echo STATUS-OK", binary=binary)
+    assert_true("STATUS-OK" in status, f"git status failed in the worktree: {status}")
+    committed = tool_output(
+        root,
+        env,
+        "echo change > change.txt && git add change.txt && git -c user.email=a@b -c user.name=a commit -qm wt-commit"
+        " && git log --oneline | head -1",
+        binary=binary,
+    )
+    assert_true("wt-commit" in committed, f"git commit failed in the worktree: {committed}")
+    assert_true(
+        not readable(root, env, main / "secret.txt", binary=binary), "the main checkout was open"
+    )
+    config = main / ".git" / "config"
+    assert_true("wt-commit" in git_log(main), "the commit did not reach the repository")
+    assert_true(config.exists(), "the repository lost its config")
+
+
+def git_log(repo):
+    import subprocess
+
+    return subprocess.run(
+        ["git", "log", "--all", "--oneline"], cwd=repo, capture_output=True, text=True
+    ).stdout
 
 
 def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
@@ -829,6 +909,22 @@ def test_sandbox_reports_itself(root, home, *, binary):
     assert_true(b"not granted as writable: /" in output, f"a dropped root was silent: {output!r}")
 
 
+def test_status_lists_the_folders_opened_for_reading(root, home, *, binary):
+    require_sandbox(root, home, binary=binary)
+    opened = home / "Projects" / "other"
+    opened.mkdir(parents=True)
+    with Server([event({"content": "ready-ok"})]) as server:
+        code, output = run_pty(
+            workspace(root),
+            sandbox_env(home, server.url, UAGENT_SANDBOX_READ=str(opened)),
+            [(b"/status\n", b"sandbox reads"), b"", b"/q\n"],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(code == 0, output)
+    assert_true(opened.name.encode() in output, f"/status did not list {opened}: {output!r}")
+
+
 def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
     """A home directory holds ~/.uagent, so it is never a writable root.
 
@@ -953,6 +1049,7 @@ def plant_credentials(home):
     nobody has heard of."""
     for relative in (
         ".aws/credentials",
+        ".git-credentials",
         ".ssh/id_marker",
         ".config/gh/hosts.yml",
         ".config/mycloud/token",
@@ -975,7 +1072,11 @@ def test_sandbox_hides_credential_stores_by_default(root, home, *, binary):
     require_sandbox(root, home, binary=binary)
     plant_credentials(home)
     env = sandbox_env(home, "")
-    for hidden in (home / ".aws" / "credentials", home / ".uagent" / "config" / "notes.txt"):
+    for hidden in (
+        home / ".aws" / "credentials",
+        home / ".git-credentials",
+        home / ".uagent" / "config" / "notes.txt",
+    ):
         assert_true(not readable(root, env, hidden, binary=binary), f"a command read {hidden}")
         control = sandbox_env(home, "", UAGENT_SANDBOX="off")
         assert_true(
@@ -1039,9 +1140,8 @@ def test_file_tools_refuse_the_hidden_set(root, home, *, binary):
 
 
 def test_sandbox_levels(root, home, *, binary):
-    """strict closes the network; relaxed opens the home folder except
-    ~/.uagent and the hidden stores; the 0 and 1 spellings still mean off and
-    default."""
+    """relaxed opens the home folder except
+    ~/.uagent and the hidden stores."""
     require_sandbox(root, home, binary=binary)
     plant_credentials(home)
     project = home / "project"
@@ -1069,21 +1169,30 @@ def test_sandbox_levels(root, home, *, binary):
         writes("relaxed") == {"project": True, "agent state": False, "hidden store": False},
         "relaxed is not the home folder minus ~/.uagent and the hidden stores",
     )
-    assert_true(writes("strict")["project"] is False, "strict reached into the home folder")
-    # What the switch this setting was took is no level: the default stands.
-    assert_true(writes("0")["project"] is False, "0 still means off")
 
     if sys.platform == "darwin" or landlock_abi() >= 4:
         assert_true(
-            not tcp_reachable(root, home, None, binary=binary, UAGENT_SANDBOX="strict"),
-            "strict left the network open",
+            not tcp_reachable(root, home, None, binary=binary, UAGENT_SANDBOX_NET="0"),
+            "sandbox.network=0 left the network open",
         )
-        assert_true(
-            tcp_reachable(
-                root, home, None, binary=binary, UAGENT_SANDBOX="strict", UAGENT_SANDBOX_NET="1"
-            ),
-            "an explicit sandbox.network did not override strict",
-        )
+
+
+def test_a_level_that_is_no_level_refuses_rather_than_opening_the_network(root, home, *, binary):
+    """`strict` is gone, and neither it nor a typo may quietly become the
+    default, which allows the network: in the environment or saved, commands
+    are refused with what to set instead."""
+    require_sandbox(root, home, binary=binary)
+    for level in ("strict", "0", "loose"):
+        env = sandbox_env(home, "", UAGENT_SANDBOX=level)
+        output = tool_output(root, env, "echo ran > ran.txt", headless=True, binary=binary)
+        assert_true("sandbox.network=false" in output, f"{level}: {output}")
+        assert_true(not (workspace(root) / "ran.txt").exists(), f"{level}: the command ran")
+    env = sandbox_env(home, "")
+    del env["UAGENT_SANDBOX"]
+    save_settings(home, binary=binary, UAGENT_SANDBOX="strict")
+    output = tool_output(root, env, "echo ran > ran.txt", headless=True, binary=binary)
+    assert_true("sandbox.network=false" in output, f"saved: {output}")
+    assert_true(not (workspace(root) / "ran.txt").exists(), "saved: the command ran")
 
 
 def mcp_probe_server(path):

@@ -349,13 +349,6 @@ size_t ProcessSupervisor::PendingCount() const {
                     [](const BgJob& job) { return !job.Detached(); }));
 }
 
-size_t ProcessSupervisor::DetachedCount() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(
-      std::count_if(jobs_.begin(), jobs_.end(),
-                    [](const BgJob& job) { return job.Detached(); }));
-}
-
 size_t ProcessSupervisor::Count() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return jobs_.size();
@@ -394,17 +387,24 @@ std::string ProcessSupervisor::Owner() const {
 json ProcessSupervisor::ActivityViews() const {
   // One copy under one lock: a job retained meanwhile is not listed twice.
   std::vector<BgJob> jobs;
+  size_t background = 0;
+  size_t foreground = 0;
   {
     std::lock_guard lock(mutex_);
     jobs = jobs_;
+    background = jobs_.size();
+    foreground = foreground_.size();
     jobs.insert(jobs.end(), foreground_.begin(), foreground_.end());
     jobs.insert(jobs.end(), retained_.begin(), retained_.end());
   }
   json rows = json::array();
-  for (const BgJob& job : jobs) {
+  for (size_t index = 0; index < jobs.size(); ++index) {
+    const BgJob& job = jobs[index];
     if (job.kind == ActivityKind::kMemory) continue;
     json row = job.metadata;
     row["id"] = ActivityId(job);
+    // The turn is waiting on it, as opposed to running behind it.
+    row["foreground"] = index >= background && index < background + foreground;
     row["agent_id"] = job.source_id;
     row["detached"] = job.Detached();
     row["kind"] = job.kind == ActivityKind::kSubagent ? "agent" : "command";

@@ -28,6 +28,7 @@
 #include "include/agent/session_view.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
+#include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
@@ -330,13 +331,22 @@ void TestActivityBufferAndAdmission() {
   // Byte by byte past twice its tail, the buffer keeps and counts what one
   // trimmed on every push would: the tail is compacted only now and then.
   HeadTailBuffer amortised(10);
+  HeadTailBuffer at_once(10);
   std::string pushed;
   for (char letter = 'a'; letter <= 'z'; ++letter) {
     amortised.Push(std::string(1, letter));
     pushed += letter;
-    CHECK(amortised.Snapshot() == HeadTail(pushed, 10));
+    at_once = HeadTailBuffer(10);
+    at_once.Push(pushed);
+    CHECK(amortised.Snapshot() == at_once.Snapshot());
   }
   CHECK(amortised.Snapshot().find("16 bytes omitted") != std::string::npos);
+
+  // A cut never splits a codepoint.
+  HeadTailBuffer multibyte(9);
+  multibyte.Push("ééééééééé");
+  CHECK(multibyte.Snapshot().find("\xc3\n") == std::string::npos);
+  CHECK(multibyte.Snapshot().find("\n\xa9") == std::string::npos);
 
   // The status row asks for one line and must not pay for the megabyte behind
   // it, so the tail is read where it lands rather than through Snapshot().
@@ -407,6 +417,20 @@ void TestActivityBufferAndAdmission() {
     delegated->exited_at = std::chrono::steady_clock::now();
   }
   CHECK(delegating.ActivityViews()[0]["status"] == "finishing");
+
+  // The status row counts what the turn waits on apart from what runs behind
+  // it, backgrounded or detached.
+  ProcessSupervisor counted;
+  CHECK(counted.TryAdd({.pid = 899970, .cmd = "backgrounded"}, 8));
+  CHECK(counted.TryAdd(
+      {.pid = 899971, .cmd = "server", .kind = ActivityKind::kDetached}, 8));
+  std::optional<ActivityReservation> waiting = counted.ReserveActivity(8);
+  REQUIRE(waiting.has_value());
+  REQUIRE(waiting->Register({.pid = 899972, .cmd = "waited on"}).has_value());
+  const session::ActivityCounts counts =
+      session::CountActivities({{"activities", counted.ActivityViews()}});
+  CHECK(counts.foreground == 1);
+  CHECK(counts.background == 2);
 
   ProcessSupervisor admission;
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);

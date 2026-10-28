@@ -392,7 +392,7 @@ class ApprovedProposals {
  public:
   void Put(const json& arguments, T value,
            std::chrono::steady_clock::time_point expires) {
-    if (entries_.size() >= kMaxAdaptiveProposals) entries_.clear();
+    if (entries_.size() >= kMaxApprovedProposals) entries_.clear();
     entries_[HashHex(JsonDump(arguments))] = {arguments, std::move(value),
                                               expires};
   }

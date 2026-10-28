@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
 #include "include/agent/protocol.h"
 #include "include/api/client.h"
 #include "include/core/checked.h"
@@ -34,13 +35,14 @@ int64_t ResultCharLimit(const CallTask& task) {
 // the result.
 std::string ModelResultText(const ToolResult& result, int64_t cap) {
   std::string output = result.output;
-  if (!result.artifact) return CapResult(std::move(output), cap);
   if (cap < 0) cap = ToolResultCap();
+  if (!result.artifact) return LimitOutput(std::move(output), cap);
   std::string hint = ArtifactHint(*result.artifact);
   if (cap <= 0) return output + hint;
   size_t limit = static_cast<size_t>(cap);
   if (hint.size() >= limit) return Utf8Prefix(std::move(hint), limit);
-  return CapResult(std::move(output), cap - static_cast<int64_t>(hint.size())) +
+  return LimitOutput(std::move(output),
+                     cap - static_cast<int64_t>(hint.size())) +
          hint;
 }
 
@@ -204,7 +206,9 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                                   "what this call reaches changed after it was "
                                   "approved; ask for it again")
                     : task.tool->run(task.args, call_context);
-  task.result.output = CapResult(task.result.output, ResultCharLimit(task));
+  const int64_t limit = ResultCharLimit(task);
+  task.result.output = LimitOutput(std::move(task.result.output),
+                                   limit < 0 ? ToolResultCap() : limit);
   // A hint pulled to its bound is still a reduced request. Leading the result
   // with the reduction keeps it out of reach of the cap that trims the tail.
   if (!task.clamped.empty()) {

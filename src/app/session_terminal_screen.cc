@@ -31,24 +31,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
   const int64_t window = JsonValue(state, "context_window", int64_t{0});
   const std::string route = JsonValue(state, "route", "");
-  size_t background = 0, foreground = 0, subagents = 0;
-  std::string subagent;
-  if (const json* rows = JsonArray(state, "activities")) {
-    for (const json& row : *rows) {
-      if (JsonValue(row, "status", "") != "running") continue;
-      if (JsonValue(row, "kind", "") == "agent") {
-        ++subagents;
-        std::string progress = JsonValue(row, "progress", "");
-        if (!progress.empty()) {
-          subagent = JsonValue(row, "id", "") + ": " + progress;
-        }
-      } else if (JsonValue(row, "detached", false)) {
-        ++background;
-      } else {
-        ++foreground;
-      }
-    }
-  }
+  ActivityCounts counts = CountActivities(state);
   if (running) {
     // The worker's clock, so a terminal attached mid-turn counts from the
     // turn's start and not from its own.
@@ -59,11 +42,11 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
          .context_used = used,
          .context_window = window,
          .model = route,
-         .background = background,
-         .foreground = foreground,
-         .subagents = subagents,
+         .background = counts.background,
+         .foreground = counts.foreground,
+         .subagents = counts.subagents,
          .interrupting = interrupting,
-         .subagent = std::move(subagent)});
+         .subagent = std::move(counts.subagent)});
   }
   const json permissions = JsonValue(state, "permissions", json::object());
   return StatusBar(UsageFromJson(JsonValue(state, "usage", json::object())),
@@ -73,7 +56,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
                     .model = route,
                     .approval = JsonValue(permissions, "effective", "ask"),
                     .verbosity = std::string(verbosity),
-                    .background = background + subagents});
+                    .background = counts.background + counts.subagents});
 }
 
 // What a pending approval or question says above its prompt.

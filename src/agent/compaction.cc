@@ -182,9 +182,7 @@ json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
       continue;
     }
     if (newest_first.empty() && remaining > 0) {
-      HeadTailBuffer bounded(remaining);
-      bounded.Push(*content);
-      newest_first.push_back(bounded.Snapshot());
+      newest_first.push_back(HeadTail(*content, remaining));
       ids_newest_first.push_back(display_id);
     }
     break;

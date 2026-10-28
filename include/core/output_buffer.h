@@ -7,10 +7,16 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "include/core/strings.h"
 
 namespace uagent {
+
+// The one marker for text cut from the middle.
+inline std::string OmittedMarker(size_t bytes) {
+  return "\n... [" + std::to_string(bytes) + " bytes omitted] ...\n";
+}
 
 // Bounded process output preserving a stable prefix and the newest suffix.
 class HeadTailBuffer {
@@ -43,16 +49,19 @@ class HeadTailBuffer {
     }
   }
 
+  // A cut never splits a codepoint, so the text serializes as it is.
   std::string Snapshot() const {
     const std::string_view tail = Tail();
-    const size_t omitted = omitted_ + tail_.size() - tail.size();
+    size_t omitted = omitted_ + tail_.size() - tail.size();
     if (head_.empty() && tail.empty() && omitted == 0) return "";
-    std::string output = head_;
-    if (omitted > 0) {
-      output += "\n... " + std::to_string(omitted) + " bytes omitted ...\n";
-    }
-    output += tail;
-    return output;
+    if (omitted == 0) return head_ + std::string(tail);
+    const size_t head_end = Utf8BoundaryBefore(head_, head_.size());
+    const size_t tail_start =
+        Utf8BoundaryAfter(tail_, tail_.size() - tail.size());
+    omitted +=
+        head_.size() - head_end + tail_start - (tail_.size() - tail.size());
+    return head_.substr(0, head_end) + OmittedMarker(omitted) +
+           tail_.substr(tail_start);
   }
 
   // The newest non-empty line, for a status row that has one row to spend on
@@ -110,13 +119,28 @@ class HeadTailBuffer {
   size_t omitted_ = 0;
 };
 
-// Over-cap text keeps its head and its tail: the middle is what a reader can
-// most afford to lose.
-inline std::string HeadTail(std::string_view text, size_t cap) {
-  if (text.size() <= cap) return std::string(text);
-  HeadTailBuffer buffer(cap);
-  buffer.Push(text);
-  return buffer.Snapshot();
+// Over-cap text keeps its head and its tail, where the beginning and the
+// errors are; the middle is what a reader can most afford to lose. The cap
+// includes the marker, and no codepoint is split.
+inline std::string HeadTail(std::string text, size_t cap) {
+  if (text.size() <= cap) return text;
+  if (cap <= 3) return std::string(cap, '.');
+  // The marker names the bytes it hides, and its own width decides how many
+  // that is, so the count is settled by a few passes.
+  size_t omitted = text.size() - cap;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    const std::string marker = OmittedMarker(omitted);
+    if (marker.size() >= cap) break;
+    const size_t keep = cap - marker.size();
+    const size_t head_end = Utf8BoundaryBefore(text, keep / 2);
+    const size_t tail_start = std::max(
+        head_end, Utf8BoundaryAfter(text, text.size() - (keep - keep / 2)));
+    if (tail_start - head_end == omitted) {
+      return text.substr(0, head_end) + marker + text.substr(tail_start);
+    }
+    omitted = tail_start - head_end;
+  }
+  return Utf8Prefix(std::move(text), cap - 3) + "...";
 }
 
 }  // namespace uagent

@@ -45,7 +45,7 @@ inline constexpr size_t kMaxAgentRecords = 100;
 inline constexpr size_t kMaxToolsPerMessage = 32;
 inline constexpr size_t kMaxActiveExchanges = 32;
 inline constexpr size_t kMaxPendingSessionCommands = 32;
-inline constexpr size_t kMaxAdaptiveProposals = 16;
+inline constexpr size_t kMaxApprovedProposals = 16;
 // Tool overrides survive optional MCP registries being absent during startup,
 // so bound both their persisted count and key size before retaining unknown
 // names for a later registry refresh.

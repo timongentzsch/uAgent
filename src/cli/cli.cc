@@ -309,6 +309,7 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
               {"kind", request.kind},
               {"prompt", request.prompt},
               {"initial", request.initial},
+              {"description", request.description},
               {"options", request.options}}});
   std::string answer;
   if (ReadHandler()) {
@@ -319,6 +320,7 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
     *eof = !EditExternalText(answer, STDIN_FILENO, kSystemPromptBytes);
   } else {
     ScopedCookedInput cooked_input;
+    fputs(TerminalSafe(request.description).c_str(), stdout);
     fputs((TerminalSafe(DecisionPrompt(request.prompt, request.options)) + " ")
               .c_str(),
           stdout);

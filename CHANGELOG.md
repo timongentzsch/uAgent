@@ -20,6 +20,7 @@
 
 ### Changes
 
+- **Browser results for the page just seen carry only what changed** (`- old`, `+ new` lines); a navigation or `read` gives the full page. On a 42-action form this cut cost-weighted tokens by 15–17%.
 - The directory a conversation runs in is a folder everywhere it is shown or told to the model (the setting scope reads "This folder"); "workspace" now means only the group µAgent keeps under `~/.uagent/spaces`. Setting keys, scope values, file names and the `--trust-project-config` flag are unchanged.
 - The web host gzips API JSON over 1 KiB for clients that accept it (a conversation snapshot is about an eighth of its size), and answers `If-None-Match` for `index.html`, `sw.js` and other unhashed files with 304.
 - After a dropped connection the web app reopens the event stream where it stopped and keeps what it holds; it reads the list and conversation again only when the host cannot replay.

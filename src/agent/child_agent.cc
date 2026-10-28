@@ -174,9 +174,8 @@ std::string ChildAgentFailureReport(std::string_view route,
   // A child that reported has given its account above. Without one, what it
   // printed is all there is.
   if (!envelope) {
-    HeadTailBuffer bounded(kChildDiagnosticBytes);
-    bounded.Push(TerminalSafe(std::string(diagnostics)));
-    const std::string printed = bounded.Snapshot();
+    const std::string printed =
+        HeadTail(TerminalSafe(std::string(diagnostics)), kChildDiagnosticBytes);
     report += "\ndiagnostics:\n" +
               (Trim(printed).empty() ? "(none captured)" : printed);
   }

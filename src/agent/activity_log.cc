@@ -72,7 +72,8 @@ int64_t ActivityOutputCap(int64_t requested) {
 }
 
 std::string LimitOutput(std::string text, int64_t cap) {
-  return cap <= 0 ? std::move(text) : HeadTail(text, static_cast<size_t>(cap));
+  return cap <= 0 ? std::move(text)
+                  : HeadTail(std::move(text), static_cast<size_t>(cap));
 }
 
 ToolResult LimitOutput(ToolResult result, int64_t cap) {

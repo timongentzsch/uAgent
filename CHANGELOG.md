@@ -71,6 +71,8 @@
 - The project trust store and session links, memory receipts, job records and mail are read only up to 16 MiB and only as regular files; a full receipt table evicts the oldest completed command.
 - A folder created while the host sets up file watches (such as `.uagent/`) is noticed.
 - The runtime context ends with a closing line so the model no longer reads the memory index as the whole request.
+- The terminal status line counts commands running behind the turn (backgrounded or detached) as `bg:` and only the ones the turn waits on as foreground; backgrounded commands used to be counted as foreground.
+- Text cut from the middle is cut at one rule everywhere: the cap includes the marker, the marker reads `[N bytes omitted]`, and a character is never split.
 
 ## v1.5.0 - 2026-10-20
 

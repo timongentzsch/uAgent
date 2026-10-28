@@ -560,7 +560,6 @@ void TestBackgroundValidation() {
   };
   add_job({.pid = 999998, .kind = ActivityKind::kDetached});
   CHECK(!supervisor.PendingCount());
-  CHECK(supervisor.DetachedCount() == 1);
   add_job({.pid = 999997});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);

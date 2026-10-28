@@ -60,8 +60,8 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
       // a startup warning before it got anywhere -- an over-full memory slice
       // prints one every time -- and taking the head recorded that warning as
       // the cause, which is how eight failures came to be labelled with a
-      // condition that did not fail anything. `CapResult` states the same
-      // convention: errors live at the end.
+      // condition that did not fail anything. `HeadTail` keeps the
+      // same convention: errors live at the end.
       // ArtifactHint appends a captured-log pointer after everything else, so
       // it is the last line whenever output was spilled to a file. It is
       // structure, never the cause; drop it before looking for one.
@@ -224,9 +224,7 @@ void Agent::DeliverActivityCompletions(
                        FmtExit(completion.status, /*show_ok=*/true);
     size_t separator = first ? 0 : 2;
     if (batch.size() + separator + note.size() > kAutomaticBatchBytes) {
-      HeadTailBuffer excerpt(512);
-      excerpt.Push(completion.output);
-      note = header + "\n" + excerpt.Snapshot() +
+      note = header + "\n" + HeadTail(completion.output, 512) +
              "\n[completion reduced; use activity for the retained "
              "transcript]" +
              FmtExit(completion.status, /*show_ok=*/true);

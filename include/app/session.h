@@ -27,6 +27,33 @@ inline bool ActivityRuns(const json& activity) {
          (state == "running" || state == "starting" || state == "stopping" ||
           state == "finishing");
 }
+// What the status row counts among running activities: commands the turn
+// waits on, commands running behind it (backgrounded or detached), and
+// delegated children, with the newest child's progress.
+struct ActivityCounts {
+  size_t background = 0, foreground = 0, subagents = 0;
+  std::string subagent;
+};
+inline ActivityCounts CountActivities(const json& state) {
+  ActivityCounts counts;
+  const json* rows = JsonArray(state, "activities");
+  if (!rows) return counts;
+  for (const json& row : *rows) {
+    if (JsonValue(row, "status", "") != "running") continue;
+    if (JsonValue(row, "kind", "") == "agent") {
+      ++counts.subagents;
+      std::string progress = JsonValue(row, "progress", "");
+      if (!progress.empty()) {
+        counts.subagent = JsonValue(row, "id", "") + ": " + progress;
+      }
+    } else if (JsonValue(row, "foreground", false)) {
+      ++counts.foreground;
+    } else {
+      ++counts.background;
+    }
+  }
+  return counts;
+}
 // A session with nothing to do for this long stops its runtime; whatever
 // reaches it next starts it again. Tests shorten it.
 inline std::chrono::seconds IdlePeriod() {

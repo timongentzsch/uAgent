@@ -455,8 +455,9 @@ int RunBenchmarks(const std::string& session) {
          Measure(kIterations, [&] { return TerminalSafe(hostile).size(); }));
   g_tty = prior_tty;
 
-  Report("tool-result cap", kIterations,
-         Measure(kIterations, [&] { return CapResult(large).size(); }));
+  Report("tool-result cap", kIterations, Measure(kIterations, [&] {
+           return HeadTail(large, static_cast<size_t>(ToolResultCap())).size();
+         }));
 
   BenchmarkStream();
   BenchmarkActivity(false);

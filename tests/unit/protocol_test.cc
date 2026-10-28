@@ -862,23 +862,24 @@ void TestCapsAndEscaping() {
   ToolResult passthrough = ToolFailure(ToolErrorCode::kNotFound, "a <b> c");
   CHECK(ModelResultText(passthrough, 1000) == "error: a <b> c");
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
-  std::string capped = CapResult("éééééé");
+  std::string capped = HeadTail("éééééé", 8);
   CHECK(capped.size() <= 8);
   CHECK(capped.find("\xc3\n") == std::string::npos);
   // a result truncated mid-codepoint must serialize rather than throw
-  CHECK(JsonDump(json(CapResult(std::string("partial: \xF0\x9F", 11))))
+  CHECK(JsonDump(json(HeadTail(std::string("partial: \xF0\x9F", 11), 8)))
             .find("\xF0\x9F") == std::string::npos);
   CHECK(ToolBatchResultCap() == 16);
   unsetenv("UAGENT_TOOL_RESULT_CHARS");
 
   const std::string long_utf8 = "head-" + std::string(200, 'x') + "-é-tail";
   for (int64_t cap = 1; cap <= 128; ++cap) {
-    CHECK(CapResult(long_utf8, cap).size() <= static_cast<size_t>(cap));
+    CHECK(HeadTail(long_utf8, static_cast<size_t>(cap)).size() <=
+          static_cast<size_t>(cap));
   }
-  std::string head_tail = CapResult(long_utf8, 80);
+  std::string head_tail = HeadTail(long_utf8, 80);
   CHECK(head_tail.starts_with("head-"));
   CHECK(head_tail.ends_with("-é-tail"));
-  CHECK(head_tail.find("bytes truncated") != std::string::npos);
+  CHECK(head_tail.find("bytes omitted") != std::string::npos);
   CHECK(JsonDump(json(head_tail)).find("\xEF\xBF\xBD") == std::string::npos);
 
   // The echoed user turn is one row banded to the right edge: no newline of

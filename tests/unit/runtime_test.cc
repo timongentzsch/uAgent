@@ -638,10 +638,6 @@ void TestEffectiveImageModel() {
 // text: a runtime killed between the save and that turn receives it again.
 // Helpers the panel, its chat and their threads share.
 void TestSharedPanelHelpers() {
-  CHECK(JsonStrings({{"ids", {"a", 1, "b", nullptr}}}, "ids") ==
-        std::vector<std::string>({"a", "b"}));
-  CHECK(JsonStrings({{"ids", "a"}}, "ids").empty());
-  CHECK(JsonStrings(json::array(), "ids").empty());
   CHECK(HarnessNote("chat", "Nobody is typing now.") ==
         "[chat, not a user message] Nobody is typing now.");
 

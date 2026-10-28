@@ -163,7 +163,6 @@ class ProcessSupervisor {
 
   bool TryAdd(BgJob job, int64_t max_pending);
   size_t PendingCount() const;
-  size_t DetachedCount() const;
   size_t Count() const;
   size_t JoinableCount() const;
   // Background delegated children, newest last. Takes no lock a tool holds, so

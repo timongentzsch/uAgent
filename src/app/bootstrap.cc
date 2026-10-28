@@ -115,7 +115,7 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   if (mcp_present && !trusted) {
     if (!InteractiveApprovalAvailable() || !options.prompt.empty()) {
       error =
-          "project .mcp.json is untrusted; rerun with "
+          "this folder's .mcp.json is untrusted; rerun with "
           "--trust-project-config after reviewing it";
       exit_code = 2;
       return false;
@@ -136,7 +136,7 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
     }
     trusted = Confirm(
         {.kind = "project.trust",
-         .prompt = "Trust this workspace's .mcp.json?" +
+         .prompt = "Trust this folder's .mcp.json?" +
                    (unconfined.empty()
                         ? std::string()
                         : " It runs unconfined, outside the sandbox: " +
@@ -144,13 +144,13 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
          .options = json::array({{{"value", "y"}, {"label", "Trust"}},
                                  {{"value", "n"}, {"label", "Decline"}}})});
     if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
-      error = "cannot save project trust: " + error;
+      error = "cannot save folder trust: " + error;
       return false;
     }
   }
   if (mcp_present && trusted && trusted_snapshot.is_null()) {
     if (!ProjectMcpSnapshot(trusted_snapshot, error)) {
-      error = "cannot load trusted project config: " + error;
+      error = "cannot load trusted folder config: " + error;
       return false;
     }
   }
@@ -214,7 +214,7 @@ void ReportSandbox() {
       !refusal.empty() && !status.policy.read_only) {
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "sandbox: " + refusal +
-                         ". Start in a project folder or a named workspace "
+                         ". Start in a folder or a named workspace "
                          "to give commands one"));
   }
 #if defined(__linux__)
@@ -401,7 +401,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       LoadInstructions(workspace, context->runtime.config, memory_child,
                        context->options.Panel());
   if (instructions.truncated) {
-    PrintWarning("project instructions truncated at " +
+    PrintWarning("folder instructions truncated at " +
                  std::to_string(kProjectDocBytes) + " bytes");
   }
   if (instructions.memory_truncated) {

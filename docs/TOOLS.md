@@ -38,7 +38,7 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
 | `thread`, `decide`, `plan`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start, guide, stop and remove background agents (`thread`); answer what a background agent asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
 | `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a lead agent and its background agents are linked, and so are YOLO sessions in one folder |
-| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first |
+| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, lead agents and background agents) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
@@ -52,9 +52,9 @@ every approval mode.
 
 ## Approval
 
-Reading and searching inside the workspace needs no approval. Calls that
+Reading and searching inside the folder needs no approval. Calls that
 change files, run commands, use the network or touch a path outside the
-workspace follow the approval mode: `ask` (the default), `auto` or `yolo`
+folder follow the approval mode: `ask` (the default), `auto` or `yolo`
 (also `/yolo` or `--yolo`), set with `/permissions` and saved as the default
 with `UAGENT_APPROVAL`. Reading one of your other folders, such as another
 repository in the home folder, always asks a person (`sandbox.read` opens a
@@ -80,7 +80,7 @@ lead agent's background agents differ.
   `delete_file` calls changed, and `/undo [FILE]` puts them back. Changes
   made by shell commands are not tracked.
 - `run`, `scratch` and `grep` run inside the OS sandbox: writes are limited
-  to the workspace, temporary directories and package caches, and the hidden
+  to the folder, temporary directories and package caches, and the hidden
   stores (the browser profile, µAgent's settings and other tools' credential
   stores) cannot be read; the file tools refuse them too.
   [Sandboxing](../SECURITY.md#sandboxing) has the full policy and the

@@ -106,7 +106,7 @@ bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
   std::ifstream file(kMcpConfigFile);
   snapshot = json::parse(file, nullptr, false);
   if (!snapshot.is_object()) {
-    error = "project .mcp.json is not a valid JSON object";
+    error = "this folder's .mcp.json is not a valid JSON object";
     return false;
   }
   return true;

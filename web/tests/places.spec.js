@@ -48,9 +48,7 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   await expect(workspaces).toHaveCount(0);
   await expect(folders.locator(".session")).toHaveCount(1);
   // The conversation that was open went with it.
-  await expect(
-    page.getByRole("heading", { name: "Your workspace" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "µAgent" })).toBeVisible();
 });
 
 test("a place folds to its header with a count, remembered, and + starts a conversation in it", async ({

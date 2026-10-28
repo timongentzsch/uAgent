@@ -78,7 +78,7 @@ export default function ImportDialog({
       ) : (
         !error && (
           <EmptyState>
-            Nothing from Claude Code or Codex to import for this project.
+            Nothing from Claude Code or Codex to import for this folder.
           </EmptyState>
         )
       )}

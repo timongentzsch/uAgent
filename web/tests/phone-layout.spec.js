@@ -47,9 +47,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   } finally {
     release();
   }
-  await expect(
-    page.getByRole("heading", { name: "Your workspace" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "µAgent" })).toBeVisible();
   // Desktop WebKit does not expose an iPhone's system inset or status-bar paint.
   // Exercise our safe-area layout independently of that native rendering.
   await page.evaluate(() =>

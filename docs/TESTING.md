@@ -134,7 +134,7 @@ Which binary and bundle a browser test drives:
 
 How the tests are isolated:
 
-- Each test owns its host, temporary HOME and project, mock provider, pairing
+- Each test owns its host, temporary HOME and folder, mock provider, pairing
   cookie and output directory, and waits on visible state or an API condition
   rather than a fixed delay.
 - The Vite dev server `render-count.spec.js` loads the app from takes a port
@@ -169,10 +169,10 @@ kept in `web/test-results`.
 ## Behavioral evaluation
 
 `benchmarks/eval.py` runs declarative scenarios from
-`benchmarks/scenarios/*.json`: a workspace fixture, a prompt, a scripted
+`benchmarks/scenarios/*.json`: a folder fixture, a prompt, a scripted
 provider and the checks that define a good run (answer, files read, forbidden
 tools, model rounds, batch width, deduplication, cumulative request and result
-size, workspace immutability). Results are compared with
+size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
 timing and trace aggregation the eval and the audit share.
 

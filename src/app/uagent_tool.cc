@@ -22,7 +22,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
   auto shown = std::make_shared<std::pair<json, std::string>>();
   Tool tool = MakeTool(
       "uagent",
-      "Inspect this running build, not the code in the workspace: status, "
+      "Inspect this running build, not the code in the folder: status, "
       "cli, commands, config, tools, "
       "prompt, routes, or instructions (the AGENTS.md and PANEL.md "
       "files sessions and panels read at start). Secrets are never "
@@ -52,7 +52,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
            {"enum", json::array({"user", "project"})},
            {"description",
             "user saves for all conversations; project saves for this "
-            "project folder"}}},
+            "folder"}}},
          {"changes",
           {{"type", "array"},
            {"description", "one entry per setting"},

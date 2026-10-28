@@ -186,11 +186,11 @@ std::string WritesNote(const SandboxPolicy& policy,
                                  [&](const std::string& path) {
                                    return SandboxPathWithin(path, workspace);
                                  });
-  return "commands cannot write the workspace " + std::string(workspace) +
+  return "commands cannot write the folder " + std::string(workspace) +
          ", which holds µAgent's own state; they may write only under " +
          roots + offline +
          ". write_file, edit_file and delete_file still work in the "
-         "workspace" +
+         "folder" +
          (stale ? ", but a command still running cannot read a file made "
                   "directly in it after the command started"
                 : "");
@@ -209,7 +209,7 @@ std::string SandboxWritesNote(const SandboxPolicy& policy,
                        return SandboxPathWithin(workspace, closed);
                      });
     note +=
-        "; in the home folder they read only the workspace and the folders "
+        "; in the home folder they read only this folder and the folders "
         "their tools use, not other folders such as " +
         (around != policy.unreadable.end() ? *around
                                            : policy.unreadable.front()) +

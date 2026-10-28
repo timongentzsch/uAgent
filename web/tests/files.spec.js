@@ -129,7 +129,7 @@ test("docked panes resize by drag and keys, and keep their width", async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
   const sidebar = page.getByRole("complementary", {
-    name: "Projects and conversations",
+    name: "Folders and conversations",
   });
   const width = async (locator) => (await locator.boundingBox()).width;
   const before = await width(sidebar);

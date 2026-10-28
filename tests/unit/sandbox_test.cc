@@ -86,7 +86,7 @@ void TestSandboxPolicy() {
   CHECK(Rejected(home, "/home/u"));
   CHECK(!SandboxWritable(home.policy, "/home/u"));
   const std::string refused = SandboxWritesNote(home.policy, "/home/u");
-  CHECK(refused.starts_with("commands cannot write the workspace /home/u,"));
+  CHECK(refused.starts_with("commands cannot write the folder /home/u,"));
   CHECK(refused.find("/tmp") != std::string::npos);
   CHECK(refused.find("write_file") != std::string::npos);
   // A hidden path inside such a workspace is read around, folder by folder,

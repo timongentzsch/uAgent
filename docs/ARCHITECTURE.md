@@ -131,12 +131,12 @@ and reaps session-owned children. An internal writer lease keeps two runtimes
 from owning one file; clients never take it. Runtime discovery uses private
 sockets, a bounded startup scan and native directory notifications. Schedule,
 prompt and library invalidation uses the same multi-path watcher and wakes at
-the next schedule deadline. Independent conversations may share a project
+the next schedule deadline. Independent conversations may share a folder
 folder; edits to shared files still need coordination.
 
 A delegated child is a headless `-p` run of the same binary, supervised as a
 background activity of its parent. It saves an ordinary session file in the
-workspace's history whose header carries a `delegation` object (parent, name,
+folder's history whose header carries a `delegation` object (parent, name,
 directive, mode, model, route); the catalogue hides such files, and the parent
 finds its children by that header. A child approves its own tool calls and
 runs its commands under its parent's sandbox. A follow-up, or a message to a
@@ -312,7 +312,7 @@ Runtime getters, CLI flags, `/config`, the web's Settings, diagnostics and
 
 A value comes from the registry's default or one of the scopes
 [Operations](OPERATIONS.md#settings) lists, the later winning: all
-conversations and this project (both in `~/.uagent/config/settings.json`),
+conversations and this folder (both in `~/.uagent/config/settings.json`),
 the environment, the command line and this conversation (its session).
 Only the model (`UAGENT_MODEL`, with its effort) and the approval mode
 (`UAGENT_APPROVAL`) can be set for one conversation: `/model`, `/effort`,
@@ -325,7 +325,7 @@ that need a restart.
 A browser's display preferences (appearance, motion, zoom, clock) are not host
 settings; that browser alone keeps them.
 
-Instruction files are layered, yours before the project's, and only add to
+Instruction files are layered, yours before the folder's, and only add to
 the built-in base. Their editors and the agent tool share revision checking
 and approval policy, and no prompt text changes tool permissions. [Instructions](INSTRUCTIONS.md)
 describes authoring; [Management](MANAGEMENT.md) covers memory, skills and

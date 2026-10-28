@@ -466,7 +466,7 @@ json MemoryItem(const std::string& source, const fs::path& path,
       reason = "its " + std::to_string(size) + " bytes are over the " +
                std::to_string(kMemoryBytes) + " byte limit of a memory";
     } else if (!collides && stored >= kMaxMemories) {
-      reason = "project memory is full";
+      reason = "this folder's memory is full";
     }
   }
   if (!reason.empty()) item["blocked"] = reason;
@@ -542,7 +542,7 @@ json ListItems(const fs::path& cwd, const std::string& only,
       std::sort(files.begin(), files.end());
       for (const fs::path& file : files) {
         if (!add("claude", file,
-                 directory == own ? "" : "belongs to another project")) {
+                 directory == own ? "" : "belongs to another folder")) {
           break;
         }
       }

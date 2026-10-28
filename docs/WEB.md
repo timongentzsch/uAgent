@@ -40,7 +40,7 @@ directory on the host).
 
 - A **workspace** is a folder the host keeps under `~/.uagent/spaces/`,
   created the first time its name is used. Use one for work that belongs to
-  no project, rather than the home directory, which
+  no folder, rather than the home directory, which
   [commands cannot write](../SECURITY.md#sandboxing). Its name may be several
   words; renaming it (the menu beside the name) moves nothing. Deleting a
   workspace removes its conversations and its folder with every file in it.
@@ -61,7 +61,7 @@ widths.
 
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
 `--json`, `-c`, `--resume`, `--yolo`, `--attach`, `--model`, …). It reads the
-settings saved for all conversations and the environment, never a project's.
+settings saved for all conversations and the environment, never a folder's.
 
 | Flag | Setting | Default |
 | --- | --- | --- |
@@ -208,7 +208,7 @@ call would do (the command, or the change as a diff that scrolls past about
 six lines), the folder and its risks, with **Deny**, **Allow for this
 conversation** and **Allow once** in one row. Under **More options**,
 **Always allow this exact action here** makes Allow once a rule for the
-repository, listed under Settings → This project → *Allowed actions*, and
+repository, listed under Settings → This folder → *Allowed actions*, and
 **+ guidance** answers in words instead. Numbered choices are cards.
 
 The agent's questions are answered a page at a time. The steps above the page
@@ -251,7 +251,7 @@ before Submit.
   [Tools](TOOLS.md#presentation) lists the levels.
 - Message menus expose retained tool input and output and HTTP request and
   response captures. Credential headers are redacted; bodies can contain
-  sensitive workspace content.
+  sensitive folder content.
 - Background completions, memory updates and compaction appear as expandable
   event rows. Subagent views work like the main conversation. Ordinary
   subagent follow-ups can select another model; persistent agents keep their
@@ -288,7 +288,7 @@ before Submit.
   **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
   **Compact**, **Restart**, **Close conversation** and **Delete**. Tools
   controls the active schema. Close a live runtime before deleting its
-  history; project files are unaffected.
+  history; files in the folder are unaffected.
 
 ### The lead agent
 
@@ -313,7 +313,7 @@ Settings are grouped by what they affect:
 | Scope | Holds |
 | --- | --- |
 | **All conversations** | Instructions, global MCP servers (`~/.mcp.json`), every saved setting |
-| **This project** (the open conversation's folder) | Project instructions, its MCP servers (`.mcp.json`), *Allowed actions*, the settings it overrides |
+| **This folder** (the open conversation's) | Folder instructions, its MCP servers (`.mcp.json`), *Allowed actions*, the settings it overrides |
 | **This browser** | Appearance, Animations, Clock, Timestamps, Zoom |
 | **Host** | Update, Install, Notifications, Paired devices |
 
@@ -322,17 +322,17 @@ Settings are grouped by what they affect:
   and numbers are saved when you leave the field or press Enter, and Escape
   takes back what was typed.
 - The arrow beside a changed setting puts it back to what applies without it.
-  **Reset all to defaults** (or **Remove all overrides** for a project) does
+  **Reset all to defaults** (or **Remove all overrides** for a folder) does
   that for the whole scope; API keys are kept.
 - A value set by the environment or the command line is shown read-only; one
-  this project overrides says so. Saves reach every open browser.
+  this folder overrides says so. Saves reach every open browser.
 - A change that needs a restart offers it: running conversations restart once
   idle and keep their history, and the web host re-executes itself for its
   own settings.
 - **MCP servers** shows each server's state and tools and, when it failed,
   its reason and stderr tail. **Retry** starts a failed server again; the
   switch sets `disabled` in the file that defines the server and applies at
-  once. A project file is edited only while it still matches what was
+  once. A file in the folder is edited only while it still matches what was
   trusted, and the trust follows that edit.
 
 The terminal has the same through `/config`, `/restart`, `/mcp` and

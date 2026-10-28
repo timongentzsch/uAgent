@@ -427,7 +427,7 @@ export default function Scheduled({
                       help={
                         task.environment === "worktree"
                           ? "Starts from committed HEAD; changes are kept for review."
-                          : "Changes apply directly to this project."
+                          : "Changes apply directly to this folder."
                       }
                     >
                       <Select
@@ -441,7 +441,7 @@ export default function Scheduled({
                         }
                       >
                         <option value="worktree">Git worktree</option>
-                        <option value="local">Local project</option>
+                        <option value="local">Local folder</option>
                       </Select>
                     </Field>
                     <Field
@@ -476,7 +476,7 @@ export default function Scheduled({
                     label="Task model"
                     title="Model, variant and effort"
                     trigger={
-                      <span>{task.model || "Model · project default"}</span>
+                      <span>{task.model || "Model · folder default"}</span>
                     }
                   >
                     {(close) => (

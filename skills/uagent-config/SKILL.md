@@ -35,7 +35,7 @@ fact comes from the binary.
 ## Workflow
 
 1. Establish scope: one run (a flag or an exported variable), all
-   conversations (`user`), the conversations in this project folder
+   conversations (`user`), the conversations in this folder
    (`project`), or this conversation only (model and approval mode).
 2. Read the live value before proposing a change; `uagent` reports the
    source of each active setting and whether a restart is required.
@@ -43,8 +43,8 @@ fact comes from the binary.
    named settings in the saved document and shows the user the exact diff.
    Never print secret values; report only whether they are set.
 4. Prefer scope `user` for persistent settings. Use `project` only when
-   project-specific behavior is intended; it is saved for that folder, not
-   written into the repository, and needs no workspace trust. Web host
+   folder-specific behavior is intended; it is saved for that folder, not
+   written into the repository, and needs no folder trust. Web host
    settings (`UAGENT_WEB_*`, `UAGENT_BROWSER_DATA`) save at `user` only. Use
    process exports for a one-off command. The tool has no conversation
    scope: the user sets that with `/config conversation KEY=VALUE`,
@@ -60,17 +60,17 @@ fact comes from the binary.
 
 - Apply precedence correctly: the conversation's own choice (model and
   approval mode only), then command-line flags, then process environment,
-  then what is saved for the project folder, then what is saved for all
+  then what is saved for the folder, then what is saved for all
   conversations, then built-in defaults.
 - Treat `UAGENT_API_KEY`, `OPENROUTER_API_KEY`, keys embedded in
   `UAGENT_PROVIDERS`, web-search keys, and MCP credentials as secrets. `inspect`
   reports them as set or unset and never shows the value.
 - Do not add secrets to a repository. Saved settings live in µAgent's own
-  private `~/.uagent/config/settings.json`, never in a project.
+  private `~/.uagent/config/settings.json`, never in a folder.
 - `/model` and `/effort` choose for the conversation they are
   typed in only. `/model NAME --default` also saves the model for new
   conversations (`UAGENT_MODEL`).
-- Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, project trust, credential
+- Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, folder trust, credential
   forwarding, or broader tool capabilities without making the authority change
   explicit.
 - Do not invent settings. `uagent` enumerates every registered setting; if

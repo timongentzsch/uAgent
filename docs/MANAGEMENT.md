@@ -16,7 +16,7 @@ Scheduled), the terminal (`/memory`, `/skills`, `/schedule`) or a script
 | list scheduled tasks and runs | `/schedule` |
 | run, pause or resume a task | `/schedule run ID`, `/schedule pause ID`, `/schedule resume ID` |
 
-A key is `global/NAME` (every project) or `project/NAME` (this project).
+A key is `global/NAME` (every folder) or `project/NAME` (this folder).
 Text after the key is the content; `@FILE` reads it from a file.
 
 ## Library
@@ -41,18 +41,18 @@ found.
 - A skill is available, overridden, disabled or invalid. Its required tools
   and supporting files are listed without running anything.
 - Disabling a skill adds it to `UAGENT_SKILL_EXCLUDE` as saved for all
-  conversations; a project's own exclusion can still apply. Deleting a skill
+  conversations; a folder's own exclusion can still apply. Deleting a skill
   removes its `SKILL.md` and keeps supporting files.
 - Saved changes apply to new sessions, not to a running agent's startup
   context.
 
 **Import** (in the web UI, the Library's Import button; in the terminal,
 `/skills import` and `/memory import`) lists the skills under
-`~/.claude/skills`, `~/.codex/skills` and the workspace's `.claude` and
-`.codex` folders, and this project's Claude Code memories, whether or not
+`~/.claude/skills`, `~/.codex/skills` and the folder's `.claude` and
+`.codex` folders, and this folder's Claude Code memories, whether or not
 `UAGENT_OTHER_AGENTS` names the agent. Each entry says that it already
 exists, or why it cannot be imported: its license forbids copying, it is
-over the size limits, or it belongs to another project. Nothing is
+over the size limits, or it belongs to another folder. Nothing is
 overwritten, and nothing is cut to fit. Codex's memory summary is listed
 too; condensing it takes a model, so invoke `$import`.
 
@@ -96,11 +96,11 @@ skipped.
 
 Each run is an ordinary session, started from a frozen copy of the task:
 
-- `model`: the task's model; blank uses the project default.
+- `model`: the task's model; blank uses the folder default.
 - `permissions`: the approval mode, `ask` (the default), `auto` or `yolo`.
   When a run needs a decision, open it in the web UI or terminal.
 - `environment`: `worktree` (the default) runs in a git worktree detached
-  at the committed `HEAD`; `local` runs in the project directory.
+  at the committed `HEAD`; `local` runs in the folder.
 
 Worktrees and conversations are kept for review, including after the task is
 deleted; remove a reviewed worktree with `git worktree remove`.

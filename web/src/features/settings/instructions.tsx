@@ -19,9 +19,9 @@ import "./instructions.css";
 
 const TITLES: Record<string, string> = {
   "sessions/user": "Yours · every conversation",
-  "sessions/project": "Project · every conversation",
+  "sessions/project": "Folder · every conversation",
   "panel/user": "Yours · lead agent",
-  "panel/project": "Project · lead agent",
+  "panel/project": "Folder · lead agent",
 };
 
 // Everything a session reads before your first message, top to bottom in the

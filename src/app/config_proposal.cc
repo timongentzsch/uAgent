@@ -277,7 +277,7 @@ ConfigProposal Prepare(ConfigProposalScope scope,
   proposal.folder = user ? std::string() : manager.Folder();
   proposal.target = user ? "all conversations" : proposal.folder;
   if (!user && proposal.folder.empty()) {
-    proposal.error = "name the project folder these settings are for";
+    proposal.error = "name the folder these settings are for";
     return proposal;
   }
 

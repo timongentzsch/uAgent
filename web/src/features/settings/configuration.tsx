@@ -27,10 +27,10 @@ const WHOLE = {
   },
   project: {
     reset: "Remove all overrides",
-    none: "This project overrides nothing",
+    none: "This folder overrides nothing",
     action: "Remove all",
     confirm:
-      "Every setting this project overrides is the same as all conversations again.",
+      "Every setting this folder overrides is the same as all conversations again.",
   },
 } as const;
 

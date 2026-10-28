@@ -750,7 +750,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     std::string& output = result.result.output;
     if (count > 0) {
       output += (output.empty() || output.back() == '\n' ? "" : "\n");
-      output += "[changed in the workspace: " + changed + "]";
+      output += "[changed in the folder: " + changed + "]";
     }
   }
   if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {

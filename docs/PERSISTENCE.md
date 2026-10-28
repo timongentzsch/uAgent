@@ -10,7 +10,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 
 | State | Location |
 | --- | --- |
-| sessions | `history/<workspace>/*.json` |
+| sessions | `history/<folder-hash>/*.json` |
 | session event journals | `<session>.json.events.jsonl` |
 | session writer lease | `<session>.json.lock` |
 | web uploads | `<session>.json.assets/*` |
@@ -19,7 +19,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | captured large outputs and HTTP exchanges | `artifacts/*` |
 | background command logs | `bg/*` |
 | detached terminal records and logs | `terminals/<pid>.json`, `terminals/logs/*` |
-| delegated children | `history/<workspace>/agent-<id>.json`, sessions whose header carries `delegation` |
+| delegated children | `history/<folder-hash>/agent-<id>.json`, sessions whose header carries `delegation` |
 | mail between sessions, panels and children | `mail/<id>/{new,cur}/*.json` |
 | MCP server logs | `mcp/*` |
 | provider model catalogues, one per endpoint and wire protocol, fresh for 24 hours; no credential is written or hashed into them | `models/<hash>.json` |
@@ -30,21 +30,21 @@ Paths are under `~/.uagent` unless shown otherwise.
 | worktrees of scheduled runs and panel threads | `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
-| settings, for all conversations and per project folder | `config/settings.json` (and its `.lock`) |
-| project trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
+| settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |
+| folder trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
 | your instructions | `AGENTS.md`, `PANEL.md` |
 | your skills | `skills/*` |
 | shared browser profile (saved logins, cookies) | the directory `UAGENT_BROWSER_DATA` names |
 | runtime sockets and their leases | `/tmp/uagent-<uid>-<hash>/*.sock`, `*.sock.lock` |
 | workspaces, and the name each goes by | `spaces/<folder>`, `spaces/<folder>/.uagent/name` |
-| scratch scripts | `<workspace>/.uagent/scratch/*` |
-| Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
+| scratch scripts | `<folder>/.uagent/scratch/*` |
+| Playwright snapshots and logs | `<folder>/.playwright-cli/*` |
 
-`<workspace>` is a hash of the project folder's path; each session file's
+`<folder-hash>` is a hash of the folder's path; each session file's
 header records its `cwd` and title. Live activities (IDs, PTYs, incremental
 output) exist only in memory and end with the process.
 
-No settings are read from a project folder. µAgent reads from it only
+No settings are read from a folder. µAgent reads from it only
 `.mcp.json` (once trusted), instruction files (`AGENTS.md`,
 `.uagent/PANEL.md`) and skills (`.agents/skills`, `.uagent/skills`; see
 [Bundled skills](../skills/README.md#discovery) for the rest).
@@ -79,7 +79,7 @@ chose the title.
   and left untouched; there is no implicit migration.
 - One runtime holds the writer lease for a conversation. CLI and web clients
   attach to it without taking a lease, and independent conversations can
-  share a workspace. The lease is the locked descriptor, not the lock file's
+  share a folder. The lease is the locked descriptor, not the lock file's
   existence.
 - A successful, untruncated file read stores `_uagent_read_range`
   (`[path, first_line, last_line]`) in its tool message; wire requests omit
@@ -158,7 +158,7 @@ count are kept.
 
 To keep conversations longer, raise the days, for example
 `/config user UAGENT_HISTORY_DAYS=180`. The 200-file count is fixed and
-counts across all projects.
+counts across all folders.
 
 Delegated children age out with `history/`. A session's journal, undo data
 and uploads age out with it and do not count against the file limit.
@@ -176,7 +176,7 @@ Delete the files above to remove state; no index has to be updated.
 
 ```sh
 # one conversation, with its journal, uploads, undo data and lock
-rm -r ~/.uagent/history/<workspace>/<session>.json*
+rm -r ~/.uagent/history/<folder-hash>/<session>.json*
 # every conversation, capture and debug trace
 rm -r ~/.uagent/history ~/.uagent/artifacts ~/.uagent/sessions
 ```

@@ -106,7 +106,7 @@ export default function ConversationActions({
       ) : (
         <p>
           Delete “{modal.session.title}” and its saved messages and attachments?
-          Project files stay in place. This cannot be undone.{" "}
+          Files in the folder stay in place. This cannot be undone.{" "}
           {modal.session.generation
             ? modal.session.turn_active
               ? "The running turn stops first."

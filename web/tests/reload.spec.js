@@ -170,7 +170,7 @@ test("a host that cannot be reached keeps the app, not the pairing form", async 
   await page.reload();
   await expect(page.locator(".conversation-head")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your local coding workspace." }),
+    page.getByRole("heading", { name: "Your local coding agent." }),
   ).toHaveCount(0);
   failing = false;
   await expect(page.getByLabel("Message or guidance")).toBeEnabled({

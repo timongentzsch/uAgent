@@ -114,13 +114,13 @@ export default function ConversationHeader({
             ) : session?.kind === "panel" ? (
               `Lead · ${placeName(session.cwd)}`
             ) : session ? (
-              session.title || "Your workspace"
+              session.title || "Conversation"
             ) : opening ? (
               <span class="text-skeleton" aria-hidden="true">
                 Loading conversation
               </span>
             ) : (
-              "Your workspace"
+              "µAgent"
             )}
           </h1>
           {/* What a panel started leads back to it. */}

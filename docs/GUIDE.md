@@ -132,15 +132,15 @@ Delete the file to ask again.
 | --- | --- |
 | see what is set and where from | `/config` |
 | save for all conversations | `/config user KEY=VALUE` |
-| save for this project folder | `/config project KEY=VALUE` |
+| save for this folder | `/config project KEY=VALUE` |
 | set this conversation's model or approval mode | `/config conversation KEY=VALUE` |
 | remove a saved value | `/config user unset KEY` |
 | see one setting, scope by scope | `/config KEY` |
 
 `KEY` is a setting's name (`limits.maxSteps`) or its environment name
 (`UAGENT_MAX_STEPS`). A flag overrides the environment, which overrides the
-project's settings, which override those for all conversations. Nothing is
-read from the project folder, and `.env` files are never loaded.
+folder's settings, which override those for all conversations. Nothing is
+read from the folder, and `.env` files are never loaded.
 [Operations](OPERATIONS.md#settings) describes the file and when a change
 applies; `/config` lists every setting with its default.
 

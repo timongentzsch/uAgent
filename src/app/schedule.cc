@@ -302,7 +302,7 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
              "permissions"}};
   }
   const auto cwd = CanonicalDirectory(JsonValue(task, "cwd", ""));
-  if (!cwd) return {{"error", "project is unavailable"}};
+  if (!cwd) return {{"error", "folder is unavailable"}};
   if (found == store["tasks"].end() &&
       (!id.empty() || store["tasks"].size() >= kTasks)) {
     return {{"error", "task not found or task limit reached"}};

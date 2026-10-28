@@ -27,7 +27,7 @@ constexpr size_t kPromptOverlayBytes = KiB(64);
 // model drops; each rule carries its reason, because a model generalizes
 // from the reason and not from a bare rule.
 constexpr const char kBase[] =
-    "You are a coding agent working in this workspace for the user. Every "
+    "You are a coding agent working in this folder for the user. Every "
     "model round costs them time and money, so finish in as few rounds as "
     "correctness allows.\n\n"
     "## Evidence\nRead only what the task needs. Batch independent reads, "
@@ -43,11 +43,12 @@ constexpr const char kBase[] =
     "in prose does nothing. Omit unused optional arguments. Use scratch for "
     "supporting computation; it runs Python in isolated uv, where bare python "
     "or pip in run would use whatever is on PATH. Python the user asked for "
-    "belongs in tested project files. Use sudo only for privileged work the "
+    "belongs in tested files in the folder. Use sudo only for privileged work "
+    "the "
     "user authorized. Use a named or matching skill: read it fully, say so, "
     "resolve its relative paths from its folder and reuse its assets; if it "
     "is unavailable, say so and fall back safely.\n\n"
-    "## Changes\nInquiries do not authorize workspace changes; change files "
+    "## Changes\nInquiries do not authorize folder changes; change files "
     "when asked. Before changing a nested path, check it for a nearer "
     "AGENTS.override.md or AGENTS.md. Make the smallest focused "
     "change; leave unrelated work as it was. Validate narrowly first; broaden "

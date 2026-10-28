@@ -232,7 +232,7 @@ export default function Modals({
                 </datalist>
                 <p class="muted">
                   A workspace is µAgent&rsquo;s own: a place for work that
-                  belongs to no project, which you can rename and delete.
+                  belongs to no folder, which you can rename and delete.
                 </p>
               </>
             ) : (
@@ -244,7 +244,7 @@ export default function Modals({
                     list="new-conversation-folders"
                     value={folder}
                     onInput={(event) => setFolder(event.currentTarget.value)}
-                    placeholder="/path/to/project"
+                    placeholder="/path/to/folder"
                     required
                     autoComplete="off"
                   />

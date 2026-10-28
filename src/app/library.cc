@@ -211,7 +211,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
 json LibraryControl(const json& request,
                     const std::filesystem::path& workspace) {
   const auto resolved = CanonicalDirectory(workspace);
-  if (!resolved) return {{"error", "choose an accessible project directory"}};
+  if (!resolved) return {{"error", "choose an accessible folder"}};
   const std::filesystem::path& cwd = *resolved;
   const std::string kind = JsonValue(request, "kind", "");
   if (kind == "memory") return MemoryControl(request, cwd);

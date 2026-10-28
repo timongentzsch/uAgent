@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_THREAD_LINK_H_
 #define UAGENT_INCLUDE_APP_THREAD_LINK_H_
+// A thread's side of the panel it reports to: decisions, questions and
+// results sent up as mail, used by the thread's session worker.
+
 #include <optional>
 #include <string>
 

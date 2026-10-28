@@ -348,10 +348,12 @@ void TestFileTools() {
   fs::create_directories(external);
   CHECK(ToolWriteFile((external / "outside.cc").string(), "OUTSIDE_BODY\n")
             .output.starts_with("wrote "));
-  // A directory path lists instead of reading, and an outside directory still
-  // previews nothing.
-  CHECK(read_tool && read_tool->run({{"path", external.string()}}, {})
-                             .output.find("OUTSIDE_BODY") == std::string::npos);
+  // A directory path lists instead of reading. One outside the work area
+  // previews nothing; this one sits beside the folder in the temporary
+  // directory, which the sandbox lets commands write, so it may.
+  CHECK(read_tool && (read_tool->run({{"path", external.string()}}, {})
+                          .output.find("OUTSIDE_BODY") == std::string::npos) ==
+                         !WithinWorkArea(external.string(), root));
   CHECK(
       read_tool &&
       read_tool->run({{"path", root.string()}}, {}).output.find("outside.cc") ==

@@ -11,6 +11,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include "include/core/config.h"
 #include "include/core/config_registry.h"
@@ -128,9 +129,31 @@ inline ApprovalClass PathApprovalClass(const std::string& path,
   return ApprovalClass::kMandatoryHuman;
 }
 
+// The folder, and every root this session's sandboxed commands may write
+// ($TMPDIR, /tmp, the package caches, sandbox.write): what a command could
+// do there unasked, a file tool may do too, so asking for it only adds
+// friction. Hidden stores, closed folders and uAgent's own configuration are
+// never writable roots and keep their own checks.
+inline bool WithinWorkArea(const std::string& path,
+                           const std::filesystem::path& workspace) {
+  const std::filesystem::path canonical = CanonicalAccessPath(path);
+  if (PathWithin(canonical, workspace)) return true;
+  const SandboxStatus& status = SandboxRuntime();
+  if (status.mode != SandboxMode::kEnforced) return false;
+  // Roots are recorded as configured (/tmp is /private/tmp on macOS), so
+  // both sides are compared resolved.
+  const auto within = [&](const std::vector<std::string>& roots) {
+    return std::ranges::any_of(roots, [&](const std::string& root) {
+      return PathWithin(canonical, CanonicalAccessPath(root));
+    });
+  };
+  return within(status.policy.writable_roots) &&
+         !within(status.policy.withheld);
+}
+
 inline bool PathApprovalRequired(const std::string& path,
                                  const std::filesystem::path& workspace) {
-  return !PathWithin(CanonicalAccessPath(path), workspace);
+  return !WithinWorkArea(path, workspace);
 }
 
 inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,

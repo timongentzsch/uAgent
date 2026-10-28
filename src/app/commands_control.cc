@@ -42,30 +42,25 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread) {
       JsonValue(configured.sources, kApprovalKey, "") == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
+  // A thread works unattended for its panel: it reviews (Auto) unless a
+  // mode is chosen for its own conversation; the saved setting does not
+  // reach it.
   if (thread) {
     inherited = ApprovalMode::kAuto;
-    if (!chosen || effective == ApprovalMode::kYolo) effective = inherited;
+    if (!chosen) effective = inherited;
   }
-  json result = {{"mode", chosen ? ApprovalModeName(effective) : "default"},
-                 {"effective", ApprovalModeName(effective)},
-                 {"default", ApprovalModeName(inherited)}};
-  // What no choice here can exceed, for the control that offers the modes.
-  if (thread) result["limit"] = ApprovalModeName(ApprovalMode::kAuto);
-  return result;
+  return {{"mode", chosen ? ApprovalModeName(effective) : "default"},
+          {"effective", ApprovalModeName(effective)},
+          {"default", ApprovalModeName(inherited)}};
 }
 
 json PermissionControl(AppContext& context, const json& request) {
-  // A thread works unattended for its panel: it reviews (Auto) unless
-  // told to ask, and nothing puts it above that.
   const bool thread = context.options.Thread();
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
     ApprovalMode chosen = ApprovalMode::kAsk;
     if (mode != "default" && !ParseApprovalMode(mode, chosen)) {
       return {{"error", "unknown permission mode"}};
-    }
-    if (thread && chosen == ApprovalMode::kYolo) {
-      return {{"error", "a thread's approval mode cannot be above auto"}};
     }
     context.config_manager.ChooseForConversation(
         kApprovalKey, mode == "default" ? "" : ApprovalModeName(chosen));

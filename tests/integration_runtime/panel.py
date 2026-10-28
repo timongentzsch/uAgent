@@ -730,9 +730,11 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         )
 
 
-def test_a_thread_is_never_above_auto(root, home, *, binary):
-    """A thread reviews unless told to ask: no command, flag or default puts
-    it above that, in this run or the next."""
+def test_a_thread_may_be_put_in_yolo(root, home, *, binary):
+    """A thread reviews (Auto) unless a mode is chosen for its own
+    conversation: the environment's yolo does not reach it, /permissions yolo
+    does, and its commands then run at the relaxed level."""
+    from integration_sandbox import sandbox_enforced
 
     thread = write_session(
         home,
@@ -742,27 +744,42 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         kind="thread",
         delegation=_thread_role(home / "panel.json", root),
     )
-    with Server([event({"content": "unused"})]) as server:
+    sibling = home / "Projects" / "other" / "notes.txt"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_text("marker-notes\n")
+    outputs = []
+
+    def route(_, body):
+        messages = body["messages"]
+        last = max(i for i, m in enumerate(messages) if m.get("role") == "user")
+        results = tool_results(messages[last:])
+        if results:
+            outputs.append(results[-1])
+            return event({"content": "read-ok"})
+        return tool_call("run", {"command": f"cat {sibling}; true"})
+
+    with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_APPROVAL"] = "yolo"
-        for flags in ((), ("--yolo",)):
-            result = run_dialog(
-                root, env, "/permissions yolo\n/permissions\n/q\n", "-c", *flags, binary=binary
-            )
-            assert_true(result.returncode == 0, result.stderr)
-            assert_true("cannot be above auto" in result.stdout, result.stdout)
-            assert_true(
-                '"effective": "auto"' in result.stdout
-                and '"limit": "auto"' in result.stdout
-                and '"effective": "yolo"' not in result.stdout,
-                result.stdout,
-            )
-        # It can still be told to ask.
-        tighter = run_dialog(root, env, "/permissions ask\n/q\n", "-c", binary=binary)
-        assert_true('"effective": "ask"' in tighter.stdout, tighter.stdout)
+        result = run_dialog(
+            root,
+            env,
+            "/permissions\nread it\n/permissions yolo\nread it\n/q\n",
+            "-c",
+            timeout=30,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        effective = re.findall(r'"effective": "(\w+)"', result.stdout)
+        assert_true(effective == ["auto", "yolo"], result.stdout)
+        assert_true(len(outputs) == 2, (outputs, result.stdout))
+        if sandbox_enforced(root, home, binary=binary):
+            assert_true("marker-notes" not in outputs[0], f"auto read a closed folder: {outputs}")
+            assert_true("marker-notes" in outputs[1], f"yolo kept it closed: {outputs}")
         # Its limits are its runtime's to apply: continued headlessly it
         # would have none, so that is refused, and its role is not lost.
         named = {**env, "UAGENT_INTERNAL_SESSION_FILE": str(thread)}
+        requests = len(server.requests)
         for how in (
             run(root, env, "-c", "--yolo", "-p", "continue", binary=binary),
             run(root, named, "--yolo", "-p", "continue", binary=binary),
@@ -771,9 +788,109 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
                 how.returncode != 0 and "panel's thread" in how.stderr,
                 (how.stdout, how.stderr),
             )
-        assert_true(not server.requests, "a thread ran without its limits")
-        again = run_dialog(root, env, "/permissions\n/q\n", "-c", binary=binary)
-        assert_true('"limit": "auto"' in again.stdout, again.stdout)
+        assert_true(len(server.requests) == requests, "a thread ran without its limits")
+
+
+def test_a_thread_asks_the_person_in_a_turn_they_started(root, home, *, binary):
+    """A decision in a turn the person started, or wrote into, goes to the
+    person, and the lead agent never sees it; in a turn the lead agent
+    started, it goes to the lead agent first."""
+    state = {
+        "asked": [],
+        "ready": threading.Event(),
+        "holding": threading.Event(),
+        "release": threading.Event(),
+    }
+
+    def route(_, body):
+        messages = body["messages"]
+        text = json.dumps(messages)
+        if "Objective: wait for the user" in text:
+            last = max(i for i, m in enumerate(messages) if m.get("role") == "user")
+            prompt = str(messages[last].get("content", ""))
+            names = ("mine", "theirs", "later")
+            name = next((n for n in names if f"write {n}" in prompt), None)
+            if name and not tool_results(messages[last:]):
+                if name == "later":
+                    # Held until the person has written into the turn.
+                    state["holding"].set()
+                    state["release"].wait(budget(20))
+                return tool_call("write_file", {"path": f"{name}.txt", "content": "x"})
+            state["ready"].set()
+            return event({"content": "thread-done"})
+        if "[approval request" in text and "sent " not in json.dumps(tool_results(messages)):
+            match = re.search(r"Background agent ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
+            state["asked"].append(match.group(2))
+            return tool_call(
+                "decide",
+                {
+                    "session_id": match.group(1),
+                    "interaction_id": match.group(2),
+                    "decision": "allow_once",
+                    "reason": "inside the brief",
+                },
+            )
+        if "[approval request" in text or "[background agent event" in text:
+            return event({"content": "panel-ack"})
+        if not tool_results(messages):
+            return tool_call("thread_spawn", _spawn("Wait", "wait for the user"))
+        return event({"content": "spawned-ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        # No sandbox to hold the thread to its folder: its writes are reviewed.
+        env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
+        result = run(root, env, "panel", "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(state["ready"].wait(budget(20)), "the thread never ran its brief")
+        client = SessionClient(_socket(home, _thread_session(home)))
+        try:
+
+            def idle(frame):
+                return (
+                    frame.get("kind") == "state"
+                    and frame.get("checkpoint")
+                    and not frame.get("busy")
+                )
+
+            def pending(frame):
+                return frame.get("kind") == "state" and frame.get("pending")
+
+            client.until(idle)
+            # The person's own message: the decision is theirs.
+            client.send("submit", text="write mine")
+            mine = client.until(pending)["pending"]
+            assert_true(mine.get("route") != "panel", mine)
+            client.send("reply", interaction_id=mine["id"], text="y")
+            client.until(idle)
+            assert_true((root / "mine.txt").exists(), "the person's approval was lost")
+            assert_true(mine["id"] not in state["asked"], "the lead agent saw it")
+            # The lead agent's message: the decision is its first.
+            client.send("steer", origin="panel", text="write theirs")
+            theirs = client.until(pending)["pending"]
+            assert_true(theirs.get("route") == "panel", theirs)
+            wait_until(lambda: (root / "theirs.txt").exists(), "the lead agent never decided")
+            assert_true(state["asked"] == [theirs["id"]], state["asked"])
+            client.until(idle)
+            # The lead agent's turn, once the person writes into it: what it
+            # still asks is theirs.
+            client.send("steer", origin="panel", text="write later")
+            assert_true(state["holding"].wait(budget(20)), "the lead agent's turn never ran")
+            joined = client.send("steer", text="go on")
+            client.until(
+                lambda frame: (
+                    frame.get("kind") == "outcome"
+                    and frame.get("request_id") == joined["request_id"]
+                )
+            )
+            state["release"].set()
+            later = client.until(pending)["pending"]
+            assert_true(later.get("route") != "panel", later)
+            client.send("reply", interaction_id=later["id"], text="y")
+            wait_until(lambda: (root / "later.txt").exists(), "the person's approval was lost")
+            assert_true(state["asked"] == [theirs["id"]], state["asked"])
+        finally:
+            client.close()
 
 
 def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):

@@ -133,6 +133,11 @@ bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset) {
   return false;
 }
 
+SandboxPreset YoloSandboxPreset(SandboxPreset configured) {
+  return configured == SandboxPreset::kDefault ? SandboxPreset::kRelaxed
+                                               : configured;
+}
+
 bool SandboxPathWithin(std::string_view path, std::string_view root) {
   if (root.empty() || path.size() < root.size()) return false;
   if (path.substr(0, root.size()) != root) return false;

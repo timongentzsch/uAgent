@@ -155,8 +155,9 @@ def require_sandbox(root, home, *, binary):
 
 
 def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, binary):
-    """Yolo means nobody is asked, in either startup form; confinement is the
-    sandbox setting's alone."""
+    """Yolo means nobody is asked, in either startup form. It raises the
+    default level to relaxed, which still confines writes outside the home
+    folder; only the sandbox setting lifts the sandbox."""
     require_sandbox(root, home, binary=binary)
     for source, sandbox in (("cli", "default"), ("config", "default"), ("cli", "off")):
         outside = root / f"yolo-{source}-{sandbox}.txt"
@@ -315,19 +316,23 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
             assert_true(outside.exists() == (mode == "approved"), (tool, mode, output))
 
 
-def test_yolo_toggle_leaves_sandboxing_alone(root, home, *, binary):
-    """Interactive /yolo stops the questions; commands stay confined either way."""
+def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):
+    """Interactive /yolo stops the questions and raises the default level to
+    relaxed from the next command: a closed folder opens, writes outside the
+    home folder stay confined. Turned off, the default level is back."""
     require_sandbox(root, home, binary=binary)
-    unconfined = root / "toggle-yolo.txt"
-    confined = root / "toggle-prompt.txt"
+    sibling = home / "Projects" / "other" / "notes.txt"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_text("marker-notes.txt\n")
+    prompts = ("before", "unconfined", "confined")
+    outputs = {}
 
     def route(_, body):
         messages = body["messages"]
         turns = [
             (index, str(message.get("content", "")))
             for index, message in enumerate(messages)
-            if message.get("role") == "user"
-            and str(message.get("content", "")) in {"unconfined", "confined"}
+            if message.get("role") == "user" and str(message.get("content", "")) in prompts
         ]
         assert_true(turns, messages)
         turn_start, prompt = turns[-1]
@@ -335,24 +340,73 @@ def test_yolo_toggle_leaves_sandboxing_alone(root, home, *, binary):
             message for message in messages[turn_start + 1 :] if message.get("role") == "tool"
         ]
         if results:
+            outputs[prompt] = str(results[-1].get("content", ""))
             return event({"content": f"{prompt}-ok"})
-        target = unconfined if prompt == "unconfined" else confined
-        return tool_call("run", {"command": f"echo x > {target}"})
+        target = root / f"toggle-{prompt}.txt"
+        return tool_call("run", {"command": f"echo x > {target}; cat {sibling}; true"})
 
     with Server([route]) as server:
         result = run_dialog(
             workspace(root),
             sandbox_env(home, server.url),
-            "/yolo\nunconfined\n/yolo\nconfined\ny\n/q\n",
+            "before\ny\n/yolo\nunconfined\n/yolo\nconfined\ny\n/q\n",
             timeout=30,
             binary=binary,
         )
     assert_true(result.returncode == 0, (result.stdout, result.stderr))
     assert_true("unconfined-ok" in result.stdout, result.stdout)
+    assert_true("sandbox relaxed (yolo)" in result.stdout, result.stdout)
+    assert_true("yolo off; sandbox default" in result.stdout, result.stdout)
+    for prompt in prompts:
+        assert_true(
+            not (root / f"toggle-{prompt}.txt").exists(),
+            f"{prompt}: a command escaped the sandbox: {result.stdout}",
+        )
+        assert_true(
+            ("marker-notes.txt" in outputs.get(prompt, "")) == (prompt == "unconfined"),
+            f"{prompt}: {outputs}",
+        )
+
+
+def test_yolo_raises_the_default_level_to_relaxed(root, home, *, binary):
+    """Under yolo a default-level command reads your other folders and writes
+    the home folder, but not ~/.uagent or a credential store; a level written
+    down as readonly stays as it is."""
+    require_sandbox(root, home, binary=binary)
+    plant_credentials(home)
+    sibling = home / "Projects" / "other" / "notes.txt"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_text("marker-notes.txt\n")
+    env = sandbox_env(home, "")
+    assert_true(not readable(root, env, sibling, binary=binary), "ask read a closed folder")
+
+    def yolo_output(command, environment=env):
+        return tool_output(root, environment, command, headless=True, binary=binary)
+
+    assert_true("marker-notes.txt" in yolo_output(f"cat {sibling}"), "yolo kept it closed")
+    stores = (home / ".aws" / "credentials", home / ".uagent" / "config" / "notes.txt")
+    for hidden in stores:
+        assert_true(f"marker-{hidden.name}" not in yolo_output(f"cat {hidden}"), hidden)
+    project, state = home / "project.txt", home / ".uagent" / "planted.txt"
+    yolo_output(f"echo x > {project}; echo x > {state}; true")
+    assert_true(project.exists(), "yolo did not open the home folder")
+    assert_true(not state.exists(), "yolo opened ~/.uagent")
+    readonly = sandbox_env(home, "", UAGENT_SANDBOX="readonly")
     assert_true(
-        not unconfined.exists() and not confined.exists(),
-        f"a command escaped the sandbox: {result.stdout}",
+        "marker-notes.txt" not in yolo_output(f"cat {sibling}", readonly),
+        "yolo raised the readonly level",
     )
+    with Server([event({"content": "ready-ok"})]) as server:
+        code, output = run_pty(
+            workspace(root),
+            sandbox_env(home, server.url),
+            [(b"/status\n", b"sandbox"), b"", b"/q\n"],
+            args=("--yolo",),
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(code == 0, output)
+    assert_true(b"relaxed (yolo)" in output, f"/status did not name the level: {output!r}")
 
 
 def test_sandbox_confines_writes_to_the_workspace(root, home, *, binary):
@@ -513,7 +567,10 @@ def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, bina
         assert_true(
             readable(root, env, open_path, binary=binary), f"a command could not read {open_path}"
         )
-    refused = file_tool_output(root, env, "read_path", {"path": str(sibling)}, binary=binary)
+    # Not under yolo, which raises the level to relaxed and opens them.
+    refused = file_tool_output(
+        root, env, "read_path", {"path": str(sibling)}, binary=binary, yolo=False
+    )
     assert_true("marker-notes.txt" not in refused, f"read_path read {sibling} unasked")
     assert_true("sandbox.read" in refused, refused)
     # A failed edit hands back lines of the file, so writing asks as reading does.
@@ -523,13 +580,20 @@ def test_sandbox_reads_only_the_workspace_among_your_folders(root, home, *, bina
         "edit_file",
         {"path": str(sibling), "edits": [{"old": "no such text", "new": "x"}]},
         binary=binary,
+        yolo=False,
     )
     assert_true("marker-notes.txt" not in edited, f"edit_file leaked {sibling}: {edited}")
     assert_true("sandbox.read" in edited, edited)
     opened = sandbox_env(home, "", UAGENT_SANDBOX_READ=str(home / "Projects" / "other"))
     assert_true(readable(root, opened, sibling, binary=binary), "sandbox.read did not open it")
+    # Opened, it is an ordinary read outside the folder: no person needed
+    # under yolo, and not the closed folder's refusal in ask mode.
     read = file_tool_output(root, opened, "read_path", {"path": str(sibling)}, binary=binary)
     assert_true("marker-notes.txt" in read, read)
+    asked = file_tool_output(
+        root, opened, "read_path", {"path": str(sibling)}, binary=binary, yolo=False
+    )
+    assert_true("not approved" in asked and "sandbox.read" not in asked, asked)
     # The documented ~/ spelling means the home folder, not a folder named ~.
     tilde = sandbox_env(home, "", UAGENT_SANDBOX_READ="~/Projects/other")
     assert_true(readable(root, tilde, sibling, binary=binary), "sandbox.read=~/... opened nothing")
@@ -687,7 +751,7 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
         env = sandbox_env(home, "", UAGENT_BROWSER_DATA=str(profile))
         reached = browser_reach(root, env, profile, binary=binary)
         assert_true(reached == expected, f"confined: reached {sorted(reached)}")
-        # Yolo asks nobody and confines as before.
+        # Yolo asks nobody, and its relaxed level still hides the profile.
         reached = browser_reach(root, env, profile, binary=binary, yolo=True)
         assert_true(reached == expected, f"yolo: reached {sorted(reached)}")
         for case in ("off", "approve"):
@@ -948,9 +1012,11 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
         )
         return tool_call("run", {"command": "echo x > refused.txt"})
 
+    # Asked and approved, not under yolo, which raises the level to relaxed
+    # and so opens the home folder.
     with Server([route]) as server:
-        result = run(
-            home, sandbox_env(home, server.url), "--yolo", "-p", "go", timeout=30, binary=binary
+        result = run_dialog(
+            home, sandbox_env(home, server.url), "y\n", "-p", "go", timeout=30, binary=binary
         )
     assert_true(not (home / "refused.txt").exists(), "a command wrote the home directory")
     assert_true(result.returncode == 0, (result.stdout, result.stderr))
@@ -1026,8 +1092,9 @@ def test_sandbox_off_leaves_spawning_unchanged(root, home, *, binary):
     assert_true(target.exists(), "the unsandboxed path changed")
 
 
-def file_tool_output(root, env, name, arguments, *, binary):
-    """What a file tool reported back to the model for one call."""
+def file_tool_output(root, env, name, arguments, *, binary, yolo=True):
+    """What a file tool reported back to the model for one call, headless:
+    under yolo, or in ask mode, where nobody answers."""
     seen = []
 
     def route(_, body):
@@ -1040,7 +1107,8 @@ def file_tool_output(root, env, name, arguments, *, binary):
     with Server([route]) as server:
         env = dict(env)
         env["UAGENT_BASE_URL"] = server.url
-        run(workspace(root), env, "--yolo", "-p", "go", timeout=30, binary=binary)
+        flags = ("--yolo",) if yolo else ()
+        run(workspace(root), env, *flags, "-p", "go", timeout=30, binary=binary)
     return seen[0] if seen else ""
 
 

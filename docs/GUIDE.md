@@ -154,8 +154,9 @@ Two separate mechanisms keep a turn in bounds.
   answer denies the call and reaches the model as guidance.
   `/permissions auto` lets a decision model decide the calls the sandbox
   contains and asks you about the rest; `/permissions yolo` (or `--yolo`)
-  asks nobody. A few actions always ask, such as changing µAgent's own
-  settings.
+  asks nobody, and lets commands read anywhere and write your home folder
+  (the `relaxed` level). A few actions always ask, such as changing
+  µAgent's own settings.
 - **The sandbox** decides what a command can touch, whatever the approval
   mode: it writes only inside the folder, cannot read your saved logins, and
   reads none of your other folders in the home folder (another repository,
@@ -234,7 +235,8 @@ read-only sandbox. Ask it a question and it asks
 **subagents**; ask it for a change and it starts **background agents**:
 conversations of their own, each on a brief, that report back when their
 turn ends. The lead agent answers the approvals a background agent cannot
-settle or passes them to you.
+settle or passes them to you; once you write to the background agent
+yourself, the rest of that turn's come to you directly.
 
 - **The plan pane** shows the plan, with each step's subagents and
   background agents, and the folder's other background agents with what

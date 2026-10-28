@@ -219,8 +219,9 @@ void ReportSandbox() {
   }
 #if defined(__linux__)
   if (!status.policy.withheld.empty()) {
-    Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "sandbox: relaxed -- " + SandboxNote()));
+    Emit(NoticeEvent(
+        PresentationStatus::kNeutral,
+        "sandbox: " + status.preset + " -- " + SandboxNote(status)));
   }
 #endif
   std::string dropped;

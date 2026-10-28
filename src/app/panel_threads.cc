@@ -122,7 +122,9 @@ ToolResult Spawn(const std::string& folder, const json& a,
     return Unavailable(error);
   }
   error = SendWhenReady(connection, launch.path,
-                        {{"kind", "submit"}, {"text", Brief(thread["brief"])}},
+                        {{"kind", "submit"},
+                         {"origin", kOriginBrief},
+                         {"text", Brief(thread["brief"])}},
                         true);
   if (!error.empty()) {
     return Unavailable(error);

@@ -44,8 +44,10 @@ every metric.
   macOS, Landlock on Linux): they write only inside the folder, your other
   folders stay closed, cloud and git credential stores (`~/.aws`, `~/.kube`,
   `~/.netrc`, …) stay hidden, and the agent asks before it changes a file,
-  runs a command or uses the network. `/undo` restores what the last turn
-  changed. See [Security](SECURITY.md).
+  runs a command or uses the network. In yolo, commands may also read
+  anywhere and write your home folder, never `~/.uagent` or the credential
+  stores. `/undo` restores what the last turn changed. See
+  [Security](SECURITY.md).
 - **One conversation, every device.** Start in the terminal, continue on your
   phone (an installable web app with notifications), or run a turn from a
   script with `uagent -p "..." --json`.

@@ -95,6 +95,7 @@ namespace uagent {
   X(TestToolCopiesKeepRoomForUserFiles)           \
   X(TestSandboxPolicy)                            \
   X(TestSandboxLevels)                            \
+  X(TestSandboxFollowsYolo)                       \
   X(TestSandboxWatch)                             \
   X(TestSandboxRendering)                         \
   X(TestSandboxReads)                             \

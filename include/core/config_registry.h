@@ -489,8 +489,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "tools",
                           "how far the OS sandbox confines shell commands: "
                           "readonly (temporary files only, no network; a "
-                          "lead agent's always), default, relaxed "
-                          "(home writable and readable) or "
+                          "lead agent's always), default (relaxed "
+                          "under yolo), relaxed (home writable and "
+                          "readable) or "
                           "off; below relaxed, commands read in your home "
                           "folder only this folder and their tools' folders"),
             kSandboxLevels),

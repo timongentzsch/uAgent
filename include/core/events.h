@@ -102,7 +102,6 @@ struct Event {
   json data = nullptr;
   std::optional<PresentationRecord> presentation;
   std::string_view text;
-  bool render = false;
 };
 
 struct EventPolicy {
@@ -137,7 +136,6 @@ struct AppEvent {
 
 using EventSubscriber = std::function<void(const AppEvent&)>;
 
-class TerminalPresenter;
 class TurnStatus;
 
 // Bounded metadata-only session journal. It never enters model context and is
@@ -175,9 +173,9 @@ class SessionJournal {
   mutable bool rewrite_ UAGENT_GUARDED_BY(mutex_) = true;
 };
 
-// Directly owns the built-in terminal, public JSONL, private debug JSONL, and
-// bounded journal sinks. Extra application adapters subscribe without gaining
-// access to control flow or those sink implementations.
+// Directly owns the public JSONL, private debug JSONL, and bounded journal
+// sinks. Application adapters, a terminal among them, subscribe without
+// gaining access to control flow or those sink implementations.
 class Observability {
  public:
   Observability();
@@ -187,7 +185,6 @@ class Observability {
 
   bool StartDebug(const std::string& path = "");
   bool StartJsonStream();
-  void EnableTerminal(bool enabled);
   uint64_t Subscribe(EventSubscriber subscriber);
   void Unsubscribe(uint64_t subscription);
   void EnableJournal(bool enabled) { journal_.SetEnabled(enabled); }
@@ -204,7 +201,6 @@ class Observability {
   DebugSink debug_;
   JsonEventStream json_;
   SessionJournal journal_;
-  std::unique_ptr<TerminalPresenter> terminal_;
   std::unique_ptr<TurnStatus> activity_;
   std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_
       UAGENT_GUARDED_BY(mutex_);

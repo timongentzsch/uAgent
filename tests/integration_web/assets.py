@@ -515,11 +515,15 @@ def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binar
                 ),
             )
             row = next(
-                block for block in value["state"]["view"]["blocks"] if block.get("change_path")
+                block
+                for block in value["state"]["view"]["blocks"]
+                if block.get("body", {}).get("kind") == "diff"
             )
             # It is kept with the session's edits, so it lasts as long as the
-            # conversation and leaves with it.
-            assert_true(".json.edits/diff-" in row["change_path"], row["change_path"])
+            # conversation and leaves with it; its path stays with the host.
+            assert_true("change_path" not in row, row)
+            stored = list((home / ".uagent" / "history").rglob("*.json.edits/diff-*"))
+            assert_true(len(stored) == 1, stored)
             # The row carries the diff's opening, within a fact and a frame.
             # The counts are facts; the diff holds only its lines.
             change = row["body"]["text"]

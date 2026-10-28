@@ -331,10 +331,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                           Observability& observability,
                           ApplicationChannel* channel) {
   ScopedChannelInput channel_input(channel);
-  // A headless run's stdout is its answer and a runtime's belongs to its
-  // clients: neither is drawn on.
   const bool headless = !channel && !options.prompt.empty();
-  if (channel || headless) observability.EnableTerminal(false);
   SetExecutablePath(executable);
   // Nothing chdir()s during startup, so the canonical folder is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());

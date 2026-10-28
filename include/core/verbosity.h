@@ -4,6 +4,7 @@
 #define UAGENT_INCLUDE_CORE_VERBOSITY_H_
 // The detail levels that decide how much of a turn's work a client shows.
 
+#include <limits>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,6 +16,8 @@ namespace uagent {
 
 // The setting that names the level.
 inline constexpr std::string_view kVerbositySetting = "UAGENT_VERBOSITY";
+// A depth that opens every level of a turn's tree.
+inline constexpr int kDepthAll = std::numeric_limits<int>::max();
 
 // How a turn's tool work is laid out: one row for the whole turn, one per
 // group of like calls, or one per call.
@@ -34,13 +37,16 @@ struct DetailPolicy {
   bool open;
   // Routine notices and memory receipts are shown.
   bool minor;
+  // How deep a turn's tree starts open: 0 shows its work as one line, 1
+  // opens the work to its steps.
+  int depth;
 };
 
 // In the order of kVerbosityLevels.
 inline constexpr DetailPolicy kDetailPolicies[] = {
-    {"minimal", WorkRows::kTurn, Thinking::kHidden, false, false},
-    {"default", WorkRows::kGroups, Thinking::kClosed, false, false},
-    {"full", WorkRows::kCalls, Thinking::kOpen, true, true},
+    {"minimal", WorkRows::kTurn, Thinking::kHidden, false, false, 0},
+    {"default", WorkRows::kGroups, Thinking::kClosed, false, false, 1},
+    {"full", WorkRows::kCalls, Thinking::kOpen, true, true, kDepthAll},
 };
 
 // An unknown level reads as the default one.

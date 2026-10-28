@@ -213,8 +213,8 @@ SnapshotResult SessionHost::HttpSnapshot(HostSession& session,
 
 std::optional<SnapshotResult> SessionHost::LiveDetail(
     HostSession& session, const SnapshotQuery& query) {
-  // The live view names a row's diff stored whole; a stored exchange is read
-  // from the saved conversation.
+  // A diff stored whole is read by the path the host keeps for its node; a
+  // stored exchange is read from the saved conversation.
   std::string path;
   json inline_exchange = nullptr;
   bool turn_active = false;
@@ -226,15 +226,9 @@ std::optional<SnapshotResult> SessionHost::LiveDetail(
       inline_exchange = active->second;
       turn_active = true;
     }
-    const json* view = JsonObject(session.state, "view");
-    const json* blocks = view ? JsonArray(*view, "blocks") : nullptr;
-    if (blocks && !query.raw) {
-      for (const json& block : *blocks) {
-        if (JsonValue(block, "id", "") == query.detail) {
-          path = JsonValue(block, "change_path", "");
-          break;
-        }
-      }
+    if (const auto found = session.change_paths.find(query.detail);
+        found != session.change_paths.end() && !query.raw) {
+      path = found->second;
     }
   }
   const size_t start = ClampedOffset(query.offset);

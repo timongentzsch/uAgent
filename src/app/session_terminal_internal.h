@@ -38,19 +38,16 @@ class Terminal {
  public:
   // `draft` starts the composer, e.g. the message a rewind forked before.
   // `pinned`: --verbosity set this terminal's level, so it follows no other.
-  // `redrawn`: the conversation is shown again because the level changed.
   // `keys`: what was typed and not yet read, kept from one attach to the next.
   Terminal(Connection connection, std::string path, const DetailPolicy& detail,
-           bool pinned, bool redrawn, TerminalInputDecoder& keys,
-           std::string draft = "")
+           bool pinned, TerminalInputDecoder& keys, std::string draft = "")
       : connection_(std::move(connection)),
         path_(std::move(path)),
         draft_(std::move(draft)),
         region_(output_),
         composer_(output_, region_, keys),
         detail_(&detail),
-        pinned_(pinned),
-        redrawn_(redrawn) {
+        pinned_(pinned) {
     presenter_.SetDetail(detail);
   }
   const DetailPolicy& Detail() const { return *detail_; }
@@ -111,9 +108,8 @@ class Terminal {
   bool TurnActive(const std::string& before);
   // Ends the input loop to open `target` next, unless a turn is running.
   Command Leave(const std::string& target, const std::string& before);
-  // Shows the conversation at another level. A terminal cannot restyle rows
-  // it printed, so it attaches again and the conversation is replayed; plain
-  // and piped output is not repeated, only what follows changes.
+  // Shows the conversation again at another level: the reader draws the
+  // tree it holds anew once the runtime answers a refresh.
   void Restyle(const DetailPolicy& detail);
 
   // Frames to and from the runtime (session_terminal_link.cc).
@@ -160,12 +156,13 @@ class Terminal {
   std::string carry_, side_question_;
   std::atomic<const DetailPolicy*> detail_;
   const bool pinned_;
-  bool redrawn_;
   std::atomic<bool> input_blocked_{true}, interaction_{false};
-  std::set<std::string> shown_;
-  std::set<std::string> own_requests_, echoed_;
-  // The transcript view as history and events build it, so a live tool row
-  // is drawn from the same block a resumed one is.
+  std::set<std::string> own_requests_;
+  // What every request this terminal sends starts with, so a message it
+  // echoed as it was typed is known when it comes back.
+  const std::string requests_ = RandomToken(8);
+  // The transcript's tree as history and events build it, so a live node is
+  // drawn from the same tree a resumed one is.
   json transcript_ = json::object();
 };
 

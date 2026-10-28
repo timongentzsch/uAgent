@@ -277,7 +277,8 @@ add_library(
   src/ui/markdown.cc
   src/ui/markdown_math.cc
   src/ui/markdown_table.cc
-  src/ui/presentation.cc)
+  src/ui/presentation.cc
+  src/ui/tree_render.cc)
 target_link_libraries(uagent_app PUBLIC uagent_tools)
 
 add_executable(uagent src/main.cc)

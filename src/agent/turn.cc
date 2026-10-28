@@ -604,9 +604,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   // A turn that only passed or waited leaves no row of its own.
   json block = conversation_.RecordEntry(std::move(entry));
   Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
-  Event completed{EventId::kTurnCompleted, std::move(summary)};
-  completed.render = true;
-  Emit(std::move(completed));
+  Emit(Event{EventId::kTurnCompleted, std::move(summary)});
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   PublishSideContext();
 }

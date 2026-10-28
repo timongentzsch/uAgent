@@ -2,10 +2,10 @@
 
 #ifndef UAGENT_INCLUDE_UI_PRESENTATION_H_
 #define UAGENT_INCLUDE_UI_PRESENTATION_H_
-// Terminal rendering of the transcript view's rows and of live events.
+// The terminal's transcript: the host's tree of nodes drawn open to the
+// level's depth (tree_render.cc), and what streams live (presentation.cc).
 
-#include <cstdint>
-#include <map>
+#include <functional>
 #include <memory>
 #include <set>
 #include <string>
@@ -22,6 +22,9 @@ std::string ColorizeDiffLines(std::string_view text);
 // shows a message's files. Empty when there is nothing to show.
 std::string AttachmentDeliveryRows(const json& deliveries);
 
+// The speaker's row above a reply, live and from history.
+void PrintMessageHeader();
+
 class TerminalSpinner;
 
 class TerminalPresenter {
@@ -31,12 +34,18 @@ class TerminalPresenter {
   TerminalPresenter(const TerminalPresenter&) = delete;
   TerminalPresenter& operator=(const TerminalPresenter&) = delete;
 
+  // What streams live: replies, thinking, the spinner and notices.
   void Consume(const Event& event) noexcept;
   void Consume(const AppEvent& event) noexcept;
-  // One row of the transcript view, live or from history. A tool row draws
-  // its call line when it first arrives and its result once it has finished,
-  // so a live row that arrives twice reads as the same row from history.
-  void Block(const json& block);
+  // The tree a view holds ({blocks}), all of it, as it stands.
+  void Draw(const json& view);
+  // What settled in `view` since it was drawn, now that `changed` arrived: a
+  // node is drawn once it has finished, so a step's calls follow its reply
+  // and a turn's work line its answer. Replies and notices were drawn as
+  // they streamed.
+  void Update(const json& view, const json& changed);
+  // `id` is on screen already, e.g. a message this terminal echoed.
+  void Drawn(const std::string& id) { drawn_.insert(id); }
   void Finish() noexcept;
   // What the UAGENT_VERBOSITY level shows; see include/core/verbosity.h.
   void SetDetail(const DetailPolicy& detail) { detail_ = &detail; }
@@ -44,16 +53,14 @@ class TerminalPresenter {
 
  private:
   struct State;
-  // A tool row through the level: its call line, then its result.
-  void ToolRow(const json& block);
-  // The row for the work counted since the last one, or nothing.
-  std::string WorkLine();
+  void DrawTree(const json& view, bool live);
   const DetailPolicy* detail_ = &DetailFor("default");
-  int steps_ = 0;
-  // The tool rows drawn since the last work row, by id, and whether each
-  // has drawn its result; and the files the turn's edits changed.
-  std::map<std::string, bool> rows_;
-  std::set<std::string> edited_;
+  // The settled nodes on screen, by id.
+  std::set<std::string, std::less<>> drawn_;
+  // A streamed reply left its last line open.
+  bool line_open_ = false;
+  // The turn's speaker row is on screen: its later replies stream under it.
+  bool spoke_ = false;
   std::unique_ptr<State> state_;
   std::unique_ptr<TerminalSpinner> spinner_;
 };

@@ -32,9 +32,8 @@ namespace {
 
 // A transcript as an attached terminal and the browser show it.
 void PrintConversationHistory(const Conversation& conversation) {
-  const json view = ConversationView(conversation);
   TerminalPresenter presenter;
-  for (const json& block : view.at("blocks")) presenter.Block(block);
+  presenter.Draw(ConversationView(conversation));
 }
 
 // One node merged as a checkpoint holding it would merge it.

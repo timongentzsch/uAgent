@@ -19,7 +19,6 @@
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/turn_status.h"
-#include "include/ui/presentation.h"
 
 namespace uagent {
 namespace {
@@ -402,9 +401,7 @@ void SessionJournal::ClearLocked() {
   ++changes_;
 }
 
-Observability::Observability()
-    : terminal_(std::make_unique<TerminalPresenter>()),
-      activity_(std::make_unique<TurnStatus>()) {}
+Observability::Observability() : activity_(std::make_unique<TurnStatus>()) {}
 
 Observability::~Observability() {
   Shutdown();
@@ -419,17 +416,6 @@ bool Observability::StartDebug(const std::string& path) {
 bool Observability::StartJsonStream() {
   std::lock_guard<std::mutex> lock(mutex_);
   return json_.Start();
-}
-
-void Observability::EnableTerminal(bool enabled) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (enabled == static_cast<bool>(terminal_)) return;
-  if (terminal_) terminal_->Finish();
-  if (enabled) {
-    terminal_ = std::make_unique<TerminalPresenter>();
-  } else {
-    terminal_.reset();
-  }
 }
 
 uint64_t Observability::Subscribe(EventSubscriber subscriber) {
@@ -454,8 +440,6 @@ Event NoticeEvent(PresentationStatus status, std::string text, bool minor) {
   Event event{EventId::kNotice};
   event.presentation = PresentationRecord{status, text, minor};
   event.data = json{{"text", std::move(text)}};
-  // Notices printed unconditionally before this existed, including headless.
-  event.render = true;
   return event;
 }
 
@@ -474,7 +458,6 @@ void Observability::Emit(Event event) noexcept {
     if (activity_->Consume(event.id, event.data)) {
       activity_revision = activity_->Revision();
     }
-    if (terminal_) terminal_->Consume(event);
     if (debug_.Enabled() && policy.debug_name) {
       json data = event.data;
       if (event.presentation) {
@@ -525,7 +508,6 @@ void Observability::Diagnostic(const std::string& name, json data) noexcept {
 
 void Observability::Flush() {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (terminal_) terminal_->Finish();
   debug_.Flush();
 }
 
@@ -533,7 +515,6 @@ void Observability::Shutdown() {
   std::lock_guard<std::recursive_mutex> delivery(delivery_mutex_);
   std::lock_guard<std::mutex> lock(mutex_);
   if (shutdown_) return;
-  if (terminal_) terminal_->Finish();
   debug_.Flush();
   json_.Stop();
   debug_.Stop();

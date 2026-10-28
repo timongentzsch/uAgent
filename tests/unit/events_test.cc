@@ -140,7 +140,6 @@ void TestObservabilityEvents() {
   CHECK(PolicyFor(EventId::kNotice).Durable());
   Event notice = NoticeEvent(PresentationStatus::kWarned, "interrupted");
   CHECK(notice.id == EventId::kNotice);
-  CHECK(notice.render);
   REQUIRE(notice.presentation.has_value());
   CHECK(notice.presentation->status == PresentationStatus::kWarned);
   CHECK(notice.data["text"] == "interrupted");
@@ -188,7 +187,6 @@ void TestObservabilityEvents() {
   CHECK(received.size() == 4);
 
   Observability interactions;
-  interactions.EnableTerminal(false);
   std::vector<AppEvent> interaction_events;
   interactions.Subscribe(
       [&](const AppEvent& event) { interaction_events.push_back(event); });
@@ -224,7 +222,6 @@ void TestObservabilityEvents() {
   // Concurrent producers retain sequence order, and Unsubscribe is a lifetime
   // barrier rather than merely removing a callback from the next snapshot.
   Observability concurrent;
-  concurrent.EnableTerminal(false);
   std::promise<void> first_entered;
   std::promise<void> release_first;
   std::shared_future<void> first_release = release_first.get_future().share();
@@ -254,7 +251,6 @@ void TestObservabilityEvents() {
   CHECK(sequences == std::vector<uint64_t>({1, 2}));
 
   Observability lifetime;
-  lifetime.EnableTerminal(false);
   std::promise<void> callback_entered;
   std::promise<void> release_callback;
   std::shared_future<void> callback_release =

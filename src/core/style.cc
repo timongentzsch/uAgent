@@ -34,9 +34,8 @@ std::string Note(Tone tone, std::string_view text) {
 
 std::string RowMark(Mark mark) {
   static constexpr std::pair<std::string_view, std::string_view> kMarks[] = {
-      {"→ ", "tool: "},    {"← ", "result: "},  {"← ", "failed: "},
-      {"• ", "status: "},  {"• ", "changed: "}, {"· ", ""},
-      {"· ", "warning: "}, {"· ", "error: "},
+      {"→ ", "tool: "}, {"· ", "result: "},  {"✗ ", "failed: "},
+      {"· ", ""},       {"· ", "warning: "}, {"· ", "error: "},
   };
   const auto& [glyph, label] = kMarks[static_cast<size_t>(mark)];
   return std::string(g_plain ? label : AsciiGlyphs(glyph));

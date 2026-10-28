@@ -423,6 +423,7 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
     if (!session.run_result.empty()) session.run_checkpoint = true;
     session.live_truncated = false;
     session.active_exchanges.clear();
+    session.change_paths.clear();
     session.updated = NowMillis();
     const std::string title = JsonValue(session.state, "title", "");
     if (!title.empty()) session.title = title;
@@ -482,6 +483,10 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     const json& block = frame["data"]["block"];
     session.incoming =
         std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
+    if (const std::string path = JsonValue(frame["data"], "change_path", "");
+        !path.empty()) {
+      session.change_paths[JsonValue(block, "id", "")] = path;
+    }
   }
   // Browsers receive what changed in the host's view instead of the events
   // that changed it, so they apply rows and never re-derive them.

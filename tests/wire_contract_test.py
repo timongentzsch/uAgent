@@ -140,6 +140,21 @@ class WireContractTest(unittest.TestCase):
                     missing.append(f"{name}.{field}")
         self.assertEqual(missing, [])
 
+    def test_nodes_carry_no_private_paths(self):
+        # Every node goes to browsers; a path into the private store does
+        # not. The host keeps a diff's path itself (change_paths) and reads
+        # an exchange from the saved conversation. A builder may ask whether
+        # a record has one, never copy it into a node.
+        written = re.compile(r'[{\[,]\s*"(change_path|exchange_path)"')
+        builders = (
+            "include/agent/node.h",
+            "src/agent/transcript_tree.cc",
+            "src/agent/view_reducer.cc",
+        )
+        for unit in builders:
+            text = (ROOT / unit).read_text(encoding="utf-8")
+            self.assertEqual(written.findall(text), [], unit)
+
     def test_browser_frames_have_native_producers(self):
         produced = produced_kinds()
         missing = sorted(k for k in BROWSER_FRAMES if k not in produced)

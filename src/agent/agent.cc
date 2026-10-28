@@ -263,7 +263,15 @@ void Agent::PublishMessage(const std::string& request_id) {
                                 {{"request_id", request_id}});
   }
   for (json& node : LastNodes(conversation_)) {
-    Emit(Event{EventId::kMessageChanged, {{"block", std::move(node)}}});
+    json data = {{"block", std::move(node)}};
+    // A diff stored whole goes to the host beside its node, never in it: the
+    // path is private, and only the host's detail lookup reads it.
+    const json* facts = JsonObject(conversation_.DisplayFacts(),
+                                   JsonValue(data["block"], "id", "").c_str());
+    if (facts && facts->contains("change_path")) {
+      data["change_path"] = (*facts)["change_path"];
+    }
+    Emit(Event{EventId::kMessageChanged, std::move(data)});
   }
 }
 

@@ -255,7 +255,7 @@ def test_a_command_stopped_at_its_deadline_gets_to_clean_up(root, home, *, binar
         env["UAGENT_MAX_TURN_SECONDS"] = "2"
         result = run_dialog(root, env, "go\n/q\n", "--yolo", timeout=20, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true("exceeded its execution deadline" in result.stdout, result.stdout)
+        assert_true("· timed out ·" in result.stdout, result.stdout)
         assert_true(not marker.exists(), "the command was killed before it could clean up")
 
 
@@ -278,14 +278,14 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
             root, env, "trace\n/q\n", "--yolo", "--verbosity", "full", timeout=20, binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
+        # Each call is its headline, opened to its output's last lines.
         for expected in (
-            "printf 'shell-one",
-            "printf 'shell-two",
-            "shell-one",
-            "shell-two",
-            "Running trace.py",
-            "python-one",
-            "python-two",
+            "Ran printf 'shell-one",
+            "│ shell-one",
+            "│ shell-two",
+            "Ran trace.py",
+            "│ python-one",
+            "│ python-two",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
@@ -1111,7 +1111,7 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         assert_true(b"[y] Allow once" in output and b"[n] Deny" in output, output)
         # Reaching rm proves the exact repeat ran without consuming the refusal;
         # rm is a different command, so that refusal is delivered there.
-        assert_true(b"Running rm -rf /tmp/uagent-nothing" in output, output)
+        assert_true(b"Ran rm -rf /tmp/uagent-nothing" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)

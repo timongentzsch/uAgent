@@ -587,7 +587,6 @@ void TestSessionPersistence() {
   } channel;
   channel.path = (workspace.workspace / "session.json").string();
   Observability observation;
-  observation.EnableTerminal(false);
   RuntimeConfig config;
   config.memory_generate = false;
   AppContext context(config, ConfigManager::Capture({}), Options{}, observation,

@@ -182,7 +182,10 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
   if (wrapper->empty()) {
     return "the sandbox policy is too large to enforce (" +
            std::to_string(status.policy.writable_roots.size()) +
-           " writable roots); remove entries from UAGENT_SANDBOX_WRITE";
+           " writable roots and " +
+           std::to_string(status.policy.unreadable.size()) +
+           " closed folders); remove entries from sandbox.write, or move "
+           "folders out of the home folder or the workspace's parent";
   }
   return {};
 }

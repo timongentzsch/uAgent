@@ -77,7 +77,7 @@ struct SandboxInputs {
   // offered, whatever else is listed here.
   bool read_only = false;
   // The folders closed to reads at a level that confines them (readonly,
-  // strict, default), empty otherwise: the person's own -- the home folder's
+  // default), empty otherwise: the person's own -- the home folder's
   // entries not named with a dot and the workspaces in ~/.uagent/spaces --
   // and the folder's neighbours, as other folders in /workspaces are.
   std::vector<std::string> closed_folders;
@@ -85,6 +85,9 @@ struct SandboxInputs {
   // roots: what the environment points at, sandbox.read and
   // kReadableHomePaths.
   std::vector<std::string> read_roots;
+  // A linked git worktree's own git directory and the shared repository's
+  // objects, refs and logs: the writes a commit there needs.
+  std::vector<std::string> git_roots;
   // The folder already is a repository (its .git is a directory), so its
   // config and hooks exist and must not be rewritten; before `git init` they
   // cannot be denied without denying the init itself.
@@ -96,9 +99,9 @@ struct SandboxInputs {
 // apply. Not SandboxLevel, which is what the host can enforce.
 // readonly is a lead agent's: its commands may look but change nothing, the
 // folder and the network included, whatever the overrides say.
-enum class SandboxPreset { kReadOnly, kStrict, kDefault, kRelaxed, kOff };
+enum class SandboxPreset { kReadOnly, kDefault, kRelaxed, kOff };
 
-// readonly, strict, default, relaxed and off. False for anything else, leaving
+// readonly, default, relaxed and off. False for anything else, leaving
 // *preset alone.
 bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset);
 
@@ -123,19 +126,14 @@ inline constexpr size_t kSeatbeltProfileLimit = size_t{64} * 1024;
 // back exactly what the policy names.
 std::string SeatbeltProfile(const SandboxPolicy& policy);
 
-// Round-trip for the Linux self-reexec. The policy travels as separate argv
-// words so that no quoting rule sits between the parent and the trampoline;
-// denied_writes is not carried because Landlock cannot express it. One
-// `hide=<path>` word follows per hidden path, then one `withhold=<path>` per
-// withheld one, one `unread=<path>` per unreadable and one `read=<path>` per
-// readable one.
-std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy);
-// Reads words written by EncodeSandboxPolicy. Reports how many it consumed so
-// the caller can find the command that follows. False leaves *policy
-// unspecified; the trampoline treats that as fatal rather than as an empty
-// policy, which would be no confinement at all.
-bool DecodeSandboxPolicy(const std::vector<std::string>& words,
-                         SandboxPolicy* policy, size_t* consumed);
+// The policy as one JSON object: how a child agent inherits it, and how the
+// Linux trampoline receives it as a single argv word, so that no quoting rule
+// sits between the parent and the trampoline.
+json SandboxPolicyJson(const SandboxPolicy& policy);
+// Reads what SandboxPolicyJson wrote. False leaves *policy unspecified; the
+// trampoline treats that as fatal rather than as an empty policy, which would
+// be no confinement at all.
+bool SandboxPolicyFromJson(const json& value, SandboxPolicy* policy);
 
 // True when `path` is `root` or lies beneath it. Both must be canonical and
 // absolute; comparison is textual so that it cannot touch the filesystem.
@@ -169,8 +167,8 @@ enum class SandboxLevel { kUnavailable, kFilesystem, kFilesystemAndNetwork };
 SandboxLevel SandboxSupported();
 
 // Linux trampoline: the argv word after the program name is --sandbox-child,
-// followed by the words EncodeSandboxPolicy produced, then `--`, then the
-// command to run. Applies the policy to itself and execs the command, so on
+// followed by SandboxPolicyJson as one word, then `--`, then the command to
+// run. Applies the policy to itself and execs the command, so on
 // success it never returns. Every failure -- a malformed argv, a rejected
 // ruleset, a missing command -- returns without executing anything, because a
 // command that ran here would be a command that ran unconfined.

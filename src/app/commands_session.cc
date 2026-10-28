@@ -203,6 +203,12 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
   row("approval", JsonValue(status, "approval", std::string()));
   row("web search", JsonValue(status, "web_search", std::string()));
   row("sandbox", JsonValue(status["sandbox"], "summary", std::string()));
+  std::string opened;
+  for (const json& folder :
+       JsonValue(status["sandbox"], "readable", json::array())) {
+    opened += (opened.empty() ? "" : ", ") + folder.get<std::string>();
+  }
+  if (!opened.empty()) row("sandbox reads", opened);
   row("memory", JsonValue(status, "memory", false) ? "on" : "off");
   row("tools", std::to_string(JsonValue(status, "tools", int64_t{0})));
   int64_t window = JsonValue(status, "context_window", int64_t{0});

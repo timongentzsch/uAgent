@@ -12,7 +12,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <iterator>
+#include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -27,11 +29,14 @@
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/sandbox.h"
+#include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
+#include "include/core/thread_annotations.h"
 
 // Everything that has to ask the host what it can enforce, and the Linux
 // trampoline that enforces it. The platform split lives inside this file so
@@ -264,6 +269,63 @@ SandboxLevel SandboxSupported() {
 
 namespace {
 
+// A configured path may start with ~/. Relative paths otherwise are the
+// caller's to refuse or resolve.
+std::string ExpandHome(std::string path) {
+  const std::string home = UserHome();
+  if (path.starts_with("~/") && !home.empty()) path = home + path.substr(1);
+  return path;
+}
+
+std::string TrimLine(std::string_view text) {
+  return Trim(std::string(text.substr(0, text.find_first_of("\r\n"))));
+}
+
+struct GitWorktree {
+  std::string git_dir;     // <main>/.git/worktrees/<name>
+  std::string common_dir;  // <main>/.git
+};
+
+// A linked worktree keeps its git directory, and the repository's shared one,
+// outside the folder: its `.git` is a file naming them. Only a genuine pair is
+// believed -- the directory must be a child of the shared one's `worktrees`
+// and point back at this `.git` -- because a hostile repository could
+// otherwise name any folder and have it opened. Empty when `folder` and the
+// folders above it hold no such file.
+GitWorktree FindGitWorktree(const std::string& folder) {
+  namespace fs = std::filesystem;
+  std::error_code error;
+  for (fs::path dir = folder; dir.has_relative_path() && dir != dir.root_path();
+       dir = dir.parent_path()) {
+    const fs::path dot_git = dir / ".git";
+    if (!fs::exists(dot_git, error)) continue;
+    if (!fs::is_regular_file(dot_git, error)) return {};
+    const std::string line =
+        TrimLine(ReadFile(dot_git.string(), 4096).value_or(""));
+    constexpr std::string_view kPrefix = "gitdir:";
+    if (!line.starts_with(kPrefix)) return {};
+    fs::path git_dir = Trim(line.substr(kPrefix.size()));
+    if (git_dir.is_relative()) git_dir = dir / git_dir;
+    git_dir = CanonicalAccessPath(git_dir.string());
+    const fs::path worktrees = git_dir.parent_path();
+    const fs::path common_dir = worktrees.parent_path();
+    auto line_of = [&](const char* name) {
+      return TrimLine(ReadFile((git_dir / name).string(), 4096).value_or(""));
+    };
+    fs::path shared = line_of("commondir");
+    if (shared.is_relative()) shared = git_dir / shared;
+    if (worktrees.filename() != "worktrees" ||
+        !fs::is_directory(common_dir / "objects", error) ||
+        CanonicalAccessPath(shared.string()) != common_dir ||
+        CanonicalAccessPath(line_of("gitdir")) !=
+            CanonicalAccessPath(dot_git.string())) {
+      return {};
+    }
+    return {git_dir.string(), common_dir.string()};
+  }
+  return {};
+}
+
 // Closed: the visible entries of the home folder, of ~/.uagent/spaces and of
 // the folder that holds the folder, whose other entries are other
 // projects. Open inside them: the skill folders, sandbox.read,
@@ -302,7 +364,7 @@ void CollectReads(SandboxInputs* inputs) {
   }
   for (const std::string& raw :
        SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_READ")))) {
-    open.push_back(canonical(raw));
+    open.push_back(canonical(ExpandHome(raw)));
   }
   for (char** entry = ProcessEnvironment(); entry && *entry; ++entry) {
     const std::string_view text(*entry);
@@ -320,9 +382,23 @@ void CollectReads(SandboxInputs* inputs) {
         continue;
       }
       fs::path folder = canonical(raw);
-      if (folder.filename() == "bin") folder = folder.parent_path();
+      // A bin folder brings its parent, which holds the rest of its tool --
+      // unless that is the home folder, whose bin stands alone.
+      if (folder.filename() == "bin" && folder.parent_path() != home) {
+        folder = folder.parent_path();
+      }
       open.push_back(folder.string());
     }
+  }
+  // Go's default GOPATH, when nothing names another.
+  if (EnvStr("GOPATH").empty()) {
+    std::error_code missing;
+    if (fs::is_directory(home + "/go", missing)) open.push_back(home + "/go");
+  }
+  // A linked worktree's git directories hold what git reads there.
+  const GitWorktree worktree = FindGitWorktree(inputs->workspace);
+  for (const std::string& dir : {worktree.git_dir, worktree.common_dir}) {
+    if (!dir.empty()) open.push_back(dir);
   }
   // The root (the parent of /bin) or the home folder would open every entry.
   for (std::string& path : open) {
@@ -341,13 +417,11 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
     return path.empty() ? std::string() : CanonicalAccessPath(path).string();
   };
   SandboxInputs inputs;
-  // Outbound TCP. Allowed except at the strict level: git, npm and pip all
-  // need it. A value somebody wrote down wins over the level.
+  // Outbound TCP is allowed unless sandbox.network says otherwise: git, npm
+  // and pip all need it.
   inputs.read_only = preset == SandboxPreset::kReadOnly;
   inputs.allow_network =
-      !inputs.read_only && (SettingText(Cfg("UAGENT_SANDBOX_NET")).empty()
-                                ? preset != SandboxPreset::kStrict
-                                : BoolSetting(Cfg("UAGENT_SANDBOX_NET")));
+      !inputs.read_only && BoolSetting(Cfg("UAGENT_SANDBOX_NET"));
   inputs.workspace = CanonicalCwd();
   std::error_code ec;
   inputs.git_repository =
@@ -387,6 +461,15 @@ SandboxInputs CollectInputs(SandboxPreset preset) {
     }
 #endif
   }
+  // What a commit in a linked worktree writes of the repository: the
+  // worktree's own git directory, and the shared objects, refs and logs. Not
+  // the shared config or hooks, which later run commands in your own git.
+  const GitWorktree worktree = FindGitWorktree(inputs.workspace);
+  if (!worktree.git_dir.empty()) {
+    inputs.git_roots = {worktree.git_dir, worktree.common_dir + "/objects",
+                        worktree.common_dir + "/refs",
+                        worktree.common_dir + "/logs"};
+  }
   if (preset != SandboxPreset::kRelaxed) CollectReads(&inputs);
   return inputs;
 }
@@ -407,20 +490,12 @@ SandboxStatus InheritedStatus(const std::string& text) {
   status.mode = static_cast<SandboxMode>(mode);
   status.level = SandboxSupported();
   status.reason = JsonValue(from, "reason", "");
-  status.policy.allow_network = JsonValue(from, "network", false);
-  auto paths = [&](const char* key) {
-    std::vector<std::string> out;
-    for (const json& path : JsonValue(from, key, json::array())) {
-      if (path.is_string()) out.push_back(path.get<std::string>());
-    }
-    return out;
-  };
-  status.policy.writable_roots = paths("roots");
-  status.policy.denied_writes = paths("denied");
-  status.policy.withheld = paths("withheld");
-  status.policy.unreadable = paths("unreadable");
-  status.policy.readable = paths("readable");
-  status.policy.read_only = JsonValue(from, "read_only", false);
+  if (!SandboxPolicyFromJson(JsonValue(from, "policy", json()),
+                             &status.policy)) {
+    status.mode = SandboxMode::kRefused;
+    status.reason =
+        "the sandbox policy this session was started with is unreadable";
+  }
   return status;
 }
 
@@ -430,10 +505,23 @@ SandboxStatus BuildStatus() {
       !inherited.empty()) {
     return InheritedStatus(inherited);
   }
-  // A value that names no level is held to the default: never less confined
-  // than a typo suggests.
+  // A level somebody wrote down that names no level -- a typo, or `strict`,
+  // which is gone -- must not quietly become the default, which opens the
+  // network a stricter level would have closed. A saved one is dropped by the
+  // settings reader, which reports its key.
   SandboxPreset preset = SandboxPreset::kDefault;
-  ParseSandboxPreset(StringSetting(Cfg("UAGENT_SANDBOX")), &preset);
+  const std::string level = StringSetting(Cfg("UAGENT_SANDBOX"));
+  const std::vector<std::string> dropped =
+      ReadSettings(CanonicalCwd()).invalid_keys;
+  if (!ParseSandboxPreset(level, &preset) ||
+      std::find(dropped.begin(), dropped.end(), "sandbox.level") !=
+          dropped.end()) {
+    status.mode = SandboxMode::kRefused;
+    status.reason =
+        "sandbox.level is not a level (readonly, default, relaxed or off); "
+        "to deny the network set sandbox.network=false with the default level";
+    return status;
+  }
   if (preset == SandboxPreset::kOff) return status;
   status.level = SandboxSupported();
   // Test-only, and only ever stricter: it can make an enforceable host look
@@ -497,13 +585,7 @@ std::string SandboxInheritance() {
   const SandboxStatus& status = SandboxRuntime();
   return JsonDump({{"mode", static_cast<int>(status.mode)},
                    {"reason", status.reason},
-                   {"network", status.policy.allow_network},
-                   {"roots", status.policy.writable_roots},
-                   {"denied", status.policy.denied_writes},
-                   {"withheld", status.policy.withheld},
-                   {"unreadable", status.policy.unreadable},
-                   {"readable", status.policy.readable},
-                   {"read_only", status.policy.read_only}});
+                   {"policy", SandboxPolicyJson(status.policy)}});
 }
 
 json SandboxDiagnosticJson() {
@@ -537,6 +619,7 @@ json SandboxDiagnosticJson() {
           {"mechanism", MechanismName()},
           {"network", status.policy.allow_network ? "allowed" : "denied"},
           {"roots", status.policy.writable_roots},
+          {"readable", status.policy.readable},
           {"rejected", status.rejected},
           {"summary", std::move(summary)}};
 }
@@ -586,66 +669,90 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   // is not a path exec can use. /proc/self/exe is neither.
   std::string self = SelfExecutablePath();
   if (self.empty()) return {};
-  std::vector<std::string> argv{std::move(self), "--sandbox-child"};
-  std::vector<std::string> words = EncodeSandboxPolicy(policy);
-  argv.insert(argv.end(), std::make_move_iterator(words.begin()),
-              std::make_move_iterator(words.end()));
-  argv.emplace_back("--");
-  return argv;
+  // One argv word has a kernel limit of its own, below the limit on all of
+  // them; a policy past it is refused like an oversized profile.
+  std::string word = JsonDump(SandboxPolicyJson(policy));
+  if (word.size() > kSandboxPolicyArgBytes) return {};
+  return {std::move(self), "--sandbox-child", std::move(word), "--"};
 #else
   return {};
 #endif
 }
 
-std::vector<std::string> HiddenPaths() {
+namespace {
+
+// The paths HiddenPaths() considers, canonical and whether or not they exist
+// yet. They follow settings that need a restart, so they are worked out again
+// only when those, or the home folder, differ from last time.
+struct HiddenCandidates {
+  std::mutex mutex;
+  std::string key UAGENT_GUARDED_BY(mutex);
+  std::vector<std::string> paths UAGENT_GUARDED_BY(mutex);
+};
+
+std::vector<std::string> CandidateHiddenPaths() {
+  static HiddenCandidates cache;
   const std::string home = UserHome();
+  const std::string browser = SettingText(Cfg("UAGENT_BROWSER_DATA"));
+  const std::string revealed = StringSetting(Cfg("UAGENT_SANDBOX_REVEAL"));
+  const std::string hidden = StringSetting(Cfg("UAGENT_SANDBOX_HIDE"));
+  const std::string key = home + '\n' + GlobalBase() + '\n' + browser + '\n' +
+                          revealed + '\n' + hidden;
+  std::lock_guard lock(cache.mutex);
+  if (key == cache.key) return cache.paths;
   // A listed path may start with ~/. Relative paths name nothing: they would
   // resolve against whatever folder the session happens to be in.
-  auto absolute = [&](std::string path) {
-    if (path.starts_with("~/") && !home.empty()) path = home + path.substr(1);
+  auto absolute = [](const std::string& raw) {
+    const std::string path = ExpandHome(raw);
     return path.empty() || path.front() != '/'
                ? std::string()
                : CanonicalAccessPath(path).string();
   };
-  auto exists = [](const std::string& path) {
-    struct stat info{};
-    return !path.empty() && lstat(path.c_str(), &info) == 0;
-  };
   // The browser's profile, and the web host's own state: its paired devices'
   // tokens would let a command act as the person at a browser. uAgent's
   // settings hold the API keys.
-  std::vector<std::string> candidates = {
-      SettingText(Cfg("UAGENT_BROWSER_DATA")), GlobalBase() + "/web",
-      GlobalBase() + "/" + kConfigDir};
+  std::vector<std::string> candidates = {browser, GlobalBase() + "/web",
+                                         GlobalBase() + "/" + kConfigDir};
   if (!home.empty()) {
     for (std::string_view store : kHiddenCredentialStores) {
       candidates.push_back(home + "/" + std::string(store));
     }
   }
-  std::vector<std::string> revealed;
-  for (const std::string& raw :
-       SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_REVEAL")))) {
-    revealed.push_back(absolute(raw));
+  std::vector<std::string> shown;
+  for (const std::string& raw : SplitPathList(revealed)) {
+    shown.push_back(absolute(raw));
   }
-  std::vector<std::string> hidden;
+  std::vector<std::string> paths;
   auto add = [&](std::string path) {
-    if (exists(path) &&
-        std::find(hidden.begin(), hidden.end(), path) == hidden.end()) {
-      hidden.push_back(std::move(path));
+    if (!path.empty() &&
+        std::find(paths.begin(), paths.end(), path) == paths.end()) {
+      paths.push_back(std::move(path));
     }
   };
   for (const std::string& path : candidates) {
     const std::string canonical = absolute(path);
-    const bool shown = std::any_of(
-        revealed.begin(), revealed.end(), [&](const std::string& root) {
+    const bool lifted =
+        std::any_of(shown.begin(), shown.end(), [&](const std::string& root) {
           return !root.empty() && SandboxPathWithin(canonical, root);
         });
-    if (!shown) add(canonical);
+    if (!lifted) add(canonical);
   }
-  for (const std::string& raw :
-       SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_HIDE")))) {
-    add(absolute(raw));
-  }
+  for (const std::string& raw : SplitPathList(hidden)) add(absolute(raw));
+  cache.key = key;
+  cache.paths = paths;
+  return paths;
+}
+
+}  // namespace
+
+std::vector<std::string> HiddenPaths() {
+  // Existence is asked every time: a store made mid-session is hidden from the
+  // next command.
+  std::vector<std::string> hidden = CandidateHiddenPaths();
+  std::erase_if(hidden, [](const std::string& path) {
+    struct stat info{};
+    return lstat(path.c_str(), &info) != 0;
+  });
   return hidden;
 }
 
@@ -659,40 +766,22 @@ std::vector<std::string> SandboxUnenforcedWrites(const SandboxStatus& status) {
 }
 
 int SandboxChildMain(int argc, char** argv) {
-#if defined(__linux__) || defined(__APPLE__)
-  // argv[0] is the binary and argv[1] the flag that routed us here; the policy
-  // words start after them.
-  std::vector<std::string> words;
-  for (int i = 2; i < argc; ++i) words.emplace_back(argv[i]);
+#if defined(__linux__)
+  // argv[0] is the binary, argv[1] the flag that routed us here, argv[2] the
+  // policy and argv[3] the `--` before the command.
   SandboxPolicy policy;
-  size_t consumed = 0;
-  if (!DecodeSandboxPolicy(words, &policy, &consumed)) {
+  if (argc < 3 ||
+      !SandboxPolicyFromJson(json::parse(argv[2], nullptr, false), &policy)) {
     fprintf(stderr, "uagent: sandbox: malformed policy\n");
     return 125;
   }
-  if (consumed >= words.size() || words[consumed] != "--") {
+  if (argc < 5 || std::string_view(argv[3]) != "--") {
     fprintf(stderr, "uagent: sandbox: missing command\n");
     return 125;
   }
-  const int first = 2 + static_cast<int>(consumed) + 1;
-  if (first >= argc) {
-    fprintf(stderr, "uagent: sandbox: missing command\n");
-    return 125;
-  }
-#if defined(__APPLE__)
-  const std::string profile = SeatbeltProfile(policy);
-  if (profile.empty()) return 125;
-  std::vector<char*> command{const_cast<char*>("/usr/bin/sandbox-exec"),
-                             const_cast<char*>("-p"),
-                             const_cast<char*>(profile.c_str())};
-  for (int index = first; index < argc; ++index) command.push_back(argv[index]);
-  command.push_back(nullptr);
-  execv(command[0], command.data());
-#else
   if (!ApplyLandlock(policy)) return 125;
-  execvp(argv[first], argv + first);
-#endif
-  fprintf(stderr, "uagent: sandbox: exec %s failed (errno %d)\n", argv[first],
+  execvp(argv[4], argv + 4);
+  fprintf(stderr, "uagent: sandbox: exec %s failed (errno %d)\n", argv[4],
           errno);
   return errno == ENOENT ? 127 : 126;
 #else

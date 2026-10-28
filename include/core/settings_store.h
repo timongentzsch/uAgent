@@ -18,6 +18,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
@@ -42,6 +43,9 @@ struct SavedSettings {
   // What the document holds that was not taken: a name that is no setting, a
   // value its setting does not take. The rest applies.
   std::string warning;
+  // The keys of the settings whose value was not taken, for a reader that must
+  // not run on the default in their place.
+  std::vector<std::string> invalid_keys;
 };
 
 // What is saved for all conversations and for the conversations in `folder`.

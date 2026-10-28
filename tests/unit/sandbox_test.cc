@@ -151,11 +151,10 @@ void TestSandboxPolicy() {
 }
 
 void TestSandboxLevels() {
-  SandboxPreset preset = SandboxPreset::kStrict;
+  SandboxPreset preset = SandboxPreset::kOff;
   for (const auto& [text, expected] :
        {std::pair<const char*, SandboxPreset>{"readonly",
                                               SandboxPreset::kReadOnly},
-        {"strict", SandboxPreset::kStrict},
         {"default", SandboxPreset::kDefault},
         {"relaxed", SandboxPreset::kRelaxed},
         {"off", SandboxPreset::kOff}}) {
@@ -235,14 +234,10 @@ void TestSandboxLevels() {
   CHECK(!full.empty() && full.size() < kSeatbeltProfileLimit / 8);
 
   // The trampoline carries it.
-  std::vector<std::string> words = EncodeSandboxPolicy(crowded);
-  words.emplace_back("--");
   SandboxPolicy decoded;
-  size_t consumed = 0;
-  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
+  REQUIRE(SandboxPolicyFromJson(SandboxPolicyJson(crowded), &decoded));
   CHECK(decoded.hidden == crowded.hidden);
   CHECK(decoded.withheld == crowded.withheld);
-  CHECK(words[consumed] == "--");
 }
 
 // Where Landlock cannot deny a write, it is undone and said.
@@ -393,14 +388,10 @@ void TestSandboxReads() {
   CHECK(hidden != std::string::npos);
 
   // Both lists reach the Linux trampoline and a delegated child.
-  std::vector<std::string> words = EncodeSandboxPolicy(policy);
-  words.emplace_back("--");
   SandboxPolicy decoded;
-  size_t consumed = 0;
-  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
+  REQUIRE(SandboxPolicyFromJson(SandboxPolicyJson(policy), &decoded));
   CHECK(decoded.unreadable == policy.unreadable);
   CHECK(decoded.readable == policy.readable);
-  CHECK(words[consumed] == "--");
 
   // In a container, projects sit side by side outside the home folder: the
   // workspace's neighbours close. One inside a closed folder adds nothing.
@@ -424,50 +415,39 @@ void TestSandboxReads() {
 void TestSandboxTrampolineArgs() {
   SandboxPolicy policy;
   policy.writable_roots = {"/w", "/private/tmp"};
+  policy.denied_writes = {"/w/.mcp.json"};
+  policy.hidden = {"/b/browser"};
   policy.allow_network = false;
-  std::vector<std::string> words = EncodeSandboxPolicy(policy);
-  // The command follows the policy words, so a decoder that miscounts would
-  // silently confine the wrong argv.
-  words.emplace_back("--");
-  words.emplace_back("/bin/sh");
-
+  policy.read_only = true;
   SandboxPolicy decoded;
-  size_t consumed = 0;
-  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
-  CHECK(consumed == 4);
-  CHECK(words[consumed] == "--");
+  REQUIRE(SandboxPolicyFromJson(SandboxPolicyJson(policy), &decoded));
   CHECK(decoded.writable_roots == policy.writable_roots);
+  CHECK(decoded.denied_writes == policy.denied_writes);
+  CHECK(decoded.hidden == policy.hidden);
   CHECK(!decoded.allow_network);
+  CHECK(decoded.read_only);
 
   SandboxPolicy allowed;
   allowed.allow_network = true;
   SandboxPolicy round;
-  REQUIRE(DecodeSandboxPolicy(EncodeSandboxPolicy(allowed), &round, &consumed));
+  REQUIRE(SandboxPolicyFromJson(SandboxPolicyJson(allowed), &round));
   CHECK(round.allow_network);
   CHECK(round.writable_roots.empty());
-  CHECK(consumed == 2);
-
-  // Hidden paths ride after the roots.
-  policy.hidden = {"/b/browser"};
-  words = EncodeSandboxPolicy(policy);
-  words.emplace_back("--");
-  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
-  CHECK(decoded.hidden == policy.hidden);
-  CHECK(decoded.writable_roots == policy.writable_roots);
-  CHECK(words[consumed] == "--");
 
   // Every malformed form has to fail rather than decode to an empty policy,
   // which the trampoline would enforce as no confinement at all.
   SandboxPolicy ignored;
-  CHECK(!DecodeSandboxPolicy({}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=1"}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=maybe", "roots=0"}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=1", "roots="}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=1", "roots=x"}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=1", "count=1", "/w"}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=1", "roots=2", "/w"}, &ignored, &consumed));
-  CHECK(!DecodeSandboxPolicy({"net=1", "roots=99999999999999999999", "/w"},
-                             &ignored, &consumed));
+  CHECK(!SandboxPolicyFromJson(json(), &ignored));
+  CHECK(!SandboxPolicyFromJson(json::object(), &ignored));
+  CHECK(!SandboxPolicyFromJson({{"network", "yes"}, {"roots", json::array()}},
+                               &ignored));
+  CHECK(!SandboxPolicyFromJson({{"network", true}}, &ignored));
+  CHECK(!SandboxPolicyFromJson({{"network", true}, {"roots", "/w"}}, &ignored));
+  CHECK(!SandboxPolicyFromJson({{"network", true}, {"roots", {"/w", 1}}},
+                               &ignored));
+  CHECK(!SandboxPolicyFromJson(
+      {{"network", true}, {"roots", json::array()}, {"unreadable", "/h"}},
+      &ignored));
 
   // The wrapper has to name a program the spawn can actually exec. It once
   // took argv[0], which only Bootstrap records, so every binary that links
@@ -480,6 +460,16 @@ void TestSandboxTrampolineArgs() {
     CHECK(!wrapper.front().empty());
     CHECK(wrapper.front().front() == '/');
     CHECK(access(wrapper.front().c_str(), X_OK) == 0);
+#if defined(__linux__)
+    // The policy travels as one argv word, so one past the kernel's limit on a
+    // word is refused rather than truncated.
+    SandboxStatus crowded = status;
+    for (int index = 0; index < 5000; ++index) {
+      crowded.policy.unreadable.push_back(
+          "/home/u/folder-" + std::to_string(index) + std::string(20, 'x'));
+    }
+    CHECK(SandboxWrapperArgv(crowded).empty());
+#endif
   } else {
     CHECK(wrapper.empty());
   }

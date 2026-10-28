@@ -122,7 +122,6 @@ bool ParseSandboxPreset(std::string_view text, SandboxPreset* preset) {
   };
   for (const Spelling& spelling :
        {Spelling{"readonly", SandboxPreset::kReadOnly},
-        {"strict", SandboxPreset::kStrict},
         {"default", SandboxPreset::kDefault},
         {"relaxed", SandboxPreset::kRelaxed},
         {"off", SandboxPreset::kOff}}) {
@@ -246,6 +245,9 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   for (const std::string& root : inputs.extra_roots) {
     Offer(root, inputs, &accepted, &result.rejected);
   }
+  for (const std::string& root : inputs.git_roots) {
+    Offer(root, inputs, &accepted, &result.rejected);
+  }
   // The relaxed level's home is no ordinary root: it holds ~/.uagent, which
   // Acceptable() would refuse, so it is withheld from it here instead.
   if (!inputs.open_home.empty()) {
@@ -311,72 +313,37 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
   return out;
 }
 
-std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
-  std::vector<std::string> words;
-  words.reserve(policy.writable_roots.size() + policy.hidden.size() +
-                policy.withheld.size() + policy.unreadable.size() +
-                policy.readable.size() + 2);
-  words.emplace_back(policy.allow_network ? "net=1" : "net=0");
-  words.emplace_back("roots=" + std::to_string(policy.writable_roots.size()));
-  words.insert(words.end(), policy.writable_roots.begin(),
-               policy.writable_roots.end());
-  for (const std::string& hidden : policy.hidden) {
-    words.push_back("hide=" + hidden);
-  }
-  for (const std::string& withheld : policy.withheld) {
-    words.push_back("withhold=" + withheld);
-  }
-  for (const std::string& closed : policy.unreadable) {
-    words.push_back("unread=" + closed);
-  }
-  for (const std::string& open : policy.readable) {
-    words.push_back("read=" + open);
-  }
-  return words;
+json SandboxPolicyJson(const SandboxPolicy& policy) {
+  return {{"network", policy.allow_network}, {"roots", policy.writable_roots},
+          {"denied", policy.denied_writes},  {"withheld", policy.withheld},
+          {"hidden", policy.hidden},         {"unreadable", policy.unreadable},
+          {"readable", policy.readable},     {"read_only", policy.read_only}};
 }
 
-bool DecodeSandboxPolicy(const std::vector<std::string>& words,
-                         SandboxPolicy* policy, size_t* consumed) {
-  if (words.size() < 2) return false;
-  if (words[0] != "net=1" && words[0] != "net=0") return false;
-  policy->allow_network = words[0] == "net=1";
-  constexpr std::string_view kRootsPrefix = "roots=";
-  if (!words[1].starts_with(kRootsPrefix)) return false;
-  std::string_view digits =
-      std::string_view(words[1]).substr(kRootsPrefix.size());
-  if (digits.empty()) return false;
-  size_t count = 0;
-  for (char digit : digits) {
-    if (digit < '0' || digit > '9') return false;
-    count = count * 10 + static_cast<size_t>(digit - '0');
-    // The encoder never emits more roots than a policy holds, so a count this
-    // large is a malformed argv rather than a big policy.
-    if (count > words.size()) return false;
+bool SandboxPolicyFromJson(const json& value, SandboxPolicy* policy) {
+  if (!value.is_object() || !value.contains("network") ||
+      !value["network"].is_boolean() || !value.contains("roots")) {
+    return false;
   }
-  if (words.size() < 2 + count) return false;
-  auto first = words.begin() + 2;
-  policy->writable_roots.assign(first, first + static_cast<ptrdiff_t>(count));
-  // Paths are absolute, so these words are never the `--` that ends the policy.
-  size_t index = 2 + count;
-  policy->hidden.clear();
-  policy->withheld.clear();
-  policy->unreadable.clear();
-  policy->readable.clear();
-  for (; index < words.size(); ++index) {
-    if (words[index].starts_with("hide=/")) {
-      policy->hidden.push_back(words[index].substr(5));
-    } else if (words[index].starts_with("withhold=/")) {
-      policy->withheld.push_back(words[index].substr(9));
-    } else if (words[index].starts_with("unread=/")) {
-      policy->unreadable.push_back(words[index].substr(7));
-    } else if (words[index].starts_with("read=/")) {
-      policy->readable.push_back(words[index].substr(5));
-    } else {
-      break;
+  auto paths = [&](const char* key, std::vector<std::string>* out) {
+    out->clear();
+    const auto found = value.find(key);
+    if (found == value.end()) return true;
+    if (!found->is_array()) return false;
+    for (const json& path : *found) {
+      if (!path.is_string()) return false;
+      out->push_back(path.get<std::string>());
     }
-  }
-  *consumed = index;
-  return true;
+    return true;
+  };
+  policy->allow_network = value["network"].get<bool>();
+  policy->read_only = JsonValue(value, "read_only", false);
+  return paths("roots", &policy->writable_roots) &&
+         paths("denied", &policy->denied_writes) &&
+         paths("withheld", &policy->withheld) &&
+         paths("hidden", &policy->hidden) &&
+         paths("unreadable", &policy->unreadable) &&
+         paths("readable", &policy->readable);
 }
 
 }  // namespace uagent

@@ -123,21 +123,22 @@
   margin: var(--space-2) 0;
 }
 .mention-image > .attachment-tile,
-.tool-file > .attachment-tile {
+.node-file > .attachment-tile {
   width: auto;
   height: auto;
   max-width: min(100%, var(--popover));
 }
 .mention-image img,
-.tool-file > .attachment-tile img {
+.node-file > .attachment-tile img {
   height: auto;
   max-height: var(--pane-s);
   object-fit: contain;
 }
-.tool-file > .attachment-tile {
+/* A file the agent shared shows larger, up to the row's width. */
+.node-file > .attachment-tile {
   max-width: 100%;
 }
-.tool-file > .attachment-tile img {
+.node-file > .attachment-tile img {
   max-height: var(--popover);
 }
 /* The viewer: the image fits the dialog; tapping it closes. */

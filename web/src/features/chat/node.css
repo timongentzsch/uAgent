@@ -1,0 +1,211 @@
+/* The transcript tree's rows (node.tsx): one --row-tall line each, with the
+   column's one gap between them at every depth. A row is a chevron, its
+   headline cut short with an ellipsis and its result word kept whole. */
+.node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+  padding-inline: var(--inset-x);
+}
+.node-kids .node {
+  padding-inline: 0;
+}
+.node-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--row);
+  padding: 0;
+  text-align: start;
+  white-space: nowrap;
+}
+/* A row with nothing to open keeps the chevron's place. */
+div.node-row > .row-chevron {
+  visibility: hidden;
+}
+.node-row[aria-expanded="true"] > .row-chevron {
+  rotate: 90deg;
+}
+.node-headline {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The headline comes first: the word takes at most two fifths of the row,
+   so the headline keeps more than half of it past the chevron, and cuts
+   short with an ellipsis; the whole of it is in the opened row. */
+.node-word {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+/* State shows only when it matters: a failed row reads in the error colour,
+   a cancelled one is muted, a running one shimmers softly. */
+.node.failed > .node-row :is(.node-headline, .node-word) {
+  color: var(--removed);
+}
+.node.cancelled > .node-row .node-headline {
+  color: var(--muted);
+}
+.node.running > .node-row .node-headline {
+  background:
+    linear-gradient(90deg, var(--muted) 30%, var(--text) 50%, var(--muted) 70%)
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: node-shimmer var(--motion-shimmer) linear infinite;
+}
+@keyframes node-shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
+/* A forced palette cannot draw text through a gradient: plain text. */
+@media (forced-colors: active) {
+  .node.running > .node-row .node-headline {
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: CanvasText;
+    animation: none;
+  }
+}
+/* What an open row holds sits under its headline, past the chevron, with
+   the same gap between its parts as between rows. */
+.node-open,
+.node-kids,
+.node-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+/* Under the chevron's middle: an opened body, and the rows under a row
+   along a rule. */
+.node-open {
+  margin-left: var(--space-4);
+}
+.node-body,
+.node-kids {
+  padding-left: var(--space-4);
+}
+.node-kids {
+  border-left: var(--border);
+}
+.node-body:empty {
+  display: none;
+}
+/* A body in a box: text, a command's output, Markdown and a diff. */
+.node-text,
+.node-body > .diff {
+  margin: 0;
+  padding: var(--space-2) var(--pad);
+  border: var(--border);
+  background: var(--surface);
+  max-height: calc(12lh + 2 * var(--space-2));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+pre.node-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.node-body > .diff {
+  padding-inline: 0;
+}
+/* A command's output: a terminal-like box about six lines tall. */
+.node-tail {
+  max-height: calc(6lh + 2 * var(--space-2));
+}
+.node-tail > .node-action {
+  display: block;
+}
+.node.failed .node-text {
+  color: var(--removed);
+}
+/* A reply's thinking reads quieter than what it says. */
+.node[data-kind="thinking"] > .node-open .node-text {
+  color: var(--muted);
+}
+/* The input a call sent: one look per part kind, whatever the tool. */
+.node-command {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.node-command::before {
+  content: "$ ";
+  color: var(--muted);
+}
+.node-code {
+  margin: 0;
+}
+.node-code .code-block {
+  margin: var(--space-2) 0 0;
+}
+.node-code pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.node-code figcaption {
+  font-size: var(--font-small);
+  color: var(--muted);
+}
+.node-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--font-small);
+}
+.node-fields dt {
+  color: var(--muted);
+}
+.node-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+/* What can be asked of an open row: quiet underlined words on one line. */
+.node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+.node-action {
+  min-height: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--font-small);
+  text-decoration: underline;
+}
+/* A file the agent shared: a preview where it is safe, then name, size,
+   open and download. */
+.node-file {
+  display: grid;
+  gap: var(--space-2);
+  max-width: var(--sheet);
+  margin: 0;
+}
+.node-file > iframe {
+  width: 100%;
+  height: var(--pane);
+  border: var(--border);
+  background: var(--surface);
+}
+.node-file > figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}

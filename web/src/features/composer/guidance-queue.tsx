@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { UserBlock } from "../../shared/types.ts";
+import type { Outgoing } from "../../shared/types.ts";
 import { outgoingStatus } from "../../shared/message-view.ts";
 import { Button } from "../../shared/ui.tsx";
 import { plural } from "../../shared/quantities.ts";
@@ -13,17 +13,17 @@ export default function GuidanceQueue({
   recall,
   insert,
 }: {
-  items: UserBlock[];
+  items: Outgoing[];
   online: boolean;
   held: boolean;
-  recall?: (block: UserBlock) => Promise<void>;
-  insert?: (block: UserBlock) => Promise<void>;
+  recall?: (item: Outgoing) => Promise<void>;
+  insert?: (item: Outgoing) => Promise<void>;
 }) {
   const [working, setWorking] = useState<Set<string>>(new Set());
   if (!items.length) return null;
   const run = async (
-    item: UserBlock,
-    action: (block: UserBlock) => Promise<void>,
+    item: Outgoing,
+    action: (item: Outgoing) => Promise<void>,
   ) => {
     setWorking((prior) => new Set(prior).add(item.id));
     try {
@@ -44,7 +44,7 @@ export default function GuidanceQueue({
             key={item.id}
             aria-busy={working.has(item.id)}
           >
-            <p class="queue-text">{item.text}</p>
+            <p class="queue-text">{item.body?.text}</p>
             {!!item.files?.length && (
               <p class="queue-files muted">
                 {item.files.map((file) => file.name).join(", ")}

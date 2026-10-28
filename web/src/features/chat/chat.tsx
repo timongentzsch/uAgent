@@ -1,5 +1,5 @@
 import type {
-  Block,
+  Node,
   Session,
   SessionRef,
   Snapshot,
@@ -15,27 +15,37 @@ import {
 import { useHostContext } from "../../state/host-context.ts";
 import { isRunning } from "../../state/attention.ts";
 import HistoryStart from "./history-start.tsx";
-import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import { prepareHistoryNodes } from "./message.tsx";
+import { Transcript } from "./node.tsx";
 import "./chat.css";
 
 // The transcript: the conversation's rows, older history and the placeholder
 // shown before the snapshot. Used by the chat page.
 
-export { prepareHistoryBlocks } from "./message.tsx";
+export { prepareHistoryNodes } from "./message.tsx";
 
 // A request and its reply, the shape a conversation opens with.
-const SAMPLE: Block[] = [
+const SAMPLE: Node[] = [
   {
     id: "placeholder-request",
-    kind: "user",
-    text: "A request about this long, asking for one change.",
+    parent: null,
+    kind: "turn",
+    body: {
+      kind: "text",
+      text: "A request about this long, asking for one change.",
+    },
   },
   {
     id: "placeholder-reply",
-    kind: "assistant",
-    text:
-      "A reply opens with what it found and what it changed, in a sentence or two of this length.\n\n" +
-      "A second paragraph explains the change and what to check next.",
+    parent: "placeholder-request",
+    kind: "message",
+    role: "assistant",
+    body: {
+      kind: "markdown",
+      text:
+        "A reply opens with what it found and what it changed, in a sentence or two of this length.\n\n" +
+        "A second paragraph explains the change and what to check next.",
+    },
   },
 ];
 
@@ -43,7 +53,7 @@ const SAMPLE: Block[] = [
 function TranscriptPlaceholder({ session }: { session: SessionRef }) {
   return (
     <Placeholder label="Loading conversation…">
-      <MessageRows blocks={SAMPLE} online={false} session={session} />
+      <Transcript nodes={SAMPLE} online={false} session={session} />
     </Placeholder>
   );
 }
@@ -54,7 +64,7 @@ type ChatProps = {
   selected: string;
   snapshot?: Snapshot;
   loadError?: unknown;
-  blocks: Block[];
+  nodes: Node[];
   session: Session;
   older: () => Promise<void>;
   preserveWhile: (load: () => Promise<void>) => Promise<void>;
@@ -66,7 +76,7 @@ function Chat({
   selected,
   snapshot,
   loadError,
-  blocks,
+  nodes,
   session,
   older,
   preserveWhile,
@@ -78,7 +88,7 @@ function Chat({
   const { value: preparedKey } = useResource(
     () =>
       snapshot
-        ? prepareHistoryBlocks(snapshot.state?.view?.blocks || [])
+        ? prepareHistoryNodes(snapshot.state?.view?.blocks || [])
             .catch(() => {}) // The message renderer shows its own retryable error.
             .then(() => selected)
         : undefined,
@@ -124,7 +134,7 @@ function Chat({
         {(snapshot ? !prepared : !loadError) && (
           <TranscriptPlaceholder session={session} />
         )}
-        {snapshot && prepared && blocks.length === 0 && (
+        {snapshot && prepared && nodes.length === 0 && (
           <Welcome
             title="What are we working on?"
             tips={
@@ -156,7 +166,7 @@ function Chat({
           </Welcome>
         )}
         {snapshot && prepared && (
-          <MessageRows blocks={blocks} online={online} session={session} />
+          <Transcript nodes={nodes} online={online} session={session} />
         )}
         {session.error && (
           <p class="failure" role="alert">

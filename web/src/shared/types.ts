@@ -79,19 +79,13 @@ export interface Exchange {
   served_by?: string;
   generation_id?: string;
 }
-interface ToolActivity {
-  // The call's intent: explore, research, edit, verify, run, setup,
-  // delegate, memory or share.
-  category?: string;
-  label?: string;
-  group?: { id: string; label: string };
-}
 // One state vocabulary for every call and receipt.
 export type RowState = "running" | "ok" | "failed" | "cancelled";
 // What a finished call's result was. The host words it: `word` is the
-// whole subtitle ("exit 1 · 2.3s"); the facts behind it are for reading.
+// whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
+// behind it are for reading.
 export interface ResultFacts {
-  word: string;
+  word?: string;
   exit?: { code?: number; signal?: number };
   added?: number;
   removed?: number;
@@ -110,13 +104,6 @@ export type BodyKind =
   | "image"
   | "link"
   | "fields";
-// The half of a tool row and a receipt that says how it ended.
-interface Finished {
-  // Missing means it has not finished.
-  state?: RowState;
-  result?: ResultFacts;
-  body_kind?: BodyKind;
-}
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
   | { kind: "command"; text: string }
@@ -186,8 +173,9 @@ export interface MemoryNote {
   minor?: boolean;
 }
 // One node of the transcript tree as the host sends it (include/agent/
-// node.h): `parent` links it into the tree, and the fields beside the
-// contract's are those its kind carries.
+// node.h): `parent` links it into the tree. A node with a headline is a row
+// that opens to its body and children; the others are messages and a turn's
+// footer. The fields beside the contract's are those its kind carries.
 export interface Node {
   id: string;
   parent: string | null;
@@ -209,27 +197,36 @@ export interface Node {
   body?: { kind: BodyKind; text: string; truncated?: boolean; tail?: string };
   // A message's author: you (or mail), or the agent.
   role?: "user" | "assistant";
+  origin?: string;
   request_id?: string;
   incoming?: number;
   streaming?: boolean;
   input?: ToolPart[];
   parts?: ToolPart[];
-  category?: string;
+  // Set when a diff body is only the opening of a stored whole.
   change_path?: string;
-  origin?: string;
   files?: Asset[];
+  deliveries?: Delivery[];
+  unavailable_images?: number;
+  // A reply's model call, and the HTTP capture of a turn's failed ones.
+  http?: Exchange[];
+  route?: string;
+  served_by?: string;
+  duration_ms?: number;
+  ttft_ms?: number;
+  tokens_per_second?: number;
+  usage?: Usage;
+  usage_reported?: boolean;
   memory?: MemoryNote;
+  activity_id?: number;
+  agent_id?: string;
+  command?: string;
   summary?: TurnSummary;
-  compaction?: CompactionBlock["compaction"];
-}
-// The fields every block carries; `kind` says which others it has.
-interface BlockBase {
-  id: string;
-  sequence?: number;
-  time?: string;
-  text?: string;
-  truncated?: boolean;
-  turn_root?: string;
+  // A message of yours this device holds until the host's own node
+  // replaces it: where it is on its way (see outgoingStatus), and why the
+  // host refused it.
+  status?: string;
+  error?: string;
 }
 // How an attachment reached the model.
 interface Delivery {
@@ -238,149 +235,21 @@ interface Delivery {
   delivery: string;
   path: string;
 }
-// A message a turn answers; its failed model calls keep their HTTP capture
-// on it, as the reply that never came cannot.
-interface Answered {
-  http?: Exchange[];
-}
-// What a person typed, or mail from another session or the harness.
-export interface UserBlock extends BlockBase, Answered {
-  kind: "user";
-  // Where a message of yours is on its way (see outgoingStatus).
-  status?: string;
-  request_id?: string;
-  session_id?: string;
-  files?: Asset[];
-  origin?: string;
-  deliveries?: Delivery[];
-  unavailable_images?: number;
-  // Why the host refused it, on a message held here until it confirms.
-  error?: string;
-}
-// Files added to context: a person's, or those a tool's result brought.
-export interface AttachmentBlock extends BlockBase, Answered {
-  kind: "attachment";
-  request_id?: string;
-  files?: Asset[];
-  origin?: string;
-  // Tool calls whose results added these files to context.
-  source_call_ids?: string[];
-  deliveries?: Delivery[];
-  unavailable_images?: number;
-}
-export interface AssistantBlock extends BlockBase, Answered {
-  kind: "assistant";
-  incoming?: number;
-  response_id?: string;
-  reasoning?: string;
-  streaming?: boolean;
-  request_id?: string;
-  files?: Asset[];
-  deliveries?: Delivery[];
-  unavailable_images?: number;
-  duration_ms?: number;
-  ttft_ms?: number;
-  tokens_per_second?: number;
-  route?: string;
-  served_by?: string;
-  usage?: Usage;
-  usage_reported?: boolean;
-}
-// One tool call and its result, joined into one row.
-export interface ToolBlock extends BlockBase, Answered, Finished {
-  kind: "tool_result";
-  response_id?: string;
-  occurrence_id?: string;
-  call_id?: string;
-  detail_id?: string;
-  name?: string;
-  arguments?: JSONValue;
-  view?: ToolView;
-  activity?: ToolActivity;
-  duration_ms?: number;
-  // The diff lines of what the call changed; its counts are in `result`.
-  change?: string;
-  change_path?: string; // set when `change` is only a stored diff's opening
-  // Parts that stay visible on the row: files shared, work started.
-  parts?: ToolPart[];
-  // The end of a result whose text preview holds only its start.
-  tail?: string;
-  // Files a tool's attachment block brought; the page joins them to the row.
-  files?: Asset[];
-}
-// A note the host adds: a finished background command or agent, or a memory
-// saved, changed or forgotten.
-export interface ActivityBlock extends BlockBase, Finished {
-  kind: "activity";
-  incoming?: number;
+// What the inspector opens: a row's own work, or the one a link names.
+export interface ActivityTarget {
+  id: string;
+  label: string;
+  state?: RowState;
+  text?: string;
+  command?: string;
   activity_id?: number;
   agent_id?: string;
-  command?: string;
-  activity?: ToolActivity;
-  view?: ToolView;
-  parts?: ToolPart[];
   memory?: MemoryNote;
 }
-// The footer a turn leaves.
-export interface TurnSummaryBlock extends BlockBase {
-  kind: "turn_summary";
-  summary: TurnSummary;
-}
-export interface CompactionBlock extends BlockBase {
-  kind: "compaction";
-  compaction: {
-    automatic: boolean;
-    messages_before: number;
-    messages_after: number;
-    duration_ms: number;
-  };
-}
-export type Block =
-  | UserBlock
-  | AttachmentBlock
-  | AssistantBlock
-  | ToolBlock
-  | ActivityBlock
-  | TurnSummaryBlock
-  | CompactionBlock;
-// What the inspector opens: a block's own work, or the one a link names.
-export type ActivityTarget = Pick<
-  ActivityBlock,
-  | "id"
-  | "state"
-  | "text"
-  | "command"
-  | "activity"
-  | "activity_id"
-  | "agent_id"
-  | "memory"
->;
-// Rows the page makes of blocks. A fold of several is a group; the rest are
-// the host's blocks.
-interface GroupBlock extends BlockBase {
-  kind: "group";
-}
-interface Presented {
-  children?: PresentedBlock[];
-  // A folded row's own line: the host's group label, or a turn's work.
-  label?: string;
-  key?: string;
-  // The reply that made a tool call, as much of it as the row shows.
-  source?: Pick<
-    AssistantBlock,
-    "kind" | "id" | "response_id" | "time" | "http"
-  >;
-  result_loaded?: boolean;
-}
-export type PresentedBlock = (Block | GroupBlock) & Presented;
-// A row that reads as a tool call: a call and its result, or a receipt.
-export type ToolRowBlock = (ToolBlock | ActivityBlock) & Presented;
 // A message of yours, held until the host confirms it.
-export type Outgoing = UserBlock & { request_id: string; session_id: string };
-// A view as the host sends it, before the page adopts it (store.ts).
-export type NodeView = Omit<View, "blocks"> & { blocks: Node[] };
+export type Outgoing = Node & { request_id: string; session_id: string };
 export interface View {
-  blocks: Block[];
+  blocks: Node[];
   before?: number;
   more?: boolean;
   dropped_segments?: number;
@@ -636,21 +505,9 @@ export interface SlashCommand {
   // Navigation a client performs itself; a runtime refuses it.
   client_only?: boolean;
 }
-// What one verbosity level shows, as the host's table states it (see
-// DetailPolicy in verbosity.h): how tool work is laid out, and what is shown
-// without asking.
-export interface DetailPolicy {
-  work: "turn" | "groups" | "calls";
-  // Thinking: absent, a closed row, or shown.
-  reasoning: "hidden" | "closed" | "open";
-  open: boolean;
-  minor: boolean;
-}
+// The detail level a device starts at until it chooses its own.
 export interface Verbosity {
   level: string;
-  levels: Record<string, DetailPolicy>;
-  // The level names from least detail to most.
-  order: string[];
 }
 // A workspace: a folder the host keeps for conversations that belong to no
 // folder, under the name its user gave it.
@@ -714,7 +571,6 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   parts?: ToolPart[];
   status?: string | number;
   duration_ms?: number;
-  activity?: ToolActivity;
   presentation?: {
     status?: string;
     title?: string;
@@ -729,7 +585,7 @@ export interface BlockPatch {
   kind: "block";
   block?: Node;
   id?: string;
-  set?: Pick<AssistantBlock, "streaming">;
+  set?: Pick<Node, "streaming">;
   append?: { text?: string };
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.

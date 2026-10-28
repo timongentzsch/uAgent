@@ -27,6 +27,9 @@ void SetBody(json& node, std::string_view kind, const std::string& text,
 bool Blank(std::string_view text);
 std::string WorkId(std::string_view turn);
 std::string ThinkingId(std::string_view message);
+// A reply's thinking: a node of its own under its turn's work.
+json ThinkingNode(std::string_view message, std::string_view work,
+                  json fields = json::object());
 
 // A call's headline: its present verb while it runs, its past one after. A
 // call refused before it ran has no verb and reads as what it sent.
@@ -35,14 +38,19 @@ json CallHeadline(const json& view, std::string_view state,
 // A call as recorded or announced (tool.call); it sits under its group, else
 // under the work of `turn`.
 json CallNode(const json& record, const std::string& turn);
+// The files a call handed to the person, as a node of their own under its
+// turn, so they show at every depth; null when it handed none. The call's
+// node keeps its other parts.
+json FilesNode(const json& record, std::string_view turn);
 // A turn's work from its counts ({items, edited, errors}), finished by the
-// turn's `summary` when it has one: "Worked · 6 steps · 1 error · 2m 4s".
+// turn's `summary` when it has one: headline "Worked" and its counts
+// ("6 steps · 1 error"), and how long it took as the result word.
 json WorkNode(const std::string& turn, const json& counts,
               const json* summary = nullptr);
 // The groups a step's calls fold into, from their activities: adjacent,
 // successful calls of one groupable intent. Each {id, verb, members}.
 std::vector<json> GroupCalls(const std::vector<json>& activities);
-// A group as recorded: {verb, calls, turn}.
+// A group as recorded: {verb, calls, turn}: "Explored" and "3 calls".
 json GroupNode(const std::string& id, const json& group);
 // A recorded entry: a receipt or a compaction is a notice, a turn's summary
 // its footer.

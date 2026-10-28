@@ -13,11 +13,10 @@ import type {
   Activity,
   ActivityDetail,
   ActivityTarget,
-  Block,
   Agent,
   InspectorTarget,
   JSONValue,
-  NodeView,
+  Node,
   RawOptions,
   Report,
   SessionRef,
@@ -34,8 +33,8 @@ import { ChevronLeft } from "lucide-preact";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
-import { prependHistoryPage } from "../../state/history-page.ts";
-import { adoptView } from "../../state/store.ts";
+import { keepFirst, mergeNodes } from "../../shared/tree.ts";
+import { maxHistoryNodes } from "../../shared/limits.ts";
 import {
   Button,
   cleanText,
@@ -56,7 +55,8 @@ import {
 import Raw from "./raw.tsx";
 import { StatisticsContent } from "./statistics.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import { prepareHistoryNodes } from "./message.tsx";
+import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
 // A page shown over the current detail inside the same sheet (Back returns),
@@ -119,20 +119,23 @@ async function fetchActivityDetail(
   );
   if (response.pending)
     throw new Error("Activity is still loading. Try again shortly.");
-  response.result.conversation = adoptView(
-    response.result.conversation as unknown as NodeView | undefined,
-  );
-  await prepareHistoryBlocks(response.result.conversation?.blocks || []);
+  await prepareHistoryNodes(response.result.conversation?.blocks || []);
   return {
     ...item,
     ...response.result,
     olderWindow: !!before,
     ...(before && prior?.conversation && response.result.conversation
       ? {
-          conversation: prependHistoryPage(
-            response.result.conversation,
-            prior.conversation,
-          ),
+          conversation: {
+            ...response.result.conversation,
+            blocks: keepFirst(
+              mergeNodes(
+                response.result.conversation.blocks,
+                prior.conversation.blocks,
+              ),
+              maxHistoryNodes,
+            ),
+          },
         }
       : {}),
   };
@@ -254,7 +257,7 @@ export default function Inspector({
       ...item,
       activity_id: block.activity_id,
       agent_id: block.agent_id,
-      label: block.activity?.label || "Recorded event",
+      label: block.label || "Recorded event",
       status: block.state,
       memory: block.memory,
       command: block.command || item?.command,
@@ -444,8 +447,8 @@ function DetailBody({
   const [notice, setNotice] = useState("");
   const [model, setModel] = useState("");
   const showTurnStats = useCallback(
-    (block: Pick<Block, "id">) =>
-      page({ title: "Subagent statistics", stats: { blockId: block.id } }),
+    (node: Pick<Node, "id">) =>
+      page({ title: "Subagent statistics", stats: { blockId: node.id } }),
     [page],
   );
   const childState = childStateOf(detail);
@@ -517,7 +520,7 @@ function DetailBody({
           {
             activity_id: block.activity_id,
             agent_id: block.agent_id,
-            label: block.activity?.label || "Subagent",
+            label: block.label || "Subagent",
             status: block.state,
             command: block.command,
             output: block.text,
@@ -630,8 +633,8 @@ function DetailBody({
               />
               {detail.conversation ? (
                 <MessageActions.Provider value={threadActions}>
-                  <MessageRows
-                    blocks={detail.conversation.blocks}
+                  <Transcript
+                    nodes={detail.conversation.blocks}
                     online={online}
                     session={childSession}
                   />

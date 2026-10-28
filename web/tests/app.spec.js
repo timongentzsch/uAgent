@@ -1,4 +1,4 @@
-import { test, expect, startInFolder } from "./fixtures.js";
+import { test, expect, startInFolder, openRow } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 test.use({ paired: false });
@@ -95,10 +95,14 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     ),
   ).toBeLessThan(2);
   await expect(page.getByRole("button", { name: /^Reply to:/ })).toHaveCount(0);
-  // An answer owns its metadata and actions in its header.
-  const header = reply.locator("header");
-  await header.getByLabel(/^Actions for /).click();
-  await header
+  // An answer has no header: its time and menu end its turn's footer.
+  await expect(reply.locator("header")).toHaveCount(0);
+  await page
+    .locator(".turn-footer")
+    .last()
+    .getByRole("button", { name: "Actions for this answer" })
+    .click();
+  await page
     .getByRole("menuitem", { name: "HTTP request/response", exact: true })
     .click();
   await expect(page.getByRole("dialog").locator("pre").last()).toContainText(
@@ -111,9 +115,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page
     .getByRole("button", { name: "Close http request/response", exact: true })
     .click();
-  await expect(reply.locator("header button[aria-label^='Copy']")).toHaveCount(
-    0,
-  );
+  await expect(reply.locator("button[aria-label^='Copy']")).toHaveCount(1);
   const code = reply.locator(".code-block");
   await expect(code).toHaveCount(1);
   await code.hover();
@@ -124,10 +126,11 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "print('hello')\n",
   );
-  await expect(header.locator("time")).toHaveAttribute("datetime", /T/);
-  await header.getByLabel(/^Actions for /).click();
-  await header
-    .getByRole("menuitem", { name: "Statistics", exact: true })
+  const footer = page.locator(".turn-footer").last();
+  await expect(footer.locator("time")).toHaveAttribute("datetime", /T/);
+  await footer.getByRole("button", { name: "Actions for this answer" }).click();
+  await page
+    .getByRole("menuitem", { name: "Model call statistics", exact: true })
     .click();
   await expect(
     page.getByRole("dialog", { name: "Message statistics" }),
@@ -226,11 +229,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   expect(await page.locator(".transcript .message").count()).toBe(messages);
   await page.getByRole("button", { name: "Dismiss side conversation" }).click();
   await expect(page.locator(".side-answer")).toHaveCount(0);
-  const toolResult = page.locator(".message.tool").last();
-  await expect(toolResult).toContainText("browser-proof.txt");
-  await toolResult.locator(".tool-disclosure > summary").click();
+  const toolResult = await openRow(page, "browser-proof.txt");
   await toolResult
-    .getByRole("button", { name: "Tool input/output", exact: true })
+    .getByRole("button", { name: "Input and output", exact: true })
     .click();
   await expect(
     page.getByRole("dialog", { name: "Tool input/output" }),

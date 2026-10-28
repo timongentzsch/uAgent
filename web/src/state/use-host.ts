@@ -19,14 +19,9 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import {
-  adoptSnapshot,
-  retainedViews,
-  hasContent,
-  patchCatalogue,
-} from "./store.ts";
+import { retainedViews, hasContent, patchCatalogue } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
-import { api, manage, protocol, receiveOutcome, routes } from "./api.ts";
+import { api, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
@@ -195,7 +190,7 @@ export function useHost(
   }, []);
   const patchSession = (id: string, change: (item: Session) => Session) =>
     setCatalogue((prior) => patchCatalogue(prior, id, change));
-  // The global verbosity level, as the host last stated it.
+  // The level a device starts at, as the host last stated it.
   const setVerbosityLevel = useCallback(
     (level: string) =>
       setCatalogue((prior) =>
@@ -204,22 +199,6 @@ export function useHost(
           : prior,
       ),
     [],
-  );
-  // Changing it is a setting of the host's: every browser hears of it, and
-  // this one need not wait to.
-  const setVerbosity = useCallback(
-    async (level: string) => {
-      const saved = await manage("config", {
-        scope: "user",
-        operation: "apply",
-        changes: [{ key: "UAGENT_VERBOSITY", value: level }],
-      });
-      // Saved, yet the environment or a folder's config still decides it.
-      const shadowed = saved.effects.find((item) => item.effect === "shadowed");
-      if (shadowed) throw new Error(`${shadowed.key}: ${shadowed.text}`);
-      setVerbosityLevel(level);
-    },
-    [setVerbosityLevel],
   );
   // A new or reactivated session leads the list.
   const upsertSession = useCallback(
@@ -275,14 +254,11 @@ export function useHost(
       const request = api<Snapshot>(routes.session(id), undefined, {
         signal,
       })
-        .then(adoptSnapshot)
         .then((value) => {
           if (signal.aborted) throw signal.reason;
           if (loads.current.get(id) !== request) return value;
           const accepted = new Set(
-            value.state?.view?.blocks?.map((block) =>
-              "request_id" in block ? block.request_id : undefined,
-            ),
+            value.state?.view?.blocks?.map((node) => node.request_id),
           );
           setOutgoing((items) =>
             items.filter(
@@ -796,7 +772,6 @@ export function useHost(
     listed,
     attention,
     upsertSession,
-    setVerbosity,
     snapshots,
     selected,
     setSelected: select,

@@ -1,7 +1,7 @@
 import "./spotlight.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type {
-  Block,
+  Node,
   Session,
   SlashCommand,
   Snapshot,
@@ -17,7 +17,6 @@ import { occurrences } from "../../shared/find.ts";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 import { api, routes } from "../../state/api.ts";
-import { adoptSnapshot } from "../../state/store.ts";
 
 // A row of some conversation that holds the words (GET /api/search): its
 // conversation, where, and how many of that conversation's rows hold them.
@@ -404,8 +403,8 @@ export default function Spotlight({
 // The rows around a hit, read once the selection rests on it: what was said
 // before it and the row itself, with the words marked.
 function Preview({ hit, words }: { hit: Hit; words: string }) {
-  const [rows, setRows] = useState<Block[] | null>(null);
-  const cache = useRef(new Map<string, Block[]>());
+  const [rows, setRows] = useState<Node[] | null>(null);
+  const cache = useRef(new Map<string, Node[]>());
   const id = `${hit.session_id}:${hit.sequence}`;
   useEffect(() => {
     const held = cache.current.get(id);
@@ -419,11 +418,9 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
         { signal: controller.signal },
       )
         .then((value) => {
-          const blocks = (adoptSnapshot(value).state?.view?.blocks || []).slice(
-            -3,
-          );
-          cache.current.set(id, blocks);
-          setRows(blocks);
+          const nodes = (value.state?.view?.blocks || []).slice(-3);
+          cache.current.set(id, nodes);
+          setRows(nodes);
         })
         .catch(() => {});
     }, PREVIEW_AFTER_MS);
@@ -432,24 +429,22 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
       controller.abort();
     };
   }, [id, hit.session_id, hit.sequence]);
-  const who = (block: Block) =>
-    block.kind === "user"
-      ? "You"
-      : block.kind === "assistant"
+  const who = (node: Node) =>
+    node.headline
+      ? [node.headline.verb, node.headline.target].filter(Boolean).join(" ")
+      : node.role === "assistant"
         ? "Agent"
-        : block.kind === "tool_result"
-          ? block.name || "Tool"
-          : block.kind;
+        : "You";
   return (
     <aside class="spotlight-preview" aria-label="Preview">
       {rows === null ? (
         <p class="spotlight-empty">Loading…</p>
       ) : (
-        rows.map((block) => (
-          <p key={block.id} class="spotlight-preview-row">
-            <strong>{who(block)}</strong>
+        rows.map((node) => (
+          <p key={node.id} class="spotlight-preview-row">
+            <strong>{who(node)}</strong>
             <Marked
-              text={around(block.text || "", words).slice(0, 600)}
+              text={around(node.body?.text || "", words).slice(0, 600)}
               words={words}
             />
           </p>

@@ -10,7 +10,7 @@ import { command } from "../../state/api.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
-import { MessageRows } from "./message.tsx";
+import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
 // An ordinary conversation runtime, kept beside the parent's composer.
@@ -43,15 +43,15 @@ export default function SideAnswer({
   const act: Act = (kind, fields) => command(kind, session, fields);
   const all = snapshot?.state?.view?.blocks || [];
   const first = all.findIndex(
-    (block) => block.kind === "user" && block.request_id === side.firstRequest,
+    (node) => node.kind === "turn" && node.request_id === side.firstRequest,
   );
   if (first >= 0) started.current = true;
-  // Once older turns leave the live window, every retained row is side work.
-  const blocks = first >= 0 ? all.slice(first) : started.current ? all : [];
+  // Once older turns leave the live window, every retained node is side work.
+  const nodes = first >= 0 ? all.slice(first) : started.current ? all : [];
   // Follows its end like the transcript (same hook): a reader who scrolls
   // up stays put, and scrolling back down follows again.
   const historyKey = `side:${side.id || ""}`;
-  const thread = useTranscriptHistory(() => {}, historyKey, blocks);
+  const thread = useTranscriptHistory(() => {}, historyKey, nodes);
   async function send() {
     if (!draft.trim() || !session || !online || sending || pending) return;
     await run(async () => {
@@ -91,10 +91,10 @@ export default function SideAnswer({
         ref={thread.attachScroller}
       >
         <div ref={thread.attachContent}>
-          {!blocks.length && <p class="muted">{side.question}</p>}
+          {!nodes.length && <p class="muted">{side.question}</p>}
           {session && (
             <MessageActions.Provider value={{ report }}>
-              <MessageRows blocks={blocks} online={online} session={session} />
+              <Transcript nodes={nodes} online={online} session={session} />
             </MessageActions.Provider>
           )}
           {session &&

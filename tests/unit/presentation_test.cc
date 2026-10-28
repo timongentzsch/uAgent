@@ -283,7 +283,7 @@ void TestToolRowsDrawLiveAsResumed() {
   CHECK(drawn.find("Explored") == drawn.rfind("Explored"));
   CHECK(drawn.find("alpha") == std::string::npos);
   // A label is stored text: shown, never obeyed.
-  CHECK(drawn.find("Explored\\x1b[2J · 2 calls") != std::string::npos);
+  CHECK(drawn.find("Explored\\x1b[2J 2 calls") != std::string::npos);
 }
 
 // Every client renders one vocabulary; the shapes below are that contract.
@@ -334,7 +334,7 @@ void TestVerbosityLevels() {
   const std::string standard = drawn("default");
   CHECK(standard.find("Worked") == std::string::npos);
   CHECK(standard.find("→ Read a.txt") != std::string::npos);
-  CHECK(standard.find("Explored · 2 calls") != std::string::npos);
+  CHECK(standard.find("Explored 2 calls") != std::string::npos);
   CHECK(standard.find("body of a") == std::string::npos);
   CHECK(standard.find("body of c … · +1 lines") != std::string::npos);
   CHECK(standard.find("pondered") == std::string::npos);

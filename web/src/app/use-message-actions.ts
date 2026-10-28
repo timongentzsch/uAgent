@@ -4,16 +4,14 @@ import type {
   Act,
   ActivityTarget,
   AppModal,
-  Block,
   CommandFields,
   Draft,
   Exchange,
   InspectorTarget,
+  Node,
   Outgoing,
-  PresentedBlock,
   Report,
   Session,
-  UserBlock,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import {
@@ -24,7 +22,7 @@ import {
 } from "../shared/message-view.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import type { SnapshotStore } from "../state/snapshot-store.ts";
-import { transcriptBlocks } from "./chat-page.tsx";
+import { transcriptNodes } from "./chat-page.tsx";
 
 // What a message's controls do: retry, continue, branch, recall or insert
 // guidance, and open what a row links to.
@@ -81,15 +79,15 @@ export function useMessageActions({
   // A failed message sends again as a new request; Continue resumes a
   // stopped turn. Both leave the composer's draft alone.
   const retrySend = useCallback(
-    (block: UserBlock) => {
+    (node: Node) => {
       const { online, selected, deliver, busy } = latest.current;
-      if (!online || busy || !block.request_id || !unsent(block)) return;
+      if (!online || busy || !node.request_id || !unsent(node)) return;
       setOutgoing((items) =>
-        items.filter((item) => item.request_id !== block.request_id),
+        items.filter((item) => item.request_id !== node.request_id),
       );
       void deliver(selected, {
-        text: block.text || "",
-        files: block.files || [],
+        text: node.body?.text || "",
+        files: node.files || [],
       });
     },
     [setOutgoing],
@@ -102,20 +100,20 @@ export function useMessageActions({
   // From a message's menu: edit it in a fork (fork before it), or keep it
   // and its reply (fork before the next message of yours).
   const branchFrom = useCallback(
-    (block: Pick<Block, "id">, edit: boolean) => {
+    (node: Pick<Node, "id">, edit: boolean) => {
       const { forkAndOpen, outgoing, selected, report } = latest.current;
-      const blocks = transcriptBlocks(
+      const nodes = transcriptNodes(
         snapshots.get()[selected]?.state?.view,
         outgoing,
         selected,
       );
-      const after = blocks.slice(
-        blocks.findIndex((item) => item.id === block.id) + 1,
+      const after = nodes.slice(
+        nodes.findIndex((item) => item.id === node.id) + 1,
       );
-      const next = after.find((item) => item.kind === "user");
+      const next = after.find((item) => item.kind === "turn");
       forkAndOpen(
         latest.current.session,
-        edit ? { message_id: block.id } : next ? { message_id: next.id } : {},
+        edit ? { message_id: node.id } : next ? { message_id: next.id } : {},
         edit,
       ).catch(report);
     },
@@ -126,12 +124,12 @@ export function useMessageActions({
   // then the only correct move. A send that failed returns the same way,
   // with nothing to withdraw from the host.
   const recallGuidance = useCallback(
-    async (block: UserBlock) => {
+    async (node: Node) => {
       const { online, selected, act, report } = latest.current;
-      const target = block.request_id;
-      if (!target || !recallable(block, online)) return;
-      const queued = queuedGuidance(block);
-      const text = block.text || "";
+      const target = node.request_id;
+      if (!target || !recallable(node, online)) return;
+      const queued = queuedGuidance(node);
+      const text = node.body?.text || "";
       const id = selected;
       if (queued) {
         try {
@@ -161,7 +159,7 @@ export function useMessageActions({
           : draft.text,
         files: [
           ...draft.files,
-          ...(block.files || []).filter(
+          ...(node.files || []).filter(
             (file) => !draft.files.some((current) => current.id === file.id),
           ),
         ],
@@ -170,13 +168,13 @@ export function useMessageActions({
     [setOutgoing, updateDraft],
   );
   const insertGuidance = useCallback(
-    async (block: UserBlock) => {
+    async (node: Node) => {
       const { online, act, report } = latest.current;
-      if (!online || !block.request_id || !queuedGuidance(block)) return;
+      if (!online || !node.request_id || !queuedGuidance(node)) return;
       try {
-        await act("insert", { target_id: block.request_id });
+        await act("insert", { target_id: node.request_id });
         // Keep the tray until the transcript acknowledges actual delivery.
-        patchOutgoing(block.request_id, { status: outgoingStatus.guidance });
+        patchOutgoing(node.request_id, { status: outgoingStatus.guidance });
       } catch (error) {
         if (!/already delivered/i.test(failure(error).message)) report(error);
       }
@@ -199,15 +197,12 @@ export function useMessageActions({
       http: (exchanges: Exchange[]) =>
         setModal({ type: "raw", session: selected, exchanges }),
       activity: (block: ActivityTarget) => setInspector({ block }),
-      statistics: (block: PresentedBlock) =>
+      statistics: (node: Node) =>
         setModal({
           type: "statistics",
           session_id: selected,
-          block_id:
-            ("occurrence_id" in block && block.occurrence_id) ||
-            ("response_id" in block && block.response_id) ||
-            block.id,
-          unit: block.kind === "turn_summary" ? "Turn" : "Message",
+          block_id: node.id,
+          unit: node.kind === "footer" ? "Turn" : "Message",
         }),
     }),
     [

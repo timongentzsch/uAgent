@@ -95,6 +95,18 @@ size_t BoundView(json& view) {
   return dropped;
 }
 
+// The turn a held node is under, through its work and group; "" when it is
+// under none the view holds.
+std::string TurnOf(json& nodes, std::string_view id) {
+  for (int up = 0; up < 4 && !id.empty(); ++up) {
+    const auto found = Find(nodes, id);
+    if (found == nodes.end()) break;
+    if (Field(*found, "kind") == "turn") return std::string(id);
+    id = Field(*found, "parent");
+  }
+  return {};
+}
+
 json& ViewNodes(json& view) {
   if (!view.is_object()) view = json::object();
   json& nodes = view["blocks"];
@@ -189,8 +201,8 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
       nodes.push_back(
           answer ? MakeNode(id, turn, "message",
                             {{"role", "assistant"}, {"streaming", true}})
-                 : MakeNode(id, turn.empty() ? "" : WorkId(turn), "thinking",
-                            {{"streaming", true}}));
+                 : ThinkingNode(response_id, turn.empty() ? "" : WorkId(turn),
+                                {{"streaming", true}}));
       found = nodes.end() - 1;
     }
     if (!JsonValue(*found, "streaming", false)) return true;
@@ -270,6 +282,11 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     // The call's own event placed it; its result leaves it there.
     node.erase("parent");
     upsert(node);
+    if (json files =
+            FilesNode(record, TurnOf(nodes, Field(record, "detail_id")));
+        !files.is_null()) {
+      upsert(files);
+    }
   } else if (const json* node = JsonObject(data, "block")) {
     upsert(*node);
     // A footer ends its turn's work.

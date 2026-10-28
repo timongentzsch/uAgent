@@ -68,12 +68,11 @@ export function ConversationMenu({
   // Says what an action did, where the conversation shows its notices.
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
-  // How much of the agent's work every transcript shows, and changing it:
-  // one level for all conversations, offered where a transcript is read.
+  // How much of the agent's work transcripts show on this device, and
+  // changing it, offered where a transcript is read.
   detail?: {
-    levels: string[];
+    levels: readonly string[];
     level: string;
-    disabled: boolean;
     change: (level: string) => void;
   };
   // What the conversation's header would hold on a wider screen, first.
@@ -131,14 +130,13 @@ export function ConversationMenu({
               key={level}
               role="menuitemradio"
               aria-checked={level === detail.level}
-              disabled={detail.disabled}
               onClick={() => detail.change(level)}
             >
               {capitalize(level)}
               {level === detail.level && <Check />}
             </MenuItem>
           ))}
-          <p class="menu-note">For all conversations.</p>
+          <p class="menu-note">On this device.</p>
         </MenuSub>
       )}
       {item.generation && (

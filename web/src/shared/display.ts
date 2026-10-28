@@ -2,7 +2,7 @@
 // Pure functions only — no hooks, no JSX. TS-only imports so node --test
 // can load this module directly.
 import { plural } from "./quantities.ts";
-import type { RowState, Session, Statistics } from "./types.ts";
+import type { Session, Statistics } from "./types.ts";
 
 // The folder a session belongs to: a thread's panel folder, else its
 // own working directory.
@@ -25,27 +25,12 @@ export const capitalize = (text: string) =>
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 
-// Lines added and removed in a diff, counted line by line. A tool row has
-// its counts as facts; this is for a diff that comes without them.
-export function diffCounts(change = ""): [number, number] {
-  let added = 0;
-  let removed = 0;
-  change.split("\n").forEach((line, index) => {
-    const role = diffLineClass(line, index === 0);
-    if (role === "diff-add") added++;
-    else if (role === "diff-del") removed++;
-  });
-  return [added, removed];
-}
-
 export const formatStat = ([added, removed]: [number, number]) =>
   added || removed ? `+${added} −${removed}` : "";
 
-// Git-style change line roles shared by tool receipts (' '/'-'/'+'/'@'
-// markers with a file header) and unified diffs ('---'/'+++'/'@@').
-export function diffLineClass(line: string, first: boolean): string {
-  if (first && /^(Replaced|Created|Deleted|diff --git) /.test(line))
-    return "diff-head";
+// Git-style change line roles shared by tool changes (' '/'-'/'+'/'@'
+// markers) and unified diffs ('---'/'+++'/'@@').
+export function diffLineClass(line: string): string {
   if (line.startsWith("@@")) return "diff-hunk";
   if (line.startsWith("--- ") || line.startsWith("+++ ")) return "diff-head";
   const marker = line.charAt(0);
@@ -54,9 +39,6 @@ export function diffLineClass(line: string, first: boolean): string {
   if (marker === "@") return "diff-hunk";
   return "diff-ctx";
 }
-
-// A call or receipt without a finished state is still at work.
-export const isRunning = (state?: RowState) => !state || state === "running";
 
 // A router such as OpenRouter picks the upstream per call; naming it is how
 // a provider's fault is traced.

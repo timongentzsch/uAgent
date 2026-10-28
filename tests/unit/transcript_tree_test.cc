@@ -97,7 +97,8 @@ class Recorder {
   std::string Call(const std::string& response_id, const std::string& call_id,
                    const std::string& name, json view, const std::string& state,
                    const ResultFacts& facts, const std::string& output,
-                   const std::string& category = "explore") {
+                   const std::string& category = "explore",
+                   const json& parts = nullptr) {
     const std::string id = DetailId(response_id, call_id);
     const json activity = {{"category", category}, {"label", name}};
     conversation_.RecordDisplay(id, {{"activity", activity}, {"view", view}});
@@ -113,6 +114,7 @@ class Recorder {
                           {"facts", result},
                           {"body_kind", "text"},
                           {"result", output},
+                          {"parts", parts},
                           {"activity", activity},
                           {"headline", CallHeadline(view, state, name)}});
     conversation_.RecordDisplay(id, {{"name", name},
@@ -120,7 +122,8 @@ class Recorder {
                                      {"detail_id", id},
                                      {"state", state},
                                      {"result", result},
-                                     {"output", output}});
+                                     {"output", output},
+                                     {"parts", parts}});
     return id;
   }
 
@@ -236,9 +239,9 @@ void TestGoldenChainOfCalls() {
   CHECK((page ==
          std::vector<std::string>{
              "turn m-2 < - \"fix it\"",
-             "work w-m-2 < m-2 [ok] Worked · 3 steps · edited 1 file · 2m 4s",
-             "thinking r-1-1-1:thinking < w-m-2 \"look first\"",
-             "group g-" + a + " < w-m-2 [ok] Explored · 2 calls",
+             "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
+             "thinking r-1-1-1:thinking < w-m-2 Thinking \"look first\"",
+             "group g-" + a + " < w-m-2 [ok] Explored 2 calls",
              "call " + a + " < g-" + a + " [ok] Read a.txt · 1 line · 5ms " +
                  "\"alpha\"",
              "call " + b + " < g-" + a + " [ok] Read b.txt · 1 line · 5ms " +
@@ -271,9 +274,9 @@ void TestGoldenFailedCalls() {
       turn.Call("r-1-1-1", "d", "run",
                 {{"verb", {"Running", "Ran"}}, {"target", "rm -rf out"}},
                 "failed", denied, "", "run");
-  // Refused before it ran: no verb, what it sent.
-  const std::string j = turn.Call("r-1-1-1", "j", "{\"path\":\"/etc\"}",
-                                  nullptr, "failed", rejected, "", "run");
+  // Refused before it ran: no verb, the call it would have made.
+  const std::string j = turn.Call("r-1-1-1", "j", "Read /etc", nullptr,
+                                  "failed", rejected, "", "run");
   for (const auto& [call, id] :
        {std::pair{"f", f}, {"x", x}, {"d", d}, {"j", j}}) {
     turn.Result(call, id);
@@ -285,17 +288,53 @@ void TestGoldenFailedCalls() {
   CHECK((page ==
          std::vector<std::string>{
              "turn m-2 < - \"try\"",
-             "work w-m-2 < m-2 [ok] Worked · 4 steps · 4 errors · 3.0s",
+             "work w-m-2 < m-2 [ok] Worked 4 steps · 4 errors · 3.0s",
              "call " + f + " < w-m-2 [failed] Read a.txt · failed · 5ms " +
                  "\"missing\"",
              "call " + x + " < w-m-2 [cancelled] Ran make · cancelled · 5ms",
              "call " + d + " < w-m-2 [failed] Ran rm -rf out · denied · 5ms",
-             "call " + j + " < w-m-2 [failed] {\"path\":\"/etc\"} · " +
+             "call " + j + " < w-m-2 [failed] Read /etc · " +
                  "rejected: path is outside the folder · 5ms",
              "message r-1-2-1 < m-2 \"Nothing worked.\"",
              "footer m-9 < m-2",
          }));
   CHECK(Lines(turn.Live()) == page);
+}
+
+void TestGoldenFileHandedOver() {
+  Recorder turn;
+  turn.Say("make a report");
+  turn.Reply("r-1-1-1", "", "", {{"s", "share"}});
+  const json file = {{"kind", "file"},
+                     {"id", "0123456789abcdef"},
+                     {"name", "report.html"},
+                     {"mime", "text/html"},
+                     {"bytes", 2048}};
+  const json link = {
+      {"kind", "link"}, {"to", "activity"}, {"id", 7}, {"label", "Open"}};
+  const std::string s =
+      turn.Call("r-1-1-1", "s", "share",
+                {{"verb", {"Sharing", "Shared"}}, {"target", "report.html"}},
+                "ok", {}, "", "share", json::array({file, link}));
+  turn.Result("s", s);
+  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Reply("r-1-2-1", "Here it is.");
+  turn.Footer(2000, "complete");
+  const json view = ConversationView(turn.History());
+  const auto page = Lines(view["blocks"]);
+  // The file is the turn's, so it shows at every depth; the call keeps its
+  // other parts.
+  CHECK((page == std::vector<std::string>{
+                     "turn m-2 < - \"make a report\"",
+                     "work w-m-2 < m-2 [ok] Worked 1 step · 2.0s",
+                     "call " + s + " < w-m-2 [ok] Shared report.html · 5ms",
+                     "message " + s + ":files < m-2",
+                     "message r-1-2-1 < m-2 \"Here it is.\"",
+                     "footer m-6 < m-2",
+                 }));
+  CHECK(Lines(turn.Live()) == page);
+  CHECK(view["blocks"][2]["parts"] == json::array({link}));
+  CHECK(view["blocks"][3]["parts"] == json::array({file}));
 }
 
 void TestGoldenBlankReplyAndMcpCall() {
@@ -315,7 +354,7 @@ void TestGoldenBlankReplyAndMcpCall() {
   const auto page = Lines(ConversationView(turn.History())["blocks"]);
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"look it up\"",
-                     "work w-m-2 < m-2 [ok] Worked · 1 step · 1.5s",
+                     "work w-m-2 < m-2 [ok] Worked 1 step · 1.5s",
                      "call " + m + " < w-m-2 [ok] Called Search · 5ms",
                      "footer m-6 < m-2",
                  }));
@@ -365,6 +404,18 @@ void TestGoldenPagesEndOnWholeTurns() {
     before = page["before"].get<uint64_t>();
   }
   CHECK(seen == 180);
+}
+
+// A compaction says what it kept and how long it took.
+void TestCompactionNoticeSaysWhatWent() {
+  const json node = EntryNode({{"kind", "compaction"},
+                               {"id", "a-1"},
+                               {"compaction",
+                                {{"messages_before", 120},
+                                 {"messages_after", 40},
+                                 {"duration_ms", 1200}}}});
+  CHECK(node["kind"] == "notice");
+  CHECK(node["result"]["word"] == "120 → 40 messages · 1.2s");
 }
 
 }  // namespace uagent

@@ -3,6 +3,7 @@ import { defaultZoom } from "./limits.ts";
 import { stored, type Stored } from "./storage.ts";
 import { storageKeys } from "./storage-keys.ts";
 import { defaultTimePrefs, normalizeTimePrefs } from "./time.ts";
+import { detailLevels } from "./tree.ts";
 
 // The docked panes someone can resize (shared/side-pane.tsx); each width
 // (the terminal's height) is kept in rem, so it follows the text size.
@@ -17,6 +18,16 @@ export const devicePrefs = {
   ),
   time: stored(storageKeys.time, defaultTimePrefs, normalizeTimePrefs),
   panes: stored<Partial<Record<Pane, number>>>(storageKeys.panes, {}),
+  // How deep transcripts start open here; empty until this device chooses,
+  // so it starts at the host's level.
+  detail: stored<string>(
+    storageKeys.detail,
+    "",
+    (value) => detailLevels.find((level) => level === value) ?? "",
+  ),
+  // Rows opened or closed here, by conversation and node id; choosing a
+  // level forgets them.
+  toggles: stored<Record<string, boolean>>(storageKeys.toggles, {}),
 };
 
 // Applies the display preferences to the document now and whenever one

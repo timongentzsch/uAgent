@@ -212,7 +212,9 @@ that nodes cannot express. The runtime also publishes its execution phase and
 pending decision; connection health stays with the client.
 
 How much of the view a client shows is one display setting,
-`UAGENT_VERBOSITY` (`include/core/verbosity.h`). The model never sees it.
+`UAGENT_VERBOSITY` (`include/core/verbosity.h`), which a browser starts at
+and then keeps its own (`devicePrefs.detail`): a level is only how deep the
+tree starts open. The model never sees it.
 
 One activity projection (`include/core/turn_status.h`) derives the working label
 for the terminal, the browser and process-child progress.

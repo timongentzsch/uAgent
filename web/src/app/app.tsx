@@ -31,7 +31,10 @@ import { storageKeys } from "../shared/storage-keys.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
-import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
+import { DetailContext } from "../features/chat/node.tsx";
+import { detailLevels } from "../shared/tree.ts";
+import { devicePrefs } from "../shared/device-prefs.ts";
+import { useStored } from "../shared/storage.ts";
 import ChatPage from "./chat-page.tsx";
 import ConversationHeader from "./conversation-header.tsx";
 import Modals, { PreferencesContext } from "./modals.tsx";
@@ -67,7 +70,6 @@ if (typeof history !== "undefined") history.scrollRestoration = "manual";
 // its agent browses, whether any turn waits), so a streamed frame re-renders
 // the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
-const NO_LEVELS: string[] = [];
 type Page = "chat" | "library" | "scheduled";
 // The page this tab showed, so a reload comes back to it.
 const keptPage = stored<Page>(
@@ -138,7 +140,6 @@ function App() {
     listed,
     attention,
     upsertSession,
-    setVerbosity,
     snapshots,
     selected,
     setSelected,
@@ -169,17 +170,18 @@ function App() {
   });
   const [busy, setBusy] = useState(false);
   const [notificationMode, setNotificationMode] = useState(false);
-  // How much of the agent's work shows: one level for every conversation,
-  // browser and terminal. Only rendering reads it, so a change restyles
-  // every conversation where it stands.
-  const detail = useMemo(
-    () => detailOf(catalogue.verbosity),
-    [catalogue.verbosity],
-  );
-  const levels = catalogue.verbosity?.order || NO_LEVELS;
+  // How much of the agent's work shows on this device, for every
+  // conversation: its own level once chosen, else the host's. Choosing one
+  // forgets the rows opened or closed here, so each starts at the new depth.
+  const [chosen, setChosen] = useStored(devicePrefs.detail);
+  const detail = chosen || catalogue.verbosity?.level || "default";
+  const levels = detailLevels as readonly string[];
   const changeDetail = useCallback(
-    (level: string) => setVerbosity(level).catch(report),
-    [setVerbosity, report],
+    (level: string) => {
+      devicePrefs.toggles.write({});
+      setChosen(level);
+    },
+    [setChosen],
   );
   // Every event that changes a session changes its catalogue entry too, so
   // the shell reads the entry and renders once per change; a snapshot's
@@ -348,8 +350,7 @@ function App() {
           withDetail
             ? {
                 levels,
-                level: detail.level,
-                disabled: !online,
+                level: detail,
                 change: changeDetail,
               }
             : undefined

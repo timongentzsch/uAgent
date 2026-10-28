@@ -6,8 +6,13 @@ export const maxHttpExchanges = 64;
 export const maxRecalledPromptSessions = 32;
 // Prompts Up and Down recall per conversation.
 export const maxRecalledPrompts = 100;
-// Rows a transcript keeps as older pages are read in.
-export const maxHistoryBlocks = 256;
+// Nodes a transcript keeps as older pages are read in.
+export const maxHistoryNodes = 256;
+// A row with more children than this shows its latest ones and one line
+// that opens the earlier.
+export const maxShownSteps = 30;
+// Rows whose opening or closing a device remembers.
+export const maxRememberedToggles = 500;
 export const reconnectMaxDelayMs = 30_000;
 // A reconnect shorter than this (a resumed app) shows no status change.
 export const reconnectGraceMs = 1_000;
@@ -66,8 +71,6 @@ export const reconnectBaseDelayMs = 1_000;
 // An object URL handed to a download outlives the click by this long, for
 // browsers that start the download afterwards.
 export const downloadRevokeMs = 30_000;
-// A tool argument this short reads as a fact beside the tool's name.
-export const maxInlineFactChars = 40;
 
 // A draft's attachments: how many, and the largest upload the host takes
 // (kUploadCount, kUploadBytes).

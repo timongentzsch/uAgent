@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, X } from "lucide-preact";
 import type { RefObject } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { Block, View } from "../../shared/types.ts";
+import type { Node, View } from "../../shared/types.ts";
 import { IconButton, Input } from "../../shared/ui.tsx";
 import { highlights, occurrences, rangesIn } from "../../shared/find.ts";
 import { api, routes } from "../../state/api.ts";
@@ -21,9 +21,8 @@ type Spot = { sequence: number; nth: number };
 
 const ASK_AFTER_MS = 200;
 const HOLD_MS = 600;
-const SPOKEN = new Set(["user", "assistant", "tool_result"]);
 
-// The row of a sequence, or the folded group that holds it.
+// The node of a sequence, or the closed row that holds it.
 const rowOf = (root: Element, sequence: number) =>
   root.querySelector(`[data-sequence="${sequence}"]`) ||
   root.querySelector(`[data-sequences~="${sequence}"]`);
@@ -43,7 +42,7 @@ function inView(target: Element | Range, box: Element) {
 export function FindBar({
   request,
   view,
-  blocks,
+  nodes,
   root,
   older,
   reveal,
@@ -51,7 +50,7 @@ export function FindBar({
 }: {
   request: FindRequest;
   view?: View;
-  blocks: Block[];
+  nodes: Node[];
   // The transcript, whose text is searched and marked.
   root: RefObject<HTMLElement | null>;
   // Loads the page of rows before the oldest one shown.
@@ -112,21 +111,17 @@ export function FindBar({
   const spots = useMemo(() => {
     if (query.length < 2 || saved.words !== query) return [];
     const counts = new Map(saved.rows.map((row) => [row.sequence, row.count]));
-    for (const block of blocks)
-      if (
-        block.sequence &&
-        !counts.has(block.sequence) &&
-        SPOKEN.has(block.kind)
-      ) {
-        const count = occurrences(block.text || "", query).length;
-        if (count) counts.set(block.sequence, count);
+    for (const node of nodes)
+      if (node.sequence && !counts.has(node.sequence)) {
+        const count = occurrences(node.body?.text || "", query).length;
+        if (count) counts.set(node.sequence, count);
       }
     return [...counts]
       .sort(([a], [b]) => a - b)
       .flatMap(([sequence, count]) =>
         Array.from({ length: count }, (_, nth) => ({ sequence, nth })),
       );
-  }, [saved, blocks, query]);
+  }, [saved, nodes, query]);
 
   // New words counted: land on the row search chose, else on the newest
   // occurrence, which is nearest the end a conversation is read from. Rows
@@ -145,7 +140,7 @@ export function FindBar({
   }, [saved]);
 
   // Marks every occurrence the transcript shows and brings the current one
-  // into view, opening a folded row or loading an older page first. The
+  // into view, opening a closed row or loading an older page first. The
   // page and its loaders are read as they are now, not as a reason to
   // look again.
   const page = useLatest({ view, older, reveal });
@@ -176,9 +171,11 @@ export function FindBar({
         return;
       }
       const ranges = rangesIn(row, query);
-      const folded = row.querySelector("details:not([open]) > summary");
+      const folded = row.matches('[aria-expanded="false"]')
+        ? row
+        : row.querySelector('[aria-expanded="false"]');
       if (ranges.length <= spot.nth && folded instanceof HTMLElement) {
-        // A folded row mounts its body on opening; look again after it.
+        // A closed row mounts its body on opening; look again after it.
         folded.click();
         frame = requestAnimationFrame(show);
         return;
@@ -195,7 +192,7 @@ export function FindBar({
     };
     show();
     return () => cancelAnimationFrame(frame);
-  }, [spots, current, blocks, query, root, page]);
+  }, [spots, current, nodes, query, root, page]);
 
   useEffect(
     () => () => {

@@ -22,7 +22,8 @@ import type {
   Draft,
   Pending,
   SessionStatus,
-  UserBlock,
+  Node,
+  Outgoing,
 } from "../../shared/types.ts";
 import type { TargetedKeyboardEvent } from "preact";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
@@ -84,9 +85,9 @@ function Composer({
   resume,
 }: {
   session: Session;
-  queued?: UserBlock[];
-  recall?: (block: UserBlock) => Promise<void>;
-  insert?: (block: UserBlock) => Promise<void>;
+  queued?: Outgoing[];
+  recall?: (node: Node) => Promise<void>;
+  insert?: (node: Node) => Promise<void>;
   commands: SlashCommand[];
   state?: State;
   // A decision the turn waits on.

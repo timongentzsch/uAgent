@@ -1,4 +1,11 @@
-import { test, expect, online, selectProbeModel } from "./fixtures.js";
+import {
+  test,
+  expect,
+  online,
+  selectProbeModel,
+  chooseDetail,
+  openRow,
+} from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("tool catalogue shows its schema size and persists selection", async ({
@@ -40,11 +47,16 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Artifact probe");
   await prompt.press("Enter");
-  // The write shows its diff and the share its preview, neither expanded.
-  await expect(page.locator(".tool-inline .diff").first()).toContainText(
+  // At full every call is open: the write shows its diff and the share its
+  // preview.
+  await expect(
+    page.getByRole("heading", { name: "Verified response" }),
+  ).toBeVisible();
+  await chooseDetail(page, "Full");
+  await expect(page.locator(".node .diff").first()).toContainText(
     "ARTIFACT_REPORT",
   );
-  const file = page.locator(".tool-inline .tool-file");
+  const file = page.locator(".transcript .node-file");
   await expect(file).toContainText("report.html");
   const frame = file.locator("iframe");
   await expect(frame).toHaveAttribute(
@@ -52,7 +64,7 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     "allow-scripts allow-forms allow-popups",
   );
   await expect(
-    page.frameLocator(".tool-file iframe").getByText("ARTIFACT_REPORT"),
+    page.frameLocator(".node-file iframe").getByText("ARTIFACT_REPORT"),
   ).toBeVisible();
   // An opaque origin: the file's scripts can never read this device's session.
   const preview = page.frames().find((item) => item.url().includes("/assets/"));
@@ -73,22 +85,38 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     "href",
     /\?download=1$/,
   );
-  // At the level that folds a turn's work into one row, the write goes into
-  // it and the file stays out: it is what the turn was for.
-  const detail = async (level) => {
-    await page
-      .locator(".conversation-head")
-      .getByLabel("Conversation menu", { exact: true })
-      .click();
-    await page.getByRole("menuitem", { name: /^Detail/ }).click();
-    await page.getByRole("menuitemradio", { name: level, exact: true }).click();
-  };
-  await detail("Minimal");
-  await expect(page.locator(".transcript .group")).toHaveText(/Worked · /);
-  await expect(page.locator(".tool-inline .diff")).toHaveCount(0);
-  await expect(file).toContainText("report.html");
+  // Minimal shows the turn's work as one line, which holds the write; the
+  // file it handed you stays in sight, as the turn's own.
+  await chooseDetail(page, "Minimal");
+  await expect(page.locator(".transcript .node-row")).toHaveText([
+    /^Worked 2 steps/,
+  ]);
+  await expect(page.locator(".node .diff")).toHaveCount(0);
+  await expect(file).toHaveCount(1);
   await expect(file.locator("iframe")).toBeVisible();
-  await detail("Default");
+  await chooseDetail(page, "Default");
+});
+
+test("a call that names no tool reads as what it called, never as its JSON", async ({
+  page,
+  session,
+  command,
+}) => {
+  await selectProbeModel(command, session, { yolo: true });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Unknown tool probe");
+  await prompt.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Verified response" }),
+  ).toBeVisible();
+  const row = page.locator(".node.failed > .node-row");
+  await expect(row).toContainText("Called Read Paths /etc");
+  await expect(row).not.toContainText("{");
+  // A reload reads the same from what was saved.
+  await page.reload();
+  await expect(row).toContainText("Called Read Paths /etc");
 });
 
 test("a long diff shows whole on its row, live and after a reload", async ({
@@ -102,15 +130,17 @@ test("a long diff shows whole on its row, live and after a reload", async ({
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long diff probe");
   await prompt.press("Enter");
-  const diff = page.locator(".tool-inline .diff");
-  // The counts are the row's result; the diff is its lines alone.
-  await expect(page.locator(".message.tool").first()).toContainText("+2001 −0");
+  // The counts are the row's result; the diff, opened, is its lines alone.
+  const write = await openRow(page, "Wrote long.txt");
+  await expect(write.locator(".node-row")).toContainText("+2001 −0");
+  const diff = write.locator(".diff");
   await expect(diff.locator("span")).toHaveCount(2001);
   await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
+  // This device keeps the row open across a reload.
   await page.reload();
   await expect(diff.locator("span")).toHaveCount(2001);
   await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
-  await expect(page.locator(".message.tool")).not.toContainText("more lines");
+  await expect(write).not.toContainText("more lines");
 });
 
 test("files read as tiles and cards, tool images sit on their row, and every image opens the viewer", async ({
@@ -149,8 +179,8 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   const sent = page.locator(".message.user .attachment-list");
   await expect(sent.locator(".attachment-tile")).toHaveCount(1);
   await expect(sent.locator(".attachment-card")).toContainText("PDF");
-  // The image read_path added to context sits on that call's row.
-  const read = page.locator(".message.tool").filter({ hasText: "shot.png" });
+  // The image read_path added to context opens with that call's row.
+  const read = await openRow(page, "shot.png");
   await expect(read.locator(".attachment-tile")).toHaveCount(1);
   await expect(
     page.locator(".message").filter({ hasText: "attached on request" }),

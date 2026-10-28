@@ -1,22 +1,31 @@
 import { contextSummary } from "../src/state/context-summary.ts";
 import { duration } from "../src/shared/duration.ts";
 import {
-  diffCounts,
   diffLineClass,
-  isRunning,
   servedBy,
   servedByRows,
 } from "../src/shared/display.ts";
-import { getToolRow } from "../src/features/chat/tool-preview.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/shared/format.ts";
 import { formatEventStream } from "../src/features/chat/raw-capture.ts";
 import { count, bytes, tokens } from "../src/shared/quantities.ts";
+import { splitMentionTokens } from "../src/shared/message-view.ts";
 import {
-  presentMessages,
-  splitMentionTokens,
-} from "../src/shared/message-view.ts";
+  currentStep,
+  depthOf,
+  fold,
+  grow,
+  keepFirst,
+  headlineOf,
+  isRow,
+  layout,
+  mergeNodes,
+  opens,
+  placeNode,
+  visible,
+} from "../src/shared/tree.ts";
+import * as golden from "./golden-turns.js";
 import { dedupeName } from "../src/features/composer/mention.ts";
 import {
   encodeMention,
@@ -118,29 +127,17 @@ test("compact quantities use decimal units and promote rounded thresholds", () =
     assert.equal(bytes(value), result);
 });
 
-test("a row runs until it has a finished state", () => {
-  for (const state of [undefined, "running"])
-    assert.ok(isRunning(state), JSON.stringify(state));
-  for (const state of ["ok", "failed", "cancelled"])
-    assert.ok(!isRunning(state), state);
-});
-
-test("change receipts classify git-style lines", () => {
-  const change = [
-    "Replaced web/src/a.ts (+2 -1)",
-    " context",
-    "-removed",
-    "+added",
-    "@line 3",
-  ];
-  assert.deepEqual(
-    change.map((line, index) => diffLineClass(line, index === 0)),
-    ["diff-head", "diff-ctx", "diff-del", "diff-add", "diff-hunk"],
-  );
-  assert.equal(diffLineClass("@@ -1,3 +1,4 @@", false), "diff-hunk");
-  assert.equal(diffLineClass("--- a/f", false), "diff-head");
-  assert.equal(diffLineClass("+++ b/f", false), "diff-head");
-  assert.equal(diffLineClass("+x", false), "diff-add");
+test("changes classify git-style lines", () => {
+  const change = [" context", "-removed", "+added", "@line 3"];
+  assert.deepEqual(change.map(diffLineClass), [
+    "diff-ctx",
+    "diff-del",
+    "diff-add",
+    "diff-hunk",
+  ]);
+  assert.equal(diffLineClass("@@ -1,3 +1,4 @@"), "diff-hunk");
+  assert.equal(diffLineClass("--- a/f"), "diff-head");
+  assert.equal(diffLineClass("+++ b/f"), "diff-head");
 });
 
 test("durations scale consistently with the CLI", () => {
@@ -205,23 +202,6 @@ test("readable bodies decode text and nested JSON without losing lexical facts",
   );
 });
 
-// Pairing tests read identities; an Explored group only wraps them.
-const flat = (rows) =>
-  rows.flatMap((row) => (row.kind === "group" ? row.children : [row]));
-
-test("empty assistant placeholders drop, content stays", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "go" },
-    { id: "r-empty", kind: "assistant", text: "", reasoning: "" },
-    { id: "r-stream", kind: "assistant", streaming: true },
-    { id: "m1", kind: "assistant", text: "working" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.id),
-    ["u1", "m1"],
-  );
-});
-
 test("upload names dedupe with numbered copies", () => {
   assert.equal(dedupeName("image.png", []), "image.png");
   assert.equal(dedupeName("image.png", ["image.png"]), "image (2).png");
@@ -279,315 +259,6 @@ test("mention tokens split outside fences, never without files", () => {
   );
 });
 
-test("tool rows read as the view's verb and target", () => {
-  const base = {
-    kind: "tool_result",
-    name: "edit_file",
-    text: "ok",
-    state: "ok",
-  };
-  assert.equal(getToolRow(base).title, "edit_file");
-  assert.equal(
-    getToolRow({ ...base, activity: { label: "Edited a.txt" } }).title,
-    "Edited a.txt",
-  );
-  const view = { verb: ["Editing", "Edited"], target: "a.txt" };
-  assert.equal(getToolRow({ ...base, view }, true).title, "Editing a.txt");
-  const done = getToolRow({
-    ...base,
-    view,
-    change: "@line 1\n-old\n+new\n+more\n",
-    result: { word: "+2 −1 · 20ms", added: 2, removed: 1 },
-  });
-  assert.equal(done.title, "Edited a.txt");
-  // The host words the result; the row shows its word as it is.
-  assert.equal(done.subtitle, "+2 −1 · 20ms");
-  assert.equal(getToolRow({ ...base, view }, true).subtitle, "Running…");
-  assert.match(done.subtitle, /^\+2 \u22121 · /);
-});
-
-test("consecutive tools stay flat rows in order", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "go" },
-    { id: "t1", kind: "tool_result", call_id: "c1", text: "one" },
-    { id: "t2", kind: "tool_result", call_id: "c2", text: "two" },
-    {
-      id: "a1",
-      kind: "attachment",
-      origin: "tool",
-      files: [{ id: "f1" }],
-    },
-    { id: "m1", kind: "assistant", text: "done" },
-    { id: "t3", kind: "tool_result", call_id: "c3", text: "solo" },
-    { id: "x1", kind: "activity", activity: { category: "execute" } },
-    { id: "m2", kind: "assistant", text: "end" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.id),
-    ["u1", "t1", "t2", "a1", "m1", "t3", "x1", "m2"],
-  );
-  assert.equal(rows[6].activity?.category, "execute");
-});
-
-const call = (id, category, state = "ok") => ({
-  id,
-  kind: "tool_result",
-  call_id: id,
-  state,
-  activity: { category },
-});
-
-// The host's table (DetailPoliciesJson): what each verbosity level shows.
-const MINIMAL = {
-  work: "turn",
-  reasoning: "hidden",
-  open: false,
-  minor: false,
-};
-const DEFAULT = {
-  work: "groups",
-  reasoning: "closed",
-  open: false,
-  minor: false,
-};
-const FULL = { work: "calls", reasoning: "open", open: true, minor: true };
-const grouped = (id, category, group, label) => ({
-  ...call(id, category),
-  activity: { category, group: { id: group, label } },
-});
-const shape = (rows) =>
-  rows.map((row) => row.children?.map((step) => step.id) || row.id);
-
-test("default folds the calls the host grouped, and no others", () => {
-  const rows = presentMessages(
-    [
-      call("r1", "run"),
-      call("r2", "run"),
-      call("r3", "run"),
-      grouped("x1", "explore", "x1", "Explored · 2 calls"),
-      grouped("x2", "explore", "x1", "Explored · 2 calls"),
-      grouped("e1", "edit", "e1", "Edited · 2 calls"),
-      grouped("e2", "edit", "e1", "Edited · 2 calls"),
-      { id: "m1", kind: "assistant", text: "done" },
-      // A group cut by the page's edge is one row, not a fold of one.
-      grouped("x3", "explore", "x3", "Explored · 2 calls"),
-    ],
-    DEFAULT,
-  );
-  assert.deepEqual(shape(rows), [
-    "r1",
-    "r2",
-    "r3",
-    ["x1", "x2"],
-    ["e1", "e2"],
-    "m1",
-    "x3",
-  ]);
-  assert.equal(rows[3].label, "Explored · 2 calls");
-  // The group takes its first row's key, so the row keeps its place.
-  assert.equal(rows[3].key, "x1");
-  // No policy named is the default one.
-  assert.deepEqual(
-    shape(
-      presentMessages([
-        grouped("a", "edit", "a", "E"),
-        grouped("b", "edit", "a", "E"),
-      ]),
-    ),
-    [["a", "b"]],
-  );
-});
-
-test("a reply of blank lines is no row", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "go" },
-    { id: "m1", kind: "assistant", text: "\n\n" },
-    { id: "m2", kind: "assistant", text: "", reasoning: " \n" },
-    { id: "m3", kind: "assistant", text: "Done." },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.id),
-    ["u1", "m3"],
-  );
-});
-
-test("minimal folds a turn's work into one row before its answer", () => {
-  const turn = [
-    { id: "u1", kind: "user", text: "go" },
-    { id: "m1", kind: "assistant", text: "Looking.", reasoning: "hm" },
-    call("x1", "explore"),
-    call("v1", "verify", "failed"),
-    { ...call("e1", "edit"), view: { target: "a.ts" } },
-    { ...call("e2", "edit"), view: { target: "a.ts" } },
-    { ...call("e3", "edit"), view: { target: "b.ts" } },
-    call("c1", "run", "cancelled"),
-    { id: "m2", kind: "assistant", text: "Done.", reasoning: "sure" },
-    {
-      id: "s1",
-      kind: "turn_summary",
-      summary: { turn: 1, duration_ms: 72000 },
-    },
-    { id: "u2", kind: "user", text: "more" },
-    call("r1", "run", "running"),
-  ];
-  const rows = presentMessages(turn, MINIMAL);
-  // Cancelled calls, the answer, the footer and your messages stay rows;
-  // the rest of each turn, failed calls included, is one row where its first
-  // step stood, and its label counts the failures.
-  assert.deepEqual(shape(rows), [
-    "u1",
-    ["m1", "x1", "v1", "e1", "e2", "e3"],
-    "c1",
-    "m2",
-    "s1",
-    "u2",
-    ["r1"],
-  ]);
-  // A finished turn says how long it took; one still running cannot.
-  assert.equal(
-    rows[1].label,
-    "Worked · 5 steps · edited 2 files · 1 error · 1m 12s",
-  );
-  assert.equal(rows[6].label, "Worked · 1 step");
-  assert.equal(rows[3].text, "Done.");
-  // A reply with calls after it is work, not the answer, while it runs too.
-  assert.deepEqual(
-    shape(
-      presentMessages(
-        [
-          { id: "u1", kind: "user", text: "go" },
-          call("x1", "explore"),
-          { id: "m1", kind: "assistant", text: "Building." },
-          call("r1", "run"),
-          call("r2", "run", "running"),
-        ],
-        MINIMAL,
-      ),
-    ),
-    ["u1", ["x1", "m1", "r1", "r2"]],
-  );
-  // A turn with nothing but an answer has no work row.
-  assert.deepEqual(
-    shape(
-      presentMessages(
-        [
-          { id: "u1", kind: "user", text: "hi" },
-          { id: "m1", kind: "assistant", text: "hello" },
-        ],
-        MINIMAL,
-      ),
-    ),
-    ["u1", "m1"],
-  );
-});
-
-test("a reply that is only thinking is a row where thinking shows", () => {
-  const turn = [
-    { id: "u1", kind: "user", text: "go" },
-    { id: "m1", kind: "assistant", text: "", reasoning: "hm" },
-    call("x1", "explore"),
-    { id: "m2", kind: "assistant", text: "Done." },
-  ];
-  // Hidden thinking leaves nothing to show, so no empty row is kept.
-  assert.deepEqual(shape(presentMessages(turn, MINIMAL)), ["u1", ["x1"], "m2"]);
-  assert.deepEqual(shape(presentMessages(turn, DEFAULT)), [
-    "u1",
-    "m1",
-    "x1",
-    "m2",
-  ]);
-});
-
-test("minimal keeps a file the agent handed you out of the fold", () => {
-  const rows = presentMessages(
-    [
-      { id: "u1", kind: "user", text: "chart it" },
-      call("r1", "run"),
-      // A link to open is part of the work; a file is what was asked for.
-      { ...call("d1", "run"), parts: [{ kind: "link", label: "Open" }] },
-      { ...call("a1", "share"), parts: [{ kind: "file", name: "chart.svg" }] },
-      { id: "m1", kind: "assistant", text: "Shared." },
-    ],
-    MINIMAL,
-  );
-  assert.deepEqual(shape(rows), ["u1", ["r1", "d1"], "a1", "m1"]);
-});
-
-test("full folds nothing and keeps routine rows", () => {
-  const blocks = [
-    grouped("x1", "explore", "x1", "Explored · 2 calls"),
-    grouped("x2", "explore", "x1", "Explored · 2 calls"),
-    {
-      id: "n1",
-      kind: "activity",
-      memory: { action: "kept", key: "k", automatic: true, minor: true },
-    },
-    { id: "m1", kind: "assistant", text: "done", reasoning: "why" },
-  ];
-  const rows = presentMessages(blocks, FULL);
-  assert.deepEqual(shape(rows), ["x1", "x2", "n1", "m1"]);
-  assert.equal(rows[3].reasoning, "why");
-  for (const policy of [MINIMAL, DEFAULT])
-    assert.ok(
-      !presentMessages(blocks, policy)
-        .flatMap((row) => row.children || [row])
-        .some((row) => row.id === "n1"),
-    );
-});
-
-test("a tool row is the same row while its reply streams", () => {
-  const reply = { id: "r", kind: "assistant", response_id: "r", text: "a" };
-  const call = { id: "t", kind: "tool_result", response_id: "r", call_id: "c" };
-  const shot = {
-    id: "s",
-    kind: "attachment",
-    origin: "tool",
-    source_call_ids: ["c"],
-    files: [{ id: "f", name: "shot.png" }],
-  };
-  const before = presentMessages([reply, call, shot], FULL);
-  const after = presentMessages([{ ...reply, text: "ab" }, call, shot], FULL);
-  assert.notEqual(after[0], before[0]);
-  assert.equal(after[1], before[1]);
-  assert.equal(after[1].files.length, 1);
-  // What the row shows of its reply still counts.
-  const timed = presentMessages([{ ...reply, time: "t1" }, call, shot], FULL);
-  assert.notEqual(timed[1], before[1]);
-});
-
-test("a streamed row refolds only the last fold", () => {
-  const blocks = [
-    grouped("a1", "explore", "a1", "Explored · 2 calls"),
-    grouped("a2", "explore", "a1", "Explored · 2 calls"),
-    { id: "m1", kind: "assistant", text: "next" },
-    grouped("b1", "edit", "b1", "Edited · 2 calls"),
-    grouped("b2", "edit", "b1", "Edited · 2 calls"),
-  ];
-  const before = presentMessages(blocks, DEFAULT);
-  const after = presentMessages(
-    [...blocks, grouped("b3", "edit", "b1", "Edited · 3 calls")],
-    DEFAULT,
-  );
-  assert.equal(after[0], before[0]);
-  assert.notEqual(after[2], before[2]);
-  assert.deepEqual(
-    after[2].children.map((step) => step.id),
-    ["b1", "b2", "b3"],
-  );
-  // A turn's work row is the same row until the turn's rows change.
-  const turn = [{ id: "u1", kind: "user", text: "go" }, ...blocks];
-  assert.equal(
-    presentMessages(turn, MINIMAL)[1],
-    presentMessages([...turn], MINIMAL)[1],
-  );
-});
-
-test("a diff without stated counts is counted line by line", () => {
-  assert.deepEqual(diffCounts("@line 2\n+a\n+b\n-c\n--- x\n+++ y"), [2, 1]);
-  // An approval preview's head line is not a change.
-  assert.deepEqual(diffCounts("Created a.ts (+2 -0)\n+a\n+b\n"), [2, 0]);
-});
-
 test("call details and statistics name the upstream that served each call", () => {
   assert.equal(servedBy("Wafer"), "served by Wafer");
   assert.equal(servedBy(), "");
@@ -602,4 +273,287 @@ test("call details and statistics name the upstream that served each call", () =
     ],
   );
   assert.deepEqual(servedByRows(), []);
+});
+
+// What a fresh transcript draws of `nodes` at a detail level, one line per
+// thing drawn, as node.tsx lays it out: a row as its headline and result
+// word (⌄ open, › closed, · nothing to open), its open body as "| text" and
+// its parts in brackets, a message as its text ("you: " for yours), with
+// what opens under a row indented beneath it.
+function outline(nodes, detail, max = Infinity) {
+  const level = depthOf(detail);
+  const lines = [];
+  const walk = (branches, depth, indent) => {
+    for (const { branch } of layout(branches, level)) {
+      const { node } = branch;
+      if (!isRow(node)) {
+        lines.push(
+          indent +
+            (node.kind === "footer"
+              ? "footer"
+              : `${node.role === "assistant" ? "" : "you: "}${
+                  node.body?.text ??
+                  (node.parts || [])
+                    .map((part) => `[${part.kind} ${part.name}]`)
+                    .join(" ")
+                }`),
+        );
+        continue;
+      }
+      const kids = branch.kids.filter((kid) => visible(kid.node, level));
+      const openable =
+        node.body || kids.length || node.parts || node.kind === "call";
+      const open = openable && opens(depth, level);
+      const word = node.result?.word ? ` · ${node.result.word}` : "";
+      const mark = !openable ? "·" : open ? "⌄" : "›";
+      lines.push(`${indent}${mark} ${headlineOf(node)}${word}`);
+      if (!open) continue;
+      if (node.body) lines.push(`${indent}  | ${node.body.text}`);
+      for (const part of node.parts || [])
+        lines.push(`${indent}  [${part.kind} ${part.name ?? part.label}]`);
+      const [earlier, shown] = fold(kids, max);
+      if (earlier.length) lines.push(`${indent}  … ${earlier.length} earlier`);
+      walk(shown, depth + 1, `${indent}  `);
+    }
+  };
+  walk(grow(nodes), 0, "");
+  return lines;
+}
+
+// Each golden turn at the three depths: minimal, default and full.
+const depths = (nodes) =>
+  Object.fromEntries(
+    ["minimal", "default", "full"].map((level) => [
+      level,
+      outline(nodes, level),
+    ]),
+  );
+
+test("a plain answer is the same at every depth", () => {
+  const { minimal, default: middle, full } = depths(golden.plain);
+  for (const lines of [minimal, middle, full])
+    assert.deepEqual(lines, ["you: hi", "Hello.", "footer"]);
+});
+
+test("a chain of calls opens one level per depth", () => {
+  const { minimal, default: middle, full } = depths(golden.chain);
+  const ask = "you: why does it take so long?";
+  const worked = "Worked 3 steps · edited 1 file · 2m 4s";
+  const end = ["It's mostly structural.", "footer"];
+  assert.deepEqual(minimal, [ask, `› ${worked}`, ...end]);
+  assert.deepEqual(middle, [
+    ask,
+    `⌄ ${worked}`,
+    "  › Thinking",
+    "  › Explored 2 calls",
+    "  › Edited src/parser.ts · +2 −1 · 5ms",
+    ...end,
+  ]);
+  assert.deepEqual(full, [
+    ask,
+    `⌄ ${worked}`,
+    "  ⌄ Thinking",
+    "    | look first",
+    "  ⌄ Explored 2 calls",
+    "    ⌄ Read fli/search.py · 120 lines · 5ms",
+    "      | alpha",
+    "    ⌄ Read fli/models.py · 88 lines · 5ms",
+    "      | beta",
+    "  ⌄ Edited src/parser.ts · +2 −1 · 5ms",
+    "    | - const line = 0;\n+ let line = 1;\n+ const column = 0;",
+    ...end,
+  ]);
+});
+
+test("failed, cancelled, denied and rejected calls read as their words", () => {
+  const { minimal, default: middle, full } = depths(golden.failed);
+  const end = ["Nothing worked.", "footer"];
+  const worked = "Worked 4 steps · 4 errors · 3.0s";
+  assert.deepEqual(minimal, ["you: try", `› ${worked}`, ...end]);
+  const calls = [
+    "Read a.txt · failed · 5ms",
+    "Ran make · cancelled · 5ms",
+    "Ran rm -rf out · denied · 5ms",
+    // Refused before it ran: no verb, the call it would have made.
+    "Read /etc · rejected: path is outside the folder · 5ms",
+  ];
+  assert.deepEqual(middle, [
+    "you: try",
+    `⌄ ${worked}`,
+    ...calls.map((call) => `  › ${call}`),
+    ...end,
+  ]);
+  assert.deepEqual(full, [
+    "you: try",
+    `⌄ ${worked}`,
+    `  ⌄ ${calls[0]}`,
+    "    | missing",
+    ...calls.slice(1, 3).map((call) => `  ⌄ ${call}`),
+    `  ⌄ ${calls[3]}`,
+    "    | error: path is outside the folder: /etc is not inside /project",
+    ...end,
+  ]);
+});
+
+test("a file handed over stays in sight at every depth", () => {
+  const { minimal, default: middle, full } = depths(golden.handed);
+  const end = ["[file report.html]", "Here it is.", "footer"];
+  assert.deepEqual(minimal, [
+    "you: make a report",
+    "› Worked 1 step · 2.0s",
+    ...end,
+  ]);
+  assert.deepEqual(middle, [
+    "you: make a report",
+    "⌄ Worked 1 step · 2.0s",
+    "  › Shared report.html · 5ms",
+    ...end,
+  ]);
+  assert.equal(full[2], "  ⌄ Shared report.html · 5ms");
+  assert.deepEqual(full.slice(3), end);
+});
+
+test("agents and background work link to it, and routine notices wait for full", () => {
+  const { minimal, default: middle, full } = depths(golden.agents);
+  assert.deepEqual(minimal, [
+    "you: find flights",
+    "› Worked 2 steps · 4.0s",
+    "Both are running.",
+    "footer",
+    "› Finished npm test · exit 0 · 42s",
+  ]);
+  assert.deepEqual(middle, [
+    "you: find flights",
+    "⌄ Worked 2 steps · 4.0s",
+    "  › Started agent · Find flights · 5ms",
+    "  › Started npm test · 5ms",
+    "Both are running.",
+    "footer",
+    "⌄ Finished npm test · exit 0 · 42s",
+    "  | all 12 passed",
+  ]);
+  assert.deepEqual(full.slice(2, 6), [
+    "  ⌄ Started agent · Find flights · 5ms",
+    "    [link Open agent]",
+    "  ⌄ Started npm test · 5ms",
+    "    [link Open command]",
+  ]);
+  assert.equal(full.at(-1), "· Saved memory note");
+});
+
+test("a blank reply is no node, and a call without facts reads its state", () => {
+  const { minimal, default: middle, full } = depths(golden.blankMcp);
+  assert.deepEqual(minimal, [
+    "you: look it up",
+    "› Worked 1 step · 1.5s",
+    "footer",
+  ]);
+  assert.equal(middle[2], "  › Called Search · 5ms");
+  assert.equal(full[2], "  ⌄ Called Search · 5ms");
+});
+
+test("a running turn's work line says what it is doing now", () => {
+  const { minimal, default: middle, full } = depths(golden.running);
+  assert.deepEqual(minimal, ["you: build", "› Working"]);
+  assert.deepEqual(middle, [
+    "you: build",
+    "⌄ Working",
+    "  Building now.",
+    "  › Running make",
+  ]);
+  assert.equal(full.at(-1), "  ⌄ Running make");
+  const [turn] = grow(golden.running);
+  assert.equal(currentStep(turn.kids[0]), "Running make");
+});
+
+test("paged history reads older pages in front, the newer copy winning", () => {
+  const [older, newer] = golden.pages;
+  const merged = mergeNodes(older, newer);
+  assert.deepEqual(outline(merged, "minimal"), [
+    ...outline(older, "minimal"),
+    ...outline(newer, "minimal"),
+  ]);
+  const restated = { ...older[1], body: { kind: "markdown", text: "Hi!" } };
+  const again = mergeNodes(older, [restated, ...newer]);
+  assert.equal(again.length, merged.length);
+  assert.equal(
+    again.find((node) => node.id === restated.id),
+    restated,
+  );
+  assert.equal(mergeNodes([], newer), newer);
+});
+
+test("a long list of steps shows its latest and folds the earlier", () => {
+  const steps = Array.from({ length: 35 }, (_, index) => ({
+    id: `t-${index}`,
+    parent: "w-m-2",
+    kind: "call",
+    state: "ok",
+    sequence: 3 + index,
+    headline: { verb: "Read", target: `f${index}` },
+  }));
+  const nodes = [
+    golden.plain[0],
+    { ...golden.chain[1], id: "w-m-2", parent: "m-2" },
+    ...steps,
+  ];
+  const lines = outline(nodes, "default", 30);
+  assert.equal(lines[2], "  … 5 earlier");
+  assert.equal(lines[3], "  › Read f5");
+  assert.equal(lines.length, 3 + 30);
+});
+
+test("a node lands where the host puts it", () => {
+  const patch = (block) => ({ kind: "block", block });
+  const turn = { id: "m-1", parent: null, kind: "turn", sequence: 1 };
+  const call = { id: "t-a", parent: "w-m-1", kind: "call", sequence: 2 };
+  let nodes = placeNode([], patch(turn));
+  nodes = placeNode(nodes, patch(call));
+  // A parent sent after a node under it goes before it.
+  nodes = placeNode(nodes, patch({ id: "w-m-1", parent: "m-1", kind: "work" }));
+  assert.deepEqual(
+    nodes.map((node) => node.id),
+    ["m-1", "w-m-1", "t-a"],
+  );
+  // A late saved node goes in sequence order.
+  nodes = placeNode(nodes, patch({ id: "m-0", parent: null, sequence: 0 }));
+  assert.equal(nodes[0].id, "m-0");
+  // Streamed text appends to the node it names; an unknown one is dropped.
+  const reply = {
+    id: "r",
+    parent: "m-1",
+    kind: "message",
+    body: { kind: "markdown", text: "Hel" },
+  };
+  nodes = placeNode(nodes, patch(reply));
+  nodes = placeNode(nodes, { kind: "block", id: "r", append: { text: "lo" } });
+  assert.equal(nodes.at(-1).body.text, "Hello");
+  assert.equal(
+    placeNode(nodes, { kind: "block", id: "x", append: { text: "!" } }),
+    nodes,
+  );
+});
+
+test("a changed node makes anew only the branches on its path", () => {
+  const nodes = golden.conversation;
+  const before = grow(nodes);
+  const at = nodes.findIndex((node) => node.id === "r-3-2-1");
+  const changed = nodes.with(at, {
+    ...nodes[at],
+    body: { kind: "markdown", text: "Nothing worked at all." },
+  });
+  const after = grow(changed);
+  // The other turn, and the changed turn's work and footer, are the same.
+  assert.equal(after[0], before[0]);
+  assert.notEqual(after[1], before[1]);
+  assert.equal(after[1].kids[0], before[1].kids[0]);
+  assert.notEqual(after[1].kids[1], before[1].kids[1]);
+  assert.equal(after[1].kids[2], before[1].kids[2]);
+});
+
+test("older history is bounded on whole turns", () => {
+  const nodes = mergeNodes(golden.plain, golden.chain);
+  // Cut inside the second turn: it goes whole, not without its end.
+  assert.deepEqual(keepFirst(nodes, 5), golden.plain);
+  assert.equal(keepFirst(nodes, nodes.length), nodes);
 });

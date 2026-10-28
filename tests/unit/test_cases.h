@@ -187,9 +187,11 @@ namespace uagent {
   X(TestGoldenPlainAnswer)                        \
   X(TestGoldenChainOfCalls)                       \
   X(TestGoldenFailedCalls)                        \
+  X(TestGoldenFileHandedOver)                     \
   X(TestGoldenBlankReplyAndMcpCall)               \
   X(TestGoldenRunningTurn)                        \
   X(TestGoldenPagesEndOnWholeTurns)               \
+  X(TestCompactionNoticeSaysWhatWent)             \
   X(TestObservabilityEvents)                      \
   X(TestWorkspaceScopedSession)                   \
   X(TestProjectTrustTracksSemanticConfig)         \

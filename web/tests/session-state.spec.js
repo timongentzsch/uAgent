@@ -4,6 +4,8 @@ import {
   online,
   withoutServiceWorker,
   selectProbeModel,
+  chooseDetail,
+  openRow,
 } from "./fixtures.js";
 
 test("late snapshots and retired streams cannot replace current session state", async ({
@@ -190,38 +192,26 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // The host grouped the two reads: one row under its label, as a terminal
-  // shows them.
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(1);
-  await expect(page.locator(".transcript .group")).toHaveText(
-    /Explored · 2 calls/,
-  );
+  // The host grouped the two reads: the turn's work opens on one row under
+  // their label, as a terminal shows them.
+  const rows = page.locator(".transcript .node-row");
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  // The conversation menu sets the level, and what is shown restyles: every
-  // call at full, the whole turn's work in one row at minimal.
-  const detail = async (level) => {
-    await page
-      .locator(".conversation-head")
-      .getByLabel("Conversation menu", { exact: true })
-      .click();
-    // One row opens the levels in place, with a way back.
-    await page.getByRole("menuitem", { name: /^Detail/ }).click();
-    await expect(page.getByText("For all conversations.")).toBeVisible();
-    await page.getByRole("menuitemradio", { name: level, exact: true }).click();
-  };
-  await detail("Full");
-  await expect(page.locator(".transcript .group")).toHaveCount(0);
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
-  await detail("Minimal");
-  await expect(page.locator(".transcript .group")).toHaveText(
-    /Worked · 2 steps/,
-  );
-  await detail("Default");
-  await expect(page.locator(".transcript .group")).toHaveText(
-    /Explored · 2 calls/,
-  );
+  // The reply's thinking is a step of the work too.
+  await expect(rows).toHaveText([
+    /^Worked.*2 steps/,
+    /^Explored.*2 calls/,
+    /^Thinking/,
+  ]);
+  // The conversation menu sets how deep the tree opens: every call at full,
+  // the whole turn's work as one line at minimal.
+  await chooseDetail(page, "Full");
+  await expect(rows).toHaveCount(5);
+  await chooseDetail(page, "Minimal");
+  await expect(rows).toHaveText([/^Worked.*2 steps/]);
+  await chooseDetail(page, "Default");
+  await expect(rows).toHaveCount(3);
   // Tables keep their layout and scroll instead of squeezing a column.
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
@@ -234,7 +224,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
       parseFloat(getComputedStyle(element).fontSize),
   );
   expect(cellRatio).toBeLessThan(4);
-  const title = page.locator(".tool-disclosure .disclosure-label").first();
+  const title = page.locator(".node-row .node-headline").first();
   await title.evaluate((element) => {
     element.textContent = "long-command-".repeat(200);
   });
@@ -246,11 +236,8 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await prompt.fill("Memory receipt probe: please save this test memory");
   await prompt.press("Enter");
-  await expect(
-    page
-      .locator(".tool-disclosure")
-      .filter({ hasText: "Saved memory project/browser-proof" }),
-  ).toBeVisible();
+  // The receipt opens to a link to the memory.
+  await openRow(page, "Saved memory project/browser-proof");
   // Its detail reads top-down: key, one caption, then the memory itself
   // directly below (not floated to the middle of the sheet).
   await page.getByRole("button", { name: "Open memory" }).first().click();
@@ -274,17 +261,17 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
   // Retained history replays through the live pipeline: the same group and
-  // the receipt, none stuck on Running.
+  // the receipt, none still running, and the row opened here stays open.
   await expect(
-    page.locator(".transcript .tool-disclosure", { hasText: "Running" }),
-  ).toHaveCount(0);
-  await expect(
-    page
-      .locator(".tool-disclosure")
-      .filter({ hasText: "Saved memory project/browser-proof" }),
+    page.locator(".node-row", { hasText: "Explored" }),
   ).toBeVisible();
+  await expect(page.locator(".transcript .node.running")).toHaveCount(0);
+  await expect(
+    page.locator(".node-row", {
+      hasText: "Saved memory project/browser-proof",
+    }),
+  ).toHaveAttribute("aria-expanded", "true");
   await expect
     .poll(() =>
       page.locator(".transcript").evaluate((element) => element.scrollTop),
@@ -342,12 +329,14 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-led.running")).toBeVisible();
 
-  const thinking = page.locator(".thinking");
-  await expect(thinking).toBeVisible();
-  // A never-opened disclosure has no Markdown tree or optional renderer work.
-  await expect(thinking.locator(".markdown")).toHaveCount(0);
-  await thinking.locator("summary").click();
-  await expect(thinking.locator(".markdown")).toBeVisible();
+  // The reply's thinking is a row of the turn's work; a never-opened row
+  // draws no body.
+  const thinkingRow = page.locator(".node-row", { hasText: "Thinking" });
+  await expect(thinkingRow).toBeVisible();
+  const thinking = thinkingRow.locator("..");
+  await expect(thinking.locator(".node-body")).toHaveCount(0);
+  await thinkingRow.click();
+  await expect(thinking.locator(".node-text")).toBeVisible();
 
   const opening = page
     .locator(".message.response > .markdown p")
@@ -366,14 +355,21 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     window.__stableCopyControl = node;
   });
   await stableTable.evaluate((node) => {
+    // How much of the answer shows. A reference streamed before its
+    // definition shows as written ("[label][name]") until the definition
+    // arrives; it counts as its label.
+    window.__answerLength = () =>
+      (
+        document.querySelector(".message.response > .markdown")?.textContent ||
+        ""
+      ).replace(/\[([^\]]*)\]\[[^\]]*\]/g, "$1").length;
     window.__stableMarkdownTable = node;
     window.__stableRemovalCount = 0;
     window.__maximumAnswerLength = 0;
     window.__stableRemovalObserver = new MutationObserver((records) => {
       window.__maximumAnswerLength = Math.max(
         window.__maximumAnswerLength,
-        document.querySelector(".message.response > .markdown")?.textContent
-          ?.length || 0,
+        window.__answerLength(),
       );
       for (const record of records)
         for (const removed of record.removedNodes)
@@ -392,9 +388,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
       document.querySelector(".message.response > .markdown"),
       { childList: true, subtree: true },
     );
-    window.__maximumAnswerLength = document.querySelector(
-      ".message.response > .markdown",
-    ).textContent.length;
+    window.__maximumAnswerLength = window.__answerLength();
   });
 
   await opening.evaluate((node) => {
@@ -458,22 +452,23 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
             node.textContent?.includes("Stable opening paragraph"),
           )?.parentElement,
         selected: getSelection().toString(),
-        thinking: document.querySelector(".thinking")?.open,
+        thinking: [...document.querySelectorAll(".node-row")]
+          .find((row) => row.textContent?.includes("Thinking"))
+          ?.getAttribute("aria-expanded"),
         copy:
           window.__stableCopyControl ===
           document.querySelector('.message.response [aria-label*="Cop"]'),
         table:
           window.__stableMarkdownTable ===
           document.querySelector(".message.response table"),
-        length: document.querySelector(".message.response > .markdown")
-          ?.textContent?.length,
+        length: window.__answerLength(),
         removals: window.__stableRemovalCount,
       })),
     )
     .toEqual({
       same: true,
       selected,
-      thinking: true,
+      thinking: "true",
       copy: true,
       table: true,
       length: maximumLength,
@@ -521,11 +516,9 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     }
     await route.fulfill({ response, json: value });
   });
-  // The subagent's own tool row opens it: the row names the task and keeps
-  // a visible link to the agent instead of repeating its whole answer.
-  const subagentRow = page
-    .locator(".message.tool")
-    .filter({ hasText: /Delegated .*Review the full task\./ });
+  // The subagent's own call opens to it: the row names the task and its
+  // body keeps a link to the agent instead of repeating its whole answer.
+  const subagentRow = await openRow(page, /Delegated .*Review the full task\./);
   await expect(subagentRow).not.toContainText("resume with subagent");
   await subagentRow
     .getByRole("button", { name: "Open agent", exact: true })
@@ -580,11 +573,11 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     }),
   ).toBe(true);
 
-  await expect(thread.locator(".tool-disclosure")).not.toHaveCount(0);
-  const toolRow = thread.locator(".tool-disclosure").first();
-  await toolRow.locator("summary").click();
+  // The thread's own work opens like the transcript's.
+  await openRow(thread, /^Work/);
+  const toolRow = await openRow(thread.locator(".node-kids"), /./);
   await toolRow
-    .getByRole("button", { name: "Tool input/output", exact: true })
+    .getByRole("button", { name: "Input and output", exact: true })
     .click();
   // A page inside the same sheet, never a second dialog; Back returns.
   const heading = detail.locator(":scope > header > h2");
@@ -625,10 +618,12 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     "outline-style",
     "none",
   );
+  // A turn's statistics are in its answer's menu, at the end of its footer.
   await thread
-    .getByRole("button", { name: /^Turn statistics: / })
+    .getByRole("button", { name: "Actions for this answer" })
     .last()
     .click();
+  await page.getByRole("menuitem", { name: "Statistics", exact: true }).click();
   await expect(
     stats.getByText("Model at completion", { exact: true }),
   ).toBeVisible();
@@ -704,9 +699,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await composer.fill("/compact");
   await composer.press("Enter");
   await expect(
-    page
-      .locator(".event-row > summary")
-      .filter({ hasText: "Context compacted" }),
+    page.locator(".node-row").filter({ hasText: "Compacted" }),
   ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Raw context", exact: true }).click();
@@ -720,16 +713,16 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .click();
   await composer.fill("Background activity probe");
   await composer.press("Enter");
-  // A finished background task reads like any tool row, its last output
-  // lines visible without expanding.
+  // A finished background task reads like any row, open at default to its
+  // last output lines; it has no exchange of its own to inspect.
   const receipt = page
-    .locator(".message.tool")
+    .locator(".node")
+    .filter({ has: page.locator(".node-row", { hasText: "Finished" }) })
     .filter({ hasText: "BROWSER_ACTIVITY" })
-    .filter({ hasText: "Finished" });
+    .last();
   await expect(receipt).toBeVisible();
-  await expect(receipt.locator("summary")).toContainText("Finished");
   await expect(
-    receipt.getByRole("button", { name: "Tool input/output" }),
+    receipt.getByRole("button", { name: "Input and output" }),
   ).toHaveCount(0);
   await page.reload();
   await expect(receipt).toBeVisible();

@@ -10,11 +10,9 @@ import {
   type ComponentType,
   type FunctionComponent,
   type ButtonHTMLAttributes,
-  type GenericEventHandler,
   type Ref,
   type RefObject,
   type SelectHTMLAttributes,
-  type TargetedEvent,
 } from "preact";
 import { failure, type State } from "./types.ts";
 import {
@@ -476,106 +474,6 @@ export class ErrorBoundary extends Component<
     );
   }
 }
-export function EventRow({
-  title,
-  time,
-  icon,
-  messageId,
-  children,
-}: {
-  title: string;
-  time?: string;
-  icon: ComponentChildren;
-  messageId?: string;
-  children: ComponentChildren;
-}) {
-  return (
-    <DisclosureRow
-      className="event-row"
-      label={title}
-      time={time}
-      icon={icon}
-      messageId={messageId}
-    >
-      <div class="event-body">{children}</div>
-    </DisclosureRow>
-  );
-}
-
-export function DisclosureRow({
-  label,
-  status,
-  time,
-  icon,
-  marker,
-  open = false,
-  onToggle,
-  className = "",
-  messageId,
-  children,
-}: {
-  label: string;
-  // Whether it starts open; from then on the person's toggles decide.
-  open?: boolean;
-  status?: string;
-  time?: string;
-  icon?: ComponentChildren;
-  // Leads the label on its line, e.g. a failure mark and its spoken prefix.
-  marker?: ComponentChildren;
-  onToggle?: GenericEventHandler<HTMLDetailsElement>;
-  className?: string;
-  messageId?: string;
-  children: ComponentChildren;
-}) {
-  const [isOpen, setIsOpen] = useState(open);
-  const [mounted, setMounted] = useState(open);
-  // Internal state only, so user toggles survive streaming re-renders
-  // (never reset to closed) with no post-paint prop sync to lag a frame.
-  // The toggle is driven explicitly on click: a focus scroll landing
-  // between mousedown and mouseup can move the summary and swallow the
-  // native toggle (focus arrives, expansion does not). preventDefault
-  // plus explicit state makes every pointer and keyboard toggle land.
-  const setOpen = (next: boolean) => {
-    setIsOpen(next);
-    if (next) setMounted(true);
-  };
-  return (
-    <details
-      class={`disclosure-row ${className}`}
-      data-status={status}
-      data-message-id={messageId}
-      open={isOpen}
-      onToggle={(event) => {
-        // Backstop for non-click toggles (assistive tech driving the
-        // element directly): adopt DOM truth so state cannot strand.
-        setOpen(event.currentTarget.open);
-        onToggle?.(event);
-      }}
-    >
-      <summary
-        onClick={(event) => {
-          event.preventDefault();
-          const next = !isOpen;
-          setOpen(next);
-          onToggle?.({
-            currentTarget: { open: next },
-          } as TargetedEvent<HTMLDetailsElement>);
-        }}
-      >
-        <ChevronRight class="disclosure-chevron" aria-hidden="true" />
-        {icon}
-        <span class="disclosure-label" title={label}>
-          {marker}
-          {label}
-        </span>
-        {status && <small>{status}</small>}
-        <Time value={time} />
-      </summary>
-      {mounted && <div class="disclosure-body">{children}</div>}
-    </details>
-  );
-}
-
 export function Button({
   variant = "secondary",
   size = "default",

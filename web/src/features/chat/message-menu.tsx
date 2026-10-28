@@ -1,45 +1,45 @@
-import type { Block, Exchange, PresentedBlock } from "../../shared/types.ts";
+import type { Exchange, Node } from "../../shared/types.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 
-// Single menu for every transcript row. Thinking and output tokens share
-// the same surface; items hide only when their handler is missing.
+// The one menu of a message: your message's (continue in a fork from it),
+// and an answer's at the end of its turn's footer (the turn's and the
+// reply's statistics). Items hide when their handler is missing.
 export function MessageMenu({
   label,
-  block,
+  node,
+  reply,
   statistics,
   http,
   branch,
 }: {
   label: string;
-  block: PresentedBlock;
-  statistics?: (block: PresentedBlock) => void;
+  node: Node;
+  // The answer whose footer holds this menu.
+  reply?: Node;
+  statistics?: (node: Node) => void;
   http?: (exchanges: Exchange[]) => void;
   // Your own messages: continue in a fork from here, editing this message
   // (edit) or keeping it and its reply.
-  branch?: (block: Pick<Block, "id">, edit: boolean) => void;
+  branch?: (node: Pick<Node, "id">, edit: boolean) => void;
 }) {
-  if (!statistics && !http && !branch) return null;
-  const exchanges =
-    ("http" in block ? block.http : undefined) || block.source?.http;
-  const showHttp =
-    !!http && (block.kind === "assistant" || (exchanges?.length || 0) > 0);
+  const exchanges = reply?.http || node.http;
+  const showHttp = !!http && (!!reply || (exchanges?.length || 0) > 0);
+  if (!statistics && !showHttp && !branch) return null;
   return (
     <Menu label={label}>
       {branch && (
         <>
-          <MenuItem onClick={() => branch(block, true)}>
-            Edit from here
-          </MenuItem>
-          <MenuItem onClick={() => branch(block, false)}>
+          <MenuItem onClick={() => branch(node, true)}>Edit from here</MenuItem>
+          <MenuItem onClick={() => branch(node, false)}>
             Fork from here
           </MenuItem>
         </>
       )}
       {statistics && (
-        <MenuItem onClick={() => statistics(block)}>Statistics</MenuItem>
+        <MenuItem onClick={() => statistics(node)}>Statistics</MenuItem>
       )}
-      {block.source && statistics && (
-        <MenuItem onClick={() => statistics(block.source!)}>
+      {reply && statistics && (
+        <MenuItem onClick={() => statistics(reply)}>
           Model call statistics
         </MenuItem>
       )}

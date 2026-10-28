@@ -170,9 +170,20 @@ async function open(page) {
 const measured = (type, counts) =>
   test.info().annotations.push({ type, description: JSON.stringify(counts) });
 
-// The turn's reply streams sixty frames, with a tool call every tenth.
+// The turn's reply streams sixty frames, with a tool call of its work every
+// tenth.
 const streamReply = (page) =>
   page.evaluate(async () => {
+    testSend({
+      kind: "block",
+      block: {
+        id: "w-m-118",
+        parent: "m-118",
+        kind: "work",
+        state: "running",
+        headline: { verb: "Working", target: "" },
+      },
+    });
     testSend({
       kind: "block",
       block: {
@@ -181,6 +192,8 @@ const streamReply = (page) =>
         kind: "message",
         role: "assistant",
         streaming: true,
+        // A reply arrives whole with its first text, then appends.
+        body: { kind: "markdown", text: "Reply: " },
         sequence: testSequence,
       },
     });
@@ -224,17 +237,20 @@ test("streaming renders only what changed", async ({ page }) => {
   );
   measured("streamed", counts);
   // The shell and its sidebar sit out the stream; each frame renders the
-  // conversation once and only the rows it touched.
+  // conversation once and only the node it touched: the reply, or a call
+  // of the work.
   expect(counts.App || 0).toBe(0);
   expect(counts.SidebarView || 0).toBe(0);
   expect(counts.SessionRow || 0).toBe(0);
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
-  expect(counts.MessageView).toBeLessThanOrEqual(62 + 6);
+  expect(counts.MessageView).toBeLessThanOrEqual(62);
+  expect(counts.RowLine).toBeLessThanOrEqual(6 * 2 + 1);
   // The composer and its controls show nothing a streamed block changes.
   for (const name of ["Composer", "ModelControl", "ActivityButtonView"])
     expect(counts[name] || 0, name).toBe(0);
 
-  // Background work the turn started, then twenty of its progress ticks.
+  // Work the turn started in the background, then twenty of its progress
+  // ticks: they change no node, so no node renders.
   await page.evaluate(async () => {
     testSend({
       kind: "block",
@@ -249,20 +265,6 @@ test("streaming renders only what changed", async ({ page }) => {
         sequence: testSequence,
       },
     });
-    // Failed calls fold into the turn's work and link to no work.
-    for (let index = 0; index < 5; index++)
-      testSend({
-        kind: "block",
-        block: {
-          id: `failed-${index}`,
-          parent: "w-m-118",
-          kind: "call",
-          headline: { verb: "Read", target: "missing.ts" },
-          state: "failed",
-          body: { kind: "text", text: "missing" },
-          sequence: testSequence,
-        },
-      });
     await testMark();
     for (let index = 0; index < 20; index++) {
       testSend({
@@ -284,14 +286,11 @@ test("streaming renders only what changed", async ({ page }) => {
     }
   });
   const { renders: ticks } = await page.evaluate(() => testSince());
-  // A tick of background work renders the one tool row that links to it.
   await expect(page.locator('[data-message-id="spawn"]')).toContainText(
-    "running",
+    "Started agent",
   );
-  // At most once a tick: two ticks that reach one frame are one render, as
-  // happened on a busy runner where an exact count of 20 came out as 19.
-  expect(ticks.ToolRow).toBeGreaterThan(0);
-  expect(ticks.ToolRow).toBeLessThanOrEqual(20);
+  expect(ticks.RowLine || 0).toBe(0);
+  expect(ticks.MessageView || 0).toBe(0);
   // The sidebar renders that session's row, not the other forty.
   expect(ticks.SessionRow).toBeGreaterThan(0);
   expect(ticks.SessionRow).toBeLessThanOrEqual(20);

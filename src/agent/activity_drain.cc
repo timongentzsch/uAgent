@@ -149,7 +149,6 @@ void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
     if (event.action == "receipt_unavailable") facts.outcome = event.action;
     json block = Receipt(headline, warning ? "failed" : "ok", facts,
                          event.preview, "markdown", std::move(parts));
-    block["activity"]["category"] = "memory";
     block["memory"] = {{"action", event.action},
                        {"key", event.key},
                        {"automatic", event.automatic}};
@@ -209,8 +208,6 @@ void Agent::DeliverActivityCompletions(
                          ? LinkPart("agent", completion.source_id, "Open agent")
                          : LinkPart("activity", completion.activity_id,
                                     "Open activity")}));
-    block["activity"]["category"] =
-        completion.kind == ActivityKind::kSubagent ? "delegate" : "run";
     block["activity_id"] = completion.activity_id;
     // The full command travels with the record (bounded): rows and titles
     // abbreviate, but the popup and history must not lose it when the

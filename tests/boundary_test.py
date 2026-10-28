@@ -15,9 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ORDER = ["core", "api", "toolcore", "agent", "tools", "app", "web"]
 INCLUDE = re.compile(r'#include\s+"(include/[^"]+)"')
 
-KNOWN = {
-    "src/core/events.cc -> include/ui/presentation.h",
-}
+KNOWN = set()
 
 
 def layer(path):

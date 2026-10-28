@@ -81,12 +81,12 @@ def test_streamed_search_citations(root, home, *, binary):
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true("grounded\n  ← web_search" in result.stdout, result.stdout)
-        assert_true("web_search ×1 · 1 source" in result.stdout, result.stdout)
-        assert_true("legacy\n  ← 1 source" in result.stdout, result.stdout)
-        assert_true("Sources:" in result.stdout, result.stdout)
+        # Each answer lists its sources; the footer counts the searches.
+        assert_true("grounded\nSources:" in result.stdout, result.stdout)
         assert_true("https://example.com/source" in result.stdout, result.stdout)
-        assert_true("legacy snippet" in result.stdout, result.stdout)
+        assert_true("1 searches" in result.stdout, result.stdout)
+        assert_true("legacy\nSources:" in result.stdout, result.stdout)
+        assert_true("https://example.com/legacy" in result.stdout, result.stdout)
 
 
 # Auto approval asks a decision model, and what it cannot decide goes to a person.

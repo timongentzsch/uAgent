@@ -44,16 +44,7 @@ std::string Note(Tone tone, std::string_view text);
 
 // What opens a transcript row: its glyph, or in plain mode the word a screen
 // reader speaks in its place ("tool: ", "error: ").
-enum class Mark {
-  kCall,
-  kResult,
-  kFailed,
-  kStatus,
-  kChange,
-  kNote,
-  kWarn,
-  kError
-};
+enum class Mark { kCall, kResult, kFailed, kNote, kWarn, kError };
 std::string RowMark(Mark mark);
 
 // Three or more backticks, or tildes, and nothing else.

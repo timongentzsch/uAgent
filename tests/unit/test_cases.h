@@ -36,7 +36,7 @@ namespace uagent {
   X(TestForeignToolMarkup)                        \
   X(TestToolResults)                              \
   X(TestToolViews)                                \
-  X(TestVerbosityLevels)                          \
+  X(TestTreeRows)                                 \
   X(TestModelHints)                               \
   X(TestResultWord)                               \
   X(TestRegistries)                               \
@@ -58,9 +58,8 @@ namespace uagent {
   X(TestHostedSearchStatusRow)                    \
   X(TestTurnStatusBar)                            \
   X(TestDiffLineColoring)                         \
-  X(TestToolRowsDrawLiveAsResumed)                \
+  X(TestTreeDrawsLiveAsResumed)                   \
   X(TestStatusBarDropsByPriority)                 \
-  X(TestToolResultRows)                           \
   X(TestTerminalSafety)                           \
   X(TestTerminalInputDecoder)                     \
   X(TestSseChunkPartitions)                       \

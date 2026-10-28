@@ -33,7 +33,7 @@ void Terminal::Send(json command) {
   std::lock_guard lock(send_mutex_);
   if (JsonValue(command, "kind", "") == "reply") interaction_ = false;
   StampFrame(command, SessionIdFor(path_), connection_.generation);
-  command["request_id"] = RandomToken(16);
+  command["request_id"] = requests_ + RandomToken(16);
   command["client_request_id"] = command["request_id"];
   {
     std::lock_guard state_lock(mutex_);
@@ -42,10 +42,6 @@ void Terminal::Send(json command) {
         JsonValue(command, "kind", "") == "fork" ||
         JsonValue(command, "kind", "") == "side" ||
         JsonValue(command, "kind", "") == "share") {
-      if (raw_ && JsonValue(command, "kind", "") == "submit" &&
-          !JsonValue(command, "text", "").starts_with('/')) {
-        echoed_.insert(command["request_id"]);
-      }
       waiting_ = command["request_id"];
       input_blocked_ = true;
     }
@@ -106,19 +102,19 @@ void Terminal::ReceiveState(const json& frame) {
       }
     }
     const json* view = JsonObject(state, "view");
-    if (const json* blocks = view ? JsonArray(*view, "blocks") : nullptr) {
+    if (view && JsonArray(*view, "blocks")) {
       transcript_["view"] = *view;
-      for (const auto& block : *blocks) {
-        shown_.insert(JsonValue(block, "id", ""));
-        presenter_.Block(block);
-      }
+      presenter_.Draw(*view);
       history_ = true;
-      // Why the screen changed, where the eye is after a redraw.
-      if (std::exchange(redrawn_, false)) {
-        WriteTerminalRecord(
-            Note(Tone::kNeutral, "verbosity " + std::string(Detail().level)));
-      }
     }
+  } else if (const DetailPolicy* detail = detail_;
+             detail != &presenter_.Detail()) {
+    // Another level: the tree held here again, open to its depth, and why
+    // the screen changed where the eye is.
+    presenter_.SetDetail(*detail);
+    presenter_.Draw(transcript_["view"]);
+    WriteTerminalRecord(
+        Note(Tone::kNeutral, "verbosity " + std::string(detail->level)));
   }
   // A panel holding thread events says why, once per change.
   if (std::string paused = JsonValue(state, "paused", ""); paused != paused_) {
@@ -147,26 +143,17 @@ bool Terminal::ReceiveEvent(const json& frame) {
     wake_.Wake();
   } else if (type == AppType(EventId::kToolCall) ||
              type == AppType(EventId::kMessageChanged)) {
-    // A call opens its row and the saved result completes it; a group's row
-    // stands for the calls it folds.
-    json patches = json::array();
-    ApplySessionEvent(transcript_, type, data, &patches);
-    for (const json& patch : patches) {
-      const json* node = JsonObject(patch, "block");
-      const std::string kind = node ? JsonValue(*node, "kind", "") : "";
-      if (kind == "call" || kind == "group") presenter_.Block(*node);
-    }
-    if (const json* block = JsonObject(data, "block")) {
-      bool echoed = false;
-      {
-        std::lock_guard lock(mutex_);
-        echoed = echoed_.erase(JsonValue(*block, "request_id", "")) > 0;
+    // The held tree takes the event and what settled in it is drawn. A
+    // message this terminal echoed as it was typed is on screen already.
+    ApplySessionEvent(transcript_, type, data);
+    if (const json* node = JsonObject(data, "block")) {
+      if (raw_ &&
+          (JsonValue(*node, "kind", "") == "turn" ||
+           JsonValue(*node, "role", "") == "user") &&
+          JsonValue(*node, "request_id", "").starts_with(requests_)) {
+        presenter_.Drawn(JsonValue(*node, "id", ""));
       }
-      if (shown_.insert(JsonValue(*block, "id", "")).second && !echoed &&
-          (JsonValue(*block, "kind", "") == "turn" ||
-           JsonValue(*block, "role", "") == "user")) {
-        presenter_.Block(*block);
-      }
+      if (history_) presenter_.Update(transcript_["view"], *node);
     }
   } else if (type == AppType(EventId::kCommandCompleted) &&
              data.contains("output")) {

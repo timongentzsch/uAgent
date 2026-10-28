@@ -248,7 +248,6 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
     for label in (
         b"Welcome to uAgent. Try",
         b"you: go",
-        b"tool: Running",
         b"Risk: runs commands\r\n",
         b"result: Ran ",
         b"uagent:\r\nplain-ok",
@@ -309,23 +308,24 @@ def test_undo_puts_back_what_the_last_turn_changed(root, home, *, binary):
     assert_true("user reverted: edited.txt, fresh.txt, gone.txt;" in told[0], told)
 
 
-def test_long_diff_prints_whole_live_and_on_resume(root, home, *, binary):
+def test_long_diff_reads_the_same_live_and_on_resume(root, home, *, binary):
     content = "".join(f"line {index:04d} of a long file\n" for index in range(2000))
     write = tool_call("write_file", {"path": "long.txt", "content": content + "LAST_DIFF_LINE\n"})
     with Server([write, event({"content": "wrote-ok"})]) as server:
         # Room for the call's arguments, so the turn does not compact.
         env = base_env(home, server.url) | {"UAGENT_CONTEXT": "200000"}
+        full = ("--plain", "--verbosity", "full")
         for args, payload in (
-            (("--yolo", "--plain"), [(b"go\n", b"wrote-ok"), (b"/q\n", None)]),
-            (("-c", "--plain"), [(b"/q\n", None)]),
+            (("--yolo", *full), [(b"go\n", b"wrote-ok"), (b"/q\n", None)]),
+            (("-c", *full), [(b"/q\n", None)]),
         ):
             code, output = run_pty(root, env, payload, args=args, startup_marker=b"", binary=binary)
             assert_true(code == 0, output[-2000:])
             # The headline and the facts' words; this terminal draws ASCII.
-            assert_true(b"Wrote long.txt" in output, output[-2000:])
-            assert_true(b"+2001 -0" in output, output[-2000:])
-            assert_true(b"    +line 1999 of a long file\x1b" in output, output[-2000:])
-            assert_true(b"    +LAST_DIFF_LINE\x1b" in output, output[-2000:])
+            assert_true(b"result: Wrote long.txt - +2001 -0" in output, output[-2000:])
+            # Opened, the diff's opening ends where it was cut, and says so.
+            assert_true(b"+line 0" in output and b"| ...\r\n" in output, output[-2000:])
+            assert_true(b"LAST_DIFF_LINE" not in output, output[-2000:])
 
 
 def test_multiline_bracketed_paste(root, home, *, binary):
@@ -607,10 +607,9 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_multiline_run_keeps_action_color(root, home, *, binary):
-    # Large enough to cross the old 2 KiB call-label cap and stdio write
-    # boundaries. Every line carries its own bold SGR so a concurrent composer
-    # repaint cannot turn the tail into the terminal default foreground.
+def test_multiline_run_reads_as_its_first_line(root, home, *, binary):
+    # Large enough to cross stdio write boundaries: a closed call is one
+    # line, its command's first.
     lines = [f"# color-segment-{index:03d}-" + "x" * 24 for index in range(90)]
     lines.append("printf 'done\\n'")
     command = "\n".join(lines)
@@ -624,11 +623,9 @@ def test_multiline_run_keeps_action_color(root, home, *, binary):
         )
         # Empty SIGCHLD wake slots must not write their marker byte to PTY fd 0.
         assert_true(b"\x01" not in output, output)
-        first = b"\x1b[1m\xe2\x86\x92 Running\r\n\x1b[1m# color-segment-000"
+        first = b"\xc2\xb7 Ran # color-segment-000-" + b"x" * 24 + b" \xc2\xb7 "
         assert_true(code == 0 and first in output, output)
-        for index in range(90):
-            marker = f"\x1b[1m# color-segment-{index:03d}".encode()
-            assert_true(marker in output, (index, output))
+        assert_true(b"color-segment-089" not in output, output)
 
 
 def test_tool_output_drops_its_own_colours(root, home, *, binary):

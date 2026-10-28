@@ -341,7 +341,6 @@ int TerminalMain(Options options) {
   const bool pinned =
       options.overrides.contains(std::string(kVerbositySetting));
   const DetailPolicy* detail = &ConfiguredDetail(options.overrides);
-  bool redrawn = false;
   TerminalInputDecoder keys;
   for (;;) {
     // A saved session reopens in its own folder; so does a panel
@@ -369,15 +368,15 @@ int TerminalMain(Options options) {
               stdout);
       }
     }
-    Terminal terminal(std::move(connection), path, *detail, pinned, redrawn,
-                      keys, draft);
+    Terminal terminal(std::move(connection), path, *detail, pinned, keys,
+                      draft);
     if (!side_question.empty()) terminal.Ask(side_question);
     int result = terminal.Run(options.attach_paths);
     draft = terminal.Carry();
     side_question = terminal.SideQuestion();
     detail = &terminal.Detail();
-    // The same session again is a redraw at another level.
-    redrawn = terminal.Next() == path;
+    // The same session again is drawn anew, e.g. a panel rewound in place.
+    const bool redrawn = terminal.Next() == path;
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/restart") {

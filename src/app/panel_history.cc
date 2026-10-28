@@ -79,10 +79,18 @@ ToolResult Read(const SessionInfo& info, uint64_t before) {
       }
       blocks.push_back(std::move(row));
     }
-    // Older rows page back through `before`; detail expands one row.
+    // Older rows page back through `before`, the sequence of the oldest row
+    // shown that has one, as a page names it; detail expands one row.
+    json older = page["before"];
+    for (size_t index = first; index < all.size(); ++index) {
+      if (all[index].contains("sequence")) {
+        older = all[index]["sequence"];
+        break;
+      }
+    }
     json result = {{"title", info.title},
                    {"blocks", std::move(blocks)},
-                   {"before", first > 0 ? all[first]["id"] : page["before"]},
+                   {"before", std::move(older)},
                    {"more", first > 0 || JsonValue(page, "more", false)}};
     return ToolSuccess(AsData(SessionIdFor(info.path), JsonDump(result, 1)));
   });

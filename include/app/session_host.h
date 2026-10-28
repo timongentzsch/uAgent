@@ -94,6 +94,8 @@ struct HostSession {
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
+  // Diffs stored whole, by node id, until a checkpoint saves their paths.
+  std::map<std::string, std::string> change_paths;
   int64_t updated = 0;
   bool live_truncated = false;
   json published = nullptr;

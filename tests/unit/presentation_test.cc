@@ -7,8 +7,9 @@
 #include <chrono>
 #include <clocale>
 #include <cstdio>
+#include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "include/agent/child_agent.h"
 #include "include/agent/node.h"
@@ -94,104 +95,80 @@ json Record(const std::string& id, const std::string& name,
           {"output", text}};
 }
 
-// The call's node, as the transcript view holds it.
-json ToolBlock(const std::string& id, const std::string& name,
-               const std::string& state, const std::string& text,
-               std::string word = "") {
-  return CallNode(Record(id, name, state, text, std::move(word)), "");
+// A turn whose work holds `calls`: what a terminal draws of it at `level`.
+std::string Drawn(const std::vector<json>& calls,
+                  std::string_view level = "default") {
+  json nodes =
+      json::array({{{"id", "m-1"}, {"parent", nullptr}, {"kind", "turn"}},
+                   WorkNode("m-1", json::object())});
+  for (const json& call : calls) nodes.push_back(call);
+  return CaptureStdout([&] {
+    TerminalPresenter presenter;
+    presenter.SetDetail(DetailFor(level));
+    presenter.Draw({{"blocks", nodes}});
+  });
 }
 
 }  // namespace
 
-// A result row reads the same however its block arrived: a summary of the
-// output at the default level, the output itself at the full one, the diff
-// alone for a change, and the stored status, never the text, says failure.
-void TestToolResultRows() {
+// A node's row is its headline and the host's words, marked and coloured by
+// its state; opened, it adds its body's last lines. The terminal reads
+// nothing else of a call.
+void TestTreeRows() {
   const std::string failure_report = ChildAgentFailureReport(
       "provider/child @ child.example", ChildAgentFailureStage::kExecution,
       "connection error: Couldn't connect to server\n"
       "api_key=child-secret-must-not-enter-row");
-  auto drawn = [](const json& block, std::string_view level = "default") {
-    return CaptureStdout([&] {
-      TerminalPresenter presenter;
-      presenter.SetDetail(DetailFor(level));
-      presenter.Block(block);
-    });
-  };
-  std::string row =
-      drawn(ToolBlock("c1", "subagent", "failed", failure_report));
-  CHECK(row.find("← subagent: failed: error: child execution: connection "
-                 "error: Couldn't connect to server") != std::string::npos);
-  CHECK(row.find("child-secret-must-not-enter-row") == std::string::npos);
+  json record = Record("c1", "subagent", "failed", failure_report);
+  record["view"] = {{"verb", {"Delegating", "Delegated"}}, {"target", "x"}};
+  // A failed delegation's row says so; what the child printed stays in its
+  // body, which only an open row shows.
+  std::string drawn = Drawn({CallNode(record, "m-1")});
+  CHECK(drawn.find("    ✗ Delegated x · failed\n") != std::string::npos);
+  CHECK(drawn.find("child-secret-must-not-enter-row") == std::string::npos);
+  CHECK(Drawn({CallNode(record, "m-1")}, "full").find("      │ ") !=
+        std::string::npos);
 
-  // Output is arbitrary command text. Only the recorded state establishes
-  // failure, and the host's words say how.
-  row = drawn(ToolBlock("c1", "run", "ok", "error: printed by command"));
-  CHECK(row.find("← run: error: printed by command") != std::string::npos);
-  CHECK(drawn(ToolBlock("c1", "run", "cancelled", "stopped"))
-            .find("← run: cancelled: stopped") != std::string::npos);
-  CHECK(drawn(ToolBlock("c1", "run", "failed", "late", "timed out · 2s"))
-            .find("run: timed out · 2s: late") != std::string::npos);
-  CHECK(drawn(ToolBlock("c1", "read_path", "ok", ""))
-            .find("← read_path: (empty)") != std::string::npos);
-
-  // A change is told entirely by its headline and diff: no result row is
-  // drawn under it, and a failed call's change was never made.
-  json changed =
-      Record("c1", "edit_file", "ok", "edited a.txt", "+1 −1 · 20ms");
-  changed["view"] = {{"verb", {"Editing", "Edited"}}, {"target", "a.txt"}};
-  changed["change"] = "@line 1\n-old\n+new";
-  row = drawn(CallNode(changed, ""));
-  CHECK(row.find("Edited a.txt") != std::string::npos);
-  CHECK(row.find("+1 −1 · 20ms") != std::string::npos);
-  CHECK(row.find("+new") != std::string::npos);
-  CHECK(row.find("←") == std::string::npos);
-  changed["state"] = "failed";
-  changed["result"]["word"] = "failed";
-  row = drawn(CallNode(changed, ""));
-  CHECK(row.find("+new") == std::string::npos);
-  CHECK(row.find("Edited a.txt: failed: edited a.txt") != std::string::npos);
-
-  // A script's output summarises as its first line and what follows; the
-  // full level prints it, indented under its row.
-  std::string body = "[script: .uagent/scratch/x.py · wrote]\n";
-  for (int line = 1; line <= 30; ++line) body += std::to_string(line) + "\n";
-  const json script = ToolBlock("c2", "scratch", "ok", body);
-  row = drawn(script);
-  CHECK(row.find("← scratch: [script: .uagent/scratch/x.py · wrote] … · +30 "
-                 "lines") != std::string::npos);
-  CHECK(drawn(script, "full").find("\n    30") != std::string::npos);
-  // A command's last lines stay under its row; a long result's row holds its
-  // start and its end, and says only that there is more.
-  json command = Record("c3", "run", "ok", "1\n2\n3…");
+  // Closed, a call is one line, whatever its output says; only the recorded
+  // state marks a failure.
+  json command = Record("c2", "run", "ok", "error: printed by command");
+  command["view"] = {{"verb", {"Running", "Ran"}}, {"target", "make\nmore"}};
+  drawn = Drawn({CallNode(command, "m-1")});
+  CHECK(drawn.find("    · Ran make\n") != std::string::npos);
+  CHECK(drawn.find("printed by command") == std::string::npos);
+  CHECK(drawn.find("more") == std::string::npos);
+  // Opened, a long output shows its end, where a command says how it went,
+  // without the command's own colouring.
   command["body_kind"] = "tail";
   command["truncated"] = true;
-  command["tail"] = "99\n100\n";
-  command = CallNode(command, "");
-  row = drawn(command);
-  CHECK(row.find("← run: 1 … · more than ") != std::string::npos);
-  CHECK(row.find("    …99\n") != std::string::npos);
-  CHECK(row.find("    100\n") != std::string::npos);
-  CHECK(row.find("    2\n") == std::string::npos);
-  CHECK(drawn(command, "full").find("    3…\n    …99\n    100") !=
+  command["tail"] = "98\n\x1b[31m99\x1b[0m\n100\n101\n";
+  drawn = Drawn({CallNode(command, "m-1")}, "full");
+  CHECK(drawn.find("      │ 99\n      │ 100\n      │ 101\n") !=
         std::string::npos);
+  CHECK(drawn.find("98") == std::string::npos);
+  CHECK(drawn.find("\\x1b") == std::string::npos);
+
+  // A label is stored text: shown, never obeyed.
+  CHECK(Drawn({GroupNode("g-t-c1", {{"verb", "Explored\x1b[2J"},
+                                    {"calls", 2},
+                                    {"turn", "m-1"}})})
+            .find("Explored\\x1b[2J 2 calls") != std::string::npos);
 
   // A terminal whose locale cannot decode UTF-8 gets the same rows in ASCII
   // rather than mojibake. Model/tool content must remain byte-preserved.
+  json content = Record("c4", "run", "failed", "model text: µ · ← …");
+  content["view"] = {{"verb", {"Running", "Ran"}}, {"target", "µ"}};
   bool prior_unicode = g_unicode;
   g_unicode = false;
-  row = drawn(script);
-  CHECK(row.find("<- scratch") != std::string::npos);
-  CHECK(row.find("←") == std::string::npos);
-  CHECK(
-      drawn(ToolBlock("c4", "run", "ok", "model text: µ · ← …\nsecond"), "full")
-          .find("    model text: µ · ← …\n    second") != std::string::npos);
+  drawn = Drawn({CallNode(content, "m-1")}, "full");
+  CHECK(drawn.find("    x Ran µ - failed\n") != std::string::npos);
+  CHECK(drawn.find("      | model text: µ · ← …") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
 
   // Plain mode speaks each row's kind instead of drawing its glyph.
   g_plain = true;
-  CHECK(drawn(ToolBlock("c1", "run", "failed", "gone")).find("failed: ") !=
+  CHECK(Drawn({CallNode(content, "m-1")}).find("failed: Ran µ") !=
         std::string::npos);
   CHECK(Note(Tone::kError, "gone") == "error: gone\n");
   CHECK(Note(Tone::kNeutral, "compacted") == "compacted\n");
@@ -200,13 +177,16 @@ void TestToolResultRows() {
 
   // Only an explicitly non-UTF-8 locale downgrades; an unset one is no
   // evidence that the terminal is incapable.
-  const char* prior_lc_all = getenv("LC_ALL");
+  // Copied: setenv may free the string getenv returned.
+  const char* lc_all = getenv("LC_ALL");
+  const std::optional<std::string> prior_lc_all =
+      lc_all ? std::optional<std::string>(lc_all) : std::nullopt;
   setenv("LC_ALL", "C", 1);
   CHECK(!ResolveUnicodeEnabled());
   setenv("LC_ALL", "en_US.UTF-8", 1);
   CHECK(ResolveUnicodeEnabled());
   if (prior_lc_all) {
-    setenv("LC_ALL", prior_lc_all, 1);
+    setenv("LC_ALL", prior_lc_all->c_str(), 1);
   } else {
     unsetenv("LC_ALL");
   }
@@ -217,135 +197,53 @@ void TestToolResultRows() {
   CHECK(DisplayWidth("\xe4\xb8\xad") == 2);
 }
 
-// A live call arrives running and again once it has finished; a resumed one
-// arrives finished. Each draws the call line, as the call stood then, and
-// the result once.
-void TestToolRowsDrawLiveAsResumed() {
+// Live, a node is drawn once its step has ended, as a resumed one is drawn;
+// a whole drawing shows a running node as it stands, and its end once more.
+void TestTreeDrawsLiveAsResumed() {
   json record = Record("c1", "read_path", "running", "");
   record["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
-  record["activity"] = {{"label", "a.txt"}};
-  const json running = CallNode(record, "");
+  record["result"] = json::object();
+  const json work = WorkNode("m-1", json::object());
+  json view = {
+      {"blocks",
+       json::array({{{"id", "m-1"}, {"parent", nullptr}, {"kind", "turn"}},
+                    work,
+                    CallNode(record, "m-1")})}};
+  TerminalPresenter presenter;
+  std::string drawn = CaptureStdout([&] { presenter.Draw(view); });
+  CHECK(drawn.find("  → Working\n    → Reading a.txt\n") != std::string::npos);
+  // Nothing settled: nothing more.
+  CHECK(CaptureStdout([&] { presenter.Update(view, work); }).empty());
   record["state"] = "ok";
   record["output"] = "alpha";
-  const json finished = CallNode(record, "");
-  std::string live;
-  const std::string resumed = CaptureStdout([&] {
-    TerminalPresenter presenter;
-    presenter.Block(finished);
-  });
-  {
-    TerminalPresenter presenter;
-    live = CaptureStdout([&] { presenter.Block(running); });
-    // A call that has not finished has no result line.
-    CHECK(live.find("→ Reading a.txt") != std::string::npos);
-    CHECK(live.find("←") == std::string::npos);
-    live += CaptureStdout([&] {
-      presenter.Block(finished);
-      presenter.Block(finished);
-    });
-  }
-  CHECK(resumed.find("→ Read a.txt") != std::string::npos);
-  CHECK(resumed.find("← Read a.txt: alpha") != std::string::npos);
-  CHECK(live.substr(live.find("←")) == resumed.substr(resumed.find("←")));
-
-  // A reply holding no text prints no bare mark line, like live.
-  CHECK(CaptureStdout([] {
-          TerminalPresenter presenter;
-          presenter.Block({{"kind", "message"}, {"role", "assistant"}});
+  view["blocks"][2] = CallNode(record, "m-1");
+  // A call that settled waits for its step to end, then is drawn once.
+  CHECK(CaptureStdout([&] {
+          presenter.Update(view, view["blocks"][2]);
         }).empty());
-
-  // A rejected call has no verb: it shows the arguments it sent, and a
-  // multiline label (a script) is shown whole, never cut to a line.
-  json rejected = Record("c1", "read_path", "running", "");
-  rejected["activity"] = {{"label", R"({"path":"visible-target"})"}};
-  const std::string script = "first\n" + std::string(4096, 'x') + "\nlast";
-  json multiline = Record("c2", "read_path", "running", "");
-  multiline["view"] = {{"verb", {"Reading", "Read"}}, {"target", script}};
-  std::string drawn = CaptureStdout([&] {
-    TerminalPresenter presenter;
-    presenter.Block(CallNode(rejected, ""));
-    presenter.Block(CallNode(multiline, ""));
+  const std::string settled = CaptureStdout([&] {
+    presenter.Update(view, work);
+    presenter.Update(view, work);
   });
-  CHECK(drawn.find(R"(→ {"path":"visible-target"})") != std::string::npos);
-  CHECK(drawn.find("Reading\n" + script) != std::string::npos);
-
-  // A group draws one row for the calls it folds, which draw no result.
-  record["group"] = "g-t-c1";
-  json member = record;
-  member["detail_id"] = "t-c2";
-  drawn = CaptureStdout([&] {
-    TerminalPresenter presenter;
-    presenter.Block(
-        GroupNode("g-t-c1", {{"verb", "Explored\x1b[2J"}, {"calls", 2}}));
-    presenter.Block(CallNode(record, ""));
-    presenter.Block(CallNode(member, ""));
-  });
-  CHECK(drawn.find("Explored") == drawn.rfind("Explored"));
-  CHECK(drawn.find("alpha") == std::string::npos);
-  // A label is stored text: shown, never obeyed.
-  CHECK(drawn.find("Explored\\x1b[2J 2 calls") != std::string::npos);
-}
-
-// Every client renders one vocabulary; the shapes below are that contract.
-// One recorded turn at the three levels: a turn's work in one row, in rows
-// per group, or every call with its output. A failure always keeps its row.
-void TestVerbosityLevels() {
-  auto result = [](const char* id, const char* status, const char* category,
-                   const char* group = "") {
-    json record = Record(id, "read_path", status,
-                         std::string("body of ") + id + "\nsecond line");
-    record["view"] = {{"verb", {"Reading", "Read"}},
-                      {"target", std::string(id) + ".txt"}};
-    record["activity"] = {{"category", category}};
-    if (*group) record["group"] = group;
-    return CallNode(record, "m-1");
-  };
-  auto drawn = [&](std::string_view level) {
-    return CaptureStdout([&] {
-      TerminalPresenter presenter;
-      presenter.SetDetail(DetailFor(level));
-      presenter.Block({{"id", "m-1"},
+  CHECK(settled == "    · Read a.txt\n");
+  CHECK(Drawn({CallNode(record, "m-1")}).ends_with(settled));
+  // What a terminal echoed as it was typed is not drawn again.
+  const json echoed = {{"id", "m-2"},
+                       {"parent", nullptr},
                        {"kind", "turn"},
-                       {"body", {{"kind", "text"}, {"text", "go"}}}});
-      presenter.Block({{"kind", "thinking"},
-                       {"body", {{"kind", "text"}, {"text", "pondered"}}}});
-      presenter.Block({{"kind", "message"},
-                       {"role", "assistant"},
-                       {"body", {{"kind", "markdown"}, {"text", "done"}}}});
-      presenter.Block(GroupNode(
-          "g-t-a", {{"verb", "Explored"}, {"calls", 2}, {"turn", "m-1"}}));
-      presenter.Block(result("a", "ok", "explore", "g-t-a"));
-      presenter.Block(result("b", "ok", "explore", "g-t-a"));
-      presenter.Block(result("c", "ok", "edit"));
-      presenter.Block(result("d", "failed", "explore"));
-      presenter.Block({{"kind", "footer"}, {"summary", json::object()}});
-    });
-  };
-  const std::string minimal = drawn("minimal");
-  CHECK(minimal.find("Worked · 3 steps · edited 1 file\n") !=
-        std::string::npos);
-  CHECK(minimal.find("body of a") == std::string::npos);
-  CHECK(minimal.find("Reading") == std::string::npos);
-  CHECK(minimal.find("Explored") == std::string::npos);
-  CHECK(minimal.find("body of d") != std::string::npos);
-  CHECK(minimal.find("pondered") == std::string::npos);
-  CHECK(minimal.find("done") != std::string::npos);
+                       {"body", {{"kind", "text"}, {"text", "next"}}}};
+  view["blocks"].push_back(echoed);
+  presenter.Drawn("m-2");
+  CHECK(CaptureStdout([&] { presenter.Update(view, echoed); }).empty());
 
-  const std::string standard = drawn("default");
-  CHECK(standard.find("Worked") == std::string::npos);
-  CHECK(standard.find("→ Read a.txt") != std::string::npos);
-  CHECK(standard.find("Explored 2 calls") != std::string::npos);
-  CHECK(standard.find("body of a") == std::string::npos);
-  CHECK(standard.find("body of c … · +1 lines") != std::string::npos);
-  CHECK(standard.find("pondered") == std::string::npos);
-  // An unknown level reads as the default one.
-  CHECK(drawn("loud") == standard);
-
-  const std::string full = drawn("full");
-  CHECK(full.find("Explored") == std::string::npos);
-  CHECK(full.find("    body of a\n    second line") != std::string::npos);
-  CHECK(full.find("Thinking") != std::string::npos);
-  CHECK(full.find("pondered") != std::string::npos);
+  // A reply holding no text prints no bare mark line.
+  CHECK(CaptureStdout([] {
+          TerminalPresenter replies;
+          replies.Draw({{"blocks", json::array({{{"id", "r-1"},
+                                                 {"parent", nullptr},
+                                                 {"kind", "message"},
+                                                 {"role", "assistant"}}})}});
+        }).empty());
 }
 
 void TestToolViews() {
@@ -474,13 +372,9 @@ void TestHostedSearchStatusRow() {
   TurnStatus projection;
   auto send = [&](EventId id, json data = json::object()) {
     data["turn"] = 1;
-    Event event{id, data};
-    event.render = true;
-    presenter.Consume(event);
+    presenter.Consume(Event{id, data});
     if (projection.Consume(id, data)) {
-      Event status{EventId::kTurnStatus, projection.Status()};
-      status.render = true;
-      presenter.Consume(status);
+      presenter.Consume(Event{EventId::kTurnStatus, projection.Status()});
     }
   };
   send(EventId::kTurnStarted);

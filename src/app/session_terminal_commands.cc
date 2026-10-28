@@ -205,14 +205,9 @@ Terminal::Command Terminal::Leave(const std::string& target,
 
 void Terminal::Restyle(const DetailPolicy& detail) {
   detail_ = &detail;
-  if (raw_) {
-    next_ = path_;
-    navigate_ = true;
-  } else {
-    presenter_.SetDetail(detail);
-    WriteTerminalRecord(
-        Note(Tone::kNeutral, "verbosity " + std::string(detail.level)));
-  }
+  // The reader draws, here as everywhere: it holds the tree, and a redraw
+  // written from the input thread could fill the pipe only it drains.
+  Send({{"kind", "refresh"}});
   wake_.Wake();
 }
 }  // namespace uagent::session

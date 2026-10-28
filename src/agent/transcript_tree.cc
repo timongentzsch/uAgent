@@ -193,8 +193,7 @@ json CallNode(const json& record, const std::string& turn) {
     }
     if (!kept.empty()) node["parts"] = std::move(kept);
   }
-  Keep(node, record, {"result", "change_path"});
-  Keep(node, activity, {"category"});
+  Keep(node, record, {"result"});
   return node;
 }
 
@@ -309,7 +308,6 @@ json EntryNode(const json& entry) {
   Keep(node, entry,
        {"result", "routine", "parts", "memory", "activity_id", "agent_id",
         "command"});
-  Keep(node, activity, {"category"});
   return node;
 }
 

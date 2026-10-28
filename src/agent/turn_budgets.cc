@@ -8,6 +8,7 @@
 
 #include "include/agent/agent.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -44,7 +45,10 @@ bool Agent::Strike(Fault fault, TurnExecution& state, StepState& loop,
                    const std::string& about, bool advise) {
   const FaultRule& rule = kFaultRules[static_cast<size_t>(fault)];
   const int64_t strike = ++loop.recovery.strikes[static_cast<size_t>(fault)];
-  const bool stop = rule.stop_after > 0 && strike >= rule.stop_after;
+  const int64_t stop_after = rule.stop_after == kStopFromSetting
+                                 ? RepeatedCallStopAfter()
+                                 : rule.stop_after;
+  const bool stop = stop_after > 0 && strike >= stop_after;
   DebugLog("model_fault", {{"turn", turn_id_},
                            {"step", loop.step},
                            {"fault", rule.name},

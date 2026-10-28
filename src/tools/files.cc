@@ -178,14 +178,15 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   int64_t total = 0, shown = 0, first = 0, last = 0;
   bool output_limited = false, line_truncated = false;
   FileLines lines(f);
-  while (shown < limit && lines.Next(line, kReadFileBytes - out.size(),
+  const size_t read_bytes = ReadFileBytes();
+  while (shown < limit && lines.Next(line, read_bytes - out.size(),
                                      total + 1 < offset, output_limited)) {
     if (AbortRequested()) return ToolCancelled("error: read cancelled by user");
     ++total;
     if (total >= offset) {
-      if (output_limited || line.size() >= kReadFileBytes - out.size()) {
+      if (output_limited || line.size() >= read_bytes - out.size()) {
         if (out.empty()) {
-          out = Utf8Prefix(std::move(line), kReadFileBytes);
+          out = Utf8Prefix(std::move(line), read_bytes);
           first = last = total;
           shown = 1;
           line_truncated = true;
@@ -379,7 +380,7 @@ bool EditedSize(size_t current, size_t old_size, size_t new_size, int64_t count,
   } else {
     next = current - (old_size - new_size) * static_cast<size_t>(count);
   }
-  return next <= kEditFileBytes;
+  return next <= EditFileBytes();
 }
 
 void ReplaceAllOccurrences(std::string& data, const std::string& old_s,
@@ -523,14 +524,14 @@ ToolResult ToolEditFile(const std::string& path,
   if (!f) return FileOpenFailure(path);
   std::error_code size_ec;
   auto bytes = std::filesystem::file_size(path, size_ec);
-  if (!size_ec && bytes > kEditFileBytes) {
+  if (!size_ec && bytes > EditFileBytes()) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        path + " is too large to edit atomically (" +
                            std::to_string(bytes) + " bytes; limit " +
-                           std::to_string(kEditFileBytes) + ")");
+                           std::to_string(EditFileBytes()) + ")");
   }
   std::string data;
-  const bool grew = ReadBounded(f, kEditFileBytes, data);
+  const bool grew = ReadBounded(f, EditFileBytes(), data);
   f.close();
   if (grew) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
@@ -617,7 +618,8 @@ std::optional<std::string> SmallDirectoryPreview(
     }
     std::error_code size_error;
     uintmax_t bytes = fs::file_size(entry_path, size_error);
-    if (size_error || bytes > kReadFileBytes - total_bytes) return std::nullopt;
+    if (size_error || bytes > ReadFileBytes() - total_bytes)
+      return std::nullopt;
     total_bytes += bytes;
     if (!LikelyTextFile(entry_path)) return std::nullopt;
   }
@@ -628,7 +630,7 @@ std::optional<std::string> SmallDirectoryPreview(
     if (!read.Ok()) return std::nullopt;
     preview += "\n";
     preview += read.output;
-    if (static_cast<int64_t>(preview.size()) > kReadFileResultChars) {
+    if (static_cast<int64_t>(preview.size()) > ReadFileResultChars()) {
       return std::nullopt;
     }
   }
@@ -642,11 +644,11 @@ std::optional<std::string> SmallDirectoryPreview(
 std::optional<std::string> DiffableContents(const std::string& path) {
   std::error_code ec;
   auto bytes = std::filesystem::file_size(path, ec);
-  if (ec || bytes > kEditFileBytes) {
+  if (ec || bytes > EditFileBytes()) {
     return std::nullopt;
   }
   if (!LikelyTextFile(path)) return std::nullopt;
-  return ReadFile(path, kEditFileBytes);
+  return ReadFile(path, EditFileBytes());
 }
 
 ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
@@ -744,7 +746,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     return std::move(*invalid);
   }
   if (offset < 1) offset = 1;
-  if (limit <= 0) limit = kListDirEntries;
+  if (limit <= 0) limit = ListDirEntries();
   std::error_code ec;
   std::vector<std::string> entries;
   std::filesystem::directory_iterator iterator(p, ec), iterator_end;
@@ -790,7 +792,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   }
   if (std::optional<std::string> preview =
           SmallDirectoryPreview(p, entries, out)) {
-    return ToolSuccess(std::move(*preview), kReadFileResultChars);
+    return ToolSuccess(std::move(*preview), ReadFileResultChars());
   }
   return ToolSuccess(std::move(out));
 }

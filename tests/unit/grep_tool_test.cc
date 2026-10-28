@@ -10,6 +10,7 @@
 
 #include "include/agent/activity.h"
 #include "include/agent/activity_supervisor.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/tools/files.h"
@@ -41,7 +42,7 @@ void TestGrepTool() {
     // One match past the cap is reported as cut, not dropped silently.
     ScopedEnv roomy("UAGENT_TOOL_RESULT_CHARS", "1000000");
     std::string many;
-    for (int64_t i = 0; i <= kGrepResults; ++i) many += "needle row\n";
+    for (int64_t i = 0; i <= GrepResults(); ++i) many += "needle row\n";
     fs::path crowded = root / "crowded.txt";
     CHECK(ToolWriteFile(crowded.string(), many).output.starts_with("wrote "));
     CHECK(ToolGrep(supervisor, "needle", crowded.string())
@@ -68,15 +69,14 @@ void TestGrepTool() {
   CHECK(paths.Ok());
   CHECK(paths.output.find("one.cpp") != std::string::npos);
   CHECK(paths.output.find("needle one") == std::string::npos);
-  for (pid_t pid = 999981; pid < 999981 + kMaxBackgroundActivities; ++pid) {
-    CHECK(supervisor.TryAdd({.pid = pid, .cmd = "busy"},
-                            kMaxBackgroundActivities));
+  for (pid_t pid = 999981; pid < 999981 + MaxActivities(); ++pid) {
+    CHECK(supervisor.TryAdd({.pid = pid, .cmd = "busy"}, MaxActivities()));
   }
   ToolResult limited = ToolGrep(supervisor, "needle", root.string());
   CHECK(limited.error == ToolErrorCode::kLimitExceeded);
   CHECK(limited.output.find("activity limit") != std::string::npos);
   CHECK(supervisor.TakeAllForShutdown().size() ==
-        static_cast<size_t>(kMaxBackgroundActivities));
+        static_cast<size_t>(MaxActivities()));
 
   ToolContext activity_context{std::chrono::steady_clock::now() +
                                std::chrono::seconds(5)};

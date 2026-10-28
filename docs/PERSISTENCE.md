@@ -150,24 +150,22 @@ count are kept.
 
 | Tree | Days / files kept |
 | --- | --- |
-| `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` (30) / 200 |
-| `sessions/` | 14 / 50 |
-| `mail/` | 14 (undelivered mail expires after a day) |
-| `activity/`, `artifacts/` | 7 / 200 |
-| `mcp/` | 7 / 100 |
-| `models/` | 7 (a catalogue older than a day is fetched again) |
-| exited detached terminals | 7, removed with their logs |
+| `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` (30) / `UAGENT_HISTORY_FILES` (200) |
+| `sessions/`, `activity/`, `artifacts/`, `mcp/` | `UAGENT_LOG_DAYS` (14) / `UAGENT_LOG_FILES` (200) |
+| `mail/` | `UAGENT_LOG_DAYS` (undelivered mail expires after a day) |
+| `models/` | `UAGENT_LOG_DAYS` (a catalogue older than a day is fetched again) |
+| exited detached terminals | `UAGENT_LOG_DAYS`, removed with their logs |
 | `staging/` | 1, whole folders (only a killed import leaves any) |
 
 To keep conversations longer, raise the days, for example
-`/config user UAGENT_HISTORY_DAYS=180`. The 200-file count is fixed and
-counts across all folders.
+`/config user UAGENT_HISTORY_DAYS=180`. Each file count applies to a folder
+tree as a whole.
 
 Delegated children age out with `history/`. A session's journal, undo data
 and uploads age out with it and do not count against the file limit.
 Orphaned journals are removed, and so are the socket and lease of a runtime
 that was killed. Each process log is also bounded in size: 64 MiB for
-commands, 16 MiB for an MCP server.
+commands (`UAGENT_ACTIVITY_LOG_MB`), 16 MiB for an MCP server.
 
 Not pruned: `config/`, memories, skills, scheduled tasks, the browser
 profile, and `worktrees/` (a thread's worktree is removed when the thread is

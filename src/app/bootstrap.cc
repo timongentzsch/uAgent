@@ -164,7 +164,7 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      bool memory_child, bool panel) {
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, kProjectDocBytes, panel);
+    instructions = LoadProjectInstructions(workspace, ProjectDocBytes(), panel);
   }
   if (config.memory_enabled) {
     // A delegated child's brief is standalone: re-inlining every always-on
@@ -172,11 +172,11 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
     // leaves out stays in the index, so only a cut index loses anything.
     MemoryIndex always;
     if (AgentDepth() == 0) {
-      always = LoadAlwaysOnMemory(workspace, kMemoryAlwaysBytes);
+      always = LoadAlwaysOnMemory(workspace, MemoryAlwaysBytes());
     }
-    size_t remaining = instructions.text.size() >= kProjectDocBytes
+    size_t remaining = instructions.text.size() >= ProjectDocBytes()
                            ? 0
-                           : kProjectDocBytes - instructions.text.size();
+                           : ProjectDocBytes() - instructions.text.size();
     MemoryIndex memories =
         LoadMemoryIndex(workspace, remaining, always.sources);
     instructions.memory_index = std::move(memories.text);
@@ -402,7 +402,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                        context->options.Panel());
   if (instructions.truncated) {
     PrintWarning("folder instructions truncated at " +
-                 std::to_string(kProjectDocBytes) + " bytes");
+                 std::to_string(ProjectDocBytes()) + " bytes");
   }
   if (instructions.memory_truncated) {
     PrintWarning("memory context truncated at " +

@@ -48,6 +48,44 @@ std::string PromptOverlayPath();
 int64_t ReadFileLines();
 int64_t AttachmentLimitMb();
 int64_t HistoryDays();
+int64_t HistoryFiles();
+// How long saved logs and detached-terminal records are kept, and how many
+// files per folder.
+int64_t LogKeepDays();
+int64_t LogKeepFiles();
+int64_t IdleMinutes();
+// Commands and subagents one conversation runs at once, and the share of them
+// subagents may hold: kDelegatedActivityHeadroom stay free for the agent's own
+// commands, so a fan-out cannot starve the work that checks its results.
+int64_t MaxActivities();
+int64_t MaxDelegatedActivities();
+int64_t ToolConcurrency();
+int64_t SubagentCallsPerTurn();
+// Byte budgets of the file tools; the registry states them in KiB and MiB.
+size_t ReadFileBytes();
+// read_path's result allowance covers its header lines.
+int64_t ReadFileResultChars();
+size_t EditFileBytes();
+int64_t ActivityLogBytes();
+int64_t ListDirEntries();
+int64_t GrepResults();
+int64_t WebSearchMaxResults();
+int64_t WebSearchMaxUses();
+int64_t WebSearchCalls();
+int64_t WebSearchTimeoutSeconds();
+size_t MaxMemories();
+size_t MemoryBytes();
+size_t MemoryAlwaysBytes();
+int64_t MemoryIdleSeconds();
+size_t MaxSkills();
+size_t ProjectDocBytes();
+int64_t MaxMcpServers();
+size_t MaxMcpTools();
+size_t MaxPendingAttachments();
+int MaxImageDimension();
+// Identical consecutive calls that end a turn; the registry's floor keeps it
+// above the advisory steps of the same ladder.
+int64_t RepeatedCallStopAfter();
 
 // Approval mode is the one setting a running session can toggle, so it cannot
 // live in environ: spawning a child iterates environ on another thread while

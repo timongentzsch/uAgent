@@ -47,7 +47,7 @@ bool McpConsumeToolPage(McpServer& server, const json& response, json& listed,
     return false;
   }
   for (const json& definition : page) {
-    if (listed.size() >= kMaxMcpTools) {
+    if (listed.size() >= MaxMcpTools()) {
       McpError(server.name, "tool count limit exceeded");
       return false;
     }

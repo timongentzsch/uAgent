@@ -27,10 +27,8 @@ inline constexpr size_t kCatalogueHeaderBytes = 4096;
 // The opening of a change/diff that a tool-result fact and its live event
 // carry. A longer diff is kept whole in a private artifact the row names.
 inline constexpr size_t kChangePreviewChars = KiB(16);
-// Cap of the encoded attachments kept for the model calls of a turn, and the
-// largest dimension kept for vision payloads.
+// Cap of the encoded attachments kept for the model calls of a turn.
 inline constexpr size_t kAttachmentCacheBytes = MiB(16);
-inline constexpr int kMaxImageDimension = 2048;
 // Maximum entries held in a session/asset catalogue scan. Distinct from the
 // byte budgets above: raising retention must not raise preview windows.
 inline constexpr size_t kMaxCatalogueEntries = 4096;
@@ -81,8 +79,6 @@ inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
 // What the round that answers for a turn stopped at a limit may take, also
 // past the turn's own deadline.
 inline constexpr int64_t kLimitAnswerSeconds = 60;
-// Parallel workers for one batch of parallel-safe tool calls.
-inline constexpr int64_t kToolConcurrency = 4;
 
 // Live event pacing. Model callbacks and browser publication use the same
 // usage cadence so one layer cannot silently undo the other's coalescing.
@@ -104,7 +100,6 @@ inline constexpr size_t kStatusLineBytes = 192;
 // produce new evidence without changing the request.
 inline constexpr int64_t kRepeatedCallAdviseAfter = 3;
 inline constexpr int64_t kRepeatedCallDirectAfter = 6;
-inline constexpr int64_t kRepeatedCallStopAfter = 12;
 inline constexpr int64_t kRejectedCallStopAfter = 3;
 inline constexpr int64_t kFailedToolAdviseAfter = 3;
 inline constexpr int64_t kActivityPollAdviseAfter = 2;
@@ -193,64 +188,39 @@ inline constexpr int64_t kDefaultYieldMs = 10000;
 // enough for the child to echo, short enough not to feel like a wait.
 inline constexpr int64_t kActivityInputSettleMs = 250;
 
-// Concurrent supervised activities in one session.
-inline constexpr int64_t kMaxBackgroundActivities = 8;
-// Background slots held back from delegated children. Subagents, foreground
-// commands and background commands share the kMaxBackgroundActivities pool
+// Activity slots held back from delegated children. Subagents, foreground
+// commands and background commands share the activities.maxConcurrent pool
 // (detached terminals are counted separately), so an unbounded fan-out of
 // children would leave the parent unable to build, test or search -- the very
 // work it needs in order to check what those children produced.
 inline constexpr int64_t kDelegatedActivityHeadroom = 2;
-inline constexpr int64_t kMaxDelegatedActivities =
-    kMaxBackgroundActivities - kDelegatedActivityHeadroom;
 
-// Resource ceilings. They bound runaway input and disk use; none is a
-// preference a user should have to tune.
+// Resource ceilings. They bound runaway input and disk use; the ones a user
+// may tune are settings (include/core/config_registry.h), not constants here.
 // Model requests and the tool trace.
 inline constexpr size_t kRequestBytes = MiB(64);
 inline constexpr size_t kResponseBytes = MiB(32);
 inline constexpr size_t kToolTraceProtectChars = KiB(64);
 inline constexpr size_t kToolTracePruneMinChars = KiB(32);
 inline constexpr int64_t kSessionArchiveBytes = MiB(16);
-// Built-in tools. read_path's result allowance covers its header lines.
+// Built-in tools.
 inline constexpr int64_t kReadFileMaxLines = 10000;
-inline constexpr size_t kReadFileBytes = KiB(32);
-inline constexpr int64_t kReadFileResultChars = kReadFileBytes + 2048;
-inline constexpr size_t kEditFileBytes = MiB(10);
-inline constexpr int64_t kListDirEntries = 1000;
 inline constexpr int64_t kListDirScanEntries = 100000;
-inline constexpr int64_t kGrepResults = 200;
-inline constexpr int64_t kBashLogBytes = MiB(64);
 // The web host's file browser: a file's first MiB shows as text, a search
 // answers this many paths.
 inline constexpr size_t kFileViewBytes = MiB(1);
 inline constexpr size_t kFileFindMatches = 200;
-// Delegation and hosted search.
-inline constexpr int64_t kSubagentCallsPerTurn = 32;
-inline constexpr int64_t kWebSearchTimeoutSeconds = 60;
+// Hosted search.
 inline constexpr int64_t kWebSearchMaxTokens = 2000;
-inline constexpr int64_t kWebSearchCalls = 4;
-inline constexpr int64_t kWebSearchMaxResults = 5;
-inline constexpr int64_t kWebSearchMaxUses = 3;
-// Memory, skills, folder instructions and attachments.
-inline constexpr size_t kMemoryAlwaysBytes = 2048;
-inline constexpr size_t kMemoryBytes = 2048;
-inline constexpr size_t kMaxMemories = 32;
+// Memory and skills.
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
-// Idle time before a saved session is offered to background extraction.
-inline constexpr int64_t kMemoryIdleSeconds = int64_t{6} * 60 * 60;
 inline constexpr size_t kSkillBodyBytes = KiB(512);
 inline constexpr size_t kSkillDescriptionBytes = 1024;
-inline constexpr size_t kMaxSkills = 64;
-inline constexpr size_t kProjectDocBytes = KiB(32);
-inline constexpr size_t kMaxPendingAttachments = 8;
 // MCP servers are untrusted; these bound what one may make the agent hold.
-inline constexpr int64_t kMaxMcpServers = 32;
 // Startup window the optional servers share before discovery moves to a turn
 // boundary.
 inline constexpr int64_t kMcpStartupGraceSeconds = 2;
 inline constexpr int64_t kMcpPages = 100;
-inline constexpr size_t kMaxMcpTools = 256;
 inline constexpr size_t kMcpConfigBytes = MiB(1);
 inline constexpr size_t kMcpResponseBytes = MiB(16);
 // The Linux sandbox trampoline receives its policy as one argv word, which the
@@ -259,11 +229,6 @@ inline constexpr size_t kSandboxPolicyArgBytes = KiB(96);
 inline constexpr size_t kMcpSchemaBytes = KiB(256);
 inline constexpr size_t kMcpLogBytes = MiB(16);
 inline constexpr size_t kMcpDescriptionChars = 400;
-// Retention of pruned artifact trees: days kept, then newest-N kept.
-inline constexpr int64_t kHistoryFiles = 200;
-inline constexpr int64_t kDebugDays = 14;
-inline constexpr int64_t kDebugFiles = 50;
-inline constexpr int64_t kActivityDays = 7;
 // The pass over every artifact directory runs at most this often; its stamp
 // file lives in the global base.
 inline constexpr char kMaintenanceStamp[] = ".maintained";
@@ -271,13 +236,6 @@ inline constexpr int64_t kMaintenanceIntervalHours = 24;
 // How often a stoppable log pump looks up from its pipe to see whether it was
 // asked to stop.
 inline constexpr int kLogPumpPollMs = 100;
-inline constexpr int64_t kActivityFiles = 200;
-inline constexpr int64_t kMcpLogDays = 7;
-inline constexpr int64_t kMcpLogFiles = 100;
-inline constexpr int64_t kTerminalDays = 7;
-// Minutes with nothing to do before a session's runtime or Chrome stops; the
-// next message, mail or browser action starts it again.
-inline constexpr int64_t kIdleMinutes = 15;
 
 // Host and runtime pacing. The web host rescans the session catalogue at
 // most once a second and keeps a few saved histories parsed for paging; a

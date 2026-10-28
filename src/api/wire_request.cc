@@ -367,7 +367,7 @@ json RequestTools(WireApi wire_api, const WireRequest& request) {
     } else if (wire_api == WireApi::kAnthropicMessages) {
       tools.push_back({{"type", "web_search_20250305"},
                        {"name", "web_search"},
-                       {"max_uses", kWebSearchMaxUses}});
+                       {"max_uses", WebSearchMaxUses()}});
     }
   }
   // Hosted definitions replace the agent's tool of their name (web_fetch).

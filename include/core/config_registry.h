@@ -364,6 +364,12 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "tool calls per turn; 0 disables the limit"),
         "Tool calls per turn"),
     registry::Named(
+        registry::Int("limits.repeatedCallStop", "UAGENT_REPEATED_CALL_STOP",
+                      {}, 12, 7, 1000, ReloadPolicy::kNextUserTurn, "budget",
+                      "identical consecutive tool calls that end the turn; "
+                      "the model is warned well before it"),
+        "Repeated call limit"),
+    registry::Named(
         registry::Int("limits.maxTurnSeconds", "UAGENT_MAX_TURN_SECONDS",
                       "max_turn_seconds", 0, 0, kConfigAnyMax,
                       ReloadPolicy::kNextUserTurn, "budget",
@@ -416,6 +422,43 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
                       "tools", "default lines returned by read_path"),
         "Lines per file read"),
+    registry::Named(
+        registry::Int("tools.readFileKb", "UAGENT_READ_FILE_KB", {}, 32, 1,
+                      4096, ReloadPolicy::kRestartRequired, "tools",
+                      "kibibytes one read_path call returns"),
+        "File read size"),
+    registry::Named(
+        registry::Int("tools.editFileMb", "UAGENT_EDIT_FILE_MB", {}, 10, 1,
+                      1024, ReloadPolicy::kNextUserTurn, "tools",
+                      "largest file in mebibytes the file tools edit or "
+                      "diff"),
+        "Editable file size"),
+    registry::Named(
+        registry::Int("tools.listEntries", "UAGENT_LIST_ENTRIES", {}, 1000, 1,
+                      100000, ReloadPolicy::kNextUserTurn, "tools",
+                      "entries one folder listing returns"),
+        "Folder entries listed"),
+    registry::Named(
+        registry::Int("tools.grepResults", "UAGENT_GREP_RESULTS", {}, 200, 1,
+                      10000, ReloadPolicy::kNextUserTurn, "tools",
+                      "matching lines one search returns"),
+        "Search results"),
+    registry::Named(
+        registry::Int("tools.concurrency", "UAGENT_TOOL_CONCURRENCY", {}, 4, 1,
+                      32, ReloadPolicy::kNextUserTurn, "tools",
+                      "tool calls of one batch that run side by side"),
+        "Parallel tool calls"),
+    registry::Named(
+        registry::Int("activities.maxConcurrent", "UAGENT_MAX_ACTIVITIES", {},
+                      8, 3, 64, ReloadPolicy::kNextUserTurn, "tools",
+                      "commands and subagents one conversation runs at once; "
+                      "two slots stay free of subagents for its own commands"),
+        "Activities at once"),
+    registry::Named(
+        registry::Int("activities.logMb", "UAGENT_ACTIVITY_LOG_MB", {}, 64, 1,
+                      4096, ReloadPolicy::kNextUserTurn, "tools",
+                      "largest log in mebibytes kept per command"),
+        "Command log size"),
 
     // OS sandbox for agent-run commands. Restart-required because the policy is
     // built once and every spawn is wrapped with it; a mid-session change would
@@ -501,6 +544,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
                       "wall-clock ceiling per delegated child; 0 is the turn"),
         "Sub-agent time limit"),
+    registry::Named(
+        registry::Int("subagent.callsPerTurn", "UAGENT_SUBAGENT_CALLS_PER_TURN",
+                      {}, 32, 1, 1000, ReloadPolicy::kRestartRequired,
+                      "delegation", "subagent calls one turn may make"),
+        "Sub-agent calls per turn"),
 
     // Coordination.
     registry::Named(
@@ -544,6 +592,26 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "model route used for search"),
             "the conversation model, on an endpoint that offers search"),
         "Web search model", "Answers web lookups"),
+    registry::Named(
+        registry::Int("webSearch.maxResults", "UAGENT_WEB_SEARCH_RESULTS", {},
+                      5, 1, 50, ReloadPolicy::kRestartRequired, "search",
+                      "results one search query returns"),
+        "Results per search"),
+    registry::Named(
+        registry::Int("webSearch.maxUses", "UAGENT_WEB_SEARCH_MAX_USES", {}, 3,
+                      1, 10, ReloadPolicy::kRestartRequired, "search",
+                      "queries one web_search call may carry"),
+        "Queries per search"),
+    registry::Named(
+        registry::Int("webSearch.callsPerTurn", "UAGENT_WEB_SEARCH_CALLS", {},
+                      4, 1, 100, ReloadPolicy::kRestartRequired, "search",
+                      "web_search calls one turn may make"),
+        "Searches per turn"),
+    registry::Named(
+        registry::Int("webSearch.timeout", "UAGENT_WEB_SEARCH_TIMEOUT", {}, 60,
+                      1, 600, ReloadPolicy::kRestartRequired, "search",
+                      "seconds one search request may take"),
+        "Search timeout"),
 
     // Memory.
     registry::Named(
@@ -565,6 +633,26 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "UAGENT_MODEL"),
         "Memory model",
         "Distils memories from finished conversations in the background"),
+    registry::Named(registry::Int("memory.max", "UAGENT_MEMORY_MAX", {}, 32, 1,
+                                  1000, ReloadPolicy::kNextUserTurn, "memory",
+                                  "memories kept per scope"),
+                    "Memories per scope"),
+    registry::Named(registry::Int("memory.maxBytes", "UAGENT_MEMORY_BYTES", {},
+                                  2048, 256, 65536, ReloadPolicy::kNextUserTurn,
+                                  "memory", "bytes one memory may hold"),
+                    "Memory size"),
+    registry::Named(
+        registry::Int("memory.alwaysBytes", "UAGENT_MEMORY_ALWAYS_BYTES", {},
+                      2048, 0, 65536, ReloadPolicy::kRestartRequired, "memory",
+                      "bytes of global memories placed whole in every "
+                      "conversation's context"),
+        "Always-on memory"),
+    registry::Named(
+        registry::Int("memory.idleHours", "UAGENT_MEMORY_IDLE_HOURS", {}, 6, 1,
+                      720, ReloadPolicy::kNextUserTurn, "memory",
+                      "hours a saved conversation sits idle before memories "
+                      "are extracted from it"),
+        "Memory extraction delay"),
 
     // Skills.
     registry::Terminal(registry::Named(
@@ -585,6 +673,16 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "CLAUDE.md): claude, codex, comma-separated; empty "
                       "reads none"),
         "Other agents"),
+    registry::Named(
+        registry::Int("skills.max", "UAGENT_SKILLS_MAX", {}, 64, 1, 1000,
+                      ReloadPolicy::kRestartRequired, "skills",
+                      "skills offered at once; later ones replace earlier"),
+        "Skills offered"),
+    registry::Named(
+        registry::Int("instructions.maxKb", "UAGENT_INSTRUCTIONS_KB", {}, 32, 1,
+                      1024, ReloadPolicy::kRestartRequired, "behaviour",
+                      "kibibytes of folder instructions loaded or written"),
+        "Instructions size"),
 
     // MCP.
     registry::Named(
@@ -592,6 +690,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       1, kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
                       "seconds allowed for one MCP call"),
         "MCP call timeout"),
+    registry::Named(
+        registry::Int("mcp.maxServers", "UAGENT_MCP_MAX_SERVERS", {}, 32, 1,
+                      256, ReloadPolicy::kRestartRequired, "mcp",
+                      "MCP servers started; the rest are listed as skipped"),
+        "MCP servers"),
+    registry::Named(registry::Int("mcp.maxTools", "UAGENT_MCP_MAX_TOOLS", {},
+                                  256, 1, 4096, ReloadPolicy::kRestartRequired,
+                                  "mcp", "tools one MCP server may list"),
+                    "MCP tools per server"),
 
     // Attachments and terminal media.
     registry::Named(
@@ -613,12 +720,37 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       kConfigMaxMegabytes, ReloadPolicy::kNextUserTurn, "media",
                       "largest attachment in mebibytes"),
         "Attachment size limit"),
+    registry::Named(
+        registry::Int("attachments.maxCount", "UAGENT_ATTACHMENT_COUNT", {}, 8,
+                      1, 64, ReloadPolicy::kNextUserTurn, "media",
+                      "attachments queued for one model request"),
+        "Attachments per request"),
+    registry::Named(
+        registry::Int("attachments.maxImagePx", "UAGENT_IMAGE_MAX_PX", {}, 2048,
+                      256, 8192, ReloadPolicy::kNextUserTurn, "media",
+                      "longest image side in pixels; larger images are "
+                      "scaled down"),
+        "Image size"),
     // Session and artifact retention.
     registry::Named(
         registry::Int("history.days", "UAGENT_HISTORY_DAYS", {}, 30,
                       kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
                       "retention", "days of saved sessions kept"),
         "History kept"),
+    registry::Named(registry::Int("history.files", "UAGENT_HISTORY_FILES", {},
+                                  200, 1, 100000, ReloadPolicy::kNextUserTurn,
+                                  "retention", "most saved sessions kept"),
+                    "Sessions kept"),
+    registry::Named(
+        registry::Int("logs.keepDays", "UAGENT_LOG_DAYS", {}, 14, 1, 3650,
+                      ReloadPolicy::kNextUserTurn, "retention",
+                      "days of session, activity, mail and MCP logs kept"),
+        "Logs kept"),
+    registry::Named(
+        registry::Int("logs.keepFiles", "UAGENT_LOG_FILES", {}, 200, 1, 100000,
+                      ReloadPolicy::kNextUserTurn, "retention",
+                      "most files kept per log folder"),
+        "Log files kept"),
 
     // Behaviour switches.
     registry::PerConversation(registry::Named(
@@ -629,6 +761,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "ask, auto reviewer, or yolo for ordinary mutations"),
             kApprovalModes),
         "Approval mode")),
+    registry::Named(
+        registry::Int("runtime.idleMinutes", "UAGENT_IDLE_MINUTES", {}, 15, 1,
+                      1440, ReloadPolicy::kNextUserTurn, "behaviour",
+                      "minutes with nothing to do before a conversation's "
+                      "runtime and Chrome stop; the next message starts "
+                      "them again"),
+        "Idle timeout"),
     registry::Named(
         registry::Fallback(
             registry::Str("approval.reviewerModel", "UAGENT_PERMISSION_MODEL",

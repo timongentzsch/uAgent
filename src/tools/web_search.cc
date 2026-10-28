@@ -108,14 +108,14 @@ std::optional<Route> SelectWebSearchRoute(
 json WebSearchRequest(const Route& route, const std::string& prompt) {
   json parameters = {
       {"engine", "auto"},
-      {"max_results", kWebSearchMaxResults},
-      {"max_total_results", kWebSearchMaxResults * kWebSearchMaxUses},
-      {"max_uses", kWebSearchMaxUses}};
+      {"max_results", WebSearchMaxResults()},
+      {"max_total_results", WebSearchMaxResults() * WebSearchMaxUses()},
+      {"max_uses", WebSearchMaxUses()}};
   json body = {
       {"model", route.model},
       {"stream", false},
       {"max_tokens", kWebSearchMaxTokens},
-      {"max_tool_calls", kWebSearchMaxUses},
+      {"max_tool_calls", WebSearchMaxUses()},
       {"usage", {{"include", true}}},
       {"tools", json::array({{{"type", "openrouter:web_search"},
                               {"parameters", std::move(parameters)}}})},
@@ -131,7 +131,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   Tool t = MakeTool(
       "web_search",
       "Search the web with cited sources; put up to " +
-          std::to_string(kWebSearchMaxUses) +
+          std::to_string(WebSearchMaxUses()) +
           " related queries in one call. Include dates or cutoffs in recency "
           "queries. Do not repeat a search.",
       json::parse(R"json({"type":"object","properties":{
@@ -155,7 +155,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           }
           queries.push_back(std::move(query));
         }
-        if (queries.size() > static_cast<size_t>(kWebSearchMaxUses)) {
+        if (queries.size() > static_cast<size_t>(WebSearchMaxUses())) {
           return ToolFailure(ToolErrorCode::kLimitExceeded,
                              "too many queries for the configured "
                              "web search use limit");
@@ -172,7 +172,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                              "model scope and omit unasked pricing:\n" +
                              numbered;
         json body = WebSearchRequest(active, prompt);
-        int64_t timeout = context.RemainingSeconds(kWebSearchTimeoutSeconds);
+        int64_t timeout = context.RemainingSeconds(WebSearchTimeoutSeconds());
         auto started = std::chrono::steady_clock::now();
         DebugLog("side_request", {{"kind", "web_search"},
                                   {"path", "/chat/completions"},
@@ -202,10 +202,10 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           normalized.web_searches = result.searches;
         }
         result.searches = normalized.web_searches;
-        if (normalized.web_searches > kWebSearchMaxUses) {
+        if (normalized.web_searches > WebSearchMaxUses()) {
           DebugLog("side_limit_exceeded",
                    {{"kind", "web_search"},
-                    {"requested", kWebSearchMaxUses},
+                    {"requested", WebSearchMaxUses()},
                     {"reported", normalized.web_searches}});
         }
         if (response.body.is_object()) {
@@ -257,11 +257,11 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   t.parallel_safe = true;
   t.header = Verbs("Searching the web for", "Searched the web for");
   t.intent = "research";
-  t.parameters["properties"]["queries"]["maxItems"] = kWebSearchMaxUses;
+  t.parameters["properties"]["queries"]["maxItems"] = WebSearchMaxUses();
   // The request budget is per attempt (see Api::Post); the tool deadline has
   // to cover the retries or it would cancel the call mid-recovery.
-  t.timeout_s = kWebSearchTimeoutSeconds * kSideAttempts;
-  t.max_calls_per_turn = kWebSearchCalls;
+  t.timeout_s = WebSearchTimeoutSeconds() * kSideAttempts;
+  t.max_calls_per_turn = WebSearchCalls();
   // Offered while a search can run on the route in use, which a model switch
   // changes; hosted search drops the function from the request itself.
   t.available = [&api, providers = std::move(providers)] {

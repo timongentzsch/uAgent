@@ -128,6 +128,9 @@ enum class Fault {
   kCount
 };
 
+// A stop_after that the limits.repeatedCallStop setting decides.
+inline constexpr int64_t kStopFromSetting = -1;
+
 // `{n}` is the strike and `{x}` what the fault is about.
 struct FaultRule {
   const char* name;
@@ -179,7 +182,7 @@ inline constexpr FaultRule kFaultRules[] = {
     // Valid repetition is recoverable; the ceiling only catches a model that
     // ignores both instructions.
     {"repeated_call",
-     kRepeatedCallStopAfter,
+     kStopFromSetting,
      TurnStopReason::kRepeatedCalls,
      "model repeated the same tool call {n} times after two recovery "
      "instructions",

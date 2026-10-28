@@ -329,18 +329,18 @@ void PruneSessionJournalOrphans(const std::string& dir) {
 
 void MaintainArtifacts() {
   std::string history = UagentDir(kHistoryDir);
-  PruneArtifactTree(history, HistoryDays(), kHistoryFiles);
+  PruneArtifactTree(history, HistoryDays(), HistoryFiles());
   PruneSessionJournalOrphans(history);
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
-                    HistoryDays(), kHistoryFiles);
-  PruneArtifactTree(UagentDir(kSessionsDir), kDebugDays, kDebugFiles);
+                    HistoryDays(), HistoryFiles());
+  PruneArtifactTree(UagentDir(kSessionsDir), LogKeepDays(), LogKeepFiles());
   // Mail by age only: a count would drop mail still waiting to be read.
-  PruneArtifactTree(UagentDir(kMailDir), kDebugDays, 0);
-  PruneArtifactTree(UagentDir(kActivityDir), kActivityDays, kActivityFiles);
-  PruneArtifactTree(UagentDir(kArtifactsDir), kActivityDays, kActivityFiles);
-  PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
-  // A catalogue is fresh for a day; a week keeps one that is still read.
-  PruneArtifactTree(UagentDir(kModelsDir), kActivityDays, 0);
+  PruneArtifactTree(UagentDir(kMailDir), LogKeepDays(), 0);
+  PruneArtifactTree(UagentDir(kActivityDir), LogKeepDays(), LogKeepFiles());
+  PruneArtifactTree(UagentDir(kArtifactsDir), LogKeepDays(), LogKeepFiles());
+  PruneArtifactTree(UagentDir(kMcpDir), LogKeepDays(), LogKeepFiles());
+  // A catalogue is fresh for a day; the log retention keeps one still read.
+  PruneArtifactTree(UagentDir(kModelsDir), LogKeepDays(), 0);
   // A skill import that was killed leaves its staging folder; nothing else
   // lives there, and no import runs for a day.
   std::error_code staging_error;

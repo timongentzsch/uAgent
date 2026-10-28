@@ -77,35 +77,40 @@ session limit and the lead agent's daily cost limit.
 | request / response size | 64 / 32 MiB | |
 | turn wall clock, rounds, tool calls | unlimited | `UAGENT_MAX_TURN_SECONDS`, `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS` |
 | turn generated tokens / reported cost | unlimited | `UAGENT_MAX_TURN_TOKENS`, `UAGENT_MAX_TURN_COST` |
+| identical consecutive tool calls that end a turn | 12 (the model is warned at 3 and 6) | `UAGENT_REPEATED_CALL_STOP` (at least 7) |
 | session generated tokens / reported cost | unlimited | `UAGENT_SESSION_TOKEN_BUDGET` (`--token-budget`), `UAGENT_SESSION_BUDGET` (`--budget`) |
 | one tool call | 30 s; `run`, `scratch`, `activity` and `subagent` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
 | tool result / parallel batch | 8,000 / 16,000 characters | `UAGENT_TOOL_RESULT_CHARS` (batch is twice the result cap) |
-| `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES` (default only) |
-| `grep` | 200 matches | |
-| `web_search` | 4 calls per turn, 180 s each | |
+| `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES` (default only), `UAGENT_READ_FILE_KB` |
+| `edit_file` / diff | files up to 10 MiB | `UAGENT_EDIT_FILE_MB` |
+| `list_dir` / `grep` | 1,000 entries / 200 matches | `UAGENT_LIST_ENTRIES`, `UAGENT_GREP_RESULTS` |
+| `web_search` | 4 calls per turn, 3 queries and 5 results each, 60 s per attempt | `UAGENT_WEB_SEARCH_CALLS`, `UAGENT_WEB_SEARCH_MAX_USES`, `UAGENT_WEB_SEARCH_RESULTS`, `UAGENT_WEB_SEARCH_TIMEOUT` |
 | trace pruning | newest 64 KiB protected; results from 32 KiB pruned | |
 | automatic compaction | 85% of projected context | `UAGENT_AUTO_COMPACT_PCT` |
 | compacted-trace archive | 16 MiB | |
-| background activities / foreground tool workers | 8 (6 open to subagents) / 4, 6 for a batch of subagents | |
+| background activities / foreground tool workers | 8 (all but 2 open to subagents) / 4, up to the subagent share for a batch of subagents | `UAGENT_MAX_ACTIVITIES`, `UAGENT_TOOL_CONCURRENCY` |
 | `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | |
-| activity output buffer | 1 MiB, equal head and tail | |
+| activity output buffer / command log | 1 MiB, equal head and tail / 64 MiB | `UAGENT_ACTIVITY_LOG_MB` (log) |
 | retained finished activities | 16 | |
 | subagent completion in context | 6,000 characters each, 12 KiB per batch | |
 | delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
-| subagent launches per turn | 32 | |
+| subagent launches per turn | 32 | `UAGENT_SUBAGENT_CALLS_PER_TURN` |
 | background agents at once / reported cost per day per lead agent | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
 | a background agent's report to its lead agent | 6,000 characters; `history` reads the rest | |
 | steps in a lead agent's plan | 24 | |
-| idle session runtime | stops after 15 minutes; the next message starts it | |
+| idle session runtime | stops after 15 minutes; the next message starts it | `UAGENT_IDLE_MINUTES` |
 | undo journal | 2 MiB per file, 64 MiB per session | |
-| memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |
-| memory extraction | 32 KiB of one session after 6 idle hours | |
+| memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | `UAGENT_MEMORY_BYTES`, `UAGENT_MEMORY_MAX`, `UAGENT_MEMORY_ALWAYS_BYTES` |
+| memory extraction | 32 KiB of one session after 6 idle hours | `UAGENT_MEMORY_IDLE_HOURS` (idle time) |
 | memory event audit | 256 KiB | |
-| skill body / discovery depth | 512 KiB / 6 directories | |
-| CLI attachment / web upload / files per prompt | 10 MiB / 8 MiB / 8 | `UAGENT_ATTACHMENT_MB` (CLI attachment) |
+| skills offered / skill body / discovery depth | 64 / 512 KiB / 6 directories | `UAGENT_SKILLS_MAX` (offered) |
+| folder instructions | 32 KiB | `UAGENT_INSTRUCTIONS_KB` |
+| CLI attachment / web upload / files per prompt | 10 MiB / 8 MiB / 8 | `UAGENT_ATTACHMENT_MB` (CLI attachment), `UAGENT_ATTACHMENT_COUNT` |
+| image side before scaling down | 2048 px | `UAGENT_IMAGE_MAX_PX` |
 | input history / paste | 200 entries of 16 KiB / 64 KiB | |
 | MCP call / optional-server startup | 60 s / 2 s shared | `UAGENT_MCP_TIMEOUT` (call only) |
+| MCP servers / tools per server | 32 / 256 | `UAGENT_MCP_MAX_SERVERS`, `UAGENT_MCP_MAX_TOOLS` |
 | macOS sandbox profile | 64 KiB; larger profiles refuse the command | |
 | session file | 64 MiB | |
 | conversation / global source assets | 64 MiB / 512 MiB | |

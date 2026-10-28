@@ -19,6 +19,7 @@
 #include "include/app/self_description.h"
 #include "include/cli/cli.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
@@ -462,14 +463,14 @@ void TestObservabilityEvents() {
   // The limit counts conversations: a full history keeps every one of them.
   const std::filesystem::path sessions = UagentDir(kHistoryDir);
   std::filesystem::create_directories(sessions);
-  for (int64_t i = 0; i < kHistoryFiles; ++i) {
+  for (int64_t i = 0; i < HistoryFiles(); ++i) {
     const std::string session =
         (sessions / (std::to_string(i) + ".json")).string();
     std::ofstream(session) << "session";
     std::ofstream(session + ".lock") << "";
   }
   MaintainArtifacts();
-  for (int64_t i = 0; i < kHistoryFiles; ++i) {
+  for (int64_t i = 0; i < HistoryFiles(); ++i) {
     CHECK(std::filesystem::exists(sessions / (std::to_string(i) + ".json")));
   }
 

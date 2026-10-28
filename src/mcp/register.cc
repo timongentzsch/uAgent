@@ -120,7 +120,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
       srv->error = std::move(why);
       runtime.Add(std::move(srv));
     };
-    if (spawned >= kMaxMcpServers) {
+    if (spawned >= MaxMcpServers()) {
       McpNote(name, "skipped (server limit reached)");
       skip("skipped: server limit reached");
       continue;

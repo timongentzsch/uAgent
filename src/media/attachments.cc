@@ -689,7 +689,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   // through like small PNGs do. A missing converter then fails loudly
   // here instead of degrading the whole route on a provider rejection.
   const bool normalize = mime == "image/heic" || mime == "image/heif";
-  if (width > kMaxImageDimension || height > kMaxImageDimension ||
+  if (width > MaxImageDimension() || height > MaxImageDimension() ||
       attachment.bytes > kImageBytes || normalize) {
     const std::string format =
         (mime == kJpegMime || mime == "image/heic" || mime == "image/heif")
@@ -701,12 +701,12 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     }
 #ifdef __APPLE__
     auto resized = CaptureProcess({"/usr/bin/sips", "-Z",
-                                   std::to_string(kMaxImageDimension), "-s",
+                                   std::to_string(MaxImageDimension()), "-s",
                                    "format", format, "-s", "formatOptions",
                                    "85", path, "--out", temporary_file.Path()});
 #else
-    const std::string geometry = std::to_string(kMaxImageDimension) + "x" +
-                                 std::to_string(kMaxImageDimension) + ">";
+    const std::string geometry = std::to_string(MaxImageDimension()) + "x" +
+                                 std::to_string(MaxImageDimension()) + ">";
     auto resized = CaptureProcess(
         {"magick", "-limit", "memory", "128MiB", "-limit", "map", "256MiB",
          path + "[0]", "-auto-orient", "-resize", geometry, "-quality", "85",
@@ -912,10 +912,10 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   std::lock_guard<std::mutex> lock(mutex_);
   // MCP servers queue images without a model call to budget against, so the
   // ceiling lives here rather than only on read_path.
-  if (pending_.size() >= kMaxPendingAttachments) {
+  if (pending_.size() >= MaxPendingAttachments()) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "too many attachments pending for one step (" +
-                           std::to_string(kMaxPendingAttachments) + ")");
+                           std::to_string(MaxPendingAttachments()) + ")");
   }
   attachment.source_call_id = std::move(source_call_id);
   pending_.push_back(std::move(attachment));

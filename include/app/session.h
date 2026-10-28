@@ -61,7 +61,7 @@ inline ActivityCounts CountActivities(const json& state) {
 // reaches it next starts it again. Tests shorten it.
 inline std::chrono::seconds IdlePeriod() {
   return std::chrono::seconds(std::max<int64_t>(
-      1, EnvLong("UAGENT_INTERNAL_IDLE_S", kIdleMinutes * 60)));
+      1, EnvLong("UAGENT_INTERNAL_IDLE_S", IdleMinutes() * 60)));
 }
 
 // `state` without its checkpoint-only fields.

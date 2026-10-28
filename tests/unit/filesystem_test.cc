@@ -136,7 +136,7 @@ void TestFileTools() {
   ToolResult preview = ToolListDir(small_directory.string(), 1, 0, true);
   CHECK(preview.output.find("ONE_BODY") != std::string::npos);
   CHECK(preview.output.find("TWO_BODY") != std::string::npos);
-  CHECK(preview.result_chars == kReadFileResultChars);
+  CHECK(preview.result_chars == ReadFileResultChars());
   fs::create_directories(small_directory / "nested");
   CHECK(ToolListDir(small_directory.string(), 1, 0, true)
             .output.find("ONE_BODY") == std::string::npos);
@@ -339,7 +339,7 @@ void TestFileTools() {
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
   const Tool* read_tool = FindTool(tools, "read_path");
   CHECK(read_tool != nullptr);
-  CHECK(read_tool && read_tool->result_chars == kReadFileResultChars);
+  CHECK(read_tool && read_tool->result_chars == ReadFileResultChars());
   CHECK(read_tool &&
         read_tool->parameters["properties"]["limit"]["description"] ==
             "lines or entries");
@@ -433,8 +433,8 @@ void TestFileTools() {
     // An edit larger than the byte limit refuses before it is written.
     approves_what_it_does(
         "one\ntwo\n",
-        json::array(
-            {{{"old", "one"}, {"new", std::string(kEditFileBytes + 1, 'x')}}}));
+        json::array({{{"old", "one"},
+                      {"new", std::string(EditFileBytes() + 1, 'x')}}}));
   }
 
   fs::path private_file = root / "private";

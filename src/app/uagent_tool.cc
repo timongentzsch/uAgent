@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
@@ -184,10 +185,10 @@ Tool UagentTool(SelfDescriptionProvider describe,
                              "scope user or project");
       }
       if (!arguments.contains("text") ||
-          JsonValue(arguments, "text", "").size() > kProjectDocBytes) {
+          JsonValue(arguments, "text", "").size() > ProjectDocBytes()) {
         return ArgumentIssue("instructions.text",
                              "set_instructions needs the whole text, at most " +
-                                 std::to_string(kProjectDocBytes / 1024) +
+                                 std::to_string(ProjectDocBytes() / 1024) +
                                  " KiB",
                              "text");
       }

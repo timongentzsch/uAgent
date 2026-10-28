@@ -13,6 +13,7 @@
 
 #include "include/core/checked.h"
 #include "include/core/defaults.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/skills.h"
@@ -69,7 +70,7 @@ bool ParseInstructionTarget(const std::string& audience,
 }
 
 std::string ReadInstructionFile(const std::filesystem::path& path) {
-  return ReadFile(path.string(), kProjectDocBytes).value_or("");
+  return ReadFile(path.string(), ProjectDocBytes()).value_or("");
 }
 
 ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
@@ -156,7 +157,7 @@ json InstructionFiles(const std::filesystem::path& cwd) {
   };
   json also = json::array();
   for (const std::string& source :
-       LoadProjectInstructions(cwd, kProjectDocBytes).sources) {
+       LoadProjectInstructions(cwd, ProjectDocBytes()).sources) {
     if (!same(source, InstructionPath(false, false, cwd)) &&
         !same(source, InstructionPath(false, true, cwd))) {
       also.push_back(source);
@@ -169,9 +170,9 @@ std::string WriteInstructionFile(bool panel, bool project,
                                  const std::filesystem::path& cwd,
                                  const std::string& text,
                                  const std::optional<std::string>& base) {
-  if (text.size() > kProjectDocBytes) {
+  if (text.size() > ProjectDocBytes()) {
     return "instructions are at most " +
-           std::to_string(kProjectDocBytes / 1024) + " KiB";
+           std::to_string(ProjectDocBytes() / 1024) + " KiB";
   }
   const std::filesystem::path path = InstructionPath(panel, project, cwd);
   if (base && ReadInstructionFile(path) != *base) {

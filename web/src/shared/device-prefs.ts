@@ -5,8 +5,8 @@ import { storageKeys } from "./storage-keys.ts";
 import { defaultTimePrefs, normalizeTimePrefs } from "./time.ts";
 
 // The docked panes someone can resize (shared/side-pane.tsx); each width
-// is kept in rem, so it follows the text size.
-export type Pane = "sidebar" | "board" | "files" | "files-list";
+// (the terminal's height) is kept in rem, so it follows the text size.
+export type Pane = "sidebar" | "board" | "files" | "files-list" | "terminal";
 
 // This browser's preferences.
 export const devicePrefs = {

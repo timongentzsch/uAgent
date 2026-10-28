@@ -26,7 +26,7 @@ layer.
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |
 | `src/ui/` | Terminal input and presentation; the Markdown renderer is `markdown.cc` with `markdown_math.cc` and `markdown_table.cc` |
-| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), embedded assets, the browser viewer (`browser_viewer.cc`, `rfb_filter.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master*.cc`), embedded assets, the browser viewer (`browser_viewer.cc`, `rfb_filter.cc`), the terminal's shells (`terminal.cc`) and optional push (`push.cc`; `no_push.cc` when `UAGENT_WEB_PUSH=OFF`) |
 | `web/src/` | Browser event projection and presentation: `app/` shell and its hooks, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
@@ -125,8 +125,8 @@ state. A changed runtime generation invalidates pending commands; recovery
 never repeats a tool or an uncertain submission by itself.
 
 The web host's HTTP pool idles at four threads and grows to one per open event
-stream or browser viewer, plus twelve for requests, so long-lived connections
-cannot starve the API.
+stream, browser viewer or terminal socket (at most 16), plus twelve for
+requests, so long-lived connections cannot starve the API.
 
 Closing a client detaches it. Closing the runtime cancels work, saves state
 and reaps session-owned children. An internal writer lease keeps two runtimes

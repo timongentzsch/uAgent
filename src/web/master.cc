@@ -49,9 +49,9 @@ namespace {
 constexpr size_t kOriginChars = 255;
 constexpr size_t kSubscriptionRequestBytes = KiB(8);
 constexpr size_t kDiscoveryBytes = KiB(4);
-// Four workers wait while idle. Busy, the pool grows to one per event stream
-// and viewer, which each hold theirs as long as they stay open, plus twelve
-// for requests, so those connections cannot starve the API.
+// Four workers wait while idle. Busy, the pool grows to one per event stream,
+// viewer and terminal socket, which each hold theirs as long as they stay
+// open, plus twelve for requests, so those connections cannot starve the API.
 constexpr size_t kIdleWorkerThreads = 4;
 constexpr size_t kRequestWorkerThreads = 12;
 constexpr size_t kWorkerQueue = 24;
@@ -237,10 +237,11 @@ bool Master::Initialize(std::string& error) {
   host_.RefreshCatalogue();
   host_.RefreshInvalidations({});
   server_.new_task_queue = [] {
-    return new httplib::ThreadPool(
-        kIdleWorkerThreads,
-        kWebSseConnections + kViewerInstances + kRequestWorkerThreads,
-        kWorkerQueue);
+    return new httplib::ThreadPool(kIdleWorkerThreads,
+                                   kWebSseConnections + kViewerInstances +
+                                       kWebTerminalSockets +
+                                       kRequestWorkerThreads,
+                                   kWorkerQueue);
   };
   server_.set_read_timeout(kReadTimeoutSeconds);
   server_.set_write_timeout(kWriteTimeoutSeconds);
@@ -302,7 +303,12 @@ bool Master::Initialize(std::string& error) {
     response.set_header("Content-Encoding", "gzip");
     response.set_header("Vary", "Accept-Encoding");
   });
+  if (options_.terminal) {
+    terminals_ = std::make_unique<Terminals>(
+        kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes));
+  }
   RegisterApiRoutes();
+  RegisterTerminalRoutes();
   if (!browser::DataDirectory().empty()) RegisterBrowserRoutes();
   if (!RegisterAssetRoutes(error)) return false;
   if (!server_.bind_to_port(options_.bind, options_.port)) {
@@ -370,6 +376,8 @@ int Master::Run() {
     stopping_.store(true);
     host_.Stop();
     host_wake_.Wake();
+    // Ends every terminal socket too, which the pool waits for.
+    if (terminals_) terminals_->Shutdown();
     server_.stop();
   });
   std::thread scheduled([&] {
@@ -457,6 +465,7 @@ void Master::RegisterApiRoutes() {
                            {"capabilities", push_->Capabilities(device)},
                            {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
+                           {"terminal", terminals_ != nullptr},
                            {"device", device}};
         Reply(response, body);
       });

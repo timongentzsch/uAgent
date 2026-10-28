@@ -300,7 +300,8 @@ if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
   add_library(uagent_web src/web/master.cc src/web/master_auth.cc
                          src/web/master_command.cc src/web/master_files.cc
-                         src/web/master_stream.cc "${_web_generated}")
+                         src/web/master_stream.cc src/web/master_terminal.cc
+                         src/web/terminal.cc "${_web_generated}")
   find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
   target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
@@ -409,12 +410,16 @@ if(BUILD_TESTING)
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
   # uagent_web brings uagent_app; linking both lists it twice.
-  if(UAGENT_BROWSER)
-    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc)
+  if(UAGENT_WEB)
+    target_sources(uagent_tests PRIVATE tests/unit/web_terminal_test.cc)
     target_link_libraries(uagent_tests PRIVATE uagent_web)
-    target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
+    target_compile_definitions(uagent_tests PRIVATE UAGENT_WEB)
   else()
     target_link_libraries(uagent_tests PRIVATE uagent_app)
+  endif()
+  if(UAGENT_BROWSER)
+    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc)
+    target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
   endif()
   # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
   # and a reused header has to have been built with the same command line.

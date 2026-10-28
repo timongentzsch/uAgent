@@ -56,10 +56,10 @@ file offers a download. What is open is read again when a turn ends.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 
-Drag the edge of the sidebar, the plan, Files or its list to resize it, or
-focus the edge and use the arrow keys (Shift for larger steps). A
-double-click or Enter restores the default width. Each device keeps its own
-widths.
+Drag the edge of the sidebar, the plan, Files or its list, or the top of the
+terminal, to resize it, or focus the edge and use the arrow keys (Shift for
+larger steps). A double-click or Enter restores the default size. Each device
+keeps its own sizes.
 
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
 `--json`, `-c`, `--resume`, `--yolo`, `--attach`, `--model`, …). It reads the
@@ -72,6 +72,8 @@ settings saved for all conversations and the environment, never a folder's.
 | | `UAGENT_WEB_BIND` | `127.0.0.1`; `0.0.0.0` listens on all interfaces |
 | | `UAGENT_WEB_PUSH_CONTACT` | empty (no background push) |
 | | `UAGENT_BROWSER_DATA` | empty (no shared browser) |
+| | `UAGENT_WEB_TERMINAL` | on ([the terminal](#terminal)) |
+| | `UAGENT_WEB_TERMINAL_IDLE_MINUTES` | `60` (1–10080) |
 
 Save one from a terminal session with `/config user KEY=VALUE`, or set it in
 the host's environment. Each applies when the web host next starts.
@@ -89,8 +91,9 @@ The origin is bare (scheme, host and optional port, no path). Forwarded
 headers never override it, and the browser must use exactly that origin.
 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve) can
 provide a private HTTPS endpoint. The proxy must forward the event stream
-(`/api/events`, Server-Sent Events) and, for the
-[shared browser](BROWSER.md), WebSocket upgrades on `/api/browser/viewer`.
+(`/api/events`, Server-Sent Events) and WebSocket upgrades on
+`/api/terminals/` and, for the [shared browser](BROWSER.md),
+`/api/browser/viewer`.
 
 For a quick test without HTTPS, an HTTP origin with a literal IPv4 address in
 the tailnet range `100.64.0.0/10` is also accepted:
@@ -137,6 +140,40 @@ best effort; the conversation remains authoritative.
 
 Web Push is built into release archives and the Docker image. Source builds
 opt in with `-DUAGENT_WEB_PUSH=ON` and need OpenSSL 3.
+
+## Terminal
+
+**Terminal** (the button in the header, Ctrl+`, also ⌘+` on a Mac) opens a
+panel under the chat and Files with your own shell on the host, in tabs like
+VS Code's terminal. **+** starts another, in the open conversation's folder,
+or in your home folder when no conversation is open. **Open terminal here**
+in Files starts one in the folder it shows. Up to eight run at once.
+
+- **It is your shell, unsandboxed.** It runs as you, your login shell
+  (`$SHELL`, else `/bin/sh`) with `TERM=xterm-256color`, and can do whatever
+  you can. That is why only a [paired device](#security-model) reaches it,
+  from the app's own origin. µAgent's credentials and settings are not in its
+  environment: it gets the same environment as the agent's commands, without
+  API keys or `UAGENT_*` settings, but with your ssh agent (`SSH_AUTH_SOCK`),
+  so `git push` works as in any terminal.
+- **The agent never sees it.** **Add to chat** puts the selection, or what
+  the terminal shows, into the conversation's message as a code block. It
+  sends nothing; you read it and send it.
+- **It keeps running.** A shell lives in the web host, not the page. A
+  reload, a phone that slept or another device attaches again and is shown
+  the shell's recent output; one device at a time types into it, and the one
+  it moved from offers **Use here**. A shell ends when you close its tab,
+  when it exits, or when no device has had it open and it printed nothing
+  for `UAGENT_WEB_TERMINAL_IDLE_MINUTES`. Stopping the web host ends every
+  shell; nothing is written to disk.
+- **Turn it off** with `/config user UAGENT_WEB_TERMINAL=off`, or in
+  Settings → All conversations; it applies when the web host restarts. The
+  routes then refuse and the panel is gone.
+- **In the Docker image** the web host runs in the container, so the shell
+  is one in the container, not on the machine that runs it.
+
+On a touch screen a key bar under the terminal adds Esc, Tab, a sticky Ctrl
+and the arrows.
 
 ## The agent's browser
 
@@ -395,6 +432,9 @@ or a revoked device clears local UI state.
 - The page runs under a content security policy that allows only its own
   scripts, connections and frames. Attached HTML opens sandboxed in an opaque
   origin.
+- A paired device can open [a terminal](#terminal): a shell of yours on the
+  host, unsandboxed. Turn it off with `UAGENT_WEB_TERMINAL=off` where a
+  paired device should not have that.
 
 ## Development
 

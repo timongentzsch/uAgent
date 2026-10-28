@@ -3,8 +3,9 @@ import { useLatest } from "./use-latest.ts";
 
 // Every keyboard shortcut, once: the global listener below matches these,
 // and the shortcuts sheet and search show them. `keys` is
-// "Mod+K" style, Mod being ⌘ on a Mac and Ctrl elsewhere. Entries without
-// `global` are the composer's own, listed so they can be found.
+// "Mod+K" style, Mod being ⌘ on a Mac and Ctrl elsewhere; Ctrl is Ctrl
+// everywhere, and ⌘ too on a Mac. Entries without `global` are the
+// composer's own, listed so they can be found.
 export const SHORTCUTS = [
   { id: "search", keys: "Mod+K", label: "Search", global: true },
   {
@@ -24,6 +25,12 @@ export const SHORTCUTS = [
     id: "next",
     keys: "Alt+ArrowDown",
     label: "Next conversation",
+    global: true,
+  },
+  {
+    id: "terminal",
+    keys: "Ctrl+`",
+    label: "Show or hide the terminal",
     global: true,
   },
   { id: "send", keys: "Enter", label: "Send the message" },
@@ -66,10 +73,13 @@ function matches(keys: string, event: KeyboardEvent) {
   const parts = keys.split("+");
   const key = parts.pop()!;
   const mod = parts.includes("Mod");
+  const modifier = parts.includes("Ctrl")
+    ? event.ctrlKey || (mac && event.metaKey)
+    : (mac ? event.metaKey : event.ctrlKey) === mod;
   // `?` needs Shift on most layouts, so a bare key ignores Shift.
   return (
     event.key.toLowerCase() === key.toLowerCase() &&
-    (mac ? event.metaKey : event.ctrlKey) === mod &&
+    modifier &&
     event.altKey === parts.includes("Alt") &&
     (key.length === 1 || event.shiftKey === parts.includes("Shift"))
   );

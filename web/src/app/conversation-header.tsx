@@ -10,6 +10,7 @@ import {
   ListTree,
   Menu,
   Settings,
+  Terminal,
 } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import Board, { PanelHelp } from "../features/panel/board.tsx";
@@ -32,6 +33,7 @@ export default function ConversationHeader({
   threads,
   placeName,
   browserAvailable,
+  terminal,
   filesOpen,
   setFilesOpen,
   openDrawer,
@@ -51,6 +53,8 @@ export default function ConversationHeader({
   threads: Session[];
   placeName: (path?: string) => string;
   browserAvailable: boolean;
+  // Present while the host offers terminals.
+  terminal?: { open: boolean; toggle: () => void };
   filesOpen: boolean;
   setFilesOpen: (open: boolean) => void;
   openDrawer: () => void;
@@ -87,6 +91,11 @@ export default function ConversationHeader({
       {browserAvailable && (
         <MenuItem disabled={booting} onClick={openBrowser}>
           Open browser
+        </MenuItem>
+      )}
+      {terminal && (
+        <MenuItem onClick={terminal.toggle}>
+          {terminal.open ? "Hide terminal" : "Terminal"}
         </MenuItem>
       )}
       {session?.kind === "panel" && (
@@ -149,6 +158,15 @@ export default function ConversationHeader({
           >
             <Globe2 />
             {browsing && <StatusLed state="running" />}
+          </IconButton>
+        )}
+        {terminal && !inMenu && (
+          <IconButton
+            label="Terminal"
+            aria-pressed={terminal.open}
+            onClick={terminal.toggle}
+          >
+            <Terminal />
           </IconButton>
         )}
         {/* Held in place while the session loads, inert. */}

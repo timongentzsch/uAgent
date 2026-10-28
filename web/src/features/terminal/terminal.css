@@ -1,0 +1,59 @@
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-l);
+  padding-inline: var(--inset-x);
+  border-bottom: var(--border);
+}
+.terminal-tabs {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.terminal-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.terminal-tabpanel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.terminal-tabpanel[hidden] {
+  display: none;
+}
+/* The app's monospace face at the size of small text, which xterm.js reads
+   from here. */
+.terminal-view {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-2) var(--inset-x);
+  font-size: var(--font-small);
+}
+.terminal-note {
+  margin: 0;
+  padding: var(--space-2) var(--inset-x);
+  border-top: var(--border);
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.terminal-keys {
+  display: flex;
+  padding: var(--space-2) var(--inset-x);
+  border-top: var(--border);
+}

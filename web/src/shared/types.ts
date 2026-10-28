@@ -606,6 +606,8 @@ export interface Catalogue {
   commands?: SlashCommand[];
   verbosity?: Verbosity;
   scheduled?: ScheduledState;
+  // Whether paired devices may open terminals (web.terminal).
+  terminal?: boolean;
   epoch?: string;
   cursor?: number;
   sessions: Session[];
@@ -863,6 +865,7 @@ export interface CommandResults {
   permission_rules: PermissionRules;
   revoke_device: never;
   test_notification: never;
+  terminal: TerminalList;
 }
 export type CommandKind = keyof CommandResults;
 type None = Record<never, never>;
@@ -975,6 +978,8 @@ export interface CommandInputs {
   permission_rules: { action: string; key?: string; cwd?: string };
   revoke_device: { device_id: string };
   test_notification: None;
+  // A shell in a folder, the home folder without one; or the end of one.
+  terminal: { action: "open"; cwd?: string } | { action: "close"; id: string };
 }
 export type CommandFields<K extends CommandKind> = CommandInputs[K] & {
   request_id?: string;
@@ -1140,3 +1145,21 @@ export type InspectorTarget =
   | { block: ActivityTarget }
   | { item: Activity }
   | { raw: RawOptions; title: string };
+
+// A shell the web host runs for paired devices, in the folder it started in.
+export interface TerminalInfo {
+  id: string;
+  cwd: string;
+}
+// The shells running, and the one just opened.
+export interface TerminalList {
+  id?: string;
+  terminals: TerminalInfo[];
+}
+// A terminal socket's text frames; its binary frames are the terminal's
+// bytes. In: the size the page shows it at. Out: the shell ended (code -1
+// when unknown), or a newer socket took it over.
+export type TerminalControl = { type: "resize"; rows: number; cols: number };
+export type TerminalNotice =
+  | { type: "exit"; code: number }
+  | { type: "replaced" };

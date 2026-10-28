@@ -210,6 +210,15 @@ inline constexpr int64_t kListDirScanEntries = 100000;
 // answers this many paths.
 inline constexpr size_t kFileViewBytes = MiB(1);
 inline constexpr size_t kFileFindMatches = 200;
+// The web host's terminal: how many shells run at once, and twice as many
+// connections to them, so a device coming back can attach before its dropped
+// connection times out; the output a shell keeps for a device that attaches,
+// and the largest message a page sends one (input or a resize). The page
+// mirrors the shell count (web/src/shared/limits.ts).
+inline constexpr size_t kWebTerminals = 8;
+inline constexpr size_t kWebTerminalSockets = 16;
+inline constexpr size_t kWebTerminalScrollbackBytes = KiB(256);
+inline constexpr size_t kWebTerminalMessageBytes = KiB(64);
 // Hosted search.
 inline constexpr int64_t kWebSearchMaxTokens = 2000;
 // Memory and skills.

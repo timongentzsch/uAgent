@@ -10,10 +10,13 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "include/core/fd.h"
 
 namespace uagent {
 
@@ -44,6 +47,12 @@ struct SpawnSpec {
 };
 // 0 with `pid` set, or the errno of the failed spawn.
 int SpawnProcess(const SpawnSpec& spec, pid_t& pid);
+
+// A pseudo-terminal of `rows` x `cols`: its close-on-exec controller, and the
+// path a child opens as its terminal (a SpawnFd `path`). 0, or the errno with
+// nothing left open.
+int OpenPty(Fd& controller, std::string& terminal, uint16_t rows,
+            uint16_t cols);
 
 // Write every byte or report failure. errno is left set for the caller.
 bool WriteAll(int fd, std::string_view data);

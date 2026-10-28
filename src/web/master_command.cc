@@ -118,7 +118,8 @@ void Master::Command(const Request& request, Response& response) {
       {"space", false, &Master::SpaceCommand},
       {"restart_conversations", false, &Master::RestartConversations},
       {"restart_host", false, &Master::RestartHost},
-      {"config", false, &Master::ConfigCommand}};
+      {"config", false, &Master::ConfigCommand},
+      {"terminal", false, &Master::TerminalCommand}};
   const auto* route = std::ranges::find(kRoutes, kind, &Route::kind);
   const bool locked = route != std::end(kRoutes) && route->locked;
   auto handle =

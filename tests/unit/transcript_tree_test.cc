@@ -58,7 +58,7 @@ class Recorder {
                         {MessageKind::kSystem});
   }
 
-  const Conversation& conversation() const { return conversation_; }
+  const Conversation& History() const { return conversation_; }
   const json& Live() const { return live_["view"]["blocks"]; }
 
   void Say(const std::string& text) {
@@ -193,7 +193,7 @@ void TestGoldenPlainAnswer() {
   turn.Say("hi");
   turn.Reply("r-1-1-1", "Hello.");
   turn.Footer(800, "complete");
-  const auto page = Lines(ConversationView(turn.conversation())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["blocks"]);
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"hi\"",
                      "message r-1-1-1 < m-2 \"Hello.\"",
@@ -230,7 +230,7 @@ void TestGoldenChainOfCalls() {
   turn.Step({a, b}, {{"items", 3}, {"errors", 0}, {"edited", 1}});
   turn.Reply("r-1-2-1", "Fixed.");
   turn.Footer(124000, "complete");
-  const auto page = Lines(ConversationView(turn.conversation())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["blocks"]);
   // The work folds what the turn did, the group the calls that read alike;
   // the answer and the footer close the turn.
   CHECK((page ==
@@ -281,7 +281,7 @@ void TestGoldenFailedCalls() {
   turn.Step({}, {{"items", 4}, {"errors", 4}, {"edited", 0}});
   turn.Reply("r-1-2-1", "Nothing worked.");
   turn.Footer(3000, "complete");
-  const auto page = Lines(ConversationView(turn.conversation())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["blocks"]);
   CHECK((page ==
          std::vector<std::string>{
              "turn m-2 < - \"try\"",
@@ -312,7 +312,7 @@ void TestGoldenBlankReplyAndMcpCall() {
   turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-2-1", "\n");
   turn.Footer(1500, "complete");
-  const auto page = Lines(ConversationView(turn.conversation())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["blocks"]);
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"look it up\"",
                      "work w-m-2 < m-2 [ok] Worked · 1 step · 1.5s",
@@ -329,7 +329,7 @@ void TestGoldenRunningTurn() {
   const std::string b = turn.Call(
       "r-1-1-1", "b", "run", {{"verb", {"Running", "Ran"}}, {"target", "make"}},
       "running", {}, "", "run");
-  const auto page = Lines(ConversationView(turn.conversation())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["blocks"]);
   // An interim reply is a step of the work, which runs until the footer.
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"build\"",
@@ -348,7 +348,7 @@ void TestGoldenPagesEndOnWholeTurns() {
     turns.Reply("r-" + std::to_string(index) + "-1-1", text);
     turns.Footer(100, "complete");
   }
-  const TranscriptView view(turns.conversation());
+  const TranscriptView view(turns.History());
   uint64_t before = 0;
   size_t seen = 0;
   for (bool more = true; more;) {

@@ -79,8 +79,9 @@ size_t BoundView(json& view) {
     const auto turn = std::find_if(
         nodes.begin() + static_cast<std::ptrdiff_t>(dropped), nodes.end(),
         [](const json& node) { return Field(node, "kind") == "turn"; });
-    if (turn != nodes.end())
+    if (turn != nodes.end()) {
       dropped = static_cast<size_t>(turn - nodes.begin());
+    }
     nodes.erase(nodes.begin(),
                 nodes.begin() + static_cast<std::ptrdiff_t>(dropped));
     view["more"] = true;

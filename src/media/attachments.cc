@@ -640,7 +640,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   // and the raster re-enters the normal inspect/resize/encode flow.
   std::string path = attachment.path;
   // Scratch files live exactly as long as this function: every early return
-  // below used to unlink them by hand.
+  // below would otherwise unlink them by hand.
   ScopedTempFile raster_file(
       (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX").string());
   ScopedTempFile temporary_file(

@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_IMPORT_H_
 #define UAGENT_INCLUDE_APP_IMPORT_H_
+// Importing skills and memories that Claude Code and Codex keep.
 
 #include <filesystem>
 #include <string>

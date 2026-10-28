@@ -610,8 +610,8 @@ namespace {
 // How many changed entries a scratch result names before it counts the rest.
 constexpr size_t kChangedNames = 20;
 
-// The workspace root's entries and when each was last written. A script runs
-// in the workspace, so this is where the files it names without a folder land;
+// The folder root's entries and when each was last written. A script runs
+// in the folder, so this is where the files it names without a folder land;
 // a folder it wrote into shows as changed itself. µAgent's own is left out.
 std::map<std::string, std::filesystem::file_time_type> RootEntries(
     const std::filesystem::path& workspace) {

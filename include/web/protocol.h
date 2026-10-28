@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_PROTOCOL_H_
 #define UAGENT_INCLUDE_WEB_PROTOCOL_H_
+// The web host's options and entry point, and the limits it shares with the
+// session protocol.
+
 #include <cstdint>
 #include <string>
 

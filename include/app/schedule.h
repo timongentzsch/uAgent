@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_SCHEDULE_H_
 #define UAGENT_INCLUDE_APP_SCHEDULE_H_
+// Scheduled tasks: where they are stored, their calendar and the runs a
+// host claims.
+
 #include <cstdint>
 #include <functional>
 #include <string>

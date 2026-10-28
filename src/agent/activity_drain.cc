@@ -200,7 +200,7 @@ void Agent::DeliverActivityCompletions(
          {"activity_id", completion.activity_id},
          // The full command travels with the record (bounded): rows and
          // titles abbreviate, but the popup and history must not lose it
-         // when the supervisor no longer retains the job.
+         // when the supervisor no longer retains the activity.
          {"command", Utf8Trunc(completion.command, kActivityCommandBytes)},
          {"activity", completion_activity},
          {"agent_id", completion.source_id},

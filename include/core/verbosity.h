@@ -2,6 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_VERBOSITY_H_
 #define UAGENT_INCLUDE_CORE_VERBOSITY_H_
+// The detail levels that decide how much of a turn's work a client shows.
 
 #include <string>
 #include <string_view>

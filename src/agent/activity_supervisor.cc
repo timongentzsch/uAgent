@@ -389,7 +389,8 @@ std::string ActivitySupervisor::Owner() const {
 }
 
 json ActivitySupervisor::ActivityViews() const {
-  // One copy under one lock: a job retained meanwhile is not listed twice.
+  // One copy under one lock: an activity retained meanwhile is not listed
+  // twice.
   std::vector<Activity> jobs;
   size_t background = 0;
   size_t foreground = 0;
@@ -418,7 +419,7 @@ json ActivitySupervisor::ActivityViews() const {
                       ? Utf8Trunc(FirstLine(job.cmd), kStatusLabelBytes)
                       : job.display_label);
     // The modal shows the full command scrollable on top. Rows only carry
-    // the 160-char label, and inspect fails once a finished job leaves the
+    // the 160-char label, and inspect fails once a finished activity leaves the
     // retained set, so the command travels here (bounded like transcript
     // blocks) instead of degrading to the abbreviated label.
     if (!job.cmd.empty()) {

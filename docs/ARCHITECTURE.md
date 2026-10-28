@@ -15,7 +15,7 @@ layer.
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
 | `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's lead agent (board, plan, history, background agents, `panel -p`) and where a launched session runs |
-| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
+| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |

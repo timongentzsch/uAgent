@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_RUNTIME_H_
 #define UAGENT_INCLUDE_APP_RUNTIME_H_
+// Process-wide setup: libcurl's lifetime, and the application's providers
+// and activities with their shutdown.
 
 #include "include/agent/activity_supervisor.h"
 #include "include/api/client.h"

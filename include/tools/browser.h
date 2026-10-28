@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_TOOLS_BROWSER_H_
 #define UAGENT_INCLUDE_TOOLS_BROWSER_H_
+// The browser tool: the model's page operations, run through the browser
+// service. Each client supplies how a person is asked to finish a step.
+
 #include <functional>
 #include <string>
 

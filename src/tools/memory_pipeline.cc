@@ -178,7 +178,7 @@ std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
   std::string source = ClaimCandidate(cwd, current_session, error);
   if (source.empty()) return error;
 
-  // Extraction is a small, bounded summarization job, so it can run on a
+  // Extraction is a small, bounded summarization pass, so it can run on a
   // cheaper or local route than the conversation.
   std::string selection = SettingText(Cfg("UAGENT_MEMORY_MODEL"));
   ProviderCatalog catalog =

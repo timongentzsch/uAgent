@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_FILE_WATCH_H_
 #define UAGENT_INCLUDE_CORE_FILE_WATCH_H_
+// Waiting for a file to change, natively where the platform can, and the
+// stamps and revisions used to tell that it did.
 
 #include <chrono>
 #include <cstdint>

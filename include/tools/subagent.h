@@ -4,7 +4,7 @@
 #define UAGENT_INCLUDE_TOOLS_SUBAGENT_H_
 // Delegation as a tool. Route descriptions and execution share one resolver so
 // the model sees the choices the harness will actually accept. Every child is
-// an ordinary saved session in this workspace's history whose header names
+// an ordinary saved session in this folder's history whose header names
 // its parent and role; it is addressed by that parent and never listed as a
 // session of its own.
 

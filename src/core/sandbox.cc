@@ -87,7 +87,7 @@ std::string DenyUnlinkAbove(const std::string& path) {
 }
 
 // The home folder's visible entries are closed to reads, except the folders
-// inside them commands need: the workspace, the writable roots and the read
+// inside them commands need: the folder, the writable roots and the read
 // roots. An entry inside one of those stays open whole.
 void ConfineReads(const SandboxInputs& inputs, SandboxPolicy* policy) {
   std::vector<std::string> open = inputs.read_roots;
@@ -181,7 +181,7 @@ std::string WritesNote(const SandboxPolicy& policy,
     return note + offline;
   }
   // Reads around a hidden path are granted folder by folder as a command
-  // starts, so a workspace that holds one goes stale for a running command.
+  // starts, so a folder that holds one goes stale for a running command.
   const bool stale = std::any_of(policy.hidden.begin(), policy.hidden.end(),
                                  [&](const std::string& path) {
                                    return SandboxPathWithin(path, workspace);
@@ -202,7 +202,7 @@ std::string SandboxWritesNote(const SandboxPolicy& policy,
                               std::string_view workspace) {
   std::string note = WritesNote(policy, workspace);
   if (!policy.unreadable.empty()) {
-    // The folder around the workspace is the one a command reaches for first.
+    // The folder that holds it is the one a command reaches for first.
     auto around =
         std::find_if(policy.unreadable.begin(), policy.unreadable.end(),
                      [&](const std::string& closed) {
@@ -254,13 +254,13 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   }
   FoldNested(&accepted, result.policy.withheld);
   result.policy.writable_roots = std::move(accepted);
-  // A trusted workspace's .mcp.json carries authority over the session
+  // A trusted folder's .mcp.json carries authority over the session
   // running in it, and a repository's config and hooks run
-  // commands in your own git later; all sit inside the workspace, which is
-  // writable by design. Carving them back out is the workspace-scoped twin of
+  // commands in your own git later; all sit inside the folder, which is
+  // writable by design. Carving them back out is the folder-scoped twin of
   // the ancestor screen above -- with the same aim and, on Linux, no way to
   // say it: Landlock has no deny form, so expressing this there would mean not
-  // granting the workspace at all.
+  // granting the folder at all.
   if (!inputs.workspace.empty()) {
     result.policy.denied_writes = {inputs.workspace + "/" + kMcpConfigFile};
     if (inputs.git_repository) {

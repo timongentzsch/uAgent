@@ -83,7 +83,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
   path.push_back(fs::path(GlobalBase()) / "skills");
   fs::path installed = InstalledSkillsPath();
   if (!installed.empty()) path.push_back(std::move(installed));
-  // Vendor-neutral project skills apply from every ancestor. Walk from the
+  // Vendor-neutral folder skills apply from every ancestor. Walk from the
   // filesystem root toward cwd so the nearest repository scope wins.
   std::vector<fs::path> ancestors;
   for (fs::path current = fs::absolute(cwd); !current.empty();) {
@@ -95,7 +95,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
   for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
     path.push_back(*it / ".agents" / "skills");
   }
-  // Tool-specific locations remain workspace-local compatibility roots.
+  // Tool-specific locations remain folder-local compatibility roots.
   for (const std::string& vendor : vendors) {
     path.push_back(cwd / vendor / "skills");
   }
@@ -162,7 +162,7 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
   };
   std::vector<fs::path> seen;
   for (const fs::path& base : SkillSearchPath(cwd)) {
-    // The workspace can be the home directory, and a vendor path can repeat;
+    // The folder can be the home directory, and a vendor path can repeat;
     // scanning one twice would only cost time, but it would also let a skill
     // shadow itself and read as a precedence bug.
     if (std::find(seen.begin(), seen.end(), base) != seen.end()) continue;

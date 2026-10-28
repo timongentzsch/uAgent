@@ -157,7 +157,7 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   return true;
 }
 
-// Project docs and memory context share one byte budget: what the project
+// Project docs and memory context share one byte budget: what the folder
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      const RuntimeConfig& config,
@@ -205,10 +205,10 @@ void ReportSandbox() {
         NoticeEvent(PresentationStatus::kWarned,
                     "sandbox: " + status.reason + "; commands run unconfined"));
   }
-  // The workspace is said in full: "not granted" alone does not tell a person
+  // The folder is said in full: "not granted" alone does not tell a person
   // that every command in this conversation is about to fail to save its work.
   const std::string workspace = CanonicalCwd();
-  // At the readonly level, a lead agent's, the workspace is not writable on
+  // At the readonly level, a lead agent's, the folder is not writable on
   // purpose.
   if (std::string refusal = SandboxWorkspaceRefusal();
       !refusal.empty() && !status.policy.read_only) {
@@ -335,7 +335,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   const bool headless = !channel && !options.prompt.empty();
   if (channel || headless) observability.EnableTerminal(false);
   SetExecutablePath(executable);
-  // Nothing chdir()s during startup, so the canonical workspace is invariant.
+  // Nothing chdir()s during startup, so the canonical folder is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
   std::string memory_source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
   const bool memory_child = !memory_source.empty();

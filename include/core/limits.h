@@ -94,7 +94,7 @@ inline constexpr int64_t kStreamBatchIntervalMs = 12;
 inline constexpr size_t kStreamBatchBytes = KiB(8);
 // Short activity captions are presentation policies, not model limits.
 inline constexpr size_t kStatusLabelBytes = 160;
-// A background job's full command, kept with its row and its result.
+// A background command's full command, kept with its row and its result.
 inline constexpr size_t kActivityCommandBytes = KiB(8);
 inline constexpr size_t kStatusLineBytes = 192;
 
@@ -170,7 +170,7 @@ inline constexpr int kPrivateDirMode = 0700;
 // someone else can reach it.
 inline constexpr int kGroupOtherModeBits = 0077;
 
-// Files written into the user's workspace on their behalf, which follow the
+// Files written into the user's folder on their behalf, which follow the
 // usual world-readable convention rather than the private-artifact policy.
 inline constexpr int kSharedFileMode = 0644;
 
@@ -196,7 +196,7 @@ inline constexpr int64_t kActivityInputSettleMs = 250;
 // Concurrent supervised activities in one session.
 inline constexpr int64_t kMaxBackgroundActivities = 8;
 // Background slots held back from delegated children. Subagents, foreground
-// commands and background jobs share the kMaxBackgroundActivities pool
+// commands and background commands share the kMaxBackgroundActivities pool
 // (detached terminals are counted separately), so an unbounded fan-out of
 // children would leave the parent unable to build, test or search -- the very
 // work it needs in order to check what those children produced.
@@ -232,7 +232,7 @@ inline constexpr int64_t kWebSearchMaxTokens = 2000;
 inline constexpr int64_t kWebSearchCalls = 4;
 inline constexpr int64_t kWebSearchMaxResults = 5;
 inline constexpr int64_t kWebSearchMaxUses = 3;
-// Memory, skills, project instructions and attachments.
+// Memory, skills, folder instructions and attachments.
 inline constexpr size_t kMemoryAlwaysBytes = 2048;
 inline constexpr size_t kMemoryBytes = 2048;
 inline constexpr size_t kMaxMemories = 32;

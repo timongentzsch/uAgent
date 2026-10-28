@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_API_WIRE_H_
 #define UAGENT_INCLUDE_API_WIRE_H_
+// The provider-neutral request and its encoders for each wire format, plus
+// the fields the harness adds to messages.
 
 #include <cstdint>
 #include <map>

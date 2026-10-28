@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_BROWSER_RUNTIME_H_
 #define UAGENT_INCLUDE_BROWSER_RUNTIME_H_
+// The browser service's runtime: Chrome and its virtual display, the page
+// operations, and who holds control.
 
 #include <sys/types.h>
 

@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_TIME_H_
 #define UAGENT_INCLUDE_CORE_TIME_H_
+// Clock helpers: deadlines that cannot overflow, poll timeouts, and
+// wall-clock seconds and milliseconds.
 
 #include <algorithm>
 #include <chrono>
@@ -10,6 +12,8 @@
 
 namespace uagent {
 
+// `seconds` after `start` on the steady clock; the clock's maximum when that
+// would overflow, and `start` itself for zero or less.
 inline std::chrono::steady_clock::time_point DeadlineAfter(
     std::chrono::steady_clock::time_point start, int64_t seconds) {
   if (seconds <= 0) return start;

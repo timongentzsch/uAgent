@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_CONVERSATION_H_
 #define UAGENT_INCLUDE_AGENT_CONVERSATION_H_
+// The conversation: its messages by kind, the archive of compacted ones and
+// the size estimates compaction works from.
 
 #include <cstddef>
 #include <cstdint>

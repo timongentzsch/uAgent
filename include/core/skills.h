@@ -40,8 +40,8 @@ std::filesystem::path InstalledSkillsPath();
 
 // SKILL.md is an open format that ~30 agents read from their own directory, so
 // a skill installed for any of them is already on the machine and usable here.
-// User-level paths first, then the workspace's, and ours last in each group:
-// later wins, so a project overrides a user skill and µAgent's own overrides a
+// User-level paths first, then the folder's, and ours last in each group:
+// later wins, so a folder overrides a user skill and µAgent's own overrides a
 // vendor copy of the same name. The release-installed tree outranks the mutable
 // user directory because it is the only copy guaranteed to match this binary.
 // UAGENT_SKILL_PATH replaces the whole list.

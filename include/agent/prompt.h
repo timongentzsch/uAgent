@@ -52,7 +52,7 @@ json ResolvePrompt(const std::string& base,
                    const json& context = json::array());
 
 // `sandbox` is SandboxWorkspaceRefusal(): said only when commands cannot write
-// the workspace, the one sandbox fact a turn has to plan around from its start.
+// the folder, the one sandbox fact a turn has to plan around from its start.
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                const std::string& approval,
                                const std::string& sandbox = "");

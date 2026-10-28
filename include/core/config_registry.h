@@ -236,7 +236,7 @@ consteval ConfigDescriptor Terminal(ConfigDescriptor descriptor) {
 }  // namespace registry
 
 inline constexpr ConfigDescriptor kConfigRegistry[] = {
-    // The web host is per OS user, so its settings never come from a project.
+    // The web host is per OS user, so its settings never come from a folder.
     registry::Terminal(registry::Named(
         registry::Str(
             "web.bind", "UAGENT_WEB_BIND", {}, "127.0.0.1",
@@ -419,7 +419,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
 
     // OS sandbox for agent-run commands. Restart-required because the policy is
     // built once and every spawn is wrapped with it; a mid-session change would
-    // leave already-running jobs under the old confinement.
+    // leave already-running commands under the old confinement.
     registry::Named(
         registry::Choice(
             registry::Str("sandbox.level", "UAGENT_SANDBOX", {}, "default",

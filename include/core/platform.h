@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_PLATFORM_H_
 #define UAGENT_INCLUDE_CORE_PLATFORM_H_
+// The thin layer over POSIX that processes, pipes and descriptors go
+// through, so no caller declares or wraps the system calls itself.
 
 #include <sys/types.h>
 #include <sys/wait.h>

@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_BROWSER_BROKER_H_
 #define UAGENT_INCLUDE_BROWSER_BROKER_H_
+// Admission and fairness for the browser service: who may use which
+// instance and for how long.
 
 #include <chrono>
 #include <functional>

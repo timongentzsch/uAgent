@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_API_RETRY_H_
 #define UAGENT_INCLUDE_API_RETRY_H_
+// Which provider failures are retried, how long to wait and how an error
+// is classified.
 
 #include <algorithm>
 #include <array>

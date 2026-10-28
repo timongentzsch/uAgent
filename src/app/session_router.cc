@@ -131,7 +131,7 @@ json SessionHost::SpaceControl(const json& command, const std::string& device,
   return {{"spaces", spaces}};
 }
 
-// The host belongs to no project: a request names the folder it is about,
+// The host belongs to no folder: a request names the folder it is about,
 // and without one only what is saved for all is in reach.
 json SessionHost::Configure(const json& command) {
   const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
@@ -219,7 +219,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
   if (kind == SessionCommandKind::kCreate) {
     // A workspace is a folder of µAgent's own, made by naming it: a
-    // conversation that belongs to no project still gets a workspace commands
+    // conversation that belongs to no folder still gets a workspace commands
     // can write.
     std::string folder = JsonValue(command, "cwd", "");
     if (const std::string space = Trim(JsonValue(command, "space", ""));

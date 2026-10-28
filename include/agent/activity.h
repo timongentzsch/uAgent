@@ -2,7 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_ACTIVITY_H_
 #define UAGENT_INCLUDE_AGENT_ACTIVITY_H_
-// Bounded job-log, detached-terminal, and process lifecycle declarations.
+// Bounded activity-log, detached-terminal, and process lifecycle declarations.
 
 #include <algorithm>
 #include <chrono>

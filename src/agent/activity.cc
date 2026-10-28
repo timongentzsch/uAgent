@@ -609,7 +609,7 @@ std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
 ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor,
                               int64_t pid) {
   if (pid <= 0) {
-    // Only the listing needs every job copied out of the supervisor.
+    // Only the listing needs every activity copied out of the supervisor.
     return FormatActivityList(supervisor.Snapshot(), DetachedRecords(),
                               "(no supervised activities)");
   }
@@ -668,8 +668,9 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
   std::optional<Activity> job = supervisor.Find(id);
   if (!job || !job->session) {
     // Persistent detached activities intentionally remain rotating-log based.
-    // The job or record is resolved once here: re-deriving it per iteration
-    // would re-parse every terminal record for the length of the wait.
+    // The activity or record is resolved once here: re-deriving it per
+    // iteration would re-parse every terminal record for the length of the
+    // wait.
     std::string watch_path;
     std::string record_cwd;
     if (job) {

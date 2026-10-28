@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_ASSETS_H_
 #define UAGENT_INCLUDE_WEB_ASSETS_H_
+// The embedded web bundle: one entry per file, gzipped at build time.
+
 #include <span>
 #include <string_view>
 namespace uagent::web {

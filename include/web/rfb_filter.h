@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_RFB_FILTER_H_
 #define UAGENT_INCLUDE_WEB_RFB_FILTER_H_
+// Filters a viewer's RFB input so a person's keys, pointer and clipboard
+// can be allowed or blocked while the screen stays shown.
 
 #include <cstddef>
 #include <cstdint>

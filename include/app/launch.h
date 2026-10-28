@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_LAUNCH_H_
 #define UAGENT_INCLUDE_APP_LAUNCH_H_
+// Where a launched session runs and where its file lives. Used by
+// scheduled runs and panel threads.
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -16,11 +19,12 @@ struct LaunchPaths {
   std::string cwd, path;
 };
 
-// The session file `name`.json in the history of workspace `cwd`.
+// The session file `name`.json in the history of folder `cwd`.
 std::string HistoryPath(const std::string& cwd, const std::string& name);
 
 // `worktree` runs in a fresh detached worktree under ~/.uagent/worktrees/<id>,
-// otherwise in `project` itself. The file is history/<workspace>/<prefix><id>.
+// otherwise in `project` itself. The file is
+// history/<folder-hash>/<prefix><id>.
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id);
 
@@ -29,7 +33,7 @@ LaunchPaths PlanLaunch(const std::string& project, bool worktree,
 // no hooks, fsmonitor, external diff or textconv.
 CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args);
 
-// Creates the detached worktree `cwd` at the project's HEAD. Returns the
+// Creates the detached worktree `cwd` at the folder's HEAD. Returns the
 // error, or empty on success.
 std::string CreateWorktree(const std::string& project, const std::string& cwd);
 

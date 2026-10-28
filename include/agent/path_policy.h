@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 #define UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
+// Which paths a tool may read, write or delete, and how a refused one is
+// reported. Used by the file tools and approvals.
 
 #include <algorithm>
 #include <filesystem>
@@ -47,7 +49,7 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  // Your instructions steer every session or panel; a project's are
+  // Your instructions steer every session or panel; a folder's are
   // ordinary repository files, like the rest of its code.
   if (InstructionFileName(candidate) &&
       candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {
@@ -58,8 +60,8 @@ inline bool SelfConfigurationPath(const std::string& path) {
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;
   }
-  // A workspace .mcp.json decides which servers are spawned. Preserve the
-  // basename rule for nested workspaces while recognizing either spelling of
+  // A folder's .mcp.json decides which servers are spawned. Preserve the
+  // basename rule for nested folders while recognizing either spelling of
   // a symlink.
   return std::filesystem::path(path).filename() == kMcpConfigFile ||
          candidate.filename() == kMcpConfigFile;
@@ -108,8 +110,8 @@ inline bool UnreadablePath(const std::string& path) {
 
 enum class PathAccess { kRead, kWrite };
 
-// Reads escalate as well as writes: the user and project config files and a
-// workspace .mcp.json carry provider keys and server credentials, so pulling
+// Reads escalate as well as writes: the user and folder config files and a
+// folder .mcp.json carry provider keys and server credentials, so pulling
 // one into context is itself the harm. The trust store and instruction files
 // are the exceptions -- they hold no secret, so only writing them changes
 // what the agent may do next launch.

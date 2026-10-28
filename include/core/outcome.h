@@ -2,6 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_OUTCOME_H_
 #define UAGENT_INCLUDE_CORE_OUTCOME_H_
+// How a finished piece of work ended, as one shared status.
 
 namespace uagent {
 

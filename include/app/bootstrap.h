@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_BOOTSTRAP_H_
 #define UAGENT_INCLUDE_APP_BOOTSTRAP_H_
+// Starting a session runtime: the input and output channels it works
+// through and the application context built from the options.
 
 #include <atomic>
 #include <functional>

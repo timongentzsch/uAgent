@@ -316,8 +316,8 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   fact_bytes_[key] = bytes;
   // Metadata is independently bounded. Evict the largest fact first: fat
   // tool rows yield the most headroom, while tiny control receipts
-  // (attachment deliveries) survive pressure that used to delete them by
-  // key order and re-trigger their notices on every later step. The fact
+  // (attachment deliveries) survive pressure that would otherwise delete them
+  // by key order and re-trigger their notices on every later step. The fact
   // just written never goes: a fresh response would otherwise lose the id
   // that rejoins its live row. Nor does what the conversation is rather
   // than shows: its chosen settings and where it was forked from.

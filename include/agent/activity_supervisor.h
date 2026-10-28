@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_
 #define UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_
+// Supervises a conversation's activities: commands, subagents, memory
+// work and detached processes, from start to the result that rejoins the turn.
 
 #include <sys/types.h>
 
@@ -85,15 +87,16 @@ struct Activity {
   std::string receipt_path{};
   std::string source_id{};
   std::vector<std::string> completion_notes{};
-  // Put right when the job ends, where the sandbox could not deny its writes.
+  // Put right when the activity ends, where the sandbox could not deny its
+  // writes.
   std::shared_ptr<const SandboxWatch> watch{};
   json metadata = json::object();
   int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();
-  // Set where the job is constructed rather than where it is registered: the
-  // two differ by a spawn, and the status row is reporting how long the child
-  // has been alive, not how long the supervisor has known about it.
+  // Set where the activity is constructed rather than where it is registered:
+  // the two differ by a spawn, and the status row is reporting how long the
+  // child has been alive, not how long the supervisor has known about it.
   std::chrono::steady_clock::time_point started =
       std::chrono::steady_clock::now();
 
@@ -128,8 +131,9 @@ class ActivityReservation {
   ActivityReservation& operator=(const ActivityReservation&) = delete;
 
   std::optional<int64_t> Register(Activity job);
-  // The activity id this reservation will commit under, known before the job
-  // exists so its log can be named after it rather than after a reusable pid.
+  // The activity id this reservation will commit under, known before the
+  // activity exists so its log can be named after it rather than after a
+  // reusable pid.
   int64_t Id() const { return id_; }
 
  private:
@@ -178,7 +182,7 @@ class ActivitySupervisor {
   // is consumed exactly once. Removal and retention share the same lock.
   std::optional<Activity> Take(int64_t id, bool retain = false);
   std::vector<Activity> Snapshot() const;
-  // What runs now: the background jobs and those a tool call waits on.
+  // What runs now: the background activities and those a tool call waits on.
   std::vector<Activity> Running() const;
   std::vector<Activity> TakeAllForShutdown();
 
@@ -187,8 +191,9 @@ class ActivitySupervisor {
   // Mirror supervisor state changes to one application-owned nonblocking pipe.
   // The caller must clear the descriptor before closing it.
   void SetNotifyFd(int fd);
-  // Whether a finished job wakes the session that started it: a conversation
-  // runtime takes up a result as a turn; a headless run's answer is final.
+  // Whether a finished activity wakes the session that started it: a
+  // conversation runtime takes up a result as a turn; a headless run's answer
+  // is final.
   bool WakesSession() const;
   void WaitForChange(uint64_t generation) const;
   bool WaitForChange(uint64_t generation,

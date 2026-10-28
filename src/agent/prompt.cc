@@ -64,8 +64,8 @@ constexpr const char kBase[] =
     "failed or you could not verify something, say so plainly. Write "
     "Markdown, with math in $…$ or $$…$$; cite code as path:line.";
 
-// A panel's moderator manages sessions rather than code: no Changes
-// section, because it has no tool that changes the workspace. How to judge an
+// A panel's lead agent manages sessions rather than code: no Changes
+// section, because it has no tool that changes the folder. How to judge an
 // approval lives with the decide tool, where it is read when it applies.
 constexpr const char kPanelBase[] =
     "You are this folder's lead agent: you research and delegate for the "

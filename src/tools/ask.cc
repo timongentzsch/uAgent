@@ -29,7 +29,7 @@ bool ImageFile(const std::string& path) {
   return false;
 }
 
-// What an option's image may be: an image the agent made in the workspace,
+// What an option's image may be: an image the agent made in the folder,
 // never a file outside it, µAgent's own configuration or the browser profile.
 std::optional<std::string> OptionImageIssue(const std::string& path) {
   if (!ImageFile(path)) {

@@ -2,6 +2,9 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_SESSION_VIEW_H_
 #define UAGENT_INCLUDE_AGENT_SESSION_VIEW_H_
+// A read-only view over a conversation's rows for paging, search and
+// lookup. Used by the host's snapshots and the tools that read history.
+
 #include <cstdint>
 #include <map>
 #include <mutex>

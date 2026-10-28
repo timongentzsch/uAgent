@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 #define UAGENT_INCLUDE_TRANSPORT_SESSION_H_
+// The session socket protocol between a runtime and its clients: limits,
+// framing, and the frame buffer both ends use.
 
 #include <chrono>
 #include <functional>

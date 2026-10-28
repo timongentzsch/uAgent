@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_SESSION_H_
 #define UAGENT_INCLUDE_APP_SESSION_H_
+// Shared definitions of the session protocol's state: which fields only
+// checkpoints carry and how activities are counted.
+
 #include <algorithm>
 #include <chrono>
 #include <functional>

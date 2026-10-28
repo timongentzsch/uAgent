@@ -166,7 +166,7 @@ std::vector<Tool> BuildTools(AppContext& context,
     session::Wake(JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
                   ignored);
   }));
-  // A side fork keeps a moderator's folder tools without becoming another
+  // A side fork keeps a lead agent's folder tools without becoming another
   // panel. Its saved tool ceiling still decides which of them are offered.
   bool side_panel_tools = false;
   if (!context.options.Panel() && !session_path.empty()) {

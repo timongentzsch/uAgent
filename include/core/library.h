@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_CORE_LIBRARY_H_
 #define UAGENT_INCLUDE_CORE_LIBRARY_H_
+// Rules shared by the managed library of memories and skills: its change
+// marker, path checks and write lease.
 
 #include <filesystem>
 #include <string>

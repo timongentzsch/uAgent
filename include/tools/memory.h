@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_MEMORY_H_
 #define UAGENT_INCLUDE_TOOLS_MEMORY_H_
+// The memory store: the tool the model calls, the listing the prompt and
+// /memory read, and the control requests clients send.
 
 #include <filesystem>
 #include <optional>
@@ -25,7 +27,7 @@ json MemoryControl(const json& request, const std::filesystem::path& workspace);
 std::vector<MemoryEntry> ListMemories();
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit = 0);
-// Where Claude Code keeps the memories of the project `cwd` belongs to.
+// Where Claude Code keeps the memories of the folder `cwd` belongs to.
 std::filesystem::path ClaudeMemoryPath(const std::filesystem::path& cwd);
 // One line per memory within `max_bytes`, leaving out the files `inlined`
 // already shows whole.
@@ -35,7 +37,7 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes);
 
-// One bounded idle-session extraction job; the child reads only the source and
+// One bounded idle-session extraction pass; the child reads only the source and
 // receives only the memory tool.
 std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
                                  const std::filesystem::path& cwd,

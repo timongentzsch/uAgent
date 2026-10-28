@@ -265,7 +265,7 @@ SandboxLevel SandboxSupported() {
 namespace {
 
 // Closed: the visible entries of the home folder, of ~/.uagent/spaces and of
-// the folder that holds the workspace, whose other entries are other
+// the folder that holds the folder, whose other entries are other
 // projects. Open inside them: the skill folders, sandbox.read,
 // kReadableHomePaths, and the folders the environment points a command at --
 // its PATH, and a variable naming a folder (GOPATH, ANDROID_HOME, ...), where

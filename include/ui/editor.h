@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_UI_EDITOR_H_
 #define UAGENT_INCLUDE_UI_EDITOR_H_
+// Editing text in the user's $VISUAL or $EDITOR, from the terminal's prompt
+// and its commands.
+
 #include <string>
 namespace uagent {
 // Caller owns cooked terminal mode. Failed/cancelled editors preserve input.

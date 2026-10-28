@@ -67,7 +67,7 @@ std::string Tilde(const std::string& path) {
 }
 
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
-// home, never to a project-controlled location.
+// home, never to a folder-controlled location.
 std::string GlobalBase() {
   std::string home = UserHome();
   return home.empty()
@@ -80,7 +80,7 @@ std::string RuntimeDir() {
          HashHex(GlobalBase());
 }
 
-// The directory a workspace opts into. Named once: several modules need it,
+// The directory a folder opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
   return cwd / kWorkspaceDir;
@@ -628,7 +628,7 @@ std::filesystem::path CanonicalAccessPath(const std::string& path) {
   // disagree about a relative path whose target does not exist: libc++
   // returns it absolute, libstdc++ returns it unchanged and reports no
   // error. Every caller compares the answer against an absolute root, so a
-  // relative one reads as outside the workspace.
+  // relative one reads as outside the folder.
   std::filesystem::path rooted = std::filesystem::absolute(p, ec);
   if (ec) return p.lexically_normal();
   auto canonical = std::filesystem::weakly_canonical(rooted, ec);

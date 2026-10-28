@@ -42,7 +42,7 @@ inline constexpr const char* kInstructionNames[] = {"AGENTS.override.md",
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir);
 
 // The instruction files a person writes: for every session or for a folder's
-// panel, yours (every folder) or the project's. Always additive, read
+// panel, yours (every folder) or the folder's. Always additive, read
 // once when a session starts. Loading, showing, editing and protecting them
 // all name them here.
 std::filesystem::path InstructionPath(bool panel, bool project,

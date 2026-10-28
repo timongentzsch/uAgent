@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_LIBRARY_H_
 #define UAGENT_INCLUDE_APP_LIBRARY_H_
+// The control requests for the library of memories and skills, shared by
+// the terminal and the web.
 
 #include <filesystem>
 #include <string>

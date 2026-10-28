@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_TURN_STATUS_H_
 #define UAGENT_INCLUDE_CORE_TURN_STATUS_H_
+// The status line shown while a turn runs, derived from its events. Used by
+// the session runtime and both clients.
 
 #include <cstdint>
 #include <map>

@@ -443,8 +443,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     response_context.erase("response_base");
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
                       &exchange, std::move(response_context));
-    json recorded =
-        exchange.Finish(res.http_status, res.interrupted, res.error);
+    json recorded = exchange.Finish(res);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
     stamp();
     if (attempt == kChatAttempts || !SafeToRetry(res)) return res;

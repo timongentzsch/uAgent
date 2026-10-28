@@ -2,7 +2,8 @@
 // Pure functions only — no hooks, no JSX. TS-only imports so node --test
 // can load this module directly.
 import { duration } from "./duration.ts";
-import type { Session } from "./types.ts";
+import { plural } from "./quantities.ts";
+import type { Session, Statistics } from "./types.ts";
 
 // The folder a session belongs to: a thread's panel folder, else its
 // own working directory.
@@ -89,3 +90,23 @@ export function statusLine(parts: {
   if (parts.duration_ms == null) return head;
   return `${head} \u00b7 ${duration(parts.duration_ms)}`;
 }
+
+// A router such as OpenRouter picks the upstream per call; naming it is how
+// a provider's fault is traced.
+export const servedBy = (provider?: string) =>
+  provider ? `served by ${provider}` : "";
+
+// One row per upstream: the calls it served and the tool calls rejected from
+// its responses.
+export const servedByRows = (
+  served: Statistics["served_by"] = {},
+): [string, string][] =>
+  Object.entries(served).map(([name, { model_calls = 0, rejected_calls }]) => [
+    `Served by ${name}`,
+    [
+      plural(model_calls, "model call"),
+      rejected_calls && plural(rejected_calls, "rejected tool call"),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  ]);

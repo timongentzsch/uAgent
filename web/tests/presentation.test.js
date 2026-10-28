@@ -4,6 +4,8 @@ import {
   diffCounts,
   diffLineClass,
   isRunningStatus,
+  servedBy,
+  servedByRows,
   statusLine,
 } from "../src/shared/display.ts";
 import { getToolRow } from "../src/features/chat/tool-preview.ts";
@@ -576,4 +578,20 @@ test("an edit's counts come from its receipt, also when the diff is cut", () => 
   assert.deepEqual(diffCounts(cut), [812, 40]);
   // A diff without the host's summary is counted line by line.
   assert.deepEqual(diffCounts("diff\n+a\n+b\n-c\n--- x\n+++ y"), [2, 1]);
+});
+
+test("call details and statistics name the upstream that served each call", () => {
+  assert.equal(servedBy("Wafer"), "served by Wafer");
+  assert.equal(servedBy(), "");
+  assert.deepEqual(
+    servedByRows({
+      Wafer: { model_calls: 3, rejected_calls: 1 },
+      DigitalOcean: { model_calls: 1 },
+    }),
+    [
+      ["Served by Wafer", "3 model calls · 1 rejected tool call"],
+      ["Served by DigitalOcean", "1 model call"],
+    ],
+  );
+  assert.deepEqual(servedByRows(), []);
 });

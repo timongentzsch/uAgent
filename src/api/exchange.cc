@@ -103,16 +103,19 @@ void HttpExchange::Body(std::string_view bytes) {
 void HttpExchange::Publish() {
   if (metadata_.contains("id")) Emit(Event{EventId::kHttpExchange, metadata_});
 }
-json HttpExchange::Finish(int64_t status, bool interrupted,
-                          const std::string& error) {
+json HttpExchange::Finish(const ChatResult& result) {
   if (!metadata_.contains("id")) return nullptr;
   response_.Reset();
-  metadata_["status"] = status;
-  metadata_["state"] = interrupted     ? "interrupted"
-                       : error.empty() ? "complete"
-                                       : "failed";
-  metadata_["error"] = error;
+  metadata_["status"] = result.http_status;
+  metadata_["state"] = result.interrupted     ? "interrupted"
+                       : result.error.empty() ? "complete"
+                                              : "failed";
+  metadata_["error"] = result.error;
   metadata_["bytes"] = bytes_;
+  if (!result.served_by.empty()) metadata_["served_by"] = result.served_by;
+  if (!result.generation_id.empty()) {
+    metadata_["generation_id"] = result.generation_id;
+  }
   Publish();
   return metadata_;
 }

@@ -15,6 +15,7 @@ import {
 } from "../../shared/ui.tsx";
 import { readPages, command, routes } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
+import { servedBy } from "../../shared/display.ts";
 import { formatEventStream } from "./raw-capture.ts";
 
 // The full body of a tool call, a context or an HTTP exchange, read from the
@@ -125,7 +126,14 @@ export default function Raw({
           <p class="muted small">
             {info.preview
               ? "Current context · not sent yet"
-              : `${info.method} ${info.url} · ${info.status || info.state}`}{" "}
+              : [
+                  `${info.method} ${info.url}`,
+                  info.status || info.state,
+                  servedBy(info.served_by),
+                  info.generation_id,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}{" "}
             <Time value={info.time} />
           </p>
         )}

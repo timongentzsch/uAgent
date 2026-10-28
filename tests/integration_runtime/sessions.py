@@ -1,6 +1,7 @@
 import fcntl
 import json
 import pathlib
+import re
 import stat
 import time
 
@@ -175,6 +176,44 @@ def test_project_instructions_precede_first_turn(root, home, *, binary):
         result = run(nested, base_env(home, server.url), "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
+
+
+def test_statistics_count_calls_per_serving_provider(root, home, *, binary):
+    # A router picks the upstream per call and names it on each chunk. The
+    # session counts each upstream's calls and the tool calls rejected from
+    # its responses, so a provider that drops arguments stands out.
+    usage = {"prompt_tokens": 3, "completion_tokens": 1}
+    rejected = tool_call("read_path", {}, usage=usage)
+    rejected.update(id="gen-1", provider="Wafer")
+    answer = event({"content": "served-ok"}, usage=usage)
+    answer.update(id="gen-2", provider="DigitalOcean")
+    with Server([rejected, answer]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"served-ok", b"Ready", None), (b"/cost\n", b"total"), b"/q\n"],
+            binary=binary,
+        )
+    assert_true(code == 0, output)
+    text = re.sub(rb"\x1b\[[0-9;]*m", b"", output)
+    assert_true(
+        b"served by Wafer \xc2\xb7 1 model call \xc2\xb7 1 rejected tool call" in text, text
+    )
+    assert_true(b"served by DigitalOcean \xc2\xb7 1 model call\r" in text, text)
+
+    state = json.loads(session_files(home)[0].read_text(encoding="utf-8").splitlines()[1])
+    served = state["display"]["statistics"]["served_by"]
+    assert_true(
+        served
+        == {"Wafer": {"model_calls": 1, "rejected_calls": 1}, "DigitalOcean": {"model_calls": 1}},
+        served,
+    )
+    replies = {
+        fact["served_by"]: fact["generation_id"]
+        for fact in state["display"]["facts"].values()
+        if isinstance(fact, dict) and "served_by" in fact
+    }
+    assert_true(replies == {"Wafer": "gen-1", "DigitalOcean": "gen-2"}, replies)
 
 
 def test_session_journal_records_digests_not_argument_values(root, home, *, binary):

@@ -581,6 +581,16 @@ void TestAttributedUsageAccumulator() {
   json flattened = FlattenNumericStatistics(prefixed, "side_");
   CHECK(flattened == total);
 
+  // Grouped counters, such as calls per serving provider, merge the same way.
+  json served = {{"served_by", {{"Wafer", {{"model_calls", 1}}}}}};
+  MergeNumericStatistics(
+      served, {{"served_by",
+                {{"Wafer", {{"model_calls", 1}, {"rejected_calls", 1}}},
+                 {"DigitalOcean", {{"model_calls", 1}}}}}});
+  CHECK(served["served_by"]["Wafer"]["model_calls"] == 2);
+  CHECK(served["served_by"]["Wafer"]["rejected_calls"] == 1);
+  CHECK(served["served_by"]["DigitalOcean"]["model_calls"] == 1);
+
   Usage current;
   current.input = 11;
   current.output = 7;

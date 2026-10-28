@@ -225,10 +225,17 @@ bool Agent::HandleActivityPollResults(
 }
 
 Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
+                                        const std::string& served_by,
                                         TurnExecution& state, StepState& loop) {
   std::vector<ToolRejection> rejections;
   std::vector<ActivityPollResult> activity_polls;
   bool cancelled = RunCalls(calls, state, loop, rejections, activity_polls);
+  // A provider that mangles calls shows as rejections charged to it.
+  if (!served_by.empty() && !rejections.empty()) {
+    conversation_.AddStatistics(
+        {{"served_by",
+          {{served_by, {{"rejected_calls", rejections.size()}}}}}});
+  }
   state.line_open = false;
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
   bool steering_applied = ApplyQueuedSteering(loop);
@@ -420,8 +427,9 @@ void Agent::Turn(const std::string& user_input, json user_content,
     }
 
     PushAssistantMessage(response, calls);
-    flow = calls.empty() ? FinishWithProse(state, loop)
-                         : ExecuteToolCalls(calls, state, loop);
+    flow = calls.empty()
+               ? FinishWithProse(state, loop)
+               : ExecuteToolCalls(calls, response.served_by, state, loop);
     if (flow == StepFlow::kEndTurn) break;
   }
   AnswerAtLimit(state, loop);

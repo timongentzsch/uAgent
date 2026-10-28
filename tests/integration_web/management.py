@@ -70,7 +70,7 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
             assert_true(value["metadata"]["title"] == "test", value["metadata"])
             facts = value["state"]["view"]["blocks"]
             assert_true(all(block.get("time") for block in facts), facts)
-            answer = next(block for block in facts if block["kind"] == "assistant")
+            answer = next(block for block in facts if block.get("role") == "assistant")
             assert_true(answer["route"] and answer["ttft_ms"] >= 0, answer)
             assert_true(
                 answer["usage_reported"]
@@ -99,7 +99,7 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
                 next(
                     block
                     for block in client.snapshot(session)["state"]["view"]["blocks"]
-                    if block["kind"] == "assistant"
+                    if block.get("role") == "assistant"
                 )
                 == answer,
                 "historical model changed",
@@ -273,25 +273,19 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
             assert_true(models[0]["efforts"] == efforts, catalog)
             try:
                 assert started.wait(timeout=budget(5))
-                # The provider and host consume separate connections; receiving
-                # the request does not mean the host has drained response.started.
                 snapshot = client.until(
                     session,
-                    lambda value: any(
-                        row["kind"] == "assistant" for row in value["state"]["view"]["blocks"]
+                    lambda value: (
+                        value["metadata"]["turn_active"]
+                        and any(row["kind"] == "turn" for row in value["state"]["view"]["blocks"])
                     ),
                 )
                 assert_true(snapshot["state"]["efforts"] == ["default", *efforts], snapshot)
                 rows = snapshot["state"]["view"]["blocks"]
-                users = [row for row in rows if row["kind"] == "user"]
-                attempts = [row for row in rows if row["kind"] == "assistant"]
+                users = [row for row in rows if row["kind"] == "turn"]
                 assert_true(len(users) == 1 and users[0]["request_id"] == request_id, rows)
-                assert_true(
-                    len(attempts) == 1
-                    and attempts[0]["response_id"]
-                    and attempts[0]["content_complete"] is False,
-                    rows,
-                )
+                # The reply shows nothing until its first text.
+                assert_true(not any(row.get("role") == "assistant" for row in rows), rows)
                 saved = session_files(home)
                 assert_true(len(saved) == 1 and "Visible before" in saved[0].read_text(), saved)
                 receipt = client.json(f"/api/receipts/{request_id}")[1]
@@ -405,26 +399,13 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             snapshot = client.until(
                 session,
                 lambda value: any(
-                    block["kind"] == "activity" for block in value["state"]["view"]["blocks"]
+                    block["kind"] == "notice" for block in value["state"]["view"]["blocks"]
                 ),
             )
             blocks = snapshot["state"]["view"]["blocks"]
-            assert_true(
-                len([block for block in blocks if block["kind"] == "activity"]) == 1, blocks
-            )
-            detail_id = next(
-                candidate
-                for block in blocks
-                for candidate in [
-                    block.get("detail_id") if block.get("call_id") == "full-read" else None,
-                    *[
-                        tool["detail_id"]
-                        for tool in block.get("tools", [])
-                        if tool.get("call_id") == "full-read"
-                    ],
-                ]
-                if candidate
-            )
+            assert_true(len([block for block in blocks if block["kind"] == "notice"]) == 1, blocks)
+            # The read is the turn's second call, a node by its own id.
+            detail_id = [block["id"] for block in blocks if block["kind"] == "call"][1]
             raw = ""
             offset = 0
             pages = 0
@@ -512,7 +493,11 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 )
                 blocks = live["result"]["conversation"]["blocks"]
                 assert_true(
-                    any("WEB_CHILD_SEED" in block.get("text", "") for block in blocks), blocks
+                    any(
+                        "WEB_CHILD_SEED" in block.get("body", {}).get("text", "")
+                        for block in blocks
+                    ),
+                    blocks,
                 )
                 assert_true(len(provider.requests) == count, "inspection called the model")
                 for operation in ("inspect", "message"):

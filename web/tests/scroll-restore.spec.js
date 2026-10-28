@@ -60,9 +60,14 @@ test.describe("phone jump to latest", () => {
     ).json();
     snapshot.state.view.blocks = Array.from({ length: 60 }, (_, index) => ({
       id: `momentum-${index}`,
-      kind: index % 2 ? "assistant" : "user",
-      text:
-        `Message ${index}. ` + "Scrollable conversation content. ".repeat(8),
+      parent: index % 2 ? `momentum-${index - 1}` : null,
+      kind: index % 2 ? "message" : "turn",
+      ...(index % 2 && { role: "assistant" }),
+      body: {
+        kind: "text",
+        text:
+          `Message ${index}. ` + "Scrollable conversation content. ".repeat(8),
+      },
       time: new Date().toISOString(),
     }));
     await page.route(`**/api/sessions/${session.id}`, (route) =>

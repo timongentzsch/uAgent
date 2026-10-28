@@ -194,7 +194,14 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   const next = applySessionEvent(current, {
     kind: "block",
     sequence: 401,
-    block: { id: "m-400", sequence: 400, kind: "assistant", text: "new" },
+    block: {
+      id: "m-400",
+      parent: null,
+      sequence: 400,
+      kind: "message",
+      role: "assistant",
+      body: { kind: "markdown", text: "new" },
+    },
   });
   assert.equal(next.state.view.blocks.length, 401);
   assert.equal(next.state.view.blocks[0], blocks[0]);
@@ -225,34 +232,61 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   assert.equal(rewound.state.view.blocks.length, 1);
 });
 
-// The browser applies the host's rows and never re-derives them: a whole row,
-// streamed appends, set fields, and a late retained row in sequence position.
+// The browser applies the host's nodes and never re-derives them: a whole
+// node, streamed appends, set fields, a reply's thinking on the reply and a
+// late retained node in sequence position.
 test("block patches rebuild the host's view", () => {
   const patch = (value) => ({ kind: "block", ...value });
+  const reply = { id: "r", parent: "m-1", kind: "message", role: "assistant" };
+  const call = { id: "t-a", parent: "w-m-1", kind: "call" };
   let snapshot = { cursor: 0, metadata: {}, state: { view: { blocks: [] } } };
   for (const value of [
-    patch({ block: { id: "r", kind: "assistant", text: "", streaming: true } }),
-    patch({ id: "r", append: { text: "Hello" } }),
-    patch({ id: "r", append: { text: " world", reasoning: "why" } }),
+    patch({ block: { ...reply, streaming: true } }),
+    // Thinking comes before the reply's first text.
+    patch({
+      block: {
+        id: "r:thinking",
+        parent: "w-m-1",
+        kind: "thinking",
+        body: { kind: "text", text: "wh" },
+      },
+    }),
+    patch({ id: "r:thinking", append: { text: "y" } }),
+    patch({
+      block: {
+        ...reply,
+        streaming: true,
+        body: { kind: "markdown", text: "Hello" },
+      },
+    }),
+    patch({ id: "r", append: { text: " world" } }),
     patch({ id: "r", set: { streaming: false } }),
-    patch({ block: { id: "t-a", kind: "tool_result", state: "running" } }),
-    patch({ block: { id: "t-a", kind: "tool_result", state: "ok" } }),
-    patch({ block: { id: "m-1", sequence: 1, kind: "user", text: "hi" } }),
+    patch({ block: { id: "w-m-1", parent: "m-1", kind: "work" } }),
+    patch({ block: { ...call, state: "running" } }),
+    patch({
+      block: { ...call, state: "ok", body: { kind: "text", text: "out" } },
+    }),
+    patch({ block: { id: "t-b", parent: "w-m-1", kind: "call" } }),
+    patch({ block: { id: "m-1", parent: null, sequence: 1, kind: "turn" } }),
     patch({ id: "missing", append: { text: "dropped" } }),
   ])
     snapshot = applySessionEvent(snapshot, value);
   const blocks = snapshot.state.view.blocks;
   assert.deepEqual(
     blocks.map((block) => block.id),
-    ["r", "t-a", "m-1"],
+    ["r", "t-a", "t-b", "m-1"],
   );
+  assert.equal(blocks[0].kind, "assistant");
   assert.equal(blocks[0].text, "Hello world");
   assert.equal(blocks[0].reasoning, "why");
   assert.equal(blocks[0].streaming, false);
+  assert.equal(blocks[1].kind, "tool_result");
   assert.equal(blocks[1].state, "ok");
+  assert.equal(blocks[1].text, "out");
+  assert.equal(blocks[3].kind, "user");
   const retained = applySessionEvent(snapshot, {
     kind: "block",
-    block: { id: "m-0", sequence: 0, kind: "user", text: "first" },
+    block: { id: "m-0", parent: null, sequence: 0, kind: "turn" },
   });
   assert.equal(retained.state.view.blocks.at(-2).id, "m-0");
 });

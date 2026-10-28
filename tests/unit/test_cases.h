@@ -184,6 +184,12 @@ namespace uagent {
   X(TestCompactionKeepsDisplayIdentity)           \
   X(TestLateRetainedBlockInsertsInSequenceOrder)  \
   X(TestToolResultHealsMissingMetadata)           \
+  X(TestGoldenPlainAnswer)                        \
+  X(TestGoldenChainOfCalls)                       \
+  X(TestGoldenFailedCalls)                        \
+  X(TestGoldenBlankReplyAndMcpCall)               \
+  X(TestGoldenRunningTurn)                        \
+  X(TestGoldenPagesEndOnWholeTurns)               \
   X(TestObservabilityEvents)                      \
   X(TestWorkspaceScopedSession)                   \
   X(TestProjectTrustTracksSemanticConfig)         \

@@ -17,6 +17,7 @@ import { occurrences } from "../../shared/find.ts";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 import { api, routes } from "../../state/api.ts";
+import { adoptSnapshot } from "../../state/store.ts";
 
 // A row of some conversation that holds the words (GET /api/search): its
 // conversation, where, and how many of that conversation's rows hold them.
@@ -418,7 +419,9 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
         { signal: controller.signal },
       )
         .then((value) => {
-          const blocks = (value.state?.view?.blocks || []).slice(-3);
+          const blocks = (adoptSnapshot(value).state?.view?.blocks || []).slice(
+            -3,
+          );
           cache.current.set(id, blocks);
           setRows(blocks);
         })

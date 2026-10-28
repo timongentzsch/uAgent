@@ -5,10 +5,13 @@ import type {
   Draft,
   ExecutionPhase,
   HostEvent,
+  Node,
+  NodeView,
   Outgoing,
   Session,
   Snapshot,
   State,
+  ToolView,
   View,
 } from "../shared/types.ts";
 import { retainedBackgroundViews, maxHttpExchanges } from "../shared/limits.ts";
@@ -21,32 +24,162 @@ export const emptyDraft = (): Draft => ({ text: "", files: [] });
 export const hasContent = (draft: Draft) =>
   !!(draft.text || draft.files.length);
 
+// Temporary, until this page draws the host's nodes (stage 3 of the
+// transcript refactor removes it with the fold logic in message-view.ts):
+// the host sends its transcript as nodes, and the page adopts each as the
+// block it drew before. A reply's thinking joins the reply, a group's verb
+// joins its calls, and the host's work nodes are left to the page's folds.
+const groupLabels = new Map<string, string>();
+const kThinking = ":thinking";
+
+function blockOf(node: Node): Block | undefined {
+  const { parent, kind, body, headline, input, routine, category, ...rest } =
+    node;
+  const base = {
+    ...rest,
+    text: body?.kind === "diff" ? undefined : body?.text,
+    truncated: body?.truncated,
+  };
+  const view: ToolView | undefined = headline && {
+    ...(headline.verb && {
+      verb: [headline.verb, headline.verb] as [string, string],
+    }),
+    target: headline.target,
+    input,
+  };
+  const label = headline?.verb ? undefined : headline?.target;
+  if (kind === "group" && headline)
+    groupLabels.set(node.id, `${headline.verb} · ${node.result?.word}`);
+  if (kind === "turn") return { ...base, kind: "user", turn_root: node.id };
+  if (kind === "message" && node.role === "assistant")
+    return { ...base, kind: "assistant", response_id: node.id };
+  if (kind === "message" && node.origin === "tool")
+    return { ...base, kind: "attachment", source_call_ids: [parent || ""] };
+  if (kind === "message") return { ...base, kind: "user" };
+  if (kind === "footer") return { ...base, kind: "turn_summary" } as Block;
+  if (kind === "notice" && node.compaction)
+    return { ...base, kind: "compaction" } as Block;
+  if (kind === "notice")
+    return {
+      ...base,
+      kind: "activity",
+      view,
+      body_kind: body?.kind,
+      activity: { category, label },
+      memory: node.memory && { ...node.memory, minor: routine },
+    };
+  if (kind === "call")
+    return {
+      ...base,
+      kind: "tool_result",
+      call_id: node.id,
+      detail_id: node.id,
+      view,
+      tail: body?.tail,
+      change: body?.kind === "diff" ? body.text : undefined,
+      body_kind: body?.kind === "diff" ? undefined : body?.kind,
+      activity: {
+        category,
+        label,
+        group: parent?.startsWith("g-")
+          ? { id: parent, label: groupLabels.get(parent) || "" }
+          : undefined,
+      },
+    };
+  return undefined;
+}
+
+// A view the host sent, as the blocks this page draws.
+export function adoptView(view: NodeView): View;
+export function adoptView(view: NodeView | undefined): View | undefined;
+export function adoptView(view: NodeView | undefined) {
+  if (!view) return view;
+  const blocks: Block[] = [];
+  const thinking = new Map<string, string>();
+  for (const node of view.blocks) {
+    if (node.kind === "thinking")
+      thinking.set(node.id.slice(0, -kThinking.length), node.body?.text || "");
+    const block = blockOf(node);
+    if (block?.kind === "assistant") block.reasoning = thinking.get(block.id);
+    if (block) blocks.push(block);
+  }
+  return { ...view, blocks };
+}
+
+// State the host sent, with its view adopted.
+export function adoptState<S extends { view?: View }>(state: S): S;
+export function adoptState<S extends { view?: View }>(
+  state: S | undefined,
+): S | undefined;
+export function adoptState<S extends { view?: View }>(state: S | undefined) {
+  return state?.view
+    ? { ...state, view: adoptView(state.view as unknown as NodeView) }
+    : state;
+}
+
+// A snapshot the host sent, with its view adopted.
+export const adoptSnapshot = (snapshot: Snapshot): Snapshot => ({
+  ...snapshot,
+  state: adoptState(snapshot.state),
+});
+
 // The host's view is the one source of rows; the browser applies its patches
 // in order. A new row lands in sequence position, so a late retained row
 // never strands older content after newer rows.
 function applyBlock(view: View | undefined, patch: BlockPatch): View {
   const blocks = [...(view?.blocks || [])];
-  const id = patch.block?.id ?? patch.id;
+  const id = patch.block?.id ?? patch.id ?? "";
+  // A reply's thinking is drawn on the reply.
+  const reply = id.endsWith(kThinking) ? id.slice(0, -kThinking.length) : "";
   // Streaming patches the newest rows: search from the end.
-  const at = blocks.findLastIndex((block) => block.id === id);
-  if (patch.block) {
-    if (at >= 0) blocks[at] = patch.block;
+  const at = blocks.findLastIndex((block) => block.id === (reply || id));
+  const block = patch.block && blockOf(patch.block);
+  // A group's calls arrive before it, and take its words when it does.
+  if (patch.block?.kind === "group") {
+    const group = { id, label: groupLabels.get(id) || "" };
+    return {
+      ...view,
+      blocks: blocks.map((held) =>
+        held.kind === "tool_result" && held.activity?.group?.id === id
+          ? { ...held, activity: { ...held.activity, group } }
+          : held,
+      ),
+    } as View;
+  }
+  if (reply) {
+    // A reply thinking before its first text is held as an empty one.
+    const held: Block | undefined =
+      at >= 0
+        ? blocks[at]
+        : patch.block && { id: reply, kind: "assistant", streaming: true };
+    if (held?.kind !== "assistant") return view || { blocks };
+    const text = patch.block?.body?.text;
+    const next = {
+      ...held,
+      reasoning: text ?? (held.reasoning || "") + (patch.append?.text || ""),
+    };
+    if (at >= 0) blocks[at] = next;
+    else blocks.push(next);
+  } else if (block) {
+    if (at >= 0)
+      blocks[at] =
+        block.kind === "assistant"
+          ? { ...block, reasoning: (blocks[at] as typeof block).reasoning }
+          : block;
     else {
-      const sequence = patch.block.sequence;
+      const sequence = block.sequence;
       const before =
         typeof sequence === "number"
           ? blocks.findIndex(
-              (block) =>
-                typeof block.sequence === "number" && block.sequence > sequence,
+              (held) =>
+                typeof held.sequence === "number" && held.sequence > sequence,
             )
           : -1;
-      blocks.splice(before < 0 ? blocks.length : before, 0, patch.block);
+      blocks.splice(before < 0 ? blocks.length : before, 0, block);
     }
-  } else if (at >= 0) {
+  } else if (at >= 0 && !patch.block) {
     const next: Block = { ...blocks[at], ...patch.set };
     if (patch.append?.text) next.text = (next.text || "") + patch.append.text;
-    if (patch.append?.reasoning && next.kind === "assistant")
-      next.reasoning = (next.reasoning || "") + patch.append.reasoning;
     blocks[at] = next;
   }
   return { ...view, blocks } as View;
@@ -248,7 +381,8 @@ export function isIncoming(event: HostEvent) {
     event.type === "activity.completed" ||
     (event.kind === "block" &&
       (!!event.append?.text ||
-        ["assistant", "activity"].includes(event.block?.kind || "")))
+        event.block?.role === "assistant" ||
+        event.block?.kind === "notice"))
   );
 }
 

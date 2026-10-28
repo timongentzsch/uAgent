@@ -250,7 +250,7 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
         b"you: go",
         b"tool: Running",
         b"Risk: runs commands\r\n",
-        b"result: run",
+        b"result: Ran ",
         b"uagent:\r\nplain-ok",
     ):
         assert_true(label in text, (label, output[-2000:]))

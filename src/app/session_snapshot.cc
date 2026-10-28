@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "include/agent/session_role.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/commands.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -230,7 +230,7 @@ std::optional<SnapshotResult> SessionHost::LiveDetail(
     const json* blocks = view ? JsonArray(*view, "blocks") : nullptr;
     if (blocks && !query.raw) {
       for (const json& block : *blocks) {
-        if (JsonValue(block, "detail_id", "") == query.detail) {
+        if (JsonValue(block, "id", "") == query.detail) {
           path = JsonValue(block, "change_path", "");
           break;
         }

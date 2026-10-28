@@ -13,6 +13,7 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
+#include "include/agent/node.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -21,7 +22,6 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/core/tool_activity.h"
 #include "include/core/turn_status.h"
 #include "src/agent/turn_internal.h"
 
@@ -240,9 +240,11 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   json view = ToolView(task.tool, task.args);
   // A rejected call shows the arguments it sent, not a confident headline.
   if (task.issue) view.erase("verb");
+  task.headline = CallHeadline(view, "ok", task.label);
   conversation_.RecordDisplay(call.detail_id,
                               {{"activity", task.activity}, {"view", view}});
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
+  call_event.data["turn_root"] = turn_root_;
   call_event.data["activity"] = task.activity;
   call_event.data["view"] = std::move(view);
   if (task.issue) {
@@ -270,6 +272,42 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   if (!task.execute) {
     EmitToolResultObservation(task, call, turn_id_, step);
   }
+}
+
+// What a step's calls add to their turn's work, once its calls are
+// published: the groups they fold into, which go before their first call,
+// and the work's counts. Both are recorded, so a saved page shows them too.
+void Agent::PublishWork(const std::vector<CallTask>& tasks,
+                        const std::vector<json>& activities,
+                        const std::vector<json>& groups) {
+  if (turn_root_.empty()) return;
+  for (const json& group : groups) {
+    const std::string id = JsonValue(group, "id", "");
+    const json recorded = {{"verb", group["verb"]},
+                           {"calls", group["members"].size()},
+                           {"turn", turn_root_}};
+    conversation_.RecordDisplay(id, recorded);
+    Emit(Event{EventId::kMessageChanged, {{"block", GroupNode(id, recorded)}}});
+  }
+  for (size_t index = 0; index < tasks.size(); ++index) {
+    const CallTask& task = tasks[index];
+    ++turn_work_.steps;
+    if (!task.result.Ok()) {
+      ++turn_work_.errors;
+    } else if (JsonValue(activities[index], "category", "") == "edit") {
+      // Files, not edits: two edits of one file are one file.
+      const std::string target = JsonValue(task.headline, "target", "");
+      turn_work_.edited.insert(
+          target.empty() ? JsonValue(activities[index], "detail_id", "")
+                         : target);
+    }
+  }
+  const json counts = {{"items", turn_work_.steps},
+                       {"errors", turn_work_.errors},
+                       {"edited", turn_work_.edited.size()}};
+  conversation_.RecordDisplay(WorkId(turn_root_), counts);
+  Emit(Event{EventId::kMessageChanged,
+             {{"block", WorkNode(turn_root_, counts)}}});
 }
 
 bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
@@ -388,11 +426,13 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     }
     activities.push_back(std::move(activity));
   }
-  GroupToolActivities(activities);
-  for (size_t index = 0; index < tasks.size(); ++index) {
-    tasks[index].activity = std::move(activities[index]);
-    conversation_.RecordDisplay(calls[index].detail_id,
-                                {{"activity", tasks[index].activity}});
+  // A call is published under its group.
+  const std::vector<json> groups = GroupCalls(activities);
+  for (const json& group : groups) {
+    for (const json& member : group["members"]) {
+      conversation_.RecordDisplay(member.get<std::string>(),
+                                  {{"group", group["id"]}});
+    }
   }
   size_t original_chars = 0;
   size_t model_chars = 0;
@@ -420,6 +460,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
       }
     }
   }
+  PublishWork(tasks, activities, groups);
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),
                   [](const CallTask& task) { return task.result.Ok(); });

@@ -87,8 +87,8 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
     std::string text;
   };
   std::vector<Segment> segments;
-  auto add = [&segments](int priority, std::string text) {
-    if (!text.empty()) segments.push_back({priority, std::move(text)});
+  auto add = [&segments](int priority, const std::string& text) {
+    if (!text.empty()) segments.push_back({priority, text});
   };
 
   // Where requests go, what they may do unasked, how much room is left and

@@ -17,7 +17,7 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/session_links.h"
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -192,8 +192,8 @@ json InspectAgent(const ActivitySupervisor& processes, const std::string& id,
   if (!message.empty()) {
     const size_t offset = JsonValue(request, "offset", size_t{0});
     json body = JsonValue(request, "raw", false)
-                    ? ConversationExchange(conversation, message, offset)
-                    : ConversationDetail(conversation, message, offset);
+                    ? TranscriptView(conversation).Exchange(message, offset)
+                    : TranscriptView(conversation).Detail(message, offset);
     return body.contains("error") ? body : json{{"body", std::move(body)}};
   }
   detail.update({{"conversation",

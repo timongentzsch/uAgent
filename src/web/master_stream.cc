@@ -12,7 +12,7 @@
 
 #include "include/agent/session_search.h"
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/session_host.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"

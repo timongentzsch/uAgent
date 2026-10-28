@@ -29,6 +29,7 @@ import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
+import { adoptSnapshot } from "../state/store.ts";
 import SideAnswer from "../features/chat/side-answer.tsx";
 
 // Empty lists, so an idle context value or prop never changes identity.
@@ -165,7 +166,9 @@ export default function ChatPage({
   const older = useCallback(async () => {
     if (!more || !transcript.current) return;
     const id = selected;
-    const value = await api<Snapshot>(routes.session(id, `before=${before}`));
+    const value = adoptSnapshot(
+      await api<Snapshot>(routes.session(id, `before=${before}`)),
+    );
     await prepareHistoryBlocks(value.state?.view?.blocks || []);
     updateView(id, (current) => {
       if (

@@ -481,20 +481,15 @@ def test_web_rows_show_output_while_the_model_reads_hints(root, home, *, binary)
     assert_true(len(told) == 2, told)
     assert_true(told[0].startswith("error: visible-out\n") and "[exit code 3]" in told[0], told)
     assert_true(told[1].startswith("first\nsecond\n") and "lines 1-2 of 2]" in told[1], told)
-    rows = {
-        block.get("call_id"): block
-        for block in value["state"]["view"]["blocks"]
-        if block.get("kind") == "tool_result"
-    }
-    ran, read = rows["run-1"], rows["read-1"]
+    ran, read = [block for block in value["state"]["view"]["blocks"] if block.get("kind") == "call"]
     # A person reads the output and the facts, worded once by the host.
-    assert_true(ran["text"] == "error: visible-out\n", ran)
+    assert_true(ran["body"]["text"] == "error: visible-out\n", ran)
     assert_true(ran["state"] == "failed" and ran["result"]["exit"] == {"code": 3}, ran)
     assert_true(ran["result"]["word"].startswith("exit 3 · "), ran)
-    assert_true(ran["body_kind"] == "tail" and ran["view"]["verb"][1] == "Ran", ran)
-    assert_true(read["text"] == "first\nsecond\n", read)
+    assert_true(ran["body"]["kind"] == "tail" and ran["headline"]["verb"] == "Ran", ran)
+    assert_true(read["body"]["text"] == "first\nsecond\n", read)
     assert_true(read["state"] == "ok" and read["result"]["word"].startswith("2 lines"), read)
-    assert_true("[" not in ran["text"] + read["text"], (ran, read))
+    assert_true("[" not in ran["body"]["text"] + read["body"]["text"], (ran, read))
     assert_true("exchange_path" not in ran and "status" not in ran, ran)
 
 
@@ -527,20 +522,22 @@ def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binar
             assert_true(".json.edits/diff-" in row["change_path"], row["change_path"])
             # The row carries the diff's opening, within a fact and a frame.
             # The counts are facts; the diff holds only its lines.
-            assert_true(row["change"].startswith("+line 0000 of a long file\n"), row)
+            change = row["body"]["text"]
+            assert_true(row["body"]["kind"] == "diff" and row["body"]["truncated"], row)
+            assert_true(change.startswith("+line 0000 of a long file\n"), row)
             assert_true(row["result"]["added"] == 2001 and row["result"]["removed"] == 0, row)
-            assert_true(len(row["change"]) <= 16 * 1024 and "…" not in row["change"], row)
+            assert_true(len(change) <= 16 * 1024 and "…" not in change, row)
             diff = ""
             offset = 0
             while True:
                 status, page, _ = client.json(
-                    f"/api/sessions/{session['id']}?detail={row['detail_id']}&offset={offset}"
+                    f"/api/sessions/{session['id']}?detail={row['id']}&offset={offset}"
                 )
                 assert_true(status == 200, page)
                 diff += page["text"]
                 if not page["more"]:
                     break
                 offset = page["next"]
-            assert_true(diff.startswith(row["change"]), diff[:200])
+            assert_true(diff.startswith(change), diff[:200])
             assert_true(diff.endswith("+line 1999 of a long file\n+LAST_DIFF_LINE\n"), diff[-200:])
             assert_true(diff.count("\n") == 2001, diff.count("\n"))

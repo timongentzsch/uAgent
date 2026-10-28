@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "include/agent/session_role.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/launch.h"

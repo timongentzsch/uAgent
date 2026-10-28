@@ -17,7 +17,7 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/protocol.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
@@ -194,22 +194,22 @@ void BenchmarkCommandOutput() {
          }));
 }
 
-// A checkpoint's 64 blocks merged into the 64 the host already holds.
+// A checkpoint's 64 nodes merged into the 64 the host already holds.
 void BenchmarkCheckpointMerge() {
   constexpr size_t kBlocks = 64;
   constexpr size_t kCheckpoints = 100;
   json checkpoint = json::array();
   for (size_t index = 1; index <= kBlocks; ++index) {
-    checkpoint.push_back({{"id", "m-" + std::to_string(index)},
-                          {"sequence", index},
-                          {"kind", index % 2 ? "user" : "assistant"},
-                          {"text", std::string(KiB(4), 'x')},
-                          {"truncated", false}});
+    checkpoint.push_back(
+        {{"id", "m-" + std::to_string(index)},
+         {"sequence", index},
+         {"kind", index % 2 ? "turn" : "message"},
+         {"body", {{"kind", "text"}, {"text", std::string(KiB(4), 'x')}}}});
   }
   json view = json::object();
-  MergeDisplayBlocks(view, checkpoint);
-  Report("64-block checkpoint merge", kCheckpoints, Measure(kCheckpoints, [&] {
-           MergeDisplayBlocks(view, checkpoint);
+  MergeNodes(view, checkpoint);
+  Report("64-node checkpoint merge", kCheckpoints, Measure(kCheckpoints, [&] {
+           MergeNodes(view, checkpoint);
            return view["blocks"].size();
          }));
 }

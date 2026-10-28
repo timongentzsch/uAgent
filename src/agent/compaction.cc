@@ -13,6 +13,7 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/conversation.h"
+#include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"
 #include "include/api/types.h"
@@ -335,7 +336,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
          {"duration_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - compact_started)
                              .count()}}}});
-  Emit(Event{EventId::kMessageChanged, {{"block", std::move(compact_block)}}});
+  Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(compact_block)}}});
   ++revision_;
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},

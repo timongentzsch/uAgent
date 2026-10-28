@@ -34,9 +34,10 @@ test("late snapshots and retired streams cannot replace current session state", 
         blocks: [
           {
             id: "m-1",
-            kind: "assistant",
-            text: metadata.title,
-            truncated: true,
+            parent: null,
+            kind: "message",
+            role: "assistant",
+            body: { kind: "markdown", text: metadata.title, truncated: true },
           },
         ],
       },
@@ -428,36 +429,19 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     await request.get(`/api/sessions/${session.id}`)
   ).json();
   const finalBlock = finalSnapshot.state.view.blocks.find(
-    (block) => block.kind === "assistant",
+    (block) => block.role === "assistant",
   );
+  const continuity = {
+    id: finalBlock?.id,
+    truncated: finalBlock?.body?.truncated,
+    snapshot_text_length: finalBlock?.body?.text?.length,
+    maximum_dom_length: maximumLength,
+  };
   await testInfo.attach("continuity-metadata.json", {
-    body: JSON.stringify(
-      {
-        id: finalBlock?.id,
-        response_id: finalBlock?.response_id,
-        content_revision: finalBlock?.content_revision,
-        content_complete: finalBlock?.content_complete,
-        text_bytes: finalBlock?.text_bytes,
-        snapshot_text_length: finalBlock?.text?.length,
-        maximum_dom_length: maximumLength,
-      },
-      null,
-      2,
-    ),
+    body: JSON.stringify(continuity, null, 2),
     contentType: "application/json",
   });
-  expect(
-    maximumLength,
-    JSON.stringify({
-      id: finalBlock?.id,
-      response_id: finalBlock?.response_id,
-      content_revision: finalBlock?.content_revision,
-      content_complete: finalBlock?.content_complete,
-      text_bytes: finalBlock?.text_bytes,
-      snapshot_text_length: finalBlock?.text?.length,
-      maximum_dom_length: maximumLength,
-    }),
-  ).toBeGreaterThan(8000);
+  expect(maximumLength, JSON.stringify(continuity)).toBeGreaterThan(8000);
   await command("permissions", {
     session_id: session.id,
     generation: session.generation,

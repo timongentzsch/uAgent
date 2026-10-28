@@ -25,7 +25,7 @@
 
 #include "include/agent/activity.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"

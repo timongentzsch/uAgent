@@ -15,6 +15,7 @@
 #include "include/agent/activity.h"
 #include "include/agent/agent.h"
 #include "include/agent/child_agent.h"
+#include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"
 #include "include/api/citations.h"
@@ -277,6 +278,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   failed_image_analyses_.clear();
   turn_root_.clear();
   reply_to_.clear();
+  turn_work_ = {};
   ++revision_;
   ++total_user_turns_;
   std::string title = FirstLine(user_input);
@@ -601,7 +603,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
                 {"summary", summary}};
   // A turn that only passed or waited leaves no row of its own.
   json block = conversation_.RecordEntry(std::move(entry));
-  Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+  Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
   Event completed{EventId::kTurnCompleted, std::move(summary)};
   completed.render = true;
   Emit(std::move(completed));

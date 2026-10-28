@@ -16,12 +16,12 @@
 
 #include "include/agent/activity.h"
 #include "include/agent/agent.h"
-#include "include/agent/session_view.h"
+#include "include/agent/node.h"
+#include "include/agent/transcript.h"
 #include "include/app/panel.h"
 #include "include/app/uagent_tool.h"
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
-#include "include/core/tool_activity.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
@@ -50,20 +50,21 @@ void TestToolExecutionPolicy() {
     CHECK(ToolActivityCategory(shell, {{"command", command}}) == "run");
   }
   std::vector<json> activities;
-  for (const char* id : {"a", "b", "c", "d", "e", "f"}) {
-    activities.push_back({{"id", id},
+  for (const char* id : {"t-a", "t-b", "t-c", "t-d", "t-e", "t-f"}) {
+    activities.push_back({{"detail_id", id},
                           {"category", "explore"},
                           {"groupable", true},
                           {"state", "ok"}});
   }
   activities[2]["state"] = "failed";
   activities[4]["groupable"] = false;
-  GroupToolActivities(activities);
-  CHECK(activities[0]["group"] == activities[1]["group"]);
-  CHECK(activities[0]["group"]["id"] == "a");
-  for (size_t i = 2; i < activities.size(); ++i) {
-    CHECK(!activities[i].contains("group"));
-  }
+  // Only adjacent, successful, groupable calls of one intent fold; a lone
+  // call keeps its own row.
+  const std::vector<json> groups = GroupCalls(activities);
+  REQUIRE(groups.size() == 1);
+  CHECK(groups[0] == json({{"id", "g-t-a"},
+                           {"verb", "Explored"},
+                           {"members", {"t-a", "t-b"}}}));
 
   Tool tool;
   tool.name = "probe";

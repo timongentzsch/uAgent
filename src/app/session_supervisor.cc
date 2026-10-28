@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
@@ -36,9 +36,10 @@ SessionStatus LiveStatus(const HostSession& session) {
 }
 
 // Sets next["view"]: the held view merged with what the worker sent.
-// Returns the rows that changed, or null when a browser holding the view
-// must take all of it: a new view epoch, or a field of the view that changed
-// other than by rows bounded out (a browser keeps those as older pages).
+// Returns the patches of the nodes that changed, or null when a browser
+// holding the view must take all of it: a new view epoch, or a field of the
+// view that changed other than by rows bounded out (a browser keeps those as
+// older pages).
 json MergeView(HostSession& session, json& next) {
   // A rewound conversation starts a new view epoch: its old blocks are
   // gone, so the checkpoint replaces the view instead of merging into it.
@@ -52,7 +53,7 @@ json MergeView(HostSession& session, json& next) {
   for (auto it = view.begin(); it != view.end(); ++it) {
     if (it.key() != "blocks") fields[it.key()] = it.value();
   }
-  json rows = json::array();
+  json patches = json::array();
   size_t dropped = 0;
   if (const json* checkpoint_view = JsonObject(next, "view")) {
     for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
@@ -60,7 +61,7 @@ json MergeView(HostSession& session, json& next) {
       if (it.key() != "blocks") view[it.key()] = it.value();
     }
     if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
-      dropped = MergeDisplayBlocks(view, *blocks, &rows);
+      dropped = MergeNodes(view, *blocks, &patches);
     }
   }
   if (!view.contains("blocks")) view["blocks"] = json::array();
@@ -73,7 +74,7 @@ json MergeView(HostSession& session, json& next) {
             JsonValue(fields, it.key().c_str(), json()) != it.value();
   }
   next["view"] = std::move(view);
-  return whole ? json(nullptr) : rows;
+  return whole ? json(nullptr) : patches;
 }
 
 // The tool result a browser may ask to see in full, kept while it is recent.
@@ -398,9 +399,8 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
     for (const char* field : resent) {
       frame["state"][field] = session.state[field];
     }
-    for (json& row : rows) {
-      replay_.Publish(epoch_, session.id, session.generation,
-                      {{"kind", "block"}, {"block", std::move(row)}},
+    for (json& patch : rows) {
+      replay_.Publish(epoch_, session.id, session.generation, std::move(patch),
                       !session.run_id.empty() || session.restart);
     }
   }
@@ -413,7 +413,7 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
     if (!session.run_id.empty() && !session.turn_active) {
       if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
         for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
-          if (JsonValue(*it, "kind", "") != "turn_summary") continue;
+          if (JsonValue(*it, "kind", "") != "footer") continue;
           session.run_result =
               RunResultFor(JsonValue((*it)["summary"], "outcome", "error"));
           break;
@@ -473,8 +473,8 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   if (kind != "event") return true;
   const std::string type = JsonValue(frame, "type", "");
   RecordRunEvent(session, type, frame);
-  json patch;
-  ApplySessionEvent(session.state, type, frame["data"], &patch);
+  json patches = json::array();
+  ApplySessionEvent(session.state, type, frame["data"], &patches);
   if (type == AppType(EventId::kToolResult)) {
     RetainExchange(session, frame["data"]);
   }
@@ -492,9 +492,17 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       type == AppType(EventId::kToolCall) ||
       type == AppType(EventId::kToolResult) ||
       type == AppType(EventId::kMessageChanged)) {
-    if (patch.is_null()) return false;
-    patch["time"] = frame["time"];
-    frame = std::move(patch);
+    if (patches.empty()) return false;
+    // One event can change several nodes: all but the last go out here,
+    // the last in the event's place.
+    const json time = frame["time"];
+    for (json& patch : patches) patch["time"] = time;
+    for (size_t index = 0; index + 1 < patches.size(); ++index) {
+      replay_.Publish(epoch_, session.id, session.generation,
+                      std::move(patches[index]),
+                      !session.run_id.empty() || session.restart);
+    }
+    frame = std::move(patches.back());
   }
   return true;
 }

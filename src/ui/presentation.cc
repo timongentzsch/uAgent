@@ -163,16 +163,17 @@ PresentationRecord PresentationFromJson(const json& value) {
           JsonValue(value, "title", ""), JsonValue(value, "minor", false)};
 }
 
-// A finished row's headline, its past verb and target, as the web reads it.
+// A node's headline in one line: its verb and the first line of its target.
 std::string Headline(const json& block) {
-  const json view = JsonValue(block, "view", json(nullptr));
-  const json* verb = JsonArray(view, "verb");
-  std::string line = verb && verb->size() == 2 && (*verb)[1].is_string()
-                         ? (*verb)[1].get<std::string>()
-                         : JsonValue(block, "name", "tool");
-  const std::string target = FirstLine(JsonValue(view, "target", ""));
-  if (!target.empty()) line += " " + target;
-  return line;
+  const json headline = JsonValue(block, "headline", json::object());
+  const std::string verb = JsonValue(headline, "verb", "");
+  const std::string target = FirstLine(JsonValue(headline, "target", ""));
+  return verb.empty() || target.empty() ? verb + target : verb + " " + target;
+}
+
+// A node's body text, empty when it has none.
+std::string BodyText(const json& block) {
+  return JsonValue(JsonValue(block, "body", json::object()), "text", "");
 }
 
 // The words the host made of a row's result: "exit 2 · 1.4s".
@@ -180,11 +181,11 @@ std::string Word(const json& block) {
   return JsonValue(JsonValue(block, "result", json::object()), "word", "");
 }
 
-// The terminal spelling of a ToolView's input parts, the same vocabulary the
+// The terminal spelling of a call's input parts, the same vocabulary the
 // browser renders: a command after "$", code as-is, fields as "label: value".
-std::string InputPartsText(const json& view) {
+std::string InputPartsText(const json& block) {
   std::string text;
-  const json* parts = JsonArray(view, "input");
+  const json* parts = JsonArray(block, "input");
   if (!parts) return text;
   for (const json& part : *parts) {
     const std::string kind = JsonValue(part, "kind", "");
@@ -206,31 +207,21 @@ std::string InputPartsText(const json& view) {
   return text;
 }
 
-// "→ Editing src/a.ts": the view's verb and target, as the web row reads
-// while the call runs. A call without a verb was rejected, so it shows the
-// arguments it sent; a multiline label (a script) is shown whole.
+// "→ Editing src/a.ts": the call's headline while it runs. A call without a
+// verb was refused, so it shows what it sent; a multiline target (a script)
+// is shown whole.
 std::string CallRow(const json& block, bool open) {
-  const json view = JsonValue(block, "view", json(nullptr));
-  const json* activity = JsonObject(block, "activity");
-  const std::string label =
-      activity ? JsonValue(*activity, "label", "") : std::string();
-  const std::string name = JsonValue(block, "name", "tool");
-  const json* verb = JsonArray(view, "verb");
-  std::string body =
-      RowMark(Mark::kCall) + (verb && !verb->empty() && (*verb)[0].is_string()
-                                  ? TerminalSafe((*verb)[0].get<std::string>())
-                                  : TerminalSafe(name));
-  const std::string target = JsonValue(view, "target", "");
-  if (const std::string& shown = verb ? target : label;
-      shown.find('\n') != std::string::npos) {
-    body += '\n' + TerminalSafe(shown);
-  } else if (verb && !target.empty()) {
-    body += ' ' + TerminalSafe(FirstLine(target));
-  } else if (!label.empty()) {
-    body += '(' + TerminalSafe(label) + ')';
+  const json headline = JsonValue(block, "headline", json::object());
+  const std::string verb = JsonValue(headline, "verb", "");
+  const std::string target = JsonValue(headline, "target", "");
+  std::string body = RowMark(Mark::kCall) + TerminalSafe(verb);
+  if (target.find('\n') != std::string::npos) {
+    body += '\n' + TerminalSafe(target);
+  } else if (!target.empty()) {
+    body += (verb.empty() ? "" : " ") + TerminalSafe(target);
   }
   std::string row = StyledBlock(body, BOLD());
-  if (const std::string input = InputPartsText(view); open && !input.empty()) {
+  if (const std::string input = InputPartsText(block); open && !input.empty()) {
     row += StyledBlock(Indented(TerminalSafe(input), kDetailIndent), DIM());
   }
   return row;
@@ -239,9 +230,10 @@ std::string CallRow(const json& block, bool open) {
 // The output a row holds: all of it, or the start and the end of a long one,
 // each marked where it was cut.
 std::string ResultText(const json& block) {
-  std::string text = JsonValue(block, "text", "");
-  if (JsonValue(block, "truncated", false)) {
-    text += "\n" + AsciiGlyphs("…") + JsonValue(block, "tail", "");
+  const json body = JsonValue(block, "body", json::object());
+  std::string text = JsonValue(body, "text", "");
+  if (JsonValue(body, "truncated", false)) {
+    text += "\n" + AsciiGlyphs("…") + JsonValue(body, "tail", "");
   }
   return text;
 }
@@ -249,14 +241,14 @@ std::string ResultText(const json& block) {
 // A result in one line: its first line and how much follows, after the
 // result's words for a call that did not succeed.
 std::string ResultSummary(const json& block, std::string_view state) {
-  const std::string text = JsonValue(block, "text", "");
+  const std::string text = BodyText(block);
   std::string summary = text.empty() ? "(empty)" : FirstLine(text);
   const size_t lines = static_cast<size_t>(std::ranges::count(text, '\n')) +
                        (text.empty() || text.back() == '\n' ? 0 : 1);
   // The first line is shown, so the count reports what is elided. A row
   // holds only the start of a long result, so of that it can say only that
   // there is more.
-  if (JsonValue(block, "truncated", false)) {
+  if (JsonValue(JsonValue(block, "body", json::object()), "truncated", false)) {
     summary += " … · more than " + FmtCount(static_cast<int64_t>(text.size())) +
                " chars";
   } else if (lines > 1) {
@@ -272,7 +264,8 @@ std::string ResultSummary(const json& block, std::string_view state) {
 // produced.
 std::string ResultExtras(const json& block, bool open) {
   std::string text;
-  if (!open && JsonValue(block, "body_kind", "") == "tail") {
+  if (!open && JsonValue(JsonValue(block, "body", json::object()), "kind",
+                         "") == "tail") {
     std::vector<std::string> lines;
     std::istringstream input(ResultText(block));
     for (std::string line; std::getline(input, line);) {
@@ -317,22 +310,17 @@ std::string ResultExtras(const json& block, bool open) {
 // its name with the output or a summary of it.
 std::string ResultRow(const json& block, const DetailPolicy& detail) {
   const std::string state = JsonValue(block, "state", "");
-  const json* activity = JsonObject(block, "activity");
-  if (const json* group = activity ? JsonObject(*activity, "group") : nullptr;
-      group && detail.work != WorkRows::kCalls) {
-    // A run of like calls is one row, drawn where the run starts.
-    if (JsonValue(*group, "id", "") != JsonValue(block, "call_id", "")) {
-      return "";
-    }
-    return StyledBlock(
-        Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
-        DIM());
+  // A run of like calls is one row, its group's.
+  if (JsonValue(block, "parent", "").starts_with("g-") &&
+      detail.work != WorkRows::kCalls) {
+    return "";
   }
   // A change is told entirely by its diff, so the headline and the diff are
   // the whole row. A long diff is kept whole: both sides, each line a marker
   // longer.
-  if (const std::string change = JsonValue(block, "change", "");
-      state == "ok" && !change.empty()) {
+  if (const json body = JsonValue(block, "body", json::object());
+      JsonValue(body, "kind", "") == "diff") {
+    const std::string change = JsonValue(body, "text", "");
     std::istringstream input(
         ReadFile(JsonValue(block, "change_path", ""), 4 * EditFileBytes())
             .value_or(change));
@@ -354,7 +342,7 @@ std::string ResultRow(const json& block, const DetailPolicy& detail) {
   const std::string prefix =
       std::string(style) +
       Indented(RowMark(failed ? Mark::kFailed : Mark::kResult) +
-                   TerminalSafe(JsonValue(block, "name", "tool")),
+                   TerminalSafe(Headline(block)),
                kRowIndent);
   const std::string output = ResultText(block);
   const std::string extras = ResultExtras(block, detail.open);
@@ -590,51 +578,55 @@ void TerminalPresenter::Block(const json& block) {
   // A chat participant's pass or wait is shown to nobody.
   if (JsonValue(block, "silent", false)) return;
   const std::string kind = JsonValue(block, "kind", "");
-  const std::string text = TerminalSafe(JsonValue(block, "text", ""));
-  if (kind == "user" || kind == "attachment") {
-    if (kind == "user") WriteTerminalRecord(WorkLine());
+  const std::string text = TerminalSafe(BodyText(block));
+  // Files a call read belong to that call's row.
+  if (JsonValue(block, "origin", "") == "tool") return;
+  if (kind == "turn" || JsonValue(block, "role", "") == "user") {
+    if (kind == "turn") WriteTerminalRecord(WorkLine());
     // The view already dropped the "Attached:" path trailer; attachments
     // render as the delivery gallery, like history replay and the web.
     WriteTerminalRecord(
         UserEchoRow(InputPrompt(), text) + "\n" +
         AttachmentDeliveryRows(JsonValue(block, "deliveries", json::array())));
-  } else if (kind == "assistant") {
-    // Mirror the stored-transcript printer and the live presenter: the mark
-    // only prints with text (tool-only turns show rows, never a bare mark)
-    // and the answer is line-terminated. Tool rows are blocks of their own.
-    const std::string reasoning =
-        detail_->reasoning == Thinking::kOpen
-            ? TerminalSafe(JsonValue(block, "reasoning", ""))
-            : "";
-    if (!text.empty() || !reasoning.empty()) PrintMessageHeader();
-    if (!reasoning.empty()) {
-      // The rows the live presenter drew while the model was thinking.
+  } else if (kind == "thinking") {
+    // The rows the live presenter drew while the model was thinking.
+    if (detail_->reasoning == Thinking::kOpen && !text.empty()) {
       WriteTerminalRecord(
           std::string(DIM()) + RowMark(Mark::kNote) + "Thinking" + RST() +
-          "\n" +
-          StyledBlock(reasoning, (std::string(MUTED()) + ITAL()).c_str()));
+          "\n" + StyledBlock(text, (std::string(MUTED()) + ITAL()).c_str()));
     }
+  } else if (kind == "message") {
+    // Mirror the stored-transcript printer and the live presenter: the mark
+    // only prints with text (tool-only turns show rows, never a bare mark)
+    // and the answer is line-terminated. Tool rows are nodes of their own.
     if (!text.empty()) {
+      PrintMessageHeader();
       MdPrint(text);
       WriteTerminalRecord("\n");
     }
-  } else if (kind == "turn_summary") {
+  } else if (kind == "footer") {
     WriteTerminalRecord(
         WorkLine() +
         TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
-  } else if (kind == "compaction") {
+  } else if (kind == "notice" && block.contains("compaction")) {
     // The row the live "compacted" notice drew.
     WriteTerminalRecord(Note(Tone::kNeutral, "compacted"));
-  } else if (kind == "activity") {
-    const json memory = JsonValue(block, "memory", json::object());
-    if (detail_->minor || !JsonValue(memory, "minor", false)) {
+  } else if (kind == "notice") {
+    if (detail_->minor || !JsonValue(block, "routine", false)) {
       const std::string word = Word(block);
       WriteTerminalRecord(Note(
           Tone::kNeutral,
           AsciiGlyphs(Headline(block) + (word.empty() ? "" : " · " + word)) +
               (text.empty() ? "" : "\n" + text)));
     }
-  } else if (kind == "tool_result") {
+  } else if (kind == "group" && detail_->work == WorkRows::kGroups) {
+    // A run of like calls is one row, drawn where the run starts.
+    WriteTerminalRecord(StyledBlock(
+        Indented(
+            AsciiGlyphs(TerminalSafe(Headline(block) + " · " + Word(block))),
+            kRowIndent),
+        DIM()));
+  } else if (kind == "call") {
     ToolRow(block);
   }
 }
@@ -653,11 +645,10 @@ void TerminalPresenter::ToolRow(const json& block) {
   if (state == "running" || std::exchange(row->second, true)) return;
   if (counted && state != "failed") {
     ++steps_;
-    if (const json* activity = JsonObject(block, "activity");
-        activity && JsonValue(*activity, "category", "") == "edit") {
+    if (JsonValue(block, "category", "") == "edit") {
       // Files, not edits: two edits of one file are one file.
       const std::string target =
-          JsonValue(JsonValue(block, "view", json(nullptr)), "target", "");
+          JsonValue(JsonValue(block, "headline", json::object()), "target", "");
       edited_.insert(target.empty() ? id : target);
     }
     return;

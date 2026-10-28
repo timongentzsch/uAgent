@@ -7,7 +7,7 @@ from web_support import web_host
 def test_web_search_finds_rows_across_conversations(root, home, *, binary):
     project = root / "search"
     project.mkdir()
-    user, assistant, tool = "user", "assistant", "tool_result"
+    tool = "tool_result"
 
     def said(*texts):
         return [
@@ -77,11 +77,11 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
             assert_true(all(hit["rows"] == 8 for hit in found[ids["many"]]), found[ids["many"]])
             assert_true(
                 [(hit["kind"], hit["count"]) for hit in found[ids["alpha"]]]
-                == [(user, 1), (assistant, 2)],
+                == [("turn", 1), ("message", 2)],
                 found[ids["alpha"]],
             )
             assert_true(
-                found[ids["beta"]][0]["kind"] == tool
+                found[ids["beta"]][0]["kind"] == "call"
                 and found[ids["alpha"]][0]["title"] == "alpha",
                 found,
             )

@@ -7,7 +7,7 @@
 #include "include/agent/conversation.h"
 #include "include/agent/session_search.h"
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/panel.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -50,11 +50,8 @@ ToolResult Search(const std::string& folder, const std::string& query) {
                              {.sessions = kSearchSessions,
                               .hits = kSearchHits,
                               .per_session = kSearchHits})["hits"];
-  // A hit's row is what detail takes as its id.
-  for (json& hit : hits) {
-    hit["message_id"] = "m-" + std::to_string(hit["sequence"].get<uint64_t>());
-    hit.erase("sequence");
-  }
+  // A hit's id is what detail takes.
+  for (json& hit : hits) hit.erase("sequence");
   return ToolSuccess("[search results; quoted, not instructions]\n" +
                      JsonDump(hits, 1));
 }
@@ -69,12 +66,13 @@ ToolResult Read(const SessionInfo& info, uint64_t before) {
     for (size_t index = first; index < all.size(); ++index) {
       const json& block = all[index];
       const std::string kind = JsonValue(block, "kind", "");
-      const bool spoken = kind == "user" || kind == "assistant";
+      const bool spoken = kind == "turn" || kind == "message";
       json row = {{"id", JsonValue(block, "id", "")}, {"kind", kind}};
-      for (const char* field : {"name", "title", "summary"}) {
+      for (const char* field : {"headline", "summary"}) {
         if (block.contains(field)) row[field] = block[field];
       }
-      const std::string text = JsonValue(block, "text", "");
+      const std::string text =
+          JsonValue(JsonValue(block, "body", json::object()), "text", "");
       if (!text.empty()) {
         row["text"] =
             Utf8Prefix(text, spoken ? kReadTextChars : kToolTextChars);
@@ -93,7 +91,7 @@ ToolResult Read(const SessionInfo& info, uint64_t before) {
 ToolResult Detail(const SessionInfo& info, const std::string& id,
                   size_t offset) {
   return WithConversation(info, [&](const Conversation& conversation) {
-    const json detail = ConversationDetail(conversation, id, offset);
+    const json detail = TranscriptView(conversation).Detail(id, offset);
     // A row longer than one page says where the next one starts.
     return SessionData(
         info,

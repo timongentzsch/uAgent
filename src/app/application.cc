@@ -49,9 +49,11 @@ Application::Application(AppContext& context)
         if (event.type != AppType(EventId::kMessageChanged)) {
           return;
         }
-        std::string kind = JsonValue(event.data["block"], "kind", "");
-        if ((!DelegatedSessionFile().empty() || kind == "user" ||
-             kind == "attachment") &&
+        // A message of yours is saved as it arrives.
+        const json& node = event.data["block"];
+        if ((!DelegatedSessionFile().empty() ||
+             JsonValue(node, "kind", "") == "turn" ||
+             JsonValue(node, "role", "") == "user") &&
             (persist_ || !session_file_.empty())) {
           SaveSession(true);
         }

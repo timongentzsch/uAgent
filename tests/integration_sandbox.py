@@ -387,7 +387,9 @@ def test_yolo_raises_the_default_level_to_relaxed(root, home, *, binary):
     stores = (home / ".aws" / "credentials", home / ".uagent" / "config" / "notes.txt")
     for hidden in stores:
         assert_true(f"marker-{hidden.name}" not in yolo_output(f"cat {hidden}"), hidden)
-    project, state = home / "project.txt", home / ".uagent" / "planted.txt"
+    # Landlock grants the home folder entry by entry when a command starts,
+    # so the write goes into a folder that exists, as on every platform.
+    project, state = home / "Projects" / "project.txt", home / ".uagent" / "planted.txt"
     yolo_output(f"echo x > {project}; echo x > {state}; true")
     assert_true(project.exists(), "yolo did not open the home folder")
     assert_true(not state.exists(), "yolo opened ~/.uagent")

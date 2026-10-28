@@ -145,8 +145,10 @@ class WorkerChannel final : public ApplicationChannel {
     if (event.type == AppType(EventId::kApprovalRequested)) {
       std::lock_guard lock(mutex_);
       // A thread's approval that Auto could not settle goes to its
-      // panel first; one reserved for a person never does.
-      if (ToPanelLocked() && !JsonValue(data, "mandatory_human", false)) {
+      // panel first, unless the person started or wrote into this turn and
+      // is there to answer it; one reserved for a person never does.
+      if (link_ && !person_turn_ &&
+          !JsonValue(data, "mandatory_human", false)) {
         data["route"] = kRoutePanel;
         link_->Ask(JsonValue(data, "id", ""), "approval request",
                    "asks to run " + JsonValue(data, "tool", ""),
@@ -273,7 +275,7 @@ class WorkerChannel final : public ApplicationChannel {
       decision_["questions"] = request.questions;
       // A thread's questions go to its panel first, as its approvals
       // do; a person is notified only if it yields or does not answer.
-      if (ToPanelLocked()) {
+      if (link_ && !person_turn_) {
         decision_["route"] = kRoutePanel;
         link_->Ask(request.id, "question", "asks the user",
                    JsonDump(request.questions), title_);
@@ -463,11 +465,6 @@ class WorkerChannel final : public ApplicationChannel {
   // panel's brief or message.
   static bool FromPerson(const SessionCommand& parsed) {
     return JsonValue(parsed.raw, "origin", "").empty();
-  }
-  // Whether a thread's decision goes to its panel first: not in a turn the
-  // person started or wrote into, who is there to answer it.
-  bool ToPanelLocked() const UAGENT_REQUIRES(mutex_) {
-    return link_ && !person_turn_;
   }
   // A new user or background turn supersedes the preceding turn's stop/error.
   // Publish this transition immediately, before waiting for a model response.

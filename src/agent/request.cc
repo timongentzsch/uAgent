@@ -205,6 +205,8 @@ void Agent::DebugModelResponse(int64_t request, int64_t step,
        {"pretransfer_ms", result.pretransfer_ms},
        {"start_transfer_ms", result.start_transfer_ms},
        {"http_status", result.http_status},
+       {"generation_id", result.generation_id},
+       {"served_by", result.served_by},
        {"finish_reason", result.finish_reason},
        {"stop_cause", ResponseStopCauseName(result.stop_cause)},
        {"stop_details", result.stop_details},
@@ -382,6 +384,9 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   if (result.duration_ms > 0 && usage.GeneratedTokens() > 0) {
     metrics["generation_ms"] = result.duration_ms;
     metrics["generated_tokens"] = usage.GeneratedTokens();
+  }
+  if (!result.served_by.empty()) {
+    metrics["served_by"] = {{result.served_by, {{"model_calls", 1}}}};
   }
   conversation_.AddStatistics(metrics);
   if (Debug().Enabled()) DebugModelResponse(request, step, purpose, result);

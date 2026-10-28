@@ -113,6 +113,10 @@ struct ToolCall {
 
 struct ChatResult {
   std::string response_id;
+  // The provider's own name for the response and, through a router such as
+  // OpenRouter, the upstream that served it; empty when the stream omits them.
+  std::string generation_id{};
+  std::string served_by{};
   int64_t attempt = 0;
   std::string content;
   std::string reasoning;

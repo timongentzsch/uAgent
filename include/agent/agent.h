@@ -322,7 +322,8 @@ class Agent {
                             const std::vector<ToolCall>& calls);
   StepFlow FinishWithProse(TurnExecution& state, StepState& loop);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
-                            TurnExecution& state, StepState& loop);
+                            const std::string& served_by, TurnExecution& state,
+                            StepState& loop);
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   const json* request_messages = nullptr);

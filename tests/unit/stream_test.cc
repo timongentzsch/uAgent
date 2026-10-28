@@ -511,6 +511,48 @@ void TestChatCompletionAnnotationDeduplication() {
   }
 }
 
+// OpenRouter's chunks, trimmed: each names the upstream that served the call,
+// and the first one that does is kept.
+void TestChatCompletionServedBy() {
+  ChatResult result;
+  std::map<int, ToolCall> calls;
+  for (const char* chunk :
+       {R"({"id":"gen-1761-abc","provider":"Wafer",)"
+        R"("model":"deepseek/deepseek-v4.1-flash-1017",)"
+        R"("object":"chat.completion.chunk",)"
+        R"("choices":[{"index":0,"delta":{"content":"Hi"}}]})",
+        R"({"id":"gen-1761-abc","provider":"Wafer","choices":[{"index":0,)"
+        R"("delta":{"content":""},"finish_reason":"stop"}]})",
+        R"({"id":"gen-other","provider":"DigitalOcean","choices":[],)"
+        R"("usage":{"prompt_tokens":3,"completion_tokens":1}})"}) {
+    DecodeChatEvent(chunk, result, calls);
+  }
+  CHECK(result.served_by == "Wafer");
+  CHECK(result.generation_id == "gen-1761-abc");
+
+  ChatResult direct;
+  DecodeChatEvent(R"({"choices":[{"index":0,"delta":{"content":"Hi"}}]})",
+                  direct, calls);
+  CHECK(direct.served_by.empty());
+  CHECK(direct.generation_id.empty());
+
+  // The other dialects carry the response's id, but name no upstream.
+  WireStreamState state;
+  ChatResult responses;
+  DecodeWireStreamEvent(
+      WireApi::kResponses,
+      R"({"type":"response.created","response":{"id":"resp-1"}})", responses,
+      calls, state);
+  CHECK(responses.generation_id == "resp-1");
+  ChatResult messages;
+  DecodeWireStreamEvent(
+      WireApi::kAnthropicMessages,
+      R"({"type":"message_start","message":{"id":"msg-1","usage":{}}})",
+      messages, calls, state);
+  CHECK(messages.generation_id == "msg-1");
+  CHECK(responses.served_by.empty() && messages.served_by.empty());
+}
+
 void TestSseFraming() {
   const std::string wire =
       ": keepalive\r\n"

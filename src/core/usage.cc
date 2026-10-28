@@ -143,6 +143,11 @@ void MergeNumericStatistics(json& total, const json& delta) {
   if (!total.is_object()) total = json::object();
   if (!delta.is_object()) return;
   for (const auto& [key, value] : delta.items()) {
+    // A group of counters, such as calls per provider, merges the same way.
+    if (value.is_object()) {
+      MergeNumericStatistics(total[key], value);
+      continue;
+    }
     if (!value.is_number() || !std::isfinite(value.get<double>()) ||
         value.get<double>() < 0 || key == "complete") {
       continue;

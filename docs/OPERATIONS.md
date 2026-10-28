@@ -222,6 +222,11 @@ retry one or switch it.
 - **You need the full exchange.** `--debug` writes an opt-in, sensitive
   trace ([Persistence](PERSISTENCE.md#sessions)). `/http` shows the captured
   requests of the running conversation.
+- **One provider behind a router misbehaves.** OpenRouter can serve each call
+  from a different upstream. A message's statistics in the web say which one
+  ("served by …"); the conversation's statistics and `/cost` count calls and
+  rejected tool calls per upstream; `/http` and the `--debug` trace's
+  `model_response` add the generation id to quote to the router.
 - **A session will not load.** Corrupt sessions are reported and left
   untouched.
 - **Processes outlived a session.** Runtime shutdown reaps managed processes.

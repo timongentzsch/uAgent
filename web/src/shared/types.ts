@@ -58,6 +58,9 @@ export interface Statistics {
   side_tool_calls?: number;
   side_model_calls?: number;
   side_duration_ms?: number;
+  // Per upstream a router such as OpenRouter chose: the model calls it
+  // served and the tool calls from its responses that were rejected.
+  served_by?: Record<string, { model_calls?: number; rejected_calls?: number }>;
 }
 export interface Exchange {
   id: string;
@@ -73,6 +76,8 @@ export interface Exchange {
   request_headers?: string;
   response_headers?: string;
   turn_root?: string;
+  served_by?: string;
+  generation_id?: string;
 }
 interface ToolActivity {
   // The call's intent: explore, research, edit, verify, run, setup,
@@ -217,6 +222,7 @@ export interface AssistantBlock extends BlockBase, Answered {
   ttft_ms?: number;
   tokens_per_second?: number;
   route?: string;
+  served_by?: string;
   usage?: Usage;
   usage_reported?: boolean;
 }

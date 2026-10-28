@@ -12,6 +12,7 @@ import {
   type Row,
 } from "../../shared/statistics-layout.tsx";
 import { presentMessages } from "../../shared/message-view.ts";
+import { servedBy, servedByRows } from "../../shared/display.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
@@ -104,7 +105,12 @@ export function StatisticsContent({
             "Timestamp",
             block.time ? <Time value={block.time} /> : "Not recorded",
           ],
-          ["Model", reply?.route || "Not recorded"],
+          [
+            "Model",
+            [reply?.route || "Not recorded", servedBy(reply?.served_by)]
+              .filter(Boolean)
+              .join(" · "),
+          ],
           ["Tool", call?.name || "—"],
           ["Status", block.status || "—"],
           ["Duration", duration(took)],
@@ -162,6 +168,7 @@ export function StatisticsContent({
                 : undefined,
             ),
           ],
+          ...servedByRows(stats?.served_by),
         ];
   return (
     <StatisticsLayout unit={unit} scope={scope} change={setScope}>

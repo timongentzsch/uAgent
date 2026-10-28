@@ -271,6 +271,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
       {"ttft_ms", response.first_token_ms},
       {"usage_reported", response.usage.is_object() && !response.usage.empty()},
       {"usage", UsageJson(usage)}};
+  if (!response.served_by.empty()) facts["served_by"] = response.served_by;
+  if (!response.generation_id.empty()) {
+    facts["generation_id"] = response.generation_id;
+  }
   if (response.duration_ms > 0 && usage.GeneratedTokens() > 0) {
     facts["tokens_per_second"] = static_cast<double>(usage.GeneratedTokens()) *
                                  1000 / response.duration_ms;

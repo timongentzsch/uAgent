@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 
+#include "include/api/types.h"
 #include "include/core/fd.h"
 #include "include/core/json.h"
 
@@ -17,7 +18,7 @@ class HttpExchange {
   HttpExchange(bool enabled, std::string_view request, json metadata);
   void Headers(std::string_view bytes, bool outgoing);
   void Body(std::string_view bytes);
-  json Finish(int64_t status, bool interrupted, const std::string& error);
+  json Finish(const ChatResult& result);
   bool Enabled() const { return static_cast<bool>(response_); }
 
  private:

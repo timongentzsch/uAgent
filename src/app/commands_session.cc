@@ -120,6 +120,8 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
   reply.result = {
       {"routes", session.ActiveAgent().RouteUsageJson()},
       {"total", UsageJson(session.ActiveAgent().SessionUsage())},
+      {"served_by", JsonValue(session.ActiveAgent().Statistics(), "served_by",
+                              json::object())},
       {"session_budget", session.ApiClient().config.session_budget}};
   const json& routes = reply.result["routes"];
   if (routes.empty()) {
@@ -135,6 +137,17 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
         JoinDot(
             {TerminalSafe(route), TokenSplit(spent), CacheSummary(spent),
              spent.cost_reported ? FmtCost(spent.cost) : "cost unavailable"}));
+  }
+  // The upstream a router picked per call, and the tool calls rejected from
+  // its responses: a provider that mangles calls stands out here.
+  for (const auto& [provider, counts] : reply.result["served_by"].items()) {
+    const int64_t rejected = JsonValue(counts, "rejected_calls", int64_t{0});
+    reply.Note(
+        Tone::kNeutral,
+        JoinDot(
+            {"served by " + TerminalSafe(provider),
+             Plural(JsonValue(counts, "model_calls", int64_t{0}), "model call"),
+             rejected > 0 ? Plural(rejected, "rejected tool call") : ""}));
   }
   const Usage& spent = session.ActiveAgent().SessionUsage();
   std::string cost =

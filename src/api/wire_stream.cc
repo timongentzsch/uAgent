@@ -118,6 +118,14 @@ WireStreamDelta DecodeChatCompletionsEvent(
     const json& value, ChatResult& result,
     std::map<int, ToolCall>& tool_calls) {
   WireStreamDelta delta;
+  // OpenRouter picks the upstream per request and names it on every chunk,
+  // errors included: the one way to trace a fault to who caused it.
+  if (result.generation_id.empty()) {
+    result.generation_id = JsonValue(value, "id", "");
+  }
+  if (result.served_by.empty()) {
+    result.served_by = JsonValue(value, "provider", "");
+  }
   json nested;
   const json* envelope = &value;
   if (!value.contains("error") && value.contains("message") &&
@@ -553,6 +561,9 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   // The response was opened: the provider is there, but nothing has been
   // produced yet, so a failure that follows may still be tried again.
   if (type == "response.created" || type == "response.in_progress") {
+    if (const json* response = JsonObject(value, "response")) {
+      result.generation_id = JsonValue(*response, "id", "");
+    }
     delta.opened = true;
   }
   return delta;
@@ -591,6 +602,7 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
   }
   if (type == "message_start") {
     const json* message = JsonObject(value, "message");
+    if (message) result.generation_id = JsonValue(*message, "id", "");
     if (message && message->contains("usage")) {
       MergeObject(result.usage, (*message)["usage"]);
     }

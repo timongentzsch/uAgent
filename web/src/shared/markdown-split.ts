@@ -44,7 +44,7 @@ function scanHead(source: string, start: number): string {
     if (match) [fence, opened] = [match[1], content ? start - 1 : 0];
     content ||= !!line.trim();
   };
-  for (let end = source.indexOf("\n", start); end >= 0;) {
+  for (let end = source.indexOf("\n", start); end >= 0; ) {
     const line = source.slice(start, end);
     if (!fence && !line.trim()) {
       if (content) head = start - 1;

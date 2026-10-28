@@ -177,7 +177,7 @@ const groupOf = (row: PresentedBlock) =>
   "activity" in row ? row.activity?.group : undefined;
 function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
-  for (let begin = 0; begin < rows.length;) {
+  for (let begin = 0; begin < rows.length; ) {
     const group = groupOf(rows[begin]);
     let end = begin + 1;
     while (group && rows[end] && groupOf(rows[end])?.id === group.id) end++;

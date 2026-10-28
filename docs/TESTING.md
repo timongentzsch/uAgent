@@ -26,7 +26,7 @@ cmake --build --preset debug --parallel
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
-Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier, Biome) are
+Style checks (clang-format, cpplint, clang-tidy, Ruff, Biome) are
 in [CONTRIBUTING.md](../CONTRIBUTING.md); [CI](#ci) lists what a pull request
 runs beyond them.
 
@@ -254,7 +254,7 @@ Master, scheduled and manual runs always run them.
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh` (clang-format, cpplint, Ruff); `ctest -L source` |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
-| `web` | Prettier check, Biome lint, Node tests, bundle, notices and size checks, a release host with Web Push |
+| `web` | Biome format check and lint, Node tests, bundle, notices and size checks, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
 | `CI result` | fails if any required job failed or was cancelled |
 

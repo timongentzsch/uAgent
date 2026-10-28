@@ -38,13 +38,15 @@ export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
     ...items,
     ...agents
       .filter((child) => !items.some((item) => item.agent_id === child.id))
-      .map((child): Activity => ({
-        ...child,
-        id: undefined,
-        agent_id: child.id,
-        kind: "subagent",
-        status: child.status || "idle",
-      })),
+      .map(
+        (child): Activity => ({
+          ...child,
+          id: undefined,
+          agent_id: child.id,
+          kind: "subagent",
+          status: child.status || "idle",
+        }),
+      ),
   ];
 }
 

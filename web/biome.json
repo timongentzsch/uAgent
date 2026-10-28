@@ -1,9 +1,29 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "formatter": { "enabled": false },
-  "assist": { "enabled": false },
-  "vcs": { "enabled": false },
-  "files": { "includes": ["src/**", "tests/**", "scripts/**"] },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 80,
+    "lineEnding": "lf"
+  },
+  "assist": {
+    "enabled": false
+  },
+  "vcs": {
+    "enabled": false
+  },
+  "files": {
+    "includes": [
+      "src/**",
+      "tests/**",
+      "scripts/**",
+      "public/*.js",
+      "*.js",
+      "*.json",
+      "!package-lock.json"
+    ]
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -14,8 +34,14 @@
           "options": {
             "reportUnnecessaryDependencies": false,
             "hooks": [
-              { "name": "useLatest", "stableResult": true },
-              { "name": "useStored", "stableResult": [1] },
+              {
+                "name": "useLatest",
+                "stableResult": true
+              },
+              {
+                "name": "useStored",
+                "stableResult": [1]
+              },
               {
                 "name": "useResource",
                 "stableResult": ["setValue", "setError"]
@@ -35,6 +61,14 @@
         },
         "useHookAtTopLevel": "error"
       }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "always"
     }
   }
 }

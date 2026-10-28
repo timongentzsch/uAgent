@@ -477,7 +477,7 @@ void TestActionRequiresDeclarations() {
                                            "plan",     "session", "subagent",
                                            "thread",   "uagent"};
 #ifdef UAGENT_BROWSER
-  multi_action.push_back("browser");
+  multi_action.emplace_back("browser");
 #endif
   std::ranges::sort(declared);
   std::ranges::sort(multi_action);

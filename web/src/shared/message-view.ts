@@ -191,10 +191,12 @@ function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   return folded;
 }
 
-// What a turn's folded work did: "Worked · 14 steps · edited 2 files · 1m 12s".
-// How long the turn took is known once it has ended.
+// What a turn's folded work did:
+// "Worked · 14 steps · edited 2 files · 3 errors · 1m 12s". How long the
+// turn took is known once it has ended.
 function workLabel(steps: PresentedBlock[], took?: number) {
   const calls = steps.filter((step) => step.kind !== "assistant");
+  const failed = calls.filter((step) => isFailedStatus(step.status)).length;
   const edited = new Set(
     calls
       .filter(
@@ -205,6 +207,7 @@ function workLabel(steps: PresentedBlock[], took?: number) {
   return [
     `Worked · ${plural(calls.length, "step")}`,
     edited && `edited ${plural(edited, "file")}`,
+    failed && plural(failed, "error"),
     took !== undefined && duration(took),
   ]
     .filter(Boolean)
@@ -213,9 +216,9 @@ function workLabel(steps: PresentedBlock[], took?: number) {
 
 // A turn runs from a message of yours to its footer. Its last reply after
 // its last call is the answer; the calls and interim replies before it fold
-// into one row where the first of them stood. What is for you stays a row
-// of its own: a failed or cancelled call, an error, a file the agent handed
-// you.
+// into one row where the first of them stood, failed calls too, which its
+// label counts. What is for you stays a row of its own: a cancelled call, an
+// error, a file the agent handed you.
 function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   let turn: PresentedBlock[] = [];
@@ -229,7 +232,7 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
     for (const row of turn) {
       const work =
         row !== answer &&
-        !isFailedStatus(row.status) &&
+        (row.kind === "tool_result" || !isFailedStatus(row.status)) &&
         !/cancel/i.test(row.status || "") &&
         !("parts" in row && row.parts?.some((part) => part.kind === "file")) &&
         (row.kind === "tool_result" ||

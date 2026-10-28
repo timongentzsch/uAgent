@@ -424,12 +424,12 @@ test("minimal folds a turn's work into one row before its answer", () => {
     call("r1", "run", "running"),
   ];
   const rows = presentMessages(turn, MINIMAL);
-  // Failed and cancelled calls, the answer, the footer and your messages
-  // stay rows; the rest of each turn is one row where its first step stood.
+  // Cancelled calls, the answer, the footer and your messages stay rows;
+  // the rest of each turn, failed calls included, is one row where its first
+  // step stood, and its label counts the failures.
   assert.deepEqual(shape(rows), [
     "u1",
-    ["m1", "x1", "e1", "e2", "e3"],
-    "v1",
+    ["m1", "x1", "v1", "e1", "e2", "e3"],
     "c1",
     "m2",
     "s1",
@@ -437,9 +437,12 @@ test("minimal folds a turn's work into one row before its answer", () => {
     ["r1"],
   ]);
   // A finished turn says how long it took; one still running cannot.
-  assert.equal(rows[1].label, "Worked · 4 steps · edited 2 files · 1m 12s");
-  assert.equal(rows[7].label, "Worked · 1 step");
-  assert.equal(rows[4].text, "Done.");
+  assert.equal(
+    rows[1].label,
+    "Worked · 5 steps · edited 2 files · 1 error · 1m 12s",
+  );
+  assert.equal(rows[6].label, "Worked · 1 step");
+  assert.equal(rows[3].text, "Done.");
   // A reply with calls after it is work, not the answer, while it runs too.
   assert.deepEqual(
     shape(

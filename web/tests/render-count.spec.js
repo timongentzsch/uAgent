@@ -244,7 +244,7 @@ test("streaming renders only what changed", async ({ page }) => {
         sequence: testSequence,
       },
     });
-    // Failed calls keep their own rows and link to no work.
+    // Failed calls fold into the turn's work and link to no work.
     for (let index = 0; index < 5; index++)
       testSend({
         kind: "block",

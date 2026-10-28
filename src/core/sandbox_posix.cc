@@ -598,6 +598,7 @@ ConfiguredSandbox BuildStatus() {
 // network, so nothing the configured one passed is asked again.
 SandboxStatus RaisedStatus(const ConfiguredSandbox& configured) {
   SandboxStatus status = configured.status;
+  if (!configured.raised) return status;
   SandboxPolicyResult built = BuildSandboxPolicy(*configured.raised);
   status.policy = std::move(built.policy);
   status.rejected = std::move(built.rejected);

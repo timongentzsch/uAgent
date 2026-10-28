@@ -37,6 +37,12 @@ void TransientBatcher::Push(const AppEvent& event) {
     QueueUsage(event);
     return;
   }
+  // A status line is not ordered against the text around it, so it does not
+  // cut the pending batch short.
+  if (event.type == AppType(EventId::kActivityStatus)) {
+    deliver_(event);
+    return;
+  }
   FlushLocked();
   deliver_(event);
   if (event.type == AppType(EventId::kTurnCompleted) ||

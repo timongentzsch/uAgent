@@ -459,6 +459,7 @@ class Agent {
   std::set<std::string> failed_image_analyses_;
   mutable std::pair<std::string, RouteResolution> image_route_;
   mutable FileLease writer_;
+  mutable SavedFile saved_file_;
   std::string session_title_;
   bool custom_title_ = false;
   // Fork lineage, restored on load and preserved on save so branches keep

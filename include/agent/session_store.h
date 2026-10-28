@@ -163,12 +163,24 @@ bool ValidSessionTitle(const std::string& title);
 // What the rule is, for the error that rejects a title.
 std::string InvalidSessionTitleMessage();
 
+// What the last save wrote, so a save of the same bytes to the same untouched
+// file writes nothing.
+struct SavedFile {
+  std::string path;
+  size_t digest = 0;
+  uintmax_t size = 0;
+  std::filesystem::file_time_type modified;
+};
+
 class SessionStore {
  public:
   // A live conversation is borrowed only for this synchronous serialization.
+  // With `saved`, a save whose bytes match the last one, on a file nobody has
+  // touched since, leaves the file alone.
   static SessionStoreStatus Save(const std::string& path,
                                  const SessionRecord& record,
-                                 const Conversation* conversation = nullptr);
+                                 const Conversation* conversation = nullptr,
+                                 SavedFile* saved = nullptr);
   static SessionLoadResult Load(const std::string& path,
                                 const std::string& expected_cwd);
   static SessionLoadResult Inspect(const std::string& path);

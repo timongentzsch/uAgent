@@ -168,7 +168,8 @@ bool SessionState::RestoreConversation(Conversation& conversation) && {
 
 SessionStoreStatus SessionStore::Save(const std::string& path,
                                       const SessionRecord& record,
-                                      const Conversation* conversation) {
+                                      const Conversation* conversation,
+                                      SavedFile* saved) {
   json header = HeaderJson(record.metadata);
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
@@ -191,9 +192,23 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
     return Error(SessionStoreError::kInvalid,
                  "session exceeds readable storage limits");
   }
+  const std::string content = header_text + "\n" + body;
+  const size_t digest = std::hash<std::string>{}(content);
+  std::error_code ignored;
+  if (saved && saved->path == path && saved->digest == digest &&
+      saved->size == content.size() &&
+      std::filesystem::last_write_time(path, ignored) == saved->modified &&
+      !ignored) {
+    return {};
+  }
   std::string error;
-  if (!WritePrivateFile(path, header_text + "\n" + body, error)) {
+  if (!WritePrivateFile(path, content, error)) {
     return Error(SessionStoreError::kIo, error);
+  }
+  if (saved) {
+    const auto modified = std::filesystem::last_write_time(path, ignored);
+    *saved = ignored ? SavedFile{}
+                     : SavedFile{path, digest, content.size(), modified};
   }
   return {};
 }

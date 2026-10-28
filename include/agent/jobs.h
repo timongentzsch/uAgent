@@ -110,6 +110,10 @@ CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
 // large or its process failed, removed otherwise.
 std::optional<ToolArtifact> KeepCompletedLog(const std::string& path,
                                              int64_t cap, bool failed);
+// Copies `input` to a log of at most max_bytes (two rotating halves) until
+// EOF, or until `stop` is requested and nothing more is waiting.
+int PumpLog(int input, const std::string& path, int64_t max_bytes,
+            const std::stop_token& stop = {});
 int ToolLogPump(const std::string& path, int64_t max_bytes);
 bool ProcessGroupAlive(pid_t leader);
 std::string DetachedRecordPath(pid_t pid);

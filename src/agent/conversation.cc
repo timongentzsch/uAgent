@@ -725,6 +725,12 @@ std::shared_ptr<const json> Conversation::SharedArchive() {
   return shared_archive_;
 }
 
+size_t Conversation::EstimatedBytes() const {
+  return SaturatingAdd(
+      SaturatingAdd(JsonEstimatedBytes(messages_), display_bytes_),
+      static_cast<size_t>(std::max<int64_t>(0, archive_bytes_)));
+}
+
 std::string Conversation::ArchiveText() const {
   std::string text = "[";
   text.reserve(static_cast<size_t>(archive_bytes_) + 2);

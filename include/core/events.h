@@ -169,6 +169,10 @@ class SessionJournal {
   uint64_t changes_ UAGENT_GUARDED_BY(mutex_) = 0;
   mutable uint64_t flushed_changes_ UAGENT_GUARDED_BY(mutex_) = 0;
   mutable std::string flushed_path_ UAGENT_GUARDED_BY(mutex_);
+  // Lines added since the last flush, and whether the file holds lines the
+  // ring no longer does (or a torn one), which only a rewrite can fix.
+  mutable size_t unflushed_ UAGENT_GUARDED_BY(mutex_) = 0;
+  mutable bool rewrite_ UAGENT_GUARDED_BY(mutex_) = true;
 };
 
 // Directly owns the built-in terminal, public JSONL, private debug JSONL, and

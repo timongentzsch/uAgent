@@ -596,6 +596,35 @@ void TestSavedTranscriptIndex() {
   CHECK(SnapshotFile(borrowed) == saved);
 }
 
+// A save of the bytes already written, to a file nobody touched, writes
+// nothing; a changed record or a file someone else rewrote is written.
+void TestSaveSkipsUnchangedFile() {
+  TestWorkspace workspace("save-unchanged");
+  const std::string path = (workspace.workspace / "session.json").string();
+  SessionRecord record;
+  record.metadata.cwd = "/work";
+  record.metadata.model = "m";
+  record.metadata.session_id = "s";
+  record.state.messages =
+      json::array({{{"role", "system"}, {"content", "sys"}}});
+  record.state.message_kinds = {MessageKind::kSystem};
+  record.state.display = json::object();
+  SavedFile saved;
+  REQUIRE(SessionStore::Save(path, record, nullptr, &saved).Ok());
+  const FileStamp first = SnapshotFile(path);
+  REQUIRE(SessionStore::Save(path, record, nullptr, &saved).Ok());
+  CHECK(SnapshotFile(path) == first);
+  record.metadata.title = "changed";
+  REQUIRE(SessionStore::Save(path, record, nullptr, &saved).Ok());
+  CHECK(SnapshotFile(path) != first);
+  const FileStamp second = SnapshotFile(path);
+  REQUIRE(SessionStore::Save(path, record, nullptr, &saved).Ok());
+  CHECK(SnapshotFile(path) == second);
+  std::filesystem::remove(path);
+  REQUIRE(SessionStore::Save(path, record, nullptr, &saved).Ok());
+  CHECK(std::filesystem::exists(path));
+}
+
 void TestCompactionKeepsDisplayIdentity() {
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),

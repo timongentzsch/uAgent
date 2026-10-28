@@ -294,9 +294,11 @@ void SessionJournal::Append(const Event& event,
          (lines_.size() >= kMaxEvents || bytes_ + line_bytes > kMaxBytes)) {
     bytes_ -= lines_.front().size() + 1;
     lines_.pop_front();
+    rewrite_ = true;
   }
   bytes_ += line_bytes;
   lines_.push_back(std::move(line));
+  ++unflushed_;
   ++changes_;
 }
 
@@ -323,6 +325,8 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
         JsonValue(record, "schema", "") != "uagent.session.event.v1" ||
         !record.contains("type") || !record["type"].is_string() ||
         !record.contains("data") || !record["data"].is_object()) {
+      // An append that was cut short leaves only the last line torn.
+      if (input.peek() == std::char_traits<char>::eof()) break;
       error = "session journal contains an invalid record";
       return false;
     }
@@ -340,26 +344,42 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
   lines_ = std::move(loaded);
   bytes_ = bytes;
   sequence_ = sequence;
+  rewrite_ = true;  // the first flush also drops a torn tail
   return true;
 }
 
 bool SessionJournal::Flush(const std::string& path, std::string& error) const {
   std::string content;
   uint64_t changes = 0;
+  bool append = false;
+  size_t appended = 0;
   {
     std::lock_guard lock(mutex_);
     if (!enabled_ || path.empty()) return true;
     if (flushed_path_ == path && flushed_changes_ == changes_) return true;
     changes = changes_;
+    append = flushed_path_ == path && !rewrite_ && unflushed_ > 0 &&
+             unflushed_ <= lines_.size();
+    appended = append ? unflushed_ : lines_.size();
     content.reserve(bytes_);
-    for (const std::string& line : lines_) content += line + '\n';
+    for (auto line = lines_.end() - static_cast<std::ptrdiff_t>(appended);
+         line != lines_.end(); ++line) {
+      content += *line + '\n';
+    }
   }
-  if (!WritePrivateFile(path, content, error)) {
+  // Events the file lacks are appended; it is rewritten only after lines
+  // have left the bounded ring or the journal was just read.
+  if (append) {
+    content.pop_back();
+    if (!AppendPrivateLine(path, content, error)) return false;
+  } else if (!WritePrivateFile(path, content, error)) {
     return false;
   }
   std::lock_guard lock(mutex_);
   flushed_path_ = path;
   flushed_changes_ = changes;
+  unflushed_ = 0;
+  rewrite_ = false;
   return true;
 }
 
@@ -375,6 +395,7 @@ size_t SessionJournal::Size() const {
 }
 
 void SessionJournal::ClearLocked() {
+  rewrite_ = true;
   lines_.clear();
   bytes_ = 0;
   sequence_ = 0;

@@ -236,10 +236,11 @@ class SessionHost {
     SessionLoadResult loaded;
     Conversation conversation;
     TranscriptView view{conversation};
+    size_t parsed_bytes = 0;
   };
   // Up to three immutable transcripts, most recently used first. The 32 MiB
-  // serialized-file budget permits one oversized entry, as before; it is not
-  // a process-memory bound. Readers can finish after an entry is evicted.
+  // budget counts what the parsed transcript holds, not its file's size, and
+  // permits one oversized entry. Readers can finish after an entry is evicted.
   // Loading and rendering never hold the cache or host mutex.
   std::vector<std::shared_ptr<const SavedHistory>> history_
       UAGENT_GUARDED_BY(history_mutex_);

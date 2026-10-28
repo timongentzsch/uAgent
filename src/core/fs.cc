@@ -243,6 +243,17 @@ void ForEachTreeEntry(const std::string& dir, Visit&& visit) {
   }
 }
 
+// chmod rewrites the inode even when the mode is already right.
+void RestoreMode(const std::filesystem::directory_entry& entry, int mode) {
+  std::error_code ec;
+  const auto permissions = entry.status(ec).permissions();
+  if (!ec && (static_cast<unsigned>(permissions) & 0777U) ==
+                 static_cast<unsigned>(mode)) {
+    return;
+  }
+  chmod(entry.path().c_str(), static_cast<mode_t>(mode));
+}
+
 void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
                        int64_t max_files) {
   namespace fs = std::filesystem;
@@ -262,9 +273,9 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
     std::error_code ec;
     if (entry.is_symlink(ec)) return;
     if (entry.is_directory(ec)) {
-      chmod(entry.path().c_str(), kPrivateDirMode);
+      RestoreMode(entry, kPrivateDirMode);
     } else if (entry.is_regular_file(ec)) {
-      chmod(entry.path().c_str(), kPrivateFileMode);
+      RestoreMode(entry, kPrivateFileMode);
       std::error_code time_error;
       Entry artifact{entry.path(), entry.last_write_time(time_error)};
       if (time_error) return;
@@ -358,6 +369,22 @@ void MaintainArtifacts() {
     unlink(lease.substr(0, lease.size() - 5).c_str());
     unlink(lease.c_str());
   }
+}
+
+void MaintainArtifactsDaily() {
+  namespace fs = std::filesystem;
+  const std::string stamp = GlobalBase() + "/" + kMaintenanceStamp;
+  std::error_code ec;
+  const auto modified = fs::last_write_time(stamp, ec);
+  if (!ec && fs::file_time_type::clock::now() - modified <
+                 std::chrono::hours(kMaintenanceIntervalHours)) {
+    return;
+  }
+  MaintainArtifacts();
+  // Written after the pass: one that died midway runs again at the next start.
+  CreatePrivateDirectories(fs::path(stamp).parent_path());
+  std::string error;
+  WritePrivateFile(stamp, "", error);
 }
 
 std::string UniqueSeed() {

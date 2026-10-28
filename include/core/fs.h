@@ -197,6 +197,8 @@ void PruneSessionJournalOrphans(const std::string& dir);
 
 // Age- and count-bound every directory the agent writes to.
 void MaintainArtifacts();
+// MaintainArtifacts at most once a day, however many sessions start.
+void MaintainArtifactsDaily();
 
 // Restrict to [A-Za-z0-9_-] and cap the length. The cap differs by consumer:
 // file components and protocol-visible tool names have different limits.

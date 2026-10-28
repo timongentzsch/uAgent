@@ -209,7 +209,7 @@ export function useHost(
         operation: "apply",
         changes: [{ key: "UAGENT_VERBOSITY", value: level }],
       });
-      // Saved, yet the environment or a project's config still decides it.
+      // Saved, yet the environment or a folder's config still decides it.
       const shadowed = saved.effects.find((item) => item.effect === "shadowed");
       if (shadowed) throw new Error(`${shadowed.key}: ${shadowed.text}`);
       setVerbosityLevel(level);

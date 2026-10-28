@@ -24,7 +24,7 @@ import { LiveActivities } from "../../state/live-activities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { coarsePointer } from "../../shared/layout.ts";
-import { active } from "../../shared/activity-status.tsx";
+import { active } from "../../shared/turn-status.tsx";
 import { getToolRow } from "./tool-preview.ts";
 
 // A fence longer than any backtick run in the body, so code never ends early.

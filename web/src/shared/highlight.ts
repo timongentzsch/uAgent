@@ -21,6 +21,9 @@ import {
   maxHighlightCacheEntries,
   maxHighlightChars,
 } from "./limits.ts";
+// Code highlighting, loaded only when a reply or file has code: the grammars
+// the app ships, a cache of highlighted blocks, and per-line output for files.
+
 for (const [name, grammar] of Object.entries({
   javascript,
   typescript,

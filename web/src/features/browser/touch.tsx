@@ -19,6 +19,9 @@ import {
 } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 
+// Direct touch on the remote screen: taps, scrolls, drags, right-clicks and
+// pinch, turned into RFB pointer events. Used by the browser dialog.
+
 type Gesture =
   | { kind: "pending"; start: Point }
   | { kind: "scroll"; travel: Point; at: Point }

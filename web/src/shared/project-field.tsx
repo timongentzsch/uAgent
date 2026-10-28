@@ -1,6 +1,8 @@
 import { useState } from "preact/hooks";
 import { Field, Input } from "./ui.tsx";
 
+// A folder chosen by typing a path or picking one the host already lists.
+
 export function ProjectField({
   value,
   projects,

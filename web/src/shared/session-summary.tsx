@@ -4,6 +4,9 @@ import { cost, count } from "./quantities.ts";
 import { contextSummary } from "../state/context-summary.ts";
 import { Button, DataText, updateChecked } from "./ui.tsx";
 
+// The context meter and cost summary of a conversation, shared by the
+// composer and the inspector.
+
 function ContextSummaryView({
   state,
   open,

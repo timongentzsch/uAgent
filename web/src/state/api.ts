@@ -11,6 +11,10 @@ import type {
 import { commandReceiptWaitMs } from "../shared/limits.ts";
 import { failure } from "../shared/types.ts";
 
+// Every call the page makes to the host: the route table, `api` for plain
+// requests, `command` for the host's command protocol with its receipts, and
+// uploads and paged reads.
+
 export const protocol = 2;
 
 // Every host path the page calls, so a path is written once.
@@ -43,11 +47,15 @@ export const routes = {
   ) => `/api/sessions/${session}/files?${mode}=${encodeURIComponent(value)}`,
 };
 
+// A random 32-hex id for a command: the host answers and deduplicates by it.
 export const requestId = () =>
   [...crypto.getRandomValues(new Uint8Array(16))]
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
 
+// A request to the host: a GET, or a POST of `body` as JSON. Resolves to the
+// parsed answer. A failure throws with `status` set when the host answered,
+// `network` when nothing did, and `rejected` when it refused a command.
 export async function api<T = unknown>(
   path: string,
   body?: unknown,
@@ -94,6 +102,9 @@ export function uploadAttachment(session: string, file: File, name: string) {
   });
 }
 
+// Reads a body the host serves in pages and joins it: `path` ends in a query
+// and gets `&offset=`, or is a function of the offset. `limit` is in bytes of
+// text; past it the read fails.
 export async function readPages(
   path: string | ((offset: number) => Promise<BodyPage>),
   signal?: AbortSignal,

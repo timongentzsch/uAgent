@@ -37,6 +37,9 @@ import { ListRow } from "../../shared/list-row.tsx";
 import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
 
+// The Library page: memories and skills for all conversations and per folder,
+// with an editor, import and per-item rename and delete.
+
 type Draft = {
   item: LibraryItem;
   content: string;

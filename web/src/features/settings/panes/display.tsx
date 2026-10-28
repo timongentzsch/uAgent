@@ -5,6 +5,9 @@ import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
 import { devicePrefs } from "../../../shared/device-prefs.ts";
 import { useStored } from "../../../shared/storage.ts";
 
+// Settings → This browser: theme, motion, zoom and time format, all kept on
+// this device only.
+
 const { theme: themePref, motion: motionPref, zoom: zoomPref } = devicePrefs;
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",

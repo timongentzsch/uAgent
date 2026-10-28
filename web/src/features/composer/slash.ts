@@ -1,5 +1,8 @@
 import type { SlashCommand } from "../../shared/types.ts";
 
+// Slash-command matching and parsing for the composer, free of UI so node
+// tests can run it.
+
 export function slashMatches(commands: SlashCommand[], text: string) {
   return /^\/[^\s]*$/.test(text)
     ? commands.filter(

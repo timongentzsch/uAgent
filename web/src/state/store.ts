@@ -13,6 +13,9 @@ import type {
 } from "../shared/types.ts";
 import { retainedBackgroundViews, maxHttpExchanges } from "../shared/limits.ts";
 
+// Pure updates to snapshots, drafts and the catalogue for each kind of
+// event. They keep object identity when nothing changed so views skip frames.
+
 export const emptyDraft = (): Draft => ({ text: "", files: [] });
 // Unsent work: text or a file, uploaded or still uploading.
 export const hasContent = (draft: Draft) =>

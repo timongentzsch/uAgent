@@ -10,6 +10,9 @@ import { ChevronDown } from "lucide-preact";
 import { coarsePointer, observeResize, zoomChanged } from "./layout.ts";
 import { focusFontFloor } from "./limits.ts";
 
+// Input, Textarea and Select: the native controls with the app's shared
+// wrapper and sizing. Screens use these, not raw elements.
+
 type ControlElement =
   | HTMLInputElement
   | HTMLTextAreaElement

@@ -2,6 +2,8 @@ import type { View } from "../../shared/types.ts";
 import { Button } from "../../shared/ui.tsx";
 import "./chat.css";
 
+// The top of a transcript: the button that loads older rows.
+
 export default function HistoryStart({
   view,
   online,

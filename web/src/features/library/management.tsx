@@ -4,6 +4,9 @@ import { Field, Select } from "../../shared/ui.tsx";
 import { useResource } from "../../shared/use-resource.ts";
 import "./management.css";
 
+// Shared pieces of the Library and Scheduled pages: the list loader and the
+// scope selector.
+
 export function useLibrary(
   kind: "memory" | "skills",
   cwd: string,

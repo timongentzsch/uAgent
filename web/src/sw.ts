@@ -1,3 +1,6 @@
+// The service worker: precaches the app shell, keeps the renderer files
+// across updates and shows notifications. It never caches API traffic.
+
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: import("workbox-precaching").PrecacheEntry[];
 };

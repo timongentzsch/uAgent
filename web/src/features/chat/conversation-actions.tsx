@@ -9,6 +9,8 @@ import {
 } from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
+// The dialog body that renames or deletes a conversation or a workspace.
+
 export default function ConversationActions({
   modal,
   online,

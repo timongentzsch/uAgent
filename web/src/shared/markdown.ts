@@ -1,4 +1,8 @@
 import MarkdownIt from "markdown-it";
+// The Markdown renderer: markdown-it with the app's link and heading rules,
+// split into keyed top-level blocks so a streaming reply re-renders only its
+// tail. Loaded on demand through markdown-view.tsx.
+
 const markdown = new MarkdownIt({ html: false, linkify: false, breaks: false });
 const safeURL = (url: string) =>
   /^(https?:|mailto:)/i.test(url) || /^(?!\/\/)[/#]/.test(url);

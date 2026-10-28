@@ -3,6 +3,9 @@ import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { devicePrefs, type Pane } from "./device-prefs.ts";
 
+// Docked panes (the sidebar, files, the plan) beside the chat: their resize
+// handle and the layout that gives each pane its width.
+
 const rem = () =>
   Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
 

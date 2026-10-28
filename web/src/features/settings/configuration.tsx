@@ -17,6 +17,9 @@ import { useConfiguration } from "./config/use-configuration.ts";
 import "./configuration.css";
 import { matches } from "../../shared/fuzzy.ts";
 
+// The registry settings of the open scope (all conversations or this folder),
+// grouped by category with search and a reset for the whole scope.
+
 const WHOLE = {
   user: {
     reset: "Reset all to defaults",
@@ -49,7 +52,7 @@ export default function Configuration({
   sessions,
 }: {
   scope: SavedScope;
-  // The open conversation's folder: the project, and whose overrides show.
+  // The open conversation's folder, whose overrides show.
   folder?: string;
   // Counts every saved change, whoever made it.
   version: number;

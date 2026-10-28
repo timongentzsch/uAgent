@@ -2,6 +2,8 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Button, Modal, useDialogClose } from "./ui.tsx";
 
+// A button whose content opens in a sheet.
+
 type Content = ComponentChildren | ((close: () => void) => ComponentChildren);
 
 // Hands content the close of the sheet it is drawn in.

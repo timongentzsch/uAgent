@@ -6,6 +6,10 @@ import {
 } from "./transcript-bookmarks.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
+// Scrolling for the transcript: following the end, keeping the reader's row
+// in place while history loads or rows change height, and restoring a
+// position when a conversation is reopened.
+
 type Anchor = {
   node: HTMLElement;
   message: string;

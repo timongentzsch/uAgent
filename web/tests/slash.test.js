@@ -11,6 +11,8 @@ const commands = [
   { command: "/quit", aliases: ["/exit"], argument: "" },
   { command: "/model", aliases: [], argument: "NAME" },
   { command: "/rename", aliases: [], argument: "TITLE" },
+  { command: "/config", aliases: [], argument: "[KEY]" },
+  { command: "/context", aliases: [], argument: "" },
   {
     command: "/clear",
     aliases: [],
@@ -20,7 +22,8 @@ const commands = [
   },
 ];
 test("slash completion uses the CLI common-prefix and argument rules", () => {
-  assert.equal(slashCompletion(slashMatches(commands, "/mo")), "/model");
+  assert.equal(slashCompletion(slashMatches(commands, "/co")), "/con");
+  assert.equal(slashCompletion(slashMatches(commands, "/mo")), "/model ");
   assert.equal(slashCompletion(slashMatches(commands, "/h")), "/help");
   assert.equal(slashCompletion(slashMatches(commands, "/rename")), "/rename ");
   for (const text of ["hello /h", "/model name", "/help\nmore", ""])

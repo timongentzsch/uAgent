@@ -387,15 +387,29 @@ function App() {
           )
       : undefined;
   // What the terminal hands the conversation: added to its draft, never sent.
+  // On a small screen the terminal covers the chat, so it steps aside; its
+  // shells keep running and reattach when it opens again.
   const addToChat = useCallback(
     (text: string) => {
       updateDraft(selected, (current) => ({
         ...current,
         text: current.text ? `${current.text}\n${text}` : text,
       }));
+      if (compact) setTerminalOpen(false);
       focusComposer();
     },
-    [updateDraft, selected],
+    [updateDraft, selected, compact],
+  );
+  const terminal = (
+    <Deferred
+      load={terminalPanel}
+      fallback={<Spinner label="Opening the terminal…" />}
+      cwd={session ? folderOf(session) : ""}
+      request={terminalRequest}
+      addToChat={page === "chat" && session && online ? addToChat : undefined}
+      close={() => setTerminalOpen(false)}
+      report={report}
+    />
   );
   const shortcutActions = {
     // ⌘K again closes it, as Spotlight's own key does.
@@ -632,27 +646,29 @@ function App() {
                       find={find}
                       closeFind={closeFind}
                     />
-                    {terminalOpen && terminalAvailable && (
+                    {terminalOpen && terminalAvailable && !compact && (
                       <section class="terminal-dock" aria-label="Terminal">
                         <ResizeHandle
                           pane="terminal"
                           label="Resize the terminal"
                           edge="top"
                         />
-                        <Deferred
-                          load={terminalPanel}
-                          fallback={<Spinner label="Opening the terminal…" />}
-                          cwd={session ? folderOf(session) : ""}
-                          request={terminalRequest}
-                          addToChat={
-                            page === "chat" && session && online
-                              ? addToChat
-                              : undefined
-                          }
-                          close={() => setTerminalOpen(false)}
-                          report={report}
-                        />
+                        {terminal}
                       </section>
+                    )}
+                    {terminalOpen && terminalAvailable && compact && (
+                      // A docked strip under the chat is too small to type in
+                      // once the keyboard is up: on a small screen the
+                      // terminal takes the whole display, as the browser does.
+                      <Modal
+                        title="Terminal"
+                        layout="sheet"
+                        className="terminal-sheet"
+                        header={false}
+                        close={() => setTerminalOpen(false)}
+                      >
+                        {terminal}
+                      </Modal>
                     )}
                   </main>
                 </div>

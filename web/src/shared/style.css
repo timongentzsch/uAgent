@@ -39,7 +39,7 @@
      and the 44px a touch needs. */
   --control-s: calc(24rem / 14);
   --control-m: calc(32rem / 14);
-  --control-l: calc(40rem / 14);
+  --control-l: calc(36rem / 14);
   --touch: calc(44rem / 14);
   /* A radio button or a switch's thumb; a logo or loading mark. */
   --icon-l: calc(20rem / 14);
@@ -80,7 +80,7 @@
   /* Line heights: snug for labels and short rows, prose for reading text. */
   --leading: 1.5;
   --leading-snug: 1.4;
-  --leading-prose: 1.6;
+  --leading-prose: 1.5;
   /* Icons: --icon beside text in a control, --icon-s for a spinner. */
   --icon: 1.1rem;
   --icon-s: 1rem;
@@ -113,8 +113,10 @@
   --z-skip-link: 20;
   --dialog-width: calc(560rem / 14);
   --dialog-height: calc(680rem / 14);
-  --gap: var(--space-4);
-  --pad: var(--space-6);
+  /* One density on every screen: what a phone needed is enough on a wide
+     one too, and more of the conversation fits. */
+  --gap: var(--space-3);
+  --pad: var(--space-4);
   background: var(--bg);
   color: var(--text);
   /* % of the user's browser font size (never px) so their preference is
@@ -1544,10 +1546,6 @@ dialog section {
   }
 }
 @media (max-width: 600px) {
-  :root {
-    --pad: var(--space-4);
-    --gap: var(--space-3);
-  }
   .conversation-head h1 {
     font-size: var(--font-body);
   }

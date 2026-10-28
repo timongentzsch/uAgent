@@ -104,3 +104,19 @@
   flex: 1;
   min-height: 0;
 }
+/* On a small screen the terminal takes the whole display, as the browser
+   does; the sheet follows the visible area, so the keyboard shrinks it
+   instead of covering it. */
+dialog.terminal-sheet[data-layout="sheet"] {
+  --dialog-width: 100vw;
+  border-width: 0;
+}
+.terminal-sheet > .dialog-body {
+  display: flex;
+  padding: 0;
+  overflow: clip;
+}
+.terminal-sheet > .dialog-body > * {
+  flex: 1;
+  min-height: 0;
+}

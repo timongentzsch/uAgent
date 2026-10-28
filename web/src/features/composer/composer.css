@@ -15,7 +15,7 @@
   background: var(--raised);
 }
 .composer > form > .message-input {
-  --input-min-height: max(calc(40rem / 14), calc(1.5em + var(--space-6)));
+  --input-min-height: max(var(--control-l), calc(1.5em + var(--space-4)));
   --input-padding-y: var(--space-3);
 }
 .composer > form > .message-input > textarea {

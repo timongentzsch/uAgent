@@ -37,8 +37,10 @@ const SESSIONS = [
 ];
 const HISTORY = Array.from({ length: 120 }, (_, index) => ({
   id: `m-${index}`,
-  kind: index % 2 ? "assistant" : "user",
-  text: `Message ${index} with a sentence of history.`,
+  parent: index % 2 ? `m-${index - 1}` : null,
+  kind: index % 2 ? "message" : "turn",
+  ...(index % 2 && { role: "assistant" }),
+  body: { kind: "text", text: `Message ${index} with a sentence of history.` },
   sequence: index + 1,
 }));
 
@@ -175,9 +177,9 @@ const streamReply = (page) =>
       kind: "block",
       block: {
         id: "reply",
-        response_id: "reply",
-        kind: "assistant",
-        text: "",
+        parent: "m-118",
+        kind: "message",
+        role: "assistant",
         streaming: true,
         sequence: testSequence,
       },
@@ -195,12 +197,14 @@ const streamReply = (page) =>
             kind: "block",
             block: {
               id: `tool-${index}`,
-              kind: "tool_result",
-              response_id: "reply",
-              name: "read_path",
-              arguments: JSON.stringify({ path: `file-${index}.ts` }),
+              parent: "w-m-118",
+              kind: "call",
+              headline: {
+                verb: state === "ok" ? "Read" : "Reading",
+                target: `file-${index}.ts`,
+              },
               state,
-              text: state === "ok" ? "read" : "",
+              ...(state === "ok" && { body: { kind: "text", text: "read" } }),
               sequence: testSequence,
             },
           });
@@ -236,10 +240,11 @@ test("streaming renders only what changed", async ({ page }) => {
       kind: "block",
       block: {
         id: "spawn",
-        kind: "tool_result",
-        name: "spawn",
+        parent: "w-m-118",
+        kind: "call",
+        headline: { verb: "Started", target: "agent" },
         state: "ok",
-        text: "started",
+        body: { kind: "text", text: "started" },
         parts: [{ kind: "link", to: "agent", id: "child", label: "Open" }],
         sequence: testSequence,
       },
@@ -250,10 +255,11 @@ test("streaming renders only what changed", async ({ page }) => {
         kind: "block",
         block: {
           id: `failed-${index}`,
-          kind: "tool_result",
-          name: "read_path",
+          parent: "w-m-118",
+          kind: "call",
+          headline: { verb: "Read", target: "missing.ts" },
           state: "failed",
-          text: "missing",
+          body: { kind: "text", text: "missing" },
           sequence: testSequence,
         },
       });

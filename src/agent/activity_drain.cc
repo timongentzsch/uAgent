@@ -18,6 +18,7 @@
 #include "include/agent/agent.h"
 #include "include/agent/conversation.h"
 #include "include/agent/memory_store.h"
+#include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/core/debug.h"
 #include "include/core/defaults.h"
@@ -151,11 +152,11 @@ void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
     block["activity"]["category"] = "memory";
     block["memory"] = {{"action", event.action},
                        {"key", event.key},
-                       {"automatic", event.automatic},
-                       {"minor", minor}};
+                       {"automatic", event.automatic}};
+    if (minor) block["routine"] = true;
     block["turn_root"] = turn_root_;
     block = conversation_.RecordEntry(std::move(block));
-    Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+    Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
     // The preview continues the notice, indented under its dot.
     if (!event.preview.empty()) line += "\n  " + event.preview;
     Emit(NoticeEvent(
@@ -216,8 +217,9 @@ void Agent::DeliverActivityCompletions(
     // supervisor no longer retains the activity.
     block["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
     block["agent_id"] = completion.source_id;
+    block["turn_root"] = turn_root_;
     block = conversation_.RecordEntry(std::move(block));
-    Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+    Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
     Event display{
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},

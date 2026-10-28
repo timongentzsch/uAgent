@@ -29,7 +29,7 @@ SESSION_UNITS = (
     "src/app/session_transport.cc",
     "src/app/session_worker.cc",
     # The view reducer builds the `block` patches the host publishes.
-    "src/agent/session_view.cc",
+    "src/agent/view_reducer.cc",
 )
 WEB_STATE = ("web/src/state", "web/src/app")
 # Frame handlers live in the host-data layer; the app shell only issues
@@ -86,10 +86,9 @@ DOCUMENTED_INTERNAL = frozenset(
     }
 )
 
-# Row kinds the view reducer writes inside `block` frames, spelled like a
-# frame kind in session_view.cc but never one; `activity` is also the
-# terminal's command for activity operations.
-ROW_KINDS = frozenset({"activity", "assistant", "tool_result"})
+# Spelled like a frame kind but never one: `activity` is the terminal's
+# command for activity operations.
+ROW_KINDS = frozenset({"activity"})
 
 PRODUCED = re.compile(r'\{"kind",\s*"([A-Za-z._-]+)"')
 

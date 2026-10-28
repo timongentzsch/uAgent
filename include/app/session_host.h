@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/asset_store.h"
 #include "include/app/outcome_store.h"
 #include "include/app/replay_log.h"

@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "include/agent/session_role.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"

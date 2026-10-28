@@ -17,6 +17,7 @@ import type {
   Agent,
   InspectorTarget,
   JSONValue,
+  NodeView,
   RawOptions,
   Report,
   SessionRef,
@@ -34,6 +35,7 @@ import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../../state/history-page.ts";
+import { adoptView } from "../../state/store.ts";
 import {
   Button,
   cleanText,
@@ -117,6 +119,9 @@ async function fetchActivityDetail(
   );
   if (response.pending)
     throw new Error("Activity is still loading. Try again shortly.");
+  response.result.conversation = adoptView(
+    response.result.conversation as unknown as NodeView | undefined,
+  );
   await prepareHistoryBlocks(response.result.conversation?.blocks || []);
   return {
     ...item,

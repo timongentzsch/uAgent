@@ -262,9 +262,6 @@ void Agent::PushAssistantMessage(ChatResult& response,
   usage.Add(response.usage);
   json facts = {
       {"response_id", response.response_id},
-      {"content_revision", 1},
-      {"content_complete", true},
-      {"text_bytes", response.content.size()},
       {"time", response.started_at.empty() ? UtcStamp() : response.started_at},
       {"route", RouteSelection(api_, LoadProviderCatalog().providers)},
       {"duration_ms", response.duration_ms},
@@ -283,10 +280,7 @@ void Agent::PushAssistantMessage(ChatResult& response,
   // Only the preview the view shows is kept; more would crowd out other facts.
   conversation_.RecordDisplay(
       conversation_.LastDisplayId(),
-      {{"reasoning", Utf8Trunc(response.reasoning, kPreviewChars)},
-       {"reasoning_revision", 1},
-       {"reasoning_complete", true},
-       {"reasoning_bytes", response.reasoning.size()}});
+      {{"reasoning", Utf8Trunc(response.reasoning, kPreviewChars)}});
   PublishMessage();
 }
 

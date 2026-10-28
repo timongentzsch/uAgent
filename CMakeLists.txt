@@ -182,7 +182,9 @@ add_library(
   src/agent/session_links.cc
   src/agent/session_store.cc
   src/agent/session_search.cc
-  src/agent/session_view.cc
+  src/agent/transcript_query.cc
+  src/agent/transcript_tree.cc
+  src/agent/view_reducer.cc
   src/agent/tool_loop.cc
   src/agent/trace.cc
   src/agent/turn.cc
@@ -386,6 +388,7 @@ if(BUILD_TESTING)
     tests/unit/config_registry_test.cc
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
+    tests/unit/transcript_tree_test.cc
     tests/unit/events_test.cc
     tests/unit/filesystem_test.cc
     tests/unit/math_test.cc

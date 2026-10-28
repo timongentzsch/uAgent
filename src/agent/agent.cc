@@ -13,8 +13,8 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
 #include "include/agent/trace.h"
+#include "include/agent/transcript.h"
 #include "include/api/exchange.h"
 #include "include/core/checked.h"
 #include "include/core/config_registry.h"
@@ -249,7 +249,7 @@ void Agent::PublishMessage(const std::string& request_id) {
     reply_to_ = conversation_.LastDisplayId();
     if (turn_root_.empty()) turn_root_ = reply_to_;
   }
-  json links = {{"turn_root", turn_root_}, {"reply_to", reply_to_}};
+  json links = {{"turn_root", turn_root_}};
   if (kind == MessageKind::kAssistant) links["http"] = api_.http_exchanges;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(links));
   if (kind == MessageKind::kAssistant) {
@@ -262,9 +262,8 @@ void Agent::PublishMessage(const std::string& request_id) {
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"request_id", request_id}});
   }
-  json block = LastMessageView(conversation_);
-  if (!block.is_null()) {
-    Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+  for (json& node : LastNodes(conversation_)) {
+    Emit(Event{EventId::kMessageChanged, {{"block", std::move(node)}}});
   }
 }
 

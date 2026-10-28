@@ -41,6 +41,8 @@ struct CallTask {
   std::optional<ToolArgumentIssue> issue;
   std::string trace_status;
   std::string label;
+  // How the call reads once it ended (CallHeadline).
+  json headline;
   double duration_ms = 0;
   bool execute = false;
   bool started = false;

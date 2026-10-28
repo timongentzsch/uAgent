@@ -185,6 +185,43 @@ export interface MemoryNote {
   automatic: boolean;
   minor?: boolean;
 }
+// One node of the transcript tree as the host sends it (include/agent/
+// node.h): `parent` links it into the tree, and the fields beside the
+// contract's are those its kind carries.
+export interface Node {
+  id: string;
+  parent: string | null;
+  kind:
+    | "turn"
+    | "message"
+    | "work"
+    | "group"
+    | "call"
+    | "thinking"
+    | "notice"
+    | "footer";
+  sequence?: number;
+  time?: string;
+  state?: RowState;
+  routine?: boolean;
+  headline?: { verb: string; target: string };
+  result?: ResultFacts;
+  body?: { kind: BodyKind; text: string; truncated?: boolean; tail?: string };
+  // A message's author: you (or mail), or the agent.
+  role?: "user" | "assistant";
+  request_id?: string;
+  incoming?: number;
+  streaming?: boolean;
+  input?: ToolPart[];
+  parts?: ToolPart[];
+  category?: string;
+  change_path?: string;
+  origin?: string;
+  files?: Asset[];
+  memory?: MemoryNote;
+  summary?: TurnSummary;
+  compaction?: CompactionBlock["compaction"];
+}
 // The fields every block carries; `kind` says which others it has.
 interface BlockBase {
   id: string;
@@ -192,8 +229,6 @@ interface BlockBase {
   time?: string;
   text?: string;
   truncated?: boolean;
-  text_bytes?: number;
-  content_complete?: boolean;
   turn_root?: string;
 }
 // How an attachment reached the model.
@@ -206,7 +241,6 @@ interface Delivery {
 // A message a turn answers; its failed model calls keep their HTTP capture
 // on it, as the reply that never came cannot.
 interface Answered {
-  reply_to?: string;
   http?: Exchange[];
 }
 // What a person typed, or mail from another session or the harness.
@@ -238,11 +272,7 @@ export interface AssistantBlock extends BlockBase, Answered {
   kind: "assistant";
   incoming?: number;
   response_id?: string;
-  content_revision?: number;
   reasoning?: string;
-  reasoning_revision?: number;
-  reasoning_complete?: boolean;
-  reasoning_bytes?: number;
   streaming?: boolean;
   request_id?: string;
   files?: Asset[];
@@ -268,7 +298,6 @@ export interface ToolBlock extends BlockBase, Answered, Finished {
   view?: ToolView;
   activity?: ToolActivity;
   duration_ms?: number;
-  error_code?: string;
   // The diff lines of what the call changed; its counts are in `result`.
   change?: string;
   change_path?: string; // set when `change` is only a stored diff's opening
@@ -276,8 +305,6 @@ export interface ToolBlock extends BlockBase, Answered, Finished {
   parts?: ToolPart[];
   // The end of a result whose text preview holds only its start.
   tail?: string;
-  // A retained result whose receipt is gone.
-  artifact?: boolean;
   // Files a tool's attachment block brought; the page joins them to the row.
   files?: Asset[];
 }
@@ -350,6 +377,8 @@ export type PresentedBlock = (Block | GroupBlock) & Presented;
 export type ToolRowBlock = (ToolBlock | ActivityBlock) & Presented;
 // A message of yours, held until the host confirms it.
 export type Outgoing = UserBlock & { request_id: string; session_id: string };
+// A view as the host sends it, before the page adopts it (store.ts).
+export type NodeView = Omit<View, "blocks"> & { blocks: Node[] };
 export interface View {
   blocks: Block[];
   before?: number;
@@ -665,7 +694,7 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   output?: string;
   usage?: Usage;
   statistics?: Statistics;
-  block?: Block;
+  block?: Node;
   text?: string;
   reset?: boolean;
   id?: string;
@@ -698,10 +727,10 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
 // and streamed text to append on a row the client already holds.
 export interface BlockPatch {
   kind: "block";
-  block?: Block;
+  block?: Node;
   id?: string;
   set?: Pick<AssistantBlock, "streaming">;
-  append?: { text?: string; reasoning?: string };
+  append?: { text?: string };
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
 interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {

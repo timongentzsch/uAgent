@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 

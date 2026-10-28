@@ -311,7 +311,8 @@ def test_folder_panel_is_one_session_with_its_own_tools(root, home, *, binary):
             web.until(
                 session,
                 lambda value: any(
-                    block.get("text") == "panel-ok" for block in value["state"]["view"]["blocks"]
+                    block.get("body", {}).get("text") == "panel-ok"
+                    for block in value["state"]["view"]["blocks"]
                 ),
             )
             _, body = provider.requests[-1]
@@ -415,7 +416,8 @@ def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
                             row["status"] == "completed" for row in value["state"]["activities"]
                         )
                         and sum(
-                            block.get("kind") == "assistant" and block.get("text") == "parent-done"
+                            block.get("role") == "assistant"
+                            and block.get("body", {}).get("text") == "parent-done"
                             for block in value["state"].get("view", {}).get("blocks", [])
                         )
                         >= answers
@@ -538,7 +540,7 @@ def test_panel_edit_from_here_rewinds_in_place(root, home, *, binary):
                     lambda value, answer=answer: (
                         value["metadata"]["status"] == "idle"
                         and any(
-                            block.get("text") == answer
+                            block.get("body", {}).get("text") == answer
                             for block in value["state"]["view"]["blocks"]
                         )
                     ),
@@ -550,10 +552,12 @@ def test_panel_edit_from_here_rewinds_in_place(root, home, *, binary):
                 session,
                 lambda value: (
                     not any(
-                        block.get("text") in ("second", "two-ok")
+                        block.get("body", {}).get("text") in ("second", "two-ok")
                         for block in value["state"]["view"]["blocks"]
                     )
                 ),
             )
-            users = [b["text"] for b in view["state"]["view"]["blocks"] if b["kind"] == "user"]
+            users = [
+                b["body"]["text"] for b in view["state"]["view"]["blocks"] if b["kind"] == "turn"
+            ]
             assert_true(users == ["first"], users)

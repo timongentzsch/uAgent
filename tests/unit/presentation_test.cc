@@ -11,7 +11,8 @@
 #include <utility>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/session_view.h"
+#include "include/agent/node.h"
+#include "include/agent/transcript.h"
 #include "include/cli/options.h"
 #include "include/core/defaults.h"
 #include "include/core/style.h"
@@ -80,17 +81,24 @@ class FixedWidth {
   int saved_in_ = -1;
 };
 
-// A tool row as the transcript view holds it.
-// A row in `state`, its result worded `word`, or by its state when it did not
-// succeed.
+// What was recorded of a call in `state`, its result worded `word`, or by
+// its state when it did not succeed.
+json Record(const std::string& id, const std::string& name,
+            const std::string& state, const std::string& text,
+            std::string word = "") {
+  if (word.empty() && state != "ok") word = state;
+  return {{"detail_id", "t-" + id},
+          {"name", name},
+          {"state", state},
+          {"result", {{"word", word}}},
+          {"output", text}};
+}
+
+// The call's node, as the transcript view holds it.
 json ToolBlock(const std::string& id, const std::string& name,
                const std::string& state, const std::string& text,
                std::string word = "") {
-  if (word.empty() && state != "ok") word = state;
-  return {{"id", "t-" + id}, {"kind", "tool_result"},
-          {"call_id", id},   {"name", name},
-          {"state", state},  {"result", {{"word", word}}},
-          {"text", text},    {"activity", json::object()}};
+  return CallNode(Record(id, name, state, text, std::move(word)), "");
 }
 
 }  // namespace
@@ -130,19 +138,19 @@ void TestToolResultRows() {
   // A change is told entirely by its headline and diff: no result row is
   // drawn under it, and a failed call's change was never made.
   json changed =
-      ToolBlock("c1", "edit_file", "ok", "edited a.txt", "+1 −1 · 20ms");
+      Record("c1", "edit_file", "ok", "edited a.txt", "+1 −1 · 20ms");
   changed["view"] = {{"verb", {"Editing", "Edited"}}, {"target", "a.txt"}};
   changed["change"] = "@line 1\n-old\n+new";
-  row = drawn(changed);
+  row = drawn(CallNode(changed, ""));
   CHECK(row.find("Edited a.txt") != std::string::npos);
   CHECK(row.find("+1 −1 · 20ms") != std::string::npos);
   CHECK(row.find("+new") != std::string::npos);
   CHECK(row.find("←") == std::string::npos);
   changed["state"] = "failed";
   changed["result"]["word"] = "failed";
-  row = drawn(changed);
+  row = drawn(CallNode(changed, ""));
   CHECK(row.find("+new") == std::string::npos);
-  CHECK(row.find("edit_file: failed: edited a.txt") != std::string::npos);
+  CHECK(row.find("Edited a.txt: failed: edited a.txt") != std::string::npos);
 
   // A script's output summarises as its first line and what follows; the
   // full level prints it, indented under its row.
@@ -155,10 +163,11 @@ void TestToolResultRows() {
   CHECK(drawn(script, "full").find("\n    30") != std::string::npos);
   // A command's last lines stay under its row; a long result's row holds its
   // start and its end, and says only that there is more.
-  json command = ToolBlock("c3", "run", "ok", "1\n2\n3…");
+  json command = Record("c3", "run", "ok", "1\n2\n3…");
   command["body_kind"] = "tail";
   command["truncated"] = true;
   command["tail"] = "99\n100\n";
+  command = CallNode(command, "");
   row = drawn(command);
   CHECK(row.find("← run: 1 … · more than ") != std::string::npos);
   CHECK(row.find("    …99\n") != std::string::npos);
@@ -208,15 +217,17 @@ void TestToolResultRows() {
   CHECK(DisplayWidth("\xe4\xb8\xad") == 2);
 }
 
-// A live row arrives as its call and again once it has finished; a resumed
-// one arrives finished. Each draws the call line and then the result once.
+// A live call arrives running and again once it has finished; a resumed one
+// arrives finished. Each draws the call line, as the call stood then, and
+// the result once.
 void TestToolRowsDrawLiveAsResumed() {
-  json running = ToolBlock("c1", "read_path", "running", "");
-  running["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
-  running["activity"] = {{"label", "a.txt"}};
-  json finished = running;
-  finished["state"] = "ok";
-  finished["text"] = "alpha";
+  json record = Record("c1", "read_path", "running", "");
+  record["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
+  record["activity"] = {{"label", "a.txt"}};
+  const json running = CallNode(record, "");
+  record["state"] = "ok";
+  record["output"] = "alpha";
+  const json finished = CallNode(record, "");
   std::string live;
   const std::string resumed = CaptureStdout([&] {
     TerminalPresenter presenter;
@@ -233,50 +244,46 @@ void TestToolRowsDrawLiveAsResumed() {
       presenter.Block(finished);
     });
   }
-  CHECK(live == resumed);
-  CHECK(resumed.find("← read_path: alpha") != std::string::npos);
+  CHECK(resumed.find("→ Read a.txt") != std::string::npos);
+  CHECK(resumed.find("← Read a.txt: alpha") != std::string::npos);
+  CHECK(live.substr(live.find("←")) == resumed.substr(resumed.find("←")));
 
-  // Tool-only assistant blocks print no bare mark line, like live.
+  // A reply holding no text prints no bare mark line, like live.
   CHECK(CaptureStdout([] {
           TerminalPresenter presenter;
-          presenter.Block({{"kind", "assistant"}, {"text", ""}});
+          presenter.Block({{"kind", "message"}, {"role", "assistant"}});
         }).empty());
 
   // A rejected call has no verb: it shows the arguments it sent, and a
   // multiline label (a script) is shown whole, never cut to a line.
-  json rejected = running;
-  rejected.erase("view");
-  rejected["activity"]["label"] = R"({"path":"visible-target"})";
+  json rejected = Record("c1", "read_path", "running", "");
+  rejected["activity"] = {{"label", R"({"path":"visible-target"})"}};
   const std::string script = "first\n" + std::string(4096, 'x') + "\nlast";
-  json multiline = running;
-  multiline["id"] = "t-c2";
-  multiline["view"]["target"] = script;
+  json multiline = Record("c2", "read_path", "running", "");
+  multiline["view"] = {{"verb", {"Reading", "Read"}}, {"target", script}};
   std::string drawn = CaptureStdout([&] {
     TerminalPresenter presenter;
-    presenter.Block(rejected);
-    presenter.Block(multiline);
+    presenter.Block(CallNode(rejected, ""));
+    presenter.Block(CallNode(multiline, ""));
   });
-  CHECK(drawn.find(R"(→ read_path({"path":"visible-target"}))") !=
-        std::string::npos);
+  CHECK(drawn.find(R"(→ {"path":"visible-target"})") != std::string::npos);
   CHECK(drawn.find("Reading\n" + script) != std::string::npos);
 
-  // The grouped result whose id opens the group draws the group label, and
-  // the rest of the group draws nothing more.
-  json grouped = finished;
-  grouped["activity"]["group"] = {{"id", "c1"},
-                                  {"label", "Explored · 2 calls\x1b[2J"}};
-  json member = grouped;
-  member["id"] = "t-c2";
-  member["call_id"] = "c2";
+  // A group draws one row for the calls it folds, which draw no result.
+  record["group"] = "g-t-c1";
+  json member = record;
+  member["detail_id"] = "t-c2";
   drawn = CaptureStdout([&] {
     TerminalPresenter presenter;
-    presenter.Block(grouped);
-    presenter.Block(member);
+    presenter.Block(
+        GroupNode("g-t-c1", {{"verb", "Explored\x1b[2J"}, {"calls", 2}}));
+    presenter.Block(CallNode(record, ""));
+    presenter.Block(CallNode(member, ""));
   });
   CHECK(drawn.find("Explored") == drawn.rfind("Explored"));
   CHECK(drawn.find("alpha") == std::string::npos);
   // A label is stored text: shown, never obeyed.
-  CHECK(drawn.find("calls\\x1b[2J") != std::string::npos);
+  CHECK(drawn.find("Explored\\x1b[2J · 2 calls") != std::string::npos);
 }
 
 // Every client renders one vocabulary; the shapes below are that contract.
@@ -284,28 +291,34 @@ void TestToolRowsDrawLiveAsResumed() {
 // per group, or every call with its output. A failure always keeps its row.
 void TestVerbosityLevels() {
   auto result = [](const char* id, const char* status, const char* category,
-                   json group = nullptr) {
-    json block = ToolBlock(id, "read_path", status,
-                           std::string("body of ") + id + "\nsecond line");
-    block["view"] = {{"verb", {"Reading", "Read"}},
-                     {"target", std::string(id) + ".txt"}};
-    block["activity"] = {{"category", category}};
-    if (!group.is_null()) block["activity"]["group"] = std::move(group);
-    return block;
+                   const char* group = "") {
+    json record = Record(id, "read_path", status,
+                         std::string("body of ") + id + "\nsecond line");
+    record["view"] = {{"verb", {"Reading", "Read"}},
+                      {"target", std::string(id) + ".txt"}};
+    record["activity"] = {{"category", category}};
+    if (*group) record["group"] = group;
+    return CallNode(record, "m-1");
   };
-  const json group = {{"id", "a"}, {"label", "Explored · 2 calls"}};
   auto drawn = [&](std::string_view level) {
     return CaptureStdout([&] {
       TerminalPresenter presenter;
       presenter.SetDetail(DetailFor(level));
-      presenter.Block({{"kind", "user"}, {"text", "go"}});
-      presenter.Block(
-          {{"kind", "assistant"}, {"text", "done"}, {"reasoning", "pondered"}});
-      presenter.Block(result("a", "ok", "explore", group));
-      presenter.Block(result("b", "ok", "explore", group));
+      presenter.Block({{"id", "m-1"},
+                       {"kind", "turn"},
+                       {"body", {{"kind", "text"}, {"text", "go"}}}});
+      presenter.Block({{"kind", "thinking"},
+                       {"body", {{"kind", "text"}, {"text", "pondered"}}}});
+      presenter.Block({{"kind", "message"},
+                       {"role", "assistant"},
+                       {"body", {{"kind", "markdown"}, {"text", "done"}}}});
+      presenter.Block(GroupNode(
+          "g-t-a", {{"verb", "Explored"}, {"calls", 2}, {"turn", "m-1"}}));
+      presenter.Block(result("a", "ok", "explore", "g-t-a"));
+      presenter.Block(result("b", "ok", "explore", "g-t-a"));
       presenter.Block(result("c", "ok", "edit"));
       presenter.Block(result("d", "failed", "explore"));
-      presenter.Block({{"kind", "turn_summary"}, {"summary", json::object()}});
+      presenter.Block({{"kind", "footer"}, {"summary", json::object()}});
     });
   };
   const std::string minimal = drawn("minimal");
@@ -320,7 +333,7 @@ void TestVerbosityLevels() {
 
   const std::string standard = drawn("default");
   CHECK(standard.find("Worked") == std::string::npos);
-  CHECK(standard.find("→ Reading a.txt") != std::string::npos);
+  CHECK(standard.find("→ Read a.txt") != std::string::npos);
   CHECK(standard.find("Explored · 2 calls") != std::string::npos);
   CHECK(standard.find("body of a") == std::string::npos);
   CHECK(standard.find("body of c … · +1 lines") != std::string::npos);

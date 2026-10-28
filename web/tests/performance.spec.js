@@ -67,10 +67,9 @@ for (const labels of [false, true])
         patch({
           block: {
             id: response,
-            response_id: response,
-            kind: "assistant",
-            text: "",
-            reasoning: "",
+            parent: null,
+            kind: "message",
+            role: "assistant",
             streaming: true,
           },
         });
@@ -86,10 +85,8 @@ for (const labels of [false, true])
             const chunk = "word ".repeat(due - sent);
             if (chunk) {
               text += chunk;
-              patch({
-                id: response,
-                append: { text: chunk, reasoning: chunk },
-              });
+              patch({ id: response, append: { text: chunk } });
+              patch({ id: `${response}:thinking`, append: { text: chunk } });
             }
             const nextAction = Math.floor(due / 1000);
             if (nextAction !== action) {
@@ -107,12 +104,11 @@ for (const labels of [false, true])
               const row = (id, status, text) => ({
                 block: {
                   id: `t-${action}-${id}`,
-                  kind: "tool_result",
-                  response_id: response,
-                  name: "read_path",
-                  arguments: JSON.stringify({ path: `module-${action}.ts` }),
+                  parent: null,
+                  kind: "call",
+                  headline: { verb: "Read", target: `module-${action}.ts` },
                   state: status,
-                  text,
+                  ...(text && { body: { kind: "text", text } }),
                 },
               });
               for (const id of ["a", "b"]) patch(row(id, "running", ""));

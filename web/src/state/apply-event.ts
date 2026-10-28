@@ -10,6 +10,7 @@ import type {
 } from "../shared/types.ts";
 import type { SnapshotStore } from "./snapshot-store.ts";
 import {
+  adoptState,
   applySessionEvent,
   confirmOutgoing,
   isIncoming,
@@ -173,7 +174,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
         epoch: event.epoch,
         cursor: event.sequence,
         metadata: keptSession(current?.metadata, metadata),
-        state: stateFrame(current?.state, event.state, phase),
+        state: stateFrame(current?.state, adoptState(event.state), phase),
         pending: pendingDecision,
       };
       live.current[id] = keepOlderPages(current, projected);

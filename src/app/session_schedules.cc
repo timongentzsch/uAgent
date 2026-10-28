@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"

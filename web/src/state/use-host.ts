@@ -19,7 +19,12 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { retainedViews, hasContent, patchCatalogue } from "./store.ts";
+import {
+  adoptSnapshot,
+  retainedViews,
+  hasContent,
+  patchCatalogue,
+} from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
 import { api, manage, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
@@ -270,6 +275,7 @@ export function useHost(
       const request = api<Snapshot>(routes.session(id), undefined, {
         signal,
       })
+        .then(adoptSnapshot)
         .then((value) => {
           if (signal.aborted) throw signal.reason;
           if (loads.current.get(id) !== request) return value;

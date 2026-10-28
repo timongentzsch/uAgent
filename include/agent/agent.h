@@ -420,6 +420,9 @@ class Agent {
 
   void PrepareCall(const ToolCall& call, CallTask& task, TurnExecution& state,
                    StepState& loop);
+  void PublishWork(const std::vector<CallTask>& tasks,
+                   const std::vector<json>& activities,
+                   const std::vector<json>& groups);
   // True when the user interrupted the batch.
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
@@ -454,6 +457,11 @@ class Agent {
   std::string session_id_;
   bool retain_exchanges_ = false;
   std::string turn_root_, reply_to_;
+  // What this turn's calls did, for its work node.
+  struct TurnWork {
+    int64_t steps = 0, errors = 0;
+    std::set<std::string> edited;
+  } turn_work_;
   // Image analyses by key, the most recently used first.
   std::list<std::pair<std::string, std::string>> image_analyses_;
   // Images whose analysis failed this turn. Each later step would otherwise

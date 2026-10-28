@@ -24,10 +24,15 @@ test("each diagram type renders, and elk falls back to dagre", async ({
   snapshot.state.view.blocks = [
     {
       id: "diagrams",
-      kind: "assistant",
-      text: Object.values(DIAGRAMS)
-        .map((source) => `\`\`\`mermaid\n${source}\n\`\`\``)
-        .join("\n\n"),
+      parent: null,
+      kind: "message",
+      role: "assistant",
+      body: {
+        kind: "markdown",
+        text: Object.values(DIAGRAMS)
+          .map((source) => `\`\`\`mermaid\n${source}\n\`\`\``)
+          .join("\n\n"),
+      },
     },
   ];
   await page.route(`**/api/sessions/${session.id}`, (route) =>

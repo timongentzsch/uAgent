@@ -742,7 +742,10 @@ void TestMailKeepsItsOriginBesideTheSameWords() {
   const json view = agent.DisplaySnapshot();
   std::vector<json> rows;
   for (const json& block : view.at("blocks")) {
-    if (JsonValue(block, "kind", "") == "user") rows.push_back(block);
+    if (JsonValue(block, "kind", "") == "turn" ||
+        JsonValue(block, "role", "") == "user") {
+      rows.push_back(block);
+    }
   }
   CHECK(rows.size() == 2);
   CHECK(!rows[0].contains("origin"));

@@ -67,7 +67,8 @@ for (const width of [320, 1280]) {
         ).json();
         return snapshot.state.view.blocks.filter(
           (block) =>
-            block.kind === "user" && block.text === "Side followup probe",
+            (block.kind === "turn" || block.role === "user") &&
+            block.body?.text === "Side followup probe",
         ).length;
       })
       .toBe(2);

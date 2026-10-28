@@ -11,7 +11,7 @@
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/app/control.h"
 #include "include/app/self_description.h"
 #include "include/core/config_registry.h"

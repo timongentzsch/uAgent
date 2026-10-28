@@ -311,7 +311,11 @@ def test_web_insert_queued_guidance(root, home, *, binary):
                     ),
                 )
                 assert_true(not finished.is_set(), "insert waited for original model call")
-                users = [b for b in done["state"]["view"]["blocks"] if b.get("kind") == "user"]
+                users = [
+                    b
+                    for b in done["state"]["view"]["blocks"]
+                    if b.get("kind") == "turn" or b.get("role") == "user"
+                ]
                 assert_true(sum(b.get("request_id") == target for b in users) == 1, users)
                 assert_true(done["state"]["stop"]["reason"] == "completed", done)
                 # A stale insert must not start or interrupt another turn.

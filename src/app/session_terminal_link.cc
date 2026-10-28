@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-#include "include/agent/session_view.h"
+#include "include/agent/transcript.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -147,12 +147,14 @@ bool Terminal::ReceiveEvent(const json& frame) {
     wake_.Wake();
   } else if (type == AppType(EventId::kToolCall) ||
              type == AppType(EventId::kMessageChanged)) {
-    // A call opens its tool row and the saved result completes it.
-    json patch;
-    ApplySessionEvent(transcript_, type, data, &patch);
-    if (const json* row = JsonObject(patch, "block");
-        row && JsonValue(*row, "kind", "") == "tool_result") {
-      presenter_.Block(*row);
+    // A call opens its row and the saved result completes it; a group's row
+    // stands for the calls it folds.
+    json patches = json::array();
+    ApplySessionEvent(transcript_, type, data, &patches);
+    for (const json& patch : patches) {
+      const json* node = JsonObject(patch, "block");
+      const std::string kind = node ? JsonValue(*node, "kind", "") : "";
+      if (kind == "call" || kind == "group") presenter_.Block(*node);
     }
     if (const json* block = JsonObject(data, "block")) {
       bool echoed = false;
@@ -161,7 +163,8 @@ bool Terminal::ReceiveEvent(const json& frame) {
         echoed = echoed_.erase(JsonValue(*block, "request_id", "")) > 0;
       }
       if (shown_.insert(JsonValue(*block, "id", "")).second && !echoed &&
-          JsonValue(*block, "kind", "") == "user") {
+          (JsonValue(*block, "kind", "") == "turn" ||
+           JsonValue(*block, "role", "") == "user")) {
         presenter_.Block(*block);
       }
     }

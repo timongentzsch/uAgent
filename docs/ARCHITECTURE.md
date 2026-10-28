@@ -111,7 +111,7 @@ Transport bounds are constants in `include/transport/session.h` unless named:
 | Command receipts | 256 per runtime |
 | Session header | 16 KiB (`include/agent/session_store.h`) |
 | Catalogue | 4,096 sessions (`include/core/limits.h`) |
-| History page | 64 blocks or 384 KiB (`src/agent/session_view.cc`) |
+| History page | 64 nodes or 384 KiB, whole turns (`include/agent/transcript.h`) |
 
 One poll thread owns the client sockets and their bounded fanout queues, so
 publishing never waits for a slow terminal or browser. A joining client
@@ -194,17 +194,21 @@ Terminal Markdown and browser DOM state are projections, never writers.
 A model attempt receives a runtime response identity before its first delta.
 That identity reaches the saved assistant display record, while provider tool
 call IDs stay raw provider facts. Tool occurrences are scoped to the response
-and have a separate retained-detail identity. Content revision and
-completeness are independent: a bounded checkpoint preview at the same
-revision cannot replace a fuller body a client already holds.
+and have a separate retained-detail identity. A bounded checkpoint preview
+cannot replace a fuller body a client already holds.
 
-One reducer (`ApplySessionEvent`, `src/agent/session_view.cc`) folds events
-into a view of rows: one per message and one per tool call, keyed so that a
-live call, its result and the saved message land on the same row. The worker,
-the web host and an attached terminal each fold with it. Browsers receive
-`block` patches: for a checkpoint, the rows it changed and then its state
+The transcript is one tree of nodes (`include/agent/node.h`): a turn (your
+message), its work (interim replies, thinking, groups of like calls and the
+calls), its answer and its footer, each node naming its `parent`. One builder
+(`src/agent/transcript_tree.cc`) makes the same nodes for a live view and a
+saved page, keyed so that a live call, its result and the saved message land
+on the same node. One reducer (`ApplySessionEvent`,
+`src/agent/view_reducer.cc`) folds events into the view; the worker, the web
+host and an attached terminal each fold with it. Browsers receive `block`
+patches: a whole node, which a client places before the first node under it
+or else in arrival (or saved) order, or an append to a streamed body; for a checkpoint, the nodes it changed and then its state
 without the view. The whole view is sent only on a new view epoch or a change
-that rows cannot express. The runtime also publishes its execution phase and
+that nodes cannot express. The runtime also publishes its execution phase and
 pending decision; connection health stays with the client.
 
 How much of the view a client shows is one display setting,

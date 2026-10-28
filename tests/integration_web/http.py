@@ -156,9 +156,11 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             # Clients get the asset id, never the private upload path.
             assert_true(request.get("files"), request)
             assert_true(all("path" not in item for item in request["files"]), request)
-            assert_true("Attached:" not in request["text"], request["text"])
-            reply = next(row for row in reversed(rows) if row["kind"] == "assistant")
-            assert_true(reply["reply_to"] == request["id"] == reply["turn_root"], rows)
+            assert_true(request["kind"] == "turn", request)
+            assert_true("Attached:" not in request["body"]["text"], request["body"])
+            reply = next(row for row in reversed(rows) if row.get("role") == "assistant")
+            # The answer sits under the turn the message started.
+            assert_true(reply["parent"] == request["id"], rows)
             exchange = reply["http"][-1]
             captured, metadata = body_for(session, exchange, "request")
             assert_true(
@@ -235,7 +237,7 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             reply = next(
                 row
                 for row in reversed(snapshot["state"]["view"]["blocks"])
-                if row["kind"] == "assistant"
+                if row.get("role") == "assistant"
             )
             exchanges = reply["http"]
             assert_true([item["status"] for item in exchanges] == [503, 200], exchanges)
@@ -275,7 +277,7 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             failed_user = next(
                 block
                 for block in snapshot["state"]["view"]["blocks"]
-                if block["text"] == "Fail this request"
+                if block.get("body", {}).get("text") == "Fail this request"
             )
             assert_true(
                 failed_user["http"][-1]["id"] == exchange["id"],
@@ -547,7 +549,7 @@ def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
             client.until(
                 session,
                 lambda value: any(
-                    row["kind"] == "assistant" for row in value["state"]["view"]["blocks"]
+                    row.get("role") == "assistant" for row in value["state"]["view"]["blocks"]
                 ),
             )
             assert_true(served == ["beta"], served)

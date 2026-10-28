@@ -579,36 +579,28 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   snapshot.state.view.blocks = [
     {
       id: "fixture-response",
-      response_id: "fixture-response",
-      kind: "assistant",
+      parent: null,
+      kind: "message",
+      role: "assistant",
       time: new Date(Date.now() - 2300).toISOString(),
     },
     {
-      id: "fixture-tool",
-      kind: "tool_result",
-      name: "web_search",
-      call_id: "fixture",
-      detail_id: "t-fixture",
-      arguments: { query: "a test query" },
-      view: {
-        input: [
-          { kind: "command", text: `psql -c "SELECT 'x'"` },
-          { kind: "fields", rows: [["query", "a test query"]] },
-        ],
+      id: "t-fixture",
+      parent: null,
+      kind: "call",
+      headline: {
+        verb: "",
+        target: `ssh remote "docker exec -i app python manage.py shell" <<'PY' 2>&1 | grep '^SMOKE' | ${"x".repeat(200)}`,
       },
-      text: "short preview",
-      reasoning: "Closed rich reasoning: $$x^2 + y^2$$",
+      input: [
+        { kind: "command", text: `psql -c "SELECT 'x'"` },
+        { kind: "fields", rows: [["query", "a test query"]] },
+      ],
+      body: { kind: "text", text: "short preview", truncated: true },
       state: "ok",
       result: { word: "2.3s" },
-      truncated: true,
       time: new Date().toISOString(),
-      response_id: "fixture-response",
-      activity: {
-        label: `ssh remote "docker exec -i app python manage.py shell" <<'PY' 2>&1 | grep '^SMOKE' | ${"x".repeat(200)}`,
-        category: "execute",
-        state: "ok",
-        duration_ms: 2300,
-      },
+      category: "execute",
     },
   ];
   await page.route(`**/api/sessions/${session.id}`, (route) =>

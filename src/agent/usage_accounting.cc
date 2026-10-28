@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "include/agent/agent.h"
+#include "include/agent/node.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -151,7 +152,7 @@ void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
     block["summary"] = std::move(summary);
     conversation_.RecordDisplay(key, block);
     ++revision_;
-    Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+    Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
     return;
   }
 }

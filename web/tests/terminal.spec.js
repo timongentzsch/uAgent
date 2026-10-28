@@ -48,3 +48,18 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await headerAction(page, "Terminal");
   await expect(dock.locator(".terminal-tab")).toHaveCount(2);
 });
+
+test("on a phone the terminal takes the whole screen", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await page.keyboard.press("Control+Backquote");
+  const sheet = page.getByRole("dialog", { name: "Terminal" });
+  await expect(sheet.locator(".xterm-rows")).toContainText(/\S/);
+  const box = await sheet.boundingBox();
+  expect(box?.width).toBe(390);
+  expect(box?.height).toBeGreaterThan(800);
+  await expect(page.locator(".terminal-dock")).toHaveCount(0);
+});

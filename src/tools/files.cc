@@ -618,8 +618,9 @@ std::optional<std::string> SmallDirectoryPreview(
     }
     std::error_code size_error;
     uintmax_t bytes = fs::file_size(entry_path, size_error);
-    if (size_error || bytes > ReadFileBytes() - total_bytes)
+    if (size_error || bytes > ReadFileBytes() - total_bytes) {
       return std::nullopt;
+    }
     total_bytes += bytes;
     if (!LikelyTextFile(entry_path)) return std::nullopt;
   }

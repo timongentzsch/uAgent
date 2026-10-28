@@ -176,20 +176,11 @@ Tool UagentTool(SelfDescriptionProvider describe,
                            "configuration requires an interactive human");
     }
     if (JsonValue(arguments, "action", "") == "set_instructions") {
-      bool panel = false, project = false;
-      if (!ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                                  JsonValue(arguments, "scope", ""), panel,
-                                  project)) {
-        return ArgumentIssue("instructions.target",
-                             "audience must be sessions or panel, and "
-                             "scope user or project");
-      }
-      if (!arguments.contains("text") ||
-          JsonValue(arguments, "text", "").size() > ProjectDocBytes()) {
+      if (JsonValue(arguments, "text", "").size() > ProjectDocBytes()) {
         return ArgumentIssue("instructions.text",
-                             "set_instructions needs the whole text, at most " +
+                             "set_instructions takes at most " +
                                  std::to_string(ProjectDocBytes() / 1024) +
-                                 " KiB",
+                                 " KiB of text",
                              "text");
       }
       return std::nullopt;
@@ -198,11 +189,9 @@ Tool UagentTool(SelfDescriptionProvider describe,
       return ArgumentIssue("config.configure",
                            "configure does not accept topic or name");
     }
+    // The schema has already held scope to user or project.
     ConfigProposalScope scope = ConfigProposalScope::kUser;
-    if (!ParseConfigScope(Trim(JsonValue(arguments, "scope", "")), scope)) {
-      return ArgumentIssue("config.scope", "scope must be user or project",
-                           "scope");
-    }
+    ParseConfigScope(JsonValue(arguments, "scope", ""), scope);
     std::vector<ConfigChange> changes;
     std::string error;
     if (!ParseConfigChanges(arguments, changes, error)) {
@@ -272,8 +261,12 @@ Tool UagentTool(SelfDescriptionProvider describe,
     tool.description +=
         " configure changes registered UAGENT_* settings by an exact diff "
         "the user approves (YOLO cannot); inspect config first. "
-        "set_instructions replaces one file (audience, scope, whole text) "
-        "once the user approves the exact text.";
+        "set_instructions replaces one whole file once the user approves the "
+        "exact text.";
+    tool.action_requires = {
+        "action",
+        {{"configure", {"scope", "changes"}},
+         {"set_instructions", {"audience", "scope", "text"}}}};
   } else {
     tool.parallel_safe = true;
     tool.parameters["properties"]["action"]["enum"] = json::array({"inspect"});

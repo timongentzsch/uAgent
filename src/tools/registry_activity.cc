@@ -19,15 +19,13 @@ void RegisterActivityTool(std::vector<Tool>& tools,
   json schema = json::parse(
       R"json({"type":"object","additionalProperties":false,"properties":{
                   "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
-                  "id":{"type":"integer","minimum":1,"maximum":2147483647,
-                    "description":"required for poll, write, resize, stop"},
+                  "id":{"type":"integer","minimum":1,"maximum":2147483647},
                   "ids":{"type":"array","minItems":1,"maxItems":64,
                     "items":{"type":"integer","minimum":1,"maximum":2147483647},
                     "description":"wait targets; omitted means all eligible activities"},
                   "chars":{"type":"string",
                     "description":"bytes for write; empty is intentional"},
-                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000,
-                    "description":"required for wait"},
+                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
                   "until":{"type":"string","maxLength":256,
                     "description":"readiness marker for poll"},
                   "mode":{"type":"string","enum":["any","all"],
@@ -38,8 +36,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
                   "required":["operation"]})json");
   json& properties = schema["properties"];
   properties["chars"]["maxLength"] = kToolTextArgChars;
-  const std::string dimensions =
-      "required for resize; 1.." + std::to_string(kPtyMaxDimension);
+  const std::string dimensions = "1.." + std::to_string(kPtyMaxDimension);
   properties["rows"]["description"] = dimensions;
   properties["cols"]["description"] = dimensions;
   properties["max_output_chars"]["minimum"] = kToolMinOutputChars;
@@ -84,9 +81,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
                   context, JsonValue(a, "rows", int64_t{0}),
                   JsonValue(a, "cols", int64_t{0}), cap);
             }
-            if (operation == "stop") return ToolActivityStop(supervisor, id);
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "unknown activity operation");
+            return ToolActivityStop(supervisor, id);
           }));
   activity.canonicalize = [](json& a) {
     std::string operation = JsonValue(a, "operation", "");
@@ -136,31 +131,22 @@ void RegisterActivityTool(std::vector<Tool>& tools,
   };
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
+  // An empty write is intentional, so chars, given or not, is never missing.
+  activity.action_requires = {"operation",
+                              {{"poll", {"id"}},
+                               {"wait", {"wait_ms"}},
+                               {"write", {"id"}},
+                               {"resize", {"id", "rows", "cols"}},
+                               {"stop", {"id"}}}};
   activity.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
-    std::string operation = JsonValue(a, "operation", "");
-    if ((operation == "poll" || operation == "write" || operation == "resize" ||
-         operation == "stop") &&
-        !a.contains("id")) {
-      return ArgumentIssue("activity.missing_id", operation + " requires id",
-                           "id");
-    }
-    if (operation == "write" && !a.contains("chars")) {
-      return ArgumentIssue("activity.missing_chars", "write requires chars",
-                           "chars");
-    }
-    if (operation == "wait" && !a.contains("wait_ms")) {
-      return ArgumentIssue("activity.missing_wait", "wait requires wait_ms",
-                           "wait_ms");
-    }
-    if (operation == "resize") {
-      int64_t rows = JsonValue(a, "rows", int64_t{0});
-      int64_t cols = JsonValue(a, "cols", int64_t{0});
-      if (rows < 1 || rows > kPtyMaxDimension || cols < 1 ||
-          cols > kPtyMaxDimension) {
-        return ArgumentIssue("activity.invalid_dimensions",
-                             "resize requires rows and cols in 1.." +
-                                 std::to_string(kPtyMaxDimension));
-      }
+    if (JsonValue(a, "operation", "") != "resize") return std::nullopt;
+    int64_t rows = JsonValue(a, "rows", int64_t{0});
+    int64_t cols = JsonValue(a, "cols", int64_t{0});
+    if (rows < 1 || rows > kPtyMaxDimension || cols < 1 ||
+        cols > kPtyMaxDimension) {
+      return ArgumentIssue("activity.invalid_dimensions",
+                           "resize requires rows and cols in 1.." +
+                               std::to_string(kPtyMaxDimension));
     }
     return std::nullopt;
   };

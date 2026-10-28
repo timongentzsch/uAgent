@@ -192,6 +192,9 @@ json SessionActivity(AppSession& session, const json& request) {
                     {"background", true}};
   const std::string model = JsonValue(request, "model", "");
   if (!model.empty()) arguments["model"] = model;
+  if (auto issue = FindToolArgumentIssue(tool, arguments)) {
+    return {{"error", issue->message}};
+  }
   // A follow-up is not a decision about tools: the child keeps the ceiling
   // of the conversation it belongs to.
   ToolContext context;

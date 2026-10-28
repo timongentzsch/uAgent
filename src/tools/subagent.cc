@@ -155,10 +155,6 @@ ToolResult MessageAgent(const ActivitySupervisor& processes,
   if (!LoadRole(processes, id, role, error)) {
     return ToolFailure(ToolErrorCode::kNotFound, error);
   }
-  if (text.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "message requires text");
-  }
   // A parent without a session file is known to its child by its owner id.
   error = SendSessionMail(
       {.from_path = OwnSessionFile(),
@@ -310,11 +306,6 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
     }
     operation = "followup";
   }
-  if (operation != "spawn" && operation != "followup") {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "operation must be spawn, followup, "
-                       "message, or list");
-  }
   // The child's role, written into its session header by the child.
   json role = json::object();
   if (operation == "spawn") {
@@ -366,10 +357,6 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
   }
 
   std::string prompt = JsonValue(arguments, "prompt", "");
-  if (prompt.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "spawn or followup requires prompt");
-  }
   const std::string directive = JsonValue(role, "directive", "");
   if (!directive.empty()) {
     prompt = "[collaborator directive]\n" + directive + "\n\n" + prompt;
@@ -725,11 +712,10 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
        {{"type", "string"},
         {"enum",
          json::array({"spawn", "followup", "message", "list", "fanout"})},
+        {"default", "spawn"},
         {"description",
          "spawn by default; followup, message or list children; fanout"}}},
-      {"agent_id",
-       {{"type", "string"},
-        {"description", "child id for followup or message"}}},
+      {"agent_id", {{"type", "string"}, {"description", "child id"}}},
       {"name",
        {{"type", "string"},
         {"maxLength", 32},
@@ -821,6 +807,11 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
                    : RunSubagent(api, processes, routes, providers, debug,
                                  arguments, context);
       });
+  tool.action_requires = {"operation",
+                          {{"spawn", {"prompt"}},
+                           {"followup", {"agent_id", "prompt"}},
+                           {"message", {"agent_id", "prompt"}},
+                           {"fanout", {"items", "prompt", "finding"}}}};
   tool.clamped_arguments = {"limits.steps", "limits.tool_calls",
                             "limits.seconds"};
   // Same reasoning as run, scratch and activity: the per-call budget stops a

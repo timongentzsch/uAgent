@@ -226,6 +226,28 @@ def test_a_thread_started_for_a_step_shows_it_on_the_board(root, home, *, binary
         assert_true(any("step s1 · Tag" in board for board in boards), boards[-1][-600:])
 
 
+def test_a_spawn_without_its_brief_is_turned_away_and_stops_the_turn(root, home, *, binary):
+    """A spawn missing its fields never reaches the tool: each time the model
+    is told what spawn needs and what its call carried, and the third such
+    round ends the turn, which then answers from what it has."""
+    responses = [tool_call("thread", {"action": "spawn"}) for _ in range(3)]
+    responses.append(event({"content": "answered-after-the-loop"}))
+    with Server(responses) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "delegate", binary=binary)
+        assert_true(result.stdout.strip() == "answered-after-the-loop", result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
+        told = "`title` and `objective` are required for spawn; this call carried only `action`"
+        messages = server.requests[-1][1]["messages"]
+        results = tool_results(messages)
+        assert_true(len(results) == 3 and all(told in text for text in results), results)
+        # The person and the model both learn why the turn stopped.
+        stop = "model repeated an equivalent rejected thread call 3 times: " + told
+        assert_true(result.returncode == 1 and stop in result.stderr, result)
+        assert_true(stop in json.dumps(messages, ensure_ascii=False), messages[-1])
+        sessions = session_files(home)
+        assert_true([path.name for path in sessions] == ["panel.json"], sessions)
+
+
 def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, binary):
     """The lead agent asks its questions of subagents: one batch, answers in
     the schema it gave, no tool that edits, and the plan counts them under

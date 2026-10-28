@@ -404,6 +404,16 @@ void KeepLeanTools(std::vector<Tool>& tools) {
 
 std::string ToolDescription(const Tool& tool) {
   std::string s = tool.description;
+  const ActionRequires& table = tool.action_requires;
+  for (size_t row = 0; row < table.actions.size(); ++row) {
+    const auto& [action, fields] = table.actions[row];
+    s += row == 0 ? " Required per " + table.field + ": " : "; ";
+    s += action + ":";
+    for (size_t index = 0; index < fields.size(); ++index) {
+      s += (index == 0 ? " " : ", ") + fields[index];
+    }
+    if (row + 1 == table.actions.size()) s += ".";
+  }
   if (tool.max_calls_per_turn >= 0) {
     s += " Limit: " + std::to_string(tool.max_calls_per_turn) + "/turn.";
   }

@@ -39,10 +39,6 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                            " is not linked with this one; operation=list "
                            "shows the sessions that are");
   }
-  if (text.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "message requires prompt");
-  }
   const std::string error = SendSessionMail({.from_path = OwnSessionFile(),
                                              .to_path = peer,
                                              .text = text,
@@ -69,9 +65,7 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
         {"broadcast",
          {{"type", "boolean"},
           {"description", "message only: fan out to every linked session"}}},
-        {"prompt",
-         {{"type", "string"},
-          {"description", "message text for operation=message"}}},
+        {"prompt", {{"type", "string"}, {"description", "message text"}}},
         {"hops",
          {{"type", "integer"},
           {"minimum", 0},
@@ -93,10 +87,6 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
           std::vector<json> peers = SessionSummaries();
           return ToolSuccess(peers.empty() ? "no linked sessions"
                                            : JsonDump(peers, 2));
-        }
-        if (operation != "message") {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "unknown operation " + operation);
         }
         std::string prompt = JsonValue(arguments, "prompt", "");
         std::vector<std::string> targets;
@@ -129,6 +119,8 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
         }
         return ToolSuccess(combined);
       });
+  // session_id or broadcast stays a check in run: broadcast may be false.
+  tool.action_requires = {"operation", {{"message", {"prompt"}}}};
   tool.available_in_lean = true;
   tool.intent = "delegate";
   tool.header = [](const json& arguments) {

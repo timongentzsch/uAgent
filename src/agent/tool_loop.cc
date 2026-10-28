@@ -139,10 +139,6 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
     failed.trace_status = status;
     failed.issue = std::move(issue);
   };
-  auto issue_message = [](const ToolArgumentIssue& issue) {
-    return issue.message.starts_with("error:") ? issue.message
-                                               : "error: " + issue.message;
-  };
   task.raw_args = json::parse(call.args, nullptr, false);
   task.args = task.raw_args;
   task.tool = FindTool(tools_, call.name);
@@ -178,7 +174,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   } else if (tool->validate) {
     auto semantic_issue = tool->validate(arguments);
     if (semantic_issue) {
-      std::string message = issue_message(*semantic_issue);
+      std::string message = semantic_issue->message;
       reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
              "rejected", std::move(semantic_issue));
     } else {
@@ -433,7 +429,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     }
     if (!task.issue) continue;
     rejections.push_back({calls[index].name, task.issue->code,
-                          task.issue->field, NormalizedOperation(task.args)});
+                          task.issue->field, NormalizedOperation(task.args),
+                          task.issue->message});
   }
   if (Debug().Enabled() && model_chars < original_chars) {
     Debug().Write("tool_batch_capped", {{"turn", turn_id_},

@@ -509,7 +509,8 @@ def test_invalid_tool_rejection_loop_stops_and_answers_from_what_it_has(root, ho
         assert_true(len(server.requests) == 4, len(server.requests))
         told = json.dumps(server.requests[-1][1]["messages"])
         assert_true(
-            "equivalent rejected activity call 3 times (activity.invalid_dimensions)" in told
+            "equivalent rejected activity call 3 times: resize requires rows and cols in 1..1000"
+            in told
             and "No further tool call will run" in told,
             told,
         )

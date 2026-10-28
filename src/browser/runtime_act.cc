@@ -733,9 +733,6 @@ json Runtime::Act(const std::string& op, const json& command) {
                  page_session_);
   } else if (op == "upload") {
     const std::string file = JsonValue(command, "file", "");
-    if (element < 1 || file.empty()) {
-      return {{"error", "upload takes an element and a path"}};
-    }
     // A file field takes the file itself; anything else is clicked, and the
     // file field whose chooser that opens takes it.
     json held = Evaluate({{"expression", Numbered(view, element)}});

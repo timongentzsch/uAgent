@@ -827,6 +827,14 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   tool.name = "browser";
   tool.description = kBrowserDescription;
   tool.parameters = BrowserParameters();
+  // A target that is element, or else x and y, stays a check where it is
+  // used; so does open's url or path.
+  tool.action_requires = {"action",
+                          {{"click", {"view_id"}},
+                           {"press", {"key"}},
+                           {"scroll", {"view_id"}},
+                           {"drag", {"view_id"}},
+                           {"upload", {"element", "view_id", "path"}}}};
   // Switching tabs changes what the user sees too; an unknown action is
   // taken for one that acts.
   tool.mutates = [](const json& args) {

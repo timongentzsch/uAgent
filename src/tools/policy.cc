@@ -64,6 +64,37 @@ std::optional<size_t> JsonSchemaSize(const json& schema,
                   : std::optional<size_t>(static_cast<size_t>(size));
 }
 
+// Models that fill in every field send the ones they do not use as "" or null,
+// which says nothing: a field holding either was not given.
+bool Given(const json& value) { return !value.is_null() && value != ""; }
+
+std::string Listed(const std::vector<std::string>& names) {
+  std::string text;
+  for (size_t index = 0; index < names.size(); ++index) {
+    if (index > 0) text += index + 1 == names.size() ? " and " : ", ";
+    text += "`" + names[index] + "`";
+  }
+  return text;
+}
+
+// "`a` and `b` are required for spawn; this call carried only `c`": every
+// field that is missing and what did arrive, so the next attempt is not a
+// guess at what got lost.
+ToolArgumentIssue MissingFields(const std::vector<std::string>& missing,
+                                const json& value, const std::string& holder,
+                                const std::string& when = "") {
+  std::vector<std::string> carried;
+  for (const auto& [name, child] : value.items()) {
+    if (Given(child)) carried.push_back(name);
+  }
+  return ArgumentIssue(
+      "schema.required",
+      Listed(missing) + (missing.size() == 1 ? " is" : " are") + " required" +
+          when + "; " + holder + " carried " +
+          (carried.empty() ? "nothing" : "only " + Listed(carried)),
+      missing.front());
+}
+
 std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
                                                     const json& value,
                                                     const std::string& path,
@@ -104,13 +135,17 @@ std::optional<ToolArgumentIssue> InvalidObjectValue(const json& schema,
                                                     bool root) {
   auto required = schema.find("required");
   if (required != schema.end() && required->is_array()) {
+    std::vector<std::string> missing;
     for (const json& item : *required) {
       if (!item.is_string()) continue;
       const std::string& name = item.get_ref<const std::string&>();
       if (value.contains(name)) continue;
-      std::string child = root || path.empty() ? name : path + "." + name;
-      return ArgumentIssue("schema.required", "`" + child + "` is required",
-                           child);
+      missing.push_back(root || path.empty() ? name : path + "." + name);
+    }
+    if (!missing.empty()) {
+      return MissingFields(
+          missing, value,
+          root || path.empty() ? "this call" : "`" + path + "`");
     }
   }
 
@@ -320,7 +355,27 @@ std::optional<ToolArgumentIssue> FindSchemaIssue(const json& schema,
 
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args) {
-  return FindSchemaIssue(ToolParameters(tool), args, tool.name);
+  const json parameters = ToolParameters(tool);
+  if (auto issue = FindSchemaIssue(parameters, args, tool.name)) return issue;
+  const ActionRequires& table = tool.action_requires;
+  if (table.field.empty()) return std::nullopt;
+  // Left out, the action is the one the schema names as its default.
+  const json* properties = JsonObject(parameters, "properties");
+  const json* property =
+      properties ? JsonObject(*properties, table.field.c_str()) : nullptr;
+  const std::string action =
+      JsonValue(args, table.field.c_str(),
+                property ? JsonValue(*property, "default", "") : "");
+  const auto found = std::ranges::find_if(
+      table.actions, [&](const auto& row) { return row.first == action; });
+  if (found == table.actions.end()) return std::nullopt;
+  std::vector<std::string> missing;
+  for (const std::string& name : found->second) {
+    const auto value = args.find(name);
+    if (value == args.end() || !Given(*value)) missing.push_back(name);
+  }
+  if (missing.empty()) return std::nullopt;
+  return MissingFields(missing, args, "this call", " for " + action);
 }
 
 ToolPolicy ToolPolicyFromEnvironment() {

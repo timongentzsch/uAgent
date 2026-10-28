@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -210,6 +211,7 @@ std::string DialogLine(const json& dialog) {
 struct Seen {
   std::mutex mutex;
   std::string url, view_id, elements, dialog, answer;
+  PageMemory page;
 };
 
 // What a remembered approval of a call covers: the action on the site of the
@@ -242,6 +244,7 @@ void SawDialog(Seen& seen, const json& dialog) {
   seen.url = JsonValue(dialog, "url", "");
   seen.view_id.clear();
   seen.elements.clear();
+  seen.page.Forget();
   const std::string said = "a " + JsonValue(dialog, "type", "") +
                            " dialog says " +
                            JsonDump(JsonValue(dialog, "message", ""));
@@ -353,10 +356,14 @@ ToolResult Reading(const json& read, const json& args, const std::string& done,
                 (offset ? ", from match " + std::to_string(offset) : "") + ")"
           : "Page text (from character " + std::to_string(offset) + " of " +
                 std::to_string(JsonValue(read, "chars", 0)) + ")";
-  return ToolSuccess(
-      done + BlockLine(read) + "URL: " + JsonValue(read, "url", "") +
-      "\nTitle: " + JsonValue(read, "title", "") + "\n" + what + ":\n" + text +
-      (links.empty() ? "" : "\nLinks:\n" + links));
+  const std::string url = JsonValue(read, "url", "");
+  std::string result = done + BlockLine(read) + "URL: " + url +
+                       "\nTitle: " + JsonValue(read, "title", "") + "\n" +
+                       what + ":\n" + text +
+                       (links.empty() ? "" : "\nLinks:\n" + links);
+  // A read is the full page, and what later results are compared with.
+  std::lock_guard lock(seen.mutex);
+  return ToolSuccess(seen.page.Show(url, result, /*diff=*/false));
 }
 
 // The current tab as text: what can be acted on, numbered, the page's text
@@ -388,6 +395,10 @@ ToolResult Observation(const BrowserAccess& access, const std::string& lead,
     failed = "empty browser screenshot";
   }
   if (!failed.empty()) {
+    {
+      std::lock_guard lock(seen.mutex);
+      seen.page.Forget();
+    }
     if (lead.empty()) {
       return ToolFailure(ToolErrorCode::kRemoteError, failed);
     }
@@ -436,6 +447,10 @@ ToolResult Observation(const BrowserAccess& access, const std::string& lead,
                     std::to_string(JsonValue(outcome, "width", 0)) + "x" +
                     std::to_string(JsonValue(outcome, "height", 0)) +
                     " CSS pixels)";
+  {
+    std::lock_guard lock(seen.mutex);
+    attached.output = seen.page.Show(seen.url, attached.output);
+  }
   return attached;
 }
 
@@ -520,6 +535,8 @@ ToolResult Query(const BrowserAccess& access, const json& args,
                  const std::string& action, Seen& seen) {
   json answer = Ask(access, args, action == "status" ? "agent_status" : action);
   if (auto error = JsonValue(answer, "error", ""); !error.empty()) {
+    std::lock_guard lock(seen.mutex);
+    seen.page.Forget();
     return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
   if (const json* dialog = JsonObject(answer, "dialog")) {
@@ -533,6 +550,7 @@ ToolResult Query(const BrowserAccess& access, const json& args,
     seen.view_id.clear();
     seen.elements.clear();
     seen.dialog.clear();
+    seen.page.Forget();
   }
   if (action == "console" || action == "network") {
     const size_t count = JsonValue(answer, "count", size_t{0});
@@ -573,6 +591,8 @@ ToolResult Act(const BrowserAccess& access, const json& args,
     const std::string error = JsonValue(reply, "error", "");
     if (!error.empty()) {
       if (done.empty()) {
+        std::lock_guard lock(seen.mutex);
+        seen.page.Forget();
         return ToolFailure(ToolErrorCode::kRemoteError, error);
       }
       done += op + " not done: " + error + ".\n";
@@ -626,7 +646,9 @@ constexpr char kBrowserDescription[] =
     "one call: type with element and view_id clicks it first, replace=true "
     "overwrites what it holds, and key is pressed after. type sets a list "
     "to the option whose label it gives, and a date, time or color field "
-    "to the value the page receives, such as 2027-03-12 or 19:30. read returns "
+    "to the value the page receives, such as 2027-03-12 or 19:30. A result "
+    "for the page you just saw shows only its changed lines (- old, + new); "
+    "read returns the full page. read returns "
     "more: page text from offset (in "
     "characters), or with find the lines and links that contain it, "
     "whatever their case, 200 lines at a time from match offset. open "
@@ -697,6 +719,108 @@ json BrowserParameters() {
       {"additionalProperties", false}};
 }
 }  // namespace
+
+namespace {
+
+// The lines of `text`, split at newlines; the pieces point into `text`.
+std::vector<std::string_view> SplitLines(std::string_view text) {
+  std::vector<std::string_view> lines;
+  while (true) {
+    const size_t end = text.find('\n');
+    if (end == std::string_view::npos) {
+      lines.push_back(text);
+      return lines;
+    }
+    lines.push_back(text.substr(0, end));
+    text.remove_prefix(end + 1);
+  }
+}
+
+// How many line pairs a diff may compare: past this the full text is shown.
+constexpr size_t kDiffCells = 4'000'000;
+
+// The hunk `@@ -a,b +c,d @@` of a zero-context diff and its lines.
+void AppendHunk(std::string& out, size_t old_start, size_t new_start,
+                const std::vector<std::string_view>& removed,
+                const std::vector<std::string_view>& added) {
+  const auto range = [](size_t start, size_t length) {
+    return std::to_string(length == 0 ? start : start + 1) + "," +
+           std::to_string(length);
+  };
+  out += "@@ -" + range(old_start, removed.size()) + " +" +
+         range(new_start, added.size()) + " @@\n";
+  for (std::string_view line : removed) out += "-" + std::string(line) + "\n";
+  for (std::string_view line : added) out += "+" + std::string(line) + "\n";
+}
+
+// The changed lines between two texts, by a longest common subsequence of
+// their lines; empty when the texts are too large to compare.
+std::string ChangedLines(std::string_view before, std::string_view after,
+                         bool& comparable) {
+  const std::vector<std::string_view> a = SplitLines(before);
+  const std::vector<std::string_view> b = SplitLines(after);
+  comparable = (a.size() + 1) * (b.size() + 1) <= kDiffCells;
+  if (!comparable) return "";
+  const size_t width = b.size() + 1;
+  // common[i * width + j]: lines a[i..] and b[j..] share this many in order.
+  std::vector<uint32_t> common((a.size() + 1) * width, 0);
+  for (size_t i = a.size(); i-- > 0;) {
+    for (size_t j = b.size(); j-- > 0;) {
+      common[i * width + j] = a[i] == b[j]
+                                  ? common[(i + 1) * width + j + 1] + 1
+                                  : std::max(common[(i + 1) * width + j],
+                                             common[i * width + j + 1]);
+    }
+  }
+  std::string out;
+  size_t i = 0;
+  size_t j = 0;
+  while (i < a.size() || j < b.size()) {
+    if (i < a.size() && j < b.size() && a[i] == b[j]) {
+      ++i;
+      ++j;
+      continue;
+    }
+    const size_t old_start = i;
+    const size_t new_start = j;
+    std::vector<std::string_view> removed;
+    std::vector<std::string_view> added;
+    while ((i < a.size() || j < b.size()) &&
+           !(i < a.size() && j < b.size() && a[i] == b[j])) {
+      if (j == b.size() || (i < a.size() && common[(i + 1) * width + j] >=
+                                                common[i * width + j + 1])) {
+        removed.push_back(a[i++]);
+      } else {
+        added.push_back(b[j++]);
+      }
+    }
+    AppendHunk(out, old_start, new_start, removed, added);
+  }
+  return out;
+}
+
+}  // namespace
+
+std::string PageMemory::Show(const std::string& url, const std::string& current,
+                             bool diff) {
+  const bool same = diff && !url.empty() && url == url_;
+  std::string shown = current;
+  if (same) {
+    bool comparable = false;
+    const std::string changes = ChangedLines(text_, current, comparable);
+    std::string candidate =
+        "[same page as the previous browser result; only the changed lines "
+        "are shown (- old, + new)]\nURL: " +
+        url + "\n" +
+        (comparable && changes.empty() ? "(nothing changed)\n" : changes);
+    if (comparable && candidate.size() < current.size()) {
+      shown = std::move(candidate);
+    }
+  }
+  url_ = url;
+  text_ = current;
+  return shown;
+}
 
 Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   Tool tool;

@@ -18,7 +18,8 @@ namespace uagent {
   X(TestBrowserUploadsAndDownloads)      \
   X(TestBrowserConsoleNetworkAndPointer) \
   X(TestBrowserToolQueue)                \
-  X(TestBrowserToolSteps)
+  X(TestBrowserToolSteps)                \
+  X(TestBrowserPageMemory)
 #else
 #define UAGENT_BROWSER_TESTS(X)
 #endif

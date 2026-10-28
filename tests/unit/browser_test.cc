@@ -1288,4 +1288,41 @@ void TestBrowserToolSteps() {
   CHECK(written);
 }
 
+void TestBrowserPageMemory() {
+  std::string page = "URL: https://a.test/\nElements:\n";
+  for (int row = 1; row <= 40; ++row) {
+    page += "[" + std::to_string(row) + "] link \"row " + std::to_string(row) +
+            "\"\n";
+  }
+  PageMemory memory;
+  // The first result of a page is whole.
+  CHECK(memory.Show("https://a.test/", page) == page);
+  // A small change on the same page shows only itself, placed.
+  std::string changed = page;
+  changed.replace(changed.find("row 7\""), 5, "seven");
+  const std::string diff = memory.Show("https://a.test/", changed);
+  CHECK(
+      diff.starts_with("[same page as the previous browser result; only the "
+                       "changed lines are shown (- old, + new)]\n"
+                       "URL: https://a.test/\n@@ -9,1 +9,1 @@\n"
+                       "-[7] link \"row 7\"\n+[7] link \"seven\"\n"));
+  CHECK(diff.size() < changed.size());
+  // It is compared with the page as it was shown, not with the diff.
+  CHECK(
+      memory.Show("https://a.test/", changed).ends_with("(nothing changed)\n"));
+  // Another address is another page.
+  CHECK(memory.Show("https://b.test/", changed) == changed);
+  // A result no shorter than the text is the text.
+  const std::string small = "URL: https://b.test/\nOK\n";
+  CHECK(memory.Show("https://b.test/", small) == small);
+  CHECK(memory.Show("https://b.test/", "URL: https://b.test/\nDone\n") ==
+        "URL: https://b.test/\nDone\n");
+  // A read is whole, and what the next result is compared with.
+  CHECK(memory.Show("https://a.test/", page, /*diff=*/false) == page);
+  CHECK(memory.Show("https://a.test/", changed).starts_with("[same page"));
+  // After a tab switch, an error or a dialog the page is not the one seen.
+  memory.Forget();
+  CHECK(memory.Show("https://a.test/", changed) == changed);
+}
+
 }  // namespace uagent

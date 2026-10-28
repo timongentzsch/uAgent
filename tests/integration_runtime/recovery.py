@@ -100,8 +100,9 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
         prompt = body["messages"][-1].get("content", "")
         text = "\n".join(str(message.get("content", "")) for message in body["messages"])
         valid = (
-            str(prompt).startswith("Summarize the bounded transcript")
-            and not body.get("tools")
+            str(prompt).startswith("Summarize the conversation so far")
+            and body.get("tools")
+            and body.get("tool_choice") == "none"
             and "RAW-TOOL-RESULT-" in text
         )
         return event(
@@ -115,7 +116,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
         valid = (
             "Prior context:\nMIDTURN-SUMMARY" in text
             and "[model-generated context summary; non-authoritative]" in text
-            and "Summarize the bounded transcript" not in text
+            and "for a fresh agent context" not in text
             and "RAW-TOOL-RESULT-" not in text
             and not any(message.get("role") == "tool" for message in messages)
             and not any(message.get("tool_calls") for message in messages)
@@ -226,9 +227,9 @@ def test_context_fill_follows_reported_prompt_tokens(root, home, *, binary):
             return [body["messages"][-1].get("content", "") for _, body in server.requests]
 
     small = requests(10)
-    assert_true(not any(str(m).startswith("Summarize the bounded") for m in small), small)
+    assert_true(not any(str(m).startswith("Summarize the conversation") for m in small), small)
     full = requests(9000)
-    assert_true(str(full[1]).startswith("Summarize the bounded transcript"), full)
+    assert_true(str(full[1]).startswith("Summarize the conversation so far"), full)
 
 
 def test_absolute_compaction_ceiling(root, home, *, binary):
@@ -249,7 +250,9 @@ def test_absolute_compaction_ceiling(root, home, *, binary):
 
     def compact(_, body):
         prompt = body["messages"][-1].get("content", "")
-        valid = str(prompt).startswith("Summarize the bounded transcript") and not body.get("tools")
+        valid = str(prompt).startswith("Summarize the conversation so far") and (
+            body.get("tool_choice") == "none"
+        )
         return event({"content": "ABSOLUTE-SUMMARY" if valid else "BAD-SUMMARY"})
 
     def finish(_, body):

@@ -195,6 +195,25 @@ def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
     assert_true(any("permission_review" in route for route in envelope["routes"]), envelope)
 
 
+def test_auto_permission_review_is_asked_once_per_action_in_a_turn(root, home, *, binary):
+    target = root / "memo.txt"
+
+    def denies(handler, _):
+        write_json_response(handler, decision_answers(0.0, 0.95))
+
+    # The model repeats the refused call; the reviewer is not asked again.
+    _, tool, requests = auto_review_run(
+        root,
+        home,
+        binary,
+        [write_call(target, call_id="first"), write_call(target, call_id="second")],
+        denies,
+    )
+    assert_true("refused this action" in tool, tool)
+    assert_true(len(requests) == 1, requests)
+    assert_true(not target.exists(), target)
+
+
 def test_auto_permission_reviewer_bars(root, home, *, binary):
     target = root / "bars.txt"
 
@@ -1299,7 +1318,7 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         assert_true(handler.headers.get("Authorization") is None, handler.headers)
         hosted = [tool for tool in body["tools"] if tool.get("name") == "web_search"]
         assert_true(
-            hosted == [{"type": "web_search_20250305", "name": "web_search"}],
+            hosted == [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
             hosted,
         )
         assert_true("system" in body and body["messages"][0]["role"] == "user", body)

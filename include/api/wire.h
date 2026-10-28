@@ -19,12 +19,15 @@ namespace uagent {
 inline constexpr char kWireReplayField[] = "_uagent_wire_replay";
 // Harness-only metadata: a successful, untruncated read's [path, first, last].
 inline constexpr char kReadRangeField[] = "_uagent_read_range";
+// Harness-only metadata: an explicit prompt-cache breakpoint ends this message
+// (a request whose own tail changes every time sets it on the message before).
+inline constexpr char kCacheBreakpointField[] = "_uagent_cache_breakpoint";
 
 struct WireRequest {
   const std::string& model;
   const json& messages;
   const json& tool_schemas;
-  std::string_view reasoning_effort;
+  std::string_view reasoning_effort = {};
   int64_t max_output_tokens = -1;
   bool parallel_tools = true;
   bool stream_usage = false;
@@ -35,6 +38,11 @@ struct WireRequest {
   json hosted_tools = json::array();
   bool reasoning_summary = false;
   bool adaptive_thinking = false;
+  // The endpoint takes `cache_control` on Chat Completions content parts.
+  bool prompt_cache_control = false;
+  // Offers the tools but forbids calling one. Anthropic's cache drops the
+  // messages when tool_choice changes, so that wire is left to the prompt.
+  bool forbid_tool_calls = false;
 };
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);
@@ -55,6 +63,8 @@ class WireRequestCache {
     json source;
     std::string body, role, system;
     bool valid = false;
+    // Whether only system messages preceded it (see AnthropicMessages).
+    bool leading = true;
   };
   WireApi wire_api_ = WireApi::kChatCompletions;
   std::vector<Message> messages_;

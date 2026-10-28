@@ -90,7 +90,7 @@ def answer(handler, body):
             {"action": "add_member", "name": "Ada", "persona": "You give second opinions."},
             call_id="add-ada",
         )
-    if "Summarize the bounded transcript" in str(body["messages"]):
+    if "for a fresh agent context" in str(body["messages"]):
         return event({"content": "COMPACT-PREVIEW-SUMMARY"})
     if prompt == "Delegate preview task" and not any(
         message.get("tool_call_id") == "preview-child" for message in body["messages"]

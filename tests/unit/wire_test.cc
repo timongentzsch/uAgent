@@ -10,6 +10,7 @@
 #include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/core/config.h"
+#include "include/core/limits.h"
 #include "include/core/runtime_config.h"
 #include "tests/unit/test_support.h"
 
@@ -178,6 +179,8 @@ void TestWireAdapters() {
   CHECK(ItemsOfType(native["tools"], "web_search") == 1);
   CHECK(ItemsOfType(native["tools"], "function") == 1);
   CHECK(native["include"] == json::array({"reasoning.encrypted_content"}));
+  // A request that offers no tools (a title) gets no hosted search either.
+  CHECK(!api.BuildRequestBody(json::array(), json::array()).contains("tools"));
 
   UseEndpoint(api, "https://api.openai.com/v1", WireApi::kResponses, true);
   json official = api.BuildRequestBody(json::array(), schemas);
@@ -837,6 +840,176 @@ void TestWireCacheParity() {
     session = "another-session";
     parity();
   }
+}
+
+bool Lacks(const json& body, const char* text) {
+  return body.dump().find(text) == std::string::npos;
+}
+
+void TestWireHarnessNotes() {
+  json history = json::array({{{"role", "system"}, {"content", "base"}},
+                              {{"role", "user"}, {"content", "question"}},
+                              {{"role", "assistant"}, {"content", "answer"}}});
+  json noted = history;
+  noted.push_back({{"role", "system"}, {"content", "background finished"}});
+  json schemas = json::array({FunctionSchema("read_path")});
+  auto encode = [&](WireApi wire, const json& messages) {
+    return EncodeWireRequest(
+        wire, WireRequest{
+                  .model = "m", .messages = messages, .tool_schemas = schemas});
+  };
+
+  // The cached prefix on Anthropic is tools, system, then messages: a note
+  // added later must leave the first two and the earlier messages alone.
+  json plain = encode(WireApi::kAnthropicMessages, history);
+  json with_note = encode(WireApi::kAnthropicMessages, noted);
+  CHECK(with_note["system"] == plain["system"]);
+  CHECK(with_note["system"][0]["text"] == "base");
+  CHECK(with_note["tools"] == plain["tools"]);
+  CHECK(with_note["messages"].size() == 3);
+  CHECK(with_note["messages"][0] == plain["messages"][0]);
+  CHECK(with_note["messages"][1] == plain["messages"][1]);
+  CHECK(with_note["messages"][2]["role"] == "user");
+  CHECK(with_note["messages"][2]["content"][0]["text"] ==
+        "[harness note, not a user message] background finished");
+
+  // Next to a user message the note joins it, so roles still alternate.
+  json after_tool = history;
+  after_tool.push_back(
+      {{"role", "tool"}, {"tool_call_id", "call-1"}, {"content", "output"}});
+  after_tool.push_back({{"role", "system"}, {"content", "note"}});
+  json merged = encode(WireApi::kAnthropicMessages, after_tool)["messages"];
+  CHECK(merged.size() == 3);
+  CHECK(merged[2]["content"].size() == 2);
+  CHECK(merged[2]["content"][0]["type"] == "tool_result");
+  CHECK(merged[2]["content"][1]["type"] == "text");
+
+  // Leading system and developer messages still make the system prompt.
+  json leading = json::array({{{"role", "system"}, {"content", "one"}},
+                              {{"role", "developer"}, {"content", "two"}},
+                              {{"role", "user"}, {"content", "hi"}}});
+  CHECK(encode(WireApi::kAnthropicMessages, leading)["system"][0]["text"] ==
+        "one\n\ntwo");
+
+  // The other wires take a system message anywhere, so the note stays one.
+  CHECK(encode(WireApi::kChatCompletions, noted)["messages"][3]["role"] ==
+        "system");
+  CHECK(encode(WireApi::kResponses, noted)["input"][3]["role"] == "system");
+
+  // The memoized encoder agrees byte for byte, and notices a message that
+  // stops being leading.
+  Api api(RuntimeConfig{});
+  api.model = "m";
+  api.wire_api = WireApi::kAnthropicMessages;
+  for (const json& messages : {history, noted, history, noted}) {
+    CHECK(api.ChatPayload(messages, schemas, "s") ==
+          JsonDump(api.BuildRequestBody(messages, schemas, "s")));
+  }
+  json reordered = json::array({{{"role", "user"}, {"content", "first"}},
+                                {{"role", "system"}, {"content", "late"}}});
+  json leading_again = json::array({{{"role", "system"}, {"content", "late"}},
+                                    {{"role", "user"}, {"content", "first"}}});
+  for (const json& messages : {leading_again, reordered, leading_again}) {
+    CHECK(api.ChatPayload(messages, schemas, "s") ==
+          JsonDump(api.BuildRequestBody(messages, schemas, "s")));
+  }
+}
+
+void TestWireCacheBreakpoint() {
+  json history = json::array({{{"role", "system"}, {"content", "base"}},
+                              {{"role", "user"}, {"content", "question"}},
+                              {{"role", "assistant"}, {"content", "answer"}}});
+  json tailed = history;
+  tailed.back()[kCacheBreakpointField] = true;
+  tailed.push_back({{"role", "user"}, {"content", "volatile context"}});
+  auto encode = [&](WireApi wire, bool cache_control = false) {
+    return EncodeWireRequest(
+        wire, WireRequest{.model = "m",
+                          .messages = tailed,
+                          .tool_schemas = json::array(),
+                          .prompt_cache_control = cache_control});
+  };
+
+  json anthropic = encode(WireApi::kAnthropicMessages);
+  CHECK(anthropic["messages"][1]["content"][0]["cache_control"]["type"] ==
+        "ephemeral");
+  CHECK(!anthropic["messages"][0]["content"][0].contains("cache_control"));
+  CHECK(!anthropic["messages"][2]["content"][0].contains("cache_control"));
+  CHECK(Lacks(anthropic, kCacheBreakpointField));
+
+  json chat = encode(WireApi::kChatCompletions, true);
+  CHECK(chat["messages"][2]["content"][0]["text"] == "answer");
+  CHECK(chat["messages"][2]["content"][0]["cache_control"]["type"] ==
+        "ephemeral");
+  CHECK(chat["messages"][3]["content"] == "volatile context");
+  // An endpoint that does not declare the field never sees it.
+  json plain_chat = encode(WireApi::kChatCompletions);
+  CHECK(plain_chat["messages"][2]["content"] == "answer");
+  CHECK(Lacks(plain_chat, kCacheBreakpointField));
+  CHECK(Lacks(encode(WireApi::kResponses), kCacheBreakpointField));
+
+  // A thinking block cannot carry one.
+  json thinking = tailed;
+  thinking[2][kWireReplayField] = {
+      {"wire_api", "anthropic_messages"},
+      {"content",
+       json::array(
+           {{{"type", "thinking"}, {"thinking", "t"}, {"signature", "s"}}})}};
+  WireRequest request{
+      .model = "m", .messages = thinking, .tool_schemas = json::array()};
+  CHECK(!EncodeWireRequest(WireApi::kAnthropicMessages,
+                           request)["messages"][1]["content"][0]
+             .contains("cache_control"));
+
+  // The memoized encoder writes the same bytes.
+  Api api(RuntimeConfig{});
+  api.model = "m";
+  api.features.Add(Feature::kPromptCacheControl);
+  for (WireApi wire :
+       {WireApi::kAnthropicMessages, WireApi::kChatCompletions}) {
+    api.wire_api = wire;
+    for (const json& messages : {history, tailed, history}) {
+      CHECK(api.ChatPayload(messages, json::array(), "s") ==
+            JsonDump(api.BuildRequestBody(messages, json::array(), "s")));
+    }
+  }
+}
+
+void TestWireSideRequestKnobs() {
+  json messages = json::array({{{"role", "user"}, {"content", "hi"}}});
+  json schemas = json::array({FunctionSchema("read_path")});
+  auto encode = [&](WireApi wire, bool forbid) {
+    return EncodeWireRequest(wire, WireRequest{.model = "m",
+                                               .messages = messages,
+                                               .tool_schemas = schemas,
+                                               .forbid_tool_calls = forbid});
+  };
+  // Tools stay offered. Anthropic keeps its default choice, which would
+  // otherwise drop the cached messages.
+  for (WireApi wire : {WireApi::kChatCompletions, WireApi::kResponses}) {
+    CHECK(encode(wire, true)["tool_choice"] == "none");
+    CHECK(encode(wire, true)["tools"].size() == 1);
+    CHECK(!encode(wire, false).contains("tool_choice"));
+  }
+  CHECK(!encode(WireApi::kAnthropicMessages, true).contains("tool_choice"));
+  CHECK(encode(WireApi::kAnthropicMessages, true)["tools"].size() == 1);
+
+  WireRequest searching{.model = "m",
+                        .messages = messages,
+                        .tool_schemas = schemas,
+                        .native_web_search = true};
+  json tools =
+      EncodeWireRequest(WireApi::kAnthropicMessages, searching)["tools"];
+  CHECK(tools.back()["type"] == "web_search_20250305");
+  CHECK(tools.back()["max_uses"] == kWebSearchMaxUses);
+
+  Api api(RuntimeConfig{});
+  api.model = "m";
+  api.max_output_tokens = 64;
+  api.wire_api = WireApi::kChatCompletions;
+  CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64);
+  api.wire_api = WireApi::kAnthropicMessages;
+  CHECK(api.BuildRequestBody(messages, json::array())["max_tokens"] == 64);
 }
 
 }  // namespace uagent

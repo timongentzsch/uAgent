@@ -100,6 +100,9 @@ namespace uagent {
   X(TestPromptRequestParity)                      \
   X(TestSseFraming)                               \
   X(TestWireCacheParity)                          \
+  X(TestWireHarnessNotes)                         \
+  X(TestWireCacheBreakpoint)                      \
+  X(TestWireSideRequestKnobs)                     \
   X(TestWireAdapters)                             \
   X(TestWireStreams)                              \
   X(TestWireStreamHostedSearch)                   \

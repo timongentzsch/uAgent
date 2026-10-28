@@ -385,6 +385,8 @@ interface PendingBase {
   id: string;
   prompt?: string;
   initial?: string;
+  // Terminal text shown above the prompt; the web draws `options` instead.
+  description?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
   // A thread's decision goes to its panel first; "human" once yielded.
   route?: "panel" | "human";

@@ -111,6 +111,8 @@ struct InteractionRequest {
   std::string prompt;
   bool keep_history = false;
   std::string initial = "";
+  // Shown above the prompt: what is being chosen between.
+  std::string description = "";
   json options = json::array();
   json questions = nullptr;  // kind "ask": what the ask tool puts to them
 };

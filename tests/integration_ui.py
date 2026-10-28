@@ -447,6 +447,23 @@ def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home, *, bina
         assert_true(len(server.requests) == 0, server.requests)
 
 
+def test_model_picker_lists_the_models_before_asking(root, home, *, binary):
+    models = {"data": [{"id": "alpha-one"}, {"id": "alpha-two"}]}
+    with Server([event({"content": "unused"})], get_response=models) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"/model alpha\r", b"model # "), (b"2\r", b"model alpha-two"), b"/q\r"],
+            startup_marker=b"Ready",
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        # The command is still running when it asks: the list it asks about
+        # comes with the question, not with the command's result.
+        asked = output.index(b"model # ")
+        assert_true(b"[2]   alpha-two" in output[:asked], output)
+
+
 def test_input_redraw_focus_switch_preserves_multiline_draft(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")

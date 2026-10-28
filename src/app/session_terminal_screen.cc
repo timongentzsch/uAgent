@@ -62,7 +62,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
 
 // What a pending approval or question says above its prompt.
 std::string DecisionDescription(const json& pending) {
-  std::string description;
+  std::string description = JsonValue(pending, "description", "");
   if (const json* approval = JsonObject(pending, "approval")) {
     std::string risks;
     for (const json& risk : JsonValue(*approval, "risks", json::array())) {

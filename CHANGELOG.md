@@ -22,6 +22,7 @@
 ### Changes
 
 - **The agent's Chrome blocks `passwords.google.com`**, where a saved password could be revealed; manage logins from your own browser.
+- **`/model QUERY` lists the models before it asks for a number.** The list came after the question, once the command ended, so the picker asked about models it had not shown; "searching all model catalogs" also shows while the search runs.
 - **Browser results for the page just seen carry only what changed** (`- old`, `+ new` lines); a navigation or `read` gives the full page. On a 42-action form this cut cost-weighted tokens by 15–17%.
 - The directory a conversation runs in is a folder everywhere it is shown or told to the model (the setting scope reads "This folder"); "workspace" now means only the group µAgent keeps under `~/.uagent/spaces`. Setting keys, scope values, file names and the `--trust-project-config` flag are unchanged.
 - The web host gzips API JSON over 1 KiB for clients that accept it (a conversation snapshot is about an eighth of its size), and answers `If-None-Match` for `index.html`, `sw.js` and other unhashed files with 304.

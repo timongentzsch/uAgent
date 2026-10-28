@@ -64,7 +64,8 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
   return reply.output;
 }
 
-// The interactive catalog picker: prints the matches, then reads a choice.
+// The interactive catalog picker: lists the matches with its question, so a
+// client shows them above the prompt while the command is still running.
 // Its only caller is /model, so it stays here rather than in a header.
 std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
                                         const std::vector<Endpoint>& providers,
@@ -74,6 +75,7 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
     current = "no model";
   }
   json options = json::array();
+  std::string listing;
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
     bool active = candidate.route.base_url == api.base_url &&
@@ -86,27 +88,25 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
         OverrideSetting("UAGENT_CONTEXT", std::to_string(api.ctx_window));
       }
     }
-    reply.Print("%s[%zu]%s %s%c %s", BOLD(), i + 1, RST(),
-                active ? BOLD() : DIM(), active ? '*' : ' ',
-                TerminalSafe(candidate.route.route_name).c_str());
+    listing += "[" + std::to_string(i + 1) + "] " + (active ? '*' : ' ') + " " +
+               TerminalSafe(candidate.route.route_name);
     if (!candidate.info.name.empty() &&
         candidate.info.name != candidate.info.id &&
         candidate.info.name != candidate.route.route_name) {
-      reply.Print(" · %s", TerminalSafe(candidate.info.name).c_str());
+      listing += " · " + TerminalSafe(candidate.info.name);
     }
     std::string effort =
         active ? api.reasoning_effort : candidate.route.reasoning_effort;
     if (effort.empty()) effort = candidate.info.default_effort;
-    reply.Print(" · effort %s", effort.empty() ? "default" : effort.c_str());
+    listing += " · effort " + (effort.empty() ? "default" : effort);
     if (candidate.info.context > 0) {
-      reply.Print(" · ctx %s", FmtCount(candidate.info.context).c_str());
+      listing += " · ctx " + FmtCount(candidate.info.context);
     }
     std::string supported;
     for (const auto& value : candidate.info.efforts) {
       supported += (supported.empty() ? " · supports " : ",") + value;
     }
-    reply.Print("%s", supported.c_str());
-    reply.Print("%s\n", RST());
+    listing += supported + "\n";
     std::string route_label =
         active ? RouteSelection(api, providers)
                : ComposeSelection(
@@ -127,9 +127,9 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
                        {"supported_efforts", candidate.info.efforts}});
   }
   for (const std::string& unavailable : search.unavailable) {
-    reply.Note(Tone::kWarn, TerminalSafe(unavailable) + " catalog unavailable");
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     unavailable + " catalog unavailable"));
   }
-  reply.Note(Tone::kNeutral, Plural(search.matches.size(), "model"));
   if (search.matches.empty()) return std::nullopt;
 
   bool cancelled = false;
@@ -137,6 +137,7 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   std::string answer = ReadChoiceLine(
       {.kind = "model.select",
        .prompt = "model # (blank/Esc keeps " + TerminalSafe(current) + "): ",
+       .description = std::move(listing),
        .options = std::move(options)},
       cancelled, eof);
   if (cancelled || eof || answer.empty()) {
@@ -157,7 +158,9 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
 void PickFromCatalog(AppSession& session, const std::string& query,
                      bool as_default, CommandReply& reply) {
   std::string suffix = query == "all" ? "" : " for " + TerminalSafe(query);
-  reply.Note(Tone::kNeutral, "searching all model catalogs" + suffix);
+  // Shown now: the search can take seconds.
+  Emit(NoticeEvent(PresentationStatus::kNeutral,
+                   "searching all model catalogs" + suffix));
   ModelSearch search =
       SearchModels(session.ApiClient(), session.context.provider.routes,
                    session.context.provider.providers, query);

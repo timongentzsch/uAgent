@@ -263,6 +263,7 @@ class WorkerChannel final : public ApplicationChannel {
                  {"kind", request.kind},
                  {"prompt", request.prompt},
                  {"options", request.options},
+                 {"description", request.description},
                  {"initial", request.initial}};
     if (JsonValue(approval_, "id", "") == request.id) {
       decision_["approval"] = approval_;

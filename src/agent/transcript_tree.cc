@@ -99,6 +99,8 @@ const json* ResultRecord(const json& facts, uint64_t sequence,
   return FindToolFacts(facts, id, call_id);
 }
 
+bool IsFile(const json& part) { return JsonValue(part, "kind", "") == "file"; }
+
 // The verb a run of same-intent calls folds under; empty for intents whose
 // calls always keep their own rows.
 std::string GroupVerb(const std::string& intent) {
@@ -133,6 +135,11 @@ bool Blank(std::string_view text) {
 std::string WorkId(std::string_view turn) { return "w-" + std::string(turn); }
 std::string ThinkingId(std::string_view message) {
   return std::string(message) + ":thinking";
+}
+json ThinkingNode(std::string_view message, std::string_view work,
+                  json fields) {
+  fields["headline"] = {{"verb", "Thinking"}, {"target", ""}};
+  return MakeNode(ThinkingId(message), work, "thinking", std::move(fields));
 }
 
 json CallHeadline(const json& view, std::string_view state,
@@ -178,9 +185,30 @@ json CallNode(const json& record, const std::string& turn) {
   if (const json* input = JsonArray(view, "input"); input && !input->empty()) {
     node["input"] = *input;
   }
-  Keep(node, record, {"result", "parts", "change_path"});
+  // Files it handed over are a node of their own (FilesNode).
+  if (const json* parts = JsonArray(record, "parts")) {
+    json kept = json::array();
+    for (const json& part : *parts) {
+      if (!IsFile(part)) kept.push_back(part);
+    }
+    if (!kept.empty()) node["parts"] = std::move(kept);
+  }
+  Keep(node, record, {"result", "change_path"});
   Keep(node, activity, {"category"});
   return node;
+}
+
+json FilesNode(const json& record, std::string_view turn) {
+  const json* parts = JsonArray(record, "parts");
+  if (!parts) return nullptr;
+  json files = json::array();
+  for (const json& part : *parts) {
+    if (IsFile(part)) files.push_back(part);
+  }
+  if (files.empty()) return nullptr;
+  return MakeNode(JsonValue(record, "detail_id", "") + ":files", turn,
+                  "message",
+                  {{"role", "assistant"}, {"parts", std::move(files)}});
 }
 
 json WorkNode(const std::string& turn, const json& counts,
@@ -198,15 +226,15 @@ json WorkNode(const std::string& turn, const json& counts,
                  : outcome == "complete"    ? "ok"
                  : outcome == "interrupted" ? "cancelled"
                                             : "failed"},
-       {"headline", {{"verb", summary ? "Worked" : "Working"}, {"target", ""}}},
+       {"headline",
+        {{"verb", summary ? "Worked" : "Working"},
+         {"target", JoinDot({steps ? Plural(steps, "step") : "",
+                             edited ? "edited " + Plural(edited, "file") : "",
+                             errors ? Plural(errors, "error") : ""})}}},
        {"result",
         {{"word",
-          JoinDot({steps ? Plural(steps, "step") : "",
-                   edited ? "edited " + Plural(edited, "file") : "",
-                   errors ? Plural(errors, "error") : "",
-                   summary ? FmtDuration(
-                                 JsonValue(*summary, "duration_ms", 0.0) / 1000)
-                           : ""})},
+          summary ? FmtDuration(JsonValue(*summary, "duration_ms", 0.0) / 1000)
+                  : ""},
          {"items", steps},
          {"unit", "step"},
          {"edited", edited},
@@ -242,14 +270,13 @@ std::vector<json> GroupCalls(const std::vector<json>& activities) {
 
 json GroupNode(const std::string& id, const json& group) {
   const std::string turn = JsonValue(group, "turn", "");
-  ResultFacts facts;
-  facts.items = JsonValue(group, "calls", int64_t{0});
-  facts.unit = "call";
-  return MakeNode(
-      id, turn.empty() ? "" : WorkId(turn), "group",
-      {{"state", "ok"},
-       {"headline", {{"verb", JsonValue(group, "verb", "")}, {"target", ""}}},
-       {"result", ResultJson(facts, "ok", -1)}});
+  const int64_t calls = JsonValue(group, "calls", int64_t{0});
+  return MakeNode(id, turn.empty() ? "" : WorkId(turn), "group",
+                  {{"state", "ok"},
+                   {"headline",
+                    {{"verb", JsonValue(group, "verb", "")},
+                     {"target", Plural(calls, "call")}}},
+                   {"result", {{"items", calls}, {"unit", "call"}}}});
 }
 
 json EntryNode(const json& entry) {
@@ -262,7 +289,16 @@ json EntryNode(const json& entry) {
   if (kind == "turn_summary") return node;
   node["state"] = state;
   if (kind == "compaction") {
+    const json facts = JsonValue(entry, "compaction", kNone);
+    const auto count = [&](const char* key) {
+      return std::to_string(JsonValue(facts, key, int64_t{0}));
+    };
     node["headline"] = {{"verb", "Compacted"}, {"target", ""}};
+    node["result"] = {
+        {"word",
+         JoinDot({count("messages_before") + " → " + count("messages_after") +
+                      " messages",
+                  FmtDuration(JsonValue(facts, "duration_ms", 0.0) / 1000)})}};
     return node;
   }
   const json activity = JsonValue(entry, "activity", kNone);
@@ -324,6 +360,13 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     Keep(node, metadata, {"time"});
     out.push_back(std::move(node));
   };
+  // A call, then the files it handed over.
+  const auto add_call = [&](const json& record) {
+    add(CallNode(record, turn));
+    if (json files = FilesNode(record, turn); !files.is_null()) {
+      add(std::move(files));
+    }
+  };
   if (entry.kind == "tool_result") {
     std::string id;
     const json* found = ResultRecord(facts, sequence, message, id);
@@ -332,7 +375,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     // Saved calls finished by definition: a missing receipt is a gap in
     // history, never live work.
     if (!record.contains("state")) record["state"] = "ok";
-    add(CallNode(record, turn));
+    add_call(record);
     return;
   }
   const std::string response_id = JsonValue(metadata, "response_id", "");
@@ -341,7 +384,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   if (entry.kind == "assistant") {
     // The live node streamed under the response id; the saved one is it.
     const std::string id = response_id.empty() ? key : response_id;
-    json thinking = MakeNode(ThinkingId(id), work, "thinking");
+    json thinking = ThinkingNode(id, work);
     SetBody(thinking, "text", EntryText(facts, sequence, message, true));
     if (thinking.contains("body")) add(std::move(thinking));
     // A reply that made calls is a step of its turn's work; the one after
@@ -400,7 +443,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
       record["name"] = Utf8Trunc(
           JsonValue(JsonValue(call, "function", kNone), "name", ""), 128);
     }
-    add(CallNode(record, turn));
+    add_call(record);
   }
 }
 

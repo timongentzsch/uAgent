@@ -74,8 +74,8 @@ export function useCommands({
   // Opens search over everything.
   search: () => void;
   setNotice: (notice: string) => void;
-  levels: string[];
-  changeDetail: (level: string) => Promise<void>;
+  levels: readonly string[];
+  changeDetail: (level: string) => void;
   askSide: (parent: Session, question: string) => Promise<void>;
 }) {
   const {
@@ -147,7 +147,7 @@ export function useCommands({
     else if (name === "/verbosity") {
       if (!levels.includes(argument))
         throw new Error(`Use /verbosity ${levels.join("|")}`);
-      await changeDetail(argument);
+      changeDetail(argument);
     }
     // In a terminal /quit detaches and the runtime stays; here that is just
     // leaving the page, so it never closes anything.
@@ -265,10 +265,11 @@ export function useCommands({
         ...items,
         {
           id: `outgoing-${request_id}`,
+          parent: null,
           request_id,
           session_id: id,
-          kind: "user",
-          text: sent.text,
+          kind: "turn",
+          body: { kind: "text", text: sent.text },
           files: sent.files,
           time: new Date().toISOString(),
           status: queued || outgoingStatus.sending,

@@ -10,7 +10,6 @@ import type {
 } from "../shared/types.ts";
 import type { SnapshotStore } from "./snapshot-store.ts";
 import {
-  adoptState,
   applySessionEvent,
   confirmOutgoing,
   isIncoming,
@@ -137,13 +136,8 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     case "block":
       if (event.block) {
         const block = event.block;
-        setOutgoing((items) =>
-          confirmOutgoing(
-            items,
-            "request_id" in block ? block.request_id : undefined,
-          ),
-        );
-        const incoming = "incoming" in block ? block.incoming : undefined;
+        setOutgoing((items) => confirmOutgoing(items, block.request_id));
+        const incoming = block.incoming;
         if (incoming) patchSession(id, (item) => raiseIncoming(item, incoming));
       }
       if (current) live.current[id] = applySessionEvent(current, event);
@@ -174,7 +168,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
         epoch: event.epoch,
         cursor: event.sequence,
         metadata: keptSession(current?.metadata, metadata),
-        state: stateFrame(current?.state, adoptState(event.state), phase),
+        state: stateFrame(current?.state, event.state, phase),
         pending: pendingDecision,
       };
       live.current[id] = keepOlderPages(current, projected);

@@ -127,13 +127,8 @@ for (const [name, viewport] of VIEWPORTS) {
           node.classList.contains("turn-footer")
             ? "stats"
             : node.classList.contains("user")
-              ? // What shows: the row's spoken name ("You, 10:32") is not.
-                [...node.children]
-                  .filter((child) => !child.classList.contains("sr-only"))
-                  .map((child) => child.textContent)
-                  .join("")
-                  .replace(/^\s*\d+:\d+\s*(AM|PM)?/, "")
-                  .trim()
+              ? // What was typed, without its time and menu.
+                node.querySelector(".message-text")?.textContent?.trim()
               : "",
         ),
       );

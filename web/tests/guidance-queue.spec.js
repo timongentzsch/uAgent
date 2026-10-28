@@ -104,9 +104,7 @@ for (const width of [320, 390, 1280]) {
     await expect(
       page.getByRole("button", { name: "Continue", exact: true }),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: /^Turn statistics:/ }),
-    ).toHaveCount(1);
+    await expect(page.locator(".turn-footer")).toHaveCount(1);
   });
 }
 

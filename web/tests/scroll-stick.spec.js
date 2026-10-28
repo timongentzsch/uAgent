@@ -195,7 +195,7 @@ test("background completion badges while unfollowed, cleared on jump", async ({
     timeout: 30000,
   });
   await page.getByRole("button", { name: "Allow once", exact: true }).click();
-  await expect(page.locator(".tool-disclosure").first()).toBeVisible({
+  await expect(page.locator(".node-row").first()).toBeVisible({
     timeout: 30000,
   });
   // Reader-like steps out of the stick band; the sleep is still running.

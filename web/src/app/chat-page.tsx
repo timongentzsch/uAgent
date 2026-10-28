@@ -1,9 +1,9 @@
 import type { ComponentChildren } from "preact";
 import type {
   Activity,
-  Block,
   Catalogue,
   InspectorTarget,
+  Node,
   Outgoing,
   Session,
   Snapshot,
@@ -11,7 +11,6 @@ import type {
   SlashCommand,
 } from "../shared/types.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
-import { isRunning } from "../shared/display.ts";
 import { useCallback, useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
@@ -22,36 +21,33 @@ import Board from "../features/panel/board.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
 import { usePhone } from "../shared/layout.ts";
 import WaitingList from "../shared/escalations.tsx";
-import Chat, { prepareHistoryBlocks } from "../features/chat/chat.tsx";
+import Chat, { prepareHistoryNodes } from "../features/chat/chat.tsx";
 import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
-import { prependHistoryPage } from "../state/history-page.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
-import { adoptSnapshot } from "../state/store.ts";
+import { keepFirst, mergeNodes } from "../shared/tree.ts";
+import { maxHistoryNodes } from "../shared/limits.ts";
 import SideAnswer from "../features/chat/side-answer.tsx";
 
 // Empty lists, so an idle context value or prop never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
 const NO_COMMANDS: SlashCommand[] = [];
 
-// The transcript's rows: the host's view, then this device's messages the
+// The transcript's nodes: the host's view, then this device's messages the
 // host has not confirmed yet.
-export function transcriptBlocks(
+export function transcriptNodes(
   view: View | undefined,
   outgoing: Outgoing[],
   selected: string,
-): Block[] {
+): Node[] {
   return [
     ...(view?.blocks || []),
     ...outgoing.filter(
       (item) =>
         item.session_id === selected &&
-        !view?.blocks?.some(
-          (block) =>
-            "request_id" in block && block.request_id === item.request_id,
-        ),
+        !view?.blocks?.some((node) => node.request_id === item.request_id),
     ),
   ];
 }
@@ -59,10 +55,9 @@ export function transcriptBlocks(
 // The conversation's agent is using the browser: a running call links to it.
 export const isBrowsing = (snapshot?: Snapshot) =>
   !!snapshot?.state?.view?.blocks.some(
-    (block) =>
-      block.kind === "tool_result" &&
-      isRunning(block.state) &&
-      !!block.view?.input?.some(
+    (node) =>
+      node.state === "running" &&
+      !!node.input?.some(
         (part) => part.kind === "link" && part.to === "browser",
       ),
   );
@@ -125,8 +120,8 @@ export default function ChatPage({
   const phone = usePhone();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
-  const allBlocks = useMemo(
-    () => transcriptBlocks(view, outgoing, selected),
+  const allNodes = useMemo(
+    () => transcriptNodes(view, outgoing, selected),
     [view, outgoing, selected],
   );
   // This device's guidance waiting on the turn: beside the composer, not in
@@ -138,14 +133,12 @@ export default function ChatPage({
       ),
     [outgoing, selected],
   );
-  const blocks = useMemo(
+  const nodes = useMemo(
     () =>
       queued.length
-        ? allBlocks.filter(
-            (block) => block.kind !== "user" || !queuedGuidance(block),
-          )
-        : allBlocks,
-    [allBlocks, queued],
+        ? allNodes.filter((node) => !queuedGuidance(node))
+        : allNodes,
+    [allNodes, queued],
   );
   // Session-scoped surfaces: switching conversations resumes the saved
   // scroll position (or pins a fresh one); the hook owns this, so there
@@ -158,7 +151,7 @@ export default function ChatPage({
     preserveWhile,
     reveal,
     unseen,
-  } = useTranscriptHistory(setFollowing, historyKey, blocks);
+  } = useTranscriptHistory(setFollowing, historyKey, nodes);
   // The shared transcript controller retains the visible block through
   // this bounded page update; this loader only owns data and cursors.
   const more = view?.more;
@@ -166,10 +159,8 @@ export default function ChatPage({
   const older = useCallback(async () => {
     if (!more || !transcript.current) return;
     const id = selected;
-    const value = adoptSnapshot(
-      await api<Snapshot>(routes.session(id, `before=${before}`)),
-    );
-    await prepareHistoryBlocks(value.state?.view?.blocks || []);
+    const value = await api<Snapshot>(routes.session(id, `before=${before}`));
+    await prepareHistoryNodes(value.state?.view?.blocks || []);
     updateView(id, (current) => {
       if (
         !value.state?.view ||
@@ -183,7 +174,13 @@ export default function ChatPage({
         ...current,
         state: {
           ...current.state,
-          view: prependHistoryPage(value.state.view, current.state.view),
+          view: {
+            ...value.state.view,
+            blocks: keepFirst(
+              mergeNodes(value.state.view.blocks, current.state.view.blocks),
+              maxHistoryNodes,
+            ),
+          },
         },
       };
     });
@@ -218,7 +215,7 @@ export default function ChatPage({
     stop.reason !== "completed" &&
     !session?.turn_active &&
     !snapshot?.pending &&
-    !blocks.at(-1)?.id.startsWith("outgoing-")
+    !nodes.at(-1)?.id.startsWith("outgoing-")
       ? stop.reason
       : undefined;
   // A panel's board, escalations and chat read the same threads.
@@ -276,7 +273,7 @@ export default function ChatPage({
           key={`${selected}:${find.at}`}
           request={find}
           view={view}
-          blocks={blocks}
+          nodes={nodes}
           root={transcript}
           older={() => preserveWhile(older)}
           reveal={reveal}
@@ -299,7 +296,7 @@ export default function ChatPage({
             selected={selected}
             snapshot={snapshot}
             loadError={loadError}
-            blocks={blocks}
+            nodes={nodes}
             session={shown}
             older={older}
           />

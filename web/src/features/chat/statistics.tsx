@@ -11,7 +11,6 @@ import {
   UsageRows,
   type Row,
 } from "../../shared/statistics-layout.tsx";
-import { presentMessages } from "../../shared/message-view.ts";
 import { servedBy, servedByRows } from "../../shared/display.ts";
 
 const rate = (value?: number) =>
@@ -58,32 +57,20 @@ export function StatisticsContent({
   const [scope, setScope] = useState<"turn" | "session">(
     blockId ? "turn" : "session",
   );
-  const presented = state?.view ? presentMessages(state.view.blocks) : [];
-  const flattened = presented.flatMap((row) =>
-    row.children ? [row, ...row.children] : [row],
-  );
   const target = blockId
-    ? flattened.find(
-        (row) =>
-          row.key === blockId ||
-          row.id === blockId ||
-          ("response_id" in row && row.response_id === blockId) ||
-          ("occurrence_id" in row && row.occurrence_id === blockId),
-      )
+    ? state?.view?.blocks.find((node) => node.id === blockId)
     : undefined;
-  // A turn's footer carries its summary; any other row is one message.
+  // A turn's footer carries its summary; any other node is one message.
   const unit = !blockId
     ? undefined
-    : target && target.kind !== "turn_summary"
+    : target && target.kind !== "footer"
       ? "Message"
       : "Turn";
   const block = scope === "turn" ? target : undefined;
   const missingTurn = blockId && scope === "turn" && !block;
   const stats = state?.statistics;
-  const summary = block?.kind === "turn_summary" ? block.summary : undefined;
-  const reply = block?.kind === "assistant" ? block : undefined;
-  const call = block?.kind === "tool_result" ? block : undefined;
-  const took = block && "duration_ms" in block ? block.duration_ms : undefined;
+  const summary = block?.summary;
+  const reply = block?.role === "assistant" ? block : undefined;
   const side = summary?.background_statistics;
   const fork = state?.view?.fork;
   const rows: Row[] = summary
@@ -111,9 +98,8 @@ export function StatisticsContent({
               .filter(Boolean)
               .join(" · "),
           ],
-          ["Tool", call?.name || "—"],
-          ["Status", ("state" in block && block.state) || "—"],
-          ["Duration", duration(took)],
+          ["Status", block.state || "—"],
+          ["Duration", duration(block.duration_ms)],
           ["TTFT", duration(reply?.ttft_ms)],
           ["Throughput", rate(reply?.tokens_per_second)],
         ]

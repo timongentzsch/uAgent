@@ -1,20 +1,15 @@
 import type {
-  Block,
-  BlockPatch,
   Catalogue,
   Draft,
   ExecutionPhase,
   HostEvent,
-  Node,
-  NodeView,
   Outgoing,
   Session,
   Snapshot,
   State,
-  ToolView,
-  View,
 } from "../shared/types.ts";
 import { retainedBackgroundViews, maxHttpExchanges } from "../shared/limits.ts";
+import { mergeNodes, placeNode } from "../shared/tree.ts";
 
 // Pure updates to snapshots, drafts and the catalogue for each kind of
 // event. They keep object identity when nothing changed so views skip frames.
@@ -23,167 +18,6 @@ export const emptyDraft = (): Draft => ({ text: "", files: [] });
 // Unsent work: text or a file, uploaded or still uploading.
 export const hasContent = (draft: Draft) =>
   !!(draft.text || draft.files.length);
-
-// Temporary, until this page draws the host's nodes (stage 3 of the
-// transcript refactor removes it with the fold logic in message-view.ts):
-// the host sends its transcript as nodes, and the page adopts each as the
-// block it drew before. A reply's thinking joins the reply, a group's verb
-// joins its calls, and the host's work nodes are left to the page's folds.
-const groupLabels = new Map<string, string>();
-const kThinking = ":thinking";
-
-function blockOf(node: Node): Block | undefined {
-  const { parent, kind, body, headline, input, routine, category, ...rest } =
-    node;
-  const base = {
-    ...rest,
-    text: body?.kind === "diff" ? undefined : body?.text,
-    truncated: body?.truncated,
-  };
-  const view: ToolView | undefined = headline && {
-    ...(headline.verb && {
-      verb: [headline.verb, headline.verb] as [string, string],
-    }),
-    target: headline.target,
-    input,
-  };
-  const label = headline?.verb ? undefined : headline?.target;
-  if (kind === "group" && headline)
-    groupLabels.set(node.id, `${headline.verb} · ${node.result?.word}`);
-  if (kind === "turn") return { ...base, kind: "user", turn_root: node.id };
-  if (kind === "message" && node.role === "assistant")
-    return { ...base, kind: "assistant", response_id: node.id };
-  if (kind === "message" && node.origin === "tool")
-    return { ...base, kind: "attachment", source_call_ids: [parent || ""] };
-  if (kind === "message") return { ...base, kind: "user" };
-  if (kind === "footer") return { ...base, kind: "turn_summary" } as Block;
-  if (kind === "notice" && node.compaction)
-    return { ...base, kind: "compaction" } as Block;
-  if (kind === "notice")
-    return {
-      ...base,
-      kind: "activity",
-      view,
-      body_kind: body?.kind,
-      activity: { category, label },
-      memory: node.memory && { ...node.memory, minor: routine },
-    };
-  if (kind === "call")
-    return {
-      ...base,
-      kind: "tool_result",
-      call_id: node.id,
-      detail_id: node.id,
-      view,
-      tail: body?.tail,
-      change: body?.kind === "diff" ? body.text : undefined,
-      body_kind: body?.kind === "diff" ? undefined : body?.kind,
-      activity: {
-        category,
-        label,
-        group: parent?.startsWith("g-")
-          ? { id: parent, label: groupLabels.get(parent) || "" }
-          : undefined,
-      },
-    };
-  return undefined;
-}
-
-// A view the host sent, as the blocks this page draws.
-export function adoptView(view: NodeView): View;
-export function adoptView(view: NodeView | undefined): View | undefined;
-export function adoptView(view: NodeView | undefined) {
-  if (!view) return view;
-  const blocks: Block[] = [];
-  const thinking = new Map<string, string>();
-  for (const node of view.blocks) {
-    if (node.kind === "thinking")
-      thinking.set(node.id.slice(0, -kThinking.length), node.body?.text || "");
-    const block = blockOf(node);
-    if (block?.kind === "assistant") block.reasoning = thinking.get(block.id);
-    if (block) blocks.push(block);
-  }
-  return { ...view, blocks };
-}
-
-// State the host sent, with its view adopted.
-export function adoptState<S extends { view?: View }>(state: S): S;
-export function adoptState<S extends { view?: View }>(
-  state: S | undefined,
-): S | undefined;
-export function adoptState<S extends { view?: View }>(state: S | undefined) {
-  return state?.view
-    ? { ...state, view: adoptView(state.view as unknown as NodeView) }
-    : state;
-}
-
-// A snapshot the host sent, with its view adopted.
-export const adoptSnapshot = (snapshot: Snapshot): Snapshot => ({
-  ...snapshot,
-  state: adoptState(snapshot.state),
-});
-
-// The host's view is the one source of rows; the browser applies its patches
-// in order. A new row lands in sequence position, so a late retained row
-// never strands older content after newer rows.
-function applyBlock(view: View | undefined, patch: BlockPatch): View {
-  const blocks = [...(view?.blocks || [])];
-  const id = patch.block?.id ?? patch.id ?? "";
-  // A reply's thinking is drawn on the reply.
-  const reply = id.endsWith(kThinking) ? id.slice(0, -kThinking.length) : "";
-  // Streaming patches the newest rows: search from the end.
-  const at = blocks.findLastIndex((block) => block.id === (reply || id));
-  const block = patch.block && blockOf(patch.block);
-  // A group's calls arrive before it, and take its words when it does.
-  if (patch.block?.kind === "group") {
-    const group = { id, label: groupLabels.get(id) || "" };
-    return {
-      ...view,
-      blocks: blocks.map((held) =>
-        held.kind === "tool_result" && held.activity?.group?.id === id
-          ? { ...held, activity: { ...held.activity, group } }
-          : held,
-      ),
-    } as View;
-  }
-  if (reply) {
-    // A reply thinking before its first text is held as an empty one.
-    const held: Block | undefined =
-      at >= 0
-        ? blocks[at]
-        : patch.block && { id: reply, kind: "assistant", streaming: true };
-    if (held?.kind !== "assistant") return view || { blocks };
-    const text = patch.block?.body?.text;
-    const next = {
-      ...held,
-      reasoning: text ?? (held.reasoning || "") + (patch.append?.text || ""),
-    };
-    if (at >= 0) blocks[at] = next;
-    else blocks.push(next);
-  } else if (block) {
-    if (at >= 0)
-      blocks[at] =
-        block.kind === "assistant"
-          ? { ...block, reasoning: (blocks[at] as typeof block).reasoning }
-          : block;
-    else {
-      const sequence = block.sequence;
-      const before =
-        typeof sequence === "number"
-          ? blocks.findIndex(
-              (held) =>
-                typeof held.sequence === "number" && held.sequence > sequence,
-            )
-          : -1;
-      blocks.splice(before < 0 ? blocks.length : before, 0, block);
-    }
-  } else if (at >= 0 && !patch.block) {
-    const next: Block = { ...blocks[at], ...patch.set };
-    if (patch.append?.text) next.text = (next.text || "") + patch.append.text;
-    blocks[at] = next;
-  }
-  return { ...view, blocks } as View;
-}
 
 // A state frame replaces the session's state. Only checkpoint frames carry
 // the view, HTTP log and prompt; the others keep the last ones.
@@ -220,21 +54,14 @@ export function keepOlderPages(
     return latest;
   const first = b.before || b.blocks[0]?.sequence;
   if (!first) return latest;
-  const seen = new Set(b.blocks.map((block) => block.id));
-  const older = a.blocks.filter(
-    (block) => (block.sequence || 0) < first && !seen.has(block.id),
-  );
-  if (!older.length) return latest;
+  const older = a.blocks.filter((node) => (node.sequence || 0) < first);
+  const blocks = mergeNodes(older, b.blocks);
+  if (blocks === b.blocks) return latest;
   return {
     ...latest,
     state: {
       ...latest.state,
-      view: {
-        ...b,
-        blocks: [...older, ...b.blocks],
-        before: a.before,
-        more: a.more,
-      },
+      view: { ...b, blocks, before: a.before, more: a.more },
     },
   };
 }
@@ -282,14 +109,16 @@ export function applySessionEvent(
   if (event.type === "config.changed" && data.permissions)
     state = { ...(state || {}), permissions: data.permissions };
   if (event.kind === "block")
-    state = { ...(state || {}), view: applyBlock(state?.view, event) };
+    state = {
+      ...(state || {}),
+      view: {
+        ...state?.view,
+        blocks: placeNode(state?.view?.blocks || [], event),
+      },
+    };
   const incoming = Math.max(
     current.metadata?.incoming || 0,
-    (event.kind === "block" &&
-      event.block &&
-      "incoming" in event.block &&
-      event.block.incoming) ||
-      0,
+    (event.kind === "block" && event.block?.incoming) || 0,
   );
   const metadata =
     incoming === (current.metadata?.incoming || 0)

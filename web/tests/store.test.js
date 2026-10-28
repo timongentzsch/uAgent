@@ -182,9 +182,10 @@ test("HTTP exchanges update in place by id and stay bounded", () => {
 test("a retained arrival preserves older pages explicitly loaded by the user", () => {
   const blocks = Array.from({ length: 400 }, (_, sequence) => ({
     id: `m-${sequence}`,
+    parent: null,
     sequence,
-    kind: "user",
-    text: "retained",
+    kind: "turn",
+    body: { kind: "text", text: "retained" },
   }));
   const current = {
     metadata: { incoming: 0 },
@@ -205,26 +206,29 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   });
   assert.equal(next.state.view.blocks.length, 401);
   assert.equal(next.state.view.blocks[0], blocks[0]);
-  assert.equal(next.state.view.blocks.at(-1).text, "new");
+  assert.equal(next.state.view.blocks.at(-1).body.text, "new");
   // A checkpoint replaces the host's window and keeps the loaded pages.
+  const reply = (text) => ({
+    id: "m-400",
+    parent: null,
+    sequence: 400,
+    kind: "message",
+    role: "assistant",
+    body: { kind: "markdown", text },
+  });
   const checkpoint = keepOlderPages(next, {
     ...next,
-    state: {
-      view: {
-        blocks: [{ id: "m-400", sequence: 400, kind: "assistant", text: "x" }],
-        before: 400,
-      },
-    },
+    state: { view: { blocks: [reply("x")], before: 400 } },
   });
   assert.equal(checkpoint.state.view.blocks.length, 401);
-  assert.equal(checkpoint.state.view.blocks.at(-1).text, "x");
+  assert.equal(checkpoint.state.view.blocks.at(-1).body.text, "x");
   // An in-place rewind starts a new view epoch: older pages go with it.
   const rewound = keepOlderPages(next, {
     ...next,
     state: {
       view_epoch: 1,
       view: {
-        blocks: [{ id: "m-2", sequence: 2, kind: "user", text: "again" }],
+        blocks: [{ id: "m-2", parent: null, sequence: 2, kind: "turn" }],
         before: 2,
       },
     },
@@ -233,8 +237,8 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
 });
 
 // The browser applies the host's nodes and never re-derives them: a whole
-// node, streamed appends, set fields, a reply's thinking on the reply and a
-// late retained node in sequence position.
+// node, streamed appends, set fields, a parent placed before the nodes under
+// it and a late retained node in sequence position.
 test("block patches rebuild the host's view", () => {
   const patch = (value) => ({ kind: "block", ...value });
   const reply = { id: "r", parent: "m-1", kind: "message", role: "assistant" };
@@ -274,21 +278,18 @@ test("block patches rebuild the host's view", () => {
   const blocks = snapshot.state.view.blocks;
   assert.deepEqual(
     blocks.map((block) => block.id),
-    ["r", "t-a", "t-b", "m-1"],
+    ["m-1", "r", "w-m-1", "r:thinking", "t-a", "t-b"],
   );
-  assert.equal(blocks[0].kind, "assistant");
-  assert.equal(blocks[0].text, "Hello world");
-  assert.equal(blocks[0].reasoning, "why");
-  assert.equal(blocks[0].streaming, false);
-  assert.equal(blocks[1].kind, "tool_result");
-  assert.equal(blocks[1].state, "ok");
-  assert.equal(blocks[1].text, "out");
-  assert.equal(blocks[3].kind, "user");
+  assert.equal(blocks[1].body.text, "Hello world");
+  assert.equal(blocks[1].streaming, false);
+  assert.equal(blocks[3].body.text, "why");
+  assert.equal(blocks[4].state, "ok");
+  assert.equal(blocks[4].body.text, "out");
   const retained = applySessionEvent(snapshot, {
     kind: "block",
     block: { id: "m-0", parent: null, sequence: 0, kind: "turn" },
   });
-  assert.equal(retained.state.view.blocks.at(-2).id, "m-0");
+  assert.equal(retained.state.view.blocks[0].id, "m-0");
 });
 
 // The shell re-renders on identity, so an update that changes nothing must

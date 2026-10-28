@@ -938,7 +938,7 @@ dialog.sidebar:not([open]) {
 .transcript-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--gap);
   min-height: 100%;
 }
 .transcript-content > p,
@@ -1126,9 +1126,9 @@ dialog.sidebar:not([open]) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Every plain disclosure reads like DisclosureRow: a chevron that turns as
-   it opens. DisclosureRow draws its own. */
-details:not(.disclosure-row) > summary::before {
+/* Every disclosure reads like a row that opens: a chevron that turns as it
+   opens. */
+details > summary::before {
   content: "";
   flex-shrink: 0;
   width: var(--icon);
@@ -1842,13 +1842,11 @@ details > summary::-webkit-details-marker {
 }
 /* Every chevron turns down as what it heads opens. */
 .row-chevron,
-.disclosure-chevron,
-details:not(.disclosure-row) > summary::before {
+details > summary::before {
   transition: rotate var(--motion-fast) var(--ease-standard);
 }
 .row[aria-expanded="true"] .row-chevron,
-.disclosure-row[open] > summary .disclosure-chevron,
-details[open]:not(.disclosure-row) > summary::before {
+details[open] > summary::before {
   rotate: 90deg;
 }
 .destructive-row .row-label {

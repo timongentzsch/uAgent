@@ -216,6 +216,6 @@ by the terminal and the web alike and never by the model:
 | `default` | the groups above, other calls a row each | on request | closed (web), hidden (terminal) | hidden |
 | `full` | every call its own row | shown | shown | shown |
 
-`/verbosity LEVEL` (or Detail in a web conversation's menu) changes it for
-every terminal and browser, across all conversations; `--verbosity LEVEL`
-pins one terminal for one run.
+`/verbosity LEVEL` changes it for every terminal, across all conversations,
+and a browser starts at it; Detail in a web conversation's menu sets that
+browser's own level. `--verbosity LEVEL` pins one terminal for one run.

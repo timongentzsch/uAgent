@@ -355,3 +355,24 @@ export const test = base.extend({
     await use(session);
   },
 });
+
+// Chooses this device's detail level from the open conversation's menu.
+export async function chooseDetail(page, level) {
+  await page
+    .locator(".conversation-head")
+    .getByLabel("Conversation menu", { exact: true })
+    .click();
+  // One row opens the levels in place, with a way back.
+  await page.getByRole("menuitem", { name: /^Detail/ }).click();
+  await expect(page.getByText("On this device.")).toBeVisible();
+  await page.getByRole("menuitemradio", { name: level, exact: true }).click();
+}
+
+// Opens the transcript row whose line holds `text`, and returns its node.
+export async function openRow(scope, text) {
+  const row = scope.locator(".node-row", { hasText: text }).first();
+  await expect(row).toBeVisible();
+  if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  return row.locator("..");
+}

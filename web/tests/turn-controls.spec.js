@@ -121,9 +121,7 @@ test("an undone turn puts its file back", async ({ page, session, host }) => {
   await page.getByRole("button", { name: "Allow once", exact: true }).click();
   const receipt = page.getByRole("button", { name: /^Review changes: / });
   await expect(receipt).toHaveText(/1 file · \+1 −0/);
-  await expect(
-    page.getByRole("button", { name: /^Turn statistics: / }),
-  ).toBeVisible();
+  await expect(page.locator(".turn-footer")).toBeVisible();
   expect(await exists(`${host.project}/browser-proof.txt`)).toBe(true);
   await receipt.click();
   const sheet = page.getByRole("dialog", { name: "Changed files" });
@@ -166,9 +164,7 @@ test("a message queued during a turn runs after it", async ({
   await expect(
     page.locator(".message.user", { hasText: "Queued follow-up" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /^Turn statistics: / }),
-  ).toHaveCount(2, { timeout: 30000 });
+  await expect(page.locator(".turn-footer")).toHaveCount(2, { timeout: 30000 });
   await expect(
     page.getByRole("region", { name: "Queued messages" }),
   ).toHaveCount(0);

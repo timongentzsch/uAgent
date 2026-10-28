@@ -5,6 +5,7 @@ import {
   headerAction,
   selectProbeModel,
   startInFolder,
+  openRow,
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -445,15 +446,12 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await expect(
     reply.getByRole("button", { name: "Copied!", exact: true }),
   ).toBeVisible();
-  const thinking = reply.locator(".thinking");
-  await thinking.locator("summary").click();
+  // The reply's thinking is a row of the turn's work, quieter than the
+  // reply once opened.
+  const thinking = (await openRow(page, "Thinking")).locator(".node-text");
   await expect(thinking).toContainText("I checked the supplied evidence.");
   const thinkingColor = await thinking.evaluate(
     (element) => getComputedStyle(element).color,
-  );
-  await expect(thinking.locator(".markdown, .plain")).toHaveCSS(
-    "color",
-    thinkingColor,
   );
   expect(thinkingColor).not.toBe(
     await reply.evaluate((element) => getComputedStyle(element).color),
@@ -464,19 +462,16 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     (element) => getComputedStyle(element).color,
   );
   expect(darkThinking).not.toBe(thinkingColor);
-  await expect(thinking.locator(".markdown, .plain")).toHaveCSS(
-    "color",
-    darkThinking,
-  );
   expect(darkThinking).not.toBe(
     await reply.evaluate((element) => getComputedStyle(element).color),
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  // An answer owns its metadata and actions in its header.
-  await reply
-    .locator("header")
-    .getByRole("button", { name: /^Actions for / })
+  // An answer's time and menu end its turn's footer.
+  await page
+    .locator(".turn-footer")
+    .last()
+    .getByRole("button", { name: "Actions for this answer" })
     .click();
   const rawAction = page.getByRole("menuitem", {
     name: "HTTP request/response",
@@ -600,7 +595,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       state: "ok",
       result: { word: "2.3s" },
       time: new Date().toISOString(),
-      category: "execute",
     },
   ];
   await page.route(`**/api/sessions/${session.id}`, (route) =>
@@ -609,10 +603,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   let requests = 0;
   const { promise: outputGate, resolve: releaseOutput } =
     Promise.withResolvers();
-  const full = JSON.stringify({
-    request: { query: "a test query" },
-    response: "retained output ".repeat(1500) + "END OF FULL RESULT",
-  });
+  const full = "retained output ".repeat(1500) + "END OF FULL RESULT";
   await page.route(
     `**/api/sessions/${session.id}?detail=t-fixture*`,
     async (route) => {
@@ -639,33 +630,28 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   );
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
-  const tool = page.locator(".message.tool");
+  const tool = page.locator('[data-message-id="t-fixture"]');
   await expect(tool).toBeVisible();
-  // Tool rows are headerless by design (attribution lives on response
-  // rows); the disclosure summary is the row's top edge, and it carries
-  // no mark (the inline-icon removal).
-  await expect(tool.locator(":scope > header")).toHaveCount(0);
-  await expect(tool.locator(".tool-disclosure > summary .mark")).toHaveCount(0);
-  // Atomic read: the stream can shift rows between two boundingBox
-  // calls (skeleton swaps), inverting a split comparison.
+  // A call has no header and no time: its line is its top edge. Atomic
+  // read: the stream can shift rows between two boundingBox calls.
+  await expect(tool.locator("header, time")).toHaveCount(0);
   const edges = await tool.evaluate((element) => {
-    const summary = element.querySelector(".tool-disclosure > summary");
-    const row = element.getBoundingClientRect();
-    const head = summary?.getBoundingClientRect();
-    return { toolY: row.y, summaryY: head?.y ?? row.y };
+    const line = element.querySelector(".node-row");
+    const node = element.getBoundingClientRect();
+    return { nodeY: node.y, lineY: line?.getBoundingClientRect().y ?? -1 };
   });
-  expect(edges.summaryY).toBeGreaterThanOrEqual(edges.toolY);
-  // However long the label grows, it takes the ellipsis and the status
-  // metadata stays on one line.
-  const toggle = tool.locator(".tool-disclosure > summary");
-  await expect(toggle.locator(".disclosure-label")).toHaveCSS(
+  expect(edges.lineY).toBe(edges.nodeY);
+  // However long the headline grows, it takes the ellipsis and the result
+  // word stays on one line.
+  const toggle = tool.locator(".node-row");
+  await expect(toggle.locator(".node-headline")).toHaveCSS(
     "text-overflow",
     "ellipsis",
   );
-  await expect(toggle.locator("small")).toHaveCSS("white-space", "nowrap");
+  await expect(toggle.locator(".node-word")).toHaveCSS("white-space", "nowrap");
   expect(
     await toggle
-      .locator("small")
+      .locator(".node-word")
       .evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
   ).toBe(true);
   expect(
@@ -696,11 +682,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       return top;
     }),
   ).toBe(0);
-  await expect(
-    page.getByRole("button", { name: "Show full tool output", exact: true }),
-  ).toHaveCount(0);
-  await expect(tool.locator(".tool-body")).toHaveCount(0);
-  await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
+  // A call at the top of the tree starts open on the preview it holds; the
+  // whole output loads only when asked for.
+  const body = tool.locator(".node-body");
+  await expect(body).toContainText("short preview");
   await expect(tool.locator(".katex")).toHaveCount(0);
   expect(requests).toBe(0);
   const row = page
@@ -719,35 +704,27 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     (el) => getComputedStyle(el).backgroundColor,
   );
   expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)");
-  await toggle.click();
-  await expect(tool.getByRole("status")).toContainText(
-    "Loading full tool output",
-  );
+  await tool.getByRole("button", { name: "Full output", exact: true }).click();
+  await expect(tool.getByRole("status")).toContainText("Loading full output");
   await expect(tool.locator(".loading-label")).toBeVisible();
   releaseOutput();
   await expect(tool.getByRole("alert")).toHaveText(
     "Tool output temporarily unavailable",
   );
   await tool.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
+  await expect(body).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
-  // The native view reads as typed: the command verbatim, never escaped JSON.
-  await expect(tool.locator(".tool-command")).toHaveText(
+  // The input reads as typed: the command verbatim, never escaped JSON, and
+  // its fields as label and value.
+  await expect(tool.locator(".node-command")).toHaveText(
     `psql -c "SELECT 'x'"`,
   );
-  // Short arguments read as facts in the info line, not as field rows.
-  await expect(tool.locator(".tool-facts")).toContainText("a test query");
-  await expect(tool.locator(".tool-facts time")).toHaveCount(1);
-  await expect(tool.locator(".tool-facts")).not.toContainText(
-    /called |completed /,
-  );
-  await expect(tool.locator(".tool-facts")).not.toHaveText(/^\s*·/);
-  await expect(tool.locator(".tool-fields")).toHaveCount(0);
-  await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
+  await expect(tool.locator(".node-fields")).toContainText("a test query");
   await expect(tool.locator(".katex")).toHaveCount(0);
+  // Closed, nothing of it is drawn; opened again, it holds its preview.
   await toggle.click();
-  await expect(tool.locator(".tool-body")).toBeHidden();
+  await expect(body).toHaveCount(0);
   await toggle.click();
-  await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
+  await expect(body).toContainText("short preview");
   expect(requests).toBe(3);
 });

@@ -269,10 +269,12 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(page.locator(".composer .turn-status-row")).not.toContainText(
     "1 command",
   );
-  // Finished work leaves "now"; its call's row stops reading as running.
+  // Finished work leaves "now"; its call's row is not running.
   await expect(
-    page.locator(".tool-disclosure").filter({ hasText: "BROWSER_ACTIVITY" }),
-  ).not.toContainText("running");
+    page.locator(".node:not(.running) > .node-row", {
+      hasText: "BROWSER_ACTIVITY",
+    }),
+  ).toBeVisible();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   // The activity sheet is modal: close it before reaching the page again.
   await page.keyboard.press("Escape");

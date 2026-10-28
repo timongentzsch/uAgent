@@ -145,6 +145,10 @@ def answer(handler, body):
             {"command": "printf BROWSER_ACTIVITY; sleep 10", "yield_ms": 250},
             call_id="browser-activity",
         )
+    if "Unknown tool probe" in prompt and not any(
+        message.get("tool_call_id") == "unknown-tool" for message in body["messages"]
+    ):
+        return tool_call("read_paths", {"path": "/etc"}, call_id="unknown-tool")
     if "Image probe" in prompt and not any(
         message.get("tool_call_id") == "image-read" for message in body["messages"]
     ):

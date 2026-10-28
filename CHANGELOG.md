@@ -24,6 +24,7 @@
 
 - **A refused call reads as what it would have done** (`Ran cd /tmp/fli && …`), with the error beneath, instead of as its raw JSON arguments.
 - A reply that is only blank lines (some models send one before their calls) is no longer drawn as an empty row with its own time and ⋯ menu.
+- An answer's time always shows; only its ⋯ menu waits for the pointer. The line was reserved either way.
 - **Failed calls fold into a turn's work** instead of standing open below it; the summary counts them (`Worked · 28 steps · edited 3 files · 4 errors`). Cancelled calls and files handed to you keep their rows.
 - **The file tools treat the sandbox's writable roots as the work area**: writing a script to `/tmp` (or `$TMPDIR`, the package caches, a `sandbox.write` root) no longer asks, as the same write by a sandboxed command never did. Hidden stores, closed folders and µAgent's own configuration keep their checks.
 - **The composer is one row while the draft is one line** on a wide enough screen: attach, model, approval and send sit beside the input, and the second row comes back once the text wraps. Phones keep two rows.

@@ -41,7 +41,7 @@ constexpr size_t kAgentDirectiveMax = 4096;
 constexpr size_t kAgentSchemaMax = 4096;
 constexpr size_t kAgentStepMax = 64;
 
-// A child is a session file in this workspace's history, named by its id.
+// A child is a session file in this folder's history, named by its id.
 std::string AgentPath(const std::string& id) {
   return UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) + "/" + id +
          ".json";
@@ -131,7 +131,7 @@ std::vector<json> AgentSummaries(const ActivitySupervisor& processes) {
                             info.delegation, info.tokens));
   }
   // The supervisor knows what runs; a child that has not saved yet is listed
-  // from what its spawn stamped on the job.
+  // from what its spawn stamped on the activity.
   for (const Activity& job : processes.Running()) {
     if (job.kind != ActivityKind::kSubagent || job.source_id.empty()) continue;
     auto row = std::find_if(rows.begin(), rows.end(), [&](const json& item) {
@@ -538,7 +538,7 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
     // A launch receipt is process-supervisor output, not a malformed
     // child answer. Only a process that actually completed can have a
     // headless envelope to unwrap; retained completion notes travel with
-    // a background job and are added again to its final result.
+    // a background activity and are added again to its final result.
     result.output =
         child.wait_status
             ? ChildAgentAnswer(std::move(result.output), clamped)

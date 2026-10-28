@@ -164,7 +164,7 @@ std::string LinkedSessionPath(const std::string& id) {
 std::vector<json> SessionSummaries() {
   const std::string me = HashHex(OwnSessionFile());
   std::vector<json> rows;
-  // A linked session is already a row by the time the workspace ones arrive.
+  // A linked session is already a row by the time the folder's others arrive.
   auto push = [&](std::string id, std::string title, bool linked) {
     if (id.empty() || id == me) return;
     for (const json& row : rows) {
@@ -178,7 +178,7 @@ std::vector<json> SessionSummaries() {
     const std::string path = JsonValue(member, "path", "");
     push(HashHex(path), MemberTitle(JsonValue(member, "id", ""), path), true);
   }
-  // Then the workspace's other sessions, which can be read but not messaged.
+  // Then the folder's other sessions, which can be read but not messaged.
   for (const SessionInfo& info : ListSessions()) {
     if (!info.error.empty()) continue;
     push(HashHex(info.path),

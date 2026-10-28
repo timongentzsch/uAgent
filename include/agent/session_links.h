@@ -62,7 +62,7 @@ std::string SendSessionMail(SessionMail mail);
 // or a live yolo peer in its folder), by id or file stem, or empty.
 std::string LinkedSessionPath(const std::string& id);
 
-// Those sessions plus the workspace's others: [{id,title,linked}]. Self
+// Those sessions plus the folder's others: [{id,title,linked}]. Self
 // excluded.
 std::vector<json> SessionSummaries();
 

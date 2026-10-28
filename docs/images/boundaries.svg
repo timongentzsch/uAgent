@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 460" width="1000" height="460" role="img" aria-label="What each part of µAgent can reach: paired devices reach the web host over HTTPS and SSE; the web host and the session runtime share a Unix socket; only the session runtime holds the model API key and talks to the model endpoint. Commands and MCP servers run inside the OS sandbox, write only the folder, temporary files and package caches, and cannot reach your other folders, ~/.uagent, the cloud and git credential stores, the browser profile or secrets in the environment. The web host starts the browser service and streams its screen; the runtime acts in Chrome but gets no field values back; Chrome's managed policy blocks its password pages, passwords.google.com and DevTools.">
+<style>
+.bg { fill: #ffffff; }
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; fill: #1f2328; }
+.t { font-weight: 600; }
+.m { font-size: 11.5px; fill: #59636e; }
+.c { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; fill: #59636e; }
+.no { font-size: 11.5px; font-weight: 600; fill: #cf222e; }
+.box { fill: #f6f8fa; stroke: #d1d9e0; }
+.key { fill: #ddf4ff; stroke: #0969da; }
+.web { fill: #fff8c5; stroke: #d4a72c; }
+.zone { fill: none; stroke: #818b98; stroke-dasharray: 4 3; }
+.ln { fill: none; stroke: #818b98; stroke-width: 1.5; }
+.cut { fill: none; stroke: #cf222e; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.hd { fill: #818b98; }
+.hd-no { fill: #cf222e; }
+.lbl { paint-order: stroke; stroke: #ffffff; stroke-width: 4px; stroke-linejoin: round; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #0d1117; }
+  text { fill: #f0f6fc; }
+  .m, .c { fill: #9198a1; }
+  .no { fill: #f85149; }
+  .box { fill: #151b23; stroke: #3d444d; }
+  .key { fill: #0d2a4d; stroke: #4493f8; }
+  .web { fill: #2e2a12; stroke: #9e7b1a; }
+  .zone, .ln { stroke: #656c76; }
+  .cut { stroke: #f85149; }
+  .hd { fill: #656c76; }
+  .hd-no { fill: #f85149; }
+  .lbl { stroke: #0d1117; }
+}
+</style>
+<defs>
+<marker id="a" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="hd" d="M0 0L8 4L0 8z"/></marker>
+<marker id="n" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="hd-no" d="M0 0L8 4L0 8z"/></marker>
+</defs>
+<rect class="bg" width="1000" height="460"/>
+<rect class="zone" x="200" y="20" width="600" height="425" rx="8"/>
+<text class="m" x="212" y="40">Your machine or container</text>
+<rect class="box" x="20" y="60" width="150" height="70" rx="6"/>
+<text class="t" x="32" y="84">Your devices</text>
+<text class="m" x="32" y="104">phone, laptop, tablet</text>
+<text class="m" x="32" y="120">once paired</text>
+<rect class="key" x="830" y="60" width="150" height="86" rx="6"/>
+<text class="t" x="842" y="84">Model endpoint</text>
+<text class="m" x="842" y="104">sees prompts, files</text>
+<text class="m" x="842" y="120">read, tool results</text>
+<text class="m" x="842" y="136">trusted by you</text>
+<rect class="box" x="230" y="60" width="220" height="86" rx="6"/>
+<text class="t" x="242" y="84">Web host</text>
+<text class="m" x="242" y="104">paired devices only</text>
+<text class="m" x="242" y="120">Origin checked on changes</text>
+<text class="c" x="242" y="136">~/.uagent/web</text>
+<rect class="box" x="520" y="60" width="250" height="86" rx="6"/>
+<text class="t" x="532" y="84">Session runtime</text>
+<text class="m" x="532" y="104">approval and path policy</text>
+<text class="m" x="532" y="120">holds the model API key</text>
+<text class="m" x="532" y="136">one per conversation</text>
+<path class="ln" d="M170 95H230" marker-end="url(#a)"/>
+<text class="m lbl" x="200" y="88" text-anchor="middle">HTTPS, SSE</text>
+<path class="ln" d="M450 103H520" marker-end="url(#a)"/>
+<text class="m lbl" x="485" y="96" text-anchor="middle">Unix socket</text>
+<path class="ln" d="M770 95H830" marker-end="url(#a)"/>
+<text class="m lbl" x="800" y="88" text-anchor="middle">HTTPS</text>
+<rect class="zone" x="520" y="200" width="250" height="230" rx="8"/>
+<text class="m" x="540" y="422">OS sandbox · Seatbelt / Landlock</text>
+<rect class="key" x="540" y="236" width="210" height="52" rx="6"/>
+<text class="t" x="552" y="258">Commands, MCP servers</text>
+<text class="m" x="552" y="277">write: folder, tmp, caches</text>
+<text class="no" x="540" y="316">cannot read or reach</text>
+<text class="m" x="540" y="337">your other folders, ~/.uagent</text>
+<text class="c" x="540" y="356">~/.aws ~/.kube ~/.netrc …</text>
+<text class="m" x="540" y="375">the browser profile, its sockets</text>
+<text class="m" x="540" y="394">secrets in the environment</text>
+<path class="ln" d="M645 146V236" marker-end="url(#a)"/>
+<text class="m lbl" x="653" y="180">spawns them</text>
+<rect class="web" x="230" y="300" width="220" height="130" rx="6"/>
+<text class="t" x="242" y="322">Browser service</text>
+<text class="m" x="242" y="342">Chrome and Xvnc</text>
+<text class="m" x="242" y="360">profile: saved logins, cookies</text>
+<text class="m" x="242" y="378">policy blocks password pages,</text>
+<text class="m" x="242" y="396">passwords.google.com, DevTools</text>
+<path class="ln" d="M290 146V300" marker-end="url(#a)"/>
+<text class="m lbl" x="290" y="232" text-anchor="middle">starts it, streams screen</text>
+<path class="ln" d="M540 146V190H390V300" marker-end="url(#a)"/>
+<text class="m lbl" x="455" y="182" text-anchor="middle">acts; sees no field values</text>
+<path class="cut" d="M520 412H450" marker-end="url(#n)"/>
+<text class="no lbl" x="485" y="405" text-anchor="middle">blocked</text>
+</svg>

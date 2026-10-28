@@ -648,7 +648,7 @@ def test_tool_output_drops_its_own_colours(root, home, *, binary):
             assert_true(b"\\x1b" not in output, output[-2000:])
 
 
-def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
+def test_rejected_call_reads_as_its_summary(root, home, *, binary):
     bad = {
         "path": "visible-target",
         "content": "replacement",
@@ -663,8 +663,10 @@ def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0 and b"rejected-ok" in output, output)
-        assert_true(b"\xe2\x86\x92 edit_file(" in output, output)
-        assert_true(b'"path":"visible-target"' in output, output)
+        # A refused call reads as what it would have done, not as raw JSON;
+        # the error beneath says why.
+        assert_true(b"visible-target" in output, output)
+        assert_true(b'"path":"visible-target"' not in output, output)
         assert_true(b"unknown argument" in output, output)
 
 

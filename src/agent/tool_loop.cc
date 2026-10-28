@@ -195,15 +195,12 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
            "call_limit", issue);
     valid = false;
   }
-  if (valid) task.label = ToolSummary(*tool, arguments);
-  if (!valid) {
-    const json& shown =
-        task.raw_args.is_discarded() ? task.args : task.raw_args;
-    task.label = tool && tool->redact_invalid_arguments
-                     ? ToolSummary(*tool, arguments)
-                 : shown.is_discarded() ? call.args
-                                        : JsonDump(shown);
-  }
+  // A known tool's call reads as what it would have done ("Ran cd …"), even
+  // when it was refused; the error says why. Only arguments that are no
+  // object, or name no tool, are shown as they came.
+  task.label = tool && arguments.is_object()  ? ToolSummary(*tool, arguments)
+               : task.raw_args.is_discarded() ? call.args
+                                              : JsonDump(task.raw_args);
   const ApprovalClass required =
       valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
   task.required = required;

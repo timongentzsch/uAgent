@@ -8,11 +8,32 @@
   background: var(--bg);
   max-height: calc(var(--viewport-height) - 2 * var(--touch));
   overflow: visible;
+  container: composer / inline-size;
 }
 .composer > form {
   gap: 0;
   border: var(--border-field);
   background: var(--raised);
+}
+/* Where there is room, a one-line draft shares its row with the controls,
+   centred on the input's line; once it wraps they move below it. */
+@container composer (min-width: 40rem) {
+  .composer > form:not(:has(> .message-input[data-multiline])) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  /* The input takes the first cell; files and notes span the row below. */
+  .composer
+    > form:not(:has(> .message-input[data-multiline]))
+    > :not(.message-input) {
+    grid-column: 1 / -1;
+  }
+  .composer
+    > form:not(:has(> .message-input[data-multiline]))
+    > .composer-actions {
+    grid-area: 1 / 2;
+    padding-block: 0;
+  }
 }
 .composer > form > .message-input {
   --input-min-height: max(var(--control-l), calc(1.5em + var(--space-4)));

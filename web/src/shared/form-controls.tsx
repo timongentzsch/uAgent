@@ -58,6 +58,15 @@ function Control({
     if (!element.getClientRects().length) return;
     if (grow) {
       element.style.height = "0px";
+      // Taller than its one-line minimum: the text wrapped or holds a
+      // newline. It holds until the field is emptied, since a layout that
+      // widens a wrapped field would otherwise unwrap it and switch back.
+      const multiline =
+        !!element.value &&
+        (wrapper.hasAttribute("data-multiline") ||
+          element.scrollHeight > element.clientHeight);
+      if (multiline !== wrapper.hasAttribute("data-multiline"))
+        wrapper.toggleAttribute("data-multiline", multiline);
       element.style.height = `${element.scrollHeight}px`;
     }
     wrapper.style.height = `${element.getBoundingClientRect().height}px`;

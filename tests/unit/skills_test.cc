@@ -13,6 +13,7 @@
 #include "include/api/client.h"
 #include "include/app/import.h"
 #include "include/core/defaults.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -208,13 +209,13 @@ void TestSkillDiscovery() {
   // The cap keeps the highest-precedence entries: discovery lists the
   // workspace last, so the earliest-found user/vendor skills give way.
   std::vector<Skill> many;
-  for (size_t i = 0; i <= kMaxSkills; ++i) {
+  for (size_t i = 0; i <= MaxSkills(); ++i) {
     many.push_back({"skill-" + std::to_string(i), "d", "", "", {}, ""});
   }
   many = SelectSkills(std::move(many));
-  CHECK(many.size() == kMaxSkills);
+  CHECK(many.size() == MaxSkills());
   CHECK(many.front().name == "skill-1");
-  CHECK(many.back().name == "skill-" + std::to_string(kMaxSkills));
+  CHECK(many.back().name == "skill-" + std::to_string(MaxSkills()));
 
   // Discovery descriptions are bounded before the tool returns them.
   write_skill(

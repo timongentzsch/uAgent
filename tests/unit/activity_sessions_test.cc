@@ -1225,10 +1225,8 @@ void TestDetachedActivityOwnership() {
     // The parent's own busy jobs must never refuse delegation: a child
     // competes against other children, not against its parent.
     ActivitySupervisor parent_busy;
-    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"},
-                             kMaxBackgroundActivities));
-    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"},
-                             kMaxBackgroundActivities));
+    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"}, MaxActivities()));
+    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"}, MaxActivities()));
     ShellCommandResult admitted =
         RunShellCommand(parent_busy, context,
                         {.command = "printf child-admitted",
@@ -1239,10 +1237,10 @@ void TestDetachedActivityOwnership() {
 
     // Children stop short of the ceiling so the parent keeps slots of its own.
     ActivitySupervisor children_busy;
-    for (pid_t pid = 999803; pid < 999803 + kMaxDelegatedActivities; ++pid) {
+    for (pid_t pid = 999803; pid < 999803 + MaxDelegatedActivities(); ++pid) {
       CHECK(children_busy.TryAdd(
           {.pid = pid, .cmd = "child", .kind = ActivityKind::kSubagent},
-          kMaxBackgroundActivities));
+          MaxActivities()));
     }
     ShellCommandResult refused =
         RunShellCommand(children_busy, context,
@@ -1262,14 +1260,14 @@ void TestDetachedActivityOwnership() {
 
     // Detached terminals outlive the session, so the pool bounds them too.
     ActivitySupervisor detached_pool;
-    for (pid_t pid = 999811; pid < 999811 + kMaxBackgroundActivities; ++pid) {
+    for (pid_t pid = 999811; pid < 999811 + MaxActivities(); ++pid) {
       CHECK(detached_pool.TryAdd(
           {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached},
-          kMaxBackgroundActivities));
+          MaxActivities()));
     }
     CHECK(!detached_pool.TryAdd(
         {.pid = 999831, .cmd = "overflow", .kind = ActivityKind::kDetached},
-        kMaxBackgroundActivities));
+        MaxActivities()));
     ShellCommandResult refused_detach = RunShellCommand(
         detached_pool, context,
         {.command = "sleep 21", .detach = true, .immediate = true});
@@ -1282,6 +1280,37 @@ void TestDetachedActivityOwnership() {
     // the reaped pid.
     CHECK(DetachedRecords().empty());
     (void)detached_pool.TakeAllForShutdown();
+
+    // activities.maxConcurrent is read at every spawn: a lowered cap refuses
+    // the next command, and children keep their headroom below it.
+    ScopedEnv cap("UAGENT_MAX_ACTIVITIES", "3");
+    CHECK(MaxActivities() == 3);
+    CHECK(MaxDelegatedActivities() == 1);
+    ActivitySupervisor lowered;
+    for (pid_t pid = 999841; pid < 999844; ++pid) {
+      CHECK(lowered.TryAdd({.pid = pid, .cmd = "held"}, MaxActivities()));
+    }
+    ShellCommandResult over_cap = RunShellCommand(
+        lowered, context, {.command = "echo over-cap", .immediate = true});
+    CHECK(!over_cap.result.Ok());
+    CHECK(!over_cap.launched);
+    CHECK(over_cap.result.output.find("activity limit reached (3)") !=
+          std::string::npos);
+    (void)lowered.TakeAllForShutdown();
+
+    ActivitySupervisor one_child;
+    CHECK(one_child.TryAdd(
+        {.pid = 999851, .cmd = "child", .kind = ActivityKind::kSubagent},
+        MaxActivities()));
+    ShellCommandResult second_child =
+        RunShellCommand(one_child, context,
+                        {.command = "echo second-child",
+                         .immediate = true,
+                         .activity_kind = ActivityKind::kSubagent});
+    CHECK(!second_child.result.Ok());
+    CHECK(second_child.result.output.find(
+              "at most 1 concurrent children of 3") != std::string::npos);
+    (void)one_child.TakeAllForShutdown();
   }
 }
 

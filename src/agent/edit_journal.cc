@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "include/agent/file_services.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -30,7 +31,7 @@ bool Holds(const std::string& path, const std::string& hash) {
     return !std::filesystem::exists(std::filesystem::symlink_status(path, ec));
   }
   std::string content, error;
-  return ReadRegularFile(path, kEditFileBytes, content, error) &&
+  return ReadRegularFile(path, EditFileBytes(), content, error) &&
          HashHex(content) == hash;
 }
 
@@ -41,7 +42,7 @@ void EditJournal::Open(std::string directory) {
   turns_.clear();
   stored_bytes_ = 0;
   std::string text, error;
-  if (!ReadRegularFile(directory_ + "/index.json", kEditFileBytes, text,
+  if (!ReadRegularFile(directory_ + "/index.json", EditFileBytes(), text,
                        error)) {
     return;
   }
@@ -109,7 +110,7 @@ json EditJournal::Files(int64_t turn) {
       ReadRegularFile(Blob(turn, entry.path), kUndoFileBytes, before, error);
     }
     if (!entry.after_hash.empty()) {
-      ReadRegularFile(entry.path, kEditFileBytes, after, error);
+      ReadRegularFile(entry.path, EditFileBytes(), after, error);
     }
     const auto old_lines = DiffLines(before);
     const auto new_lines = DiffLines(after);

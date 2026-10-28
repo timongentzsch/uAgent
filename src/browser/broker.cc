@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "include/browser/runtime.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/private_store.h"
@@ -395,7 +396,7 @@ void Broker::Maintain() {
     if (!lock) {
       continue;
     }
-    slot->runtime->StopIfIdle(std::chrono::minutes(kIdleMinutes));
+    slot->runtime->StopIfIdle(std::chrono::minutes(IdleMinutes()));
     json snapshot = slot->runtime->Execute({{"op", "snapshot"}});
     std::lock_guard state_lock(state_->mutex);
     slot->status = std::move(snapshot);

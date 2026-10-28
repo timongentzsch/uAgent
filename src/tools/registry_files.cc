@@ -102,7 +102,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   // Reads get a larger, contiguous window than logs and remote output. This
   // avoids paying another model round merely to continue an ordinary source
   // file while keeping every other tool on the global result cap.
-  read.result_chars = kReadFileResultChars;
+  read.result_chars = ReadFileResultChars();
   read.header = Verbs("Reading", "Read");
 
   Tool& write = path_tool(MakeTool(

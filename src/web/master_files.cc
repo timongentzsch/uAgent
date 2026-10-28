@@ -12,6 +12,7 @@
 
 #include "include/agent/path_policy.h"
 #include "include/app/session_host.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -80,7 +81,7 @@ std::optional<json> List(const fs::path& root, const fs::path& folder) {
   json rows = json::array();
   for (const Entry& entry : entries) {
     if (!Shown(entry.path)) continue;
-    if (rows.size() == static_cast<size_t>(kListDirEntries)) {
+    if (rows.size() == static_cast<size_t>(ListDirEntries())) {
       more = true;
       break;
     }

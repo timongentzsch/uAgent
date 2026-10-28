@@ -145,9 +145,9 @@ bool WaitForTerminal(ActivitySupervisor& supervisor,
 }
 
 ToolResult ActivityLimitError() {
-  return ToolFailure(ToolErrorCode::kLimitExceeded,
-                     "activity limit reached (" +
-                         std::to_string(kMaxBackgroundActivities) + ")");
+  return ToolFailure(
+      ToolErrorCode::kLimitExceeded,
+      "activity limit reached (" + std::to_string(MaxActivities()) + ")");
 }
 
 // A child refused for headroom must not read as the pool being full: the
@@ -156,9 +156,9 @@ ToolResult DelegatedActivityLimitError() {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
                      "no free activity slot for a delegated child (at "
                      "most " +
-                         std::to_string(kMaxDelegatedActivities) +
+                         std::to_string(MaxDelegatedActivities()) +
                          " concurrent children of " +
-                         std::to_string(kMaxBackgroundActivities) +
+                         std::to_string(MaxActivities()) +
                          " activity slots; the rest stay reserved for this "
                          "agent's own commands). Wait for a child to finish");
 }
@@ -249,9 +249,10 @@ ShellCommandResult StartDetachedShell(
         ToolFailure(ToolErrorCode::kInternal, "cannot create log file " + log)};
   }
   fchmod(pending.Get(), kPrivateFileMode);
-  std::string bounded_cmd =
-      "set -o pipefail; (" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
-      " --log-pump " + ShellQuote(log) + " " + std::to_string(kBashLogBytes);
+  std::string bounded_cmd = "set -o pipefail; (" + cmd + ") 2>&1 | " +
+                            ShellQuote(ExecutablePath()) + " --log-pump " +
+                            ShellQuote(log) + " " +
+                            std::to_string(ActivityLogBytes());
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
@@ -286,7 +287,7 @@ ShellCommandResult StartDetachedShell(
                .receipt_path = std::move(spec.receipt_path),
                .source_id = std::move(spec.source_id),
                .watch = std::move(watch)};
-  if (!supervisor.TryAdd(std::move(job), kMaxBackgroundActivities)) {
+  if (!supervisor.TryAdd(std::move(job), MaxActivities())) {
     return fail_and_reap(ActivityLimitError());
   }
   ToolResult detached =
@@ -326,7 +327,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
   const std::string agent_id = spec.source_id;
   std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
-      kMaxBackgroundActivities, is_subagent ? kMaxDelegatedActivities : 0);
+      MaxActivities(), is_subagent ? MaxDelegatedActivities() : 0);
   if (!reservation) {
     return {is_subagent ? DelegatedActivityLimitError() : ActivityLimitError()};
   }
@@ -418,7 +419,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
   supervisor.RegisterIo(session, output_fd, input.Release(), log_fd,
-                        kBashLogBytes);
+                        ActivityLogBytes());
 
   // Registered for the signal handler's kill sweep from spawn onward, so a
   // Ctrl-C at any point, including the handover below, reaches the child.
@@ -722,7 +723,7 @@ ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
     }
     command = "node " + ShellQuote(script->string()) + argv;
   } else {
-    const std::string source = ReadFile(*script, kEditFileBytes).value_or("");
+    const std::string source = ReadFile(*script, EditFileBytes()).value_or("");
     const bool uv = ExecutableOnPath("uv");
     if (!uv && PythonScriptHasDependencies(source)) {
       return ToolFailure(
@@ -790,7 +791,7 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
         ToolErrorCode::kNotFound,
         "search path is not a readable file or directory: " + target);
   }
-  int64_t max_results = kGrepResults;
+  int64_t max_results = GrepResults();
   int64_t bytes = ToolResultCap() > 0 ? ToolResultCap() : 1024;
   bool ripgrep = ExecutableOnPath("rg");
   // Ripgrep searches files in parallel and reports them in completion order, so

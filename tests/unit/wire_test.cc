@@ -10,6 +10,7 @@
 #include "include/api/client.h"
 #include "include/api/stream.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
 #include "tests/unit/test_support.h"
@@ -1001,7 +1002,7 @@ void TestWireSideRequestKnobs() {
   json tools =
       EncodeWireRequest(WireApi::kAnthropicMessages, searching)["tools"];
   CHECK(tools.back()["type"] == "web_search_20250305");
-  CHECK(tools.back()["max_uses"] == kWebSearchMaxUses);
+  CHECK(tools.back()["max_uses"] == WebSearchMaxUses());
 
   Api api(RuntimeConfig{});
   api.model = "m";

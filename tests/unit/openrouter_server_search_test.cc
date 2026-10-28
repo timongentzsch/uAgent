@@ -10,6 +10,7 @@
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"
+#include "include/core/env.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
 #include "include/media/attachments.h"
@@ -280,7 +281,7 @@ void TestOpenRouterServerSearch() {
   Tool search_tool = WebSearchTool(api, side_usage, {});
   // The request budget bounds one attempt; the tool deadline covers all of
   // them, or a retry would be cancelled before it ran.
-  CHECK(search_tool.timeout_s == kWebSearchTimeoutSeconds * kSideAttempts);
+  CHECK(search_tool.timeout_s == WebSearchTimeoutSeconds() * kSideAttempts);
   CHECK(search_tool.parameters["properties"]["queries"]["maxItems"] == 3);
   CHECK(search_tool.parameters["required"] == json::array({"queries"}));
   CHECK(!search_tool.parameters["properties"].contains("query"));

@@ -92,6 +92,99 @@ int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
+int64_t HistoryFiles() { return LongSetting(Cfg("UAGENT_HISTORY_FILES")); }
+int64_t LogKeepDays() { return LongSetting(Cfg("UAGENT_LOG_DAYS")); }
+int64_t LogKeepFiles() { return LongSetting(Cfg("UAGENT_LOG_FILES")); }
+int64_t IdleMinutes() { return LongSetting(Cfg("UAGENT_IDLE_MINUTES")); }
+
+int64_t MaxActivities() { return LongSetting(Cfg("UAGENT_MAX_ACTIVITIES")); }
+
+int64_t MaxDelegatedActivities() {
+  return MaxActivities() - kDelegatedActivityHeadroom;
+}
+
+int64_t ToolConcurrency() {
+  return LongSetting(Cfg("UAGENT_TOOL_CONCURRENCY"));
+}
+
+int64_t SubagentCallsPerTurn() {
+  return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
+}
+
+size_t ReadFileBytes() {
+  return KiB(static_cast<size_t>(LongSetting(Cfg("UAGENT_READ_FILE_KB"))));
+}
+
+int64_t ReadFileResultChars() {
+  return static_cast<int64_t>(ReadFileBytes()) + 2048;
+}
+
+size_t EditFileBytes() {
+  return MiB(static_cast<size_t>(LongSetting(Cfg("UAGENT_EDIT_FILE_MB"))));
+}
+
+int64_t ActivityLogBytes() {
+  return LongSetting(Cfg("UAGENT_ACTIVITY_LOG_MB")) * int64_t{1024} * 1024;
+}
+
+int64_t ListDirEntries() { return LongSetting(Cfg("UAGENT_LIST_ENTRIES")); }
+int64_t GrepResults() { return LongSetting(Cfg("UAGENT_GREP_RESULTS")); }
+
+int64_t WebSearchMaxResults() {
+  return LongSetting(Cfg("UAGENT_WEB_SEARCH_RESULTS"));
+}
+
+int64_t WebSearchMaxUses() {
+  return LongSetting(Cfg("UAGENT_WEB_SEARCH_MAX_USES"));
+}
+
+int64_t WebSearchCalls() { return LongSetting(Cfg("UAGENT_WEB_SEARCH_CALLS")); }
+
+int64_t WebSearchTimeoutSeconds() {
+  return LongSetting(Cfg("UAGENT_WEB_SEARCH_TIMEOUT"));
+}
+
+size_t MaxMemories() {
+  return static_cast<size_t>(LongSetting(Cfg("UAGENT_MEMORY_MAX")));
+}
+
+size_t MemoryBytes() {
+  return static_cast<size_t>(LongSetting(Cfg("UAGENT_MEMORY_BYTES")));
+}
+
+size_t MemoryAlwaysBytes() {
+  return static_cast<size_t>(LongSetting(Cfg("UAGENT_MEMORY_ALWAYS_BYTES")));
+}
+
+int64_t MemoryIdleSeconds() {
+  return LongSetting(Cfg("UAGENT_MEMORY_IDLE_HOURS")) * kSecondsPerHour;
+}
+
+size_t MaxSkills() {
+  return static_cast<size_t>(LongSetting(Cfg("UAGENT_SKILLS_MAX")));
+}
+
+size_t ProjectDocBytes() {
+  return KiB(static_cast<size_t>(LongSetting(Cfg("UAGENT_INSTRUCTIONS_KB"))));
+}
+
+int64_t MaxMcpServers() { return LongSetting(Cfg("UAGENT_MCP_MAX_SERVERS")); }
+
+size_t MaxMcpTools() {
+  return static_cast<size_t>(LongSetting(Cfg("UAGENT_MCP_MAX_TOOLS")));
+}
+
+size_t MaxPendingAttachments() {
+  return static_cast<size_t>(LongSetting(Cfg("UAGENT_ATTACHMENT_COUNT")));
+}
+
+int MaxImageDimension() {
+  return static_cast<int>(LongSetting(Cfg("UAGENT_IMAGE_MAX_PX")));
+}
+
+int64_t RepeatedCallStopAfter() {
+  return LongSetting(Cfg("UAGENT_REPEATED_CALL_STOP"));
+}
 
 std::atomic<ApprovalMode>& ApprovalModeState() {
   static std::atomic<ApprovalMode> mode{ApprovalMode::kAsk};

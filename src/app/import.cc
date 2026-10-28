@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "include/core/defaults.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/library.h"
@@ -462,10 +463,10 @@ json MemoryItem(const std::string& source, const fs::path& path,
     if (!ReadRegularFile(path.string(), kImportReadBytes, text, error)) {
       reason = error;
     } else if (const size_t size = MemoryBody(text).size();
-               size > kMemoryBytes) {
+               size > MemoryBytes()) {
       reason = "its " + std::to_string(size) + " bytes are over the " +
-               std::to_string(kMemoryBytes) + " byte limit of a memory";
-    } else if (!collides && stored >= kMaxMemories) {
+               std::to_string(MemoryBytes()) + " byte limit of a memory";
+    } else if (!collides && stored >= MaxMemories()) {
       reason = "this folder's memory is full";
     }
   }

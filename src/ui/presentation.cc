@@ -17,6 +17,7 @@
 
 #include "include/api/citations.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -328,7 +329,7 @@ std::string ResultRow(const json& block, const DetailPolicy& detail) {
   if (const std::string change = JsonValue(block, "change", "");
       status == "success" && !change.empty()) {
     std::istringstream input(
-        ReadFile(JsonValue(block, "change_path", ""), 4 * kEditFileBytes)
+        ReadFile(JsonValue(block, "change_path", ""), 4 * EditFileBytes())
             .value_or(change));
     std::string line, output;
     if (std::getline(input, line)) {

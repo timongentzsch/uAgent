@@ -11,6 +11,7 @@
 
 #include "include/core/config_registry.h"
 #include "include/core/defaults.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -178,7 +179,7 @@ std::vector<Skill> SelectSkills(std::vector<Skill> discovered) {
     if (SkillExcluded(skill.name) || Trim(skill.description).empty()) continue;
     std::erase_if(selected,
                   [&](const Skill& prior) { return prior.name == skill.name; });
-    if (selected.size() >= kMaxSkills) {
+    if (selected.size() >= MaxSkills()) {
       selected.erase(selected.begin());
     }
     selected.push_back(std::move(skill));

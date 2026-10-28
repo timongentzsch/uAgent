@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/agent/agent.h"
+#include "include/core/env.h"
 #include "include/core/project.h"
 #include "include/core/runtime_config.h"
 #include "tests/unit/test_support.h"
@@ -45,17 +46,17 @@ void TestInstructionFiles() {
   CHECK(WriteInstructionFile(true, true, cwd, "Folder rule.").empty());
   CHECK(stat(InstructionPath(true, true, cwd).c_str(), &info) == 0 &&
         (info.st_mode & 0777) == 0644);
-  const auto session = LoadProjectInstructions(cwd, kProjectDocBytes);
+  const auto session = LoadProjectInstructions(cwd, ProjectDocBytes());
   CHECK(session.text.find("Run ctest.") != std::string::npos);
   CHECK(session.text.find("Keep threads small.") == std::string::npos);
-  const auto panel = LoadProjectInstructions(cwd, kProjectDocBytes, true);
+  const auto panel = LoadProjectInstructions(cwd, ProjectDocBytes(), true);
   CHECK(panel.text.find("Run ctest.") < panel.text.find("Keep threads small."));
   const json shown = InstructionFiles(cwd);
   CHECK(shown["files"].size() == 4);
   CHECK(shown["files"][1]["text"] == "Run ctest.");
   CHECK(shown["files"][2]["text"] == "Keep threads small.");
   CHECK(WriteInstructionFile(false, false, cwd,
-                             std::string(kProjectDocBytes + 1, 'x')) != "");
+                             std::string(ProjectDocBytes() + 1, 'x')) != "");
   // Two editors from the same text: the second save is refused, not lost.
   CHECK(WriteInstructionFile(false, true, cwd, "Mine.", "Run ctest.").empty());
   CHECK(WriteInstructionFile(false, true, cwd, "Theirs.", "Run ctest.")

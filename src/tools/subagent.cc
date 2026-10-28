@@ -587,7 +587,7 @@ void ParallelFor(size_t count, const ToolContext& context,
   std::atomic<size_t> next{0};
   std::vector<std::future<void>> workers;
   const size_t width =
-      std::min(count, static_cast<size_t>(kMaxDelegatedActivities));
+      std::min(count, static_cast<size_t>(MaxDelegatedActivities()));
   workers.reserve(width);
   for (size_t worker = 0; worker < width; ++worker) {
     workers.push_back(std::async(std::launch::async, [&] {
@@ -628,7 +628,7 @@ ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
   }
   // Children of one round run together and share what the session has left.
   ToolContext round = context;
-  round.delegations = kMaxDelegatedActivities;
+  round.delegations = MaxDelegatedActivities();
   const auto ask = [&](std::string brief, json schema) {
     json spawn = child;
     spawn["prompt"] = std::move(brief);
@@ -836,9 +836,9 @@ Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
   tool.retain_output = true;
   tool.available_in_lean = false;
   // Concurrency is enforced by the spawn path (RunShellCommand reserves an
-  // activity slot bounded by kMaxBackgroundActivities); this is only a runaway
+  // activity slot bounded by activities.maxConcurrent); this is only a runaway
   // ceiling.
-  tool.max_calls_per_turn = kSubagentCallsPerTurn;
+  tool.max_calls_per_turn = SubagentCallsPerTurn();
   auto describe = [&api, &routes, &providers](const json& arguments) {
     std::string operation = JsonValue(arguments, "operation", "spawn");
     if (operation == "list") return std::string("list agents");

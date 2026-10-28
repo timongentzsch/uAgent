@@ -10,6 +10,7 @@
 
 #include "include/agent/activity.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/limits.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
@@ -144,7 +145,7 @@ void TestAttachmentEncoding() {
   CHECK(attach_tool != nullptr);
   CHECK(attach_tool &&
         attach_tool->run({{"path", image_path.string()}}, attach_context).Ok());
-  for (size_t queued = 1; queued < kMaxPendingAttachments; ++queued) {
+  for (size_t queued = 1; queued < MaxPendingAttachments(); ++queued) {
     CHECK(Attachments().Add(file.string()).Ok());
   }
   ToolResult refused_queue = Attachments().Add(file.string());
@@ -153,7 +154,7 @@ void TestAttachmentEncoding() {
         std::string::npos);
   // Draining the queue for the next request clears the ceiling again.
   std::vector<Attachment> drained = Attachments().Take();
-  CHECK(drained.size() == kMaxPendingAttachments);
+  CHECK(drained.size() == MaxPendingAttachments());
   CHECK(drained[0].source_call_id == "call_attach_1");
   CHECK(Attachments().Add(file.string()).Ok());
   CHECK(Attachments().Take().size() == 1);

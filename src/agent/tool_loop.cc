@@ -290,8 +290,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   // A child blocks its worker for its whole run, so a batch of children
   // gets a worker each, up to the slots children may hold at once.
   const size_t width = static_cast<size_t>(
-      std::max(kToolConcurrency,
-               std::min(context.delegations, kMaxDelegatedActivities)));
+      std::max(ToolConcurrency(),
+               std::min(context.delegations, MaxDelegatedActivities())));
   if (Debug().Enabled()) {
     // Any two adjacent runnable calls that are both parallel-safe form a batch.
     bool parallel = false;

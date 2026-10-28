@@ -35,6 +35,9 @@ import { devicePrefs } from "../../shared/device-prefs.ts";
 import { ListRow } from "../../shared/list-row.tsx";
 import { capitalize, permissionLabels } from "../../shared/display.ts";
 
+// The Scheduled page: tasks that run on a timetable or once, their next runs
+// and results, and the editor for one task.
+
 const blank = (cwd: string): ScheduledTask => ({
   id: "",
   revision: "",

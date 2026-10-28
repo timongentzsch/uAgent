@@ -1,4 +1,6 @@
 import type { ConnectionPhase } from "./types.ts";
+// The status LED and the connection line in the sidebar.
+
 type LedState = "idle" | "active" | "running" | "failed";
 
 export function StatusLed({ state }: { state: LedState }) {

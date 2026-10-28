@@ -2,7 +2,7 @@ import { Group, Row } from "../../shared/ui.tsx";
 import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
 
 // Settings and its loading state draw the same list, so it never changes
-// while the code arrives. A project is listed while a conversation is open.
+// while the code arrives. The folder is listed while a conversation is open.
 export function SettingsNav({
   current,
   select,

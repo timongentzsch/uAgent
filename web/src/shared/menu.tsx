@@ -20,6 +20,9 @@ import { ChevronLeft, ChevronRight, Ellipsis } from "lucide-preact";
 import { nextIndex, typeAhead } from "./listbox-nav.ts";
 import { Button, IconButton } from "./ui.tsx";
 
+// The dropdown menu for a row's or header's actions: items, nested views and
+// the keyboard and focus behaviour shared by every menu.
+
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
 // Which nested view the panel shows (a MenuSub's id, "" for the items
 // themselves), and how to change it. A view's own items see "".

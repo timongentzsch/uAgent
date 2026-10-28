@@ -350,7 +350,7 @@ export interface Agent {
   // Every token its calls processed, as of its last save.
   tokens?: number;
 }
-// A panel's plan (its plan tool): what the moderator keeps between turns.
+// A panel's plan (its plan tool): what the lead agent keeps between turns.
 export interface PlanStep {
   id: string;
   title: string;
@@ -587,7 +587,7 @@ export interface Verbosity {
   order: string[];
 }
 // A workspace: a folder the host keeps for conversations that belong to no
-// project, under the name its user gave it.
+// folder, under the name its user gave it.
 export interface Space {
   path: string;
   name: string;
@@ -801,7 +801,7 @@ export interface ToolCatalogue {
   tools: ToolCatalogueItem[];
 }
 // One instruction file a person edits: for every conversation or a folder's
-// panel, yours or the project's.
+// panel, yours or the folder's.
 export interface InstructionFile {
   audience: "sessions" | "panel";
   scope: "user" | "project";

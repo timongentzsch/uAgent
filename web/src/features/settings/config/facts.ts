@@ -32,7 +32,7 @@ export const shown = (value?: JSONValue) =>
 export const raw = (value?: JSONValue) =>
   value == null ? "" : typeof value === "boolean" ? `${+value}` : String(value);
 
-// Whether this project's value wins over the one saved at `scope`.
+// Whether this folder's value wins over the one saved at `scope`.
 const overridden = (setting: ConfigSetting, scope: SavedScope) =>
   scope === "user" && setting.set?.project !== undefined;
 

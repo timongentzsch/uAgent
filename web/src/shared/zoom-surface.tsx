@@ -18,6 +18,9 @@ import {
 import "./zoom-surface.css";
 import { useLatest } from "./use-latest.ts";
 
+// Zoom and pan for images and diagrams, by pointer, touch and keyboard. Used
+// by the image viewer and the expanded diagram.
+
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM = 2.5;
 // One press of − or +, or of ⌘/Ctrl with − or +.

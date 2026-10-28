@@ -1,4 +1,4 @@
-// Development only, like ui.html: nothing in the product imports this. A
+// Development only: nothing in the product imports this. A
 // browser test imports it into the Vite-served app, where it shares the
 // app's Preact instance, and reads how often each component rendered.
 import { options, type VNode } from "preact";

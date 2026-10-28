@@ -16,6 +16,10 @@ import {
 } from "./ui.tsx";
 import { useResource } from "./use-resource.ts";
 
+// Renders Markdown into the transcript and the Files pane: the finished text
+// as cached blocks, a streaming reply as head and tail, and the lazy loading
+// of the renderer and its math, highlight and diagram parts.
+
 type Renderer = typeof import("./markdown.ts");
 let renderer: Promise<Renderer> | undefined;
 // Once loaded, streaming renders synchronously in the same frame as the text.

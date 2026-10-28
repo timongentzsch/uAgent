@@ -1,6 +1,9 @@
 import { entry, settled } from "./dismiss.ts";
 import { decisionFocusWaitMs } from "./limits.ts";
 
+// The selected conversation in the URL hash, and moving focus to the
+// composer or a decision, including from a notification's link.
+
 export const selectedFromURL = () =>
   new URLSearchParams(location.hash.slice(1)).get("session") || "";
 

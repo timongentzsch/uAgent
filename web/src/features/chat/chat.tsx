@@ -18,6 +18,9 @@ import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 import "./chat.css";
 
+// The transcript: the conversation's rows, older history and the placeholder
+// shown before the snapshot. Used by the chat page.
+
 export { prepareHistoryBlocks } from "./message.tsx";
 
 // A request and its reply, the shape a conversation opens with.

@@ -18,6 +18,9 @@ import { routes, uploadAttachment } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
 import { maxUploadBytes } from "./limits.ts";
 
+// The ask decision: the model's questions, one to a page, with options,
+// Other, an image each, and a review before they are sent.
+
 interface Answer {
   choices: string[];
   // "Other" is chosen; its text counts only then.

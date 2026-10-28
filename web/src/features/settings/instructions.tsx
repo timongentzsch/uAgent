@@ -17,6 +17,9 @@ import {
 import { ProjectField } from "../../shared/project-field.tsx";
 import "./instructions.css";
 
+// The instruction files a conversation or lead agent reads at start (yours
+// and the folder's), shown in reading order and edited in place.
+
 const TITLES: Record<string, string> = {
   "sessions/user": "Yours · every conversation",
   "sessions/project": "Folder · every conversation",
@@ -41,7 +44,7 @@ export default function Instructions({
   showRequest?: () => void;
 }) {
   const [cwd, setCwd] = useState(session?.cwd || projects[0] || "");
-  // Tagged with its project, so another project's files never show, or get
+  // Tagged with its folder, so another folder's files never show, or get
   // saved, under this one.
   const {
     value: loaded,

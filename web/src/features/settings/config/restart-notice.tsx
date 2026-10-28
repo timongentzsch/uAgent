@@ -15,7 +15,7 @@ export function RestartNotice({
   keys: string[];
   host: boolean;
   running: number;
-  // Only this project's conversations need it.
+  // Only this folder's conversations need it.
   folder?: string;
 }) {
   const action = useAction();

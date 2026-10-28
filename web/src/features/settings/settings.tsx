@@ -27,7 +27,7 @@ export default function Settings(props: SettingsProps) {
   useEffect(() => {
     body.current?.scrollTo(0, 0);
   }, [picked]);
-  // A project's page needs its conversation.
+  // The folder's page needs its conversation.
   const current = (picked === "project" && !session ? null : picked) || "user";
   const [, title, , describe] = SCOPES.find(([id]) => id === current)!;
   const folder = session?.cwd?.split("/").pop();

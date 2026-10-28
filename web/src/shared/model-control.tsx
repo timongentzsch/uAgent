@@ -5,6 +5,8 @@ import { DataText, updateChecked } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import "./model-control.css";
 
+// The composer's button that opens the model picker in a sheet.
+
 function ModelControl(
   props: Omit<ComponentProps<typeof ModelPicker>, "close">,
 ) {

@@ -9,7 +9,7 @@ import type { SavedScope } from "./facts.ts";
 
 // What is saved at `scope` and the two ways to change it. The host answers:
 // it holds what is saved for all conversations and, named a folder, for that
-// project. It reads again whenever anyone saves (`version`). One instance
+// folder. It reads again whenever anyone saves (`version`). One instance
 // serves one folder: its owner remounts it for another.
 export function useConfiguration(
   scope: SavedScope,

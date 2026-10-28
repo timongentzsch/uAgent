@@ -7,6 +7,9 @@ import { Field, Select, LoadError } from "./ui.tsx";
 import { SearchSelect } from "./search-select.tsx";
 import { ModelLoading, ModelActions, ModelDefaults } from "./loading.tsx";
 
+// Choosing a conversation's model and reasoning effort, or the defaults for
+// new ones, from the host's catalogue.
+
 export default function ModelPicker({
   session,
   state,

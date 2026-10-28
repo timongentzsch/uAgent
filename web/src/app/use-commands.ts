@@ -16,6 +16,9 @@ import { restartConversation, shareTranscript } from "./menus.tsx";
 import { parseSlash } from "../features/composer/slash.ts";
 import { focusComposer } from "../shared/navigation.ts";
 
+// Runs what the composer and the command palette send: the shell calls this
+// with its state and gets back submit, guidance and slash-command handlers.
+
 type Page = "chat" | "library" | "scheduled";
 
 // What the composer sends and the palette runs: a message, guidance for the

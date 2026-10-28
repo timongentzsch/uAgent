@@ -20,6 +20,9 @@ import {
   withActivities,
 } from "./store.ts";
 
+// How each event from the host's stream changes the catalogue, the outgoing
+// rows and a session's snapshot. Pure of React so it can be tested alone.
+
 type Ref<T> = { current: T };
 
 // What applying the stream's events reads and changes: the event stream

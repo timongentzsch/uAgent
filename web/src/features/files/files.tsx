@@ -21,6 +21,9 @@ import { ResizeHandle } from "../../shared/side-pane.tsx";
 import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { folderOf } from "../../shared/display.ts";
 
+// The Files pane: a folder's tree, search and previews of text, images and
+// Markdown, read from the host. Docked beside the chat or a sheet on a phone.
+
 interface Listing {
   entries: { name: string; dir: boolean; size: number }[];
   more: boolean;

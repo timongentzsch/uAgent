@@ -26,6 +26,10 @@ import { hideTouchCursor, sendPointer } from "./rfb.ts";
 import { BrowserFrame, BrowserTools } from "./frame.tsx";
 import { useLatest } from "../../shared/use-latest.ts";
 
+// The agent's browser as a dialog: a live noVNC view of the host's Chrome,
+// who holds control, profiles, clipboard and keys. Loaded on first open,
+// and only when the host reports a browser.
+
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
 const CLIPBOARD_PASTE_DELAY_MS = 150;
 const CLIPBOARD_COPY_TIMEOUT_MS = 1_500;

@@ -23,9 +23,16 @@ namespace uagent {
 #else
 #define UAGENT_BROWSER_TESTS(X)
 #endif
+// The web host's tests exist only when it is built.
+#ifdef UAGENT_WEB
+#define UAGENT_WEB_TESTS(X) X(TestWebTerminal)
+#else
+#define UAGENT_WEB_TESTS(X)
+#endif
 // The suite in run order: declarations and dispatch expand from this list.
 #define UAGENT_TESTS(X)                           \
   UAGENT_BROWSER_TESTS(X)                         \
+  UAGENT_WEB_TESTS(X)                             \
   X(TestForeignToolMarkup)                        \
   X(TestToolResults)                              \
   X(TestToolViews)                                \

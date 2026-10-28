@@ -1,9 +1,11 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -25,6 +27,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "include/core/fd.h"
@@ -93,6 +96,24 @@ int SpawnProcess(const SpawnSpec& spec, pid_t& pid) {
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
   return error;
+}
+
+int OpenPty(Fd& controller, std::string& terminal, uint16_t rows,
+            uint16_t cols) {
+  Fd opened(posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC));
+  if (!opened) return errno;
+  if (grantpt(opened.Get()) != 0 || unlockpt(opened.Get()) != 0) return errno;
+  // ptsname() returns a static buffer, and callers run in parallel.
+  char path[PATH_MAX];
+  const int error = ptsname_r(opened.Get(), path, sizeof(path));
+  if (error != 0) return error > 0 ? error : errno;
+  winsize size{};
+  size.ws_row = rows;
+  size.ws_col = cols;
+  (void)ioctl(opened.Get(), TIOCSWINSZ, &size);
+  terminal = path;
+  controller = std::move(opened);
+  return 0;
 }
 
 bool WriteAll(int fd, std::string_view data) {

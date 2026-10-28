@@ -14,13 +14,13 @@
   } catch {}
   if (t !== "light" && t !== "dark")
     t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  // The panes someone resized keep their width from the first frame.
+  // The panes someone resized keep their size from the first frame.
   try {
     const panes = JSON.parse(localStorage.getItem("uagent-panes") || "{}");
-    for (const name of ["sidebar", "board", "files", "files-list"])
+    for (const name of ["sidebar", "board", "files", "files-list", "terminal"])
       if (Number.isFinite(panes[name]))
         document.documentElement.style.setProperty(
-          `--${name}-width`,
+          `--${name}-${name === "terminal" ? "height" : "width"}`,
           `${panes[name]}rem`,
         );
   } catch {}

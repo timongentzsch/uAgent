@@ -51,6 +51,23 @@
 .resize-handle.end {
   right: calc(var(--space-6) / -2);
 }
+/* Across the top of the terminal, which it makes taller or shorter. */
+.resize-handle.top {
+  top: calc(var(--space-6) / -2);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: var(--space-6);
+  cursor: row-resize;
+}
+.resize-handle.top::after {
+  top: calc(50% - var(--space-1) / 2);
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: var(--space-1);
+}
 .resize-handle::after {
   content: "";
   position: absolute;
@@ -69,4 +86,21 @@
   .resize-handle:hover::after {
     background: var(--accent);
   }
+}
+
+/* The terminal docked under the chat and the files: its height, or by
+   default half a sheet's width, leaving the chat at least as much. */
+.terminal-dock {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  height: var(--terminal-height, calc(var(--sheet) / 2));
+  min-height: var(--control-l);
+  max-height: calc(100% - var(--sheet) / 2);
+  border-top: var(--border);
+}
+.terminal-dock > :not(.resize-handle) {
+  flex: 1;
+  min-height: 0;
 }

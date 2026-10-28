@@ -5,8 +5,8 @@
 // Module-private split of the web host. The Master class is declared here and
 // defined across master.cc (startup, routes, settings), master_auth.cc
 // (pairing and devices), master_command.cc (commands and receipts),
-// master_stream.cc (snapshots, events, uploads, assets) and master_files.cc
-// (the files in a conversation's folder).
+// master_stream.cc (snapshots, events, uploads, assets), master_files.cc
+// (the files in a conversation's folder) and master_terminal.cc (terminals).
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
@@ -34,6 +34,7 @@
 #include "include/core/time.h"
 #include "include/web/protocol.h"
 #include "include/web/push.h"
+#include "include/web/terminal.h"
 
 // The web host's private names live in uagent::web::master, so the helpers
 // below (Reply, Error, ...) cannot clash with any other symbol in the binary.
@@ -75,6 +76,8 @@ class Master {
  private:
   void RegisterApiRoutes();
   void RegisterBrowserRoutes();
+  void RegisterTerminalRoutes();
+  void TerminalSocket(const Request& request, httplib::ws::WebSocket& socket);
   bool RegisterAssetRoutes(std::string& error);
   const std::string* ExpectedOrigin(const Request& request) const;
   static std::string ConfiguredVerbosity();
@@ -142,6 +145,7 @@ class Master {
   void RestartConversations(CommandCall& call);
   void RestartHost(CommandCall& call);
   void ConfigCommand(CommandCall& call);
+  void TerminalCommand(CommandCall& call);
   void SessionCommand(CommandCall& call);
   json BrowserControl(const json& command, const std::string& device,
                       const std::string& request_id, std::string& error);
@@ -153,6 +157,9 @@ class Master {
   std::unique_ptr<PushSender> push_;
   browser::ServiceProcess browser_process_;
   std::array<std::atomic<bool>, kViewerInstances> viewer_active_{};
+  // Null while web.terminal is off.
+  std::unique_ptr<Terminals> terminals_;
+  std::atomic<size_t> terminal_sockets_{0};
 };
 
 }  // namespace uagent::web::master

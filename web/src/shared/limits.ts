@@ -76,3 +76,10 @@ export const maxUploadBytes = 8 * 1024 * 1024;
 
 // Mobile Safari avoids focus zoom for an editable layout font of at least 16px.
 export const focusFontFloor = 16;
+
+// Terminals the host runs at once (kWebTerminals). "Add to chat" carries at
+// most this much of one, its end, and a terminal keeps this many lines to
+// scroll back through.
+export const maxTerminals = 8;
+export const maxTerminalChatChars = 16_000;
+export const terminalScrollbackLines = 5_000;

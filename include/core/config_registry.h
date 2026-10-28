@@ -185,10 +185,11 @@ consteval ConfigDescriptor Str(std::string_view key, std::string_view env,
 consteval ConfigDescriptor Bul(std::string_view key, std::string_view env,
                                std::string_view field, bool value,
                                ReloadPolicy reload, std::string_view category,
-                               std::string_view description) {
-  return Keyed(key, {env, field, ConfigType::kBool, value, kConfigAnyMin,
-                     kConfigAnyMax, reload, Sensitivity::kPublic,
-                     kScopeUser | kScopeProject, category, description});
+                               std::string_view description,
+                               unsigned scopes = kScopeUser | kScopeProject) {
+  return Keyed(
+      key, {env, field, ConfigType::kBool, value, kConfigAnyMin, kConfigAnyMax,
+            reload, Sensitivity::kPublic, scopes, category, description});
 }
 
 consteval ConfigDescriptor Dbl(std::string_view key, std::string_view env,
@@ -274,6 +275,24 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "native Web Push",
                       kScopeUser),
         "Push contact"),
+    registry::Named(
+        registry::Bul("web.terminal", "UAGENT_WEB_TERMINAL", {}, true,
+                      ReloadPolicy::kRestartRequired, "web",
+                      "a shell of yours, unsandboxed, for paired devices in "
+                      "the web interface",
+                      kScopeUser),
+        "Terminal",
+        "Paired devices can open a shell of yours, as you and unsandboxed"),
+    registry::Named(
+        registry::Int("web.terminalIdleMinutes",
+                      "UAGENT_WEB_TERMINAL_IDLE_MINUTES", {}, 60, 1, 10080,
+                      ReloadPolicy::kRestartRequired, "web",
+                      "minutes a terminal no device shows may stay silent "
+                      "before it ends",
+                      kScopeUser),
+        "Terminal idle minutes",
+        "How long a terminal nobody has open may print nothing before it "
+        "ends"),
     // Route selection and credentials.
     registry::Named(
         registry::Fallback(

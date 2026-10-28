@@ -3,17 +3,18 @@ import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { devicePrefs, type Pane } from "./device-prefs.ts";
 
-// Docked panes (the sidebar, files, the plan) beside the chat: their resize
-// handle and the layout that gives each pane its width.
+// Docked panes (the sidebar, files, the plan) beside the chat and the
+// terminal under it: their resize handle and the layout that sizes each pane.
 
 const rem = () =>
   Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
 
 // The edge of a docked pane: drag it, or focus it and use the arrow keys
 // (Shift for bigger steps), to resize the pane; Enter or a double-click
-// puts the default back. The width is a custom property on the root, kept
+// puts the default back. The size is a custom property on the root, kept
 // per device and restored before the first paint (public/theme.js). `edge`
-// is the side of the pane the handle sits on.
+// is the side of the pane the handle sits on: a side sets its width, the
+// top its height.
 export function ResizeHandle({
   pane,
   label,
@@ -21,25 +22,25 @@ export function ResizeHandle({
 }: {
   pane: Pane;
   label: string;
-  edge: "start" | "end";
+  edge: "start" | "end" | "top";
 }) {
+  const across = edge === "top";
+  const extent = (rect: { width: number; height: number }) =>
+    across ? rect.height : rect.width;
   const handle = useRef<HTMLDivElement>(null);
   // The pane's share of its row, for assistive technology.
   const [share, setShare] = useState<number>();
   const box = () => handle.current!.parentElement!.getBoundingClientRect();
-  const measure = () =>
-    setShare(
-      Math.round(
-        (box().width /
-          handle.current!.parentElement!.parentElement!.clientWidth) *
-          100,
-      ),
-    );
+  const measure = () => {
+    const row = handle.current!.parentElement!.parentElement!;
+    const whole = extent({ width: row.clientWidth, height: row.clientHeight });
+    setShare(Math.round((extent(box()) / whole) * 100));
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: measured on mount; a resize measures again
   useLayoutEffect(measure, []);
   const resize = (width: number | null, keep = true) => {
     const style = document.documentElement.style;
-    const property = `--${pane}-width`;
+    const property = `--${pane}-${across ? "height" : "width"}`;
     const panes = devicePrefs.panes.read();
     if (width === null) {
       style.removeProperty(property);
@@ -47,31 +48,36 @@ export function ResizeHandle({
     } else {
       style.setProperty(property, `${width / rem()}rem`);
       // The layout stops a pane short of crowding out the chat: keep the
-      // width it drew, so dragging back answers at once.
-      panes[pane] = box().width / rem();
+      // size it drew, so dragging back answers at once.
+      panes[pane] = extent(box()) / rem();
       style.setProperty(property, `${panes[pane]}rem`);
     }
     measure();
     if (keep) devicePrefs.panes.write(panes);
   };
-  const direction = edge === "start" ? -1 : 1;
+  const direction = edge === "end" ? 1 : -1;
+  const [back, forward] = across
+    ? ["ArrowUp", "ArrowDown"]
+    : ["ArrowLeft", "ArrowRight"];
   return (
     <div
       ref={handle}
       class={`resize-handle ${edge}`}
       role="separator"
       tabIndex={0}
-      aria-orientation="vertical"
+      aria-orientation={across ? "horizontal" : "vertical"}
       aria-label={label}
       aria-valuenow={share}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
         const target = event.currentTarget;
-        const start = event.clientX;
-        const from = box().width;
+        const at = (point: PointerEvent) =>
+          across ? point.clientY : point.clientX;
+        const start = at(event);
+        const from = extent(box());
         const move = (next: PointerEvent) =>
-          resize(from + (next.clientX - start) * direction, false);
+          resize(from + (at(next) - start) * direction, false);
         target.setPointerCapture(event.pointerId);
         target.dataset.dragging = "";
         target.addEventListener("pointermove", move);
@@ -80,7 +86,7 @@ export function ResizeHandle({
           () => {
             delete target.dataset.dragging;
             target.removeEventListener("pointermove", move);
-            resize(box().width);
+            resize(extent(box()));
           },
           { once: true },
         );
@@ -88,8 +94,8 @@ export function ResizeHandle({
       onDblClick={() => resize(null)}
       onKeyDown={(event) => {
         const step = (event.shiftKey ? 64 : 16) * direction;
-        if (event.key === "ArrowRight") resize(box().width + step);
-        else if (event.key === "ArrowLeft") resize(box().width - step);
+        if (event.key === forward) resize(extent(box()) + step);
+        else if (event.key === back) resize(extent(box()) - step);
         else if (event.key === "Enter") resize(null);
         else return;
         event.preventDefault();

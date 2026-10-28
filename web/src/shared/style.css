@@ -160,6 +160,24 @@
   --find: rgba(255, 214, 10, 0.32);
   --find-current: #ffd60a;
   --on-find-current: #000;
+  /* The terminal's 16 colours (xterm.js reads them): bright here, deep
+     enough to read on white in the light palette. */
+  --terminal-black: #000;
+  --terminal-red: #cd3131;
+  --terminal-green: #0dbc79;
+  --terminal-yellow: #e5e510;
+  --terminal-blue: #2472c8;
+  --terminal-magenta: #bc3fbc;
+  --terminal-cyan: #11a8cd;
+  --terminal-white: #e5e5e5;
+  --terminal-bright-black: #666;
+  --terminal-bright-red: #f14c4c;
+  --terminal-bright-green: #23d18b;
+  --terminal-bright-yellow: #f5f543;
+  --terminal-bright-blue: #3b8eea;
+  --terminal-bright-magenta: #d670d6;
+  --terminal-bright-cyan: #29b8db;
+  --terminal-bright-white: #fff;
   /* Edges and the focus ring, made here so each palette's colours fill
      them: a divider, a control's edge. */
   --border: 1px solid var(--line);
@@ -195,6 +213,22 @@
   --find: rgba(255, 204, 0, 0.4);
   --find-current: #ffcc00;
   --on-find-current: #000;
+  --terminal-black: #000;
+  --terminal-red: #cd3131;
+  --terminal-green: #107c10;
+  --terminal-yellow: #795e00;
+  --terminal-blue: #0451a5;
+  --terminal-magenta: #bc05bc;
+  --terminal-cyan: #0e7490;
+  --terminal-white: #555;
+  --terminal-bright-black: #666;
+  --terminal-bright-red: #a31515;
+  --terminal-bright-green: #0b6b0b;
+  --terminal-bright-yellow: #5c4700;
+  --terminal-bright-blue: #003a8c;
+  --terminal-bright-magenta: #8f008f;
+  --terminal-bright-cyan: #0b5566;
+  --terminal-bright-white: #333;
   --border: 1px solid var(--line);
   --border-field: 1px solid var(--field-border);
   --focus-ring: 2px solid var(--accent);

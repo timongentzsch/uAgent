@@ -25,6 +25,7 @@ import BrowserTouch from "./touch.tsx";
 import { hideTouchCursor, sendPointer } from "./rfb.ts";
 import { BrowserFrame, BrowserTools } from "./frame.tsx";
 import { useLatest } from "../../shared/use-latest.ts";
+import { KeyBar, keepFocus } from "../../shared/key-bar.tsx";
 
 // The agent's browser as a dialog: a live noVNC view of the host's Chrome,
 // who holds control, profiles, clipboard and keys. Loaded on first open,
@@ -534,7 +535,6 @@ export default function BrowserPanel({
     else if (event.inputType.startsWith("deleteContentBackward"))
       key(X11_KEYSYM.backspace);
   };
-  const keepFocus = (event: Event) => event.preventDefault();
 
   const profileName =
     status.profiles?.find((profile) => profile.id === status.profile_id)
@@ -857,27 +857,11 @@ export default function BrowserPanel({
       bar={
         typing ? (
           <>
-            <div class="browser-keys" aria-label="Special keys">
-              {Object.entries(SPECIAL_KEYS)
-                .filter(([name]) => name !== "Enter" && name !== "Backspace")
-                .map(([name, [label, sym]]) => (
-                  <Button
-                    key={name}
-                    aria-label={name.replace("Arrow", "Arrow ")}
-                    onPointerDown={keepFocus}
-                    onClick={() => key(sym)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              <Button
-                aria-pressed={ctrl}
-                onPointerDown={keepFocus}
-                onClick={() => setCtrl(!ctrl)}
-              >
-                Ctrl
-              </Button>
-            </div>
+            <KeyBar
+              press={(name) => key(SPECIAL_KEYS[name][1])}
+              ctrl={ctrl}
+              setCtrl={setCtrl}
+            />
             <IconButton
               label="Hide keyboard"
               onPointerDown={keepFocus}

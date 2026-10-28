@@ -120,6 +120,11 @@ Two kinds of session act for you unattended:
 - Model, MCP and tool text is terminal-sanitized.
 - The web host's pairing, device authentication, Origin checks and file
   serving are described in [Web interface](docs/WEB.md#security-model).
+- The web host's terminal gives a paired device your own shell, unsandboxed:
+  pairing is the boundary, and `UAGENT_WEB_TERMINAL=off` removes it. The
+  shell gets the same secret-deny environment as the agent's commands, so
+  "Add to chat" cannot carry µAgent's credentials into a model's context,
+  and the agent never reads a terminal.
 
 ## Browser automation
 

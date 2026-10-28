@@ -17,7 +17,7 @@ const rendererManifest = () => ({
       chunks
         .filter((chunk) =>
           [...chunk.moduleIds].some((id) =>
-            /\/(?:diagram\.tsx|math\.ts|highlight\.ts|browser\.tsx)$/.test(id),
+            /\/(?:diagram\.tsx|math\.ts|highlight\.ts|browser\.tsx|terminal\.tsx)$/.test(id),
           ),
         )
         .map((chunk) => chunk.fileName),

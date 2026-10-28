@@ -2,10 +2,7 @@
 
 #include "include/tools/shell.h"
 
-#include <fcntl.h>
-#include <limits.h>
 #include <signal.h>
-#include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -101,17 +98,11 @@ int SpawnPtyShell(const std::vector<std::string>& program,
                   char* const* environment, pid_t& pid, int& master_fd) {
   master_fd = -1;
   // Owned here until the child is running; every failure below closes it.
-  Fd master(posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC));
-  if (!master) return errno;
-  if (grantpt(master.Get()) != 0 || unlockpt(master.Get()) != 0) return errno;
-  // ptsname() returns a static buffer, and `run` is parallel-safe.
-  char slave_path[PATH_MAX];
-  const int pts_error = ptsname_r(master.Get(), slave_path, sizeof(slave_path));
-  if (pts_error != 0) return pts_error > 0 ? pts_error : errno;
-  winsize initial_size{};
-  initial_size.ws_row = 24;
-  initial_size.ws_col = 80;
-  (void)ioctl(master.Get(), TIOCSWINSZ, &initial_size);
+  Fd master;
+  std::string slave_path;
+  if (const int error = OpenPty(master, slave_path, 24, 80); error != 0) {
+    return error;
+  }
   int error = SpawnShellWithFallback(program, wrapper,
                                      {{STDIN_FILENO, -1, slave_path},
                                       {STDOUT_FILENO, STDIN_FILENO},

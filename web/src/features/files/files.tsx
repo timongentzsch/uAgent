@@ -1,6 +1,14 @@
 import "./files.css";
 import { useContext, useState } from "preact/hooks";
-import { ChevronLeft, Download, File, Folder, Image, X } from "lucide-preact";
+import {
+  ChevronLeft,
+  Download,
+  File,
+  Folder,
+  Image,
+  Terminal,
+  X,
+} from "lucide-preact";
 import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { api, routes } from "../../state/api.ts";
@@ -64,10 +72,14 @@ const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 export default function Files({
   session,
   close,
+  openTerminal,
 }: {
   session: Session;
   // Docked beside the chat; a sheet has its own Close.
   close?: () => void;
+  // Opens a terminal in the folder shown, by its path in this one; none
+  // while the host offers no terminal.
+  openTerminal?: (path: string) => void;
 }) {
   const id = session.id;
   const turn = session.turn_active;
@@ -186,6 +198,14 @@ export default function Files({
           >
             <Download />
           </a>
+        )}
+        {openTerminal && !file && (
+          <IconButton
+            label="Open terminal here"
+            onClick={() => openTerminal(dir)}
+          >
+            <Terminal />
+          </IconButton>
         )}
         {close && (
           <IconButton label="Close files" onClick={close}>

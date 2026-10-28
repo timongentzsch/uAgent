@@ -22,6 +22,7 @@ enum class ChildEnvironmentPolicy {
   kSanitized,      // a program: an MCP server, a script
   kApprovedShell,  // a command the user's allow-list may hand credentials
   kAgent,          // a child uagent, told this session's settings
+  kUserShell,      // the person's own terminal: their ssh agent, no session
 };
 
 class ChildEnvironment {

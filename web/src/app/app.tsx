@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
 import { command } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
-import { Modal, ErrorBoundary } from "../shared/ui.tsx";
+import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
@@ -42,6 +42,7 @@ import { useSideConversations } from "./use-side-conversations.ts";
 import { usePlaces } from "./use-places.tsx";
 import { useCommands } from "./use-commands.ts";
 import { folderOf } from "../shared/display.ts";
+import { focusComposer } from "../shared/navigation.ts";
 import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import Library from "../features/library/library.tsx";
@@ -49,6 +50,9 @@ import Scheduled from "../features/scheduled/scheduled.tsx";
 import Pairing from "../features/pairing/pairing.tsx";
 import Files from "../features/files/files.tsx";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
+
+// The terminal's code (xterm.js) is fetched the first time it opens.
+const terminalPanel = () => import("../features/terminal/terminal.tsx");
 
 // Own scroll restoration from the first paint. history restoration only
 // covers the document; the early opt-out in index.html (<head>, before any
@@ -88,6 +92,12 @@ function App() {
   const [drawer, setDrawer] = useState(false);
   // The conversation's files: beside the chat, or a sheet on a small screen.
   const [filesOpen, setFilesOpen] = useState(false);
+  // The terminal under the chat, and a folder asked to open one in.
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalRequest, setTerminalRequest] = useState<{
+    cwd: string;
+    at: number;
+  } | null>(null);
   const [modal, setModal] = useState<AppModal | null>(null);
   // Search (Mod+K) or the shortcuts sheet (?).
   const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
@@ -357,6 +367,36 @@ function App() {
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
   };
+  const terminalAvailable = !!catalogue.terminal;
+  const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
+  // A tab in a folder of the conversation's; on a phone the files sheet
+  // makes way for it.
+  const openTerminal = useCallback(
+    (cwd: string) => {
+      if (compact) setFilesOpen(false);
+      setTerminalRequest({ cwd, at: Date.now() });
+      setTerminalOpen(true);
+    },
+    [compact],
+  );
+  const filesTerminal =
+    terminalAvailable && session
+      ? (path: string) =>
+          openTerminal(
+            path ? `${folderOf(session)}/${path}` : folderOf(session),
+          )
+      : undefined;
+  // What the terminal hands the conversation: added to its draft, never sent.
+  const addToChat = useCallback(
+    (text: string) => {
+      updateDraft(selected, (current) => ({
+        ...current,
+        text: current.text ? `${current.text}\n${text}` : text,
+      }));
+      focusComposer();
+    },
+    [updateDraft, selected],
+  );
   const shortcutActions = {
     // ⌘K again closes it, as Spotlight's own key does.
     search: () =>
@@ -369,6 +409,7 @@ function App() {
     shortcuts: () => setOverlay("shortcuts"),
     previous: () => step("ArrowUp"),
     next: () => step("ArrowDown"),
+    terminal: terminalAvailable ? toggleTerminal : undefined,
   };
   // Only for a paired device: the pairing screen has nothing to find.
   useShortcuts(authenticated ? shortcutActions : {});
@@ -506,6 +547,11 @@ function App() {
                       threads={threads}
                       placeName={places.placeName}
                       browserAvailable={browserAvailable}
+                      terminal={
+                        terminalAvailable
+                          ? { open: terminalOpen, toggle: toggleTerminal }
+                          : undefined
+                      }
                       filesOpen={filesOpen}
                       setFilesOpen={setFilesOpen}
                       openDrawer={() => setDrawer(true)}
@@ -523,7 +569,11 @@ function App() {
                         className="files-sheet"
                         close={() => setFilesOpen(false)}
                       >
-                        <Files key={session.id} session={session} />
+                        <Files
+                          key={session.id}
+                          session={session}
+                          openTerminal={filesTerminal}
+                        />
                       </Modal>
                     )}
                     {page === "library" && (
@@ -575,12 +625,35 @@ function App() {
                             key={session.id}
                             session={session}
                             close={() => setFilesOpen(false)}
+                            openTerminal={filesTerminal}
                           />
                         )
                       }
                       find={find}
                       closeFind={closeFind}
                     />
+                    {terminalOpen && terminalAvailable && (
+                      <section class="terminal-dock" aria-label="Terminal">
+                        <ResizeHandle
+                          pane="terminal"
+                          label="Resize the terminal"
+                          edge="top"
+                        />
+                        <Deferred
+                          load={terminalPanel}
+                          fallback={<Spinner label="Opening the terminal…" />}
+                          cwd={session ? folderOf(session) : ""}
+                          request={terminalRequest}
+                          addToChat={
+                            page === "chat" && session && online
+                              ? addToChat
+                              : undefined
+                          }
+                          close={() => setTerminalOpen(false)}
+                          report={report}
+                        />
+                      </section>
+                    )}
                   </main>
                 </div>
               </>

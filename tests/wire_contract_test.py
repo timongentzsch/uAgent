@@ -167,6 +167,22 @@ class WireContractTest(unittest.TestCase):
             "transport-plane traffic in DOCUMENTED_INTERNAL",
         )
 
+    def test_terminal_socket_messages_match_the_host(self):
+        # A terminal socket's text frames: typed in the web's unions, built
+        # and read by the host's relay. A type on one side only is ignored
+        # on the other without a word.
+        types = (ROOT / "web/src/shared/types.ts").read_text(encoding="utf-8")
+        relay = (ROOT / "src/web/master_terminal.cc").read_text(encoding="utf-8")
+        web = set()
+        for name in ("TerminalControl", "TerminalNotice"):
+            union = re.search(rf"export type {name} =(.*?);\n", types, re.S)
+            self.assertIsNotNone(union, name)
+            web |= set(re.findall(r'type: "([a-z_]+)"', union.group(1)))
+        native = set(re.findall(r'\{"type", "([a-z_]+)"\}', relay))
+        native |= set(re.findall(r'"type", ""\) != "([a-z_]+)"', relay))
+        self.assertEqual(web, native)
+        self.assertEqual(web, {"exit", "replaced", "resize"})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -296,6 +296,8 @@ with (
         args.port,
         extra_env={
             "UAGENT_MODEL": None if args.no_model else "mock/main:high",
+            # The terminal's shell, the same on every machine.
+            "SHELL": "/bin/sh",
             **({"UAGENT_APPROVAL": "auto"} if args.auto_review else {}),
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.

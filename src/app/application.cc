@@ -262,7 +262,7 @@ void Application::RunPrompt(const std::string& input) {
   ReportReplacedExecutable();
   input_error_.clear();
   if (api_.model.empty()) {
-    input_error_ = "no model set: choose one with /models";
+    input_error_ = "no model set: choose one with /model";
     Emit(NoticeEvent(PresentationStatus::kFailed, input_error_));
     return;
   }

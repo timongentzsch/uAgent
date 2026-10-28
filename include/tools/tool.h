@@ -234,7 +234,6 @@ struct Tool {
   bool available_in_lean = true;  // omit implementation-only schemas in tasks
   bool retain_output = false;     // keep durable procedure/state in context
   bool dedupe_output = false;     // collapse verified recent duplicate output
-  bool command_policy = false;    // receives the approved-command allowlist
   bool delegates = false;         // contributes delegation runtime context
   bool memory_store = false;      // retained only when memory is enabled
   // Asked before every request: false withholds the tool and its prompt line
@@ -268,7 +267,6 @@ struct ToolPolicy {
   // When set, only these tools, whatever the capabilities allow: a
   // delegated child's toolset, or a folder panel's.
   std::vector<std::string> tool_allowlist;
-  std::vector<std::string> run_allowlist;
   std::string error;
 };
 

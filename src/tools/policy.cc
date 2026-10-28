@@ -26,12 +26,6 @@ uint32_t CapabilityNamed(const std::string& name) {
   return 0;
 }
 
-bool ExactRunAllowed(const ToolPolicy& policy, const json& arguments) {
-  std::string command = JsonValue(arguments, "command", "");
-  return std::find(policy.run_allowlist.begin(), policy.run_allowlist.end(),
-                   command) != policy.run_allowlist.end();
-}
-
 bool JsonSchemaTypeMatches(const json& value, std::string_view type) {
   return (type == "string" && value.is_string()) ||
          (type == "integer" && value.is_number_integer()) ||
@@ -348,8 +342,6 @@ ToolPolicy ToolPolicyFromEnvironment() {
 
   ReadStringArray("UAGENT_INTERNAL_TOOL_ALLOWLIST", policy.tool_allowlist,
                   policy.error);
-  ReadStringArray("UAGENT_INTERNAL_TOOL_RUN_ALLOWLIST", policy.run_allowlist,
-                  policy.error);
   return policy;
 }
 
@@ -358,35 +350,13 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
     tools.clear();
     return;
   }
-  std::erase_if(tools, [&](Tool& tool) {
+  std::erase_if(tools, [&](const Tool& tool) {
     if (!policy.tool_allowlist.empty() &&
         std::find(policy.tool_allowlist.begin(), policy.tool_allowlist.end(),
                   tool.name) == policy.tool_allowlist.end()) {
       return true;
     }
-    bool allowed = (tool.capabilities & ~policy.allowed) == 0;
-    bool allowlisted_run = tool.command_policy && !policy.run_allowlist.empty();
-    if (!allowed && !allowlisted_run) return true;
-    if (!tool.command_policy || policy.run_allowlist.empty()) return false;
-
-    tool.validate =
-        [policy](const json& args) -> std::optional<ToolArgumentIssue> {
-      if (!ExactRunAllowed(policy, args)) {
-        return ArgumentIssue("policy.command",
-                             "command is not allowed by tool policy",
-                             "command");
-      }
-      if (JsonValue(args, "detach", false) ||
-          JsonValue(args, "shell", "bash") != "bash") {
-        return ArgumentIssue(
-            "policy.execution_mode",
-            "evaluator-authorized commands use foreground bash");
-      }
-      return std::nullopt;
-    };
-    tool.description +=
-        " Only an evaluator-authorized exact command is allowed.";
-    return false;
+    return (tool.capabilities & ~policy.allowed) != 0;
   });
 }
 

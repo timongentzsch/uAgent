@@ -30,10 +30,10 @@
 
 namespace uagent {
 
-bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
-                        int64_t& discovery_id, std::string& error) {
+bool McpStartConfigured(McpServer& server, int64_t& discovery_id,
+                        std::string& error) {
   const json& conf = server.config;
-  if (!McpResolveRoots(conf, config.mcp_roots, server.roots, error)) {
+  if (!McpResolveRoots(conf, server.roots, error)) {
     return false;
   }
   std::vector<std::string> args;
@@ -145,7 +145,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     bool required = JsonValue(conf, "required", true);
     int64_t id = -1;
     std::string start_error;
-    if (!McpStartConfigured(*srv, config, id, start_error)) {
+    if (!McpStartConfigured(*srv, id, start_error)) {
       McpError(name, start_error);
       srv->error = start_error;
       runtime.Add(std::move(srv));
@@ -249,7 +249,7 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
     return;
   }
   int64_t id = -1;
-  if (!McpStartConfigured(server, config, id, server.error)) return;
+  if (!McpStartConfigured(server, id, server.error)) return;
   server.discovery_id = id;
   server.startup = McpStartupState::kDiscovering;
   auto deadline = DeadlineAfter(kMcpStartupGraceSeconds);

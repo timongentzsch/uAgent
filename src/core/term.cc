@@ -52,9 +52,9 @@ bool ResolveUnicodeEnabled() {
 
 // Plain drops everything a screen reader would speak as noise; the terminal
 // is then written like a pipe, except that colour still follows NO_COLOR.
-void ApplyTerminalProfile(bool plain, bool reduced_motion) {
+void ApplyTerminalProfile(bool plain) {
   g_plain = plain;
-  g_motion = !plain && !reduced_motion;
+  g_motion = !plain;
   if (!plain) return;
   g_tty = false;
   g_signal_tty = 0;

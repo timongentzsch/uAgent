@@ -15,8 +15,8 @@ namespace uagent {
 
 struct RuntimeConfig;
 
-bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
-                        int64_t& discovery_id, std::string& error);
+bool McpStartConfigured(McpServer& server, int64_t& discovery_id,
+                        std::string& error);
 
 // Spawn configured servers, handshake, and append one Tool per server tool.
 // Spawns everything first and handshakes second, so slow server boots

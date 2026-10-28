@@ -21,7 +21,7 @@ bool MarkdownEscapable(char value) {
   return kEscapable.find(value) != std::string_view::npos;
 }
 
-MdStream::MdStream() { on = g_tty && MarkdownEnabled(); }
+MdStream::MdStream() { on = g_tty; }
 
 void MdStream::Feed(std::string_view s) {
   std::string safe = TerminalSafe(s);

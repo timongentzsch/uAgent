@@ -134,7 +134,7 @@ checksum.
    (always in this repository) or `n`. `/undo` puts back the files the last
    turn changed.
 
-4. **Pick a model.** `/models` searches what your key offers.
+4. **Pick a model.** `/model QUERY` searches what your key offers.
    `/model NAME --default` also keeps the choice for new conversations.
 
 5. **Leave and come back.** `/quit` leaves the conversation running.

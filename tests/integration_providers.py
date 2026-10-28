@@ -762,7 +762,7 @@ def test_model_route_switch(root, home, *, binary):
         # the switched route still has to carry it.
         env["UAGENT_MAX_TOKENS"] = "16000"
         result = run_dialog(
-            root, env, "/models all\n2\n/effort default\n/effort high\nprobe\n/q\n", binary=binary
+            root, env, "/model all\n2\n/effort default\n/effort high\nprobe\n/q\n", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("first/main" in result.stdout and "second/fast" in result.stdout, result.stdout)
@@ -838,7 +838,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         # route with no advertised effort support must replace, not inherit,
         # that state.
         env["UAGENT_REASONING_EFFORT"] = "high"
-        catalog_result = run_dialog(root, env, "/models live\n\x1b\nprobe\n/q\n", binary=binary)
+        catalog_result = run_dialog(root, env, "/model live\n\x1b\nprobe\n/q\n", binary=binary)
         assert_true(catalog_result.returncode == 0, catalog_result.stderr)
         assert_true(
             "searching all model catalogs for live" in catalog_result.stdout,
@@ -850,11 +850,11 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         assert_true("original-route-ok" in catalog_result.stdout, catalog_result.stdout)
         assert_true(len(first.requests) == 1, first.requests)
 
-        wildcard = run_dialog(root, env, "/models second/*\n\x1b\n/q\n", binary=binary)
+        wildcard = run_dialog(root, env, "/model second/*\n\x1b\n/q\n", binary=binary)
         assert_true(wildcard.returncode == 0, wildcard.stderr)
         assert_true("second/gpt-live" in wildcard.stdout, wildcard.stdout)
 
-        selected = run_dialog(root, env, "/models gpt-live\n1\nprobe\n/q\n", binary=binary)
+        selected = run_dialog(root, env, "/model gpt-live\n1\nprobe\n/q\n", binary=binary)
         assert_true(selected.returncode == 0, selected.stderr)
         assert_true("dynamic-route-ok" in selected.stdout, selected.stdout)
         assert_true(len(second.get_requests) == 3, second.get_requests)
@@ -1744,7 +1744,7 @@ def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home,
         # A fresh query of the catalogue, the picker's, keeps the copy current.
         catalog.update(catalog_of(80000))
         requests = len(server.get_requests)
-        listed = run_dialog(root, env, "/models catalog\n/q\n", timeout=3 * delay, binary=binary)
+        listed = run_dialog(root, env, "/model catalog\n/q\n", timeout=3 * delay, binary=binary)
         assert_true(listed.returncode == 0, listed.stderr)
         assert_true(len(server.get_requests) == requests + 1, server.get_requests)
         refreshed = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
@@ -1831,7 +1831,7 @@ def test_a_conversation_without_a_model_starts_at_the_picker(root, home, *, bina
         # Said in words when a message is sent before choosing.
         skipped = run_dialog(root, env, "\x1b\nprobe\n/q\n", binary=binary)
         output = skipped.stdout + skipped.stderr
-        assert_true("no model set: choose one with /models" in output, output)
+        assert_true("no model set: choose one with /model" in output, output)
         assert_true(not server.requests, server.requests)
         assert_true(not saved_settings(home), "nothing was chosen")
 

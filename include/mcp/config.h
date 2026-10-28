@@ -128,8 +128,7 @@ inline std::string McpFileUri(const std::filesystem::path& path) {
   return uri;
 }
 
-inline bool McpResolveRoots(const json& conf, const std::string& configured,
-                            json& roots, std::string& error) {
+inline bool McpResolveRoots(const json& conf, json& roots, std::string& error) {
   std::vector<std::string> requested;
   std::filesystem::path base = CanonicalCwd();
   if (conf.contains("roots")) {
@@ -138,8 +137,6 @@ inline bool McpResolveRoots(const json& conf, const std::string& configured,
     }
     std::string config_dir = JsonValue(conf, "__uagent_config_dir", "");
     if (!config_dir.empty()) base = config_dir;
-  } else if (!configured.empty()) {
-    requested = SplitPathList(configured);
   } else {
     requested.push_back(base.string());
   }

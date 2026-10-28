@@ -167,7 +167,7 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
                 app->runtime.permission_api,
                 ResolveReviewRoute(app->runtime.api, app->provider.providers,
                                    app->runtime.config.permission_model),
-                app->runtime.config, app->runtime.side_usage,
+                app->runtime.side_usage,
                 {tool, raw_payload, request, app->agent->SessionId(), turn});
   if (!memoized && decision.error.empty()) {
     std::lock_guard lock(memo.mutex);

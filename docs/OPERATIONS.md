@@ -49,7 +49,7 @@ the file keeps what you wrote.
 /config conversation approval.mode=auto
 /config user unset limits.maxTurnCost
 /config project reset                    clear a scope (keeps secrets)
-/debug-config UAGENT_SANDBOX             one setting, scope by scope
+/config UAGENT_SANDBOX                   one setting, scope by scope
 /context                                 route, capabilities, advertised schemas
 ```
 
@@ -63,14 +63,8 @@ message. A `restart-required` one (route and credentials, sandbox, tool set,
 memory on or off, MCP) is reported as such; `/restart` applies it to the
 running conversation. A turn in flight never changes.
 
-To back up settings or move them to another host:
-
-```sh
-uagent config export > settings.json   # everything saved, API keys included
-uagent config import settings.json     # replaces everything saved; - is stdin
-```
-
-The export holds credentials in clear text; treat it as a secret.
+To move settings to another host, copy `~/.uagent/config/settings.json`. It
+holds credentials in clear text; treat it as a secret.
 
 ## Limits
 
@@ -205,8 +199,8 @@ retry one or switch it.
 - A project's `.mcp.json` starts servers only once you trust it, at the
   startup prompt or with `--trust-project-config`; a change to its content
   asks again. `~/.mcp.json` is yours and needs no trust.
-- The workspace is the default root. `UAGENT_MCP_ROOTS` (colon-separated) or
-  a server's `roots` array in `.mcp.json` replaces it; per-server paths are
+- The workspace is the default root. A server's `roots` array in `.mcp.json`
+  replaces it; per-server paths are
   relative to that file. Roots are protocol scope, not a sandbox. Servers run
   under the command sandbox with the workspace writable, unless their entry
   sets `"sandbox": false` ([Sandboxing](../SECURITY.md#sandboxing)).

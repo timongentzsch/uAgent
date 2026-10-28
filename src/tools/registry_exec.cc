@@ -107,7 +107,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // Each call owns its process group and log, so independent commands
   // (network fetches especially) overlap instead of queueing.
   run.parallel_safe = true;
-  run.command_policy = true;
   run.declared_intent = true;
   const json intent_schema = {
       {"type", "string"},

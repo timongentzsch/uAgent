@@ -17,8 +17,6 @@ namespace uagent {
 void ActivateCurrentRoute(AppSession& session);
 std::string SaveSelectedModel(AppSession& session, const std::string& selected,
                               bool as_default);
-void HandleModels(AppSession& session, const std::string& argument,
-                  CommandReply& reply);
 void HandleModel(AppSession& session, const std::string& argument,
                  CommandReply& reply);
 
@@ -30,8 +28,6 @@ void HandleCost(const AppSession& session, CommandReply& reply);
 void HandleContext(AppSession& session, CommandReply& reply);
 void HandleStatus(const AppSession& session, CommandReply& reply);
 void HandleInstructions(const std::string& argument, CommandReply& reply);
-void HandleDebugConfig(const AppSession& session, const std::string& argument,
-                       CommandReply& reply);
 void HandleConfig(AppSession& session, const std::string& argument,
                   CommandReply& reply);
 void HandleMcp(AppSession& session, const std::string& argument,

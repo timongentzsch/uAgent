@@ -187,7 +187,7 @@ void HandleContext(AppSession& session, CommandReply& reply) {
 }
 
 // /context is the deep live-context view. /status answers the everyday
-// questions in one screen and /debug-config explains provenance.
+// questions in one screen and /config KEY explains provenance.
 void HandleStatus(const AppSession& session, CommandReply& reply) {
   reply.result =
       DescribeSelf(SelfTopic::kStatus, "", DescriptionInputs(session));
@@ -275,35 +275,38 @@ void HandleInstructions(const std::string& argument, CommandReply& reply) {
   }
 }
 
-void HandleDebugConfig(const AppSession& session, const std::string& argument,
-                       CommandReply& reply) {
+namespace {
+
+// One setting's provenance: where it is set, scope by scope, which of those
+// wins, and whether a change waits for a restart.
+void ShowSetting(const AppSession& session, const std::string& name,
+                 CommandReply& reply) {
   reply.result =
-      DescribeSelf(SelfTopic::kConfig, argument, DescriptionInputs(session));
+      DescribeSelf(SelfTopic::kConfig, name, DescriptionInputs(session));
   const json& described = reply.result;
   const json& settings = described["settings"];
   if (settings.empty()) {
-    reply.Note(Tone::kError, "no setting named " + TerminalSafe(argument));
+    reply.Note(Tone::kError, "no setting named " + TerminalSafe(name));
     return;
   }
-  // Only settings the user actually influenced, unless one was named: the full
-  // catalogue belongs to `uagent inspect config`, not in a terminal dump.
-  bool named = !argument.empty();
-  reply.Print("%sconfiguration%s\n", BOLD(), RST());
+  auto row = [&reply](const std::string& label, const std::string& value) {
+    reply.Print(
+        "%s",
+        KeyValueRow(label.c_str(), TerminalSafe(value), kDetailIndent).c_str());
+  };
   for (const json& setting : settings) {
-    std::string source = JsonValue(setting, "source", std::string("default"));
-    if (!named && source == "default") continue;
-    std::string name = JsonValue(setting, "name", std::string());
-    reply.Print("  %s%s%s\n", BOLD(), TerminalSafe(name).c_str(), RST());
-    auto row = [&reply](const char* label, const std::string& value) {
-      reply.Print(
-          "%s", KeyValueRow(label, TerminalSafe(value), kDetailIndent).c_str());
-    };
-    row("source", source);
+    reply.Print("%s%s%s\n", BOLD(),
+                TerminalSafe(JsonValue(setting, "name", "")).c_str(), RST());
+    const std::string source = JsonValue(setting, "source", "default");
+    row("source", std::string(ConfigScopeLabel(source)));
     if (setting.contains("effective")) {
       row("effective", JsonDump(setting["effective"]));
     }
     row("default", JsonDump(setting["default"]));
-    row("takes effect", JsonValue(setting, "takes_effect", std::string()));
+    for (const auto& [scope, held] : setting["set"].items()) {
+      row("set", std::string(ConfigScopeLabel(scope)) + ": " + JsonText(held));
+    }
+    row("takes effect", JsonValue(setting, "takes_effect", ""));
   }
   const json& restart = described["restart_required"];
   if (restart.is_array() && !restart.empty()) {
@@ -311,15 +314,24 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
                                 Plural(restart.size(), "changed setting"));
   }
   reply.Note(Tone::kNeutral,
-             "precedence: command line, process environment, trusted "
-             "project config, user config, built-in default");
+             "precedence: conversation, command line, process environment, "
+             "project, user, built-in default");
 }
+
+}  // namespace
 
 // The settings a layer changes, as text: what differs from its default and
 // where it comes from, then how a change takes effect.
 void HandleConfig(AppSession& session, const std::string& argument,
                   CommandReply& reply) {
   json request = {{"kind", "config"}};
+  // A bare setting name asks where it is set; a scope word starts a change.
+  if (argument.find_first_of(" =") == std::string::npos && !argument.empty() &&
+      argument != "user" && argument != "project" &&
+      argument != "conversation") {
+    ShowSetting(session, argument, reply);
+    return;
+  }
   if (!argument.empty()) {
     std::istringstream input(argument);
     std::string scope, change;
@@ -373,8 +385,8 @@ void HandleConfig(AppSession& session, const std::string& argument,
     reply.Note(Tone::kNeutral, "every setting is at its default");
   }
   reply.Note(Tone::kNeutral,
-             "/config user|project|conversation KEY=VALUE, unset KEY, or reset "
-             "(keeps secrets)");
+             "/config KEY shows one setting; /config user|project|conversation "
+             "KEY=VALUE, unset KEY, or reset (keeps secrets)");
 }
 
 // This repository's remembered actions, numbered so one can be forgotten,

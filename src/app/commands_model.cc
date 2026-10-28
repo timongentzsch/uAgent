@@ -65,7 +65,7 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
 }
 
 // The interactive catalog picker: prints the matches, then reads a choice.
-// Its only caller is /models, so it stays here rather than in a header.
+// Its only caller is /model, so it stays here rather than in a header.
 std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
                                         const std::vector<Endpoint>& providers,
                                         CommandReply& reply) {
@@ -153,20 +153,14 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
   return std::move(search.matches[static_cast<size_t>(selected - 1)]);
 }
 
-void HandleModels(AppSession& session, const std::string& argument,
-                  CommandReply& reply) {
-  if (argument.empty()) {
-    reply.Note(Tone::kNeutral,
-               "use /models QUERY to search every provider, or /models all "
-               "for the full catalog");
-    return;
-  }
-  std::string suffix =
-      argument == "all" ? "" : " for " + TerminalSafe(argument);
+// Searches every provider's catalog for `query` and applies the user's pick.
+void PickFromCatalog(AppSession& session, const std::string& query,
+                     bool as_default, CommandReply& reply) {
+  std::string suffix = query == "all" ? "" : " for " + TerminalSafe(query);
   reply.Note(Tone::kNeutral, "searching all model catalogs" + suffix);
   ModelSearch search =
       SearchModels(session.ApiClient(), session.context.provider.routes,
-                   session.context.provider.providers, argument);
+                   session.context.provider.providers, query);
   if (AbortRequested()) {
     ClearAbort();
     reply.Note(Tone::kWarn, "model search cancelled");
@@ -194,7 +188,7 @@ void HandleModels(AppSession& session, const std::string& argument,
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "showing the first " +
                          std::to_string(kModelPickerMatches) +
-                         " models; use /models QUERY to narrow the catalog"));
+                         " models; use /model QUERY to narrow the catalog"));
   }
   std::optional<ModelCandidate> selected =
       PickModel(std::move(search), session.ApiClient(),
@@ -202,7 +196,7 @@ void HandleModels(AppSession& session, const std::string& argument,
   if (!selected) return;
   // The first choice is for every conversation to come, or each start would
   // ask again.
-  const bool first = session.ApiClient().model.empty();
+  const bool first = as_default || session.ApiClient().model.empty();
   ApplyRoute(session.ApiClient(), selected->route);
   session.ApiClient().capabilities.SetInputModalities(
       selected->info.input_modalities, session.ApiClient().wire_api);
@@ -213,23 +207,26 @@ void HandleModels(AppSession& session, const std::string& argument,
 
 void HandleModel(AppSession& session, const std::string& argument,
                  CommandReply& reply) {
-  if (argument.empty()) {
-    HandleModels(session, "", reply);
-    return;
-  }
   // "/model X --default" also saves it for new conversations.
   static constexpr std::string_view kDefault = " --default";
   const bool as_default = argument.ends_with(kDefault);
   const std::string wanted =
       Trim(as_default ? argument.substr(0, argument.size() - kDefault.size())
                       : argument);
+  if (wanted.empty()) {
+    reply.Note(Tone::kNeutral,
+               "use /model QUERY to search every provider, or /model all for "
+               "the full catalog");
+    return;
+  }
   ModelSelection requested = ParseModelSelection(wanted);
   std::string selected =
-      SelectModel(session.ApiClient(), session.context.provider.routes,
-                  session.context.provider.providers, wanted);
+      wanted == "all" || wanted.find('*') != std::string::npos
+          ? std::string()
+          : SelectModel(session.ApiClient(), session.context.provider.routes,
+                        session.context.provider.providers, wanted);
   if (selected.empty()) {
-    reply.Note(Tone::kError,
-               "unknown model " + TerminalSafe(wanted) + "; use /models");
+    PickFromCatalog(session, wanted, as_default, reply);
     return;
   }
   if (!requested.effort.empty() &&

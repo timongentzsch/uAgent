@@ -46,5 +46,4 @@ all conversations     saved for every conversation
 built-in default      the registry default reported by uagent
 ```
 
-Both saved layers are one document, `~/.uagent/config/settings.json`;
-`uagent config export` prints it and `uagent config import FILE` replaces it.
+Both saved layers are one document, `~/.uagent/config/settings.json`.

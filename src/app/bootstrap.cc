@@ -109,8 +109,7 @@ void PrintWarning(const std::string& warning) {
 bool ResolveProjectTrust(const Options& options, bool& trusted,
                          json& trusted_snapshot, std::string& error,
                          int& exit_code) {
-  trusted =
-      options.trust_project || BoolSetting(Cfg("UAGENT_TRUST_PROJECT_CONFIG"));
+  trusted = options.trust_project;
   if (!trusted) trusted = ProjectConfigTrusted(&trusted_snapshot);
   bool mcp_present = ProjectMcpPresent();
   if (mcp_present && !trusted) {

@@ -12,6 +12,8 @@
 - **Names and formats from v1.4 and earlier are no longer read.** Rename `COORDINATOR.md` to `PANEL.md`, set `sandbox.level` instead of `sandbox.enabled`, and note `UAGENT_SANDBOX` takes only `strict`, `default`, `relaxed` or `off`. A format 2 settings file needs one run of v1.5 first.
 - **Settings and tasks from v1.3.1 or earlier are no longer read.** Run v1.4 or v1.5 once to rewrite format 1 settings and tasks saved with `"permissions": "prompt"`.
 - **The self-directive is gone.** `adapt_system`, `prompt.adaptSystem` (`UAGENT_ADAPT_SYSTEM`), `/instructions clear` and the web's Clear are removed.
+- **Removed commands:** `/debug-config` (use `/config KEY`, which now also shows the conversation's own value), `/models` (use `/model QUERY` or `/model all`), the aliases `/new`, `/ctx`, `/commands` and `/resume` (`/reset`, `/context`, `/help`, `/sessions`), and `uagent config export` and `uagent config import` (copy `~/.uagent/config/settings.json`).
+- **Removed settings:** `approval.allowAbove`, `approval.denyAbove` and `approval.vetoAbove` (set `decision_bars` on the provider), `mcp.roots` (set `roots` per server in `.mcp.json`), `project.trustConfig` (use `--trust-project-config`), `memory.redactKeywords`, `terminal.markdown` and `terminal.reducedMotion` (use `--plain`); `UAGENT_INTERNAL_TOOL_RUN_ALLOWLIST` is gone.
 - **A `-p` run is saved like any conversation**, so `-c -p` continues the latest one and scripts leave one history entry per run.
 - **Headless `--json` reports this run's usage only**, not what a continued conversation spent before; a conversation another runtime holds gets an error envelope.
 

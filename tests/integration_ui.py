@@ -85,7 +85,7 @@ def test_command_help(root, home, *, binary):
         result = run_dialog(
             root,
             base_env(home, server.url),
-            "/models\n/wat\n/recap\n/modle\n/help\n/exit\n",
+            "/model\n/wat\n/recap\n/modle\n/help\n/exit\n",
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
@@ -101,7 +101,7 @@ def test_command_help(root, home, *, binary):
         assert_true("  /help" in result.stdout, result.stdout)
         assert_true("show this help" in result.stdout, result.stdout)
         assert_true("commands:" not in result.stdout, result.stdout)
-        assert_true("use /models QUERY" in result.stdout, result.stdout)
+        assert_true("use /model QUERY" in result.stdout, result.stdout)
         assert_true(not server.get_requests, server.get_requests)
 
 
@@ -1059,24 +1059,6 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
 
-def test_reduced_motion_redraws_the_working_row_once_a_second(root, home, *, binary):
-    """Without motion the working row counts seconds and wakes nothing more."""
-
-    def delayed(_, __):
-        time.sleep(1.5)
-        return event({"content": "still-ok"})
-
-    with Server([delayed]) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_REDUCED_MOTION"] = "1"
-        code, output = run_pty(root, env, [(b"go\n", b"still-ok"), b"/q\n"], binary=binary)
-    assert_true(code == 0, output)
-    waiting = output[output.find(b"Waiting for model") : output.find(b"still-ok")]
-    paints = waiting.count(b"\x1b[?2026h")
-    print(f"  {paints} paints in 1.5 s", flush=True)
-    assert_true(0 < paints <= 4, waiting)
-
-
 def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
     # Ctrl+Z stops the process, so it cannot restore anything on the way down:
     # the handler has to hand back a cooked line discipline before the stop and
@@ -1339,20 +1321,19 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"/mod", b"/models"),
+                (b"/con", b"/context"),
                 # Unchanged rows are not redrawn: wait for the draft's own.
-                (b"\t", b"\x1b[49m/model"),
+                (b"\t", b"\x1b[49m/con"),
                 b"\x15/q\n",
             ],
             binary=binary,
         )
         assert_true(code == 0, output)
         # Both candidates are offered, with the same description /help prints.
-        assert_true(b"/models  search and select across providers" in output, output)
-        assert_true(b"/model  choose the model for this conversation" in output, output)
-        # Tab commits the shared prefix and, once one row is left, the space
-        # its argument needs.
-        assert_true(b"/model " in output, output)
+        assert_true(b"/config  show changed settings" in output, output)
+        assert_true(b"/context  show current model request" in output, output)
+        # Tab commits the shared prefix.
+        assert_true(b"/con" in output, output)
         assert_true(not server.get_requests, server.get_requests)
 
 
@@ -1367,12 +1348,12 @@ def test_input_slash_menu_moves_with_arrows(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"/mo", b"> /model  choose"),
-                (b"\x1b[B", b"> /models  search"),
-                (b"\x1b[A", b"> /model  choose"),
-                (b"\x1b[B\r", b"\x1b[49m/models "),
-                (b"\x15/mdls", b"> /models  search"),
-                (b"\t", b"\x1b[49m/models "),
+                (b"/con", b"> /context  show"),
+                (b"\x1b[B", b"> /config  show"),
+                (b"\x1b[A", b"> /context  show"),
+                (b"\x1b[B\r", b"\x1b[49m/config "),
+                (b"\x15/cnfg", b"> /config  show"),
+                (b"\t", b"\x1b[49m/config "),
                 b"\x15/q\n",
             ],
             binary=binary,

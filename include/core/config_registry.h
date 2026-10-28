@@ -592,11 +592,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       1, kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
                       "seconds allowed for one MCP call"),
         "MCP call timeout"),
-    registry::Named(
-        registry::Str("mcp.roots", "UAGENT_MCP_ROOTS", "mcp_roots", "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "mcp", "roots advertised to MCP servers"),
-        "MCP roots"),
 
     // Attachments and terminal media.
     registry::Named(
@@ -642,36 +637,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "[endpoint/]decision model used by auto permissions"),
             "the endpoint's own decision model"),
         "Permission reviewer", "Judges risky actions when approval is Auto"),
-    registry::Terminal(registry::Named(
-        registry::Fallback(
-            registry::Str(
-                "approval.allowAbove", "UAGENT_PERMISSION_ALLOW_ABOVE",
-                "permission_allow_above", "", ReloadPolicy::kNextUserTurn,
-                Sensitivity::kPublic, "behaviour",
-                "probability 0-1 of allow that auto permissions need"),
-            "the decision model's own"),
-        "Auto allow bar")),
-    registry::Terminal(registry::Named(
-        registry::Fallback(
-            registry::Str("approval.denyAbove", "UAGENT_PERMISSION_DENY_ABOVE",
-                          "permission_deny_above", "",
-                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                          "behaviour",
-                          "probability 0-1 of deny at which auto permissions "
-                          "refuse without asking"),
-            "the decision model's own"),
-        "Auto deny bar")),
-    registry::Terminal(registry::Named(
-        registry::Fallback(
-            registry::Str("approval.vetoAbove", "UAGENT_PERMISSION_VETO_ABOVE",
-                          "permission_veto_above", "",
-                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                          "behaviour",
-                          "probability 0-1 of a risk reason (destructive, "
-                          "beyond the request, sends data, touches secrets) "
-                          "above which auto permissions ask"),
-            "the decision model's own"),
-        "Auto risk bar")),
     registry::Named(
         registry::Fallback(
             registry::Str("title.model", "UAGENT_TITLE_MODEL", "title_model",
@@ -693,32 +658,17 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "comma-separated sensitive variables approved shells may inherit"),
         "Shell variables allowed"),
     registry::Terminal(registry::Named(
-        registry::Bul("project.trustConfig", "UAGENT_TRUST_PROJECT_CONFIG", {},
-                      false, ReloadPolicy::kRestartRequired, "behaviour",
-                      "trust this workspace's .mcp.json"),
-        "Trust project config")),
-    registry::Terminal(registry::Named(
         registry::Str("debug.log", "UAGENT_DEBUG_LOG", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "behaviour",
                       "write a sensitive reconstructable JSONL trace"),
         "Debug log")),
-    registry::Terminal(
-        registry::Named(registry::Bul("terminal.markdown", "UAGENT_MARKDOWN",
-                                      {}, true, ReloadPolicy::kRestartRequired,
-                                      "behaviour", "render Markdown on a TTY"),
-                        "Render Markdown")),
     registry::Terminal(registry::Named(
         registry::Bul("terminal.plain", "UAGENT_PLAIN", {}, false,
                       ReloadPolicy::kRestartRequired, "behaviour",
                       "screen-reader terminal: labelled lines, no animation or "
                       "cursor control"),
         "Plain output")),
-    registry::Terminal(registry::Named(
-        registry::Bul("terminal.reducedMotion", "UAGENT_REDUCED_MOTION", {},
-                      false, ReloadPolicy::kRestartRequired, "behaviour",
-                      "show a still status instead of the terminal spinner"),
-        "Reduced motion")),
     registry::Named(
         registry::Choice(
             registry::Str("verbosity", "UAGENT_VERBOSITY", {}, "default",
@@ -728,12 +678,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "default or full; display only"),
             kVerbosityLevels),
         "Detail shown"),
-    registry::Named(
-        registry::Str("memory.redactKeywords", "UAGENT_MEMORY_REDACT_KEYWORDS",
-                      {}, "", ReloadPolicy::kRestartRequired,
-                      Sensitivity::kPublic, "behaviour",
-                      "extra keywords redacted from stored memories"),
-        "Memory redaction keywords"),
 };
 
 inline std::span<const ConfigDescriptor> ConfigRegistry() {

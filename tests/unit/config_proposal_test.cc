@@ -341,19 +341,6 @@ void TestProjectSettingsAreSavedByFolder() {
   const auto resolved = manager.Read();
   CHECK(resolved.values.at("UAGENT_API_KEY") == "project-token");
   CHECK(!resolved.values.contains("TOKEN"));
-  // Such a document goes out and comes back as written.
-  AllSettings exported{.all = {{"LIMIT", "7"}, {"UAGENT_MAX_STEPS", "$LIMIT"}},
-                       .projects = {}};
-  CHECK(CheckSavedSettings(exported).empty());
-  CHECK(exported.all["UAGENT_MAX_STEPS"] == "$LIMIT");
-  // A value is checked and kept as it is, whatever the environment holds
-  // under its name.
-  {
-    ScopedEnv elsewhere("UAGENT_MAX_TOOL_CALLS", "9");
-    exported.all["UAGENT_MAX_TOOL_CALLS"] = "7";
-    CHECK(CheckSavedSettings(exported).empty());
-    CHECK(exported.all["UAGENT_MAX_TOOL_CALLS"] == "7");
-  }
   // A reset is refused when a setting it removes changed since it was read.
   ConfigProposal reset =
       PrepareConfigReset(ConfigProposalScope::kProject, manager);
@@ -366,8 +353,6 @@ void TestProjectSettingsAreSavedByFolder() {
         }).empty());
   CHECK(!CommitConfigProposal(reset, error));
   CHECK(ReadSettings(test.workspace.string()).project.size() == 4);
-  exported.all["LIMIT"] = "many";
-  CHECK(!CheckSavedSettings(exported).empty());
   // Another folder is not affected.
   CHECK(ReadSettings(test.root.string()).project.empty());
   // Where no folder is named (the web host's own view) there is no project

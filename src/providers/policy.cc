@@ -85,7 +85,7 @@ RouteResolution ResolveSideRoute(const Api& api,
   // route's configured value and the session default.
   if (!parsed.effort.empty()) route.reasoning_effort = parsed.effort;
   if (route.model.empty()) {
-    resolved.none = "no model set; choose one with /models";
+    resolved.none = "no model set; choose one with /model";
   }
   return resolved;
 }

@@ -20,32 +20,30 @@ registerRoute(
     allowlist: [/^\/$/],
   }),
 );
-const RENDERERS = "uagent-renderers-";
-let rendererConfig: Promise<{ assets: Set<string>; cache: string }> | undefined;
+// One cache across builds: a renderer file keeps its name while its content
+// does, so an update fetches only what changed.
+const RENDERERS = "uagent-renderers";
+let rendererConfig: Promise<Set<string>> | undefined;
 function renderers() {
   return (rendererConfig ??= matchPrecache("/renderer-assets.json")
     .then((response) => response?.json())
-    .then((paths: unknown) => {
-      const list = Array.isArray(paths)
-        ? paths.filter((path): path is string => typeof path === "string")
-        : [];
-      let revision = 2166136261;
-      for (const character of list.join("\n"))
-        revision = Math.imul(revision ^ character.charCodeAt(0), 16777619);
-      return {
-        assets: new Set(list),
-        cache: `${RENDERERS}${(revision >>> 0).toString(16)}`,
-      };
-    })
+    .then(
+      (paths: unknown) =>
+        new Set(
+          Array.isArray(paths)
+            ? paths.filter((path): path is string => typeof path === "string")
+            : [],
+        ),
+    )
     .catch(() => {
       // A failed read is retried next time, never remembered as the list.
       rendererConfig = undefined;
-      return { assets: new Set<string>(), cache: `${RENDERERS}empty` };
+      return new Set<string>();
     }));
 }
 async function cacheRenderers(paths: unknown) {
-  const { assets, cache: cacheName } = await renderers();
-  const cache = await caches.open(cacheName);
+  const assets = await renderers();
+  const cache = await caches.open(RENDERERS);
   if (!Array.isArray(paths)) return;
   await Promise.all(
     paths.map(async (path) => {
@@ -66,9 +64,8 @@ registerRoute(
     url.origin === self.location.origin &&
     url.pathname.startsWith("/assets/"),
   async ({ url, request }) => {
-    const { assets, cache: cacheName } = await renderers();
-    if (!assets.has(url.pathname)) return fetch(request);
-    const cache = await caches.open(cacheName);
+    if (!(await renderers()).has(url.pathname)) return fetch(request);
+    const cache = await caches.open(RENDERERS);
     const cached = await cache.match(request);
     if (cached) return cached;
     const response = await fetch(request);
@@ -78,12 +75,13 @@ registerRoute(
 );
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    renderers().then(async ({ assets, cache }) => {
+    renderers().then(async (assets) => {
       // Without the current list nothing can be told stale.
       if (!assets.size) return;
-      for (const name of await caches.keys())
-        if (name.startsWith(RENDERERS) && name !== cache)
-          await caches.delete(name);
+      const cache = await caches.open(RENDERERS);
+      for (const request of await cache.keys())
+        if (!assets.has(new URL(request.url).pathname))
+          await cache.delete(request);
     }),
   );
 });

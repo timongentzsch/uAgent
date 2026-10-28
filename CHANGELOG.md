@@ -17,6 +17,11 @@
 
 ### Changes
 
+- The web host gzips API JSON over 1 KiB for clients that accept it (a conversation snapshot is about an eighth of its size), and answers `If-None-Match` for `index.html`, `sw.js` and other unhashed files with 304.
+- After a dropped connection the web app reopens the event stream where it stopped and keeps what it holds; it reads the list and conversation again only when the host cannot replay.
+- Mermaid diagrams no longer ship the ELK layout engine (about 450 KB smaller download); a diagram that asks for ELK is laid out by dagre.
+- A code block is highlighted when it closes, not on every streamed frame, and highlighted blocks are cached. The rendered-markdown cache holds 1M characters, not 4M.
+- The service worker keeps one renderer cache across updates and removes only files the new build no longer lists; the conversation list is saved to local storage once it settles.
 - Search: Ctrl+K (⌘K) opens a search panel replacing the command palette and sidebar filter; it finds conversations, messages (with occurrences marked), actions, commands and settings. `>` lists commands only.
 - Find in conversation (Ctrl+F) marks every occurrence and steps through them with Enter and Shift+Enter.
 - The web host answers `GET /api/search?q=...` across conversations, tool output included; a panel's `history search` uses it and now finds compacted rows.

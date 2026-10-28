@@ -286,12 +286,17 @@ function RenderedMarkdown({
     const tail = text.slice(boundary.length);
     const blocks = [
       ...head.current.blocks,
-      ...loaded.markdownBlocks(loaded.healTail(tail), head.current.offset, {
-        // Its own copy: a half-typed `[ref]:` in the tail must not stick.
-        references: {
-          ...((head.current.env.references as object | undefined) || {}),
+      ...loaded.markdownBlocks(
+        loaded.healTail(tail),
+        head.current.offset,
+        {
+          // Its own copy: a half-typed `[ref]:` in the tail must not stick.
+          references: {
+            ...((head.current.env.references as object | undefined) || {}),
+          },
         },
-      }),
+        loaded.endsInFence(tail),
+      ),
     ];
     last.current = { text, blocks };
     return blocks;

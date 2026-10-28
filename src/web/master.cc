@@ -59,6 +59,8 @@ constexpr int kReadTimeoutSeconds = 5;
 constexpr int kWriteTimeoutSeconds = 2;
 constexpr int kKeepAliveRequests = 50;
 constexpr int kKeepAliveTimeoutSeconds = 2;
+// A JSON reply smaller than this costs more to compress than it saves.
+constexpr size_t kGzipMinBytes = 1024;
 constexpr int kStartupAttempts = 20;
 constexpr auto kStartupRetry = std::chrono::milliseconds(100);
 constexpr auto kRestartReply = std::chrono::milliseconds(300);
@@ -123,6 +125,30 @@ bool Gunzip(const Asset& asset, std::string& plain) {
   int status = inflate(&stream, Z_FINISH);
   inflateEnd(&stream);
   return status == Z_STREAM_END && stream.total_out == asset.plain_size;
+}
+
+// The gzip of `body`; false on any fault.
+bool Gzip(const std::string& body, std::string& packed) {
+  if (body.size() > UINT_MAX) {
+    return false;
+  }
+  z_stream stream{};
+  if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8,
+                   Z_DEFAULT_STRATEGY) != Z_OK) {
+    return false;
+  }
+  const std::unique_ptr<z_stream, int (*)(z_streamp)> ending(&stream,
+                                                             deflateEnd);
+  packed.assign(deflateBound(&stream, static_cast<uLong>(body.size())), '\0');
+  stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(body.data()));
+  stream.avail_in = static_cast<uInt>(body.size());
+  stream.next_out = reinterpret_cast<Bytef*>(packed.data());
+  stream.avail_out = static_cast<uInt>(packed.size());
+  if (deflate(&stream, Z_FINISH) != Z_STREAM_END) {
+    return false;
+  }
+  packed.resize(stream.total_out);
+  return true;
 }
 }  // namespace
 
@@ -252,6 +278,29 @@ bool Master::Initialize(std::string& error) {
       }
     }
     return httplib::Server::HandlerResponse::Unhandled;
+  });
+  // JSON replies go out gzipped to a client that takes it. Assets carry
+  // their own encoding, the event stream is not JSON, and a range selects
+  // bytes of the plain body: none of them qualify.
+  server_.set_post_routing_handler([](const Request& request,
+                                      Response& response) {
+    if (response.body.size() < kGzipMinBytes || request.has_header("Range") ||
+        response.has_header("Content-Encoding") ||
+        !response.get_header_value("Content-Type")
+             .starts_with("application/json") ||
+        !AcceptsGzip(request.get_header_value("Accept-Encoding"))) {
+      return;
+    }
+    std::string packed;
+    if (!Gzip(response.body, packed)) {
+      return;
+    }
+    // The length was set from the plain body before this handler ran.
+    response.headers.erase("Content-Length");
+    response.set_header("Content-Length", std::to_string(packed.size()));
+    response.body = std::move(packed);
+    response.set_header("Content-Encoding", "gzip");
+    response.set_header("Vary", "Accept-Encoding");
   });
   RegisterApiRoutes();
   if (!browser::DataDirectory().empty()) RegisterBrowserRoutes();
@@ -568,12 +617,25 @@ bool Master::RegisterAssetRoutes(std::string& error) {
               ? "public, max-age=" + std::to_string(kSecondsPerYear) +
                     ", immutable"
               : "no-cache");
+      if (asset.gzip) {
+        response.set_header("Vary", "Accept-Encoding");
+      }
+      // Files the browser revalidates each time; the bundle's name-hashed
+      // files under /assets/ never change.
+      if (!path.starts_with("/assets/")) {
+        const std::string etag = "\"" + std::string(asset.etag) + "\"";
+        response.set_header("ETag", etag);
+        if (request.get_header_value("If-None-Match").find(etag) !=
+            std::string::npos) {
+          response.status = 304;
+          return;
+        }
+      }
       if (!asset.gzip) {
         response.set_content(reinterpret_cast<const char*>(asset.data),
                              asset.size, std::string(asset.mime));
         return;
       }
-      response.set_header("Vary", "Accept-Encoding");
       // A range selects bytes of the plain asset: slices of a gzip stream
       // are not one, so a ranged request is always answered plain.
       if (!request.has_header("Range") &&

@@ -175,8 +175,10 @@ When the connection drops or the page reloads:
   with the conversation list.
 - A host that cannot be reached keeps the app on screen and says so while it
   tries again; only a host that refuses this device shows the pairing form.
-- The status line shows "Reconnecting…". The conversation resumes where it
-  was, and controls stay disabled until the browser has caught up.
+- The status line shows "Reconnecting…". The browser reopens the event stream
+  at the last event it applied and the host replays the rest; the list and
+  open conversation are read again only when the host can no longer replay.
+  Controls stay disabled until the browser has caught up.
 - A sent message shows as pending until the runtime accepts it. Reconnecting
   does not send it twice.
 - A message the host refused or never confirmed stays at its row with the
@@ -255,7 +257,9 @@ before Submit.
   subagent follow-ups can select another model; persistent agents keep their
   runtime model. Process children show statistics from their latest saved
   checkpoint, labelled as such.
-- Markdown supports code highlighting, math and fenced `mermaid` diagrams.
+- Markdown supports code highlighting, math and fenced `mermaid` diagrams
+  (the ELK layout engine is left out: a diagram that asks for it is laid out
+  by dagre). A code block is highlighted once it closes, not while it streams.
   Raw HTML and trusted math commands are disabled, remote images are inert
   and links use a scheme allowlist. Renderers and fonts ship locally and load
   on demand.

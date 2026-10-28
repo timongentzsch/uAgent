@@ -26,6 +26,7 @@ import { snapshotStore } from "./snapshot-store.ts";
 import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
+  catalogueSaveDelayMs,
   draftSaveDelayMs,
   maxLocalRequests,
   reconnectBaseDelayMs,
@@ -38,7 +39,16 @@ import { needsYou } from "./attention.ts";
 // pauses, not per key; an upload still in flight when the page went away
 // never finishes, and its chip would have no id the host knows.
 const kept = {
-  catalogue: stored<Catalogue["sessions"]>(storageKeys.catalogue, []),
+  // Streamed events change the list many times a second; it is kept once
+  // they pause, and when the page hides.
+  catalogue: stored<Catalogue["sessions"]>(
+    storageKeys.catalogue,
+    [],
+    undefined,
+    {
+      delay: catalogueSaveDelayMs,
+    },
+  ),
   spaces: stored<NonNullable<Catalogue["spaces"]>>(storageKeys.spaces, []),
   drafts: stored<Record<string, Draft>>(
     storageKeys.drafts,
@@ -147,6 +157,8 @@ export function useHost(
   // follow on the stream.
   const rescan = useRef(false);
   const resuming = useRef(false);
+  // epoch:cursor of the last event applied, where a reconnect picks up.
+  const resume = useRef("");
   // A failed load retries on its own, backing off to reconnectMaxDelayMs.
   const retry = useRef<{
     attempt: number;
@@ -427,6 +439,95 @@ export function useHost(
     dropStream();
     loads.current.clear();
     const signal = lifetime.current.signal;
+    // Opens the event stream after `from` (epoch:cursor); the host replays
+    // what came after it, or answers resync when it can no longer.
+    const follow = (list: Catalogue, from: string) => {
+      const floor = Number(from.slice(from.indexOf(":") + 1));
+      resume.current = from;
+      const events = new EventSource(routes.events(from));
+      stream.current = events;
+      events.onopen = () => {
+        if (stream.current !== events || signal.aborted) return;
+        // Transport-open is not authoritative catch-up. Mutations stay
+        // disabled until the server's ready watermark has been applied.
+        setConnecting(true);
+      };
+      events.onerror = () => {
+        if (stream.current !== events || signal.aborted) return;
+        setOnline(false);
+        setConnecting(events.readyState === EventSource.CONNECTING);
+        // A non-200 answer (a proxy's 502 mid-restart) closes the stream
+        // for good; only a fresh refresh reconnects, and one that cannot
+        // resume, as the catalogue read is what learns a 401.
+        if (events.readyState === EventSource.CLOSED) {
+          resume.current = "";
+          retryLater();
+        }
+      };
+      events.addEventListener("ready", (message) => {
+        if (stream.current !== events || signal.aborted) return;
+        let ready: { epoch?: string; cursor?: number };
+        try {
+          ready = JSON.parse(message.data);
+        } catch {
+          refresh();
+          return;
+        }
+        if (
+          ready.epoch !== list.epoch ||
+          typeof ready.cursor !== "number" ||
+          ready.cursor < floor
+        ) {
+          refresh();
+          return;
+        }
+        retry.current.attempt = 0;
+        connectedOnce.current = true;
+        setOnline(true);
+        setConnecting(false);
+      });
+      events.addEventListener("resync", () => {
+        if (stream.current === events && !signal.aborted) refresh();
+      });
+      events.addEventListener("update", (message) => {
+        if (stream.current !== events || signal.aborted) return;
+        const event = envelope(message.data);
+        if (!event) {
+          events.close();
+          refresh();
+          return;
+        }
+        if (event.v !== protocol || event.epoch !== list.epoch) {
+          events.close();
+          report(
+            new Error(
+              "App/server version changed; reconnect or update the app.",
+            ),
+          );
+          setOnline(false);
+          setConnecting(false);
+          return;
+        }
+        applyEvent(event);
+        resume.current = message.lastEventId || resume.current;
+      });
+    };
+    // A reconnect of a view this device holds reopens the stream at the last
+    // event it applied, and keeps the catalogue and snapshots it has: only a
+    // start, a rescan or a lost cursor reads them again.
+    const known = catalogueRef.current;
+    if (!rescan.current && resume.current && known) {
+      try {
+        follow(known, resume.current);
+      } finally {
+        reconnecting.current = false;
+        if (refreshAgain.current) {
+          refreshAgain.current = false;
+          reconnect();
+        }
+      }
+      return;
+    }
     // The open conversation is asked for with the list, not after it, when
     // this device listed it before; the list's own load below reuses it.
     const open = selection.current;
@@ -480,69 +581,7 @@ export function useHost(
       if (id && list.sessions.some((item) => item.id === id))
         await load(id).catch(() => {});
       if (signal.aborted) return;
-      const events = new EventSource(
-        routes.events(`${list.epoch}:${list.cursor}`),
-      );
-      stream.current = events;
-      events.onopen = () => {
-        if (stream.current !== events || signal.aborted) return;
-        // Transport-open is not authoritative catch-up. Mutations stay
-        // disabled until the server's ready watermark has been applied.
-        setConnecting(true);
-      };
-      events.onerror = () => {
-        if (stream.current !== events || signal.aborted) return;
-        setOnline(false);
-        setConnecting(events.readyState === EventSource.CONNECTING);
-        // A non-200 answer (a proxy's 502 mid-restart) closes the stream
-        // for good; only a fresh refresh reconnects.
-        if (events.readyState === EventSource.CLOSED) retryLater();
-      };
-      events.addEventListener("ready", (message) => {
-        if (stream.current !== events || signal.aborted) return;
-        let ready: { epoch?: string; cursor?: number };
-        try {
-          ready = JSON.parse(message.data);
-        } catch {
-          refresh();
-          return;
-        }
-        if (
-          ready.epoch !== list.epoch ||
-          typeof ready.cursor !== "number" ||
-          ready.cursor < (list.cursor || 0)
-        ) {
-          refresh();
-          return;
-        }
-        connectedOnce.current = true;
-        setOnline(true);
-        setConnecting(false);
-      });
-      events.addEventListener("resync", () => {
-        if (stream.current === events && !signal.aborted) refresh();
-      });
-      events.addEventListener("update", (message) => {
-        if (stream.current !== events || signal.aborted) return;
-        const event = envelope(message.data);
-        if (!event) {
-          events.close();
-          refresh();
-          return;
-        }
-        if (event.v !== protocol || event.epoch !== list.epoch) {
-          events.close();
-          report(
-            new Error(
-              "App/server version changed; reconnect or update the app.",
-            ),
-          );
-          setOnline(false);
-          setConnecting(false);
-          return;
-        }
-        applyEvent(event);
-      });
+      follow(list, `${list.epoch}:${list.cursor}`);
     } catch (error) {
       if (signal.aborted) return;
       setConnecting(false);

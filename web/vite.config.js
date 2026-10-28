@@ -76,6 +76,18 @@ export default defineConfig({
   plugins: [
     rendererManifest(),
     {
+      // elkjs is 1.4 MB for an alternative layout of the same diagrams.
+      // Mermaid lays an unregistered algorithm out with dagre, so no
+      // diagram type is lost, only the ELK arrangement of a few.
+      name: "mermaid-without-elk",
+      enforce: "pre",
+      transform(code, id) {
+        if (!code.includes("elkLayoutLoaders()")) return;
+        if (!id.includes("/node_modules/mermaid/")) return;
+        return code.replace("...elkLayoutLoaders()", "");
+      },
+    },
+    {
       name: "modern-math-fonts",
       enforce: "pre",
       transform(code, id) {

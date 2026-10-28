@@ -10,19 +10,17 @@
 #include <filesystem>
 #include <vector>
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
-void RegisterFileTools(std::vector<Tool>& tools,
-                       ProcessSupervisor& supervisor,
+void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace);
-void RegisterExecTools(std::vector<Tool>& tools,
-                       ProcessSupervisor& supervisor,
+void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace);
 void RegisterActivityTool(std::vector<Tool>& tools,
-                          ProcessSupervisor& supervisor);
+                          ActivitySupervisor& supervisor);
 void RegisterMemoryTool(std::vector<Tool>& tools);
 
 }  // namespace uagent

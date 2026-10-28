@@ -51,7 +51,7 @@ export default function Board({
   const agentOf = new Map(agents.map((child) => [child.id, child]));
   const children = withAgents(
     (state?.activities || NO_ACTIVITIES).filter(
-      (item) => item.kind === "agent",
+      (item) => item.kind === "subagent",
     ),
     agents,
   );
@@ -74,7 +74,7 @@ export default function Board({
           item.pending
             ? "Needs your input"
             : working(item)
-              ? item.activity || "Working"
+              ? item.turn_status || "Working"
               : item.updated && <Time value={item.updated} />
         }
       />

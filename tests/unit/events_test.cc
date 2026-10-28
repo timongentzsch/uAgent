@@ -18,24 +18,24 @@
 #include "include/app/runtime.h"
 #include "include/app/self_description.h"
 #include "include/cli/cli.h"
-#include "include/core/activity.h"
 #include "include/core/config.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/turn_status.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
-void TestActivityProjection() {
-  ActivityProjection projection;
+void TestTurnStatus() {
+  TurnStatus projection;
   auto emit = [&](EventId id, json data = json::object()) {
     if (!data.contains("turn")) data["turn"] = 1;
     return projection.Consume(id, data);
   };
   emit(EventId::kTurnStarted);
   emit(EventId::kResponseStarted, {{"response_id", "r1"}});
-  CHECK(projection.Status()["activity"] == "Waiting for model");
+  CHECK(projection.Status()["turn_status"] == "Waiting for model");
   CHECK(!projection.Consume(EventId::kResponseStarted,
                             {{"response_id", "judge"}}));
   emit(EventId::kReasoningDelta,
@@ -45,7 +45,7 @@ void TestActivityProjection() {
   CHECK(projection.Revision() == revision);
   emit(EventId::kReasoningDelta,
        {{"text", "\n"}, {"reasoning_kind", "summary"}});
-  CHECK(projection.Status()["activity"] == "Thinking · Checking sources");
+  CHECK(projection.Status()["turn_status"] == "Thinking · Checking sources");
   emit(EventId::kToolArguments);
   CHECK(projection.Status()["phase"] == "preparing");
   json first = {{"occurrence_id", "a"},
@@ -63,23 +63,23 @@ void TestActivityProjection() {
   emit(EventId::kToolStarted, first);
   emit(EventId::kToolStarted, second);
   const json both = "Running · Running tests · +1 tools";
-  CHECK(projection.Status()["activity"] == both);
+  CHECK(projection.Status()["turn_status"] == both);
   emit(EventId::kToolCall, first);  // Duplicate preparation cannot un-start it.
-  CHECK(projection.Status()["activity"] == both);
+  CHECK(projection.Status()["turn_status"] == both);
   emit(EventId::kToolResult, first);
-  CHECK(projection.Status()["activity"] == "Running · read_path");
+  CHECK(projection.Status()["turn_status"] == "Running · read_path");
   emit(EventId::kToolResult, second);
   emit(EventId::kResponseRetry,
        {{"attempt", 2}, {"max_attempts", 3}, {"retry_at_ms", 123}});
   CHECK(projection.Status()["phase"] == "retrying");
-  CHECK(projection.Status()["activity"] == "Retrying model · attempt 2/3");
+  CHECK(projection.Status()["turn_status"] == "Retrying model · attempt 2/3");
   emit(EventId::kResponseStarted, {{"response_id", "r2"}});
   CHECK(!emit(EventId::kReasoningDelta,
               {{"response_id", "r1"}, {"text", "stale\n"}}));
-  emit(EventId::kReasoningDelta,
-       {{"text",
-         std::string(kActivityLineBytes + 1, 'x') + "\nShort heading\n"}});
-  CHECK(projection.Status()["activity"] == "Thinking · Short heading");
+  emit(
+      EventId::kReasoningDelta,
+      {{"text", std::string(kStatusLineBytes + 1, 'x') + "\nShort heading\n"}});
+  CHECK(projection.Status()["turn_status"] == "Thinking · Short heading");
   // A long token stream never retains the growing transcript in the caption
   // or emits extra status events once the incomplete line is known.
   const uint64_t before = projection.Revision();
@@ -92,9 +92,9 @@ void TestActivityProjection() {
   CHECK(!emit(EventId::kToolStarted, first));
   emit(EventId::kTurnStarted, {{"turn", 2}});
   CHECK(!emit(EventId::kToolResult, second));
-  CHECK(ActivityLabel("**C# snake_case 2*3**") == "C# snake_case 2*3");
-  CHECK(ActivityLabel(std::string(kActivityLabelBytes - 1, 'x') + "µlong")
-            .size() == kActivityLabelBytes - 1);
+  CHECK(StatusLabel("**C# snake_case 2*3**") == "C# snake_case 2*3");
+  CHECK(StatusLabel(std::string(kStatusLabelBytes - 1, 'x') + "µlong").size() ==
+        kStatusLabelBytes - 1);
 }
 
 void TestObservabilityEvents() {

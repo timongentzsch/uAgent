@@ -88,7 +88,7 @@ Two kinds of session act for you unattended:
   off, degraded or refused; without such an endpoint it asks.
 - Paths are canonicalized to reduce symlink escapes, and path restrictions
   are checked again when the call runs. Writes are atomic.
-- Requests, responses, attachments, tool output, scans, jobs, MCP data and
+- Requests, responses, attachments, tool output, scans, activities, MCP data and
   logs are bounded. MCP server stderr goes to a rotating, size-bounded log.
 - API redirects are rejected and bearer-auth transfers use HTTP(S) only.
 - `web_fetch` makes credential-free direct HTTP(S) connections only to public
@@ -193,14 +193,14 @@ confinement.
 - the package caches: `~/.cache`, `~/.local/share/uv`, `~/.npm` and, on
   macOS, `~/Library/Caches` (`kPackageCaches` and `kMacPackageCaches` in
   `include/core/defaults.h`; grant another with `sandbox.write`);
-- `~/.uagent/terminals/logs`, where a detached job's log pump writes;
+- `~/.uagent/terminals/logs`, where a detached activity's log pump writes;
 - the roots `sandbox.write` adds;
 - at the `relaxed` level, your home folder.
 
 Everything else is refused. `~/.uagent` is never granted, and a requested
 root is rejected, and reported at startup, when it is `/`, `~/.uagent` or
 one of its ancestors, or lies inside `~/.uagent/config`. That keeps the
-saved settings, trust store, collaborator records and detached-job records
+saved settings, trust store, collaborator records and detached-activity records
 out of reach. The `relaxed` level opens the home folder around `~/.uagent`:
 its terminal logs, and a workspace under `~/.uagent/spaces`, stay writable;
 nothing else in it is. On Linux, Landlock can only grant, so the home folder
@@ -292,13 +292,13 @@ where Landlock cannot express the rest.
 in a repository, `.git/config` and `.git/hooks` (which your own git would
 run); it can still commit. macOS denies the write. Landlock has no deny
 rule, so on Linux the three are recorded before a sandboxed command runs and
-put back when it ends (when it returns, or when a background or detached job
+put back when it ends (when it returns, or when a background or detached activity
 is collected), and the model and you are told:
 `restored .git/hooks: sandboxed commands may not change it`. The folder's
 trust still follows `.mcp.json`'s content. This is a check at the end of a
 command, not a wall: a hook added by a long-running command is live until it
 ends, a change you make to those paths while a sandboxed command runs is
-undone with it, and a detached job still running when the session ends is
+undone with it, and a detached activity still running when the session ends is
 not checked. A folder's instruction files (`AGENTS.md`,
 `.uagent/PANEL.md`) are ordinary repository files that any session in it may
 edit.

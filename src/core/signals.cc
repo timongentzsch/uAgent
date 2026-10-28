@@ -27,8 +27,8 @@ std::atomic_flag g_signal_abort = ATOMIC_FLAG_INIT;
 std::atomic<bool> g_thread_abort{false};
 thread_local std::atomic<bool>* g_local_abort = nullptr;
 SignalFlag g_mcp_pids[kMcpMax] = {};
-SignalFlag g_bg_pids[kBgMax] = {};
-SignalFlag g_agent_pids[kBgMax] = {};
+SignalFlag g_activity_pids[kActivityMax] = {};
+SignalFlag g_agent_pids[kActivityMax] = {};
 SignalFlag g_signal_tty = 0;
 
 namespace {
@@ -260,10 +260,10 @@ static void StopStartedFromHandler() {
   // Each slot is read once: one cleared between a test and a second read
   // would be zero, and a signal to group zero is a signal to this process's
   // own group.
-  for (int index = 0; index < kBgMax; ++index) {
+  for (int index = 0; index < kActivityMax; ++index) {
     const pid_t agent = static_cast<pid_t>(g_agent_pids[index]);
     if (agent > 0) kill(-agent, SIGTERM);
-    const pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
+    const pid_t pid = static_cast<pid_t>(g_activity_pids[index]);
     if (pid <= 0) continue;
     kill(-pid, SIGKILL);
     kill(pid, SIGKILL);

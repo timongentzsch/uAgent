@@ -9,8 +9,8 @@
 #include <variant>
 #include <vector>
 
+#include "include/agent/activity_supervisor.h"
 #include "include/agent/agent.h"
-#include "include/agent/process.h"
 #include "include/agent/prompt.h"
 #include "include/api/client.h"
 #include "include/app/artifact.h"
@@ -382,7 +382,7 @@ json ToolSurfaceJson() {
   // Each factory is constructed with empty dependencies: the emitted text is
   // the template, and the route- and catalogue-dependent parts a live session
   // splices in are reported by `/context` instead.
-  ProcessSupervisor supervisor;
+  ActivitySupervisor supervisor;
   Api api;
   UsageAccumulator usage;
   const std::string workspace = CanonicalAccessPath(".");

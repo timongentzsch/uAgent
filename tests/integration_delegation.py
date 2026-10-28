@@ -214,7 +214,7 @@ def test_subagent_auto_join_continues_turn(root, home, *, binary):
             waiting.wait(budget(4))
             return event({"content": "child-result"})
         has_result = any(
-            isinstance(message.get("content"), str) and "[Background result:" in message["content"]
+            isinstance(message.get("content"), str) and "[Activity result:" in message["content"]
             for message in messages
         )
         if has_result:

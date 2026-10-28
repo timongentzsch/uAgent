@@ -115,7 +115,7 @@ to a non-PTY activity is rejected.
   PID-backed with a rotating log; launching the same detached command from
   the same directory reuses its process group, and it cannot be reattached
   interactively after µAgent exits.
-- A background command's or subagent's result is added once, bounded, to
+- An activity's result is added once, bounded, to
   the model's next call; output already read is not repeated. If the
   conversation is idle by then, the result starts a turn, so the agent can
   end its turn instead of waiting. A headless run (`-p`) answers once: it

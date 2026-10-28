@@ -277,7 +277,7 @@ test("a catalogue update that changes nothing keeps the catalogue's identity", (
   assert.deepEqual(activities([]).sessions[0].activities, []);
   // A state frame's metadata, the same but for its objects.
   assert.equal(keptSession(a, { ...a, activities: [{ id: "1" }] }), a);
-  const working = { ...a, activity: "Reading" };
+  const working = { ...a, turn_status: "Reading" };
   assert.equal(keptSession(a, working), working);
   assert.equal(
     patchCatalogue(catalogue, "missing", () => ({ id: "missing" })),
@@ -315,13 +315,17 @@ test("closing a view aborts its pending command wait", async () => {
   }
 });
 
-test("an activity event sets the phase and its caption", () => {
+test("a turn-status event sets the phase and its caption", () => {
   const next = applySessionEvent(
     { cursor: 0, metadata: { id: "s" } },
-    { kind: "activity", phase: "tool", activity: "Running · Checking tests" },
+    {
+      kind: "turn_status",
+      phase: "tool",
+      turn_status: "Running · Checking tests",
+    },
   );
   assert.equal(next.state.phase, "tool");
-  assert.equal(next.state.activity, "Running · Checking tests");
+  assert.equal(next.state.turn_status, "Running · Checking tests");
 });
 
 test("a state frame without the view keeps the last view, HTTP log and prompt", () => {
@@ -393,14 +397,14 @@ async function eventHost(snapshot) {
 }
 
 test("a state frame that restates its session keeps the session's object", async () => {
-  const metadata = { id: "s", generation: "g", activity: "Ready" };
+  const metadata = { id: "s", generation: "g", turn_status: "Ready" };
   const { host, apply } = await eventHost({
     epoch: "e",
     cursor: 1,
     metadata,
     state: { phase: "idle" },
   });
-  const frame = (sequence, activity) => ({
+  const frame = (sequence, turnStatus) => ({
     kind: "state",
     epoch: "e",
     sequence,
@@ -408,7 +412,7 @@ test("a state frame that restates its session keeps the session's object", async
     generation: "g",
     phase: "working",
     state: { phase: "working" },
-    metadata: { ...metadata, activity },
+    metadata: { ...metadata, turn_status: turnStatus },
   });
   apply(frame(2, "Ready"));
   assert.equal(host.live.current.s.metadata, metadata);
@@ -418,5 +422,5 @@ test("a state frame that restates its session keeps the session's object", async
   apply(frame(2, "Reading"));
   assert.equal(host.state.catalogue.sessions[0], metadata);
   apply(frame(3, "Reading"));
-  assert.equal(host.state.catalogue.sessions[0].activity, "Reading");
+  assert.equal(host.state.catalogue.sessions[0].turn_status, "Reading");
 });

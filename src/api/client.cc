@@ -648,8 +648,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   }
 
   const std::string activity =
-      web_available ? std::string(kWaitingActivity) + " · web available"
-                    : std::string(kWaitingActivity);
+      web_available ? std::string(kWaitingStatus) + " · web available"
+                    : std::string(kWaitingStatus);
   ResponseObservation observation(activity, std::move(response_context));
 
   CURLcode rc = CURLE_OK;

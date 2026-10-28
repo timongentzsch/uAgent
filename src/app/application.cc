@@ -180,7 +180,7 @@ void Application::LogSessionEnd(const char* reason) const {
 
 void Application::Teardown(const char* reason) {
   runtime_.Shutdown();
-  agent_.DrainBackground();
+  agent_.DrainActivities();
   agent_.AccountSideUsage();
   SaveSession(true);
   LogSessionEnd(reason);

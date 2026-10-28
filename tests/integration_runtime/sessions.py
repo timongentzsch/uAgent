@@ -381,12 +381,12 @@ def test_input_idle_background_completion_starts_a_turn(root, home, *, binary):
         messages = body["messages"]
         results = tool_results(messages)
         sent = json.dumps(messages)
-        if "[background work finished" in sent:
+        if "[activity finished" in sent:
             # The command's result reaches the model with the note.
             batch = next(
                 str(message.get("content"))
                 for message in messages
-                if "[completed background tasks" in str(message.get("content", ""))
+                if "[completed activities" in str(message.get("content", ""))
             )
             assert_true("\nnotified" in batch, batch)
             return event({"content": "background-turn-ok"})

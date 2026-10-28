@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/core/activity.h"
+#include "include/core/turn_status.h"
 
 #include <algorithm>
 #include <cctype>
@@ -13,9 +13,9 @@
 
 namespace uagent {
 
-std::string ActivityLabel(std::string_view text) {
+std::string StatusLabel(std::string_view text) {
   std::string safe = TerminalSafe(Utf8Prefix(
-      std::string(text.substr(0, kActivityLineBytes)), kActivityLabelBytes));
+      std::string(text.substr(0, kStatusLineBytes)), kStatusLabelBytes));
   std::string plain;
   plain.reserve(safe.size());
   bool separator = false;
@@ -41,10 +41,10 @@ std::string ActivityLabel(std::string_view text) {
   while (plain.starts_with("- ") || plain.starts_with("> ")) {
     plain = Trim(plain.substr(2));
   }
-  return Utf8Prefix(std::move(plain), kActivityLabelBytes);
+  return Utf8Prefix(std::move(plain), kStatusLabelBytes);
 }
 
-void ActivityProjection::Reasoning(const json& data) {
+void TurnStatus::Reasoning(const json& data) {
   const std::string part = JsonValue(data, "part", "");
   if (part != part_ || JsonValue(data, "reasoning_reset", false)) {
     part_ = part;
@@ -54,7 +54,7 @@ void ActivityProjection::Reasoning(const json& data) {
   if (JsonValue(data, "reasoning_reset", false)) excerpt_.clear();
   auto finish = [&] {
     if (!long_line_) {
-      std::string label = ActivityLabel(line_);
+      std::string label = StatusLabel(line_);
       if (!label.empty()) excerpt_ = std::move(label);
     }
     line_.clear();
@@ -65,7 +65,7 @@ void ActivityProjection::Reasoning(const json& data) {
   for (char ch : JsonValue(data, text_field, "")) {
     if (ch == '\n' || ch == '\r') {
       finish();
-    } else if (line_.size() < kActivityLineBytes) {
+    } else if (line_.size() < kStatusLineBytes) {
       line_ += ch;
     } else {
       long_line_ = true;
@@ -74,7 +74,7 @@ void ActivityProjection::Reasoning(const json& data) {
   if (JsonValue(data, "complete", false)) finish();
 }
 
-json ActivityProjection::Project() const {
+json TurnStatus::Project() const {
   std::string phase = phase_, label;
   size_t running = 0;
   for (const auto& [id, call] : calls_) {
@@ -113,13 +113,13 @@ json ActivityProjection::Project() const {
             : phase == "preparing"  ? "Preparing tool call"
             : phase == "responding" ? "Responding"
             : phase == "finishing"  ? "Finishing"
-            : phase == "idle"       ? kIdleActivity
+            : phase == "idle"       ? kIdleStatus
                                     : "Working";
   }
-  return {{"phase", phase}, {"activity", label}};
+  return {{"phase", phase}, {"turn_status", label}};
 }
 
-bool ActivityProjection::Consume(EventId id, const json& data) {
+bool TurnStatus::Consume(EventId id, const json& data) {
   // Auxiliary model calls (permission judge, titles, memory) have no turn
   // identity. They must not replace the conversation's response or caption.
   if (id == EventId::kResponseStarted && !data.contains("turn")) return false;
@@ -174,8 +174,8 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         const std::string key = JsonValue(data, "occurrence_id", "");
         if (key.empty()) return false;
         Call& call = calls_[key];
-        call.label = ActivityLabel(JsonValue(activity, "status_label",
-                                             JsonValue(data, "name", "tool")));
+        call.label = StatusLabel(JsonValue(activity, "status_label",
+                                           JsonValue(data, "name", "tool")));
         call.running = call.running || id == EventId::kToolStarted;
         phase_ = "working";
         break;

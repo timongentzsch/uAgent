@@ -7,11 +7,11 @@
 #include <utility>
 
 #include "include/agent/session_view.h"
-#include "include/core/activity.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/turn_status.h"
 #include "include/core/verbosity.h"
 #include "include/ui/interactive.h"
 #include "include/ui/presentation.h"
@@ -60,10 +60,10 @@ void Terminal::Receive(const json& frame) {
   auto kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
     ReceiveState(frame);
-  } else if (kind == "activity") {
-    presenter_.Consume(AppEvent{0, "", "activity.status", frame, false});
+  } else if (kind == "turn_status") {
+    presenter_.Consume(AppEvent{0, "", "turn.status", frame, false});
     std::lock_guard lock(mutex_);
-    state_["activity"] = JsonValue(frame, "activity", kIdleActivity);
+    state_["turn_status"] = JsonValue(frame, "turn_status", kIdleStatus);
     wake_.Wake();
   } else if (kind == "event") {
     if (!ReceiveEvent(frame)) return;
@@ -85,7 +85,7 @@ void Terminal::ReceiveState(const json& frame) {
   {
     std::lock_guard lock(mutex_);
     for (const char* field :
-         {"activity", "route", "usage", "turn_started_ms", "context_tokens",
+         {"turn_status", "route", "usage", "turn_started_ms", "context_tokens",
           "context_window", "activities", "permissions"}) {
       if (state.contains(field)) state_[field] = state[field];
     }

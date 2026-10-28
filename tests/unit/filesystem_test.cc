@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/activity.h"
 #include "include/agent/edit_journal.h"
-#include "include/agent/jobs.h"
 #include "include/agent/path_policy.h"
 #include "include/cli/options.h"
 #include "include/core/config.h"
@@ -335,7 +335,7 @@ void TestFileTools() {
   fs::path registered = root / "registered.txt";
   CHECK(ToolWriteFile(registered.string(), "a a c\n")
             .output.starts_with("wrote "));
-  ProcessSupervisor supervisor;
+  ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
   const Tool* read_tool = FindTool(tools, "read_path");
   CHECK(read_tool != nullptr);

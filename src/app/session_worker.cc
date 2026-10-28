@@ -27,7 +27,6 @@
 #include "include/app/thread_link.h"
 #include "include/app/transient_batcher.h"
 #include "include/cli/cli.h"
-#include "include/core/activity.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
@@ -36,6 +35,7 @@
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
+#include "include/core/turn_status.h"
 
 namespace uagent::session {
 namespace {
@@ -160,11 +160,10 @@ class WorkerChannel final : public ApplicationChannel {
       BeginTurn();
       SendState();
     }
-    if (event.type == AppType(EventId::kActivityStatus)) {
+    if (event.type == AppType(EventId::kTurnStatus)) {
       std::lock_guard lock(mutex_);
       state_.update(data);
-      data["kind"] = "activity";
-      data["busy"] = turn_active_;
+      data.update({{"kind", "turn_status"}, {"busy", turn_active_}});
       Send(std::move(data));
       return;
     }
@@ -321,13 +320,13 @@ class WorkerChannel final : public ApplicationChannel {
   std::string InitialTitle() const override { return title_; }
   void PublishState(const json& state, bool checkpoint) override {
     std::lock_guard lock(mutex_);
-    std::string activity = JsonValue(state_, "activity", kIdleActivity);
+    std::string activity = JsonValue(state_, "turn_status", kIdleStatus);
     std::string phase = JsonValue(state_, "phase", "idle");
     int64_t started = JsonValue(state_, "turn_started_ms", int64_t{0});
     state_ = state;
     state_["turn_started_ms"] = started;
     state_["notices"] = notices_;
-    state_["activity"] = activity;
+    state_["turn_status"] = activity;
     state_["phase"] = phase;
     if (!paused_.empty()) state_["paused"] = paused_;
     if (!checkpoint) {
@@ -349,7 +348,7 @@ class WorkerChannel final : public ApplicationChannel {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
-      state_["activity"] = kIdleActivity;
+      state_["turn_status"] = kIdleStatus;
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
@@ -463,7 +462,7 @@ class WorkerChannel final : public ApplicationChannel {
   void BeginTurn() UAGENT_REQUIRES(mutex_) {
     state_["error"] = "";
     state_.erase("stop");
-    state_["activity"] = "Working";
+    state_["turn_status"] = "Working";
     state_["phase"] = "working";
     state_["turn_started_ms"] = NowMillis();
   }

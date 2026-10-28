@@ -13,13 +13,13 @@
 #include "include/app/schedule.h"
 #include "include/app/session.h"
 #include "include/app/session_host.h"
-#include "include/core/activity.h"
 #include "include/core/capture.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/core/turn_status.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 
@@ -177,7 +177,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   session.status = SessionStatus::kSaved;
   session.error.clear();
   // A saved conversation is read from disk.
-  session.state = {{"activity", kIdleActivity}};
+  session.state = {{"turn_status", kIdleStatus}};
   PublishLifecycle(session, {{"kind", "deactivated"}});
 }
 
@@ -222,7 +222,7 @@ void SessionHost::Received(HostSession* session, json frame) {
   } else {
     if (!ApplyRuntimeFrame(*session, frame)) return;
     // Clients adopt the host's lifecycle status rather than re-deriving it.
-    if (kind == "state" || kind == "activity") {
+    if (kind == "state" || kind == "turn_status") {
       frame["metadata"] = Metadata(*session);
     }
   }
@@ -345,7 +345,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
           DeactivateLocked(*session);
         } else {
           session->status = SessionStatus::kInterrupted;
-          session->state["activity"] = "Interrupted";
+          session->state["turn_status"] = "Interrupted";
           PublishLifecycle(*session, {{"kind", "closed"}});
         }
       }
@@ -454,8 +454,8 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     ApplyStateFrame(session, frame);
     return true;
   }
-  if (kind == "activity") {
-    session.state["activity"] = JsonValue(frame, "activity", kIdleActivity);
+  if (kind == "turn_status") {
+    session.state["turn_status"] = JsonValue(frame, "turn_status", kIdleStatus);
     session.state["phase"] = JsonValue(frame, "phase", "working");
     session.turn_active = JsonValue(frame, "busy", false);
     session.status = LiveStatus(session);

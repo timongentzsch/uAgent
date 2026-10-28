@@ -225,7 +225,7 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             session = client.create(root)
             client.command("submit", session, text="Retry this request")
             waiting = client.until(session, lambda value: value["state"].get("phase") == "retrying")
-            caption = waiting["state"]["activity"]
+            caption = waiting["state"]["turn_status"]
             assert_true(caption == "Retrying model · attempt 2/3", caption)
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             reply = next(

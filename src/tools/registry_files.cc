@@ -32,7 +32,7 @@ std::vector<FileEdit> RequestedEdits(const json& arguments) {
 
 }  // namespace
 
-void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
+void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace) {
   // "." is what a path-less read_path or grep operates on, so the hooks judge
   // the path the call actually reaches. Access is assumed to be the stricter

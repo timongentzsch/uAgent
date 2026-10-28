@@ -222,11 +222,11 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
                 # Provider receipt and worker IPC are independent observations;
                 # wait for the corresponding phase event to reach the master.
                 active = client.until(
-                    session, lambda value: value["state"].get("activity") == "Waiting for model"
+                    session, lambda value: value["state"].get("turn_status") == "Waiting for model"
                 )
                 assert_true(active["metadata"]["turn_active"], active)
                 assert_true(not active["state"].get("error"), active["state"].get("error"))
-                assert_true(active["state"]["activity"] == "Waiting for model", active["state"])
+                assert_true(active["state"]["turn_status"] == "Waiting for model", active["state"])
                 assert_true(not active["state"].get("stop"), active["state"].get("stop"))
             finally:
                 release.set()

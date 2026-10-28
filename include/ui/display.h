@@ -65,7 +65,7 @@ inline std::string ContextSummary(int64_t used, int64_t window = 0) {
 // identity first; transient work state gets its own line while a turn runs.
 struct StatusView {
   // What the session is doing between turns: Ready, Interrupted, Connecting.
-  std::string activity{};
+  std::string turn_status{};
   int64_t context_used = 0;
   int64_t context_window = 0;
   // The active route in schema form, [provider/]model[:variant][:effort], so
@@ -93,7 +93,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
 
   // Where requests go, what they may do unasked, how much room is left and
   // what it has cost lead the row and are the last to go.
-  add(0, view.activity);
+  add(0, view.turn_status);
   add(0, view.model);
   add(1, view.approval == "yolo"   ? "YOLO"
          : view.approval == "auto" ? "Auto"
@@ -102,7 +102,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
   add(3, ContextSummary(view.context_used, view.context_window));
   if (view.background) {
-    add(3, "bg:" + FmtCount(static_cast<int64_t>(view.background)));
+    add(3, "act:" + FmtCount(static_cast<int64_t>(view.background)));
   }
   if (usage.PromptTokens() || usage.GeneratedTokens()) {
     add(4, TokenSummary(usage));
@@ -138,7 +138,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
 // Transient work state for the pinned row while a turn runs. StatusBar owns
 // the idle row; this one animates, so it is handed the frame clock instead of
 // reading it — which is also what lets a test drive a frame without a turn.
-struct ActivityView {
+struct TurnStatusView {
   std::chrono::steady_clock::duration elapsed{};
   int64_t context_used = 0;
   int64_t context_window = 0;
@@ -157,13 +157,13 @@ struct ActivityView {
   std::string subagent{};
 };
 
-// The working row: spinner frame, activity label, and the same "drop what does
+// The working row: spinner frame, status label, and the same "drop what does
 // not fit" discipline as StatusBar, except here the label is what gets cut
 // because the counters on the right are the part that changes.
-inline std::string ActivityBar(const ActivityView& view) {
+inline std::string TurnStatusBar(const TurnStatusView& view) {
   std::string seconds =
       FmtDuration(std::chrono::duration<double>(view.elapsed).count());
-  std::string activity = CurrentTerminalActivity();
+  std::string status = CurrentTerminalStatus();
   // Without motion the spinner holds still.
   auto ticks = g_motion ? view.elapsed / kSpinnerPeriod : 0;
   std::string prefix = SpinnerFrame(static_cast<size_t>(ticks));
@@ -172,15 +172,13 @@ inline std::string ActivityBar(const ActivityView& view) {
   // asked for it. A model round is the one label that names no work, so a
   // delegated child's progress takes those columns and yields again as soon
   // as this process has something of its own to report.
-  const bool waiting =
-      activity.empty() || activity.starts_with(kWaitingActivity);
-  std::string state =
-      activity.empty() ? std::string(kWaitingActivity) : activity;
+  const bool waiting = status.empty() || status.starts_with(kWaitingStatus);
+  std::string state = status.empty() ? std::string(kWaitingStatus) : status;
   if (view.interrupting) {
     state = "Interrupting";
   } else if (waiting && !view.subagent.empty()) {
     // Terminal output from another process. It is not sanitized here because
-    // ActivityLabel already does it for every label this row can carry --
+    // StatusLabel already does it for every label this row can carry --
     // duplicating that would leave two places to keep honest instead of one.
     state = view.subagent;
   }
@@ -191,7 +189,7 @@ inline std::string ActivityBar(const ActivityView& view) {
       " · " + JoinDot({view.model, seconds,
                        ContextSummary(view.context_used, view.context_window),
                        counted("agents:", view.subagents),
-                       counted("bg:", view.background),
+                       counted("act:", view.background),
                        counted("steer:", view.queued)});
   // The keys that act on a running turn: the lowest priority, so the hint is
   // the first thing a narrow terminal gives up.
@@ -207,8 +205,8 @@ inline std::string ActivityBar(const ActivityView& view) {
     suffix += hint;
   }
   size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
-  size_t activity_width = width > reserved ? width - reserved : 0;
-  return prefix + ActivityLabel(state, activity_width) + suffix;
+  size_t status_width = width > reserved ? width - reserved : 0;
+  return prefix + StatusLabel(state, status_width) + suffix;
 }
 
 // The pinned status row: dim, clipped to the terminal, and cleared to the

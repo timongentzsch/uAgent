@@ -23,8 +23,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/agent/session_view.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
@@ -73,7 +73,7 @@ class Gate {
 // Blocks until the activity behind `job` has drained its output, or until the
 // timeout expires; returns whether it drained.
 inline bool WaitForActivityDrain(
-    ProcessSupervisor& supervisor, const BgJob& job,
+    ActivitySupervisor& supervisor, const Activity& job,
     std::chrono::milliseconds timeout =
         std::chrono::milliseconds(BudgetMs(2000))) {
   if (!job.session) return false;
@@ -90,11 +90,12 @@ inline bool WaitForActivityDrain(
 }
 
 // The completion notes a caller would see: each header over its output.
-std::vector<std::string> CompletionNotes(ProcessSupervisor& supervisor) {
+std::vector<std::string> CompletionNotes(ActivitySupervisor& supervisor) {
   std::vector<std::string> notes;
-  for (const BackgroundCompletion& completion :
-       BgTakeCompletedDetails(supervisor)) {
-    notes.push_back(BgResultHeader(completion) + "\n" + completion.output);
+  for (const ActivityCompletion& completion :
+       ActivityTakeCompletedDetails(supervisor)) {
+    notes.push_back(ActivityResultHeader(completion) + "\n" +
+                    completion.output);
   }
   return notes;
 }
@@ -370,7 +371,7 @@ void TestActivityBufferAndAdmission() {
 
   // What the status row reads: delegated children only, each with its newest
   // progress line, and a count that agrees with the list it came from.
-  ProcessSupervisor delegating;
+  ActivitySupervisor delegating;
   auto delegated = std::make_shared<ActivitySession>();
   {
     std::lock_guard<std::mutex> lock(delegated->mutex);
@@ -390,7 +391,7 @@ void TestActivityBufferAndAdmission() {
   CHECK(views[0].label == "haiku");
   CHECK(views[0].tail == "writing");
   CHECK(std::ranges::count(delegating.Snapshot(), ActivityKind::kSubagent,
-                           &BgJob::kind) == 1);
+                           &Activity::kind) == 1);
   CHECK(delegating.Count() == 2);
   // Looking is not draining: the tool that joins the child still needs every
   // byte the transcript holds.
@@ -420,7 +421,7 @@ void TestActivityBufferAndAdmission() {
 
   // The status row counts what the turn waits on apart from what runs behind
   // it, backgrounded or detached.
-  ProcessSupervisor counted;
+  ActivitySupervisor counted;
   CHECK(counted.TryAdd({.pid = 899970, .cmd = "backgrounded"}, 8));
   CHECK(counted.TryAdd(
       {.pid = 899971, .cmd = "server", .kind = ActivityKind::kDetached}, 8));
@@ -432,7 +433,7 @@ void TestActivityBufferAndAdmission() {
   CHECK(counts.foreground == 1);
   CHECK(counts.background == 2);
 
-  ProcessSupervisor admission;
+  ActivitySupervisor admission;
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);
   CHECK(first_slot.has_value());
   CHECK(!admission.ReserveActivity(1).has_value());
@@ -442,7 +443,7 @@ void TestActivityBufferAndAdmission() {
 
   // The id is fixed at reservation, so a log can be named after it before the
   // job exists, and it is the id the job actually commits under.
-  ProcessSupervisor reserved;
+  ActivitySupervisor reserved;
   std::optional<ActivityReservation> early = reserved.ReserveActivity(4);
   std::optional<ActivityReservation> later = reserved.ReserveActivity(4);
   REQUIRE(early.has_value());
@@ -457,14 +458,14 @@ void TestActivityBufferAndAdmission() {
   // The subagent flag survives the same move, so a released reservation gives
   // the child counter back; losing it would refuse delegation for the rest of
   // the run.
-  ProcessSupervisor children;
+  ActivitySupervisor children;
   for (int attempt = 0; attempt < 3; ++attempt) {
     std::optional<ActivityReservation> child = children.ReserveActivity(4, 1);
     CHECK(child.has_value());
     CHECK(!children.ReserveActivity(4, 1).has_value());
   }
 
-  ProcessSupervisor retained;
+  ActivitySupervisor retained;
   std::vector<int64_t> retained_ids;
   for (int index = 0; index < 17; ++index) {
     auto session = std::make_shared<ActivitySession>();
@@ -479,7 +480,7 @@ void TestActivityBufferAndAdmission() {
       CHECK(TransitionActivityLocked(*session, ActivityState::kExited));
       CHECK(TransitionActivityLocked(*session, ActivityState::kDrained));
     }
-    std::optional<BgJob> completed = retained.Take(id, /*retain=*/true);
+    std::optional<Activity> completed = retained.Take(id, /*retain=*/true);
     REQUIRE(completed.has_value());
     CHECK(retained.Find(id).has_value());
     CHECK(!retained.InspectActivity(id).contains("error"));
@@ -510,11 +511,11 @@ void TestActivityStateGraph() {
     CHECK(TransitionActivityLocked(*stopped, ActivityState::kStopped));
     CHECK(!TransitionActivityLocked(*stopped, ActivityState::kDelivered));
   }
-  ProcessSupervisor supervisor;
+  ActivitySupervisor supervisor;
   CHECK(supervisor.TryAdd({.pid = 899990, .cmd = "stopped", .session = stopped},
                           1));
   int64_t id = ActivityId(supervisor.Snapshot().front());
-  std::optional<BgJob> job = supervisor.Take(id, /*retain=*/true);
+  std::optional<Activity> job = supervisor.Take(id, /*retain=*/true);
   REQUIRE(job.has_value());
   CHECK(supervisor.Find(id).has_value());
   CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
@@ -535,7 +536,7 @@ void TestActivityStateGraph() {
 
 void TestActivitySessions() {
   // Preserve producer failures through output filters in both pipes and PTYs.
-  ProcessSupervisor pipeline;
+  ActivitySupervisor pipeline;
   for (bool tty : {false, true}) {
     ShellCommandResult failed = RunShellCommand(
         pipeline, {},
@@ -569,7 +570,7 @@ void TestActivitySessions() {
 
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
-  ProcessSupervisor automatic_yield;
+  ActivitySupervisor automatic_yield;
   std::vector<Tool> yield_tools = BuiltinTools(automatic_yield);
   const Tool* public_run = FindTool(yield_tools, "run");
   CHECK(public_run != nullptr);
@@ -579,12 +580,12 @@ void TestActivitySessions() {
     CHECK(yielded.Ok());
     CHECK(yielded.output.starts_with(kRunningActivityMarker));
     CHECK(!StripModelHints(yielded.output).starts_with(kRunningActivityMarker));
-    for (const BgJob& job : automatic_yield.Snapshot()) {
+    for (const Activity& job : automatic_yield.Snapshot()) {
       CHECK_OK(ToolActivityStop(automatic_yield, ActivityId(job)));
     }
   }
 
-  ProcessSupervisor pty_processes;
+  ActivitySupervisor pty_processes;
   ShellCommandResult started = RunShellCommand(
       pty_processes, context,
       {.command = "read value; "
@@ -594,7 +595,7 @@ void TestActivitySessions() {
        .tty = true,
        .yield_ms = 250});
   CHECK(started.result.Ok());
-  std::vector<BgJob> pty_jobs = pty_processes.Snapshot();
+  std::vector<Activity> pty_jobs = pty_processes.Snapshot();
   CHECK(pty_jobs.size() == 1);
   if (!pty_jobs.empty()) {
     int64_t id = ActivityId(pty_jobs[0]);
@@ -643,16 +644,16 @@ void TestActivitySessions() {
   CHECK(!ProcessIdentity(getpid()).empty());
   CHECK(ProcessIdentity(pid_t{99999999}).empty());
   TestWorkspace detached_workspace("detached-identity");
-  ProcessSupervisor detached_launcher;
+  ActivitySupervisor detached_launcher;
   ShellCommandResult detached = RunShellCommand(
       detached_launcher, context,
       {.command = "sleep 20", .detach = true, .immediate = true});
   CHECK(detached.result.Ok());
-  std::vector<BgJob> detached_jobs = detached_launcher.Snapshot();
+  std::vector<Activity> detached_jobs = detached_launcher.Snapshot();
   CHECK(detached_jobs.size() == 1);
   if (!detached_jobs.empty()) {
     pid_t pid = detached_jobs.front().pid;
-    std::optional<BgJob> released = detached_launcher.Take(pid);
+    std::optional<Activity> released = detached_launcher.Take(pid);
     CHECK(released.has_value());
     // The log lives under the records directory, not in it: Phase C makes the
     // log subdirectory writable by sandboxed commands, and a record beside it
@@ -671,7 +672,7 @@ void TestActivitySessions() {
     output << JsonDump(record, 2) << '\n';
     output.close();
 
-    ProcessSupervisor detached_reader;
+    ActivitySupervisor detached_reader;
     ToolResult poll = ToolActivityOutput(detached_reader, pid);
     CHECK(poll.Ok());
     CHECK(poll.activity_terminal);
@@ -693,7 +694,7 @@ void TestActivityDescriptorAndInputPolicy() {
   // a pipe run each take a log, an output end and (for a PTY) an input end;
   // if any of those outlive their activity, this grows per iteration.
   {
-    ProcessSupervisor leak_check;
+    ActivitySupervisor leak_check;
     auto open_descriptors = [] {
       size_t count = 0;
       std::error_code ec;
@@ -726,12 +727,12 @@ void TestActivityDescriptorAndInputPolicy() {
                     BudgetMs(5000)));
   }
 
-  ProcessSupervisor non_tty;
+  ActivitySupervisor non_tty;
   CHECK(RunShellCommand(
             non_tty, context,
             {.command = "sleep 10", .background = true, .immediate = true})
             .result.Ok());
-  std::vector<BgJob> pipe_jobs = non_tty.Snapshot();
+  std::vector<Activity> pipe_jobs = non_tty.Snapshot();
   CHECK(pipe_jobs.size() == 1);
   if (!pipe_jobs.empty()) {
     int64_t id = ActivityId(pipe_jobs[0]);
@@ -763,12 +764,12 @@ void TestActivityWaitAndDelivery() {
   // caller to conclude the activity is stuck and stop waiting on it. The
   // per-call budget no longer truncates a wait at all — the tool declares
   // timeout_s 0 — so an explicit WithTimeout stands in for the turn's.
-  ProcessSupervisor capped_wait;
+  ActivitySupervisor capped_wait;
   CHECK(RunShellCommand(
             capped_wait, context,
             {.command = "sleep 10", .background = true, .immediate = true})
             .result.Ok());
-  std::vector<BgJob> capped_jobs = capped_wait.Snapshot();
+  std::vector<Activity> capped_jobs = capped_wait.Snapshot();
   CHECK(capped_jobs.size() == 1);
   if (!capped_jobs.empty()) {
     int64_t id = ActivityId(capped_jobs[0]);
@@ -787,12 +788,12 @@ void TestActivityWaitAndDelivery() {
     CHECK(plain.output.find("capped by") == std::string::npos);
   }
 
-  ProcessSupervisor closed_input;
+  ActivitySupervisor closed_input;
   auto closed_session = std::make_shared<ActivitySession>();
   closed_session->tty = true;
   CHECK(closed_input.TryAdd(
       {.pid = 899998, .cmd = "closed input", .session = closed_session}, 1));
-  std::vector<BgJob> closed_jobs = closed_input.Snapshot();
+  std::vector<Activity> closed_jobs = closed_input.Snapshot();
   CHECK(closed_jobs.size() == 1);
   if (!closed_jobs.empty()) {
     int64_t id = ActivityId(closed_jobs[0]);
@@ -804,7 +805,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(closed_input.Take(id).has_value());
   }
 
-  ProcessSupervisor invalid_pty;
+  ActivitySupervisor invalid_pty;
   auto invalid_pty_session = std::make_shared<ActivitySession>();
   invalid_pty_session->tty = true;
   invalid_pty_session->input_fd.Reset(open("/dev/null", O_RDWR));
@@ -812,7 +813,7 @@ void TestActivityWaitAndDelivery() {
   CHECK(invalid_pty.TryAdd(
       {.pid = 899997, .cmd = "invalid PTY", .session = invalid_pty_session},
       1));
-  std::vector<BgJob> invalid_pty_jobs = invalid_pty.Snapshot();
+  std::vector<Activity> invalid_pty_jobs = invalid_pty.Snapshot();
   CHECK(invalid_pty_jobs.size() == 1);
   if (!invalid_pty_jobs.empty()) {
     int64_t id = ActivityId(invalid_pty_jobs[0]);
@@ -826,12 +827,12 @@ void TestActivityWaitAndDelivery() {
     CHECK(invalid_pty.Take(id).has_value());
   }
 
-  ProcessSupervisor steering_wait;
+  ActivitySupervisor steering_wait;
   CHECK(RunShellCommand(
             steering_wait, context,
             {.command = "sleep 60", .background = true, .immediate = true})
             .result.Ok());
-  std::vector<BgJob> steering_jobs = steering_wait.Snapshot();
+  std::vector<Activity> steering_jobs = steering_wait.Snapshot();
   CHECK(steering_jobs.size() == 1);
   if (!steering_jobs.empty()) {
     std::thread interrupt([&] {
@@ -851,12 +852,12 @@ void TestActivityWaitAndDelivery() {
     CHECK_OK(ToolActivityStop(steering_wait, ActivityId(steering_jobs[0])));
   }
 
-  ProcessSupervisor steering_yield;
+  ActivitySupervisor steering_yield;
   CHECK(RunShellCommand(
             steering_yield, context,
             {.command = "sleep 60", .background = true, .immediate = true})
             .result.Ok());
-  std::vector<BgJob> steering_yield_jobs = steering_yield.Snapshot();
+  std::vector<Activity> steering_yield_jobs = steering_yield.Snapshot();
   CHECK(steering_yield_jobs.size() == 1);
   if (!steering_yield_jobs.empty()) {
     int64_t id = ActivityId(steering_yield_jobs[0]);
@@ -878,13 +879,13 @@ void TestActivityWaitAndDelivery() {
     CHECK_OK(ToolActivityStop(steering_yield, id));
   }
 
-  ProcessSupervisor no_duplicate_completion;
+  ActivitySupervisor no_duplicate_completion;
   ShellCommandResult yielded_once =
       RunShellCommand(no_duplicate_completion, context,
                       {.command = "printf once; sleep 0.5", .yield_ms = 250});
   const bool yielded_once_output =
       yielded_once.result.output.find("\nonce") != std::string::npos;
-  std::vector<BgJob> once_jobs = no_duplicate_completion.Snapshot();
+  std::vector<Activity> once_jobs = no_duplicate_completion.Snapshot();
   CHECK(once_jobs.size() == 1);
   if (!once_jobs.empty()) {
     ToolResult final =
@@ -903,7 +904,7 @@ void TestActivityWaitAndDelivery() {
   }
 
   {
-    ProcessSupervisor bounded_completion;
+    ActivitySupervisor bounded_completion;
     ScopedEnv scoped_result_cap("UAGENT_TOOL_RESULT_CHARS", "8000");
     Gate gate;
     CHECK(RunShellCommand(bounded_completion, context,
@@ -912,7 +913,7 @@ void TestActivityWaitAndDelivery() {
                            .immediate = true})
               .result.Ok());
     gate.Open();
-    std::vector<BgJob> bounded_jobs = bounded_completion.Snapshot();
+    std::vector<Activity> bounded_jobs = bounded_completion.Snapshot();
     CHECK(bounded_jobs.size() == 1);
     if (!bounded_jobs.empty()) {
       WaitForActivityDrain(bounded_completion, bounded_jobs[0]);
@@ -932,7 +933,7 @@ void TestActivityWaitAndDelivery() {
     }
   }
 
-  ProcessSupervisor incremental;
+  ActivitySupervisor incremental;
   Gate incremental_gate;
   CHECK(RunShellCommand(
             incremental, context,
@@ -943,7 +944,7 @@ void TestActivityWaitAndDelivery() {
              .immediate = true})
             .result.Ok());
   incremental_gate.Open();
-  std::vector<BgJob> incremental_jobs = incremental.Snapshot();
+  std::vector<Activity> incremental_jobs = incremental.Snapshot();
   CHECK(incremental_jobs.size() == 1);
   if (!incremental_jobs.empty()) {
     int64_t id = ActivityId(incremental_jobs[0]);
@@ -963,7 +964,7 @@ void TestActivityWaitAndDelivery() {
   // The race is created by the foreground handoff below, not by the command's
   // own duration, so the command stays as short as the shell allows.
   for (int iteration = 0; iteration < 50; ++iteration) {
-    ProcessSupervisor race;
+    ActivitySupervisor race;
     ShellCommandResult result;
     std::thread command([&] {
       result = RunShellCommand(race, context, {.command = "printf race"});
@@ -974,12 +975,12 @@ void TestActivityWaitAndDelivery() {
     command.join();
     CHECK(!race.WaitForForeground(1, std::chrono::steady_clock::now()));
     CHECK(result.result.Ok());
-    for (const BgJob& job : race.Snapshot()) {
+    for (const Activity& job : race.Snapshot()) {
       (void)ToolActivityWait(race, {ActivityId(job)}, "all", 1000, context);
     }
   }
 
-  ProcessSupervisor memory_activity;
+  ActivitySupervisor memory_activity;
   Gate memory_gate;
   CHECK(RunShellCommand(memory_activity, context,
                         {.command = memory_gate.Hold("printf memory-done"),
@@ -991,7 +992,7 @@ void TestActivityWaitAndDelivery() {
                          .source_id = "source-123"})
             .result.Ok());
   memory_gate.Open();
-  std::vector<BgJob> memory_jobs = memory_activity.Snapshot();
+  std::vector<Activity> memory_jobs = memory_activity.Snapshot();
   CHECK(memory_jobs.size() == 1);
   CHECK(
       ToolActivityOutput(memory_activity, 0).output.find("[memory] activity") !=
@@ -1011,8 +1012,8 @@ void TestActivityWaitAndDelivery() {
             .output.find("extracting from source-123") != std::string::npos);
   if (!memory_jobs.empty()) {
     WaitForActivityDrain(memory_activity, memory_jobs[0]);
-    std::vector<BackgroundCompletion> completed =
-        BgTakeCompletedDetails(memory_activity, "memory");
+    std::vector<ActivityCompletion> completed =
+        ActivityTakeCompletedDetails(memory_activity, "memory");
     CHECK(completed.size() == 1);
     if (!completed.empty()) {
       CHECK(completed[0].kind == ActivityKind::kMemory);
@@ -1023,7 +1024,7 @@ void TestActivityWaitAndDelivery() {
     }
   }
 
-  ProcessSupervisor delivery_race;
+  ActivitySupervisor delivery_race;
   Gate delivery_gate;
   CHECK(
       RunShellCommand(delivery_race, context,
@@ -1033,7 +1034,7 @@ void TestActivityWaitAndDelivery() {
                        .environment = {{"RACE_VALUE", "delivery-token"}}})
           .result.Ok());
   delivery_gate.Open();
-  std::vector<BgJob> delivery_jobs = delivery_race.Snapshot();
+  std::vector<Activity> delivery_jobs = delivery_race.Snapshot();
   CHECK(delivery_jobs.size() == 1);
   if (!delivery_jobs.empty()) {
     int64_t id = ActivityId(delivery_jobs[0]);
@@ -1060,7 +1061,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(delivered.find("delivery-token", first + 1) == std::string::npos);
   }
 
-  ProcessSupervisor parallel_handoff;
+  ActivitySupervisor parallel_handoff;
   std::array<ShellCommandResult, 3> parallel_results;
   std::array<std::thread, 3> parallel_threads;
   for (size_t index = 0; index < parallel_threads.size(); ++index) {
@@ -1078,11 +1079,11 @@ void TestActivityWaitAndDelivery() {
   CHECK(
       !parallel_handoff.WaitForForeground(1, std::chrono::steady_clock::now()));
   CHECK(parallel_handoff.PendingCount() == 3);
-  for (const BgJob& job : parallel_handoff.Snapshot()) {
+  for (const Activity& job : parallel_handoff.Snapshot()) {
     CHECK_OK(ToolActivityStop(parallel_handoff, ActivityId(job)));
   }
 
-  ProcessSupervisor handoff;
+  ActivitySupervisor handoff;
   ShellCommandResult handoff_result;
   std::thread foreground([&] {
     handoff_result = RunShellCommand(handoff, context, {.command = "sleep 10"});
@@ -1094,7 +1095,7 @@ void TestActivityWaitAndDelivery() {
   CHECK(handoff_result.result.Ok());
   CHECK(handoff_result.result.output.find("moved to background") !=
         std::string::npos);
-  std::vector<BgJob> handed_off = handoff.Snapshot();
+  std::vector<Activity> handed_off = handoff.Snapshot();
   CHECK(handed_off.size() == 1);
   if (!handed_off.empty()) {
     CHECK(ProcessGroupAlive(handed_off[0].pid));
@@ -1111,15 +1112,15 @@ void TestDetachedActivityOwnership() {
   // owner when automatic completion observes it. ECHILD plus a dead process
   // group is still a completed activity, not one that remains supervised
   // forever.
-  ProcessSupervisor reaped_completion;
+  ActivitySupervisor reaped_completion;
   ShellCommandResult detached = RunShellCommand(
       reaped_completion, context,
       {.command = "printf reaped-detached", .detach = true, .immediate = true});
   CHECK(detached.result.Ok());
-  std::vector<BgJob> detached_jobs = reaped_completion.Snapshot();
+  std::vector<Activity> detached_jobs = reaped_completion.Snapshot();
   CHECK(detached_jobs.size() == 1);
   if (!detached_jobs.empty()) {
-    const BgJob& job = detached_jobs.front();
+    const Activity& job = detached_jobs.front();
     int status = 0;
     CHECK(WaitPid(job.pid, &status) == job.pid);
     CHECK(
@@ -1139,14 +1140,14 @@ void TestDetachedActivityOwnership() {
 
   // A detached command gives out its id, and a wait that names it waits for
   // it; a wait for everything does not, since it may never end.
-  ProcessSupervisor detached_wait;
+  ActivitySupervisor detached_wait;
   Gate detached_gate;
   CHECK(RunShellCommand(detached_wait, context,
                         {.command = detached_gate.Hold("printf waited-for"),
                          .detach = true,
                          .immediate = true})
             .result.Ok());
-  std::vector<BgJob> waited_jobs = detached_wait.Snapshot();
+  std::vector<Activity> waited_jobs = detached_wait.Snapshot();
   CHECK(waited_jobs.size() == 1);
   if (!waited_jobs.empty()) {
     CHECK(ToolActivityWait(detached_wait, {}, "all", 0, context)
@@ -1162,7 +1163,7 @@ void TestDetachedActivityOwnership() {
   // A detached command that fails while something it started lives on is
   // reported as failed when the last of it is gone, not as the success a
   // process with no child left to ask would pass for.
-  ProcessSupervisor detached_failure;
+  ActivitySupervisor detached_failure;
   // Its output is piped to this executable as the log pump, and the pipe's
   // last failure is the command's: a stand-in that succeeds lets the
   // command's own status through. A copy: SetExecutablePath replaces the
@@ -1176,7 +1177,7 @@ void TestDetachedActivityOwnership() {
           {.command = "sleep 0.5 & exit 7", .detach = true, .immediate = true})
           .result.Ok());
   SetExecutablePath(executable);
-  std::vector<BgJob> failed_jobs = detached_failure.Snapshot();
+  std::vector<Activity> failed_jobs = detached_failure.Snapshot();
   CHECK(failed_jobs.size() == 1);
   if (!failed_jobs.empty()) {
     ToolResult failed =
@@ -1188,15 +1189,15 @@ void TestDetachedActivityOwnership() {
   // Stopping an ordinary supervised job owns that job's log, but not a
   // detached record that happens to use the same process id. Such a record can
   // survive PID reuse and must only be unlinked for detached activities.
-  ProcessSupervisor background_stop;
+  ActivitySupervisor background_stop;
   CHECK(RunShellCommand(
             background_stop, context,
             {.command = "sleep 20", .background = true, .immediate = true})
             .result.Ok());
-  std::vector<BgJob> background_jobs = background_stop.Snapshot();
-  CHECK(background_jobs.size() == 1);
-  if (!background_jobs.empty()) {
-    const BgJob& job = background_jobs.front();
+  std::vector<Activity> background_activities = background_stop.Snapshot();
+  CHECK(background_activities.size() == 1);
+  if (!background_activities.empty()) {
+    const Activity& job = background_activities.front();
     std::string sentinel_log =
         (workspace.root / "detached-sentinel.log").string();
     {
@@ -1223,11 +1224,11 @@ void TestDetachedActivityOwnership() {
   {
     // The parent's own busy jobs must never refuse delegation: a child
     // competes against other children, not against its parent.
-    ProcessSupervisor parent_busy;
+    ActivitySupervisor parent_busy;
     CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"},
-                             kMaxBackgroundJobs));
+                             kMaxBackgroundActivities));
     CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"},
-                             kMaxBackgroundJobs));
+                             kMaxBackgroundActivities));
     ShellCommandResult admitted =
         RunShellCommand(parent_busy, context,
                         {.command = "printf child-admitted",
@@ -1237,11 +1238,11 @@ void TestDetachedActivityOwnership() {
     (void)parent_busy.TakeAllForShutdown();
 
     // Children stop short of the ceiling so the parent keeps slots of its own.
-    ProcessSupervisor children_busy;
-    for (pid_t pid = 999803; pid < 999803 + kMaxDelegatedJobs; ++pid) {
+    ActivitySupervisor children_busy;
+    for (pid_t pid = 999803; pid < 999803 + kMaxDelegatedActivities; ++pid) {
       CHECK(children_busy.TryAdd(
           {.pid = pid, .cmd = "child", .kind = ActivityKind::kSubagent},
-          kMaxBackgroundJobs));
+          kMaxBackgroundActivities));
     }
     ShellCommandResult refused =
         RunShellCommand(children_busy, context,
@@ -1260,21 +1261,21 @@ void TestDetachedActivityOwnership() {
     (void)children_busy.TakeAllForShutdown();
 
     // Detached terminals outlive the session, so the pool bounds them too.
-    ProcessSupervisor detached_pool;
-    for (pid_t pid = 999811; pid < 999811 + kMaxBackgroundJobs; ++pid) {
+    ActivitySupervisor detached_pool;
+    for (pid_t pid = 999811; pid < 999811 + kMaxBackgroundActivities; ++pid) {
       CHECK(detached_pool.TryAdd(
           {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached},
-          kMaxBackgroundJobs));
+          kMaxBackgroundActivities));
     }
     CHECK(!detached_pool.TryAdd(
         {.pid = 999831, .cmd = "overflow", .kind = ActivityKind::kDetached},
-        kMaxBackgroundJobs));
+        kMaxBackgroundActivities));
     ShellCommandResult refused_detach = RunShellCommand(
         detached_pool, context,
         {.command = "sleep 21", .detach = true, .immediate = true});
     CHECK(!refused_detach.result.Ok());
-    CHECK(refused_detach.result.output.find(
-              "background job limit reached (8)") != std::string::npos);
+    CHECK(refused_detach.result.output.find("activity limit reached (8)") !=
+          std::string::npos);
     CHECK(!FindRunningDetachedActivity("sleep 21").has_value());
     // The record is written before the pool decides, so the refusal has to
     // take it back out: a stale record aims a later stop at whatever inherits

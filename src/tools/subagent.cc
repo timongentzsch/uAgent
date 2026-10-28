@@ -13,8 +13,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/core/env.h"
@@ -78,9 +78,9 @@ bool ValidAgentName(std::string_view name) {
   return true;
 }
 
-std::optional<int64_t> RunningAgent(const ProcessSupervisor& processes,
+std::optional<int64_t> RunningAgent(const ActivitySupervisor& processes,
                                     const std::string& id) {
-  for (const BgJob& job : processes.Running()) {
+  for (const Activity& job : processes.Running()) {
     if (job.source_id == id) return ActivityId(job);
   }
   return std::nullopt;
@@ -88,7 +88,7 @@ std::optional<int64_t> RunningAgent(const ProcessSupervisor& processes,
 
 // The child's role from its session header, when this session is its parent.
 // A child still running for this session is ours before its first save.
-bool LoadRole(const ProcessSupervisor& processes, const std::string& id,
+bool LoadRole(const ActivitySupervisor& processes, const std::string& id,
               json& role, std::string& error) {
   if (id.empty() || SafeFileComponent(id) != id) {
     error = "invalid agent id";
@@ -122,7 +122,7 @@ json AgentRow(const std::string& id, const json& role, int64_t tokens = 0) {
 
 }  // namespace
 
-std::vector<json> AgentSummaries(const ProcessSupervisor& processes) {
+std::vector<json> AgentSummaries(const ActivitySupervisor& processes) {
   std::vector<json> rows;
   for (const SessionInfo& info : ListSessions(SessionScope::kChildren)) {
     if (rows.size() >= kMaxAgentRecords) break;
@@ -132,7 +132,7 @@ std::vector<json> AgentSummaries(const ProcessSupervisor& processes) {
   }
   // The supervisor knows what runs; a child that has not saved yet is listed
   // from what its spawn stamped on the job.
-  for (const BgJob& job : processes.Running()) {
+  for (const Activity& job : processes.Running()) {
     if (job.kind != ActivityKind::kSubagent || job.source_id.empty()) continue;
     auto row = std::find_if(rows.begin(), rows.end(), [&](const json& item) {
       return JsonValue(item, "id", "") == job.source_id;
@@ -148,7 +148,7 @@ std::vector<json> AgentSummaries(const ProcessSupervisor& processes) {
   return rows;
 }
 
-ToolResult MessageAgent(const ProcessSupervisor& processes,
+ToolResult MessageAgent(const ActivitySupervisor& processes,
                         const std::string& id, const std::string& text) {
   json role;
   std::string error;
@@ -169,7 +169,7 @@ ToolResult MessageAgent(const ProcessSupervisor& processes,
                        : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
-json InspectAgent(const ProcessSupervisor& processes, const std::string& id,
+json InspectAgent(const ActivitySupervisor& processes, const std::string& id,
                   const json& request) {
   json role;
   std::string error;
@@ -281,7 +281,7 @@ std::string SubagentDiagnosticRoute(const RouteResolution& resolution,
   return label;
 }
 
-ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
+ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
                        const std::vector<Route>& routes,
                        const std::vector<Endpoint>& providers, bool debug,
                        const json& arguments, const ToolContext& context) {
@@ -578,7 +578,8 @@ void ParallelFor(size_t count, const ToolContext& context,
                  const std::function<void(size_t)>& run) {
   std::atomic<size_t> next{0};
   std::vector<std::future<void>> workers;
-  const size_t width = std::min(count, static_cast<size_t>(kMaxDelegatedJobs));
+  const size_t width =
+      std::min(count, static_cast<size_t>(kMaxDelegatedActivities));
   workers.reserve(width);
   for (size_t worker = 0; worker < width; ++worker) {
     workers.push_back(std::async(std::launch::async, [&] {
@@ -596,7 +597,7 @@ void ParallelFor(size_t count, const ToolContext& context,
 // A finding stands when none refutes it and one confirms it. The runtime runs
 // both rounds, so no model turn sits between them, and only the outcome
 // reaches the caller; every child stays open to followup and inspection.
-ToolResult RunFanout(const Api& api, ProcessSupervisor& processes,
+ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
                      const std::vector<Route>& routes,
                      const std::vector<Endpoint>& providers, bool debug,
                      const json& arguments, const ToolContext& context) {
@@ -619,7 +620,7 @@ ToolResult RunFanout(const Api& api, ProcessSupervisor& processes,
   }
   // Children of one round run together and share what the session has left.
   ToolContext round = context;
-  round.delegations = kMaxDelegatedJobs;
+  round.delegations = kMaxDelegatedActivities;
   const auto ask = [&](std::string brief, json schema) {
     json spawn = child;
     spawn["prompt"] = std::move(brief);
@@ -708,7 +709,7 @@ ToolResult RunFanout(const Api& api, ProcessSupervisor& processes,
 
 }  // namespace
 
-Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
+Tool SubagentTool(const Api& api, ActivitySupervisor& processes,
                   const std::vector<Route>& routes,
                   const std::vector<Endpoint>& providers, bool debug) {
   json properties = {
@@ -827,7 +828,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.retain_output = true;
   tool.available_in_lean = false;
   // Concurrency is enforced by the spawn path (RunShellCommand reserves an
-  // activity slot bounded by kMaxBackgroundJobs); this is only a runaway
+  // activity slot bounded by kMaxBackgroundActivities); this is only a runaway
   // ceiling.
   tool.max_calls_per_turn = kSubagentCallsPerTurn;
   auto describe = [&api, &routes, &providers](const json& arguments) {

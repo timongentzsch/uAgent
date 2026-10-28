@@ -112,7 +112,7 @@ endif()
 # touching tools/ headers rebuilds tools+app only.
 add_library(
   uagent_core_base
-  src/core/activity.cc
+  src/core/turn_status.cc
   src/core/capture.cc
   src/core/child_env.cc
   src/core/config.cc
@@ -164,10 +164,8 @@ target_link_libraries(uagent_toolcore PUBLIC uagent_api)
 
 add_library(
   uagent_agent
-  src/agent/activity_completion.cc
-  src/agent/activity_log.cc
   src/agent/agent.cc
-  src/agent/background_drain.cc
+  src/agent/activity_drain.cc
   src/agent/child_agent.cc
   src/agent/mail_delivery.cc
   src/agent/compaction.cc
@@ -175,10 +173,10 @@ add_library(
   src/agent/dispatch.cc
   src/agent/edit_journal.cc
   src/agent/file_services.cc
-  src/agent/jobs.cc
+  src/agent/activity.cc
   src/agent/memory_store.cc
   src/agent/prompt.cc
-  src/agent/process_io.cc
+  src/agent/activity_supervisor.cc
   src/agent/prompt_profile.cc
   src/agent/request.cc
   src/agent/session_links.cc

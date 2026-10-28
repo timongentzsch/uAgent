@@ -32,7 +32,7 @@
 #include "include/providers/providers.h"
 
 namespace uagent {
-Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
+Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
              UsageAccumulator& side_usage, Approver approve,
              ToolRefresher refresh_tools,
              ProjectInstructions project_instructions,

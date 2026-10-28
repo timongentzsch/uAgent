@@ -17,7 +17,6 @@
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
-#include "include/core/activity.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -25,6 +24,7 @@
 #include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/core/time.h"
+#include "include/core/turn_status.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
@@ -306,7 +306,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"turn_active", session.turn_active},
       {"guidance", session.guidance},
       {"incoming", session.incoming},
-      {"activity", JsonValue(session.state, "activity", kIdleActivity)},
+      {"turn_status", JsonValue(session.state, "turn_status", kIdleStatus)},
       {"phase", JsonValue(session.state, "phase", "idle")},
       {"activities", JsonValue(session.state, "activities", json::array())},
       {"error", session.error},

@@ -180,7 +180,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
       patchSession(id, (item) => keptSession(item, metadata));
       break;
     }
-    case "activity":
+    case "turn_status":
       activities();
       break;
     case "event":

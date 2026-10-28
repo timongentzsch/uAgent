@@ -72,7 +72,7 @@ int Application::RunChannel() {
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
     // Background work's result arrives on its own; an idle session also
     // takes it up at once, as a turn, since it started the work to hear back.
-    agent_.DrainBackground(input->wake);
+    agent_.DrainActivities(input->wake);
     agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
     request_id_ = input->request_id;

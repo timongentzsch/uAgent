@@ -48,7 +48,7 @@ import {
 import {
   active,
   ActivityControls,
-  ActivityStatus,
+  TurnStatus,
   withAgents,
 } from "../../shared/activity-status.tsx";
 import Raw from "./raw.tsx";
@@ -229,7 +229,7 @@ export default function Inspector({
   }
 
   // A transcript row carries the command it ran (bounded 8k) and its text, so
-  // a job the supervisor no longer retains still opens with its record.
+  // an activity the supervisor no longer retains still opens with its record.
   // biome-ignore lint/correctness/useExhaustiveDependencies: opens the record when the target changes, not when rows stream in
   useEffect(() => {
     setPage(null);
@@ -641,7 +641,7 @@ function DetailBody({
                   class="thread-progress"
                   title="Latest reported subagent activity"
                 >
-                  <ActivityStatus
+                  <TurnStatus
                     phase={cleanText(
                       current.progress || detail.progress || "Working",
                     )}

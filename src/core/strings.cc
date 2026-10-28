@@ -431,7 +431,7 @@ std::string DisplayTail(std::string text, size_t columns) {
   return "";
 }
 
-std::string ActivityLabel(const std::string& label, size_t columns) {
+std::string StatusLabel(const std::string& label, size_t columns) {
   std::string safe = TerminalSafe(label);
   if (DisplayWidth(safe) <= columns) return safe;
   constexpr std::string_view kSeparator = " · ";

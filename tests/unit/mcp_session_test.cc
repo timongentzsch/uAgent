@@ -274,7 +274,7 @@ void TestWorkspaceScopedSession() {
   RuntimeConfig config;
   Api api(config);
   api.model = "test";
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   std::vector<Tool> tools;
   Agent agent(

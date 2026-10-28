@@ -22,7 +22,7 @@ export function ConnectionStatus({
   return (
     <span
       // Anything but connected stands out as a pill (style.css).
-      class={`activity-status${phase === "connected" ? "" : " connection-pill"} ${className}`}
+      class={`turn-status${phase === "connected" ? "" : " connection-pill"} ${className}`}
       role="status"
       aria-live="polite"
       aria-busy={busy || undefined}

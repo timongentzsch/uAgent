@@ -90,7 +90,7 @@ size_t DisplayRows(const std::string& s, size_t columns);
 // a style, so style the result, not the input (as the ask picker does).
 std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
-std::string ActivityLabel(const std::string& label, size_t columns);
+std::string StatusLabel(const std::string& label, size_t columns);
 
 // Wrap display text into rows each bounded by `columns` display columns,
 // never splitting a UTF-8 codepoint; escape sequences take no columns. Used for

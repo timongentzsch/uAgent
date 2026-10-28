@@ -9,7 +9,7 @@
 
 namespace uagent {
 
-std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
+std::vector<Tool> BuiltinTools(ActivitySupervisor& supervisor,
                                const std::filesystem::path& workspace) {
   std::vector<Tool> tools;
   RegisterFileTools(tools, supervisor, workspace);

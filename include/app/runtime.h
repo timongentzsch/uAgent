@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_APP_RUNTIME_H_
 #define UAGENT_INCLUDE_APP_RUNTIME_H_
 
-#include "include/agent/process.h"
+#include "include/agent/activity_supervisor.h"
 #include "include/api/client.h"
 #include "include/core/env.h"
 #include "include/core/runtime_config.h"
@@ -35,7 +35,7 @@ struct AppRuntime {
   RuntimeConfig config;
   Api api;
   Api permission_api;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator side_usage;
   McpRuntime mcp;
 

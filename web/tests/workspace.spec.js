@@ -266,7 +266,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await now.click();
   await activity.getByRole("button", { name: /^Stop / }).click();
-  await expect(page.locator(".composer .activity-toggle")).not.toContainText(
+  await expect(page.locator(".composer .turn-status-row")).not.toContainText(
     "1 command",
   );
   // Finished work leaves "now"; its call's row stops reading as running.

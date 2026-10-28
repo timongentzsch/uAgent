@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_AGENT_PROCESS_H_
-#define UAGENT_INCLUDE_AGENT_PROCESS_H_
+#ifndef UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_
+#define UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_
 
 #include <sys/types.h>
 
@@ -43,7 +43,7 @@ struct ActivitySession {
   pid_t pid = -1;
   bool tty = false;
 
-  // Closed by ProcessSupervisor's I/O thread as soon as the activity reaches
+  // Closed by ActivitySupervisor's I/O thread as soon as the activity reaches
   // a terminal state. Tools duplicate input_fd before writing, because this
   // owner may close underneath them.
   Fd output_fd;
@@ -75,7 +75,7 @@ struct ActivitySession {
 bool TransitionActivityLocked(ActivitySession& session, ActivityState next)
     UAGENT_REQUIRES(session.mutex);
 
-struct BgJob {
+struct Activity {
   pid_t pid = -1;
   std::string log{}, cmd{};
   ActivityKind kind = ActivityKind::kCommand;
@@ -100,7 +100,7 @@ struct BgJob {
   bool Detached() const { return kind == ActivityKind::kDetached; }
 };
 
-inline int64_t ActivityId(const BgJob& job) {
+inline int64_t ActivityId(const Activity& job) {
   return job.id > 0 ? job.id : static_cast<int64_t>(job.pid);
 }
 
@@ -116,7 +116,7 @@ struct SubagentView {
   std::chrono::steady_clock::duration elapsed{};
 };
 
-class ProcessSupervisor;
+class ActivitySupervisor;
 
 class ActivityReservation {
  public:
@@ -127,27 +127,27 @@ class ActivityReservation {
   ActivityReservation(const ActivityReservation&) = delete;
   ActivityReservation& operator=(const ActivityReservation&) = delete;
 
-  std::optional<int64_t> Register(BgJob job);
+  std::optional<int64_t> Register(Activity job);
   // The activity id this reservation will commit under, known before the job
   // exists so its log can be named after it rather than after a reusable pid.
   int64_t Id() const { return id_; }
 
  private:
-  friend class ProcessSupervisor;
-  ActivityReservation(ProcessSupervisor* supervisor, bool subagent, int64_t id)
+  friend class ActivitySupervisor;
+  ActivityReservation(ActivitySupervisor* supervisor, bool subagent, int64_t id)
       : supervisor_(supervisor), subagent_(subagent), id_(id) {}
   void Reset();
-  ProcessSupervisor* supervisor_ = nullptr;
+  ActivitySupervisor* supervisor_ = nullptr;
   bool subagent_ = false;
   int64_t id_ = 0;
 };
 
-class ProcessSupervisor {
+class ActivitySupervisor {
  public:
-  ProcessSupervisor();
-  ~ProcessSupervisor();
-  ProcessSupervisor(const ProcessSupervisor&) = delete;
-  ProcessSupervisor& operator=(const ProcessSupervisor&) = delete;
+  ActivitySupervisor();
+  ~ActivitySupervisor();
+  ActivitySupervisor(const ActivitySupervisor&) = delete;
+  ActivitySupervisor& operator=(const ActivitySupervisor&) = delete;
 
   // Takes ownership of output_fd, input_fd, and log_fd.
   void RegisterIo(const std::shared_ptr<ActivitySession>& session,
@@ -155,13 +155,13 @@ class ProcessSupervisor {
   // max_subagents caps delegated children only; 0 means no per-kind cap.
   std::optional<ActivityReservation> ReserveActivity(int64_t max_pending,
                                                      int64_t max_subagents = 0);
-  std::optional<BgJob> RemoveForeground(pid_t pid);
-  std::optional<BgJob> MoveForegroundToBackground(pid_t pid);
+  std::optional<Activity> RemoveForeground(pid_t pid);
+  std::optional<Activity> MoveForegroundToBackground(pid_t pid);
   bool WaitForForeground(size_t count,
                          std::chrono::steady_clock::time_point deadline) const;
   bool RequestForegroundBackground();
 
-  bool TryAdd(BgJob job, int64_t max_pending);
+  bool TryAdd(Activity job, int64_t max_pending);
   size_t PendingCount() const;
   size_t Count() const;
   size_t JoinableCount() const;
@@ -173,14 +173,14 @@ class ProcessSupervisor {
   void SetOwner(std::string owner);
   std::string Owner() const;
   bool IsLive(int64_t id) const;
-  std::optional<BgJob> Find(int64_t id) const;
+  std::optional<Activity> Find(int64_t id) const;
   // Retaining a terminal activity keeps inspection continuous while its result
   // is consumed exactly once. Removal and retention share the same lock.
-  std::optional<BgJob> Take(int64_t id, bool retain = false);
-  std::vector<BgJob> Snapshot() const;
+  std::optional<Activity> Take(int64_t id, bool retain = false);
+  std::vector<Activity> Snapshot() const;
   // What runs now: the background jobs and those a tool call waits on.
-  std::vector<BgJob> Running() const;
-  std::vector<BgJob> TakeAllForShutdown();
+  std::vector<Activity> Running() const;
+  std::vector<Activity> TakeAllForShutdown();
 
   uint64_t Generation() const;
   void Wake();
@@ -196,10 +196,11 @@ class ProcessSupervisor {
 
  private:
   friend class ActivityReservation;
-  std::optional<int64_t> CommitReservation(BgJob job, bool subagent);
+  std::optional<int64_t> CommitReservation(Activity job, bool subagent);
   void ReleaseReservation(bool subagent);
-  std::optional<BgJob> TakeForegroundLocked(pid_t pid) UAGENT_REQUIRES(mutex_);
-  void AssignId(BgJob& job) UAGENT_REQUIRES(mutex_);
+  std::optional<Activity> TakeForegroundLocked(pid_t pid)
+      UAGENT_REQUIRES(mutex_);
+  void AssignId(Activity& job) UAGENT_REQUIRES(mutex_);
   size_t IndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
   size_t RetainedIndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
   void StartIoLocked() UAGENT_REQUIRES(mutex_);
@@ -209,9 +210,9 @@ class ProcessSupervisor {
 
   mutable std::mutex mutex_;
   mutable std::condition_variable event_;
-  std::vector<BgJob> jobs_ UAGENT_GUARDED_BY(mutex_);
-  std::vector<BgJob> foreground_ UAGENT_GUARDED_BY(mutex_);
-  std::vector<BgJob> retained_ UAGENT_GUARDED_BY(mutex_);
+  std::vector<Activity> activities_ UAGENT_GUARDED_BY(mutex_);
+  std::vector<Activity> foreground_ UAGENT_GUARDED_BY(mutex_);
+  std::vector<Activity> retained_ UAGENT_GUARDED_BY(mutex_);
   std::vector<std::shared_ptr<ActivitySession>> io_sessions_
       UAGENT_GUARDED_BY(mutex_);
   // A stop_callback writes the wake pipe, so request_stop() both flags the
@@ -232,4 +233,4 @@ class ProcessSupervisor {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_AGENT_PROCESS_H_
+#endif  // UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_

@@ -46,7 +46,6 @@ BUILT_PREFIXES = ("side_",)
 BROWSER_FRAMES = frozenset(
     {
         "activated",
-        "activity",
         "block",
         "closed",
         "deactivated",
@@ -60,6 +59,7 @@ BROWSER_FRAMES = frozenset(
         "scheduled.changed",
         "spaces.changed",
         "state",
+        "turn_status",
     }
 )
 
@@ -87,8 +87,9 @@ DOCUMENTED_INTERNAL = frozenset(
 )
 
 # Row kinds the view reducer writes inside `block` frames, spelled like a
-# frame kind in session_view.cc but never one.
-ROW_KINDS = frozenset({"assistant", "tool_result"})
+# frame kind in session_view.cc but never one; `activity` is also the
+# terminal's command for activity operations.
+ROW_KINDS = frozenset({"activity", "assistant", "tool_result"})
 
 PRODUCED = re.compile(r'\{"kind",\s*"([A-Za-z._-]+)"')
 

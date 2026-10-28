@@ -22,7 +22,7 @@ for (const labels of [false, true])
     const started = performance.now();
     await page.goto(`/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeEnabled();
-    await expect(page.locator(".composer .activity-caption")).toHaveText(
+    await expect(page.locator(".composer .turn-status-caption")).toHaveText(
       "Ready",
     );
     const startupMs = performance.now() - started;
@@ -46,7 +46,7 @@ for (const labels of [false, true])
                 session_id: session.id,
                 generation: session.generation,
                 kind,
-                ...(kind === "activity" || kind === "block" ? data : {}),
+                ...(kind === "turn_status" || kind === "block" ? data : {}),
                 type,
                 data,
               }),
@@ -97,7 +97,7 @@ for (const labels of [false, true])
               send("activities.changed", {
                 activities: ["child-a", "child-b"].map((id, index) => ({
                   id: index + 1,
-                  kind: "agent",
+                  kind: "subagent",
                   agent_id: id,
                   name: id,
                   status: "running",
@@ -121,9 +121,9 @@ for (const labels of [false, true])
                   "",
                   {
                     phase: "tool",
-                    activity: `Running · Reviewing module ${action} · +1 tools`,
+                    turn_status: `Running · Reviewing module ${action} · +1 tools`,
                   },
-                  "activity",
+                  "turn_status",
                 );
               for (const id of ["a", "b"])
                 patch(row(id, "success", "inspected"));

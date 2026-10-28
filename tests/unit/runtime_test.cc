@@ -46,7 +46,7 @@ void TestEarlyTurnInterruption() {
   for (const bool before_turn : {true, false}) {
     Api api(RuntimeConfig{});
     std::vector<Tool> tools;
-    ProcessSupervisor processes;
+    ActivitySupervisor processes;
     UsageAccumulator usage;
     Agent agent(api, tools, processes, usage,
                 [](const Tool&, const json&, int64_t) {
@@ -615,7 +615,7 @@ void TestAttributedUsageAccumulator() {
 void TestEffectiveImageModel() {
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   Agent agent(
       api, tools, processes, usage,
@@ -680,7 +680,7 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   Api api(RuntimeConfig{});
   api.model = "test";
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   const auto denied = [](const Tool&, const json&, int64_t) {
     return std::string("denied");
@@ -718,7 +718,7 @@ void TestMailKeepsItsOriginBesideTheSameWords() {
   Api api(RuntimeConfig{});
   api.model = "test";
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   const auto denied = [](const Tool&, const json&, int64_t) {
     return std::string("denied");

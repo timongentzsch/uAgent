@@ -14,7 +14,6 @@
 #include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/session_view.h"
-#include "include/core/activity.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -24,6 +23,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/tool_activity.h"
+#include "include/core/turn_status.h"
 #include "src/agent/turn_internal.h"
 
 namespace uagent {
@@ -227,8 +227,8 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   task.activity["occurrence_id"] = call.occurrence_id;
   task.activity["detail_id"] = call.detail_id;
   task.activity["status_label"] =
-      tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
-           : ActivityLabel(call.name);
+      tool ? StatusLabel(ToolTitle(*tool) + " · " + task.label)
+           : StatusLabel(call.name);
   json view = ToolView(task.tool, task.args);
   // A rejected call shows the arguments it sent, not a confident headline.
   if (task.issue) view.erase("verb");
@@ -289,8 +289,9 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                         }));
   // A child blocks its worker for its whole run, so a batch of children
   // gets a worker each, up to the slots children may hold at once.
-  const size_t width = static_cast<size_t>(std::max(
-      kToolConcurrency, std::min(context.delegations, kMaxDelegatedJobs)));
+  const size_t width = static_cast<size_t>(
+      std::max(kToolConcurrency,
+               std::min(context.delegations, kMaxDelegatedActivities)));
   if (Debug().Enabled()) {
     // Any two adjacent runnable calls that are both parallel-safe form a batch.
     bool parallel = false;

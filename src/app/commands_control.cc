@@ -6,8 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/agent/session_store.h"
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
@@ -269,7 +269,7 @@ json SessionControl(AppSession& session, const json& request) {
   return SelectModelControl(session, request);
 }
 
-json ActivityControl(ProcessSupervisor& processes, const json& request) {
+json ActivityControl(ActivitySupervisor& processes, const json& request) {
   std::string operation = JsonValue(request, "operation", "list");
   if (operation == "background") {
     return processes.RequestForegroundBackground()
@@ -309,7 +309,7 @@ std::string ActivityText(const json& result) {
   for (const char* key : {"activities", "agents"}) {
     if (const json* rows = JsonArray(result, key)) {
       const bool agents = std::string_view(key) == "agents";
-      std::string text = std::string(agents ? "subagents" : "background work") +
+      std::string text = std::string(agents ? "subagents" : "activities") +
                          " (" + FmtCount(static_cast<int64_t>(rows->size())) +
                          ")\n";
       for (const json& row : *rows) {

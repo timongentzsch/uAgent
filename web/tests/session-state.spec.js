@@ -704,7 +704,9 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await detail
     .getByRole("button", { name: "Close subagent", exact: true })
     .click();
-  await expect(page.locator(".composer .activity-caption")).toHaveText("Ready");
+  await expect(page.locator(".composer .turn-status-caption")).toHaveText(
+    "Ready",
+  );
   // A finished subagent stays reachable from the status line, like /agents.
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const idle = page.locator(".activity-sheet .activity-open");

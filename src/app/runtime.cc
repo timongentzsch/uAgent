@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/core/runtime_config.h"
 
 namespace uagent {
@@ -27,7 +27,7 @@ void AppRuntime::Shutdown() {
   if (shutdown_) return;
   shutdown_ = true;
   mcp.ShutdownAll();
-  BgShutdownAll(processes);
+  ActivityShutdownAll(processes);
 }
 
 }  // namespace uagent

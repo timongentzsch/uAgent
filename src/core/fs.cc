@@ -336,11 +336,11 @@ void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kSessionsDir), kDebugDays, kDebugFiles);
   // Mail by age only: a count would drop mail still waiting to be read.
   PruneArtifactTree(UagentDir(kMailDir), kDebugDays, 0);
-  PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
-  PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
+  PruneArtifactTree(UagentDir(kActivityDir), kActivityDays, kActivityFiles);
+  PruneArtifactTree(UagentDir(kArtifactsDir), kActivityDays, kActivityFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
   // A catalogue is fresh for a day; a week keeps one that is still read.
-  PruneArtifactTree(UagentDir(kModelsDir), kBgDays, 0);
+  PruneArtifactTree(UagentDir(kModelsDir), kActivityDays, 0);
   // A skill import that was killed leaves its staging folder; nothing else
   // lives there, and no import runs for a day.
   std::error_code staging_error;

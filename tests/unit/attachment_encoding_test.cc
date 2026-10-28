@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/core/config.h"
 #include "include/core/limits.h"
 #include "include/media/attachments.h"
@@ -136,7 +136,7 @@ void TestAttachmentEncoding() {
   // The media read has no per-turn call cap, so this queue ceiling is what
   // bounds a runaway caller -- including an MCP server, which queues images
   // with no model call to budget against.
-  ProcessSupervisor attachment_processes;
+  ActivitySupervisor attachment_processes;
   std::vector<Tool> attachment_tools = BuiltinTools(attachment_processes, root);
   const Tool* attach_tool = FindTool(attachment_tools, "read_path");
   ToolContext attach_context;

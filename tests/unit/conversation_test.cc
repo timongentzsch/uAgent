@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity_supervisor.h"
 #include "include/agent/agent.h"
-#include "include/agent/process.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
@@ -153,7 +153,7 @@ void TestSideArchiveForks() {
   REQUIRE(SessionStore::Save(source, record).Ok());
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   Agent agent(api, tools, processes, usage, {});
   std::string error;
@@ -1180,7 +1180,7 @@ void TestForkAtTurnAndLineage() {
   // of zeroing it on the next save.
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
-  ProcessSupervisor processes;
+  ActivitySupervisor processes;
   UsageAccumulator usage;
   Agent agent(
       api, tools, processes, usage,

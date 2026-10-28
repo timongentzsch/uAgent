@@ -95,7 +95,7 @@
   flex: 0 1 auto;
   min-width: 0;
 }
-.status-line > .activity-toggle {
+.status-line > .turn-status-row {
   min-height: 0;
 }
 .status-action {

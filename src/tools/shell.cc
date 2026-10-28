@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/jobs.h"
+#include "include/agent/activity.h"
 #include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
@@ -130,7 +130,7 @@ void SignalShellGroup(pid_t pid, int signal_number) {
   if (kill(-pid, signal_number) != 0) (void)kill(pid, signal_number);
 }
 
-bool WaitForTerminal(ProcessSupervisor& supervisor,
+bool WaitForTerminal(ActivitySupervisor& supervisor,
                      const std::shared_ptr<ActivitySession>& session,
                      std::chrono::steady_clock::time_point deadline) {
   for (;;) {
@@ -144,22 +144,22 @@ bool WaitForTerminal(ProcessSupervisor& supervisor,
   }
 }
 
-ToolResult JobLimitError() {
+ToolResult ActivityLimitError() {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
-                     "background job limit reached (" +
-                         std::to_string(kMaxBackgroundJobs) + ")");
+                     "activity limit reached (" +
+                         std::to_string(kMaxBackgroundActivities) + ")");
 }
 
 // A child refused for headroom must not read as the pool being full: the
 // parent can still run its own commands, and that is the point.
-ToolResult DelegatedJobLimitError() {
+ToolResult DelegatedActivityLimitError() {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
-                     "no free background slot for a delegated child (at "
+                     "no free activity slot for a delegated child (at "
                      "most " +
-                         std::to_string(kMaxDelegatedJobs) +
+                         std::to_string(kMaxDelegatedActivities) +
                          " concurrent children of " +
-                         std::to_string(kMaxBackgroundJobs) +
-                         " background slots; the rest stay reserved for this "
+                         std::to_string(kMaxBackgroundActivities) +
+                         " activity slots; the rest stay reserved for this "
                          "agent's own commands). Wait for a child to finish");
 }
 
@@ -226,7 +226,7 @@ std::string SandboxHint(const std::string& output) {
 // rotating log through a pump child, it has no session, no pipe and no
 // deadline, and an identical live command is reused rather than started twice.
 ShellCommandResult StartDetachedShell(
-    ProcessSupervisor& supervisor, ShellCommand& spec,
+    ActivitySupervisor& supervisor, ShellCommand& spec,
     const std::vector<std::string>& wrapper,
     std::shared_ptr<const SandboxWatch> watch) {
   const std::string& cmd = spec.command;
@@ -274,17 +274,17 @@ ShellCommandResult StartDetachedShell(
   };
   ToolResult saved = SaveDetachedRecord(pid, log, cmd);
   if (!saved.Ok()) return fail_and_reap(std::move(saved));
-  BgJob job{.pid = pid,
-            .log = log,
-            .cmd = cmd,
-            .kind = ActivityKind::kDetached,
-            .id = pid,
-            .display_label = std::move(spec.activity_label),
-            .receipt_path = std::move(spec.receipt_path),
-            .source_id = std::move(spec.source_id),
-            .watch = std::move(watch)};
-  if (!supervisor.TryAdd(std::move(job), kMaxBackgroundJobs)) {
-    return fail_and_reap(JobLimitError());
+  Activity job{.pid = pid,
+               .log = log,
+               .cmd = cmd,
+               .kind = ActivityKind::kDetached,
+               .id = pid,
+               .display_label = std::move(spec.activity_label),
+               .receipt_path = std::move(spec.receipt_path),
+               .source_id = std::move(spec.source_id),
+               .watch = std::move(watch)};
+  if (!supervisor.TryAdd(std::move(job), kMaxBackgroundActivities)) {
+    return fail_and_reap(ActivityLimitError());
   }
   ToolResult detached =
       ToolSuccess(kDetachedMarker + std::to_string(pid) + ", log: " + log +
@@ -296,7 +296,7 @@ ShellCommandResult StartDetachedShell(
 
 }  // namespace
 
-ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
+ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,
                                    ShellCommand spec) {
   const std::string& cmd = spec.command;
@@ -322,13 +322,13 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   // Everything below is the supervised foreground lifecycle.
   bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
   std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
-      kMaxBackgroundJobs, is_subagent ? kMaxDelegatedJobs : 0);
+      kMaxBackgroundActivities, is_subagent ? kMaxDelegatedActivities : 0);
   if (!reservation) {
-    return {is_subagent ? DelegatedJobLimitError() : JobLimitError()};
+    return {is_subagent ? DelegatedActivityLimitError() : ActivityLimitError()};
   }
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
-  ScopedTempFile pending(UagentDir(kBgDir) + "/pending-" +
+  ScopedTempFile pending(UagentDir(kActivityDir) + "/pending-" +
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
   if (!pending) {
@@ -371,11 +371,11 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         "cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
   // Named after the pid and the activity id: a pid alone is reused within one
-  // run and a rename onto a completed job's uncollected log would destroy it,
-  // while an activity id alone counts from the same base in every process --
-  // and a child agent shares this directory with its parent.
-  std::string named = UagentDir(kBgDir) + "/" + std::to_string(getpid()) + "-" +
-                      std::to_string(reservation->Id()) + ".log";
+  // run and a rename onto a completed activity's uncollected log would destroy
+  // it, while an activity id alone counts from the same base in every process
+  // -- and a child agent shares this directory with its parent.
+  std::string named = UagentDir(kActivityDir) + "/" + std::to_string(getpid()) +
+                      "-" + std::to_string(reservation->Id()) + ".log";
   if (rename(pending.Path().c_str(), named.c_str()) == 0) {
     log = named;  // child's fd stays valid
   }
@@ -393,23 +393,23 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         "cannot duplicate PTY input: " + std::string(strerror(errno)))};
   }
 
-  BgJob foreground{.pid = pid,
-                   .log = log,
-                   .cmd = cmd,
-                   .kind = spec.activity_kind,
-                   .id = reservation->Id(),
-                   .session = session,
-                   .display_label = std::move(spec.activity_label),
-                   .receipt_path = std::move(spec.receipt_path),
-                   .source_id = std::move(spec.source_id),
-                   .completion_notes = std::move(spec.completion_notes),
-                   .watch = watch,
-                   .metadata = std::move(spec.activity_metadata)};
+  Activity foreground{.pid = pid,
+                      .log = log,
+                      .cmd = cmd,
+                      .kind = spec.activity_kind,
+                      .id = reservation->Id(),
+                      .session = session,
+                      .display_label = std::move(spec.activity_label),
+                      .receipt_path = std::move(spec.receipt_path),
+                      .source_id = std::move(spec.source_id),
+                      .completion_notes = std::move(spec.completion_notes),
+                      .watch = watch,
+                      .metadata = std::move(spec.activity_metadata)};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
     KillProcess(pid);
     RemoveLog(log);
-    return {JobLimitError()};
+    return {ActivityLimitError()};
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
@@ -418,7 +418,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
 
   // Registered for the signal handler's kill sweep from spawn onward, so a
   // Ctrl-C at any point, including the handover below, reaches the child.
-  BgTrackSignal(pid, true, is_subagent);
+  ActivityTrackSignal(pid, true, is_subagent);
   bool cancelled = false;
   bool handed_off = false;
   bool exited = false;
@@ -479,7 +479,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   };
 
   if (cancelled) {
-    BgTrackSignal(pid, false);
+    ActivityTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     RemoveLog(log);
     (void)SandboxRestoreNote(watch.get(), CanonicalCwd());
@@ -487,7 +487,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
             /*launched=*/true};
   }
   if (exited) {
-    BgTrackSignal(pid, false);
+    ActivityTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     return finish([&cmd](std::string output, int status) {
       output += FmtExit(status, /*show_ok=*/false);
@@ -503,7 +503,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
-    BgTrackSignal(pid, false);
+    ActivityTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     (void)TerminateGroup(supervisor, pid, kStopGrace, false);
     WaitForTerminal(supervisor, session, DeadlineAfter(2));
@@ -514,9 +514,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
 
-  std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);
+  std::optional<Activity> moved = supervisor.MoveForegroundToBackground(pid);
   if (!moved) {
-    BgTrackSignal(pid, false);
+    ActivityTrackSignal(pid, false);
     SignalShellGroup(pid, SIGKILL);
     RemoveLog(log);
     return {ToolFailure(ToolErrorCode::kInternal,
@@ -663,7 +663,7 @@ std::optional<std::filesystem::path> ScratchScriptPath(
   return script;
 }
 
-ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
+ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
                           const std::filesystem::path& workspace,
                           const std::string& relative_path, const json& args,
                           const ToolContext& context) {
@@ -771,7 +771,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   return std::move(result.result);
 }
 
-ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
+ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const GrepOptions& options,
                     const ToolContext& context) {
   const auto& [glob, context_lines, files_only, literal, matching_files] =

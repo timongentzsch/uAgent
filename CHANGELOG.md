@@ -21,6 +21,7 @@
 
 ### Changes
 
+- **The agent adds an endpoint without dropping the others.** A `configure` call for `UAGENT_PROVIDERS` names only the providers it adds or changes, and `null` removes one; the rest, and keys the agent is never shown, are kept. Before, the value replaced every provider, so adding one deleted the endpoint the conversation was using.
 - **The agent's Chrome blocks `passwords.google.com`**, where a saved password could be revealed; manage logins from your own browser.
 - **`/model QUERY` lists the models before it asks for a number.** The list came after the question, once the command ended, so the picker asked about models it had not shown; "searching all model catalogs" also shows while the search runs.
 - **Browser results for the page just seen carry only what changed** (`- old`, `+ new` lines); a navigation or `read` gives the full page. On a 42-action form this cut cost-weighted tokens by 15–17%.

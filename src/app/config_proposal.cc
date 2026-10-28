@@ -3,6 +3,7 @@
 #include "include/app/config_proposal.h"
 
 #include <cctype>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -182,6 +183,29 @@ static std::string KeepHiddenKeys(const std::string& value,
   return JsonDump(providers);
 }
 
+// The providers a tool call names, merged into what is held: each replaces
+// the entry of its name and null removes one, so the others, and the keys
+// the agent is never shown, stay as they are. Empty with `error` when the
+// held value is not an object (a reference to a variable).
+static std::string MergeProviders(const std::string& value,
+                                  const std::string& held, std::string& error) {
+  json merged =
+      held.empty() ? json::object() : json::parse(held, nullptr, false);
+  if (!merged.is_object()) {
+    error = "UAGENT_PROVIDERS is set from a variable here; change the variable";
+    return "";
+  }
+  const json changes = json::parse(value);
+  for (const auto& [name, provider] : changes.items()) {
+    if (provider.is_null()) {
+      merged.erase(name);
+    } else {
+      merged[name] = provider;
+    }
+  }
+  return JsonDump(merged);
+}
+
 namespace {
 
 std::string DisplayValue(const ConfigDescriptor& descriptor,
@@ -321,14 +345,26 @@ ConfigProposal Prepare(ConfigProposalScope scope,
     if (!change.unset &&
         descriptor->sensitivity == Sensitivity::kCompositeSecret) {
       // The screen shows providers with their keys hidden, and sends back
-      // what it was shown.
-      if (const auto held = before.find(change.key); direct_user) {
-        value = KeepHiddenKeys(value, held == before.end() ? "" : held->second,
-                               proposal.error);
+      // what it was shown. A tool names only the providers it changes.
+      const auto held = before.find(change.key);
+      const std::string held_value = held == before.end() ? "" : held->second;
+      if (direct_user) {
+        value = KeepHiddenKeys(value, held_value, proposal.error);
         if (!proposal.error.empty()) return proposal;
       }
-      if (!ValidateProviderProposal(value, proposal.error, direct_user)) {
+      json named = json::parse(value, nullptr, false);
+      if (!direct_user && named.is_object()) {
+        for (auto it = named.begin(); it != named.end();) {
+          it = it->is_null() ? named.erase(it) : std::next(it);
+        }
+      }
+      if (!ValidateProviderProposal(direct_user ? value : JsonDump(named),
+                                    proposal.error, direct_user)) {
         return proposal;
+      }
+      if (!direct_user) {
+        value = MergeProviders(value, held_value, proposal.error);
+        if (!proposal.error.empty()) return proposal;
       }
     }
     if ((descriptor->scopes & (user ? kScopeUser : kScopeProject)) == 0) {

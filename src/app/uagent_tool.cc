@@ -65,7 +65,10 @@ Tool UagentTool(SelfDescriptionProvider describe,
                 {{"type", "string"}, {"enum", json::array({"set", "unset"})}}},
                {"value",
                 {{"type", "string"},
-                 {"description", "required for set; omitted for unset"}}}}},
+                 {"description",
+                  "required for set; omitted for unset. UAGENT_PROVIDERS "
+                  "takes only the providers to add or change, as a JSON "
+                  "object; null removes one"}}}}},
              {"required", json::array({"key", "operation"})}}}}}}},
        {"required", json::array({"action"})}},
       [describe = std::move(describe), store, shown](

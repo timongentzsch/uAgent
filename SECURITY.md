@@ -2,11 +2,13 @@
 
 µAgent is a local, single-user coding agent. It confines the commands it runs
 (see [Sandboxing](#sandboxing)) but is not a container: approval grants the
-current user's permissions, and reads are unrestricted apart from the
-[hidden stores](#sandboxing). It sends prompts, selected files, tool results
-and attachments to the configured endpoint; treat that endpoint as trusted
-infrastructure. Use a container, VM or restricted account for untrusted
-code.
+current user's permissions. Below the `relaxed` level, commands cannot read
+your other folders or the [hidden stores](#sandboxing). It sends prompts,
+selected files, tool results and attachments to the configured endpoint;
+treat that endpoint as trusted infrastructure. Use a container, VM or
+restricted account for untrusted code.
+
+![What each part can reach: paired devices reach the web host; only the session runtime holds the model key and talks to the endpoint; commands and MCP servers run in the OS sandbox, write only the folder, temporary files and caches, and cannot reach your other folders, ~/.uagent, credential stores, the browser profile or secrets in the environment; the runtime acts in Chrome but gets no field values back](docs/images/boundaries.svg)
 
 ## What the agent may do without asking
 

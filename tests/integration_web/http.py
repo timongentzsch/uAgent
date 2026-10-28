@@ -467,6 +467,9 @@ def test_api_json_is_compressed_for_a_client_that_takes_it_and_revalidated_files
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             session = client.create(root)
+            # The two bodies are compared byte for byte, so the runtime must
+            # have finished starting: its model and cursor land a moment later.
+            client.until(session, lambda value: value["metadata"]["model"])
             path = f"/api/sessions/{session['id']}"
             plain_status, plain, plain_headers = client.request(path)
             assert_true(

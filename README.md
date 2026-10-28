@@ -3,7 +3,7 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a coding agent in a 7 MB binary. It is sandboxed to your folder
+µAgent is a coding agent in a 6 MB binary. It is sandboxed to your project
 folder, keeps one conversation you can continue from the terminal, a script or
 your phone, and drives a real Chrome that you can watch and take over.
 
@@ -50,13 +50,13 @@ wire format.
 
 ## Footprint
 
-![Bars comparing µAgent, Claude Code, Codex CLI and omp: install on disk 7.4, 273, 341 and 1118 MB; idle session memory 25, 196, 189 and 279 MB; CPU per headless turn 69, 793, 685 and 1671 ms; peak memory per headless turn 12, 287, 202 and 438 MB](docs/images/footprint.svg)
+![Bars comparing µAgent, Claude Code, Codex CLI and omp: install on disk 6.4, 294, 446 and 1064 MB; idle session memory 29, 161, 290 and 314 MB; CPU per headless turn 12, 436, 139 and 1329 ms; peak memory per headless turn 16.5, 222, 291 and 391 MB](docs/images/footprint.svg)
 
-Medians of five runs on an Apple M1 Pro on 2026-10-21, with µAgent 1.5.0,
-Claude Code 2.1.306, Codex CLI 0.163.0 and omp 18.12.5. Each headless turn
-answers a one-word prompt; µAgent and omp used Claude Haiku 5.5 through the
-same endpoint, Claude Code and Codex CLI their own. omp's install includes its
-`node_modules` and the Bun runtime it needs.
+Medians of five runs in a 2-CPU, 4 GB Docker container on an AMD Ryzen 9
+7950X3D host on 2026-10-28, with µAgent 1.5.0, Claude Code 2.1.312, Codex CLI
+0.165.0 and omp 18.13.2. Each headless turn answers a one-word prompt, and all
+four used Claude Haiku 5.5 through the same endpoint (Codex without its own web
+search). omp's install includes its `node_modules` and the Bun runtime it needs.
 [The method](benchmarks/README.md#footprint-comparison) has every metric.
 
 ## Install

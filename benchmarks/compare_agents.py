@@ -397,6 +397,12 @@ def measure_headless(tool, project):
 
 
 def chip_name():
+    if sys.platform == "linux":
+        with contextlib.suppress(OSError), open("/proc/cpuinfo") as cpuinfo:
+            for line in cpuinfo:
+                if line.startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+        return platform.machine()
     command = ["sysctl", "-n", "machdep.cpu.brand_string"]
     try:
         return subprocess.check_output(command, text=True).strip()
@@ -456,7 +462,7 @@ def build_tools(args):
                 "headless": [
                     str(args.codex),
                     "exec",
-                    "--ignore-user-config",
+                    *([] if args.codex_config else ["--ignore-user-config"]),
                     "--ephemeral",
                     PROMPT,
                 ],
@@ -632,6 +638,12 @@ def main():
     parser.add_argument("--claude", type=pathlib.Path, help="path to the claude executable")
     parser.add_argument("--codex", type=pathlib.Path, help="path to the codex executable")
     parser.add_argument("--omp", type=pathlib.Path, help="path to the omp executable (needs Bun)")
+    parser.add_argument(
+        "--codex-config",
+        action="store_true",
+        help="let codex read its user config (a model provider set there)",
+    )
+    parser.add_argument("--machine", help="the machine named under the chart (default: the CPU)")
     parser.add_argument("--uagent-model", help="--model value for the uagent headless turn")
     parser.add_argument("--omp-model", help="--model value for the omp headless turn")
     parser.add_argument(
@@ -676,7 +688,7 @@ def main():
     report["_machine"] = {
         "platform": platform.platform(),
         "machine": platform.machine(),
-        "chip": chip_name(),
+        "chip": args.machine or chip_name(),
         "cpus": os.cpu_count(),
         "date": time.strftime("%Y-%m-%d"),
         "runs": {"version": args.version_runs, "session": args.session_runs},

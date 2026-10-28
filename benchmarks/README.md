@@ -39,14 +39,33 @@ between the tools so background load affects all of them:
   tool asks. Resident memory is summed over the tool's own processes, helpers
   included. Codex CLI's interactive UI cannot skip the user config, so its row
   counts only Codex's own executables.
-- **Headless turn:** one one-word prompt against the tool's real provider.
-  Claude Code runs with `--strict-mcp-config`, an empty MCP config and only
-  project settings; Codex CLI with `exec --ignore-user-config`; omp without
-  extensions, skills, rules, LSP or a saved session, with its provider set
-  through `--omp-env`.
+- **Headless turn:** one one-word prompt. Claude Code runs with
+  `--strict-mcp-config`, an empty MCP config and only project settings; Codex
+  CLI with `exec --ignore-user-config`, or with only the provider config the
+  container writes (`--codex-config`); omp without extensions, skills, rules,
+  LSP or a saved session, with its provider set through `--omp-env`.
 
 Processes are attributed by PID: the started process, its descendants, and new
 detached processes started from the tool's executable. Idle memory varies
 between runs by tens of MB for the Node-based tools. Time to first screen ends
 at the first half second without output, so a startup animation (omp's logo)
 counts in full; the README's chart leaves it out.
+
+### In a container
+
+The README's chart comes from `footprint.Dockerfile`: µAgent built from this
+checkout beside Claude Code, Codex CLI and omp at the versions its build
+arguments pin, all four answering through one endpoint that serves Claude
+Haiku 5.5 on the Responses and Anthropic Messages routes (`footprint-run.sh`
+lists the paths). Run it on an otherwise idle host with fixed limits:
+
+```sh
+docker build -f benchmarks/footprint.Dockerfile -t uagent-footprint .
+docker run --rm --cpus=2 --memory=4g --memory-swap=4g --network host \
+  -e PROXY_URL=http://127.0.0.1:8787 --env-file proxy-key.env \
+  -v "$PWD/out:/out" uagent-footprint \
+  --machine "AMD Ryzen 9 7950X3D in a 2-CPU, 4 GB Docker container"
+```
+
+`proxy-key.env` holds `PROXY_KEY=…`; keep it out of the repository. The chart
+and the raw runs land in `out/`.

@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "include/agent/path_policy.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
@@ -150,7 +151,7 @@ std::string PermissionKey(const Tool& tool, const json& arguments,
 
 bool PathOutsideFolder(const json& arguments, const std::string& root) {
   const std::string path = JsonValue(arguments, "path", "");
-  return !path.empty() && !PathWithin(CanonicalAccessPath(path), root);
+  return !path.empty() && !WithinWorkArea(path, root);
 }
 
 json ApprovalRisks(const Tool& tool, const json& arguments,

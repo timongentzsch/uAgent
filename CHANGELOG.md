@@ -23,6 +23,7 @@
 ### Changes
 
 - **Failed calls fold into a turn's work** instead of standing open below it; the summary counts them (`Worked · 28 steps · edited 3 files · 4 errors`). Cancelled calls and files handed to you keep their rows.
+- **The file tools treat the sandbox's writable roots as the work area**: writing a script to `/tmp` (or `$TMPDIR`, the package caches, a `sandbox.write` root) no longer asks, as the same write by a sandboxed command never did. Hidden stores, closed folders and µAgent's own configuration keep their checks.
 - **The composer is one row while the draft is one line** on a wide enough screen: attach, model, approval and send sit beside the input, and the second row comes back once the text wraps. Phones keep two rows.
 - **On a phone the terminal is its own full-screen view**, and the keyboard shrinks it instead of covering it; Add to chat steps back to the draft. The web UI is a little denser everywhere: one spacing scale (padding 8px, gaps 6px, as phones had), 36px roomy rows and headers, prose line height 1.5. Touch targets stay 44px.
 - **Each model call records which provider served it.** A router such as OpenRouter picks the upstream per request; its name and the generation id now go in the debug trace's `model_response`, the `/http` capture and the message's statistics ("served by …"). The conversation's statistics and `/cost` count model calls and rejected tool calls per serving provider, so a provider that mangles tool calls stands out.

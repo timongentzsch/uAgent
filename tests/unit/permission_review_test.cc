@@ -7,6 +7,7 @@
 
 #include "include/app/permissions.h"
 #include "include/core/runtime_config.h"
+#include "include/core/sandbox.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -154,6 +155,14 @@ void TestPermissionReview() {
   CHECK(!PathOutsideFolder({{"command", "ls"}}, root));
   CHECK(!PathOutsideFolder({{"path", "a.txt"}}, root));
   CHECK(PathOutsideFolder({{"path", "/etc/hosts"}}, root));
+  // Where the sandbox lets commands write, such as the temporary folder, a
+  // file tool is as free: it is the session's work area too.
+  const SandboxStatus& sandbox = SandboxRuntime();
+  if (sandbox.mode == SandboxMode::kEnforced) {
+    for (const std::string& writable : sandbox.policy.writable_roots) {
+      CHECK(!PathOutsideFolder({{"path", writable + "/scratch.py"}}, root));
+    }
+  }
 }
 
 }  // namespace uagent

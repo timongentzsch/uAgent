@@ -132,11 +132,14 @@ cookies.
 - The agent can use a saved login without seeing it: `fill_saved` has Chrome
   fill the one it offers for the focused field and does not read what was
   filled. The page text the agent gets says whether a field holds something,
-  never what. Screenshots draw password fields as dots;
+  never what, the request list it reads has no bodies, and it cannot type
+  into a password field. Screenshots draw password fields as dots;
   [the browser guide](docs/BROWSER.md#isolation) lists the fields that are
   not masked.
 - With the sandbox on, commands cannot read the profile or connect to its
-  sockets, and the file tools refuse it in every mode.
+  sockets, and the file tools refuse it in every mode. The
+  [managed policy](deploy/chrome-policy.json) blocks Chrome's password pages
+  and `passwords.google.com`, where a saved password could be shown.
 - Whatever a page shows after sign-in can enter model context. Use a profile
   that holds only the accounts the agent should reach.
 

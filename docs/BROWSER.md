@@ -164,7 +164,8 @@ browser it does not support; see its
 
 Passwords follow Chrome's own model: sign the profile into your Google
 account and manage logins at
-[passwords.google.com](https://passwords.google.com). The agent uses a saved
+[passwords.google.com](https://passwords.google.com) from your own browser;
+the agent's Chrome blocks that site. The agent uses a saved
 login with `fill_saved`, which takes the one Chrome offers for the focused
 field and says so when Chrome filled nothing. With several accounts it types
 the start of the wanted one's name first. It never reads or types a password.
@@ -223,7 +224,8 @@ several paired devices.
   load local files or its own relative links, and the profile directory is
   refused as a path. `file://` URLs stay refused.
 - The [managed policy](../deploy/chrome-policy.json) blocks Chrome's local
-  password and autofill pages, `view-source:` and DevTools. DevTools is
+  password and autofill pages, Google's password site
+  (`passwords.google.com`), `view-source:` and DevTools. DevTools is
   blocked by its `devtools://` URLs, because `DeveloperToolsAvailability`
   would also refuse the browser service's own control pipe ("Not allowed",
   Chrome 155).

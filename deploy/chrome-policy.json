@@ -3,6 +3,7 @@
     "chrome://password-manager",
     "chrome://settings/passwords",
     "chrome://settings/autofill",
+    "passwords.google.com",
     "view-source:*",
     "devtools://*"
   ],

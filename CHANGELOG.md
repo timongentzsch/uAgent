@@ -22,6 +22,7 @@
 
 ### Changes
 
+- **The composer is one row while the draft is one line** on a wide enough screen: attach, model, approval and send sit beside the input, and the second row comes back once the text wraps. Phones keep two rows.
 - **On a phone the terminal is its own full-screen view**, and the keyboard shrinks it instead of covering it; Add to chat steps back to the draft. The web UI is a little denser everywhere: one spacing scale (padding 8px, gaps 6px, as phones had), 36px roomy rows and headers, prose line height 1.5. Touch targets stay 44px.
 - **Each model call records which provider served it.** A router such as OpenRouter picks the upstream per request; its name and the generation id now go in the debug trace's `model_response`, the `/http` capture and the message's statistics ("served by …"). The conversation's statistics and `/cost` count model calls and rejected tool calls per serving provider, so a provider that mangles tool calls stands out.
 - **A tool call missing a field its action needs is stopped before it runs, and says what arrived.** `thread`, `subagent`, `activity`, `memory`, `session`, `plan`, `history`, `uagent` and `browser` declare the fields each action needs; their descriptions list them, and a call without one is told every missing field and what it carried (`` `title` and `objective` are required for spawn; this call carried only `action` ``). Before, most tools checked their own fields only once the call ran, so repeating the call never ended the turn. `activity` `write` takes a left-out `chars` as an empty write.

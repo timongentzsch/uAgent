@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_OUTPUT_BUFFER_H_
 #define UAGENT_INCLUDE_CORE_OUTPUT_BUFFER_H_
+// Bounded process output: keeps a stable start and the newest end and marks
+// what was cut between them.
 
 #include <algorithm>
 #include <cstddef>

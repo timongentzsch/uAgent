@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_PERMISSIONS_H_
 #define UAGENT_INCLUDE_APP_PERMISSIONS_H_
+// Approval policy: the key a call is remembered under, what approving it
+// risks, remembered rules and the automatic review's decisions.
 
 #include <cstdint>
 #include <string>

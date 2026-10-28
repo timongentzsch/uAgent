@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_CHILD_ENV_H_
 #define UAGENT_INCLUDE_CORE_CHILD_ENV_H_
+// The environment a child process gets: which variables it loses or keeps
+// by kind of child. Used by every place that spawns one.
 
 #include <string>
 #include <string_view>

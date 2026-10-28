@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_CONFIG_H_
 #define UAGENT_INCLUDE_CORE_CONFIG_H_
 // The KEY=value text format (.env files, and the config files of earlier
-// versions) and workspace trust.
+// versions) and folder trust.
 
 #include <istream>
 #include <map>
@@ -33,7 +33,7 @@ bool ProjectMcpPresent();
 
 bool ProjectMcpSnapshot(json& snapshot, std::string& error);
 
-// Trust covers what the workspace can change: the servers .mcp.json spawns.
+// Trust covers what the folder can change: the servers .mcp.json spawns.
 // It is stored parsed, so a reformat keeps trust while any value change
 // revokes it.
 bool ProjectTrustSnapshot(json& snapshot, std::string& error);
@@ -44,13 +44,13 @@ inline constexpr int kTrustRecordFormat = 3;
 
 std::string TrustStorePath();
 
-// Records one workspace under the store's cross-process lock, so trusting two
+// Records one folder under the store's cross-process lock, so trusting two
 // workspaces at once cannot drop either record.
 bool WriteTrustRecord(const std::string& root, json record, std::string& error);
 
 json ReadTrustStore();
 
-// A record of another format simply stops matching, so that workspace is
+// A record of another format simply stops matching, so that folder is
 // asked once more.
 bool TrustRecordMatches(const json& record, const json& snapshot);
 

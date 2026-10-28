@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_SESSION_STORE_H_
 #define UAGENT_INCLUDE_AGENT_SESSION_STORE_H_
+// Saved sessions on disk: the file header, listing and restoring them, and
+// the lock that gives one process a session.
 
 #include <cstdint>
 #include <filesystem>

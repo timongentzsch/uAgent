@@ -513,7 +513,7 @@ void HandleTools(AppSession& session, const std::string& argument,
 
 // The child agents the subagent tool reports, joined with what the
 // supervisor knows about the ones still running. The id is the join key: it is
-// what the spawn stamped on the job, and it is what the human types back.
+// what the spawn stamped on the activity, and it is what the human types back.
 json AgentsJson(const AppSession& session) {
   const ActivitySupervisor& processes = session.Runtime().processes;
   std::vector<SubagentView> live = processes.SubagentViews();

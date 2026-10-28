@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_FS_H_
 #define UAGENT_INCLUDE_CORE_FS_H_
 // Agent directories and crash-safe file writing. Global state stays under
-// ~/.uagent; explicitly project-scoped files use the workspace's .uagent.
+// ~/.uagent; explicitly folder-scoped files use the folder's .uagent.
 // Bodies live in src/core/fs.cc so widely-included helpers do not recompile
 // in every translation unit.
 
@@ -45,13 +45,13 @@ std::string UserHome();
 std::string Tilde(const std::string& path);
 
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
-// home, never to a project-controlled location.
+// home, never to a folder-controlled location.
 std::string GlobalBase();
 // Where session runtimes keep their sockets and leases. AF_UNIX paths are
 // limited to 104 bytes on macOS, independently of HOME.
 std::string RuntimeDir();
 
-// The directory a workspace opts into. Named once: several modules need it,
+// The directory a folder opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd);
 
@@ -185,7 +185,7 @@ void CreatePrivateDirectories(const std::filesystem::path& dir);
 std::string MakePrivateDir(const std::string& base, const char* sub);
 
 // ~/.uagent/<sub>, created on demand. History, sessions, logs, the trust store,
-// and settings stay global: a workspace must not be able to relocate — or
+// and settings stay global: a folder must not be able to relocate — or
 // grant itself — any of them.
 std::string UagentDir(const char* sub);
 

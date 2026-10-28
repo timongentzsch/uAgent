@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_TRANSIENT_BATCHER_H_
 #define UAGENT_INCLUDE_APP_TRANSIENT_BATCHER_H_
+// Batches a worker's streamed events so a fast model costs one frame per
+// interval rather than one per token.
 
 #include <chrono>
 #include <condition_variable>

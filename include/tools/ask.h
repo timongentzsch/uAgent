@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_TOOLS_ASK_H_
 #define UAGENT_INCLUDE_TOOLS_ASK_H_
+// The ask tool: validates a model's questions and puts them to the person
+// through a callback each client supplies.
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -19,7 +22,7 @@ using AskImage =
 
 // Why `questions` is not a valid ask: 1 to 4 questions, each with a
 // question, a header of at most 12 characters and 2 to 4 labelled options;
-// an option's image is an image file in the workspace and comes with a
+// an option's image is an image file in the folder and comes with a
 // description, its alt text; a preview is at most 40 lines.
 std::optional<std::string> AskQuestionsIssue(const json& questions);
 

@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 #define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
+// The uagent tool: lets the model inspect this build and propose, never
+// apply, a configuration change.
 
 #include <functional>
 #include <memory>

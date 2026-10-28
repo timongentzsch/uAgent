@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_PANEL_H_
 #define UAGENT_INCLUDE_APP_PANEL_H_
+// A folder's panel: its id, threads, budgets and files. Used by the
+// session host and the panel tools.
+
 #include <chrono>
 #include <functional>
 #include <string>
@@ -53,7 +56,7 @@ void RecordPanelCost(const std::string& folder, double cost);
 std::string PanelPause(const std::string& folder);
 
 // The lead agent reads, researches, delegates and shares completed files. It
-// cannot edit workspace files, whatever the capability setting allows, and
+// cannot edit folder files, whatever the capability setting allows, and
 // its commands run in the readonly sandbox (session_worker.cc); neither can
 // its subagents: a child gets only its parent's tools and sandbox.
 inline constexpr const char* kPanelTools[] = {

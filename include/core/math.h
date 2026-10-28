@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_CORE_MATH_H_
 #define UAGENT_INCLUDE_CORE_MATH_H_
+// The LaTeX-to-Unicode table for the terminal's math rendering.
+
 #include <algorithm>
 #include <string>
 #include <string_view>

@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_PRIVATE_STORE_H_
 #define UAGENT_INCLUDE_CORE_PRIVATE_STORE_H_
+// Reading and writing private JSON files and retained bodies under
+// ~/.uagent: owner-only, size-bounded, and read as nothing when missing.
 
 #include <cstddef>
 #include <string>

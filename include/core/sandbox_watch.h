@@ -4,7 +4,7 @@
 #define UAGENT_INCLUDE_CORE_SANDBOX_WATCH_H_
 // Where the sandbox cannot deny a write, it can still notice and undo one.
 // Landlock has no deny form, so a repository's config and hooks and the
-// workspace's .mcp.json -- writable by being inside the workspace -- are only
+// folder's .mcp.json -- writable by being inside the folder -- are only
 // recorded before a sandboxed command runs and put back when it ends.
 //
 // This is a check at the end of a command, not a wall: a change is visible to

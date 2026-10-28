@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_BROWSER_BROWSER_H_
 #define UAGENT_INCLUDE_BROWSER_BROWSER_H_
+// Shared definitions of the browser service: its data directory, sockets,
+// timeouts and the call clients make to it.
 
 #include <sys/types.h>
 

@@ -31,7 +31,7 @@ json McpStatus(const McpRuntime& runtime, const std::vector<Tool>& tools);
 
 // Between turns: `mcp_restart` starts a server again, `mcp_enable` edits
 // `disabled` in the file that defines it and starts or stops it now. A
-// project file is only edited while it still matches the trusted copy, and
+// folder file is only edited while it still matches the trusted copy, and
 // trust is re-recorded for exactly that edit.
 json McpControl(const json& request, std::vector<Tool>& tools,
                 McpRuntime& runtime, const RuntimeConfig& config);

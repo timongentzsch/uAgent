@@ -144,7 +144,7 @@ int64_t TerminalColumns();
 // Never zero: callers pass the result straight to a width-bounded formatter.
 size_t TerminalWidth(int64_t reserved = 0);
 
-// Stable short digest for session and workspace identity.
+// Stable short digest for session and folder identity.
 std::string HashHex(const std::string& data);
 
 // The one list of key stems that name a secret. Redaction policies differ by

@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_BROWSER_VIEWER_H_
 #define UAGENT_INCLUDE_WEB_BROWSER_VIEWER_H_
+// Relaying the browser's screen to a viewer over a websocket.
+
 #include <cstdint>
 #include <string>
 namespace httplib::ws {

@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_UI_ASK_PICKER_H_
 #define UAGENT_INCLUDE_UI_ASK_PICKER_H_
+// The terminal's answer to an ask tool: a raw-mode picker and a typed-line
+// fallback. Used by the terminal client when a decision asks questions.
+
 #include <functional>
 #include <string>
 

@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_TRANSPORT_SSE_H_
 #define UAGENT_INCLUDE_TRANSPORT_SSE_H_
+// A server-sent-events parser for provider streams. Used by the API layer and
+// the fuzz target.
 
 #include <cstddef>
 #include <string>

@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_LEASE_H_
 #define UAGENT_INCLUDE_CORE_LEASE_H_
+// A file lease held by an open descriptor, for one owner among processes.
+// Used by sessions, schedules and the browser service.
 
 #include <fcntl.h>
 #include <sys/file.h>

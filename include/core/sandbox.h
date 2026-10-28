@@ -41,7 +41,7 @@ struct SandboxPolicy {
   std::vector<std::string> hidden;
   // The home folder's visible entries (~/Software, ~/Documents, ...) that no
   // command may read, and the folders inside them it still may: the
-  // workspace, and what commands use there. Reads elsewhere stay open.
+  // folder, and what commands use there. Reads elsewhere stay open.
   std::vector<std::string> unreadable;
   std::vector<std::string> readable;
   bool allow_network = true;
@@ -56,7 +56,7 @@ struct SandboxPolicy {
 struct SandboxInputs {
   std::string workspace;
   // ~/.uagent. Never writable, and neither is any ancestor of it: that is what
-  // keeps the config, the trust store and the detached-job records out of
+  // keeps the config, the trust store and the detached-process records out of
   // reach of a command that can otherwise write freely.
   std::string global_base;
   std::string tmpdir;  // $TMPDIR; empty when unset
@@ -66,7 +66,7 @@ struct SandboxInputs {
   // Package-manager caches (kPackageCaches in include/core/defaults.h).
   std::vector<std::string> tool_caches;
   // ~/.uagent/terminals/logs -- the one deliberate exception inside
-  // global_base, because a detached job's own log pump writes there.
+  // global_base, because a detached process's own log pump writes there.
   std::string terminal_logs;
   std::vector<std::string> extra_roots;  // UAGENT_SANDBOX_WRITE, one per entry
   // The home folder, when the relaxed level makes it writable; empty otherwise.
@@ -79,13 +79,13 @@ struct SandboxInputs {
   // The folders closed to reads at a level that confines them (readonly,
   // strict, default), empty otherwise: the person's own -- the home folder's
   // entries not named with a dot and the workspaces in ~/.uagent/spaces --
-  // and the workspace's neighbours, as other projects in /workspaces are.
+  // and the folder's neighbours, as other folders in /workspaces are.
   std::vector<std::string> closed_folders;
-  // What stays readable inside them besides the workspace and the writable
+  // What stays readable inside them besides the folder and the writable
   // roots: what the environment points at, sandbox.read and
   // kReadableHomePaths.
   std::vector<std::string> read_roots;
-  // The workspace already is a repository (its .git is a directory), so its
+  // The folder already is a repository (its .git is a directory), so its
   // config and hooks exist and must not be rewritten; before `git init` they
   // cannot be denied without denying the init itself.
   bool git_repository = false;
@@ -95,7 +95,7 @@ struct SandboxInputs {
 // overrides (sandbox.network, sandbox.write, sandbox.hide, sandbox.reveal)
 // apply. Not SandboxLevel, which is what the host can enforce.
 // readonly is a lead agent's: its commands may look but change nothing, the
-// workspace and the network included, whatever the overrides say.
+// folder and the network included, whatever the overrides say.
 enum class SandboxPreset { kReadOnly, kStrict, kDefault, kRelaxed, kOff };
 
 // readonly, strict, default, relaxed and off. False for anything else, leaving
@@ -151,9 +151,9 @@ bool SandboxReadable(const SandboxPolicy& policy, std::string_view path);
 
 // What a confined command may write, in words, for a reader who met the limit
 // as a bare "Permission denied": the model after a failed command, the person
-// at startup. A workspace the policy does not grant is named first, with what
+// at startup. A folder the policy does not grant is named first, with what
 // still works there, because every other sentence about the sandbox assumes
-// the workspace is writable; and with what does not, when it holds one of
+// the folder is writable; and with what does not, when it holds one of
 // policy.hidden.
 std::string SandboxWritesNote(const SandboxPolicy& policy,
                               std::string_view workspace);
@@ -209,11 +209,11 @@ std::string SandboxInheritance();
 // Shared by session_ready, /status and /context so all three cannot drift.
 json SandboxDiagnosticJson();
 
-// SandboxWritesNote for this session and its workspace. The hidden paths are
+// SandboxWritesNote for this session and its folder. The hidden paths are
 // counted on Linux only: seatbelt denies them by rule, so nothing goes stale.
 std::string SandboxNote();
 
-// SandboxNote when this session's commands cannot write its own workspace;
+// SandboxNote when this session's commands cannot write its own folder;
 // empty otherwise. A home directory is the usual case: it holds ~/.uagent, so
 // it is never granted.
 std::string SandboxWorkspaceRefusal();

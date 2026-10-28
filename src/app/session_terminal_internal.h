@@ -103,7 +103,7 @@ class Terminal {
                               std::vector<std::string>& files);
   Command SetVerbosity(const std::string& argument);
   // The folder whose panel this session answers to: a thread's
-  // project, else the session's own folder.
+  // folder, else the session's own folder.
   std::string Folder() const;
   // A /board id prefix or a unique title match among the folder's sessions.
   std::string MatchFolderSession(const std::string& argument) const;

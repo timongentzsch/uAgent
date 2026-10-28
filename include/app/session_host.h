@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_SESSION_HOST_H_
 #define UAGENT_INCLUDE_APP_SESSION_HOST_H_
+// The host that runs conversations for the web: its sessions, their state
+// and events, schedules and the snapshots clients read.
 
 #include <atomic>
 #include <chrono>
@@ -86,7 +88,7 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // "panel", "thread" or empty; a thread names its project `folder` and the
+  // "panel", "thread" or empty; a thread names its `folder` and the
   // plan `step` it works for. `model` is the one the file names.
   std::string kind, folder, step, model;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
@@ -134,8 +136,9 @@ struct SnapshotResult {
   int status = 200;
 };
 
-// The spaces: folders µAgent keeps for conversations that belong to no
-// project, each under the name its user gave it. [{path, name}], by name.
+// The spaces (workspaces): folders µAgent keeps for conversations that
+// belong to none of the user's folders, each under the name its user gave it.
+// [{path, name}], by name.
 json Spaces();
 // The folder of the space called `name`, made when there is none. Empty
 // with `error` when the name cannot be one or the folder cannot be made.
@@ -198,7 +201,7 @@ class SessionHost {
                     std::string& error);
   json Configure(const json& command);
   std::string AssetPath(const std::string& id) const;
-  // The folder a conversation works in: a thread's project, else its own.
+  // The folder a conversation works in: a thread's folder, else its own.
   std::string Folder(const std::string& id) const;
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);

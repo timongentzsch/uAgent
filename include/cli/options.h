@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CLI_OPTIONS_H_
 #define UAGENT_INCLUDE_CLI_OPTIONS_H_
+// Command-line options: what the flags mean, how they are parsed and the
+// usage text.
 
 #include <map>
 #include <span>

@@ -1,6 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_PUSH_H_
 #define UAGENT_INCLUDE_WEB_PUSH_H_
+// Web Push: sending a notification to a subscribed device, with checks
+// that the service is a public one.
+
 #include <sys/socket.h>
 
 #include <cstdint>

@@ -181,7 +181,7 @@ int WebMain([[maybe_unused]] const Options& options,
     fprintf(stderr, "--web cannot inherit session execution options\n");
     return 2;
   }
-  // User configuration only. No project configuration, MCP, trust prompt,
+  // User configuration only. No folder configuration, MCP, trust prompt,
   // agent or process supervisor in the master.
   for (const auto& [key, value] : options.overrides) {
     if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {

@@ -98,7 +98,7 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
 // the sandbox holds it there: the commands the sandbox wraps (run and
 // scratch, which may also write the sandbox's other roots: temporary
 // files and tool caches), and file changes at a path its own check
-// finds inside the workspace. Stopping a process is not one of them: a
+// finds inside the folder. Stopping a process is not one of them: a
 // detached one may belong to another folder.
 // Without an enforced sandbox, or for anything else, it is reviewed like
 // any Auto session.

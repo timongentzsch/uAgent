@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_API_EXCHANGE_H_
 #define UAGENT_INCLUDE_API_EXCHANGE_H_
+// A provider request and response kept on disk for the inspector, with
+// only bounded metadata in events.
 
 #include <string>
 #include <string_view>

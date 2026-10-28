@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_API_TYPES_H_
 #define UAGENT_INCLUDE_API_TYPES_H_
+// What a provider call returns: the result, tool calls, why a response
+// stopped and how a remote error is classified.
 
 #include <cstdint>
 #include <string>

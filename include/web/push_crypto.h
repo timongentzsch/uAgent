@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_PUSH_CRYPTO_H_
 #define UAGENT_INCLUDE_WEB_PUSH_CRYPTO_H_
+// The cryptography Web Push needs: keys, base64url, message encryption and
+// VAPID.
 
 #include <openssl/evp.h>
 

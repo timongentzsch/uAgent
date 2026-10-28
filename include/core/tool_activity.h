@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_TOOL_ACTIVITY_H_
 #define UAGENT_INCLUDE_CORE_TOOL_ACTIVITY_H_
+// How a turn's tool calls are grouped and labelled for display. Terminal
+// and web use the same labels.
 
 #include <string>
 #include <vector>

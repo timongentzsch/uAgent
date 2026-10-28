@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_TOOLS_IMAGE_RESULT_H_
 #define UAGENT_INCLUDE_TOOLS_IMAGE_RESULT_H_
+// Saving an image or file a tool produced and queueing it for the next model
+// request. Used by tools and MCP results that return images.
 
 #include <string>
 

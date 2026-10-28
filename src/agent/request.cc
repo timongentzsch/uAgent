@@ -717,12 +717,12 @@ json Agent::PromptPreview() const {
 
 // One system message carries every static baseline fact. The OpenAI convention
 // allows a single system message and only at index zero; strict chat templates
-// reject a second one outright, so project instructions are folded in here
+// reject a second one outright, so folder instructions are folded in here
 // instead of riding as a separate message.
 //
 // Memory is not folded in. It is the one part of the baseline that differs
 // between two sessions on the same build, and message zero is the prefix a
-// provider caches: a different project would otherwise re-bill the whole
+// provider caches: a different folder would otherwise re-bill the whole
 // prompt. It also carries no authority — the prompt says so — and the system
 // message is where authority lives, so it rides with the runtime context
 // instead. It is read once at start: a memory saved now reaches new sessions.

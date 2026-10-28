@@ -182,8 +182,8 @@ std::string WriteInstructionFile(bool panel, bool project,
   if (std::filesystem::is_symlink(path, ec)) {
     return path.string() + " is a symbolic link; edit its target instead";
   }
-  // A project's files belong to its repository and others read them; yours
-  // live in your private ~/.uagent. A project's .uagent stays private too.
+  // A folder's files belong to its repository and others read them; yours
+  // live in your private ~/.uagent. A folder's .uagent stays private too.
   std::string error;
   if (!project || panel) CreatePrivateDirectories(path.parent_path());
   AtomicWriteFile(path.string(), text,

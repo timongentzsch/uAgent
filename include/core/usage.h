@@ -2,6 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_USAGE_H_
 #define UAGENT_INCLUDE_CORE_USAGE_H_
+// Token and cost accounting: one response's usage, what a conversation has
+// accumulated and how both are summed and shown.
 
 #include <algorithm>
 #include <cmath>

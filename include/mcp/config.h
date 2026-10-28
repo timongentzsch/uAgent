@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_MCP_CONFIG_H_
 #define UAGENT_INCLUDE_MCP_CONFIG_H_
 // Server configuration: validation of anything a config file asks to
-// spawn, then the merge of user and trusted project sources.
+// spawn, then the merge of user and trusted folder sources.
 
 #include <algorithm>
 #include <cstdint>
@@ -170,8 +170,8 @@ inline bool McpResolveRoots(const json& conf, json& roots, std::string& error) {
   return true;
 }
 
-// A trusted ./.mcp.json then ~/.mcp.json — the project layer wins.
-// The credential/config loader never imports a project .env.
+// A trusted ./.mcp.json then ~/.mcp.json — the folder layer wins.
+// The credential/config loader never imports a folder .env.
 inline json McpLoadConfig(const json& trusted_project) {
   auto read = [](const std::string& path) -> json {
     std::error_code ec;

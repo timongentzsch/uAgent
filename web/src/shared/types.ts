@@ -1,7 +1,12 @@
 // The native host owns this versioned wire contract. Unknown JSON stays at the
 // HTTP boundary; components share these projections instead of redefining them.
 export type JSONValue =
-  null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
+  | null
+  | boolean
+  | number
+  | string
+  | JSONValue[]
+  | { [key: string]: JSONValue };
 // "inline": the surface that failed shows it; the banner stays clear.
 export type Report = (error: unknown, scope?: "inline") => void;
 interface Failure extends Error {
@@ -1116,7 +1121,10 @@ interface ScheduleResult extends Partial<ScheduledState> {
 }
 
 export type ConnectionPhase =
-  "connected" | "connecting" | "reconnecting" | "disconnected";
+  | "connected"
+  | "connecting"
+  | "reconnecting"
+  | "disconnected";
 
 // What the inspector is opened on: a transcript row, a live activity, or a
 // tool's retained input/output.

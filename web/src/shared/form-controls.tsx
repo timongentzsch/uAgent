@@ -11,7 +11,9 @@ import { coarsePointer, observeResize, zoomChanged } from "./layout.ts";
 import { focusFontFloor } from "./limits.ts";
 
 type ControlElement =
-  HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+  | HTMLInputElement
+  | HTMLTextAreaElement
+  | HTMLSelectElement;
 // Preact 11 types a textarea role as "textbox" only; the composer is a combobox.
 export type TextareaProps = Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,

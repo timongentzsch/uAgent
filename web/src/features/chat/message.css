@@ -107,12 +107,8 @@
 /* Status only when it matters: a running headline shimmers softly, a failed
    line reads in the error colour, and a finished one needs no mark. */
 .tool-disclosure.running > summary .disclosure-label {
-  background: linear-gradient(
-      90deg,
-      var(--muted) 30%,
-      var(--text) 50%,
-      var(--muted) 70%
-    )
+  background:
+    linear-gradient(90deg, var(--muted) 30%, var(--text) 50%, var(--muted) 70%)
     0 0 / 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;

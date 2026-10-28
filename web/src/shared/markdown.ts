@@ -164,7 +164,7 @@ export function markdownBlocks(
   const options = plain
     ? { ...markdown.options, highlight: null }
     : markdown.options;
-  for (let start = 0; start < tokens.length;) {
+  for (let start = 0; start < tokens.length; ) {
     let end = start + 1;
     if (tokens[start].nesting === 1) {
       let depth = 1;
@@ -261,7 +261,7 @@ export function healTail(text: string): string {
 function closeInline(block: string) {
   const stack: { marker: string; at: number }[] = [];
   const word = (character = "") => /[\p{L}\p{N}]/u.test(character);
-  for (let i = 0; i < block.length;) {
+  for (let i = 0; i < block.length; ) {
     if (block[i] === "\\") {
       i += 2;
       continue;

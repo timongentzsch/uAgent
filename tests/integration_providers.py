@@ -1642,6 +1642,9 @@ def test_uagent_tool_lists_every_setting(root, home, *, binary):
     with Server([ask, finish]) as server:
         env = base_env(home, server.url)
         env["UAGENT_API_KEY"] = "canary-api-key"
+        # Room for the whole catalogue beside the tools, so it is read uncut
+        # rather than compacted away.
+        env["UAGENT_CONTEXT"] = "32768"
         result = run(root, env, "--yolo", "-p", "list settings", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("catalogue-ok"), result.stdout)

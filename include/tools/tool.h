@@ -218,8 +218,7 @@ struct Tool {
   // How the result reads: "text" (a log, expanded on demand), "markdown", or
   // "tail" (its last lines stay visible, e.g. a command's output).
   std::string output_view = "text";
-  bool redact_invalid_arguments = false;  // hide raw rejected arguments
-  bool parallel_safe = false;             // safe beside another tool call
+  bool parallel_safe = false;  // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
   Approval needs_approval;   // dynamic policy (e.g. external read)
   Classify approval_class;   // escalates specific arguments

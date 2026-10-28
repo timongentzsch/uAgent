@@ -23,7 +23,6 @@ void RequireHuman(Tool& tool) {
   tool.approval_class = [](const json&) {
     return ApprovalClass::kMandatoryHuman;
   };
-  tool.redact_invalid_arguments = true;
   tool.capabilities = 0;
   tool.available_in_lean = false;
   tool.category = "system";

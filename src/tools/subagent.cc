@@ -955,9 +955,9 @@ Tool SubagentFanoutTool(const Api& api, ActivitySupervisor& processes,
       });
   Delegating(tool);
   tool.summary = [](const json& arguments) {
-    return "[fanout " +
-           std::to_string(JsonValue(arguments, "items", json::array()).size()) +
-           " items] " + JsonValue(arguments, "prompt", "");
+    const json* items = JsonArray(arguments, "items");
+    return "[fanout " + std::to_string(items ? items->size() : 0) + " items] " +
+           JsonValue(arguments, "prompt", "");
   };
   tool.header = [](const json& arguments) {
     return json{{"verb", {"Fanning out", "Fanned out"}},

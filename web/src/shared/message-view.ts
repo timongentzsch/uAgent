@@ -92,11 +92,12 @@ export function presentMessages(
     if (block.kind === "assistant" && block.response_id)
       responses.set(block.response_id, block);
     // Thinking is content only at a level that shows it: a reply holding
-    // nothing else would otherwise be an empty row with its margins.
+    // nothing else would otherwise be an empty row with its margins. Some
+    // models send a blank line before their calls; blank is empty too.
     if (
       block.kind === "assistant" &&
-      !block.text &&
-      !(block.reasoning && policy.reasoning !== "hidden") &&
+      !block.text?.trim() &&
+      !(block.reasoning?.trim() && policy.reasoning !== "hidden") &&
       !block.files?.length &&
       !block.deliveries?.length &&
       !block.truncated

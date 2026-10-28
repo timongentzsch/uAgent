@@ -28,6 +28,8 @@ every metric.
   resending it, and a browser result for the page just seen carries only what
   changed.
 
+![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](docs/images/architecture.svg)
+
 ## What it does
 
 - **Drives a real browser.** A persistent Chrome profile that you watch and

@@ -42,7 +42,7 @@ def child_sessions(home):
     return saved_json_files(home / ".uagent" / "history", "*/agent-*.json")
 
 
-STARTED = "[started] subagent id "
+STARTED = "[started] subagent "
 
 
 def launched(texts):
@@ -57,9 +57,9 @@ def wait_round():
 
 def collaborator(text):
     """The child id a resume note names."""
-    match = re.search(r"\[collaborator (agent-[^;\]]+)", text)
+    match = re.search(r"\[collaborator (agent-[^;\]]+)|\[started\] subagent (agent-\S+) ", text)
     assert_true(match is not None, text)
-    return match.group(1)
+    return match.group(1) or match.group(2)
 
 
 def subagent_batch(prompts, usage=None, **arguments):
@@ -1196,7 +1196,11 @@ def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
         results = tool_results(messages)
         if any("stopped" in result for result in results[1:]):
             return event({"content": "child-stopped"})
-        started = re.search(r"\[started\] subagent id (\d+)", results[0]) if results else None
+        started = (
+            re.search(r"\[started\] subagent agent-\S+ \(activity (\d+)\)", results[0])
+            if results
+            else None
+        )
         if started:
             wait_until(lambda: all(p.exists() for p in pids), "the child tree did not start")
             return tool_call("activity", {"operation": "stop", "id": int(started.group(1))})
@@ -1378,7 +1382,7 @@ def test_yolo_sessions_in_a_folder_message_each_other(root, home, *, binary):
 def test_a_peer_in_ask_mode_does_not_take_a_yolo_session_mail(root, home, *, binary):
     workspace, peer = start_peer(root, home, binary)
     sent = message_peer(workspace, home, peer, binary, "--yolo")
-    assert_true("not in yolo mode will not take it" in sent, sent)
+    assert_true("it arrives while that session is in yolo mode" in sent, sent)
     seen = resume_peer(workspace, home, peer, binary)
     assert_true("approval ask" in seen and "ping from a" not in seen, seen)
     assert_true(len(list((home / ".uagent" / "mail").glob("*/new/*.json"))) == 1, "mail kept")

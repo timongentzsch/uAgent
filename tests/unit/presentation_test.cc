@@ -371,7 +371,8 @@ void TestModelHints() {
   // A started-work hint gives way to the output; the row links the work.
   CHECK(StripModelHints("[running] activity 7; poll or wait\nServing") ==
         "Serving");
-  CHECK(StripModelHints("[started] subagent id 7; wait").empty());
+  CHECK(
+      StripModelHints("[started] subagent agent-1 (activity 7); wait").empty());
   CHECK(StripModelHints("plain") == "plain");
 }
 

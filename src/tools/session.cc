@@ -52,8 +52,8 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   // A yolo peer takes mail only while it is in yolo itself, and only it knows.
   return ToolSuccess("sent to session " + id +
                      (SocietySession(peer) ? ""
-                                           : "; a peer that is not in yolo "
-                                             "mode will not take it"));
+                                           : "; it arrives while that session "
+                                             "is in yolo mode"));
 }
 
 Tool SessionTool(const std::function<void(const std::string& path)>& start) {

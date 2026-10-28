@@ -321,6 +321,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
 
   // Everything below is the supervised foreground lifecycle.
   bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
+  const std::string agent_id = spec.source_id;
   std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
       kMaxBackgroundActivities, is_subagent ? kMaxDelegatedActivities : 0);
   if (!reservation) {
@@ -533,7 +534,8 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   }
   if (is_subagent) {
     ToolResult started = ToolSuccess(
-        kStartedSubagentMarker + std::to_string(activity_id) +
+        kStartedSubagentMarker + agent_id + " (activity " +
+        std::to_string(activity_id) + ")" +
         (supervisor.WakesSession()
              ? "; its result reaches you when it ends, even after this turn; "
                "inspect activity output for progress"

@@ -552,7 +552,9 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
                     ChildAgentConstraintNotes(clamped);
   }
   if (child.launched) {
-    result.output += ChildAgentResumeNote(id);
+    // A child still running is named in its launch receipt; the note says how
+    // to resume one that has answered.
+    if (child.wait_status) result.output += ChildAgentResumeNote(id);
     result.parts = json::array({LinkPart("agent", id, "Open agent")});
   }
   return result;

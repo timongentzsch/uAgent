@@ -55,15 +55,20 @@ ToolResult ToolAttachedFile(const std::string& bytes, const char* stem,
   ToolResult saved = ToolWritePrivateFile(path, bytes);
   if (!saved.Ok()) return saved;
   ToolResult attached = Attachments().Add(path, std::move(source_call_id));
+  // The row shows the file itself; where it went is for the model.
+  ToolResult result = ToolSuccess("");
+  result.body_kind = "image";
   if (!attached.Ok()) {
     std::string reason = std::move(attached.output);
     if (reason.starts_with(kToolErrorPrefix)) {
       reason.erase(0, kToolErrorPrefix.size());
     }
-    return ToolSuccess("[" + what + " saved: " + path +
-                       "; not attached: " + reason + "]");
+    result.hint =
+        "[" + what + " saved: " + path + "; not attached: " + reason + "]";
+  } else {
+    result.hint = "[" + what + " saved: " + path +
+                  "; attached — readable in your next step]";
   }
-  return ToolSuccess("[" + what + " saved: " + path +
-                     "; attached — readable in your next step]");
+  return result;
 }
 }  // namespace uagent

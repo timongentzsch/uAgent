@@ -88,7 +88,8 @@ void TestPythonTool() {
   CHECK(ToolWriteFile((root / "kept.txt").string(), "old").Ok());
   write("save.sh", "echo x > chart.png; mkdir -p out; echo x > out/data.csv\n");
   result = ToolRunScratch(supervisor, root, "save.sh");
-  CHECK(result.output == "[changed in the folder: chart.png, out/]");
+  CHECK(result.output.empty());
+  CHECK(result.hint == "[changed in the folder: chart.png, out/]");
   write("quiet.sh", "echo done\n");
   result = ToolRunScratch(supervisor, root, "quiet.sh");
   CHECK(result.output == "done\n");
@@ -119,7 +120,7 @@ void TestPythonTool() {
                           json::array({"x; touch " + marker.string()}));
   CHECK(result.output == "safe\n");
   CHECK(!fs::exists(marker));
-  CHECK(result.display.empty());  // a run is not a change receipt
+  CHECK(result.diff.empty());  // a run is not a change
 
   write("slow.py", "import time; time.sleep(.2); print('slow-ok')\n");
   CHECK(ToolRunScratch(supervisor, root, "slow.py").output == "slow-ok\n");

@@ -81,15 +81,16 @@ class FixedWidth {
 };
 
 // A tool row as the transcript view holds it.
+// A row in `state`, its result worded `word`, or by its state when it did not
+// succeed.
 json ToolBlock(const std::string& id, const std::string& name,
-               const std::string& status, const std::string& text) {
-  return {{"id", "t-" + id},
-          {"kind", "tool_result"},
-          {"call_id", id},
-          {"name", name},
-          {"status", status},
-          {"text", text},
-          {"activity", json::object()}};
+               const std::string& state, const std::string& text,
+               std::string word = "") {
+  if (word.empty() && state != "ok") word = state;
+  return {{"id", "t-" + id}, {"kind", "tool_result"},
+          {"call_id", id},   {"name", name},
+          {"state", state},  {"result", {{"word", word}}},
+          {"text", text},    {"activity", json::object()}};
 }
 
 }  // namespace
@@ -115,28 +116,30 @@ void TestToolResultRows() {
                  "error: Couldn't connect to server") != std::string::npos);
   CHECK(row.find("child-secret-must-not-enter-row") == std::string::npos);
 
-  // Output is arbitrary command text. Only recorded status establishes
-  // failure, and a missing receipt reads as neither.
-  for (const char* status : {"success", "complete"}) {
-    row = drawn(ToolBlock("c1", "run", status, "error: printed by command"));
-    CHECK(row.find("← run: error: printed by command") != std::string::npos);
-  }
+  // Output is arbitrary command text. Only the recorded state establishes
+  // failure, and the host's words say how.
+  row = drawn(ToolBlock("c1", "run", "ok", "error: printed by command"));
+  CHECK(row.find("← run: error: printed by command") != std::string::npos);
   CHECK(drawn(ToolBlock("c1", "run", "cancelled", "stopped"))
             .find("← run: cancelled: stopped") != std::string::npos);
-  CHECK(drawn(ToolBlock("c1", "run", "timed_out", "late"))
-            .find("run: timed_out: late") != std::string::npos);
-  CHECK(drawn(ToolBlock("c1", "read_path", "success", ""))
+  CHECK(drawn(ToolBlock("c1", "run", "failed", "late", "timed out · 2s"))
+            .find("run: timed out · 2s: late") != std::string::npos);
+  CHECK(drawn(ToolBlock("c1", "read_path", "ok", ""))
             .find("← read_path: (empty)") != std::string::npos);
 
-  // A change is told entirely by its diff: no result row is drawn under it,
-  // and a failed call's change was never made.
-  json changed = ToolBlock("c1", "edit_file", "success", "edited a.txt");
-  changed["change"] = "Edited a.txt (+1 -1)\n-old\n+new";
+  // A change is told entirely by its headline and diff: no result row is
+  // drawn under it, and a failed call's change was never made.
+  json changed =
+      ToolBlock("c1", "edit_file", "ok", "edited a.txt", "+1 −1 · 20ms");
+  changed["view"] = {{"verb", {"Editing", "Edited"}}, {"target", "a.txt"}};
+  changed["change"] = "@line 1\n-old\n+new";
   row = drawn(changed);
-  CHECK(row.find("Edited a.txt (+1 -1)") != std::string::npos);
+  CHECK(row.find("Edited a.txt") != std::string::npos);
+  CHECK(row.find("+1 −1 · 20ms") != std::string::npos);
   CHECK(row.find("+new") != std::string::npos);
   CHECK(row.find("←") == std::string::npos);
-  changed["status"] = "failed";
+  changed["state"] = "failed";
+  changed["result"]["word"] = "failed";
   row = drawn(changed);
   CHECK(row.find("+new") == std::string::npos);
   CHECK(row.find("edit_file: failed: edited a.txt") != std::string::npos);
@@ -145,15 +148,15 @@ void TestToolResultRows() {
   // full level prints it, indented under its row.
   std::string body = "[script: .uagent/scratch/x.py · wrote]\n";
   for (int line = 1; line <= 30; ++line) body += std::to_string(line) + "\n";
-  const json script = ToolBlock("c2", "scratch", "success", body);
+  const json script = ToolBlock("c2", "scratch", "ok", body);
   row = drawn(script);
   CHECK(row.find("← scratch: [script: .uagent/scratch/x.py · wrote] … · +30 "
                  "lines") != std::string::npos);
   CHECK(drawn(script, "full").find("\n    30") != std::string::npos);
   // A command's last lines stay under its row; a long result's row holds its
   // start and its end, and says only that there is more.
-  json command = ToolBlock("c3", "run", "success", "1\n2\n3…");
-  command["view"] = {{"output", "tail"}};
+  json command = ToolBlock("c3", "run", "ok", "1\n2\n3…");
+  command["body_kind"] = "tail";
   command["truncated"] = true;
   command["tail"] = "99\n100\n";
   row = drawn(command);
@@ -171,9 +174,9 @@ void TestToolResultRows() {
   row = drawn(script);
   CHECK(row.find("<- scratch") != std::string::npos);
   CHECK(row.find("←") == std::string::npos);
-  CHECK(drawn(ToolBlock("c4", "run", "success", "model text: µ · ← …\nsecond"),
-              "full")
-            .find("    model text: µ · ← …\n    second") != std::string::npos);
+  CHECK(
+      drawn(ToolBlock("c4", "run", "ok", "model text: µ · ← …\nsecond"), "full")
+          .find("    model text: µ · ← …\n    second") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
 
@@ -212,8 +215,8 @@ void TestToolRowsDrawLiveAsResumed() {
   running["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
   running["activity"] = {{"label", "a.txt"}};
   json finished = running;
-  finished["status"] = "success";
-  finished["text"] = "[a.txt lines 1-3 of 3]";
+  finished["state"] = "ok";
+  finished["text"] = "alpha";
   std::string live;
   const std::string resumed = CaptureStdout([&] {
     TerminalPresenter presenter;
@@ -231,8 +234,7 @@ void TestToolRowsDrawLiveAsResumed() {
     });
   }
   CHECK(live == resumed);
-  CHECK(resumed.find("← read_path: [a.txt lines 1-3 of 3]") !=
-        std::string::npos);
+  CHECK(resumed.find("← read_path: alpha") != std::string::npos);
 
   // Tool-only assistant blocks print no bare mark line, like live.
   CHECK(CaptureStdout([] {
@@ -248,7 +250,7 @@ void TestToolRowsDrawLiveAsResumed() {
   const std::string script = "first\n" + std::string(4096, 'x') + "\nlast";
   json multiline = running;
   multiline["id"] = "t-c2";
-  multiline["activity"]["label"] = script;
+  multiline["view"]["target"] = script;
   std::string drawn = CaptureStdout([&] {
     TerminalPresenter presenter;
     presenter.Block(rejected);
@@ -272,7 +274,7 @@ void TestToolRowsDrawLiveAsResumed() {
     presenter.Block(member);
   });
   CHECK(drawn.find("Explored") == drawn.rfind("Explored"));
-  CHECK(drawn.find("[a.txt lines") == std::string::npos);
+  CHECK(drawn.find("alpha") == std::string::npos);
   // A label is stored text: shown, never obeyed.
   CHECK(drawn.find("calls\\x1b[2J") != std::string::npos);
 }
@@ -299,9 +301,9 @@ void TestVerbosityLevels() {
       presenter.Block({{"kind", "user"}, {"text", "go"}});
       presenter.Block(
           {{"kind", "assistant"}, {"text", "done"}, {"reasoning", "pondered"}});
-      presenter.Block(result("a", "success", "explore", group));
-      presenter.Block(result("b", "success", "explore", group));
-      presenter.Block(result("c", "success", "edit"));
+      presenter.Block(result("a", "ok", "explore", group));
+      presenter.Block(result("b", "ok", "explore", group));
+      presenter.Block(result("c", "ok", "edit"));
       presenter.Block(result("d", "failed", "explore"));
       presenter.Block({{"kind", "turn_summary"}, {"summary", json::object()}});
     });
@@ -341,7 +343,11 @@ void TestToolViews() {
                                  {"intent", "read"},
                                  {"body", "one\ntwo"},
                                  {"edits", json::array({{{"old", "x"}}})}});
-  CHECK(view["output"] == "text");
+  // A call without a headline of its own is "Called <tool>", and an
+  // argument too long for a line never stands in for its target.
+  CHECK(view["verb"] == json::array({"Calling tool", "Called tool"}));
+  CHECK(view["target"] == "a.txt");
+  CHECK(!view.contains("output"));
   const json& input = view["input"];
   CHECK(input[0]["kind"] == "fields");
   CHECK(input[0]["rows"].size() == 2);
@@ -360,36 +366,66 @@ void TestToolViews() {
   CHECK(ToolView(nullptr, json("{broken"))["input"][0]["text"] == "{broken");
 }
 
-// The resume hint is for the model; rows link to the agent through facts.
+// The model reads the output, then the hints; a person reads the output.
 void TestModelHints() {
-  CHECK(StripModelHints("done\n[collaborator agent-1; resume with subagent "
-                        "operation=followup]") == "done");
-  CHECK(StripModelHints("done\n[collaborator agent-1; persistent runtime "
-                        "retained]") == "done");
-  // Only a final line is a trailer; the same text elsewhere is content.
-  CHECK(StripModelHints("[collaborator x]\nmore") == "[collaborator x]\nmore");
-  // A started-work hint gives way to the output; the row links the work.
-  CHECK(StripModelHints("[running] activity 7; poll or wait\nServing") ==
-        "Serving");
-  CHECK(
-      StripModelHints("[started] subagent agent-1 (activity 7); wait").empty());
-  CHECK(StripModelHints("plain") == "plain");
+  ToolResult result = ToolSuccess("done");
+  AddHint(result, "\n[collaborator agent-1; resume]");
+  AddHint(result, "[clamped x]");
+  CHECK(result.hint == "[collaborator agent-1; resume]\n[clamped x]");
+  CHECK(ModelText(result) ==
+        "done\n[collaborator agent-1; resume]\n[clamped x]");
+  // A hint alone does not open on an empty line.
+  ToolResult started = ToolSuccess("");
+  AddHint(started, "[started] subagent agent-1");
+  CHECK(ModelText(started) == "[started] subagent agent-1");
+  // A captured log's locator follows the hints, whatever cut the output.
+  result.artifact = ToolArtifact{"/tmp/log.txt", 99};
+  CHECK(ModelText(result).ends_with(ArtifactHint(*result.artifact)));
+  CHECK(ArtifactHint(*result.artifact).starts_with(kCapturedLogMarker));
 }
 
-// Each marker a tool writes for the model is stripped from the view, and the
-// parser reads exactly what the writer emits.
-void TestModelHintMarkers() {
-  for (const char* marker :
-       {kRunningActivityMarker, kStartedSubagentMarker, kDetachedMarker}) {
-    CHECK(StripModelHints(std::string(marker) + "7; hint\nbody") == "body");
-    CHECK(StripModelHints("body " + std::string(marker) + "7") ==
-          "body " + std::string(marker) + "7");
-  }
-  CHECK(StripModelHints("done" + ChildAgentResumeNote("agent-1")) == "done");
-  const std::string hint = ArtifactHint({"/tmp/log.txt", 99});
-  CHECK(hint.starts_with(kCapturedLogMarker));
-  CHECK(StripArtifactHint("tail line" + hint) == "tail line");
-  CHECK(StripArtifactHint("tail line") == "tail line");
+// One function words a result from its facts, in a fixed order of what
+// matters most, then its duration.
+void TestResultWord() {
+  auto word = [](const ResultFacts& facts, std::string_view state = "ok",
+                 double ms = -1) { return ResultWord(facts, state, ms); };
+  // A tool that reports no facts reads as its duration alone, or its state.
+  CHECK((word({}, "ok", 1400) == "1.4s"));
+  CHECK((word({}) == ""));
+  CHECK((word({}, "failed", 20) == "failed · 20ms"));
+  CHECK((word({}, "cancelled") == "cancelled"));
+  CHECK((word({.outcome = "timed_out"}, "failed") == "timed out"));
+  CHECK((word({.outcome = "denied"}, "failed") == "denied"));
+  CHECK((word({.outcome = "rejected", .reason = "path is outside"}, "failed") ==
+         "rejected: path is outside"));
+  CHECK((word({.exit = ResultFacts::Exit{.signal = 9}}, "failed") == "killed"));
+  CHECK((word({.exit = ResultFacts::Exit{.code = 2}}, "failed", 1400) ==
+         "exit 2 · 1.4s"));
+  // A clean exit says nothing beyond the time it took.
+  CHECK((word({.exit = ResultFacts::Exit{}}, "ok", 1400) == "1.4s"));
+  CHECK((word({.added = 3, .removed = 1}) == "+3 −1"));
+  CHECK((word({.added = 0, .removed = 0, .no_change = true}) == "no change"));
+  CHECK((word({.items = 1, .unit = "line"}) == "1 line"));
+  CHECK((word({.items = 12, .unit = "entry"}) == "12 entries"));
+  CHECK((word({.items = 2, .unit = "match"}) == "2 matches"));
+  // The first that applies wins: a refusal over its exit, an exit over a
+  // count, a count over the bare state.
+  CHECK((word({.exit = ResultFacts::Exit{.code = 1}, .outcome = "denied"},
+              "failed") == "denied"));
+  CHECK(
+      (word({.exit = ResultFacts::Exit{.code = 1}, .items = 3, .unit = "line"},
+            "failed") == "exit 1"));
+  CHECK((word({.items = 0, .unit = "line"}, "failed") == "0 lines"));
+  // The row carries the facts it was worded from.
+  const json result = ResultJson(
+      {.exit = ResultFacts::Exit{.code = 2}, .items = 4, .unit = "line"},
+      "failed", 10);
+  CHECK(result["word"] == "exit 2 · 10ms");
+  CHECK((result["exit"] == json{{"code", 2}}));
+  CHECK(result["items"] == 4 && result["unit"] == "line");
+  CHECK(!result.contains("added") && !result.contains("outcome"));
+  CHECK(ResultState(CompletionStatus::kTimedOut) == std::string("failed"));
+  CHECK(ResultState(CompletionStatus::kCancelled) == std::string("cancelled"));
 }
 
 void TestDiffLineColoring() {

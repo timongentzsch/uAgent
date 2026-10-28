@@ -235,8 +235,8 @@ test("block patches rebuild the host's view", () => {
     patch({ id: "r", append: { text: "Hello" } }),
     patch({ id: "r", append: { text: " world", reasoning: "why" } }),
     patch({ id: "r", set: { streaming: false } }),
-    patch({ block: { id: "t-a", kind: "tool_result", status: "running" } }),
-    patch({ block: { id: "t-a", kind: "tool_result", status: "success" } }),
+    patch({ block: { id: "t-a", kind: "tool_result", state: "running" } }),
+    patch({ block: { id: "t-a", kind: "tool_result", state: "ok" } }),
     patch({ block: { id: "m-1", sequence: 1, kind: "user", text: "hi" } }),
     patch({ id: "missing", append: { text: "dropped" } }),
   ])
@@ -249,7 +249,7 @@ test("block patches rebuild the host's view", () => {
   assert.equal(blocks[0].text, "Hello world");
   assert.equal(blocks[0].reasoning, "why");
   assert.equal(blocks[0].streaming, false);
-  assert.equal(blocks[1].status, "success");
+  assert.equal(blocks[1].state, "ok");
   const retained = applySessionEvent(snapshot, {
     kind: "block",
     block: { id: "m-0", sequence: 0, kind: "user", text: "first" },

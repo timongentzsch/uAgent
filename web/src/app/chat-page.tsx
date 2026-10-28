@@ -11,6 +11,7 @@ import type {
   SlashCommand,
 } from "../shared/types.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
+import { isRunning } from "../shared/display.ts";
 import { useCallback, useMemo } from "preact/hooks";
 import { api, routes } from "../state/api.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
@@ -54,13 +55,15 @@ export function transcriptBlocks(
   ];
 }
 
-// The conversation's agent is using the browser.
+// The conversation's agent is using the browser: a running call links to it.
 export const isBrowsing = (snapshot?: Snapshot) =>
   !!snapshot?.state?.view?.blocks.some(
     (block) =>
       block.kind === "tool_result" &&
-      block.name === "browser" &&
-      block.status === "running",
+      isRunning(block.state) &&
+      !!block.view?.input?.some(
+        (part) => part.kind === "link" && part.to === "browser",
+      ),
   );
 
 // The one surface that reads the selected conversation's snapshot, so a

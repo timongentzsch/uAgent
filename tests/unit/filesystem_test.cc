@@ -145,8 +145,8 @@ void TestFileTools() {
   CHECK(ToolWriteFile((binary_directory / "data.bin").string(),
                       std::string("text\0binary", 11))
             .output.starts_with("wrote "));
-  CHECK(ToolListDir(binary_directory.string(), 1, 0, true)
-            .output.find("small directory contents") == std::string::npos);
+  CHECK(ModelText(ToolListDir(binary_directory.string(), 1, 0, true))
+            .find("small directory contents") == std::string::npos);
   fs::path symlink_directory = root / "symlink-directory";
   fs::create_directories(symlink_directory);
   fs::create_symlink(small_directory / "one.cc",
@@ -156,9 +156,11 @@ void TestFileTools() {
   fs::path file = root / "file.txt";
   CHECK(
       ToolWriteFile(file.string(), "one\ntwo\n").output.starts_with("wrote "));
-  std::string read = ToolReadFile(file.string(), 1, 1).output;
+  // The range is the model's hint, never the person's text.
+  CHECK(ToolReadFile(file.string(), 1, 1).output == "one\n");
+  std::string read = ModelText(ToolReadFile(file.string(), 1, 1));
   CHECK(read.find("lines 1-1") != std::string::npos);
-  CHECK(read.find("\none\n") != std::string::npos);
+  CHECK(read.starts_with("one\n"));
   CHECK(ToolReadFile(file.string(), 1, 1).read_range->last == 1);
   // A media read rejects line ranges instead of silently ignoring them.
   fs::path binary_file = root / "payload.bin";
@@ -170,7 +172,7 @@ void TestFileTools() {
   fs::path long_line = root / "long-line.txt";
   CHECK(ToolWriteFile(long_line.string(), std::string(size_t{40} * 1024, 'x'))
             .output.starts_with("wrote "));
-  std::string long_read = ToolReadFile(long_line.string(), 1, 1).output;
+  std::string long_read = ModelText(ToolReadFile(long_line.string(), 1, 1));
   CHECK(long_read.find("lines 1-1; line prefix limited") != std::string::npos);
   CHECK(long_read.find(std::string(1024, 'x')) != std::string::npos);
   CHECK(!ToolReadFile(long_line.string(), 1, 1).read_range);
@@ -178,12 +180,12 @@ void TestFileTools() {
   CHECK(ToolWriteFile(long_line.string(),
                       std::string(size_t{2} * 1024 * 1024, 'x') + "\ntail\n")
             .Ok());
-  CHECK(ToolReadFile(long_line.string(), 2, 1).output.ends_with("\ntail\n"));
+  CHECK(ToolReadFile(long_line.string(), 2, 1).output == "tail\n");
   CHECK(ToolReadFile(long_line.string(), 3, 1).error ==
         ToolErrorCode::kInvalidArguments);
   CHECK(ToolWriteFile(long_line.string(), std::string(8191, 'x') + "\n").Ok());
-  CHECK(ToolReadFile(long_line.string(), 1, 1).output.find("more available") ==
-        std::string::npos);
+  CHECK(ModelText(ToolReadFile(long_line.string(), 1, 1))
+            .find("more available") == std::string::npos);
   fs::path ordinary_source = root / "ordinary-source.txt";
   std::string ordinary_source_text;
   for (int line = 1; line <= 300; ++line) {
@@ -192,38 +194,38 @@ void TestFileTools() {
   CHECK(ToolWriteFile(ordinary_source.string(), ordinary_source_text)
             .output.starts_with("wrote "));
   std::string ordinary_read =
-      ToolReadFile(ordinary_source.string(), 1, 0).output;
+      ModelText(ToolReadFile(ordinary_source.string(), 1, 0));
   CHECK(ordinary_read.find("line 300\n") != std::string::npos);
   CHECK(ordinary_read.find("more available") == std::string::npos);
   ToolResult first_edit =
       ToolEditFile(file.string(), {{"two", "three", false}});
   CHECK(first_edit.output.starts_with("edited "));
-  CHECK(first_edit.display.find("Edited " + file.string() + " (+1 -1)") !=
-        std::string::npos);
-  CHECK(first_edit.display.find("@line 2") != std::string::npos);
-  CHECK(first_edit.display.find("-two") != std::string::npos);
-  CHECK(first_edit.display.find("+three") != std::string::npos);
+  // The counts are facts and the diff is the body, with no receipt line.
+  CHECK(first_edit.facts.added == 1 && first_edit.facts.removed == 1);
+  CHECK(first_edit.body_kind == "diff");
+  CHECK(first_edit.diff.starts_with("@line 2"));
+  CHECK(first_edit.diff.find("-two") != std::string::npos);
+  CHECK(first_edit.diff.find("+three") != std::string::npos);
   fs::path created = root / "created.txt";
   ToolResult create_result =
       ToolWriteFileWithDisplay(created.string(), "one\ntwo\n");
   CHECK(create_result.Ok());
-  CHECK(create_result.display.find("Created " + created.string() +
-                                   " (+2 -0)") != std::string::npos);
-  CHECK(create_result.display.find("+one") != std::string::npos);
-  CHECK(create_result.display.find("+two") != std::string::npos);
+  CHECK(create_result.facts.added == 2 && create_result.facts.removed == 0);
+  CHECK(create_result.diff.find("+one") != std::string::npos);
+  CHECK(create_result.diff.find("+two") != std::string::npos);
 
   ToolResult replace_result =
       ToolWriteFileWithDisplay(created.string(), "one\nthree\n", true);
   CHECK(replace_result.Ok());
-  CHECK(replace_result.display.find("Replaced " + created.string() +
-                                    " (+1 -1)") != std::string::npos);
-  CHECK(replace_result.display.find("-two") != std::string::npos);
-  CHECK(replace_result.display.find("+three") != std::string::npos);
+  CHECK(replace_result.facts.added == 1 && replace_result.facts.removed == 1);
+  CHECK(replace_result.diff.find("-two") != std::string::npos);
+  CHECK(replace_result.diff.find("+three") != std::string::npos);
 
   ToolResult identical_result =
       ToolWriteFileWithDisplay(created.string(), "one\nthree\n", true);
   CHECK(identical_result.Ok());
-  CHECK(identical_result.display.empty());
+  CHECK(identical_result.diff.empty());
+  CHECK(identical_result.facts.no_change);
   CHECK(!ToolWriteFileWithDisplay(created.string(), "lost").Ok());
   CHECK(contents(created) == "one\nthree\n");
   fs::path create_link = root / "create-link";
@@ -235,7 +237,7 @@ void TestFileTools() {
   ToolResult binary_result = ToolWriteFileWithDisplay(
       binary_target.string(), std::string("text\0binary", 11));
   CHECK(binary_result.Ok());
-  CHECK(binary_result.display.empty());
+  CHECK(binary_result.diff.empty());
 
   ToolResult missing_edit =
       ToolEditFile(file.string(), {{"missing", "replacement", false}});
@@ -329,8 +331,8 @@ void TestFileTools() {
   CHECK(ToolWriteFile(batch.string(), "same same\n").Ok());
   ToolResult repeated =
       ToolEditFile(batch.string(), {{"same", "changed", true}});
-  CHECK(repeated.display.find("(+2 -2)") != std::string::npos);
-  CHECK(repeated.display.find("2 matches") != std::string::npos);
+  CHECK(repeated.facts.added == 2 && repeated.facts.removed == 2);
+  CHECK(repeated.diff.find("2 matches") != std::string::npos);
 
   fs::path registered = root / "registered.txt";
   CHECK(ToolWriteFile(registered.string(), "a a c\n")
@@ -583,9 +585,9 @@ void TestFileTools() {
   ToolResult deleted = ToolDeleteFileWithDisplay(doomed.string());
   CHECK(deleted.Ok());
   CHECK(!fs::exists(doomed));
-  CHECK(deleted.display.find("-alpha") != std::string::npos);
-  CHECK(deleted.display.find("-beta") != std::string::npos);
-  CHECK(deleted.display.find("(+0 -2)") != std::string::npos);
+  CHECK(deleted.diff.find("-alpha") != std::string::npos);
+  CHECK(deleted.diff.find("-beta") != std::string::npos);
+  CHECK(deleted.facts.added == 0 && deleted.facts.removed == 2);
   ToolResult twice = ToolDeleteFileWithDisplay(doomed.string());
   CHECK(!twice.Ok());
   CHECK(twice.error == ToolErrorCode::kNotFound);

@@ -227,7 +227,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page.getByRole("button", { name: "Dismiss side conversation" }).click();
   await expect(page.locator(".side-answer")).toHaveCount(0);
   const toolResult = page.locator(".message.tool").last();
-  await expect(toolResult).toContainText("Created browser-proof.txt");
+  await expect(toolResult).toContainText("browser-proof.txt");
   await toolResult.locator(".tool-disclosure > summary").click();
   await toolResult
     .getByRole("button", { name: "Tool input/output", exact: true })

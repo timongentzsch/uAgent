@@ -58,9 +58,14 @@ void TestTranscriptSearch() {
       MessageKind::kToolResult);
   std::string accents;
   for (int i = 0; i < 60; ++i) accents += "é";
+  // A tool result is found by what a person reads of it, never by the hint
+  // its message carries for the model.
+  conversation.RecordDisplay(
+      "t-c2",
+      {{"name", "run"}, {"call_id", "c2"}, {"output", accents + "needle"}});
   conversation.Push({{"role", "tool"},
                      {"tool_call_id", "c2"},
-                     {"content", accents + "needle"}},
+                     {"content", accents + "needle\n[needle hint]"}},
                     MessageKind::kToolResult);
   std::string prose;
   for (int i = 0; i < 4; ++i) prose += "Ordinary words go on for a while. ";
@@ -76,6 +81,7 @@ void TestTranscriptSearch() {
   CHECK(hits[1]["kind"] == "assistant");
   CHECK(hits[1]["count"] == 3);
   CHECK(hits[2]["kind"] == "tool_result");
+  CHECK(hits[2]["count"] == 1);
   CHECK(hits[0]["sequence"] < hits[1]["sequence"]);
   CHECK(hits[1]["sequence"] < hits[2]["sequence"]);
   // A long row's snippet starts near the hit, on a whole character.
@@ -716,7 +722,7 @@ void TestCompactionKeepsDisplayIdentity() {
                              {"name", "read_path"},
                              {"arguments", {{"path", "a.txt"}}}},
                             &patch));
-    CHECK(patch["block"]["status"] == "running");
+    CHECK(patch["block"]["state"] == "running");
   }
   MergeDisplayBlock(state["view"], {{"id", "t-a"},
                                     {"sequence", 100},
@@ -727,7 +733,7 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(state["view"]["blocks"][1]["text"] == "first result");
   CHECK(state["view"]["blocks"][1]["name"] == "read_path");
   CHECK(state["view"]["blocks"][1]["arguments"] == "{\"path\":\"a.txt\"}");
-  CHECK(state["view"]["blocks"][2]["status"] == "running");
+  CHECK(state["view"]["blocks"][2]["state"] == "running");
 
   Conversation long_answer;
   long_answer.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -894,7 +900,8 @@ void TestToolResultHealsMissingMetadata() {
       MessageKind::kAssistant);
   // Receipt facts filed under the call's own detail id …
   conversation.RecordDisplay("t-hash1", {{"name", "run"},
-                                         {"status", "success"},
+                                         {"state", "ok"},
+                                         {"output", "out"},
                                          {"duration_ms", 12.5},
                                          {"call_id", "call-1"},
                                          {"response_id", "r-1"},
@@ -910,7 +917,8 @@ void TestToolResultHealsMissingMetadata() {
   const json& result = view["blocks"].back();
   CHECK(result["kind"] == "tool_result");
   CHECK(result["name"] == "run");
-  CHECK(result["status"] == "success");
+  CHECK(result["state"] == "ok");
+  CHECK(result["text"] == "out");
   CHECK(result["duration_ms"] == 12.5);
   CHECK(result["detail_id"] == "t-hash1");
   // The call and its result are one row: the result keeps its place and
@@ -918,15 +926,16 @@ void TestToolResultHealsMissingMetadata() {
   CHECK(view["blocks"].size() == 2);
   CHECK(result["arguments"] == "{\"command\":\"ls\"}");
   CHECK(result["view"]["target"] == "ls");
-  // A message with neither metadata nor facts reads complete, never a
-  // forever-"running" ghost.
+  // A message with neither metadata nor facts reads finished, never a
+  // forever-"running" ghost, and shows none of the model's text.
   conversation.Push(
       {{"role", "tool"}, {"tool_call_id", "call-2"}, {"content", "out"}},
       MessageKind::kToolResult);
   json orphan_view = ConversationView(conversation);
   const json& orphan = orphan_view["blocks"].back();
   CHECK(orphan["name"] == "tool");
-  CHECK(orphan["status"] == "complete");
+  CHECK(orphan["state"] == "ok");
+  CHECK(orphan["text"] == "");
 }
 
 // Delivery receipts dedupe the per-request attachment notice. Display facts

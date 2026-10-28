@@ -23,7 +23,6 @@ writes the conversation the way a screen reader reads it best:
   | its result | `← ` | `result: ` or `failed: ` |
   | a status line | `• ` | `status: ` |
   | a file change | `• ` | `changed: ` |
-  | a skill in use | `◆ skill ` | `skill: ` |
   | a notice | `· ` | none, `warning: ` or `error: ` |
   | a decision | the prompt | `approval needed: ` or `question: ` |
 

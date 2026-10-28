@@ -193,12 +193,17 @@ Tool PlanTool(const std::string& folder) {
                            {"step", {"id"}}}};
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
-  tool.summary = [](const json& a) {
+  tool.headline = [](const json& a) {
     const std::string action = JsonValue(a, "action", "");
-    return action + " " +
-           JsonValue(a, action == "step" ? "id" : "block", std::string());
+    const std::string block = JsonValue(a, "block", "");
+    if (action == "show") return Headline{"Showing", "Showed", "the plan"};
+    if (action == "step") {
+      return Headline{"Updating step", "Updated step", JsonValue(a, "id", "")};
+    }
+    if (action == "append") return Headline{"Adding to", "Added to", block};
+    if (action == "clear") return Headline{"Clearing", "Cleared", block};
+    return Headline{"Setting", "Set", block};
   };
-  tool.header = Verbs("Updating the plan", "Updated the plan");
   return tool;
 }
 

@@ -274,9 +274,11 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
     return ToolFailure(ToolErrorCode::kUnavailable,
                        "web_fetch found no text at " + TerminalSafe(url));
   }
-  std::string head = "[" + TerminalSafe(url);
-  if (page.truncated) head += "; truncated at the byte cap";
-  return ToolSuccess(head + "]\n" + std::move(text));
+  ToolResult result = ToolSuccess(std::move(text));
+  result.body_kind = "markdown";
+  result.hint = "[" + TerminalSafe(url) +
+                (page.truncated ? "; truncated at the byte cap]" : "]");
+  return result;
 }
 
 Tool WebFetchTool(Api& api) {
@@ -312,9 +314,9 @@ Tool WebFetchTool(Api& api) {
                    Capability(ToolCapability::kExternal);
   t.needs_approval = [](const json&) { return true; };
   t.parallel_safe = true;
-  t.summary = [](const json& a) { return JsonValue(a, "url", ""); };
-  t.output_view = "markdown";
-  t.header = Verbs("Fetching", "Fetched");
+  t.headline = [](const json& a) {
+    return Headline{"Fetching", "Fetched", JsonValue(a, "url", "")};
+  };
   t.intent = "research";
   t.dedupe_output = true;
   return t;

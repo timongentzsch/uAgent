@@ -111,7 +111,7 @@ for (const labels of [false, true])
                   response_id: response,
                   name: "read_path",
                   arguments: JSON.stringify({ path: `module-${action}.ts` }),
-                  status,
+                  state: status,
                   text,
                 },
               });
@@ -125,8 +125,7 @@ for (const labels of [false, true])
                   },
                   "turn_status",
                 );
-              for (const id of ["a", "b"])
-                patch(row(id, "success", "inspected"));
+              for (const id of ["a", "b"]) patch(row(id, "ok", "inspected"));
             }
             sent = due;
             if (sent === 5000) {

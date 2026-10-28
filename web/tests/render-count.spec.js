@@ -190,7 +190,7 @@ const streamReply = (page) =>
       });
       // Every tenth frame a tool call starts and finishes: whole rows.
       if (index % 10 === 9)
-        for (const status of ["running", "success"])
+        for (const state of ["running", "ok"])
           testSend({
             kind: "block",
             block: {
@@ -199,8 +199,8 @@ const streamReply = (page) =>
               response_id: "reply",
               name: "read_path",
               arguments: JSON.stringify({ path: `file-${index}.ts` }),
-              status,
-              text: status === "success" ? "read" : "",
+              state,
+              text: state === "ok" ? "read" : "",
               sequence: testSequence,
             },
           });
@@ -238,7 +238,7 @@ test("streaming renders only what changed", async ({ page }) => {
         id: "spawn",
         kind: "tool_result",
         name: "spawn",
-        status: "success",
+        state: "ok",
         text: "started",
         parts: [{ kind: "link", to: "agent", id: "child", label: "Open" }],
         sequence: testSequence,
@@ -252,7 +252,7 @@ test("streaming renders only what changed", async ({ page }) => {
           id: `failed-${index}`,
           kind: "tool_result",
           name: "read_path",
-          status: "failed",
+          state: "failed",
           text: "missing",
           sequence: testSequence,
         },

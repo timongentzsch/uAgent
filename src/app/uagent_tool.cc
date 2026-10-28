@@ -27,7 +27,6 @@ void RequireHuman(Tool& tool) {
   tool.available_in_lean = false;
   tool.category = "system";
   tool.intent = "setup";
-  tool.header = Verbs("Configuring", "Configured");
 }
 }  // namespace
 
@@ -89,11 +88,11 @@ Tool UagentTool(SelfDescriptionProvider describe) {
   tool.available_in_lean = false;
   tool.category = "system";
   tool.intent = "setup";
-  tool.summary = [](const json& arguments) {
-    return JsonValue(arguments, "topic", "status") + " " +
-           JsonValue(arguments, "name", "");
+  tool.headline = [](const json& arguments) {
+    return Headline{"Inspecting", "Inspected",
+                    JsonValue(arguments, "topic", "status") + " " +
+                        JsonValue(arguments, "name", "")};
   };
-  tool.header = Verbs("Inspecting", "Inspected");
   return tool;
 }
 
@@ -170,7 +169,7 @@ Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
   };
   // A genuine one-liner: this is the call label, and it also reaches the debug
   // trace and compaction evidence, so the diff must not be built here.
-  tool.summary = [](const json& arguments) {
+  tool.headline = [](const json& arguments) {
     std::string detail;
     if (const json* list = JsonArray(arguments, "changes")) {
       for (const json& entry : *list) {
@@ -181,7 +180,8 @@ Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
         }
       }
     }
-    return JsonValue(arguments, "scope", "") + " · " + detail;
+    return Headline{"Configuring", "Configured",
+                    JsonValue(arguments, "scope", "") + " · " + detail};
   };
   // Built only when a person is about to be asked. Preparing here also records
   // the proposal, so the bytes shown are exactly the bytes that can commit.
@@ -245,9 +245,10 @@ Tool UagentInstructionsTool() {
                              std::to_string(ProjectDocBytes() / 1024) + " KiB",
                          "text");
   };
-  tool.summary = [](const json& arguments) {
-    return JsonValue(arguments, "scope", "") + " " +
-           JsonValue(arguments, "audience", "") + " instructions";
+  tool.headline = [](const json& arguments) {
+    return Headline{"Configuring", "Configured",
+                    JsonValue(arguments, "scope", "") + " " +
+                        JsonValue(arguments, "audience", "") + " instructions"};
   };
   tool.approval_preview = [shown](const json& arguments) {
     bool panel = false, project = false;

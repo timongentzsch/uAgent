@@ -103,7 +103,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   // avoids paying another model round merely to continue an ordinary source
   // file while keeping every other tool on the global result cap.
   read.result_chars = ReadFileResultChars();
-  read.header = Verbs("Reading", "Read");
+  read.headline = Verbs("Reading", "Read");
 
   Tool& write = path_tool(MakeTool(
       "write_file",
@@ -124,14 +124,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   write.mutates = outside_scratch;
   write.capabilities = Capability(ToolCapability::kMutate);
   write.available_in_lean = false;
-  write.header = [](const json& a) {
-    return json{{"verb", {"Writing", "Wrote"}},
-                {"target", JsonValue(a, "path", "")}};
-  };
-  write.summary = [](const json& a) {
-    const std::string* content = JsonStringRef(a, "content");
-    return "write " + JsonValue(a, "path", "") + " · " +
-           FmtBytes(static_cast<int64_t>(content ? content->size() : 0));
+  write.headline = [](const json& a) {
+    return Headline{"Writing", "Wrote", JsonValue(a, "path", "")};
   };
   write.approval_preview = [](const json& a) {
     static const std::string kNone;
@@ -159,15 +153,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   edit.mutates = outside_scratch;
   edit.capabilities = Capability(ToolCapability::kMutate);
   edit.available_in_lean = false;
-  edit.header = [](const json& a) {
-    return json{{"verb", {"Editing", "Edited"}},
-                {"target", JsonValue(a, "path", "")}};
-  };
-  edit.summary = [](const json& a) {
-    size_t count = 0;
-    auto edits = a.find("edits");
-    if (edits != a.end() && edits->is_array()) count = edits->size();
-    return "edit " + JsonValue(a, "path", "") + " · " + Plural(count, "edit");
+  edit.headline = [](const json& a) {
+    return Headline{"Editing", "Edited", JsonValue(a, "path", "")};
   };
   edit.approval_preview = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
@@ -193,7 +180,9 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   remove.mutating = true;
   remove.capabilities = Capability(ToolCapability::kMutate);
   remove.available_in_lean = false;
-  remove.header = Verbs("Deleting", "Deleted");
+  remove.headline = [](const json& a) {
+    return Headline{"Deleting", "Deleted", JsonValue(a, "path", "")};
+  };
   remove.approval_preview = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
     auto prev = DiffableContents(path);
@@ -237,15 +226,12 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   // in recent context collapses to a receipt, so a search that found anything
   // new is always resent in full.
   grep.dedupe_output = true;
-  grep.header = [](const json& a) {
-    return json{{"verb", {"Searching", "Searched"}},
-                {"target", "/" + JsonValue(a, "pattern", "") + "/ in " +
-                               JsonValue(a, "path", ".")}};
-  };
-  grep.summary = [](const json& a) {
-    std::string mode = JsonValue(a, "mode", "content");
-    return "search " + (mode == "files" ? std::string("files ") : "") + "/" +
-           JsonValue(a, "pattern", "") + "/ in " + JsonValue(a, "path", ".");
+  grep.headline = [](const json& a) {
+    const bool files = JsonValue(a, "mode", "content") == "files";
+    return Headline{files ? "Searching file names for" : "Searching",
+                    files ? "Searched file names for" : "Searched",
+                    "/" + JsonValue(a, "pattern", "") + "/ in " +
+                        JsonValue(a, "path", ".")};
   };
 }
 

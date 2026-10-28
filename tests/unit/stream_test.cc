@@ -626,12 +626,7 @@ void TestActivityValidation() {
     CHECK(ToolSummary(*edit, {{"path", "x"},
                               {"edits",
                                json::array({{{"old", "a"}, {"new", "b"}}})}}) ==
-          "edit x · 1 edit");
-    CHECK(ToolSummary(*edit, {{"path", "x"},
-                              {"edits",
-                               json::array({{{"old", "a"}, {"new", "b"}},
-                                            {{"old", "c"}, {"new", "d"}}})}}) ==
-          "edit x · 2 edits");
+          "Edited x");
   }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them

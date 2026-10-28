@@ -874,25 +874,21 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   tool.capabilities = Capability(ToolCapability::kInspect) |
                       Capability(ToolCapability::kMutate) |
                       Capability(ToolCapability::kExternal);
-  tool.summary = [](const json& args) {
-    auto action = JsonValue(args, "action", "browser");
-    return action == "open"
-               ? "browser open " +
-                     JsonValue(args, "url", JsonValue(args, "path", ""))
-               : "browser " + action;
-  };
   tool.intent = "research";
-  tool.header = [](const json& args) {
+  tool.headline = [](const json& args) {
     const Action* action = FindAction(args);
     const std::string name = action ? action->name : "";
-    return json{
-        {"verb",
-         {action ? action->doing : "Checking",
-          action ? action->done : "Checked"}},
-        {"target", name == "open"
-                       ? JsonValue(args, "url", JsonValue(args, "path", ""))
-                   : name == "type" ? FirstLine(JsonValue(args, "text", ""))
-                                    : "the browser"}};
+    return Headline{
+        action ? action->doing : "Checking", action ? action->done : "Checked",
+        name == "open"   ? JsonValue(args, "url", JsonValue(args, "path", ""))
+        : name == "type" ? FirstLine(JsonValue(args, "text", ""))
+                         : "the browser"};
+  };
+  // The call shows the live browser beside it.
+  tool.present = [](const json& args) {
+    json parts = GenericInputParts(args);
+    parts.push_back(LinkPart("browser", "", "Open browser"));
+    return parts;
   };
   // Text is counted in characters and results in bytes; a page in a script
   // of several bytes a character still arrives whole, with its elements.

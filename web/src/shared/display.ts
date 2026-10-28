@@ -1,9 +1,8 @@
 // Shared display helpers: single owner for time, text, status.
 // Pure functions only — no hooks, no JSX. TS-only imports so node --test
 // can load this module directly.
-import { duration } from "./duration.ts";
 import { plural } from "./quantities.ts";
-import type { Session, Statistics } from "./types.ts";
+import type { RowState, Session, Statistics } from "./types.ts";
 
 // The folder a session belongs to: a thread's panel folder, else its
 // own working directory.
@@ -26,18 +25,16 @@ export const capitalize = (text: string) =>
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 
-// Lines added and removed in a change receipt. Its first line is the host's
-// summary, "Edited path (+N -M)", which stays exact when the diff below it
-// is cut short; a diff without one is counted line by line.
+// Lines added and removed in a diff, counted line by line. A tool row has
+// its counts as facts; this is for a diff that comes without them.
 export function diffCounts(change = ""): [number, number] {
-  const stated = change.split("\n", 1)[0].match(/\(\+(\d+) -(\d+)\)$/);
-  if (stated) return [Number(stated[1]), Number(stated[2])];
   let added = 0;
   let removed = 0;
-  for (const line of change.split("\n").slice(1)) {
-    if (line.startsWith("+") && !line.startsWith("+++")) added++;
-    else if (line.startsWith("-") && !line.startsWith("---")) removed++;
-  }
+  change.split("\n").forEach((line, index) => {
+    const role = diffLineClass(line, index === 0);
+    if (role === "diff-add") added++;
+    else if (role === "diff-del") removed++;
+  });
   return [added, removed];
 }
 
@@ -58,38 +55,8 @@ export function diffLineClass(line: string, first: boolean): string {
   return "diff-ctx";
 }
 
-// Live vocabulary is single-sourced here: anything without a terminal
-// state (started but unfinished, or facts not yet recorded) reads as
-// running. Diagnostics (statistics/raw) keep the exact stored value.
-// A call that went wrong, as opposed to one the user cancelled.
-export const isFailedStatus = (status?: string) =>
-  /fail|error|timed_out|denied/i.test(status || "");
-
-export function isRunningStatus(status?: string): boolean {
-  if (!status) return true;
-  const state = status.trim().toLowerCase();
-  return (
-    state === "running" ||
-    state === "pending" ||
-    state === "not recorded" ||
-    state === "starting"
-  );
-}
-
-export function statusLine(parts: {
-  category?: string;
-  status?: string;
-  duration_ms?: number | null;
-}): string {
-  let state = (parts.status || "").trim();
-  const live = isRunningStatus(state || undefined);
-  if (!state) state = parts.duration_ms != null ? "Done" : "Running\u2026";
-  else if (state.toLowerCase() === "not recorded") state = "Running\u2026";
-  else if (live) state = parts.duration_ms != null ? "Done" : "Running\u2026";
-  const head = parts.category ? `${parts.category} \u00b7 ${state}` : state;
-  if (parts.duration_ms == null) return head;
-  return `${head} \u00b7 ${duration(parts.duration_ms)}`;
-}
+// A call or receipt without a finished state is still at work.
+export const isRunning = (state?: RowState) => !state || state === "running";
 
 // A router such as OpenRouter picks the upstream per call; naming it is how
 // a provider's fault is traced.

@@ -197,18 +197,12 @@ Tool AskTool(AskPerson ask, AskImage image) {
   // user may ask them.
   tool.capabilities = 0;
   tool.intent = "ask";
-  tool.summary = [](const json& a) {
+  tool.headline = [](const json& a) {
     const json* questions = JsonArray(a, "questions");
-    return questions && !questions->empty()
-               ? JsonValue((*questions)[0], "header", "")
-               : std::string();
-  };
-  tool.header = [](const json& a) {
-    const json* questions = JsonArray(a, "questions");
-    return json{{"verb", {"Asking", "Asked"}},
-                {"target", questions && !questions->empty()
-                               ? JsonValue((*questions)[0], "question", "")
-                               : ""}};
+    return Headline{"Asking", "Asked",
+                    questions && !questions->empty()
+                        ? JsonValue((*questions)[0], "question", "")
+                        : ""};
   };
   return tool;
 }

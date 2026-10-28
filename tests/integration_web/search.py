@@ -22,9 +22,16 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
         "beta": write_session(
             home,
             "beta",
-            [{"role": "tool", "tool_call_id": "c1", "content": "QUOKKA spotted"}],
+            # A result is found by what a person reads, never by the hint its
+            # message carries for the model.
+            [{"role": "tool", "tool_call_id": "c1", "content": "QUOKKA spotted\n[quokka hint]"}],
             cwd=root,
             kinds=[tool],
+            display={
+                "ids": [1],
+                "next": 2,
+                "facts": {"t-c1": {"name": "run", "call_id": "c1", "output": "QUOKKA spotted"}},
+            },
         ),
         "thread": write_session(
             home,

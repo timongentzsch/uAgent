@@ -121,11 +121,21 @@ std::string AsciiGlyphs(std::string_view s);
 
 std::string FmtCount(int64_t n);
 
-// "1 file", "3 files": a count and its noun, plural by an "s".
+// "1 file", "3 files", "2 entries", "2 matches": a count and its noun, plural
+// the regular English way.
 template <std::integral Count>
 std::string Plural(Count count, std::string_view noun) {
-  return std::to_string(count) + " " + std::string(noun) +
-         (count == 1 ? "" : "s");
+  std::string text = std::to_string(count) + " " + std::string(noun);
+  if (count == 1) return text;
+  if (noun.size() > 1 && noun.back() == 'y' &&
+      std::string_view("aeiou").find(noun[noun.size() - 2]) ==
+          std::string_view::npos) {
+    text.pop_back();
+    return text + "ies";
+  }
+  const bool sibilant = noun.ends_with('s') || noun.ends_with('x') ||
+                        noun.ends_with("ch") || noun.ends_with("sh");
+  return text + (sibilant ? "es" : "s");
 }
 std::string FmtCost(double cost);
 

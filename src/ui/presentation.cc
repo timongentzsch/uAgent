@@ -163,9 +163,21 @@ PresentationRecord PresentationFromJson(const json& value) {
           JsonValue(value, "title", ""), JsonValue(value, "minor", false)};
 }
 
-// Whether a call's stored status is a failure; a cancellation is not one.
-bool Failed(std::string_view status) {
-  return status == "failed" || status == "timed_out";
+// A finished row's headline, its past verb and target, as the web reads it.
+std::string Headline(const json& block) {
+  const json view = JsonValue(block, "view", json(nullptr));
+  const json* verb = JsonArray(view, "verb");
+  std::string line = verb && verb->size() == 2 && (*verb)[1].is_string()
+                         ? (*verb)[1].get<std::string>()
+                         : JsonValue(block, "name", "tool");
+  const std::string target = FirstLine(JsonValue(view, "target", ""));
+  if (!target.empty()) line += " " + target;
+  return line;
+}
+
+// The words the host made of a row's result: "exit 2 · 1.4s".
+std::string Word(const json& block) {
+  return JsonValue(JsonValue(block, "result", json::object()), "word", "");
 }
 
 // The terminal spelling of a ToolView's input parts, the same vocabulary the
@@ -203,20 +215,15 @@ std::string CallRow(const json& block, bool open) {
   const std::string label =
       activity ? JsonValue(*activity, "label", "") : std::string();
   const std::string name = JsonValue(block, "name", "tool");
-  // A skill is a procedure the rest of the turn follows, so it is worth
-  // finding in the scrollback later; ◆ already marks that class of event.
-  if (name == "skill" && !label.empty()) {
-    return std::string(BOLD()) + RowMark(Mark::kSkill) + TerminalSafe(label) +
-           RST() + "\n";
-  }
   const json* verb = JsonArray(view, "verb");
   std::string body =
       RowMark(Mark::kCall) + (verb && !verb->empty() && (*verb)[0].is_string()
                                   ? TerminalSafe((*verb)[0].get<std::string>())
                                   : TerminalSafe(name));
   const std::string target = JsonValue(view, "target", "");
-  if (label.find('\n') != std::string::npos) {
-    body += '\n' + TerminalSafe(label);
+  if (const std::string& shown = verb ? target : label;
+      shown.find('\n') != std::string::npos) {
+    body += '\n' + TerminalSafe(shown);
   } else if (verb && !target.empty()) {
     body += ' ' + TerminalSafe(FirstLine(target));
   } else if (!label.empty()) {
@@ -240,8 +247,8 @@ std::string ResultText(const json& block) {
 }
 
 // A result in one line: its first line and how much follows, after the
-// status of a call that did not succeed.
-std::string ResultSummary(const json& block, std::string_view status) {
+// result's words for a call that did not succeed.
+std::string ResultSummary(const json& block, std::string_view state) {
   const std::string text = JsonValue(block, "text", "");
   std::string summary = text.empty() ? "(empty)" : FirstLine(text);
   const size_t lines = static_cast<size_t>(std::ranges::count(text, '\n')) +
@@ -256,9 +263,7 @@ std::string ResultSummary(const json& block, std::string_view status) {
     summary += " … · +" + std::to_string(lines - 1) + " lines · " +
                FmtCount(static_cast<int64_t>(text.size())) + " chars";
   }
-  if (Failed(status) || status == "cancelled") {
-    summary = std::string(status) + ": " + summary;
-  }
+  if (state != "ok") summary = Word(block) + ": " + summary;
   return summary;
 }
 
@@ -267,8 +272,7 @@ std::string ResultSummary(const json& block, std::string_view status) {
 // produced.
 std::string ResultExtras(const json& block, bool open) {
   std::string text;
-  if (!open && JsonValue(JsonValue(block, "view", json(nullptr)), "output",
-                         "") == "tail") {
+  if (!open && JsonValue(block, "body_kind", "") == "tail") {
     std::vector<std::string> lines;
     std::istringstream input(ResultText(block));
     for (std::string line; std::getline(input, line);) {
@@ -312,7 +316,7 @@ std::string ResultExtras(const json& block, bool open) {
 // A finished call as the level lays it out: its group's row, its diff, or
 // its name with the output or a summary of it.
 std::string ResultRow(const json& block, const DetailPolicy& detail) {
-  const std::string status = JsonValue(block, "status", "");
+  const std::string state = JsonValue(block, "state", "");
   const json* activity = JsonObject(block, "activity");
   if (const json* group = activity ? JsonObject(*activity, "group") : nullptr;
       group && detail.work != WorkRows::kCalls) {
@@ -324,19 +328,19 @@ std::string ResultRow(const json& block, const DetailPolicy& detail) {
         Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
         DIM());
   }
-  // A change is told entirely by its diff, so the receipt is the whole row.
-  // A long diff is kept whole: both sides, each line a marker longer.
+  // A change is told entirely by its diff, so the headline and the diff are
+  // the whole row. A long diff is kept whole: both sides, each line a marker
+  // longer.
   if (const std::string change = JsonValue(block, "change", "");
-      status == "success" && !change.empty()) {
+      state == "ok" && !change.empty()) {
     std::istringstream input(
         ReadFile(JsonValue(block, "change_path", ""), 4 * EditFileBytes())
             .value_or(change));
-    std::string line, output;
-    if (std::getline(input, line)) {
-      output = std::string(DIM()) + RowMark(Mark::kChange) + RST() + BOLD() +
-               TerminalSafe(line) + RST() + "\n";
-    }
-    while (std::getline(input, line)) {
+    std::string output =
+        std::string(DIM()) + RowMark(Mark::kChange) + RST() + BOLD() +
+        TerminalSafe(Headline(block)) + RST() + DIM() +
+        AsciiGlyphs(" · " + TerminalSafe(Word(block))) + RST() + "\n";
+    for (std::string line; std::getline(input, line);) {
       const char* style = DiffLineStyle(line);
       if (!*style) style = DIM();
       if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
@@ -345,8 +349,8 @@ std::string ResultRow(const json& block, const DetailPolicy& detail) {
     }
     return output;
   }
-  const bool failed = Failed(status);
-  const char* style = failed ? RED() : status == "cancelled" ? YEL() : DIM();
+  const bool failed = state == "failed";
+  const char* style = failed ? RED() : state == "cancelled" ? YEL() : DIM();
   const std::string prefix =
       std::string(style) +
       Indented(RowMark(failed ? Mark::kFailed : Mark::kResult) +
@@ -361,7 +365,7 @@ std::string ResultRow(const json& block, const DetailPolicy& detail) {
   if (detail.open && !output.empty()) {
     return prefix + ": " + OutputText(output) + RST() + "\n" + extras;
   }
-  return prefix + ": " + AsciiGlyphs(OutputText(ResultSummary(block, status))) +
+  return prefix + ": " + AsciiGlyphs(OutputText(ResultSummary(block, state))) +
          RST() + "\n" + extras;
 }
 
@@ -624,7 +628,11 @@ void TerminalPresenter::Block(const json& block) {
   } else if (kind == "activity") {
     const json memory = JsonValue(block, "memory", json::object());
     if (detail_->minor || !JsonValue(memory, "minor", false)) {
-      WriteTerminalRecord(Note(Tone::kNeutral, text));
+      const std::string word = Word(block);
+      WriteTerminalRecord(Note(
+          Tone::kNeutral,
+          AsciiGlyphs(Headline(block) + (word.empty() ? "" : " · " + word)) +
+              (text.empty() ? "" : "\n" + text)));
     }
   } else if (kind == "tool_result") {
     ToolRow(block);
@@ -634,7 +642,7 @@ void TerminalPresenter::Block(const json& block) {
 void TerminalPresenter::ToolRow(const json& block) {
   if (spinner_) spinner_->Stop();
   const std::string id = JsonValue(block, "id", "");
-  const std::string status = JsonValue(block, "status", "running");
+  const std::string state = JsonValue(block, "state", "running");
   // Where a turn's work is one row, what succeeded is counted instead of
   // printed and only a failure keeps its row.
   const bool counted = detail_->work == WorkRows::kTurn;
@@ -642,8 +650,8 @@ void TerminalPresenter::ToolRow(const json& block) {
   // drawn once, so the scrollback reads as the same row from history does.
   const auto [row, called] = rows_.try_emplace(id, false);
   if (called && !counted) WriteTerminalRecord(CallRow(block, detail_->open));
-  if (status == "running" || std::exchange(row->second, true)) return;
-  if (counted && !Failed(status)) {
+  if (state == "running" || std::exchange(row->second, true)) return;
+  if (counted && state != "failed") {
     ++steps_;
     if (const json* activity = JsonObject(block, "activity");
         activity && JsonValue(*activity, "category", "") == "edit") {

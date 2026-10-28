@@ -48,9 +48,8 @@ struct CallTask {
 
 int64_t ResultCharLimit(const CallTask& task);
 
-// Keep recovery metadata at the tail even when a result must be shortened.
-// The artifact itself stays out of context; only this small locator rides with
-// the result.
+// The model's text for `result` within `cap`: the output is cut, its hints
+// are kept.
 std::string ModelResultText(const ToolResult& result, int64_t cap);
 
 // Preserve small results and divide the remaining model-facing budget evenly
@@ -62,7 +61,9 @@ std::vector<std::string> ModelFacingToolResults(
 json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
                     int64_t step);
 
-void EmitToolResultObservation(const CallTask& task, const ToolCall& call,
+// Settles the call's outcome facts from how the loop ended it, then emits its
+// result.
+void EmitToolResultObservation(CallTask& task, const ToolCall& call,
                                int64_t turn, int64_t step);
 
 json ToolCallData(const ToolCall& call, int64_t turn, int64_t step);

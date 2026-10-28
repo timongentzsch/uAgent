@@ -35,6 +35,7 @@ struct ActivityCompletion {
   int status = 0;
   std::string command;
   std::string output;
+  std::string hint;  // for the model only: the full log, how to resume it
   std::string display_label;
   std::string receipt_path;
   std::string source_id;
@@ -52,8 +53,6 @@ void ActivityTrackSignal(pid_t pid, bool add, bool agent = false);
 bool TerminateGroup(ActivitySupervisor& supervisor, pid_t leader,
                     std::chrono::milliseconds grace, bool reap_leader);
 void KillProcess(pid_t pid);
-std::string FmtExit(int status, bool show_ok);
-ToolResult ProcessResult(std::string output, int status);
 // Shared output budgeting for every activity read: ActivityOutputCap folds a
 // caller request into the global cap, LimitOutput enforces it head-and-tail.
 int64_t ActivityOutputCap(int64_t requested);
@@ -97,8 +96,11 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
                             const ToolContext& context,
                             int64_t max_output_chars = 0);
 ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t id);
-std::string ActivityResultHeader(const Activity& job);
 std::string ActivityResultHeader(const ActivityCompletion& completion);
+// A completion as the model reads it: whose it was, `body` (its output, or a
+// cut of it), its hint, and how it exited.
+std::string ActivityCompletionText(const ActivityCompletion& completion,
+                                   std::string_view body);
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind = {});
 void ActivityShutdownAll(ActivitySupervisor& supervisor);

@@ -691,6 +691,7 @@ def write_session(
     kinds=None,
     context_tokens=0,
     usage=None,
+    display=None,
     **header,
 ):
     """Write one saved session the way the agent persists it.
@@ -718,7 +719,7 @@ def write_session(
         "usage": usage or {},
         "route_usage": {},
         "last_sent_prompt": "",
-        "display": {},
+        "display": display or {},
         "delivered_mail": [],
     }
     history = home / ".uagent" / "history"

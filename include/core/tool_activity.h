@@ -34,7 +34,7 @@ inline void GroupToolActivities(std::vector<json>& activities) {
       return !GroupLabel(intent).empty() &&
              JsonValue(activities[i], "category", "") == intent &&
              JsonValue(activities[i], "groupable", false) &&
-             JsonValue(activities[i], "status", "") == "success";
+             JsonValue(activities[i], "state", "") == "ok";
     };
     if (!eligible(begin)) {
       ++begin;

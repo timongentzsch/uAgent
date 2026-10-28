@@ -103,11 +103,12 @@ test("a long diff shows whole on its row, live and after a reload", async ({
   await prompt.fill("Long diff probe");
   await prompt.press("Enter");
   const diff = page.locator(".tool-inline .diff");
-  await expect(diff).toContainText("Created long.txt (+2001 -0)");
-  await expect(diff.locator("span")).toHaveCount(2002);
+  // The counts are the row's result; the diff is its lines alone.
+  await expect(page.locator(".message.tool").first()).toContainText("+2001 −0");
+  await expect(diff.locator("span")).toHaveCount(2001);
   await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
   await page.reload();
-  await expect(diff.locator("span")).toHaveCount(2002);
+  await expect(diff.locator("span")).toHaveCount(2001);
   await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
   await expect(page.locator(".message.tool")).not.toContainText("more lines");
 });

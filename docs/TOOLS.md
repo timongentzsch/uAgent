@@ -49,6 +49,12 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, lead agents and background agents) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a lead agent or a lean child |
 
+A result is its output, which the model reads and you see; facts (an exit
+code, lines added and removed, a count, why a call was refused), which every
+row words the same way, such as `exit 2 · 1.4s` or `+3 −1`; and a hint for
+the model only, such as a read's line range, a command's exit code or where a
+captured log is kept, which it reads after the output and no row shows.
+
 Independent calls to parallel-safe tools run up to four at a time; results
 are appended in the order the model issued the calls. A tool with a per-turn
 cap (`web_search` 4, `subagent` 32) is withdrawn for the rest of the turn

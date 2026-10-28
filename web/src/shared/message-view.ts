@@ -1,4 +1,4 @@
-import { isFailedStatus, isRunningStatus } from "./display.ts";
+import { isRunning } from "./display.ts";
 import { duration } from "./duration.ts";
 import { plural } from "./quantities.ts";
 import type {
@@ -44,7 +44,7 @@ const present = (block: Block, source?: AssistantBlock) =>
             time: source.time,
             http: source.http,
           },
-          result_loaded: !isRunningStatus(block.status),
+          result_loaded: !isRunning(block.state),
         }
       : { ...block, key: block.id },
   );
@@ -62,11 +62,11 @@ export const outgoingStatus = {
 };
 
 // A message of yours the host refused, or never confirmed receiving.
-export const unsent = (block: Pick<Block, "status">) =>
+export const unsent = (block: { status?: string }) =>
   block.status === outgoingStatus.refused ||
   block.status === outgoingStatus.unconfirmed;
 
-export const queuedGuidance = (block: Pick<Block, "status">) =>
+export const queuedGuidance = (block: { status?: string }) =>
   block.status === outgoingStatus.guidance ||
   block.status === outgoingStatus.next;
 
@@ -192,12 +192,16 @@ function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   return folded;
 }
 
+// How a call or receipt ended; other rows have no state.
+const stateOf = (row: PresentedBlock) =>
+  "state" in row ? row.state : undefined;
+
 // What a turn's folded work did:
 // "Worked · 14 steps · edited 2 files · 3 errors · 1m 12s". How long the
 // turn took is known once it has ended.
 function workLabel(steps: PresentedBlock[], took?: number) {
   const calls = steps.filter((step) => step.kind !== "assistant");
-  const failed = calls.filter((step) => isFailedStatus(step.status)).length;
+  const failed = calls.filter((step) => stateOf(step) === "failed").length;
   const edited = new Set(
     calls
       .filter(
@@ -233,8 +237,8 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
     for (const row of turn) {
       const work =
         row !== answer &&
-        (row.kind === "tool_result" || !isFailedStatus(row.status)) &&
-        !/cancel/i.test(row.status || "") &&
+        (row.kind === "tool_result" || stateOf(row) !== "failed") &&
+        stateOf(row) !== "cancelled" &&
         !("parts" in row && row.parts?.some((part) => part.kind === "file")) &&
         (row.kind === "tool_result" ||
           row.kind === "activity" ||

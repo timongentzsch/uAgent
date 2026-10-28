@@ -291,7 +291,8 @@ void TestOpenRouterServerSearch() {
   auto legacy_query = FindToolArgumentIssue(
       search_tool, {{"query", "legacy"}, {"queries", {"current"}}});
   CHECK(legacy_query && legacy_query->code == "schema.additional_property");
-  CHECK(search_tool.summary({{"queries", {"one", "two"}}}) == "one | two");
+  CHECK(ToolSummary(search_tool, {{"queries", {"one", "two"}}}) ==
+        "Searched the web for one | two");
   CHECK(!search_tool.mutating);
   CHECK(search_tool.needs_approval &&
         search_tool.needs_approval(json::object()));
@@ -400,7 +401,7 @@ void TestOpenRouterServerSearch() {
     ToolResult attached =
         ReadFetchedPage("https://example.com/report.pdf", pdf, "call-pdf");
     CHECK(attached.Ok() &&
-          attached.output.find("attached") != std::string::npos);
+          ModelText(attached).find("attached") != std::string::npos);
     const std::vector<Attachment> queued = Attachments().Take();
     CHECK(queued.size() == 1 && queued[0].source_call_id == "call-pdf" &&
           queued[0].mime == "application/pdf");

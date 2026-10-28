@@ -159,11 +159,11 @@ Tool HistoryTool(const std::string& folder) {
   tool.capabilities = Capability(ToolCapability::kInspect);
   tool.parallel_safe = true;
   tool.category = "collaborate";
-  tool.summary = [](const json& a) {
-    return JsonValue(a, "action", "") + " " +
-           JsonValue(a, "session_id", JsonValue(a, "query", ""));
+  tool.headline = [](const json& a) {
+    return Headline{"Reading history", "Read history",
+                    JsonValue(a, "action", "") + " " +
+                        JsonValue(a, "session_id", JsonValue(a, "query", ""))};
   };
-  tool.header = Verbs("Reading history", "Read history");
   return tool;
 }
 

@@ -70,20 +70,23 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
   memory.available_in_lean = false;
   memory.memory_store = true;
   memory.retain_output = true;
-  memory.summary = [](const json& a) {
-    return JsonValue(a, "action", "") + " " + JsonValue(a, "key", "");
-  };
   memory.intent = "memory";
-  memory.header = [](const json& a) {
+  memory.headline = [](const json& a) {
     const std::string action = JsonValue(a, "action", "");
-    const json verb =
-        action == "set"      ? json{"Saving memory", "Saved memory"}
-        : action == "forget" ? json{"Forgetting memory", "Forgot memory"}
-        : action == "get"    ? json{"Reading memory", "Read memory"}
-        : action == "list"   ? json{"Listing memories", "Listed memories"}
-                             : json{"Searching memory", "Searched memory"};
-    return json{{"verb", verb},
-                {"target", JsonValue(a, "key", JsonValue(a, "query", ""))}};
+    const std::string target = JsonValue(a, "key", JsonValue(a, "query", ""));
+    if (action == "set") {
+      return Headline{"Saving memory", "Saved memory", target};
+    }
+    if (action == "forget") {
+      return Headline{"Forgetting memory", "Forgot memory", target};
+    }
+    if (action == "get") {
+      return Headline{"Reading memory", "Read memory", target};
+    }
+    if (action == "list") {
+      return Headline{"Listing memories", "Listed memories"};
+    }
+    return Headline{"Searching memory", "Searched memory", target};
   };
 }
 

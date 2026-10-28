@@ -44,8 +44,9 @@ Tool ArtifactTool(const std::string& session_path) {
         result.parts = json::array({std::move(stored.value)});
         return result;
       });
-  tool.summary = [](const json& args) { return JsonValue(args, "path", ""); };
-  tool.header = Verbs("Sharing", "Shared");
+  tool.headline = [](const json& args) {
+    return Headline{"Sharing", "Shared", JsonValue(args, "path", "")};
+  };
   tool.intent = "share";
   // Sharing reads the file out to the person's devices: the same path policy
   // as read_path, so a file outside the folder or µAgent's own

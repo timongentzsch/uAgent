@@ -821,7 +821,7 @@ def test_subagent_interrupt_reaps_child(root, home, *, binary):
                 if (
                     event_data.get("event") == "tool_result"
                     and data.get("name") == "subagent"
-                    and str(data.get("result", "")).startswith(STARTED)
+                    and str(data.get("hint", "")).startswith(STARTED)
                 ):
                     child_pids.update(descendant_pids(process.pid))
                     return True

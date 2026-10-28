@@ -100,27 +100,6 @@ void KillProcess(pid_t pid) {
   }
 }
 
-// "[exit code N]" / "[killed by signal N]" suffix; "" for a clean exit unless
-// show_ok
-std::string FmtExit(int status, bool show_ok) {
-  if (WIFEXITED(status)) {
-    return (WEXITSTATUS(status) != 0 || show_ok)
-               ? "\n[exit code " + std::to_string(WEXITSTATUS(status)) + "]"
-               : "";
-  }
-  if (WIFSIGNALED(status)) {
-    return "\n[killed by signal " + std::to_string(WTERMSIG(status)) + "]";
-  }
-  return "";
-}
-
-ToolResult ProcessResult(std::string output, int status) {
-  if (ExitedOk(status)) {
-    return ToolSuccess(std::move(output));
-  }
-  return ToolFailure(ToolErrorCode::kProcessFailed, std::move(output));
-}
-
 // A caller-requested budget never exceeds the global tool-result cap; 0 means
 // "whatever the global cap allows".
 int64_t ActivityOutputCap(int64_t requested) {
@@ -455,12 +434,22 @@ bool TerminateGroup(ActivitySupervisor& supervisor, pid_t leader,
 
 namespace {
 
-// The banner every activity read carries: who it is, whether it is still worth
+// The hint every activity read carries: who it is, whether it is still worth
 // writing to, and where the full log lives.
 std::string ActivityHeader(const Activity& job, std::string_view state = {}) {
   return "[" + ActivityKindName(job.kind) + " · activity " +
          std::to_string(ActivityId(job)) + std::string(state) + " · log " +
-         job.log + "]\n";
+         job.log + "]";
+}
+
+// An activity read: what it printed, and the hint that says whose it is.
+ToolResult ActivityRead(std::string output, std::string_view header,
+                        std::string_view note = {}) {
+  ToolResult result = ToolSuccess(std::move(output));
+  result.body_kind = "tail";
+  AddHint(result, header);
+  AddHint(result, note);
+  return result;
 }
 
 }  // namespace
@@ -469,15 +458,17 @@ static ToolResult FormatActivityList(const std::vector<Activity>& supervised,
                                      const std::vector<json>& records,
                                      std::string_view empty) {
   if (supervised.empty() && records.empty()) {
-    return ToolSuccess(std::string(empty));
+    return ListResult(std::string(empty), 0, "activity");
   }
   std::string output;
+  int64_t count = 0;
   for (const Activity& job : supervised) {
     std::string summary =
         job.display_label.empty() ? FirstLine(job.cmd) : job.display_label;
     output += "[" + ActivityKindName(job.kind) + "] activity " +
               std::to_string(ActivityId(job)) + " · " + summary + " · " +
               job.log + "\n";
+    ++count;
   }
   for (const json& record : records) {
     pid_t record_pid = JsonValue(record, "pid", 0);
@@ -492,13 +483,14 @@ static ToolResult FormatActivityList(const std::vector<Activity>& supervised,
               JsonValue(record, "cwd", "") + " · " +
               FirstLine(JsonValue(record, "command", "")) + " · " +
               JsonValue(record, "log", "") + "\n";
+    ++count;
   }
   int64_t cap = ToolResultCap();
-  if (cap > 0 && output.size() > static_cast<size_t>(cap)) {
-    output = Utf8Trunc(std::move(output), static_cast<size_t>(cap));
-    output += "\n[activity list truncated]\n";
-  }
-  return ToolSuccess(std::move(output));
+  const bool cut = cap > 0 && output.size() > static_cast<size_t>(cap);
+  if (cut) output = Utf8Trunc(std::move(output), static_cast<size_t>(cap));
+  ToolResult result = ListResult(std::move(output), count, "activity");
+  if (cut) AddHint(result, "[activity list truncated]");
+  return result;
 }
 
 namespace {
@@ -519,11 +511,13 @@ namespace {
 
 // fresh reports whether the returned text is captured output rather than a
 // status sentinel, so callers never have to compare against those strings.
+// `note`, when given, receives why a wait ended early, for the model.
 std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
                                  const Activity& job, int64_t wait_ms,
                                  std::string_view until,
                                  const ToolContext& context, int64_t cap,
-                                 bool settle = false, bool* fresh = nullptr) {
+                                 bool settle = false, bool* fresh = nullptr,
+                                 std::string* note = nullptr) {
   auto done = [fresh](std::string text, bool captured) {
     if (fresh) *fresh = captured;
     return text;
@@ -567,17 +561,13 @@ std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
               (!until.empty() && snapshot.find(until) != std::string::npos);
     // keep=false is the abort case: an interrupted wait reports only that,
     // leaving the captured bytes for the next read.
-    auto finish = [&](std::string_view note, bool keep = true) {
+    auto finish = [&](std::string_view why, bool keep = true) {
       bool captured = keep && !snapshot.empty();
-      std::string output = keep ? std::move(snapshot) : std::string();
-      if (note.empty()) {
-        return done(
-            captured ? std::move(output) : std::string(kNoNewActivityOutput),
-            captured);
-      }
-      if (captured) output += "\n";
-      output.append(note);
-      return done(std::move(output), captured);
+      if (note) *note = why;
+      if (captured) return done(std::move(snapshot), true);
+      return done(
+          why.empty() ? std::string(kNoNewActivityOutput) : std::string(),
+          false);
     };
     if (matched || terminal ||
         (until.empty() && !settle && !snapshot.empty()) ||
@@ -638,8 +628,15 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor,
     bool fresh = false;
     std::string output = CollectSessionOutput(supervisor, *job, 0, {}, {},
                                               ToolResultCap(), false, &fresh);
-    ToolResult result = ToolSuccess(ActivityHeader(*job, state) + output);
-    result.no_change = !fresh;
+    ToolResult result =
+        ActivityRead(std::move(output), ActivityHeader(*job, state));
+    if (job->session) {
+      std::lock_guard<std::mutex> lock(job->session->mutex);
+      if (job->session->wait_status) {
+        result.facts.exit = ExitFacts(*job->session->wait_status);
+      }
+    }
+    result.facts.no_change = !fresh;
     result.activity_terminal = terminal;
     return result;
   }
@@ -649,10 +646,11 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor,
   const json& record = *detached;
   bool alive = JsonValue(record, "_alive", false);
   std::string status = alive ? "running" : "exited";
-  ToolResult result = ToolSuccess(
-      "[" + status + " · activity " + std::to_string(pid) + " · " +
-      JsonValue(record, "cwd", "") + " · log " + JsonValue(record, "log", "") +
-      "]\n" + ReadLogTail(JsonValue(record, "log", ""), ToolResultCap()));
+  ToolResult result =
+      ActivityRead(ReadLogTail(JsonValue(record, "log", ""), ToolResultCap()),
+                   "[" + status + " · activity " + std::to_string(pid) + " · " +
+                       JsonValue(record, "cwd", "") + " · log " +
+                       JsonValue(record, "log", "") + "]");
   result.activity_terminal = !alive;
   return result;
 }
@@ -687,15 +685,16 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
       std::optional<json> current = FindDetachedRecord(id);
       return current && JsonValue(*current, "_alive", false);
     };
-    auto reply = [&](std::string body, bool no_change) {
+    auto reply = [&](std::string body, bool no_change,
+                     std::string_view note = {}) {
       bool alive = job ? ProcessGroupAlive(job->pid) : persisted_alive();
       std::string header =
           job ? ActivityHeader(*job)
               : "[" + std::string(alive ? "running" : "exited") +
                     " · activity " + std::to_string(id) + " · " + record_cwd +
-                    " · log " + watch_path + "]\n";
-      ToolResult result = ToolSuccess(header + std::move(body));
-      result.no_change = no_change;
+                    " · log " + watch_path + "]";
+      ToolResult result = ActivityRead(std::move(body), header, note);
+      result.facts.no_change = no_change;
       result.activity_terminal = !alive;
       return LimitOutput(std::move(result), cap);
     };
@@ -713,24 +712,21 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
       bool expired = std::chrono::steady_clock::now() >= window.deadline;
       if (found || expired || AbortRequested() || steering_yield) {
         bool no_change = accumulated == current && !steering_yield;
+        std::string note;
         if (steering_yield) {
-          if (!accumulated.empty()) accumulated += "\n";
-          accumulated +=
-              "[wait yielded for queued steering; process still running]";
+          note = "[wait yielded for queued steering; process still running]";
         } else if (expired && !found) {
           // Returning the log alone reads as "here is the state you asked
           // for", when in fact the marker never appeared and the wait may have
           // been cut short by the turn deadline rather than by wait_ms.
-          if (!accumulated.empty()) accumulated += "\n";
-          accumulated +=
-              "[" +
-              window.Note(until.empty() ? "waited"
-                                        : "marker \"" + std::string(until) +
-                                              "\" not seen in") +
-              "; process still running; call again to keep waiting]";
+          note = "[" +
+                 window.Note(until.empty() ? "waited"
+                                           : "marker \"" + std::string(until) +
+                                                 "\" not seen in") +
+                 "; process still running; call again to keep waiting]";
           no_change = false;
         }
-        return reply(std::move(accumulated), no_change);
+        return reply(std::move(accumulated), no_change, note);
       }
       FileStamp observed = SnapshotFile(watch_path);
       std::string next = ReadLogTail(watch_path, read_cap);
@@ -751,8 +747,9 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
   }
   std::lock_guard<std::mutex> interaction(job->session->interaction);
   bool fresh = false;
+  std::string note;
   std::string output = CollectSessionOutput(supervisor, *job, wait_ms, until,
-                                            context, cap, false, &fresh);
+                                            context, cap, false, &fresh, &note);
   bool no_change = !fresh;
   if (output == kNoNewActivityOutput) {
     std::string replay;
@@ -763,13 +760,14 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
       }
     }
     if (!replay.empty()) {
-      output = "[complete transcript replay]\n" +
-               LimitOutput(std::move(replay), cap);
+      output = LimitOutput(std::move(replay), cap);
+      note = "[complete transcript replay]";
       no_change = false;
     }
   }
-  ToolResult result = ToolSuccess(ActivityHeader(*job) + output);
-  result.no_change = no_change;
+  ToolResult result =
+      ActivityRead(std::move(output), ActivityHeader(*job), note);
+  result.facts.no_change = no_change;
   {
     std::lock_guard<std::mutex> lock(job->session->mutex);
     result.activity_terminal = job->session->wait_status.has_value() ||
@@ -862,9 +860,11 @@ ToolResult ToolActivityInput(const ActivitySupervisor& supervisor, int64_t id,
   }
   input.Reset();
   int64_t cap = ActivityOutputCap(max_output_chars);
-  std::string output = CollectSessionOutput(supervisor, *job, wait_ms, {},
-                                            context, cap, !chars.empty());
-  return ToolSuccess(ActivityHeader(*job) + output);
+  std::string note;
+  std::string output =
+      CollectSessionOutput(supervisor, *job, wait_ms, {}, context, cap,
+                           !chars.empty(), nullptr, &note);
+  return ActivityRead(std::move(output), ActivityHeader(*job), note);
 }
 
 ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t requested) {
@@ -1002,27 +1002,22 @@ namespace {
 
 // An activity is identified by its kind and id, and by what it was asked to
 // run unless that is harness plumbing.
-std::string ResultHeader(ActivityKind kind, int64_t id,
+std::string ActivityName(ActivityKind kind, int64_t id,
                          const std::string& command) {
-  std::string header =
-      "[Activity result: " + ActivityKindName(kind) + " " + std::to_string(id);
+  std::string name = ActivityKindName(kind) + " " + std::to_string(id);
   // A subagent is named by its kind because its command line is harness
   // plumbing.
-  if (kind != ActivityKind::kSubagent) {
-    header += " `" + FirstLine(command) + "`";
-  }
-  return header + "]";
+  if (kind != ActivityKind::kSubagent) name += " `" + FirstLine(command) + "`";
+  return name;
 }
 
 }  // namespace
 
-std::string ActivityResultHeader(const Activity& job) {
-  return ResultHeader(job.kind, ActivityId(job), job.cmd);
-}
-
 std::string ActivityResultHeader(const ActivityCompletion& completion) {
-  return ResultHeader(completion.kind, completion.activity_id,
-                      completion.command);
+  return "[Activity result: " +
+         ActivityName(completion.kind, completion.activity_id,
+                      completion.command) +
+         "]";
 }
 
 namespace {
@@ -1061,13 +1056,12 @@ bool LeaderEnded(pid_t pid, int& status) {
   return true;
 }
 
-std::vector<std::string> TakeCompleted(ActivitySupervisor& supervisor,
-                                       std::string_view kind,
-                                       const std::vector<int64_t>* ids,
-                                       std::vector<ActivityCompletion>* details,
-                                       int64_t output_cap) {
+std::vector<ActivityCompletion> TakeCompleted(ActivitySupervisor& supervisor,
+                                              std::string_view kind,
+                                              const std::vector<int64_t>* ids,
+                                              int64_t output_cap) {
   std::vector<Activity> jobs = supervisor.Snapshot();
-  std::vector<std::string> notes;
+  std::vector<ActivityCompletion> completions;
   for (Activity& candidate : jobs) {
     // Filter before locking: both tests read fields that are immutable once the
     // id is assigned, and `interaction` is held for a whole tool interaction,
@@ -1125,11 +1119,10 @@ std::vector<std::string> TakeCompleted(ActivitySupervisor& supervisor,
     } else {
       output = std::move(collected.output);
     }
-    // Appended after any failure report, not before: inside it the hint would
-    // be squeezed out with the rest of the diagnostics, and the pointer to the
-    // full log is the one line that must survive.
-    std::string artifact_note =
-        collected.artifact ? ArtifactHint(*collected.artifact) : std::string();
+    // The pointer to the full log rides in the hint, which no cut of the
+    // output can squeeze out.
+    ToolResult notes;
+    if (collected.artifact) AddHint(notes, ArtifactHint(*collected.artifact));
     ActivityKind activity_kind = job.kind;
     if (activity_kind == ActivityKind::kSubagent) {
       output = ChildAgentRecoverEnvelope(
@@ -1144,31 +1137,72 @@ std::vector<std::string> TakeCompleted(ActivitySupervisor& supervisor,
         output = ChildAgentAnswer(std::move(output), job.completion_notes);
       }
       if (!job.source_id.empty()) {
-        output += ChildAgentResumeNote(job.source_id);
+        AddHint(notes, ChildAgentResumeNote(job.source_id));
       }
     }
-    output += artifact_note;
-    output += SandboxRestoreNote(job.watch.get(), CanonicalCwd());
-    std::string formatted = ActivityResultHeader(job) + "\n" + output +
-                            FmtExit(status, /*show_ok=*/true);
-    notes.push_back(formatted);
-    if (details) {
-      details->push_back({ActivityId(job), activity_kind, status, job.cmd,
-                          std::move(output), job.display_label,
-                          job.receipt_path, job.source_id});
-    }
+    AddHint(notes, SandboxRestoreNote(job.watch.get(), CanonicalCwd()));
+    completions.push_back({ActivityId(job), activity_kind, status, job.cmd,
+                           std::move(output), std::move(notes.hint),
+                           job.display_label, job.receipt_path, job.source_id});
   }
-  return notes;
+  return completions;
+}
+
+// What a wait took, as one result: each completion's output for a person,
+// and for the model whose it was, its notes and how it exited.
+ToolResult WaitResult(const std::vector<ActivityCompletion>& completions,
+                      std::string_view note, int64_t cap) {
+  if (completions.empty()) {
+    // A wait that ended on its note found nothing; the note says why.
+    ToolResult result =
+        ToolSuccess(note.empty() ? "(activities already complete)" : "");
+    result.facts.no_change = !note.empty();
+    AddHint(result, note);
+    return result;
+  }
+  // Several outputs are told apart by name.
+  const bool named = completions.size() > 1;
+  std::string output;
+  ToolResult notes;
+  for (const ActivityCompletion& completion : completions) {
+    if (!output.empty()) output += "\n\n";
+    if (named) {
+      output += ActivityName(completion.kind, completion.activity_id,
+                             completion.command) +
+                ":\n";
+    }
+    output += completion.output;
+    AddHint(notes, ActivityCompletionText(completion, ""));
+  }
+  ToolResult result = ToolSuccess(LimitOutput(std::move(output), cap));
+  result.body_kind = "tail";
+  result.hint = std::move(notes.hint);
+  AddHint(result, note);
+  if (named) {
+    result.facts.items = static_cast<int64_t>(completions.size());
+    result.facts.unit = "activity";
+  } else {
+    result.facts.exit = ExitFacts(completions.front().status);
+  }
+  return result;
 }
 
 }  // namespace
 
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind) {
-  std::vector<ActivityCompletion> details;
-  (void)TakeCompleted(supervisor, kind, nullptr, &details,
-                      AutomaticResultCap());
-  return details;
+  return TakeCompleted(supervisor, kind, nullptr, AutomaticResultCap());
+}
+
+std::string ActivityCompletionText(const ActivityCompletion& completion,
+                                   std::string_view body) {
+  std::string text = ActivityResultHeader(completion);
+  const std::string exit = ExitHint(completion.status, /*show_ok=*/true);
+  for (std::string_view part :
+       {body, std::string_view(completion.hint), std::string_view(exit)}) {
+    if (!part.empty()) (text += '\n') += part;
+  }
+  return text;
 }
 
 ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
@@ -1222,38 +1256,36 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
   // reads as though the requested wait elapsed and invites the caller to give
   // up on an activity that is running normally.
   const WaitWindow window(wait_ms, context.deadline);
-  std::string output;
+  std::vector<ActivityCompletion> taken;
   for (;;) {
     uint64_t generation = supervisor.Generation();
-    std::vector<std::string> completed =
-        TakeCompleted(supervisor, {}, &ids, nullptr, cap);
-    for (std::string& note : completed) {
-      if (!output.empty()) output += "\n\n";
-      output += note;
+    std::vector<ActivityCompletion> completed =
+        TakeCompleted(supervisor, {}, &ids, cap);
+    for (ActivityCompletion& completion : completed) {
+      taken.push_back(std::move(completion));
     }
     size_t running = static_cast<size_t>(
         std::count_if(ids.begin(), ids.end(),
                       [&](int64_t id) { return supervisor.IsLive(id); }));
     if ((mode == "any" && !completed.empty()) || running == 0) {
-      std::string result =
-          output.empty() ? "(activities already complete)" : std::move(output);
-      return ToolSuccess(LimitOutput(std::move(result), cap));
+      return WaitResult(taken, {}, cap);
     }
     if (AbortRequested()) {
       return ToolCancelled("wait cancelled; " + ActivityCount(running) +
                            " still running");
     }
     if (SteeringYieldRequested()) {
-      if (!output.empty()) output += "\n\n";
-      output += "[wait yielded for queued steering; " + ActivityCount(running) +
-                " still running]";
-      return ToolSuccess(LimitOutput(std::move(output), cap));
+      return WaitResult(taken,
+                        "[wait yielded for queued steering; " +
+                            ActivityCount(running) + " still running]",
+                        cap);
     }
     if (std::chrono::steady_clock::now() >= window.deadline) {
-      if (!output.empty()) output += "\n\n";
-      output += "[" + window.Note("waited") + "; " + ActivityCount(running) +
-                " still running; call again to keep waiting]";
-      return ToolSuccess(LimitOutput(std::move(output), cap));
+      return WaitResult(taken,
+                        "[" + window.Note("waited") + "; " +
+                            ActivityCount(running) +
+                            " still running; call again to keep waiting]",
+                        cap);
     }
     // Process state changes, Escape, and queued steering all pair with Wake(),
     // so this predicate wait needs no periodic abort polling.

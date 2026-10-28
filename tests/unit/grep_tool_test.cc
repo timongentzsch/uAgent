@@ -37,7 +37,11 @@ void TestGrepTool() {
       ToolGrep(supervisor, "needle", root.string(), {.glob = "*.cpp"});
   CHECK(result.output.find("one.cpp") != std::string::npos);
   CHECK(result.output.find("two.txt") == std::string::npos);
-  CHECK(result.output.find("more available") == std::string::npos);
+  CHECK(ModelText(result).find("more available") == std::string::npos);
+  // The count is a fact and its header the model's hint; a person reads the
+  // matches alone.
+  CHECK(result.facts.items == 3 && result.facts.unit == "line");
+  CHECK(!result.output.starts_with('['));
   {
     // One match past the cap is reported as cut, not dropped silently.
     ScopedEnv roomy("UAGENT_TOOL_RESULT_CHARS", "1000000");
@@ -45,8 +49,8 @@ void TestGrepTool() {
     for (int64_t i = 0; i <= GrepResults(); ++i) many += "needle row\n";
     fs::path crowded = root / "crowded.txt";
     CHECK(ToolWriteFile(crowded.string(), many).output.starts_with("wrote "));
-    CHECK(ToolGrep(supervisor, "needle", crowded.string())
-              .output.find("more available") != std::string::npos);
+    CHECK(ModelText(ToolGrep(supervisor, "needle", crowded.string()))
+              .find("more available") != std::string::npos);
     fs::remove(crowded);
   }
   ToolResult filenames =
@@ -128,7 +132,7 @@ void TestGrepTool() {
   CHECK(!ec);
   setenv("PATH", fallback_bin.c_str(), 1);
   result = ToolGrep(supervisor, "needle", source.string());
-  CHECK(result.output.find("[grep") == 0);
+  CHECK(result.hint.starts_with("[grep"));
   CHECK(result.output.find("needle one") != std::string::npos);
   CHECK(ToolGrep(supervisor, "(", source.string(), {.literal = true}).output ==
         "(no matches)");
@@ -253,28 +257,19 @@ void TestGrepTool() {
                         *activity, {{"operation", "poll"}, {"id", "bad"}}) ==
                         "`id` must be integer");
 
-  CHECK(activity && activity->summary({{"operation", "poll"}, {"id", 3}}) ==
-                        "poll activity 3");
-  CHECK(activity &&
-        activity->summary({{"operation", "list"}}) == "list activities");
-  CHECK(
-      activity &&
-      activity->summary(
-          {{"operation", "resize"}, {"id", 3}, {"rows", 40}, {"cols", 120}}) ==
-          "resize 40×120 → activity 3");
-  CHECK(
-      activity &&
-      activity->summary({{"operation", "write"}, {"id", 3}, {"chars", "hello"}})
-              .rfind("write ", 0) == 0);
-  CHECK(activity &&
-        activity->summary(
-                    {{"operation", "wait"}, {"mode", "all"}, {"wait_ms", 5000}})
-                .find("all · all current") != std::string::npos);
-  CHECK(activity && activity->summary({{"operation", "poll"},
-                                       {"id", 3},
-                                       {"wait_ms", 5000},
-                                       {"until", "ready"}})
-                            .rfind("await ready", 0) == 0);
+  // Each operation reads as what it did.
+  for (const auto& [arguments, summary] :
+       std::vector<std::pair<json, std::string>>{
+           {{{"operation", "poll"}, {"id", 3}}, "Checked activity 3"},
+           {{{"operation", "list"}}, "Listed activities"},
+           {{{"operation", "resize"}, {"id", 3}, {"rows", 40}, {"cols", 120}},
+            "Sent input to activity 3"},
+           {{{"operation", "write"}, {"id", 3}, {"chars", "hello"}},
+            "Sent input to activity 3"},
+           {{{"operation", "wait"}, {"mode", "all"}}, "Waited for activities"},
+           {{{"operation", "stop"}, {"id", 3}}, "Stopped activity 3"}}) {
+    CHECK(activity && ToolSummary(*activity, arguments) == summary);
+  }
 
   json overshoot = {{"operation", "poll"}, {"id", 3}, {"wait_ms", 900000}};
   std::vector<std::string> clamped;
@@ -321,7 +316,8 @@ void TestGrepTool() {
   CHECK(activity &&
         InvalidToolArgument(*activity, {{"operation", "stop"}}) ==
             "`id` is required for stop; this call carried only `operation`");
-  CHECK(activity && activity->summary(materialized_stop) == "stop activity 3");
+  CHECK(activity &&
+        ToolSummary(*activity, materialized_stop) == "Stopped activity 3");
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==
           false);

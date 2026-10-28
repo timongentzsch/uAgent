@@ -223,7 +223,7 @@ void TestMcpContractHelpers() {
         {"structuredContent", {{"ok", true}}}}}};
   ToolResult mcp_result = McpResultText(server, response);
   CHECK(mcp_result.Ok());
-  std::string rendered = std::move(mcp_result.output);
+  std::string rendered = ModelText(mcp_result);
   CHECK(rendered.find("plain") != std::string::npos);
   CHECK(rendered.find("aW1hZ2U=") == std::string::npos);
   CHECK(rendered.find("[mcp image saved: ") != std::string::npos);

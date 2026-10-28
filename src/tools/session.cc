@@ -67,8 +67,8 @@ Tool SessionTool() {
   tool.available_in_lean = true;
   tool.category = "system";
   tool.intent = "delegate";
-  tool.header = [](const json&) {
-    return json{{"verb", {"Listing", "Listed"}}, {"target", "sessions"}};
+  tool.headline = [](const json&) {
+    return Headline{"Listing", "Listed", "sessions"};
   };
   return tool;
 }
@@ -130,7 +130,7 @@ Tool SessionMessageTool(
   tool.available_in_lean = true;
   tool.category = "system";
   tool.intent = "delegate";
-  tool.header = Verbs("Messaging", "Messaged");
+  tool.headline = Verbs("Messaging", "Messaged");
   return tool;
 }
 

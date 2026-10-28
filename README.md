@@ -32,10 +32,14 @@ every metric.
 
 ## What it does
 
-- **Drives a real browser.** A persistent Chrome profile that you watch and
-  take over from any paired device. It signs in through Chrome's password
-  manager without ever reading or typing a password, and hands codes,
-  captchas and payments to you. See [the agent's browser](docs/BROWSER.md).
+- **Drives a real browser, without seeing your passwords.** A persistent
+  Chrome profile that you watch and take over from any paired device. Sign-ins
+  come from Chrome's password manager: the agent asks Chrome to fill the saved
+  login and learns only whether the field was filled. It cannot type into a
+  password field or read what one holds, screenshots draw passwords as dots,
+  Chrome's password pages are blocked, and sandboxed commands cannot open the
+  profile. Codes, captchas and payments are handed to you. See
+  [the agent's browser](docs/BROWSER.md#isolation).
 - **Stays in its folder.** Commands run under the OS sandbox (Seatbelt on
   macOS, Landlock on Linux): they write only inside the folder, your other
   folders stay closed, cloud and git credential stores (`~/.aws`, `~/.kube`,

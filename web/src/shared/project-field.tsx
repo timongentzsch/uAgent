@@ -10,10 +10,10 @@ export function ProjectField({
   projects: string[];
   change: (value: string) => void;
 }) {
-  // Null while not typing: the field then shows the chosen project.
+  // Null while not typing: the field then shows the chosen folder.
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <Field label="Project">
+    <Field label="Folder">
       <Input
         list="management-projects"
         value={draft ?? value}

@@ -59,7 +59,7 @@ export default function Pairing({
   return (
     <main class="pairing">
       <Mark className="wordmark" />
-      <h1>Your local coding workspace.</h1>
+      <h1>Your local coding agent.</h1>
       <p>
         Connect this device to the µAgent host. Run <code>uagent --web</code> on
         that computer for a fresh pairing code, or open the link it prints.

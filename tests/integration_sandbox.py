@@ -859,7 +859,7 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
     assert_true(not (home / "refused.txt").exists(), "a command wrote the home directory")
     assert_true(result.returncode == 0, (result.stdout, result.stderr))
     for said in (seen.get("context", ""), seen.get("tool", "")):
-        assert_true("commands cannot write the workspace" in said, said)
+        assert_true("commands cannot write the folder" in said, said)
         assert_true("/tmp" in said and "write_file" in said, said)
         assert_true(("cannot read a file made" in said) == (sys.platform == "linux"), said)
     # And the person is told at startup, before anything has failed.
@@ -872,7 +872,7 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
             binary=binary,
         )
     assert_true(code == 0, output)
-    assert_true(b"cannot write the workspace" in output, f"startup was silent: {output!r}")
+    assert_true(b"cannot write the folder" in output, f"startup was silent: {output!r}")
     # At the readonly level, a lead agent's, an unwritable workspace is the
     # point, and startup does not warn about it.
     with Server([event({"content": "ready-ok"})]) as server:
@@ -884,7 +884,7 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
             binary=binary,
         )
     assert_true(code == 0, output)
-    assert_true(b"Start in a project folder" not in output, output)
+    assert_true(b"Start in a folder" not in output, output)
 
 
 def test_sandbox_grants_a_space_and_not_the_state_beside_it(root, home, *, binary):

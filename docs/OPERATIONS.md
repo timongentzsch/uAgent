@@ -45,7 +45,7 @@ the file keeps what you wrote.
 ```text
 /config                                  what is set, and where from
 /config user limits.maxTurnCost=2        save for all conversations
-/config project tools.timeout=120        save for this project folder
+/config project tools.timeout=120        save for this folder
 /config conversation approval.mode=auto
 /config user unset limits.maxTurnCost
 /config project reset                    clear a scope (keeps secrets)
@@ -54,7 +54,7 @@ the file keeps what you wrote.
 ```
 
 Five scopes can hold a value, and the later wins: All conversations, This
-project, Environment (`UAGENT_*` variables), Command line, and This
+folder, Environment (`UAGENT_*` variables), Command line, and This
 conversation (model and approval mode only). `/config` names the scope each
 value comes from. Secrets never appear in its output.
 
@@ -196,13 +196,13 @@ retry one or switch it.
   stops bootstrap. Servers marked `"required": false` share a 2 s startup
   window; a slow one finishes discovery at a later turn boundary without
   delaying model steps.
-- A project's `.mcp.json` starts servers only once you trust it, at the
+- A folder's `.mcp.json` starts servers only once you trust it, at the
   startup prompt or with `--trust-project-config`; a change to its content
   asks again. `~/.mcp.json` is yours and needs no trust.
-- The workspace is the default root. A server's `roots` array in `.mcp.json`
+- The folder is the default root. A server's `roots` array in `.mcp.json`
   replaces it; per-server paths are
   relative to that file. Roots are protocol scope, not a sandbox. Servers run
-  under the command sandbox with the workspace writable, unless their entry
+  under the command sandbox with the folder writable, unless their entry
   sets `"sandbox": false` ([Sandboxing](../SECURITY.md#sandboxing)).
 - Server stderr goes to a rotating log under `~/.uagent/mcp/`, bounded at
   16 MiB. Errors without text point to that log.
@@ -227,7 +227,7 @@ retry one or switch it.
   restart), raise the level (`UAGENT_SANDBOX=relaxed` opens your home
   folder), or run the one command with `run(sandbox=false)`, which always
   asks a person. A session started in your home directory has no writable
-  workspace: see [Sandboxing](../SECURITY.md#sandboxing).
+  folder: see [Sandboxing](../SECURITY.md#sandboxing).
 - **`sudo` or `ping` fails on Linux.** The sandbox sets `no_new_privs`, so
   setuid binaries fail inside it. Privileged work needs `UAGENT_SANDBOX=off`
   or an approved `run(sandbox=false)`. `--yolo` stops the questions, not the

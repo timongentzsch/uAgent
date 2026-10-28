@@ -32,11 +32,11 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
   expect(headings).toEqual([
     "Built-in base",
     "Yours · every conversation",
-    "Project · every conversation",
+    "Folder · every conversation",
     "Lead agent",
     "Built-in lead agent base",
     "Yours · lead agent",
-    "Project · lead agent",
+    "Folder · lead agent",
   ]);
   const yours = dialog.getByLabel("Yours · every conversation");
   await yours.fill("Prefer small diffs.\nKeep this line break.");

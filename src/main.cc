@@ -186,7 +186,7 @@ int WebMain([[maybe_unused]] const Options& options,
   for (const auto& [key, value] : options.overrides) {
     if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {
       fprintf(stderr,
-              "configure each web session through its own workspace or "
+              "configure each web session through its own folder or "
               "controls\n");
       return 2;
     }

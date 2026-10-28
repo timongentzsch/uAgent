@@ -88,7 +88,7 @@ void TestPythonTool() {
   CHECK(ToolWriteFile((root / "kept.txt").string(), "old").Ok());
   write("save.sh", "echo x > chart.png; mkdir -p out; echo x > out/data.csv\n");
   result = ToolRunScratch(supervisor, root, "save.sh");
-  CHECK(result.output == "[changed in the workspace: chart.png, out/]");
+  CHECK(result.output == "[changed in the folder: chart.png, out/]");
   write("quiet.sh", "echo done\n");
   result = ToolRunScratch(supervisor, root, "quiet.sh");
   CHECK(result.output == "done\n");

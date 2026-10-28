@@ -264,7 +264,7 @@ void HandleInstructions(const std::string& argument, CommandReply& reply) {
     const std::string text = JsonValue(file, "text", "");
     reply.Print(
         "%s%s · %s%s  %s\n%s\n\n", BOLD(),
-        JsonValue(file, "scope", "") == "user" ? "yours" : "project",
+        JsonValue(file, "scope", "") == "user" ? "yours" : "folder",
         JsonValue(file, "audience", "") == "panel" ? "panel" : "every session",
         RST(), TerminalSafe(JsonValue(file, "path", "")).c_str(),
         text.empty() ? "(empty)" : TerminalSafe(text).c_str());
@@ -315,7 +315,7 @@ void ShowSetting(const AppSession& session, const std::string& name,
   }
   reply.Note(Tone::kNeutral,
              "precedence: conversation, command line, process environment, "
-             "project, user, built-in default");
+             "folder, user, built-in default");
 }
 
 }  // namespace

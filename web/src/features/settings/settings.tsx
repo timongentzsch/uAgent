@@ -58,7 +58,7 @@ export default function Settings(props: SettingsProps) {
     project: (
       <>
         {instructions(
-          "Project instructions",
+          "Folder instructions",
           "What conversations and the lead agent read at start in this folder.",
         )}
         {mcp("project")}

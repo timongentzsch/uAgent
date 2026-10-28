@@ -20,7 +20,7 @@ import { useResource } from "../../shared/use-resource.ts";
 import { matches } from "../../shared/fuzzy.ts";
 
 const labels: Record<string, string> = {
-  workspace: "Workspace",
+  workspace: "Files",
   execute: "Execute",
   web: "Web",
   collaborate: "Collaborate",

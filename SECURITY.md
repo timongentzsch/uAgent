@@ -15,13 +15,13 @@ can write. They are separate: no approval mode turns the sandbox off.
 
 | Mode | Set with | Effect |
 | --- | --- | --- |
-| `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the workspace |
+| `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the folder |
 | `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call that leaves the sandbox or the folder, and every `run` or `scratch` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
 | `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed |
 
 In every mode:
 
-- Reads inside the workspace need no approval, apart from the files named
+- Reads inside the folder need no approval, apart from the files named
   below.
 - An exact action you allowed for the session, or remembered for the
   repository, is not asked again. `/permissions rules` lists what is
@@ -45,26 +45,26 @@ Two kinds of session act for you unattended:
   gate, and the approval says so. It runs its commands under the sandbox of
   the session that delegated to it, whatever its own configuration says.
 - A **lead agent** always runs at the `readonly` level, whatever the
-  settings say, and so do its subagents: its commands read the workspace and
+  settings say, and so do its subagents: its commands read the folder and
   change nothing, so they run without review. `sandbox.network` and
   `sandbox.write` do not widen that level. A `/btw` conversation forked
   from it runs in the ordinary sandbox and so gets no `run`.
 - A lead agent's **background agent** cannot be put in yolo: `/permissions yolo` is refused
   there and a saved or flagged yolo reads as auto. Its sandbox is always on.
   While that sandbox is enforced, its `run` and `scratch` commands and its
-  file changes inside the workspace run without review; everything else goes
+  file changes inside the folder run without review; everything else goes
   through its approval mode.
 
 ## Trust boundaries
 
-- Settings are never read from the project folder, and project `.env` files
+- Settings are never read from the folder, and `.env` files in it
   are ignored. Saved settings live in `~/.uagent/config/settings.json`
   ([Operations](docs/OPERATIONS.md#settings) has the scopes and their order).
   That file and artifact files are forced private.
-- Workspace trust is about `.mcp.json` alone. User `~/.mcp.json` is trusted
-  executable configuration. Project `.mcp.json` requires interactive trust or
+- Folder trust is about `.mcp.json` alone. User `~/.mcp.json` is trusted
+  executable configuration. The folder's `.mcp.json` requires interactive trust or
   `--trust-project-config`; semantic edits revoke stored trust.
-- Project instruction files, memories and skills enter model context without
+- Folder instruction files, memories and skills enter model context without
   configuration trust because they grant no capability. An explicit
   `$skill-name` mention loads that skill before the first model call. Treat
   an untrusted checkout as prompt input and review requested actions before
@@ -163,7 +163,7 @@ One setting chooses how far it goes, `sandbox.level` in the settings file or
 
 | Level | Writes | Reads | Network | Hidden stores |
 | --- | --- | --- | --- | --- |
-| `readonly` | temporary files and the terminal logs only, never the workspace | not your other folders | none | yes |
+| `readonly` | temporary files and the terminal logs only, never the folder | not your other folders | none | yes |
 | `strict` | the roots below | not your other folders | none | yes |
 | `default` | the roots below | not your other folders | allowed | yes |
 | `relaxed` | the roots below and your home folder, except `~/.uagent` and the hidden stores | open | allowed | yes |
@@ -188,7 +188,7 @@ confinement.
 
 **Writes** are what the sandbox restricts. A confined command may write:
 
-- the workspace;
+- the folder;
 - `$TMPDIR`, `/tmp`, `/var/tmp` and `/dev`;
 - the package caches: `~/.cache`, `~/.local/share/uv`, `~/.npm` and, on
   macOS, `~/Library/Caches` (`kPackageCaches` and `kMacPackageCaches` in
@@ -208,26 +208,26 @@ is granted entry by entry as it is when a command starts: a new file made
 directly in the home folder is not writable, while files in its folders and
 existing files are. The startup note says so.
 
-The workspace is held to the same rule. A session started in your home
-directory, which holds `~/.uagent`, has no writable workspace below the
+The folder is held to the same rule. A session started in your home
+directory, which holds `~/.uagent`, has no writable folder below the
 `relaxed` level: its commands can write only the other roots above, while
 the file tools still work there. Startup says so, the model is told, and a
-refused write names the roots. Start in a project folder instead, or in a
+refused write names the roots. Start in a folder instead, or in a
 workspace: the web's **New → Workspace…** takes a name and keeps a folder
 for it at `~/.uagent/spaces/<name>`, which is granted like any other
-workspace.
+folder.
 
 **Reads** are closed in your own folders, below the `relaxed` level: the
 visible entries of the home folder (`~/Software`, `~/Documents`, `~/Desktop`,
-`~/Library`…), the workspaces in `~/.uagent/spaces`, and the workspace's
+`~/Library`…), the workspaces in `~/.uagent/spaces`, and the folder's
 neighbours, the other entries of the folder that holds it, as other
-projects in the container's `/workspaces` are. A neighbour that holds the
-home folder is closed only by the home folder's own entries. A model that climbs out of its workspace into a sibling
+folders in the container's `/workspaces` are. A neighbour that holds the
+home folder is closed only by the home folder's own entries. A model that climbs out of its folder into a sibling
 repository answers from code that is not the one it was asked about, and
 your documents are not its business. Inside those folders a command still
 reads:
 
-- the workspace;
+- the folder;
 - the writable roots above;
 - `~/Library/Caches` and `~/Library/Developer` (`kReadableHomePaths` in
   `include/core/defaults.h`);
@@ -280,36 +280,36 @@ granted folder by folder around a hidden path, as the folders are when a
 command starts. A command that is still running (a server, a watcher) cannot
 read a file created or replaced afterwards directly in a folder on the way to
 a hidden path: `/`, `/home`, your home directory, `~/.uagent`, `~/.config`
-and `~/.docker`. Files in any other folder, a project among them, are
-unaffected. A session whose workspace is one of those folders is told so.
+and `~/.docker`. Files in any other folder, a repository among them, are
+unaffected. A session whose folder is one of those folders is told so.
 
 **Network.** Outbound access is allowed except at the `strict` level,
 because git, npm and pip need it. Denying it (`strict`, or `sandbox.network`
 off) blocks all IP traffic on macOS and TCP (bind and connect) on Linux,
 where Landlock cannot express the rest.
 
-**Inside the workspace**, a sandboxed command cannot change `.mcp.json` or,
+**Inside the folder**, a sandboxed command cannot change `.mcp.json` or,
 in a repository, `.git/config` and `.git/hooks` (which your own git would
 run); it can still commit. macOS denies the write. Landlock has no deny
 rule, so on Linux the three are recorded before a sandboxed command runs and
 put back when it ends (when it returns, or when a background or detached job
 is collected), and the model and you are told:
-`restored .git/hooks: sandboxed commands may not change it`. A project's
+`restored .git/hooks: sandboxed commands may not change it`. The folder's
 trust still follows `.mcp.json`'s content. This is a check at the end of a
 command, not a wall: a hook added by a long-running command is live until it
 ends, a change you make to those paths while a sandboxed command runs is
 undone with it, and a detached job still running when the session ends is
-not checked. A project's instruction files (`AGENTS.md`,
+not checked. A folder's instruction files (`AGENTS.md`,
 `.uagent/PANEL.md`) are ordinary repository files that any session in it may
 edit.
 
 **MCP servers.** A stdio server is spawned under the same policy as a
-command, hidden stores included, with the workspace and the package caches
+command, hidden stores included, with the folder and the package caches
 writable, so a server started with `npx` or `uvx` works. Its network follows
 the level and `sandbox.network`. A server that needs more can get a root
 through `sandbox.write`. An entry that sets `"sandbox": false` runs
-unconfined, in the project's `.mcp.json` or in `~/.mcp.json`. The prompt that
-asks you to trust a project's `.mcp.json` names the servers that would run
+unconfined, in the folder's `.mcp.json` or in `~/.mcp.json`. The prompt that
+asks you to trust a folder's `.mcp.json` names the servers that would run
 unconfined, and a changed entry asks again like any other change to the file.
 
 **Not confined by the sandbox:** the built-in file tools (approval and path

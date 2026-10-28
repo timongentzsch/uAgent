@@ -334,9 +334,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(
     page.getByRole("dialog", { name: "Delete conversation?" }),
   ).toBeHidden({ timeout: 20000 });
-  await expect(page.locator(".conversation-head h1")).toHaveText(
-    "Your workspace",
-  );
+  await expect(page.locator(".conversation-head h1")).toHaveText("µAgent");
   await expect(
     page.getByRole("button", { name: /UI refactor proof/ }),
   ).toHaveCount(0);
@@ -559,7 +557,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
   const nav = page.locator(".settings-nav");
   const form = page.locator(".configuration");
   const field = (name) => form.locator(`[data-setting="${name}"]`);
-  await nav.getByRole("button", { name: /^This project/ }).click();
+  await nav.getByRole("button", { name: /^This folder/ }).click();
   await expect(form).toContainText("Remove all overrides");
   // A number is saved on leaving its field.
   const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
@@ -596,7 +594,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
   // What is saved for all shows that this project decides instead.
   await nav.getByRole("button", { name: "All conversations" }).click();
   await expect(field("UAGENT_MAX_STEPS")).toContainText(
-    "Overridden in this project",
+    "Overridden in this folder",
   );
   // A switch applies as it flips; putting it back is the reset beside it.
   const memory = form.getByRole("switch", { name: "Memory", exact: true });
@@ -608,7 +606,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
   await expect(restore).toHaveCount(0);
 
   // Removing the project's overrides leaves what is saved for all.
-  await nav.getByRole("button", { name: /^This project/ }).click();
+  await nav.getByRole("button", { name: /^This folder/ }).click();
   await form.getByRole("button", { name: /Remove all overrides/ }).click();
   await page
     .getByRole("dialog", { name: "Remove all overrides" })

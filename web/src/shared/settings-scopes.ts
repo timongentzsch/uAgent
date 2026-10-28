@@ -11,7 +11,7 @@ export const SCOPES = [
   ],
   [
     "project",
-    "This project",
+    "This folder",
     Folder,
     (folder?: string) =>
       `Overrides All conversations for conversations in ${folder}.`,

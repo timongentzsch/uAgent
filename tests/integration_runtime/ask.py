@@ -202,7 +202,7 @@ def test_ask_shows_the_images_and_previews_it_made(root, home, *, binary):
         # The focused option's preview is drawn under the list.
         assert_true(b"[#][#]" in output, output[-2000:])
         results = tool_results(server.requests[-1][1]["messages"])
-        assert_true("made in the workspace" in results[0], results[0])
+        assert_true("made in the folder" in results[0], results[0])
         assert_true("Which layout?\n→ Cards" in results[1], results[1])
 
 

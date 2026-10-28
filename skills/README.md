@@ -10,7 +10,7 @@ to the executable.
 | use a skill now | type `$name` in a message, as in `$fusion TASK` |
 | see what is installed | `/skills` |
 | read, switch off or on | `/skills get ID`, `/skills disable ID`, `/skills enable ID` |
-| add your own | write `~/.uagent/skills/NAME/SKILL.md`, or `.uagent/skills/NAME/SKILL.md` in a project |
+| add your own | write `~/.uagent/skills/NAME/SKILL.md`, or `.uagent/skills/NAME/SKILL.md` in a folder |
 
 Without `$name`, the model opens a skill itself when its description fits
 the task. The web's Library lists and edits the same skills; see
@@ -30,7 +30,7 @@ All four are MIT-licensed as part of this repository.
 ## Import from Claude Code and Codex
 
 `/skills import` lists the skills Claude Code and Codex keep, under
-`~/.claude/skills`, `~/.codex/skills` and the workspace's `.claude/skills`
+`~/.claude/skills`, `~/.codex/skills` and the folder's `.claude/skills`
 and `.codex/skills`, however deep they are nested. `/skills import NAME`
 copies one into `~/.uagent/skills/NAME` with its supporting files;
 `/skills import all` copies every one that can be. In `SKILL.md` the
@@ -38,7 +38,7 @@ other agent's tool names (`Bash`, `Read`, `Edit`, ...) become µAgent's where
 they are plainly tool references, and `requires-tools` is added. A skill is
 never overwritten, and one whose license forbids copying, or whose folder is
 larger than a skill may be, is listed with the reason and not copied.
-`/memory import` does the same for this project's Claude Code memories.
+`/memory import` does the same for this folder's Claude Code memories.
 Codex's memory summary needs a model: invoke `$import`.
 
 ## Discovery
@@ -52,9 +52,9 @@ the same name:
 3. The installed `share/uagent/skills`
 4. `.agents/skills` in each directory from the filesystem root down to the
    workspace
-5. `.claude/skills` and `.codex/skills` in the workspace, on the same
+5. `.claude/skills` and `.codex/skills` in the folder, on the same
    condition
-6. `.uagent/skills` in the workspace
+6. `.uagent/skills` in the folder
 
 `UAGENT_SKILL_PATH` replaces the whole list; set it for a development binary
 that has no installed tree beside it. `UAGENT_SKILL_EXCLUDE` hides skills by

@@ -1,7 +1,7 @@
 # Instructions and the system prompt
 
 Instructions tell the agent how to work: `AGENTS.md` for every session,
-`PANEL.md` for a folder's lead agent. `/init` drafts a project `AGENTS.md`, and
+`PANEL.md` for a folder's lead agent. `/init` drafts a folder `AGENTS.md`, and
 `/instructions` shows what a session reads.
 
 A session's system message is the built-in base followed by these
@@ -16,7 +16,7 @@ the cached prefix.
 | | Every session | A folder's lead agent |
 | --- | --- | --- |
 | Yours, in every folder | `~/.uagent/AGENTS.md` | `~/.uagent/PANEL.md` |
-| The project's | `AGENTS.md` at the repository root | `<folder>/.uagent/PANEL.md` |
+| The folder's | `AGENTS.md` at the repository root | `<folder>/.uagent/PANEL.md` |
 
 A session reads one instruction file per directory, from `~/.uagent` and
 then from the repository root down to its working directory. In each
@@ -28,14 +28,14 @@ Together the files are bounded to 32 KiB. They and memory are read once
 when a session starts, so an edit or a saved memory reaches new and
 restarted sessions (`/restart`), not a running one.
 
-A project's `AGENTS.md` and `.uagent/PANEL.md` are ordinary repository
+A folder's `AGENTS.md` and `.uagent/PANEL.md` are ordinary repository
 files. Writing yours (`PANEL.md` or any of the three names in
 `~/.uagent`) always needs a person, including under YOLO; reading them does
 not. Editors never write through a symbolic link.
 
 ## Editing
 
-- Web: **Settings → All conversations** (or **This project**) **→
+- Web: **Settings → All conversations** (or **This folder**) **→
   Instructions** shows the files in the order the model reads them, each
   editable in place.
 - Terminal: `/instructions` shows it; `/instructions edit sessions|panel

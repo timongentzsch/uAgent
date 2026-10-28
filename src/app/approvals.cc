@@ -207,7 +207,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
   std::string reason =
       !tool.mandatory_reason.empty() ? tool.mandatory_reason
       : UnreadablePath(JsonValue(arguments, "path", std::string()))
-          ? "reads your folders outside the workspace; sandbox.read opens one"
+          ? "reads your folders outside this folder; sandbox.read opens one"
           : "changes \u00b5Agent's own configuration";
   // What the automatic review made of it, when it was asked: its reasons
   // join the risks, and in words which bar it fell on, or why it could not

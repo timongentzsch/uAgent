@@ -476,7 +476,7 @@ function App() {
                   {!compact ? (
                     <aside
                       class="sidebar"
-                      aria-label="Projects and conversations"
+                      aria-label="Folders and conversations"
                     >
                       {sidebar}
                       <ResizeHandle

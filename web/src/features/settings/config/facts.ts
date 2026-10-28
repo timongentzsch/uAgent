@@ -65,7 +65,7 @@ export function note(
     return setting.source === "cli"
       ? "Set on the command line for this run"
       : `Set by environment variable ${setting.name} — change it there`;
-  if (overridden(setting, scope)) return "Overridden in this project";
+  if (overridden(setting, scope)) return "Overridden in this folder";
   if (scope === "project" && setting.set?.project !== undefined)
     return `Overrides ${inherited(setting, scope, find)} from all conversations`;
   if (restart) return "Takes effect after restart";

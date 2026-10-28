@@ -83,7 +83,7 @@ int ControlMain(const std::string& argument) {
     std::error_code error;
     if (cwd) std::filesystem::current_path(*cwd, error);
     if (!cwd || error) {
-      result = {{"error", "project directory is unavailable"}};
+      result = {{"error", "folder is unavailable"}};
     } else {
       auto manager = ConfigManager::Capture({});
       manager.Initialize();

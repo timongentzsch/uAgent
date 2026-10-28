@@ -30,7 +30,7 @@ code, run `docker compose -f deploy/compose.yaml exec uagent uagent --web`.
   `UAGENT_WEB_ORIGIN=https://your-host.example` in `.env.appliance` (next to
   `deploy/`) before starting Compose. Provider keys can go in the same file;
   keep it private.
-- Projects go in `workspaces/`, mounted at `/workspaces`. On a Linux host,
+- Folders go in `workspaces/`, mounted at `/workspaces`. On a Linux host,
   give UID 10001 read/write access to it.
 - The `uagent-data` volume holds `/data/agent` (history, pairing, settings)
   and `/data/browser` (Chrome profiles). Back up the whole volume to keep

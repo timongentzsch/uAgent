@@ -41,7 +41,7 @@ this conversation     its own model and approval mode (/model, /permissions,
                       /config conversation KEY=VALUE); not set by this tool
 command line          --model, --budget, --no-memory, ...
 process environment   exported UAGENT_* variables
-this project          saved for this folder
+this folder           saved for this folder
 all conversations     saved for every conversation
 built-in default      the registry default reported by uagent
 ```

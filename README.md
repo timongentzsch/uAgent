@@ -3,7 +3,7 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a coding agent in a 7 MB binary. It is sandboxed to your project
+µAgent is a coding agent in a 7 MB binary. It is sandboxed to your folder
 folder, keeps one conversation you can continue from the terminal, a script or
 your phone, and drives a real Chrome that you can watch and take over.
 
@@ -120,7 +120,7 @@ checksum.
    and Anthropic Messages endpoints are
    [named providers](docs/GUIDE.md#models-and-providers).
 
-2. **Start it in a project folder** and say what you want:
+2. **Start it in a folder** and say what you want:
 
    ```sh
    cd my-project

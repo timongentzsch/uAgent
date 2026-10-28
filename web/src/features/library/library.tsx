@@ -344,7 +344,7 @@ export default function Library({
       )}
       {!cwd ? (
         <EmptyState>
-          Choose a project to browse its library and your global items.
+          Choose a folder to browse its library and your global items.
         </EmptyState>
       ) : (
         <div
@@ -368,10 +368,10 @@ export default function Library({
               }}
             >
               <option value="all">All scopes</option>
-              <option value="project">Project</option>
+              <option value="project">Folder</option>
               <option value="global">Global</option>
               {kind === "memory" && (
-                <optgroup label="Projects">
+                <optgroup label="Folders">
                   {folders.map((path) => (
                     <option key={path} value={`project:${path}`} title={path}>
                       {folderName(path)}

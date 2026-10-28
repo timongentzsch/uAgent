@@ -56,7 +56,7 @@ struct ConfigScopeName {
 };
 inline constexpr ConfigScopeName kConfigScopes[] = {
     {"user", "All conversations", kScopeUser},
-    {"project", "This project", kScopeProject},
+    {"project", "This folder", kScopeProject},
     {"environment", "Environment", 0},
     {"cli", "Command line", 0},
     {"conversation", "This conversation", kScopeConversation},
@@ -430,7 +430,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "lead agent's always), strict (no network), "
                           "default, relaxed (home writable and readable) or "
                           "off; below relaxed, commands read in your home "
-                          "folder only the workspace and their tools' folders"),
+                          "folder only this folder and their tools' folders"),
             kSandboxLevels),
         "Sandbox"),
     registry::Named(registry::Bul("sandbox.network", "UAGENT_SANDBOX_NET", {},

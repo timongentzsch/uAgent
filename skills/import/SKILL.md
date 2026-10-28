@@ -14,7 +14,7 @@ What does need you is Codex's memory, `~/.codex/memories/memory_summary.md`.
 Read it. Where a line is worth confirming, `grep` `MEMORY.md` beside it for
 that line; never read `MEMORY.md` whole, it is large.
 
-Condense it into at most 32 memories that hold true in any project: one
+Condense it into at most 32 memories that hold true in any folder: one
 durable preference or lesson each, under 2 KiB, ending with a `Why:` line.
 Cover every durable preference and tip, not only the first few. Skip anything
 that only matters in one named repository or product (how one product's

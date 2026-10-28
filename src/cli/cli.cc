@@ -106,7 +106,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kMemory, "/memory",
      "[list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY "
      "TARGET|import [NAME|all]]",
-     "manage project and global memories"},
+     "manage this folder's and global memories"},
     {SlashCommandId::kSkills, "/skills",
      "[list|get ID|set KEY @FILE|forget ID|enable ID|disable ID|import "
      "[NAME|all]]",
@@ -174,13 +174,13 @@ std::string SlashCommandPrompt(const ParsedSlashCommand& command) {
       return "Write AGENTS.md in the repository root with instructions for an "
              "agent working here. Read the build files, tests and existing "
              "docs first, and keep it to the commands, layout and conventions "
-             "this project actually uses. Update the file if it exists.";
+             "this folder actually uses. Update the file if it exists.";
     case SlashCommandId::kReview:
       return "Review " +
              (command.argument.empty() ? std::string("my uncommitted changes")
                                        : command.argument) +
              " and find issues: defects first, then missing tests and "
-             "anything that contradicts this project's conventions. Cite "
+             "anything that contradicts this folder's conventions. Cite "
              "path:line and report the most severe finding first.";
     case SlashCommandId::kDiff:
       return "Show my current changes: run `git --no-pager diff --stat`, "

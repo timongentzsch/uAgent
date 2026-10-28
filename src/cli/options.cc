@@ -81,7 +81,7 @@ constexpr FlagSpec kFlags[] = {
     {"--version", FlagKind::kPrintVersion, nullptr, nullptr, nullptr,
      "print the installed version"},
     {"--trust-project-config", FlagKind::kToggle, &Options::trust_project,
-     nullptr, nullptr, "trust this workspace's .mcp.json"},
+     nullptr, nullptr, "trust this folder's .mcp.json"},
     {"-h", FlagKind::kHelp, nullptr, nullptr, nullptr, ""},
     {"--help", FlagKind::kHelp, nullptr, nullptr, nullptr, "show this help"},
 };
@@ -241,7 +241,7 @@ const char* UsageText() {
     return synopsis + "\n       uagent panel [options]\n\n" + listing +
            "  panel                   open this folder's panel\n"
            "\nsettings: what is saved for all conversations, then for this "
-           "project (/config, or the web settings); process UAGENT_* "
+           "folder (/config, or the web settings); process UAGENT_* "
            "variables override both, and the flags above override all "
            "three\n";
   }();

@@ -142,7 +142,7 @@ def test_import_from_claude_code_and_codex(root, home, *, binary):
     items = {item["name"]: item for item in call(action="list")["items"]}
     assert_true(set(items) == {"demo", "tabs", "huge", "foreign", "memory_summary"}, items)
     assert_true(items["demo"]["source"] == "claude" and "blocked" not in items["demo"], items)
-    assert_true("project" in items["foreign"]["blocked"], items["foreign"])
+    assert_true("folder" in items["foreign"]["blocked"], items["foreign"])
     assert_true("limit" in items["huge"]["blocked"], items["huge"])
     assert_true(items["memory_summary"]["needs_model"], items["memory_summary"])
 

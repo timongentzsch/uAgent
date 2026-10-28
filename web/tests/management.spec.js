@@ -80,13 +80,13 @@ test("library drafts, shared controls and scheduled results", async ({
 
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Library", exact: true }).click();
-  await page.getByLabel("Project", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Project", { exact: true }).press("Tab");
+  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
+  await page.getByLabel("Folder", { exact: true }).press("Tab");
   const tabs = await page
     .locator(".management-toolbar .segmented")
     .boundingBox();
   const project = await page
-    .getByLabel("Project", { exact: true })
+    .getByLabel("Folder", { exact: true })
     .boundingBox();
   expect(project.x - tabs.x - tabs.width).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Add memory", exact: true }).click();
@@ -127,8 +127,8 @@ test("library drafts, shared controls and scheduled results", async ({
   await editor.fill("Unsaved draft survives navigation.");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
   await nav.getByRole("button", { name: "Library", exact: true }).click();
-  await page.getByLabel("Project", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Project", { exact: true }).press("Tab");
+  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
+  await page.getByLabel("Folder", { exact: true }).press("Tab");
   await expect(editor).toHaveValue("Unsaved draft survives navigation.");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(editor).toHaveCount(0);
@@ -160,8 +160,8 @@ test("library drafts, shared controls and scheduled results", async ({
       await listReady;
     await route.continue();
   });
-  await page.getByLabel("Project", { exact: true }).fill(secondProject);
-  await page.getByLabel("Project", { exact: true }).press("Tab");
+  await page.getByLabel("Folder", { exact: true }).fill(secondProject);
+  await page.getByLabel("Folder", { exact: true }).press("Tab");
   const secondGroup = page.getByRole("region", {
     name: secondProject,
     exact: true,
@@ -189,7 +189,7 @@ test("library drafts, shared controls and scheduled results", async ({
   );
   const filter = page.getByLabel("Filter library");
   await filter.selectOption(`project:${fixture.project}`);
-  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("Folder", { exact: true })).toHaveValue(
     fixture.project,
   );
   await expect(secondGroup).toHaveCount(0);
@@ -266,8 +266,8 @@ test("library drafts, shared controls and scheduled results", async ({
   await page
     .getByLabel("Name", { exact: true })
     .fill("Browser scheduled review");
-  await page.getByLabel("Project", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Project", { exact: true }).press("Tab");
+  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
+  await page.getByLabel("Folder", { exact: true }).press("Tab");
   await page
     .getByLabel("Instructions", { exact: true })
     .fill("Review the workspace");
@@ -334,8 +334,8 @@ test("a skill kept by Claude Code is imported from the Library", async ({
     .getByRole("complementary")
     .getByRole("button", { name: "Library", exact: true })
     .click();
-  await page.getByLabel("Project", { exact: true }).fill(fixture.project);
-  await page.getByLabel("Project", { exact: true }).press("Tab");
+  await page.getByLabel("Folder", { exact: true }).fill(fixture.project);
+  await page.getByLabel("Folder", { exact: true }).press("Tab");
   await page.getByRole("button", { name: "Skills", exact: true }).click();
   await page.getByRole("button", { name: "Import", exact: true }).click();
   const dialog = page.getByRole("dialog", {

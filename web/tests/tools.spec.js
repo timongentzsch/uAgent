@@ -240,7 +240,7 @@ test("MCP servers show their state and switch on and off", async ({
   // The project's own servers are in its section, by its file.
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: /^This project/ })
+    .getByRole("button", { name: /^This folder/ })
     .click();
   const project = settings.getByRole("region", { name: "MCP servers" });
   await expect(project).toContainText("No servers");

@@ -265,7 +265,7 @@ SavedSettings ReadSettings(const std::string& folder) {
   std::vector<std::string> problems;
   saved.all = DecodeScope(document["all"], "", &problems);
   if (const json* project = JsonObject(document["projects"], folder.c_str())) {
-    saved.project = DecodeScope(*project, "this project: ", &problems);
+    saved.project = DecodeScope(*project, "this folder: ", &problems);
   }
   saved.warning = Joined(problems);
   // Once a run: a build newer than the schema beside the document replaces

@@ -37,7 +37,7 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
   }
   if (PathApprovalRequired(path, CanonicalCwd()) || HiddenPath(path) ||
       PathApprovalClass(path, PathAccess::kRead) != ApprovalClass::kNone) {
-    return "an option's image must be a file you made in the workspace";
+    return "an option's image must be a file you made in the folder";
   }
   return std::nullopt;
 }
@@ -140,7 +140,7 @@ Tool AskTool(AskPerson ask, AskImage image) {
               "type":"object","properties":{
                 "label":{"type":"string"},
                 "description":{"type":"string","description":"the image's alt text"},
-                "image":{"type":"string","description":"image file in the workspace"},
+                "image":{"type":"string","description":"image file in the folder"},
                 "preview":{"type":"string","description":"40 lines at most"}},
               "required":["label"]}},
             "multi_select":{"type":"boolean"}},

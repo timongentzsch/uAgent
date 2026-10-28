@@ -276,7 +276,7 @@ bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
   if (project) {
     if (!ProjectConfigTrusted() || !ProjectTrustSnapshot(trust, error)) {
       error =
-          "this project's MCP config changed since it was trusted; "
+          "this folder's MCP config changed since it was trusted; "
           "start a new conversation to review it";
       return false;
     }

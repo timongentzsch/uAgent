@@ -173,8 +173,6 @@ function revealFocusedField() {
 }
 
 export function trackViewport() {
-  let lastWidth = 0;
-  let keyboard = false;
   const standalone = matchMedia("(display-mode: standalone)");
   const stop = observeViewport(() => {
     const root = document.documentElement;
@@ -183,14 +181,11 @@ export function trackViewport() {
     const editing = document.activeElement?.matches(
       'textarea, input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable="true"]',
     );
-    // Rotation invalidates keyboard state from the previous layout. A lifetime
-    // maximum height per width mistakes smaller windows for an open keyboard.
-    if (root.clientWidth !== lastWidth) keyboard = false;
-    lastWidth = root.clientWidth;
-    // Focusout commonly arrives before the keyboard finishes closing. Keep the
-    // inset suppressed until the visual viewport itself returns to rest.
-    keyboard =
-      !!(editing || keyboard) &&
+    // Only a field being typed into holds the keyboard up. iOS can keep
+    // reporting the smaller visual viewport after the keyboard closes, until
+    // the page scrolls, so a smaller viewport alone is not a keyboard.
+    const keyboard =
+      !!editing &&
       (viewport?.scale || 1) === 1 &&
       Math.abs((viewport?.width || innerWidth) - root.clientWidth) <=
         VIEWPORT_ROUNDING_PX &&

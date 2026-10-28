@@ -11,11 +11,14 @@ import { statusOf } from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
-import { active, withAgents } from "../../shared/activity-status.tsx";
+import { active, withAgents } from "../../shared/turn-status.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { count, plural } from "../../shared/quantities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import "./panel.css";
+
+// The panel board beside the lead agent's chat: its plan, the subagents and
+// threads working for each step, and the one-line help under a panel's title.
 
 const DONE_SHOWN = 8;
 const NO_ACTIVITIES: Activity[] = [];

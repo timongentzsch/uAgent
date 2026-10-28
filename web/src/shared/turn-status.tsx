@@ -30,6 +30,9 @@ import { SheetButton } from "./sheet.tsx";
 import { command } from "../state/api.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
+// The turn's status line above the composer and the controls for the
+// activities (background commands, subagents) the turn started.
+
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 // Supervised activities plus child agents not already listed as one.

@@ -50,7 +50,7 @@ import {
   ActivityControls,
   TurnStatus,
   withAgents,
-} from "../../shared/activity-status.tsx";
+} from "../../shared/turn-status.tsx";
 import Raw from "./raw.tsx";
 import { StatisticsContent } from "./statistics.tsx";
 import Markdown from "../../shared/markdown-view.tsx";

@@ -38,7 +38,7 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton, TurnStatus } from "../../shared/activity-status.tsx";
+import { ActivityButton, TurnStatus } from "../../shared/turn-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import {

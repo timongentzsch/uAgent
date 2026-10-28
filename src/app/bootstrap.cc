@@ -364,7 +364,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   // Housekeeping over the whole artifact tree is a session's, not something
   // each child it starts repeats.
-  if (AgentDepth() == 0) MaintainArtifacts();
+  if (AgentDepth() == 0) MaintainArtifactsDaily();
   if (!options.debug) {
     options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
     options.debug = !options.debug_path.empty();

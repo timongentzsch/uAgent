@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
 #include "include/core/child_env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -50,7 +51,7 @@ void McpShutdownGroup(const std::vector<McpServer*>& servers) {
   for (McpServer* server : servers) {
     // A pump outlives the server only while a detached descendant still
     // holds the server's stderr open.
-    if (server->log_pid > 0) kill(server->log_pid, SIGKILL);
+    server->log_thread.request_stop();
     if (server->pid <= 0) continue;
     kill(-server->pid, SIGKILL);
     kill(server->pid, SIGKILL);
@@ -83,10 +84,6 @@ bool McpServer::Reaped() {
     if (!gone(pid)) return false;
     TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
     pid = -1;
-  }
-  if (log_pid > 0) {
-    if (!gone(log_pid)) return false;
-    log_pid = -1;
   }
   return true;
 }
@@ -162,25 +159,21 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
   fcntl(in_write.Get(), F_SETFL, O_NONBLOCK);
   // stderr goes through the same rotating log pump detached terminals use, so
   // only the log is bounded. A file-size rlimit would instead have capped
-  // every file the server and its children write.
+  // every file the server and its children write. A thread of this process
+  // pumps it: the log is only read after the server is gone or on a failure.
   Fd errfd;
-  pid_t log_pid = -1;
+  std::jthread log_thread;
   int errp[2];
   if (pipe(errp) == 0) {
     Fd err_read(errp[0]), err_write(errp[1]);
     fcntl(err_read.Get(), F_SETFD, FD_CLOEXEC);
     fcntl(err_write.Get(), F_SETFD, FD_CLOEXEC);
-    // Own group, like the server: terminal Ctrl+C must not cut the log.
-    if (SpawnProcess(
-            {.argv = {ExecutablePath(), "--log-pump", McpLogPath(s.name),
-                      std::to_string(kMcpLogBytes)},
-             .group = SpawnSpec::Group::kOwn,
-             .fds = {{STDIN_FILENO, err_read.Get()}}},
-            log_pid) == 0) {
-      errfd = std::move(err_write);
-    } else {
-      log_pid = -1;
-    }
+    log_thread =
+        std::jthread([input = std::move(err_read),
+                      path = McpLogPath(s.name)](const std::stop_token& stop) {
+          PumpLog(input.Get(), path, kMcpLogBytes, stop);
+        });
+    errfd = std::move(err_write);
   }
   if (!errfd) errfd.Reset(open("/dev/null", O_WRONLY | O_CLOEXEC));
   ChildEnvironment child_environment(env);
@@ -199,8 +192,8 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
   argv.push_back(nullptr);
   pid_t pid = fork();
   if (pid < 0) {
-    errfd.Reset();  // EOF lets the pump exit; Reaped() collects it later
-    s.log_pid = log_pid;
+    errfd
+        .Reset();  // EOF lets the pump exit; the thread joins with `log_thread`
     return false;
   }
   if (pid == 0) {
@@ -227,7 +220,7 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
   out_write.Reset();
   errfd.Reset();
   s.pid = pid;
-  s.log_pid = log_pid;
+  s.log_thread = std::move(log_thread);
   s.in = std::move(in_write);
   s.out = std::move(out_read);
   s.alive = true;

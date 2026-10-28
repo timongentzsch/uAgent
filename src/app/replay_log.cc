@@ -38,9 +38,18 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
     notice.attention_id = epoch + ":" + std::to_string(sequence_ + 1);
     value["attention_id"] = notice.attention_id;
   }
+  // A run's own frames wake the scheduler, except the ones a turn streams by
+  // the hundred: they change nothing it reads.
+  const bool streamed = type == AppType(EventId::kAnswerDelta) ||
+                        type == AppType(EventId::kReasoningDelta) ||
+                        type == AppType(EventId::kUsageUpdated) ||
+                        type == AppType(EventId::kToolArguments) ||
+                        type == AppType(EventId::kHostedToolActivity) ||
+                        type == AppType(EventId::kHttpExchange);
   notice.wake = kind == "scheduled.changed" || kind == "management.changed" ||
                 kind == "spaces.changed" || kind == "metadata" ||
-                kind == "activated" || kind == "deactivated" || run_owned;
+                kind == "activated" || kind == "deactivated" ||
+                (run_owned && !streamed);
   if (kind == "deleted") notices_.erase(session);
   value["epoch"] = epoch;
   value["sequence"] = ++sequence_;

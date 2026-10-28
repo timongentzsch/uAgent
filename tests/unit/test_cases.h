@@ -158,6 +158,7 @@ namespace uagent {
   X(TestProjectInstructionDiscovery)              \
   X(TestMcpContractHelpers)                       \
   X(TestSideArchiveForks)                         \
+  X(TestSaveSkipsUnchangedFile)                   \
   X(TestSharedArchiveSnapshots)                   \
   X(TestTranscriptSearch)                         \
   X(TestConversation)                             \

@@ -10,6 +10,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -36,8 +37,6 @@ void McpShutdown(McpServer& server);
 struct McpServer {
   std::string name;
   pid_t pid = -1;
-  // `uagent --log-pump` bounding the server's stderr; exits at stderr EOF.
-  pid_t log_pid = -1;
   // in: we write (the server's stdin) · out: we read (its stdout)
   Fd in, out;
   bool alive = false;
@@ -60,6 +59,9 @@ struct McpServer {
   // Why a configured server is not running: invalid config, skipped, or the
   // start failure. Kept for the settings overview; empty while it runs.
   std::string error;
+  // Copies the server's stderr into its bounded log until the pipe closes.
+  // Last member: replaced or destroyed, it stops and joins first.
+  std::jthread log_thread;
 
   ~McpServer() { Shutdown(); }
 

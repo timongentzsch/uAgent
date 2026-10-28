@@ -261,6 +261,13 @@ inline constexpr int64_t kHistoryFiles = 200;
 inline constexpr int64_t kDebugDays = 14;
 inline constexpr int64_t kDebugFiles = 50;
 inline constexpr int64_t kBgDays = 7;
+// The pass over every artifact directory runs at most this often; its stamp
+// file lives in the global base.
+inline constexpr char kMaintenanceStamp[] = ".maintained";
+inline constexpr int64_t kMaintenanceIntervalHours = 24;
+// How often a stoppable log pump looks up from its pipe to see whether it was
+// asked to stop.
+inline constexpr int kLogPumpPollMs = 100;
 inline constexpr int64_t kBgFiles = 200;
 inline constexpr int64_t kMcpLogDays = 7;
 inline constexpr int64_t kMcpLogFiles = 100;

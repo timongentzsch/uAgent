@@ -82,18 +82,16 @@ std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
               std::nullopt};
   }
   if (regular && loaded.record && SnapshotFile(path) == stamp) {
+    history->parsed_bytes = history->conversation.EstimatedBytes();
     std::lock_guard lock(history_mutex_);
     std::erase_if(history_,
                   [&](const auto& entry) { return entry->path == path; });
     history_.insert(history_.begin(), history);
-    int64_t bytes = 0;
-    for (const auto& entry : history_) {
-      bytes += std::max(int64_t{0}, entry->stamp.size);
-    }
-    while (history_.size() > 1 &&
-           (history_.size() > kHistoryCacheEntries ||
-            bytes > static_cast<int64_t>(kHistoryCacheBytes))) {
-      bytes -= std::max(int64_t{0}, history_.back()->stamp.size);
+    size_t bytes = 0;
+    for (const auto& entry : history_) bytes += entry->parsed_bytes;
+    while (history_.size() > 1 && (history_.size() > kHistoryCacheEntries ||
+                                   bytes > kHistoryCacheBytes)) {
+      bytes -= history_.back()->parsed_bytes;
       history_.pop_back();
     }
   }

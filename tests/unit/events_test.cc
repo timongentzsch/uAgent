@@ -377,6 +377,32 @@ void TestObservabilityEvents() {
   }
   CHECK(JsonValue(last, "seq", int64_t{0}) == 602);
 
+  // Below the ring's bound a new event is appended to the same file, and a
+  // line cut short by a crash is dropped when the file is read.
+  SessionJournal growing;
+  const std::string growing_path = (workspace.root / "growing.jsonl").string();
+  growing.Append(next, PolicyFor(next.id));
+  CHECK(growing.Flush(growing_path, error));
+  struct stat first_state{};
+  CHECK(stat(growing_path.c_str(), &first_state) == 0);
+  growing.Append(next, PolicyFor(next.id));
+  CHECK(growing.Flush(growing_path, error));
+  struct stat second_state{};
+  CHECK(stat(growing_path.c_str(), &second_state) == 0);
+  CHECK(second_state.st_ino == first_state.st_ino);
+  CHECK(second_state.st_size > first_state.st_size);
+  {
+    std::ofstream torn(growing_path, std::ios::app);
+    torn << "{\"schema\":\"uagent.session.ev";
+  }
+  SessionJournal reread;
+  CHECK(reread.Load(growing_path, error));
+  CHECK(reread.Size() == 2);
+  CHECK(reread.Flush(growing_path, error));
+  SessionJournal clean;
+  CHECK(clean.Load(growing_path, error));
+  CHECK(clean.Size() == 2);
+
   DebugSink debug;
   std::string debug_path = (workspace.root / "debug.jsonl").string();
   CHECK(debug.Start(debug_path));
@@ -446,6 +472,34 @@ void TestObservabilityEvents() {
   for (int64_t i = 0; i < kHistoryFiles; ++i) {
     CHECK(std::filesystem::exists(sessions / (std::to_string(i) + ".json")));
   }
+
+  // The daily pass runs once, however many sessions start; a stamp a day old
+  // lets it run again. Modes are only rewritten where they are wrong.
+  const std::filesystem::path stale = staging / "stale";
+  const auto make_stale = [&] {
+    std::filesystem::create_directories(stale);
+    std::filesystem::last_write_time(
+        stale,
+        std::filesystem::file_time_type::clock::now() - std::chrono::hours(48));
+  };
+  make_stale();
+  MaintainArtifactsDaily();
+  CHECK(!std::filesystem::exists(stale));
+  make_stale();
+  MaintainArtifactsDaily();
+  CHECK(std::filesystem::exists(stale));
+  std::filesystem::last_write_time(
+      GlobalBase() + "/" + kMaintenanceStamp,
+      std::filesystem::file_time_type::clock::now() - std::chrono::hours(48));
+  MaintainArtifactsDaily();
+  CHECK(!std::filesystem::exists(stale));
+  const std::string loose = (sessions / "loose.json").string();
+  std::ofstream(loose) << "x";
+  chmod(loose.c_str(), 0644);
+  MaintainArtifacts();
+  struct stat tightened{};
+  CHECK(stat(loose.c_str(), &tightened) == 0 &&
+        (tightened.st_mode & 0777) == 0600);
 }
 
 }  // namespace uagent

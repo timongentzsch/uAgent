@@ -438,7 +438,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
   }
   SessionRecord record = Snapshot();
   record.state.delivered_mail = std::move(delivered);
-  SessionStoreStatus status = SessionStore::Save(path, record, &conversation_);
+  SessionStoreStatus status =
+      SessionStore::Save(path, record, &conversation_, &saved_file_);
   if (!status.Ok()) {
     error = std::move(status.message);
     return false;

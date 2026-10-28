@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -16,6 +17,7 @@
 #include <filesystem>
 #include <limits>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <utility>
 #include <vector>
@@ -166,16 +168,29 @@ CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
   return {std::move(tail), KeepCompletedLog(path, cap, failed)};
 }
 
-// Hidden subprocess mode used by detached shells. Two half-size segments keep
-// server logs bounded without sending SIGXFSZ/SIGPIPE to the server itself.
-int ToolLogPump(const std::string& path, int64_t max_bytes) {
+// Two half-size segments keep server logs bounded without sending
+// SIGXFSZ/SIGPIPE to the server itself.
+int PumpLog(int input, const std::string& path, int64_t max_bytes,
+            const std::stop_token& stop) {
   int64_t segment = std::max(int64_t{512}, max_bytes / 2);
   Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode));
   if (!fd) return 1;
   std::array<char, KiB(64)> buffer{};
   int64_t written = 0;
   for (;;) {
-    ssize_t count = read(STDIN_FILENO, buffer.data(), buffer.size());
+    // A descendant that outlives its server can hold the pipe open for good;
+    // a stoppable pump gives up once nothing more is waiting in it.
+    if (stop.stop_possible()) {
+      pollfd waiting = {input, POLLIN, 0};
+      const int ready = poll(&waiting, 1, kLogPumpPollMs);
+      if (ready < 0 && errno == EINTR) continue;
+      if (ready < 0) break;
+      if (ready == 0) {
+        if (stop.stop_requested()) break;
+        continue;
+      }
+    }
+    ssize_t count = read(input, buffer.data(), buffer.size());
     if (count < 0 && errno == EINTR) continue;
     if (count <= 0) break;
     size_t offset = 0;
@@ -199,6 +214,11 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
     }
   }
   return 0;
+}
+
+// Hidden subprocess mode used by detached shells.
+int ToolLogPump(const std::string& path, int64_t max_bytes) {
+  return PumpLog(STDIN_FILENO, path, max_bytes);
 }
 
 bool ProcessGroupAlive(pid_t leader) {

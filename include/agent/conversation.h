@@ -40,6 +40,8 @@ class Conversation {
  public:
   const json& Messages() const { return messages_; }
   const json& Archive() const { return archive_; }
+  // Bytes the parsed conversation holds, for budgeting caches of it.
+  size_t EstimatedBytes() const;
   // Captured on the conversation thread; readers keep an immutable revision.
   std::shared_ptr<const json> SharedArchive();
   // The archive as JSON text, joined from each segment's serialization kept

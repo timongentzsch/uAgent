@@ -31,7 +31,10 @@ else was saved meanwhile and skips the approval.
 
 Literal credentials are rejected by the tool. Composite settings such as
 `UAGENT_PROVIDERS` may use exact environment-variable references; the approval
-preview shows the reference and redacts any existing literal credential. Ask
+preview shows the reference and redacts any existing literal credential.
+`UAGENT_PROVIDERS` takes only the providers to add or change, for example
+`{"groq":{"base_url":"https://api.groq.com/openai/v1","api_key":"$GROQ_API_KEY"}}`;
+the others are kept, and `{"name":null}` removes one. Ask
 the user to enter direct credentials, and never echo one that is already set.
 
 ## Layers

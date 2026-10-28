@@ -99,16 +99,32 @@ void TestConfigProposalAndCommit() {
         std::string::npos);
   CHECK(composite.Preview().find("adjacent-provider-secret") ==
         std::string::npos);
-  CHECK(composite.Preview().find("<redacted>") != std::string::npos);
   CHECK(composite.Preview().find("configured: {") == std::string::npos);
   CHECK(composite.Preview().find("\"wire_api\": \"responses\"") !=
         std::string::npos);
-  CHECK(composite.Preview().find("-   \"gpu\":") != std::string::npos);
+  // A tool names only the providers it changes: the others stay, with keys
+  // it was never shown.
+  CHECK(composite.Preview().find("-   \"gpu\":") == std::string::npos);
   CHECK(composite.Preview().find("+   \"codex-local\":") != std::string::npos);
 
   // The accepted reference resolves before provider selection.
   std::string error;
   CHECK(CommitConfigProposal(composite, error));
+  json merged = json::parse(HeldSettings("").at("UAGENT_PROVIDERS"));
+  CHECK(merged["old"]["api_key"] == "existing-provider-secret");
+  CHECK(merged.contains("gpu") && merged.contains("codex-local"));
+  // Null removes one.
+  ConfigProposal removal = PrepareConfigProposal(
+      ConfigProposalScope::kUser,
+      {{"UAGENT_PROVIDERS", R"({"old":null})", false}}, manager);
+  CHECK(removal.ok);
+  CHECK(removal.Preview().find("-   \"old\":") != std::string::npos);
+  CHECK(removal.Preview().find("<redacted>") != std::string::npos);
+  CHECK(removal.Preview().find("existing-provider-secret") ==
+        std::string::npos);
+  CHECK(CommitConfigProposal(removal, error));
+  merged = json::parse(HeldSettings("").at("UAGENT_PROVIDERS"));
+  CHECK(!merged.contains("old") && merged.contains("gpu"));
   ScopedEnv provider_key("CODEX_LOCAL_PROXY_API_KEY", "resolved-local-key");
   unsetenv("UAGENT_PROVIDERS");
   ConfigManager resolved_manager = ConfigManager::Capture({});

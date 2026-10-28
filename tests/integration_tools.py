@@ -944,8 +944,10 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         # The diff belongs to the approval prompt alone, never the call label.
         assert_true(output.count(b'+   "codex-local": {') == 1, output)
         saved = saved_settings(home)
-        # The providers are held as the object they are.
-        assert_true(saved["providers"] == json.loads(proposed), saved)
+        # The providers are held as the object they are, beside the ones the
+        # call did not name.
+        assert_true(saved["providers"]["codex-local"] == json.loads(proposed)["codex-local"], saved)
+        assert_true(saved["providers"]["old"]["base_url"] == "https://old.example/v1", saved)
         # What a value refers to stays beside it.
         held = saved["variables"]["LOCAL_PROXY_API_KEY"]
         assert_true(held == "adjacent-integration-secret", saved)

@@ -309,11 +309,11 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         return app.bottom - composer.bottom;
       }),
     ).toBeLessThan(2);
+    // Only a focused field holds the keyboard: iOS may keep reporting the
+    // small viewport after the keyboard closes.
     await prompt.blur();
-    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "");
-    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "0px");
-    await viewport(844);
     await expect(page.locator("html[data-keyboard]")).toHaveCount(0);
+    await viewport(844);
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
     await prompt.focus();
     for (const [height, top] of [

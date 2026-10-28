@@ -25,6 +25,7 @@
 
 ### Changes
 
+- **On a phone, the terminal (and every surface) regrows when the keyboard closes.** iOS can keep reporting the keyboard's smaller visible area until the page scrolls, and a terminal never scrolls the page, so its sheet stayed half height over a black band. Only a field being typed into now holds the keyboard layout.
 - **Every call reads as a verb and a target, with its result in a few words** (`Ran npm test · exit 1 · 4.2s`, `Edited a.ts · +3 −1`, `Searched /x/ in src · 12 lines`, `denied`, `rejected: …`). `thread` says what it did (Messaged, Stopped, Closed, Diffed, Deleted) and `plan` too (Showed the plan, Set, Added to, Cleared, Updated step); an MCP tool reads "Called <Tool>" with its first short argument, never its raw JSON. A skill loaded is a row like any other.
 - **The host builds the transcript once for every client.** Live rows and saved history were built by two builders, and a turn's "Worked" summary was counted in the web and again in the terminal; one builder now makes the same nodes for both from what was recorded, and counts a turn's work once.
 - **A refused call reads as what it would have done** (`Ran cd /tmp/fli && …`), with the error beneath, instead of as its raw JSON arguments.

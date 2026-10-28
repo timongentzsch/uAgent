@@ -71,6 +71,16 @@ for (const labels of [false, true])
             kind: "message",
             role: "assistant",
             streaming: true,
+            body: { kind: "markdown", text: "" },
+          },
+        });
+        patch({
+          block: {
+            id: `${response}:thinking`,
+            parent: null,
+            kind: "thinking",
+            headline: { verb: "Thinking" },
+            body: { kind: "text", text: "" },
           },
         });
         const start = performance.now();

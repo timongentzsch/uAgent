@@ -121,7 +121,7 @@ namespace uagent {
   X(TestPanelCountsItsOwnSpend)                   \
   X(TestChildSessionsStayOutOfTheCatalogue)       \
   X(TestMailbox)                                  \
-  X(TestSessionLinks)                             \
+  X(TestSessionMail)                              \
   X(TestToolExecutionPolicy)                      \
   X(TestBlockingWaitCalls)                        \
   X(TestOpenRouterServerSearch)                   \

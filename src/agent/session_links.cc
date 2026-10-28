@@ -2,6 +2,8 @@
 
 #include "include/agent/session_links.h"
 
+#include <sys/stat.h>
+
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -9,14 +11,12 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/file_services.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
-#include "include/core/limits.h"
-#include "include/core/private_store.h"
+#include "include/core/mailbox.h"
 #include "include/core/strings.h"
 #include "include/transport/session.h"
 
@@ -29,153 +29,127 @@ bool SocietySession(const std::string& path) {
          (name == kPanelRecordFile || name.starts_with("thread-"));
 }
 
+MailParty SessionParty(const std::string& path) {
+  const json header = SessionHeader(path);
+  MailParty party{.id = MailboxIdFor(path),
+                  .path = path,
+                  .cwd = JsonValue(header, kSessionHeaderCwd, ""),
+                  .delegation = DelegationOf(header)};
+  if (party.delegation.empty() && path == OwnSessionFile()) {
+    party.delegation = OwnDelegation();
+  }
+  return party;
+}
+
+MailParty OwnerParty(const std::string& owner_id) { return {.id = owner_id}; }
+
 namespace {
 
-constexpr int kSessionLinkFormat = 1;
-constexpr size_t kSessionLinkMembers = 32;
-constexpr size_t kSessionLinkBytes = KiB(256);
+std::string ParentSession(const MailParty& party) {
+  return MailboxIdFor(JsonValue(party.delegation, "parent_session", ""));
+}
 
-// A panel and its threads work together, so they are linked by where
-// they live, whatever mode each runs in: one history folder holds
-// panel.json and its thread-*.json. Nothing to join, nothing to prune.
-std::vector<json> SocietyMembers() {
-  const auto member = SocietySession;
-  const std::filesystem::path own(OwnSessionFile());
+bool NamesParent(const MailParty& child, const std::string& id) {
+  return !id.empty() && (id == ParentSession(child) ||
+                         id == JsonValue(child.delegation, "parent", ""));
+}
+
+// A panel and its threads work together, so they are linked by where they
+// live: one history folder holds panel.json and its thread-*.json.
+bool SameSociety(const MailParty& a, const MailParty& b) {
+  return SocietySession(a.path) && SocietySession(b.path) &&
+         std::filesystem::path(a.path).parent_path() ==
+             std::filesystem::path(b.path).parent_path();
+}
+
+// A person's own sessions in one folder, while this process is in yolo. A
+// delegated session is in yolo only because nobody is there to ask, so it
+// reaches no session its parent did not give it.
+bool YoloPeers(const MailParty& a, const MailParty& b) {
+  return ApprovalIsYolo() && AgentDepth() == 0 && !a.path.empty() &&
+         !b.path.empty() && a.delegation.empty() && b.delegation.empty() &&
+         !a.cwd.empty() && a.cwd == b.cwd;
+}
+
+// Whether a runtime is serving the session now.
+bool Live(const std::string& path) {
+  struct stat info{};
+  return stat(session::SocketPathForId(SessionIdFor(path)).c_str(), &info) == 0;
+}
+
+// Everyone this process may choose to message, itself left out: its
+// society, then the live yolo peers in its folder.
+std::vector<json> LinkedMembers() {
+  const std::string own = OwnSessionFile();
   std::vector<json> out;
-  if (!member(own.string())) return out;
-  std::error_code ec;
-  for (const auto& entry :
-       std::filesystem::directory_iterator(own.parent_path(), ec)) {
-    if (entry.path() == own || !member(entry.path().string())) continue;
-    out.push_back({{"id", entry.path().stem().string()},
-                   {"path", entry.path().string()}});
+  if (own.empty()) return out;
+  const MailParty me = SessionParty(own);
+  const auto add = [&](const std::string& path) {
+    out.push_back(
+        {{"id", std::filesystem::path(path).stem().string()}, {"path", path}});
+  };
+  if (SocietySession(own)) {
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(
+             std::filesystem::path(own).parent_path(), ec)) {
+      if (entry.path() != own && SocietySession(entry.path().string())) {
+        add(entry.path().string());
+      }
+    }
+  }
+  for (const SessionInfo& info : ListSessions()) {
+    if (info.error.empty() && info.path != own && Live(info.path) &&
+        YoloPeers(me, {.path = info.path,
+                       .cwd = info.cwd,
+                       .delegation = info.delegation})) {
+      add(info.path);
+    }
   }
   return out;
-}
-
-// The one link file a workspace has.
-std::string AutoLinkPath() {
-  return UagentDir("links") + "/auto-" + HashHex(CanonicalCwd()) + ".json";
-}
-
-// Members whose session file is gone cannot come back; dropping them here
-// keeps links from pinning deleted sessions forever.
-json PruneMembers(const json& members) {
-  json kept = json::array();
-  for (const json& member : members) {
-    if (!member.is_object()) {
-      continue;
-    }
-    const std::string path = JsonValue(member, "path", "");
-    if (!path.empty() && !PathExists(path)) continue;
-    kept.push_back(member);
-  }
-  return kept;
-}
-
-ToolResult WriteLink(const json& members) {
-  json link = {{"format", kSessionLinkFormat},
-               {"members", PruneMembers(members)}};
-  return ToolAtomicWrite(AutoLinkPath(), JsonDump(link, 2) + "\n",
-                         kPrivateFileMode, /*preserve_mode=*/true);
-}
-
-// The reader's own membership card. Empty id (headless runs without a saved
-// file) means no link can name this process.
-json OwnMember() {
-  const std::string id = OwnSessionId();
-  if (id.empty()) return json();
-  return {{"id", id}, {"path", OwnSessionFile()}};
-}
-
-bool HasMember(const json& members, const std::string& id) {
-  for (const json& member : members) {
-    if (member.is_object() && JsonValue(member, "id", "") == id) return true;
-  }
-  return false;
-}
-
-// Who the link joins. It is for a person's own sessions: a subagent is not
-// counted, so it reaches no session its parent did not give it. Nor is a
-// session whose saved header cannot be read, which could be one.
-json LinkMembers() {
-  const json link = ReadJsonFile(AutoLinkPath(), kSessionLinkBytes);
-  json own = json::array();
-  if (JsonValue(link, "format", int64_t{0}) != kSessionLinkFormat) return own;
-  for (json& member : JsonValue(link, "members", json::array())) {
-    const std::string path = JsonValue(member, "path", "");
-    const json header = SessionHeader(path);
-    if (!PathExists(path) ||
-        (!header.empty() && (!header.contains(kSessionHeaderDelegation) ||
-                             ThreadLifetime(DelegationOf(header))))) {
-      own.push_back(std::move(member));
-    }
-  }
-  return own;
 }
 
 std::string MemberTitle(const std::string& id, const std::string& path) {
-  if (!path.empty()) {
-    std::string title = JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
-    if (!title.empty() && title != "(untitled)") return title;
-  }
-  return id;
+  std::string title = JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
+  return title.empty() || title == "(untitled)" ? id : title;
 }
 
 }  // namespace
 
-bool SharesLink(const std::string& a, const std::string& b) {
-  if (a.empty() || b.empty() || a == b) return a == b && !a.empty();
-  const json members = LinkMembers();
-  if (HasMember(members, a) && HasMember(members, b)) return true;
-  const std::string me = OwnSessionId();
-  return (me == a || me == b) && HasMember(SocietyMembers(), me == a ? b : a);
+bool MayMail(const MailParty& from, const MailParty& to) {
+  if (NamesParent(to, from.id) || NamesParent(from, to.id)) return true;
+  const std::string parent = ParentSession(from);
+  if (!parent.empty() && parent == ParentSession(to)) return true;
+  return SameSociety(from, to) || YoloPeers(from, to);
 }
 
-ToolResult EnsureSessionAutoLink() {
-  // A person's own yolo sessions find each other. A delegated child is in
-  // yolo only because nobody is there to ask: it reaches no session its
-  // parent did not give it.
-  if (!ApprovalIsYolo() || AgentDepth() > 0) return ToolSuccess({});
-  json me = OwnMember();
-  if (!me.is_object()) return ToolSuccess({});
-  // Only those who count: the rest take no place and are not saved again.
-  json members = LinkMembers();
-  const std::string id = JsonValue(me, "id", "");
-  if (HasMember(members, id)) return ToolSuccess({});
-  if (members.size() >= kSessionLinkMembers) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "auto-link is full (32 sessions)");
+std::string SendSessionMail(SessionMail mail) {
+  const MailParty from = mail.from_path.empty() ? OwnerParty(mail.from_owner)
+                                                : SessionParty(mail.from_path);
+  MailParty to = SessionParty(mail.to_path);
+  if (to.delegation.empty()) to.delegation = mail.to_delegation;
+  if (!MayMail(from, to)) {
+    return "not allowed to message that session";
   }
-  members.push_back(std::move(me));
-  ToolResult saved = WriteLink(members);
-  return saved.Ok() ? ToolSuccess({}) : saved;
+  if (mail.kind == MailKind::kGuidance) {
+    mail.text = "[parent guidance]\n" + mail.text;
+  } else if (mail.kind == MailKind::kPeer) {
+    // Named as lists and boards name it, so the reply can address it.
+    const std::string title =
+        JsonValue(SessionHeader(mail.from_path), kSessionHeaderTitle, "");
+    const std::string name = HashHex(mail.from_path);
+    mail.text = "[session " +
+                (title.empty() ? name : OneLine(title) + " (" + name + ")") +
+                "]\n" + mail.text;
+  }
+  Mail sent = MailFrom(mail.from_path, MailboxIdFor(mail.to_path),
+                       {{"text", std::move(mail.text)}});
+  if (mail.from_path.empty()) sent.from = from.id;
+  sent.id = std::move(mail.id);
+  sent.hops = mail.hops;
+  // What a thread reports to its panel is the panel's to hear, however many;
+  // the rate is for what sessions write to each other.
+  return SendMail(std::move(sent), mail.kind != MailKind::kEvent);
 }
-
-namespace {
-
-// Everyone this process is linked with, itself left out.
-std::vector<json> LinkedMembers() {
-  const std::string me = OwnSessionId();
-  std::vector<json> out;
-  if (me.empty()) return out;
-  if (const json members = LinkMembers(); HasMember(members, me)) {
-    for (const json& member : members) {
-      if (!member.is_object()) continue;
-      const std::string id = JsonValue(member, "id", "");
-      if (id.empty() || id == me || HasMember(out, id)) continue;
-      out.push_back(member);
-    }
-  }
-  for (json& member : SocietyMembers()) {
-    if (!HasMember(out, JsonValue(member, "id", ""))) {
-      out.push_back(std::move(member));
-    }
-  }
-  return out;
-}
-
-}  // namespace
 
 // A peer is named by the id every board and list shows, the hash of its
 // file's path; its file's stem is accepted too.
@@ -200,12 +174,11 @@ std::vector<json> SessionSummaries() {
                     {"title", std::move(title)},
                     {"linked", linked}});
   };
-  // Linked first: members may live in other workspaces ListSessions skips.
   for (const json& member : LinkedMembers()) {
     const std::string path = JsonValue(member, "path", "");
     push(HashHex(path), MemberTitle(JsonValue(member, "id", ""), path), true);
   }
-  // Then linkable workspace sessions.
+  // Then the workspace's other sessions, which can be read but not messaged.
   for (const SessionInfo& info : ListSessions()) {
     if (!info.error.empty()) continue;
     push(HashHex(info.path),

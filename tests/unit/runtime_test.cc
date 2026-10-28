@@ -672,8 +672,8 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   const std::string own = MailboxIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
   const Mail wake = MailFrom(
-      (workspace.workspace / "thread.json").string(), own, kMailTaskCompleted,
-      {{"text", "the thread finished\n"}, {"folder", folder}});
+      (std::filesystem::path(path).parent_path() / "thread-a.json").string(),
+      own, {{"text", "the thread finished\n"}});
   CHECK(wake.from == MailboxIdFor(wake.sender_path));
   CHECK(SendMail(wake).empty());
 

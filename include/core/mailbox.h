@@ -18,16 +18,13 @@
 
 namespace uagent {
 
-// Message types. The type, not the text, says what a message is.
-inline constexpr const char* kMailTaskCompleted = "task.completed";
-inline constexpr const char* kMailAsk = "ask";
-inline constexpr const char* kMailSteer = "steer";
-inline constexpr const char* kMailNote = "note";
-
+// Mail has no kinds: whatever its text says, a delivered message wakes an idle
+// recipient and is read at its next step by a working one, and `hold` holds
+// it with the rest. Who may send what to whom is session_links.h's rule.
 struct Mail {
   // Mailbox ids (MailboxIdFor), and the sender's session file, which the
   // recipient reads to decide whether the two may talk.
-  std::string id, from, to, type, sender_path;
+  std::string id, from, to, sender_path;
   int hops = 0;
   int64_t created_ms = 0, expires_ms = 0;
   json body = json::object();
@@ -42,16 +39,16 @@ inline constexpr size_t kMailBytes = size_t{64} * 1024;
 // A session's mailbox id: its canonical session file, hashed, so every process
 // that names the session by any spelling of its path reaches one mailbox.
 std::string MailboxIdFor(const std::string& session_path);
-// Mail of `type` from the session at `sender_path` to the mailbox `to`.
-Mail MailFrom(const std::string& sender_path, std::string to, const char* type,
-              json body);
+// Mail from the session at `sender_path` to the mailbox `to`.
+Mail MailFrom(const std::string& sender_path, std::string to, json body);
 std::string MailboxDir(const std::string& id);
 
 // Commits `mail`, filling its id and times when empty. Refuses a full inbox,
 // a sender over its rate and a message forwarded kMailMaxHops times, each with
 // a reason the sender can act on. A duplicate of a pending message is
-// dropped.
-std::string SendMail(Mail mail);
+// dropped. `rate_limited` is false for what a session owes another, such as a
+// thread's reports to its panel, however many.
+std::string SendMail(Mail mail, bool rate_limited = true);
 
 // Pending messages in the order they were sent. Those `accept` takes move to
 // cur/ until AckMail; the rest stay pending. Expired and unreadable ones are

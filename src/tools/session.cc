@@ -8,6 +8,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/file_services.h"
+#include "include/agent/session_links.h"
 #include "include/agent/session_store.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -42,19 +43,17 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "message requires prompt");
   }
-  const std::string own = OwnSessionFile();
-  const std::string title = JsonValue(SessionHeader(own), "title", "");
-  Mail mail = MailFrom(own, MailboxIdFor(peer), kMailNote, json::object());
-  mail.hops = hops;
-  // Named as lists and boards name it, so the reply can address it.
-  const std::string from = HashHex(own);
-  mail.body = {
-      {"text", "[session " +
-                   (title.empty() ? from : OneLine(title) + " (" + from + ")") +
-                   "]\n" + text}};
-  const std::string error = SendMail(std::move(mail));
-  return error.empty() ? ToolSuccess("sent to session " + id)
-                       : ToolFailure(ToolErrorCode::kUnavailable, error);
+  const std::string error = SendSessionMail({.from_path = OwnSessionFile(),
+                                             .to_path = peer,
+                                             .text = text,
+                                             .kind = MailKind::kPeer,
+                                             .hops = hops});
+  if (!error.empty()) return ToolFailure(ToolErrorCode::kUnavailable, error);
+  // A yolo peer takes mail only while it is in yolo itself, and only it knows.
+  return ToolSuccess("sent to session " + id +
+                     (SocietySession(peer) ? ""
+                                           : "; a peer that is not in yolo "
+                                             "mode will not take it"));
 }
 
 Tool SessionTool(const std::function<void(const std::string& path)>& start) {
@@ -82,13 +81,13 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
   Tool tool = MakeTool(
       "session",
       "Message another uagent session linked with this one (a "
-      "panel's threads and yolo sessions link per folder). list shows "
-      "linked, then linkable sessions; message reaches the peer at its next "
+      "panel's threads, and live yolo sessions in the same folder). list "
+      "shows linked, then linkable sessions; message reaches the peer at its "
+      "next "
       "step, or starts its turn when it is idle; broadcast reaches every "
       "linked session. Unlinked "
       "sessions are refused.",
       parameters, [start](const json& arguments, const ToolContext&) {
-        (void)EnsureSessionAutoLink();
         std::string operation = JsonValue(arguments, "operation", "list");
         if (operation == "list") {
           std::vector<json> peers = SessionSummaries();

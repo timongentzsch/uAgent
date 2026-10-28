@@ -195,11 +195,11 @@ class Agent {
   void DeliverActivityCompletions(
       const std::vector<ActivityCompletion>& completions);
 
-  // Takes this session's pending mail (core/mailbox.h) into the conversation:
-  // a wake or step message as queued guidance, which the host starts a turn
-  // with when the message wakes; a passive one as a harness note; an
-  // interrupt stops the running turn after queueing its text. With `hold`,
-  // wake messages stay pending. True when anything was taken.
+  // Takes this session's pending mail (core/mailbox.h) that session_links.h
+  // allows into the conversation, each message as an arrival (below): an idle
+  // session starts a turn on it, a working one reads it at its next step. Mail
+  // has no kinds, so every message wakes. With `hold`, all of it stays
+  // pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
   // The same, taken as a turn: an idle session starts one on it, a working
   // one reads it at its next step.

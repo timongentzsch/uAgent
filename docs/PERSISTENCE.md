@@ -113,9 +113,12 @@ buffers do not.
 
 Sessions, a folder's lead agent and its background agents, and delegated children talk
 through one mailbox each, `mail/<id>/`, where `<id>` hashes the canonical
-session file. A message is a private JSON file with a type
-(`task.completed`, `ask`, `steer`, `note`, ...), sender, correlation id and
-body.
+session file. A message is a private JSON file with sender, correlation id
+and body. Mail has no kinds: every delivered message wakes an idle recipient
+and is read at a working one's next step. A message is allowed between a
+parent, its children and siblings, the members of one panel's folder, and
+yolo sessions in one folder while both are in yolo; the recipient checks
+this again when it takes the message.
 
 - A send commits by an atomic rename into `new/`.
 - The recipient moves what it takes to `cur/` and deletes it once the

@@ -69,6 +69,8 @@ request is answered plain.
 
 ## Session runtime and clients
 
+![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](images/architecture.svg)
+
 Each interactive conversation has one runtime process, and a private Unix
 socket is its command and event boundary. The terminal and the web host attach
 to that same process; the client that started a conversation has no extra

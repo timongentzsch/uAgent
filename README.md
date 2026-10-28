@@ -3,183 +3,119 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a coding agent in a 6 MB binary. It is sandboxed to your project
-folder, keeps one conversation you can continue from the terminal, a script or
-your phone, and drives a real Chrome that you can watch and take over.
-
-![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
-
-## Features
-
-- **Terminal, script and browser.** `uagent` opens the terminal,
-  `uagent -p "..." --json` runs one turn from a script and `uagent --web`
-  serves the browser. A conversation continues in any of them.
-- **Endpoints.** Chat Completions, OpenAI Responses and Anthropic Messages
-  APIs, local or hosted.
-- **Sandbox and approvals.** Commands write only inside the folder. The agent
-  asks before it changes a file, runs a command or uses the network, and
-  `/undo` restores what the last turn changed.
-- **Lead agent.** A folder's lead agent keeps a plan, has read-only subagents
-  answer its questions in parallel and checks their findings, and starts
-  background agents that change code and report back.
-- **Browser automation.** The agent drives a persistent Chrome that you can
-  watch and take over from any device. It signs in with Chrome's saved
-  passwords without reading them and hands codes, captchas and payments to
-  you. See [the agent's browser](docs/BROWSER.md).
-- **Files.** The browser shows the conversation's folder beside the chat, read
-  only, with search, highlighted code and rendered markdown.
-
-![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](docs/images/files.gif)
-
-![The web interface on a desktop and on a phone while the agent signs in to a demo dashboard in Ask mode: the phone approves each browser action, Chrome fills in the saved login, the agent asks for a 6-digit code, and the phone enters it](docs/images/browser-login.gif)
-
-## How it's built
-
-C++20 with libcurl, cpp-httplib and nlohmann/json; the web interface is
-Preact, TypeScript and Vite; the tests are C++, Python and Playwright.
-
-Every conversation runs in its own session runtime process. The terminal and
-the web host attach to it over a private Unix socket, so neither has authority
-the other lacks and neither runs a second agent. A script (`-p --json`) runs
-its turn in its own process.
-
-![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; a script runs one turn in its own headless process; the runtime's agent loop runs tools in a sandbox (files, commands, MCP, the agent's Chrome, subagents) and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](docs/images/architecture.svg)
-
-[Architecture](docs/ARCHITECTURE.md) covers the layers, the runtime and its
-wire format.
-
-## Footprint
+µAgent is a coding agent in a 6 MB binary. A conversation idles in about
+30 MB and spends about 12 ms of CPU on a turn, a small fraction of what
+Claude Code, Codex CLI or omp need. It is sandboxed to your project folder,
+keeps one conversation across terminal, script and phone, and drives a real
+Chrome that you can watch and take over.
 
 ![Bars comparing µAgent, Claude Code, Codex CLI and omp: install on disk 6.4, 294, 446 and 1064 MB; idle session memory 29, 161, 290 and 314 MB; CPU per headless turn 12, 436, 139 and 1329 ms; peak memory per headless turn 16.5, 222, 291 and 391 MB](docs/images/footprint.svg)
 
-Medians of five runs in a 2-CPU, 4 GB Docker container on an AMD Ryzen 9
-7950X3D host on 2026-10-28, with µAgent 1.5.0, Claude Code 2.1.312, Codex CLI
-0.165.0 and omp 18.13.2. Each headless turn answers a one-word prompt, and all
-four used Claude Haiku 5.5 through the same endpoint (Codex without its own web
-search). omp's install includes its `node_modules` and the Bun runtime it needs.
-[The method](benchmarks/README.md#footprint-comparison) has every metric.
+Medians of five runs in a 2-CPU, 4 GB Docker container on 2026-10-28, all four
+answering through the same Claude Haiku 5.5 endpoint;
+[the method](benchmarks/README.md#footprint-comparison) has the versions and
+every metric.
+
+## Built to be light
+
+- **One C++20 binary,** no runtime to install. Each conversation is one
+  process; the terminal and the web host attach to it over a Unix socket.
+- **The web interface is embedded:** 1.5 MB gzipped in total, about 120 KB on
+  first load, with compressed API responses and resumable event streams.
+- **Chrome starts only when the agent first uses it,** and stops on request.
+- **Fewer tokens:** the prompt cache serves 77–94% of input on both OpenAI and
+  Anthropic routes, compaction reads the cached conversation instead of
+  resending it, and a browser result for the page just seen carries only what
+  changed.
+
+![The terminal and the web host attach over a Unix socket to one session runtime process per conversation; a browser or phone reaches the web host over HTTP and SSE; the web host starts the agent's browser, Chrome and Xvnc with one signed-in profile, on first use and streams its live screen to paired devices; the runtime's browser tool drives Chrome over a private socket; a script runs one turn in its own headless process; the agent loop runs tools in a sandbox and calls Chat Completions, OpenAI Responses or Anthropic Messages endpoints over HTTPS](docs/images/architecture.svg)
+
+## What it does
+
+- **Drives a real browser.** A persistent Chrome profile that you watch and
+  take over from any paired device. It signs in through Chrome's password
+  manager without ever reading or typing a password, and hands codes,
+  captchas and payments to you. See [the agent's browser](docs/BROWSER.md).
+- **Stays in its folder.** Commands run under the OS sandbox (Seatbelt on
+  macOS, Landlock on Linux): they write only inside the folder, your other
+  folders stay closed, cloud and git credential stores (`~/.aws`, `~/.kube`,
+  `~/.netrc`, …) stay hidden, and the agent asks before it changes a file,
+  runs a command or uses the network. `/undo` restores what the last turn
+  changed. See [Security](SECURITY.md).
+- **One conversation, every device.** Start in the terminal, continue on your
+  phone (an installable web app with notifications), or run a turn from a
+  script with `uagent -p "..." --json`.
+- **Works in parallel.** A folder's lead agent keeps a plan, fans questions
+  out to read-only subagents and starts background agents that change code
+  and report back.
+- **Remembers and repeats.** Memory, skills, scheduled tasks and MCP servers,
+  managed from the terminal or the web.
+- **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,
+  local or hosted.
+
+![The terminal on the left and the web interface on a phone on the right showing the same conversation: a request to add a docstring, the approval for the edit, and the streaming answer](docs/images/terminal.gif)
+
+![The web interface on a desktop and on a phone while the agent signs in to a demo dashboard in Ask mode: the phone approves each browser action, Chrome fills in the saved login, the agent asks for a 6-digit code, and the phone enters it](docs/images/browser-login.gif)
 
 ## Install
 
-Linux and macOS. From a checkout:
-
-```sh
-./install.sh
-```
-
-It says what it found and asks where µAgent should run:
+Linux and macOS. From a checkout, `./install.sh` asks where µAgent should run:
 
 - **In a container** (recommended where Docker runs): the web interface, the
   agent's browser and the terminal, isolated from this machine's files and
-  logins. See [The agent's browser](docs/BROWSER.md).
-- **Here:** a Release binary built in `build/release` (an existing build is
-  reused) and installed with the bundled skills under `~/.local`; put
-  `~/.local/bin` on your `PATH`. It includes the web interface when Node.js
-  is present, and with it on Linux the agent's browser, offering to install
-  Chrome and TigerVNC with `sudo` when they are missing. On macOS the agent's
-  browser runs only in the container.
+  logins.
+- **Here:** a Release build installed under `~/.local` with its skills; put
+  `~/.local/bin` on your `PATH`. On Linux it can include the agent's browser;
+  on macOS that runs only in the container.
 
-`UAGENT_INSTALL=container` or `here` chooses without asking; a run without a
-terminal installs here. `UAGENT_PREFIX` and `UAGENT_BUILD_DIR` change the two
-locations.
+Tagged releases ship archives for Linux x86_64 and arm64 and macOS arm64
+(`bin/uagent`; keep `bin` and `share` together) with Sigstore-signed
+checksums.
 
-Each tagged release also ships built archives:
-`uagent-<version>-linux-x86_64.tar.gz`, `-linux-arm64.tar.gz` and
-`-macos-arm64.tar.gz`. Unpack one and run `bin/uagent`. Keep `bin` and `share`
-together, since the skills are found relative to the binary. `SHA256SUMS`,
-signed with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's
-checksum.
-
-### Requirements
-
-- CMake 3.21+, a C++20 compiler, libcurl 7.66+ and zlib.
-- Node.js, to build the browser interface from `web/`. Without it the build
-  is terminal-only, unless you unpack the release's
-  `uagent-web-dist-<version>.tar.gz` into `web/dist` before building.
-- Optional at run time: [uv](https://docs.astral.sh/uv/) for Python `scratch`
-  scripts with dependencies; `npm install -g @playwright/cli@latest` for the
-  `browser-use` skill.
-
-| CMake option | Effect |
-| --- | --- |
-| `-DUAGENT_WEB=OFF` | Terminal-only binary, no browser interface |
-| `-DUAGENT_BROWSER=OFF` | Leave out the agent's browser |
-| `-DUAGENT_WEB_PUSH=ON` | Web Push notifications; needs OpenSSL 3 libcrypto. Release archives and the Docker image include it |
+Building needs CMake 3.21+, a C++20 compiler, libcurl 7.66+ and zlib, plus
+Node.js for the web interface. `-DUAGENT_WEB=OFF` builds a terminal-only
+binary, `-DUAGENT_BROWSER=OFF` leaves out the agent's browser and
+`-DUAGENT_WEB_PUSH=ON` adds Web Push (needs OpenSSL 3).
 
 ## Quick start
 
-1. **Give it a key.** With only an [OpenRouter](https://openrouter.ai) key
-   set, the first start opens the model picker:
+```sh
+export OPENROUTER_API_KEY=replace-me   # or UAGENT_BASE_URL + UAGENT_MODEL
+cd my-project
+uagent                                 # Enter sends, Esc stops, / lists commands
+```
 
-   ```sh
-   export OPENROUTER_API_KEY=replace-me
-   ```
+- **Approvals:** answer `y` (once), `s` (this conversation), `a` (always in
+  this repository) or `n`.
+- **Models:** `/model QUERY` searches what your key offers; add `--default`
+  to keep it.
+- **Come back:** `/quit` leaves it running; `uagent -c` continues the latest.
+- **Phone:** `uagent --web` prints a pairing link.
+- **Parallel work:** `uagent panel` opens the folder's lead agent.
 
-   For a local or other Chat Completions endpoint, set `UAGENT_BASE_URL` and
-   `UAGENT_MODEL` instead, plus `UAGENT_API_KEY` if it needs one. Responses
-   and Anthropic Messages endpoints are
-   [named providers](docs/GUIDE.md#models-and-providers).
-
-2. **Start it in a folder** and say what you want:
-
-   ```sh
-   cd my-project
-   uagent
-   ```
-
-   Enter sends, Esc stops a turn, `/` lists the commands.
-
-3. **Answer approvals.** Before it changes a file, runs a command or uses
-   the network, it asks: answer `y` (once), `s` (for this conversation), `a`
-   (always in this repository) or `n`. `/undo` puts back the files the last
-   turn changed.
-
-4. **Pick a model.** `/model QUERY` searches what your key offers.
-   `/model NAME --default` also keeps the choice for new conversations.
-
-5. **Leave and come back.** `/quit` leaves the conversation running.
-   `uagent -c` continues the latest and `uagent --resume` lets you pick.
-
-6. **Open it in a browser or on a phone.** `uagent --web` prints a link that
-   pairs the browser. One host serves every folder's conversations; see the
-   [web guide](docs/WEB.md).
-
-7. **Run several at once.** `uagent panel` opens the folder's lead agent.
-   Ask it for work and it starts background agents; ask it a question and it
-   fans out
-   subagents and reports what held up.
-
-8. **Script it.** `uagent -p "inspect this repository" --json` runs one turn
-   and prints one JSON envelope.
-
-The [guide](docs/GUIDE.md) covers the rest in order: keys, models and
-providers, settings, approvals, returning to a conversation, the lead agent and
-scripting. `uagent --help` lists every flag.
+The [guide](docs/GUIDE.md) covers the rest in order; `uagent --help` lists
+every flag.
 
 ## Documentation
 
-- [Guide](docs/GUIDE.md): everything in order, from the first conversation
-- [Web interface](docs/WEB.md) and the [browser the agent drives](docs/BROWSER.md)
-- [Tools](docs/TOOLS.md)
-- [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
-- [Bundled skills](skills/README.md)
-- [Operations and limits](docs/OPERATIONS.md)
-- [Persistence](docs/PERSISTENCE.md)
-- [Accessibility](docs/ACCESSIBILITY.md)
-- [Security](SECURITY.md)
-- Reference, read from the binary: `uagent --help` (flags), `/help` (slash
-  commands), `/config` (settings), `uagent inspect` through the agent
-- Internals: [Architecture](docs/ARCHITECTURE.md),
-  [Instructions](docs/INSTRUCTIONS.md),
-  [Prompt caching](docs/CACHING.md)
-- [Changelog](CHANGELOG.md)
+[Guide](docs/GUIDE.md) ·
+[Web interface](docs/WEB.md) ·
+[The agent's browser](docs/BROWSER.md) ·
+[Tools](docs/TOOLS.md) ·
+[Memory, skills and schedules](docs/MANAGEMENT.md) ·
+[Skills](skills/README.md) ·
+[Operations](docs/OPERATIONS.md) ·
+[Persistence](docs/PERSISTENCE.md) ·
+[Accessibility](docs/ACCESSIBILITY.md) ·
+[Security](SECURITY.md) ·
+[Architecture](docs/ARCHITECTURE.md) ·
+[Prompt caching](docs/CACHING.md) ·
+[Changelog](CHANGELOG.md)
 
 ## Development
 
 The tests need no API key or network: C++ unit tests, Python integration
-tests against a mock provider, and Playwright browser tests. CI runs them on
-Linux x86_64, Linux arm64 and macOS arm64, with sanitizers, clang-tidy and
-fuzzing. Release archives come with signed checksums and build attestations.
-
-[Contributing](CONTRIBUTING.md) covers building and the checks CI runs;
-[Testing](docs/TESTING.md) covers running a single test.
+tests against a mock provider and Playwright browser tests, run in CI on
+Linux x86_64 and arm64 and macOS arm64 with sanitizers and clang-tidy.
+[Contributing](CONTRIBUTING.md) covers building and checks;
+[Testing](docs/TESTING.md) covers running one test.

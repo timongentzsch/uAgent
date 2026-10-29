@@ -418,7 +418,7 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
         { signal: controller.signal },
       )
         .then((value) => {
-          const nodes = (value.state?.view?.blocks || []).slice(-3);
+          const nodes = (value.state?.view?.nodes || []).slice(-3);
           cache.current.set(id, nodes);
           setRows(nodes);
         })

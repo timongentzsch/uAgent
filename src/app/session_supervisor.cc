@@ -41,7 +41,7 @@ SessionStatus LiveStatus(const HostSession& session) {
 // view that changed other than by rows bounded out (a browser keeps those as
 // older pages).
 json MergeView(HostSession& session, json& next) {
-  // A rewound conversation starts a new view epoch: its old blocks are
+  // A rewound conversation starts a new view epoch: its old nodes are
   // gone, so the checkpoint replaces the view instead of merging into it.
   json view = json::object();
   auto held = session.state.find("view");
@@ -51,26 +51,26 @@ json MergeView(HostSession& session, json& next) {
   if (same) view = std::move(*held);
   json fields = json::object();
   for (auto it = view.begin(); it != view.end(); ++it) {
-    if (it.key() != "blocks") fields[it.key()] = it.value();
+    if (it.key() != "nodes") fields[it.key()] = it.value();
   }
   json patches = json::array();
   size_t dropped = 0;
   if (const json* checkpoint_view = JsonObject(next, "view")) {
     for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
          ++it) {
-      if (it.key() != "blocks") view[it.key()] = it.value();
+      if (it.key() != "nodes") view[it.key()] = it.value();
     }
-    if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
-      dropped = MergeNodes(view, *blocks, &patches);
+    if (const json* nodes = JsonArray(*checkpoint_view, "nodes")) {
+      dropped = MergeNodes(view, *nodes, &patches);
     }
   }
-  if (!view.contains("blocks")) view["blocks"] = json::array();
+  if (!view.contains("nodes")) view["nodes"] = json::array();
   bool whole = !same;
   for (auto it = view.begin(); it != view.end() && !whole; ++it) {
     // Rows bounded out move `before` and `more`; a browser keeps its own.
     const bool bounded =
         dropped && (it.key() == "before" || it.key() == "more");
-    whole = it.key() != "blocks" && !bounded &&
+    whole = it.key() != "nodes" && !bounded &&
             JsonValue(fields, it.key().c_str(), json()) != it.value();
   }
   next["view"] = std::move(view);
@@ -388,7 +388,7 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
   }
   session.state = std::move(next);
   // Browsers hold the host's view, never the worker's partial one, and
-  // apply block patches to it between checkpoints. A checkpoint reaches
+  // apply node patches to it between checkpoints. A checkpoint reaches
   // them the same way: the rows that changed, then its state without the
   // view and with only the checkpoint fields that changed. The whole view
   // goes only when they could not follow it row by row.
@@ -411,8 +411,8 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
   session.status = LiveStatus(session);
   if (checkpoint) {
     if (!session.run_id.empty() && !session.turn_active) {
-      if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
-        for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
+      if (const auto* nodes = JsonArray(session.state["view"], "nodes")) {
+        for (auto it = nodes->rbegin(); it != nodes->rend(); ++it) {
           if (JsonValue(*it, "kind", "") != "footer") continue;
           session.run_result =
               RunResultFor(JsonValue((*it)["summary"], "outcome", "error"));
@@ -480,12 +480,12 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     RetainExchange(session, frame["data"]);
   }
   if (type == AppType(EventId::kMessageChanged)) {
-    const json& block = frame["data"]["block"];
+    const json& node = frame["data"]["node"];
     session.incoming =
-        std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
+        std::max(session.incoming, JsonValue(node, "incoming", uint64_t{0}));
     if (const std::string path = JsonValue(frame["data"], "change_path", "");
         !path.empty()) {
-      session.change_paths[JsonValue(block, "id", "")] = path;
+      session.change_paths[JsonValue(node, "id", "")] = path;
     }
   }
   // Browsers receive what changed in the host's view instead of the events

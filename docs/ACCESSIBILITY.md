@@ -70,8 +70,9 @@ meets.
   new decision is an alert and takes focus, unless you are typing. Failures
   are alerts.
 - **Names.** Each message is named by its author and time ("You, 10:32"),
-  each row menu "Actions for …", and diffs summarise their `+N −M`. Failed
-  tool rows say "Failed" in text and by icon, not only by colour.
+  each message menu "Actions for …", and diffs summarise their `+N −M`.
+  Rows are buttons that say whether they are open, and failed rows say
+  "Failed" in text, not only by colour.
 - **Keyboard.** A skip link leads to the conversation. Ctrl+K (⌘K on a Mac)
   opens the command palette, `?` outside a text field lists every shortcut,
   and Alt+↑/↓ step through conversations. Menus open with the arrow keys on

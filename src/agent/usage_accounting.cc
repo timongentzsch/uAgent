@@ -148,11 +148,11 @@ void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
         direct_tools + JsonValue(side, "tool_calls", int64_t{0});
     summary["model_calls"] =
         direct_models + JsonValue(side, "model_calls", int64_t{0});
-    json block = value;
-    block["summary"] = std::move(summary);
-    conversation_.RecordDisplay(key, block);
+    json node = value;
+    node["summary"] = std::move(summary);
+    conversation_.RecordDisplay(key, node);
     ++revision_;
-    Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
+    Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
     return;
   }
 }

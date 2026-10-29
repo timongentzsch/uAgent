@@ -21,7 +21,7 @@ test("each diagram type renders, and elk falls back to dagre", async ({
   const snapshot = await (
     await request.get(`/api/sessions/${session.id}`)
   ).json();
-  snapshot.state.view.blocks = [
+  snapshot.state.view.nodes = [
     {
       id: "diagrams",
       parent: null,

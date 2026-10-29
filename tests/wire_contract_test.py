@@ -28,7 +28,7 @@ SESSION_UNITS = (
     "src/app/session_terminal.cc",
     "src/app/session_transport.cc",
     "src/app/session_worker.cc",
-    # The view reducer builds the `block` patches the host publishes.
+    # The view reducer builds the `node` patches the host publishes.
     "src/agent/view_reducer.cc",
 )
 WEB_STATE = ("web/src/state", "web/src/app")
@@ -38,7 +38,7 @@ WEB_HANDLERS = ("web/src/state",)
 
 # Web-side types that never cross the wire, and field prefixes the host
 # builds at runtime (PrefixNumericStatistics).
-WEB_ONLY_TYPES = {"PresentedBlock", "RawOptions"}
+WEB_ONLY_TYPES = {"RawOptions"}
 BUILT_PREFIXES = ("side_",)
 
 # Frames the browser consumes: every member needs a native producer in the
@@ -46,7 +46,7 @@ BUILT_PREFIXES = ("side_",)
 BROWSER_FRAMES = frozenset(
     {
         "activated",
-        "block",
+        "node",
         "closed",
         "deactivated",
         "deleted",

@@ -24,6 +24,7 @@
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
 #include "include/browser/browser.h"
+#include "include/core/detail.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
@@ -35,7 +36,6 @@
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/thread_annotations.h"
-#include "include/core/verbosity.h"
 #include "include/web/assets.h"
 #include "include/web/browser_viewer.h"
 #include "include/web/protocol.h"
@@ -456,12 +456,7 @@ void Master::RegisterApiRoutes() {
                            {"sessions", std::move(catalogue["sessions"])},
                            {"spaces", std::move(catalogue["spaces"])},
                            {"commands", CommandSchemaJson()},
-                           {"verbosity",
-                            [] {
-                              json table = DetailPoliciesJson();
-                              table["level"] = ConfiguredVerbosity();
-                              return table;
-                            }()},
+                           {"detail", ConfiguredDetail()},
                            {"capabilities", push_->Capabilities(device)},
                            {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
@@ -680,11 +675,11 @@ const std::string* Master::ExpectedOrigin(const Request& request) const {
   }
   return nullptr;
 }
-// The configured level, by a name the policy table knows.
-std::string Master::ConfiguredVerbosity() {
+// The configured level, by a name kDetailDepths knows.
+std::string Master::ConfiguredDetail() {
   const auto settings = ConfigManager::Capture({}, "").Read();
-  const std::string level = settings.Get(std::string(kVerbositySetting));
-  return std::string(DetailFor(level).level);
+  const std::string level = settings.Get(std::string(kDetailSetting));
+  return std::string(DetailFor(level).name);
 }
 // Tells every browser that what is saved is no longer what they read, and
 // the level with it: display state they all share.
@@ -695,8 +690,8 @@ void Master::PublishSettings() {
     if (saved == settings_) return;
     settings_ = saved;
   }
-  host_.Publish(
-      "", "", {{"kind", "settings.changed"}, {"level", ConfiguredVerbosity()}});
+  host_.Publish("", "",
+                {{"kind", "settings.changed"}, {"level", ConfiguredDetail()}});
 }
 
 }  // namespace master

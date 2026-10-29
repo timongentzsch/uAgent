@@ -314,7 +314,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   }
   for (size_t i = 0; i < retained_users.size(); ++i) {
     // Keep the source display id so the archived original and this re-push
-    // collapse to one block instead of flooding the transcript twice.
+    // collapse to one node instead of flooding the transcript twice.
     uint64_t id = i < retained_ids.size() ? retained_ids[i] : 0;
     if (id) {
       conversation_.PushWithDisplayId(std::move(retained_users[i]),
@@ -326,7 +326,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   conversation_.Push(std::move(summary), MessageKind::kInternal);
   // The next turn request measures the new history afresh.
   context_offset_ = 0;
-  json compact_block = conversation_.RecordEntry(
+  json compact_node = conversation_.RecordEntry(
       {{"kind", "compaction"},
        {"turn_root", turn_root_},
        {"compaction",
@@ -336,7 +336,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
          {"duration_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - compact_started)
                              .count()}}}});
-  Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(compact_block)}}});
+  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(compact_node)}}});
   ++revision_;
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},

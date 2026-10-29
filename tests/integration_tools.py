@@ -275,7 +275,7 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
     ) as server:
         env = base_env(home, server.url)
         result = run_dialog(
-            root, env, "trace\n/q\n", "--yolo", "--verbosity", "full", timeout=20, binary=binary
+            root, env, "trace\n/q\n", "--yolo", "--detail", "full", timeout=20, binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         # Each call is its headline, opened to its output's last lines.
@@ -467,7 +467,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
                 b"\x04",
             ],
             columns=24,
-            args=("--verbosity", "full"),
+            args=("--detail", "full"),
             binary=binary,
         )
         assert_true(code == 0, output)

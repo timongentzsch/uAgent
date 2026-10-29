@@ -144,7 +144,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kBtw, "/btw", "QUESTION",
      "ask a side question without adding it to the conversation",
      kNoViewer | kClientOnly},
-    {SlashCommandId::kVerbosity, "/verbosity", "[minimal|default|full]",
+    {SlashCommandId::kDetail, "/detail", "[minimal|default|full]",
      "set how much of the agent's work is shown, everywhere",
      kNoViewer | kClientOnly},
     {SlashCommandId::kYolo, "/yolo", "",

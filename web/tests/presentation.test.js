@@ -504,7 +504,7 @@ test("a long list of steps shows its latest and folds the earlier", () => {
 });
 
 test("a node lands where the host puts it", () => {
-  const patch = (block) => ({ kind: "block", block });
+  const patch = (node) => ({ kind: "node", node });
   const turn = { id: "m-1", parent: null, kind: "turn", sequence: 1 };
   const call = { id: "t-a", parent: "w-m-1", kind: "call", sequence: 2 };
   let nodes = placeNode([], patch(turn));
@@ -526,10 +526,10 @@ test("a node lands where the host puts it", () => {
     body: { kind: "markdown", text: "Hel" },
   };
   nodes = placeNode(nodes, patch(reply));
-  nodes = placeNode(nodes, { kind: "block", id: "r", append: { text: "lo" } });
+  nodes = placeNode(nodes, { kind: "node", id: "r", append: { text: "lo" } });
   assert.equal(nodes.at(-1).body.text, "Hello");
   assert.equal(
-    placeNode(nodes, { kind: "block", id: "x", append: { text: "!" } }),
+    placeNode(nodes, { kind: "node", id: "x", append: { text: "!" } }),
     nodes,
   );
 });

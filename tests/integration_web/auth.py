@@ -123,7 +123,7 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 session,
                 lambda value: (
                     value["metadata"]["status"] == "idle"
-                    and bool(value.get("state", {}).get("view", {}).get("blocks"))
+                    and bool(value.get("state", {}).get("view", {}).get("nodes"))
                 ),
             )
             assert_true(len(provider.requests) == 2, provider.requests)

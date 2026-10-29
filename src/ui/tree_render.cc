@@ -214,7 +214,7 @@ void TerminalPresenter::Update(const json& view, const json& changed) {
 
 void TerminalPresenter::DrawTree(const json& view, bool live) {
   // A node's children in view order, which is the order they arrived in.
-  const json* nodes = JsonArray(view, "blocks");
+  const json* nodes = JsonArray(view, "nodes");
   if (!nodes) return;
   std::map<std::string_view, std::vector<const json*>> children;
   for (const json& node : *nodes) {

@@ -46,7 +46,7 @@ for (const labels of [false, true])
                 session_id: session.id,
                 generation: session.generation,
                 kind,
-                ...(kind === "turn_status" || kind === "block" ? data : {}),
+                ...(kind === "turn_status" || kind === "node" ? data : {}),
                 type,
                 data,
               }),
@@ -54,7 +54,7 @@ for (const labels of [false, true])
           );
         };
         // Rows arrive the way the host sends them: whole rows and appends.
-        const patch = (value) => send("", value, "block");
+        const patch = (value) => send("", value, "node");
         const gaps = [];
         let previous = performance.now(),
           frame;
@@ -65,7 +65,7 @@ for (const labels of [false, true])
         };
         frame = requestAnimationFrame(tick);
         patch({
-          block: {
+          node: {
             id: response,
             parent: null,
             kind: "message",
@@ -75,7 +75,7 @@ for (const labels of [false, true])
           },
         });
         patch({
-          block: {
+          node: {
             id: `${response}:thinking`,
             parent: null,
             kind: "thinking",
@@ -112,7 +112,7 @@ for (const labels of [false, true])
                 })),
               });
               const row = (id, status, text) => ({
-                block: {
+                node: {
                   id: `t-${action}-${id}`,
                   parent: null,
                   kind: "call",

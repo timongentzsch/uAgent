@@ -72,12 +72,12 @@ json ConversationView(const Conversation& conversation, uint64_t before = 0);
 // A user message's text without the "Attached:" path trailer the model sees.
 std::string StripAttachedTrailer(const std::string& text);
 // Upserts a checkpoint's nodes and bounds the view once. Returns how many of
-// the oldest nodes went; `patches`, when given, receives the {kind:"block"}
+// the oldest nodes went; `patches`, when given, receives the {kind:"node"}
 // frames of the nodes that are new or different, in view order.
 size_t MergeNodes(json& view, const json& nodes, json* patches = nullptr);
 // The one reducer of a session's view: every holder of a view (worker, host,
 // terminal) folds events through it. False means the event is live-only.
-// `patches`, when given, receives the {kind:"block"} frames that bring
+// `patches`, when given, receives the {kind:"node"} frames that bring
 // another copy of the view to the same state: whole nodes, or an append to a
 // streamed body.
 bool ApplySessionEvent(json& state, const std::string& type, const json& data,

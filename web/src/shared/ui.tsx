@@ -49,7 +49,7 @@ const propsChanged = (prior: object, next: object) =>
 
 // `View`, rendered only when a prop changes identity; of a session's
 // `state`, only when one of the `fields` it reads does, or with none named
-// any field but the transcript's view, which every streamed block replaces.
+// any field but the transcript's view, which every streamed node replaces.
 export function updateChecked<P extends object>(
   View: FunctionComponent<P>,
   fields?: (keyof State)[],

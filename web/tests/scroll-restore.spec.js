@@ -58,7 +58,7 @@ test.describe("phone jump to latest", () => {
     const snapshot = await (
       await request.get(`/api/sessions/${session.id}`)
     ).json();
-    snapshot.state.view.blocks = Array.from({ length: 60 }, (_, index) => ({
+    snapshot.state.view.nodes = Array.from({ length: 60 }, (_, index) => ({
       id: `momentum-${index}`,
       parent: index % 2 ? `momentum-${index - 1}` : null,
       kind: index % 2 ? "message" : "turn",

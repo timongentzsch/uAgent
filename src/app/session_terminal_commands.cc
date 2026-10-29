@@ -12,12 +12,12 @@
 #include "include/app/panel.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
+#include "include/core/detail.h"
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
-#include "include/core/verbosity.h"
 #include "include/ui/interactive.h"
 #include "include/ui/sessions.h"
 #include "src/app/session_terminal_internal.h"
@@ -129,8 +129,8 @@ Terminal::Command Terminal::ConversationCommand(
       if (argument.empty()) return Command::kPass;
       Send({{"kind", "side"}, {"operation", "create"}, {"text", argument}});
       return Command::kDone;
-    case SlashCommandId::kVerbosity:
-      return SetVerbosity(argument);
+    case SlashCommandId::kDetail:
+      return SetDetail(argument);
     case SlashCommandId::kShare:
       Send({{"kind", "share"}});
       return Command::kDone;
@@ -139,18 +139,17 @@ Terminal::Command Terminal::ConversationCommand(
   }
 }
 
-Terminal::Command Terminal::SetVerbosity(const std::string& argument) {
+Terminal::Command Terminal::SetDetail(const std::string& argument) {
   if (argument.empty()) {
     WriteTerminalRecord(
         Note(Tone::kNeutral,
-             "verbosity " + std::string(Detail().level) +
-                 (pinned_ ? " · this terminal only (--verbosity)" : "")));
+             "detail " + std::string(Detail().name) +
+                 (pinned_ ? " · this terminal only (--detail)" : "")));
     return Command::kDone;
   }
-  if (std::ranges::find(kVerbosityLevels, argument) ==
-      std::end(kVerbosityLevels)) {
+  if (std::ranges::find(kDetailLevels, argument) == std::end(kDetailLevels)) {
     WriteTerminalRecord(
-        Note(Tone::kNeutral, "usage: /verbosity minimal|default|full"));
+        Note(Tone::kNeutral, "usage: /detail minimal|default|full"));
     return Command::kDone;
   }
   // The level is one setting for every terminal and browser; a pinned
@@ -159,7 +158,7 @@ Terminal::Command Terminal::SetVerbosity(const std::string& argument) {
     const json saved = ConfigurationControl(
         {{"operation", "apply"},
          {"changes",
-          json::array({{{"key", kVerbositySetting}, {"value", argument}}})}},
+          json::array({{{"key", kDetailSetting}, {"value", argument}}})}},
         ConfigManager::Capture({}));
     if (const std::string error = JsonValue(saved, "error", "");
         !error.empty()) {
@@ -203,7 +202,7 @@ Terminal::Command Terminal::Leave(const std::string& target,
   return Command::kLeave;
 }
 
-void Terminal::Restyle(const DetailPolicy& detail) {
+void Terminal::Restyle(const DetailLevel& detail) {
   detail_ = &detail;
   // The reader draws, here as everywhere: it holds the tree, and a redraw
   // written from the input thread could fill the pipe only it drains.

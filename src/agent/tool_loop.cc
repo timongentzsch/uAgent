@@ -289,7 +289,7 @@ void Agent::PublishWork(const std::vector<CallTask>& tasks,
                            {"calls", group["members"].size()},
                            {"turn", turn_root_}};
     conversation_.RecordDisplay(id, recorded);
-    Emit(Event{EventId::kMessageChanged, {{"block", GroupNode(id, recorded)}}});
+    Emit(Event{EventId::kMessageChanged, {{"node", GroupNode(id, recorded)}}});
   }
   for (size_t index = 0; index < tasks.size(); ++index) {
     const CallTask& task = tasks[index];
@@ -309,7 +309,7 @@ void Agent::PublishWork(const std::vector<CallTask>& tasks,
                        {"edited", turn_work_.edited.size()}};
   conversation_.RecordDisplay(WorkId(turn_root_), counts);
   Emit(Event{EventId::kMessageChanged,
-             {{"block", WorkNode(turn_root_, counts)}}});
+             {{"node", WorkNode(turn_root_, counts)}}});
 }
 
 bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,

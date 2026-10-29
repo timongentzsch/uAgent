@@ -33,7 +33,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       context_tokens: context,
       context_window: 1300000,
       view: {
-        blocks: [
+        nodes: [
           {
             id: "m-1",
             parent: null,
@@ -422,13 +422,13 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   const finalSnapshot = await (
     await request.get(`/api/sessions/${session.id}`)
   ).json();
-  const finalBlock = finalSnapshot.state.view.blocks.find(
-    (block) => block.role === "assistant",
+  const finalNode = finalSnapshot.state.view.nodes.find(
+    (node) => node.role === "assistant",
   );
   const continuity = {
-    id: finalBlock?.id,
-    truncated: finalBlock?.body?.truncated,
-    snapshot_text_length: finalBlock?.body?.text?.length,
+    id: finalNode?.id,
+    truncated: finalNode?.body?.truncated,
+    snapshot_text_length: finalNode?.body?.text?.length,
     maximum_dom_length: maximumLength,
   };
   await testInfo.attach("continuity-metadata.json", {

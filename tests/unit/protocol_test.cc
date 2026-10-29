@@ -450,8 +450,8 @@ void TestCommandAndDisplayRegistries() {
   CHECK(command.argument == "vendor/model");
   command = ParseSlashCommand("/variant nitro");
   CHECK(!command.spec);
-  command = ParseSlashCommand("/verbosity full");
-  CHECK(command.spec && command.spec->id == SlashCommandId::kVerbosity);
+  command = ParseSlashCommand("/detail full");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kDetail);
   CHECK(command.argument == "full");
   command = ParseSlashCommand("/context");
   CHECK(command.spec && command.spec->id == SlashCommandId::kContext);

@@ -421,7 +421,7 @@ json ActivitySupervisor::ActivityViews() const {
     // The modal shows the full command scrollable on top. Rows only carry
     // the 160-char label, and inspect fails once a finished activity leaves the
     // retained set, so the command travels here (bounded like transcript
-    // blocks) instead of degrading to the abbreviated label.
+    // nodes) instead of degrading to the abbreviated label.
     if (!job.cmd.empty()) {
       row["command"] = Utf8Trunc(job.cmd, kActivityCommandBytes);
     }

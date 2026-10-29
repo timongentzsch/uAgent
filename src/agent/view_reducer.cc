@@ -67,7 +67,7 @@ bool Upsert(json& nodes, const json& node) {
 // and then up to the next turn, so the view starts where one does; returns
 // how many went.
 size_t BoundView(json& view) {
-  json& nodes = view["blocks"];
+  json& nodes = view["nodes"];
   size_t bytes = JsonEstimatedBytes(nodes);
   size_t dropped = 0;
   while (dropped < nodes.size() &&
@@ -109,12 +109,12 @@ std::string TurnOf(json& nodes, std::string_view id) {
 
 json& ViewNodes(json& view) {
   if (!view.is_object()) view = json::object();
-  json& nodes = view["blocks"];
+  json& nodes = view["nodes"];
   if (!nodes.is_array()) nodes = json::array();
   return nodes;
 }
 
-// The {kind:"block"} frames of the nodes in `ids` the view still holds.
+// The {kind:"node"} frames of the nodes in `ids` the view still holds.
 void Patches(const json& nodes, const std::vector<std::string>& ids,
              json& patches) {
   for (const std::string& id : ids) {
@@ -122,7 +122,7 @@ void Patches(const json& nodes, const std::vector<std::string>& ids,
         std::find_if(nodes.begin(), nodes.end(),
                      [&](const json& node) { return Field(node, "id") == id; });
     if (found != nodes.end()) {
-      patches.push_back({{"kind", "block"}, {"block", *found}});
+      patches.push_back({{"kind", "node"}, {"node", *found}});
     }
   }
 }
@@ -137,7 +137,7 @@ size_t MergeNodes(json& view, const json& nodes, json* patches) {
   const size_t dropped = BoundView(view);
   if (patches) {
     *patches = json::array();
-    Patches(view["blocks"], changed, *patches);
+    Patches(view["nodes"], changed, *patches);
   }
   return dropped;
 }
@@ -240,7 +240,7 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     if (shown && !reset) {
       if (patches) {
         patches->push_back(
-            {{"kind", "block"}, {"id", id}, {"append", {{"text", added}}}});
+            {{"kind", "node"}, {"id", id}, {"append", {{"text", added}}}});
       }
       return true;
     }
@@ -261,7 +261,7 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
       (*found)["streaming"] = false;
       if (patches) {
         patches->push_back(
-            {{"kind", "block"}, {"id", id}, {"set", {{"streaming", false}}}});
+            {{"kind", "node"}, {"id", id}, {"set", {{"streaming", false}}}});
       }
     }
   } else if (type == AppType(EventId::kToolCall)) {
@@ -287,7 +287,7 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
         !files.is_null()) {
       upsert(files);
     }
-  } else if (const json* node = JsonObject(data, "block")) {
+  } else if (const json* node = JsonObject(data, "node")) {
     upsert(*node);
     // A footer ends its turn's work.
     if (const std::string_view turn = Field(*node, "parent");
@@ -299,7 +299,7 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     }
   }
   BoundView(state["view"]);
-  if (patches) Patches(state["view"]["blocks"], changed, *patches);
+  if (patches) Patches(state["view"]["nodes"], changed, *patches);
   return true;
 }
 

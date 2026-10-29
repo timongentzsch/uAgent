@@ -246,7 +246,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     settings.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeFocused();
   // The first section loaded: what applies to all conversations.
-  await expect(settings.getByText("Detail shown")).toBeVisible();
+  await expect(settings.getByText("Detail", { exact: true })).toBeVisible();
   await settings
     .locator(".settings-nav")
     .getByRole("button", { name: "This browser", exact: true })
@@ -571,7 +571,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
   ).json();
-  snapshot.state.view.blocks = [
+  snapshot.state.view.nodes = [
     {
       id: "fixture-response",
       parent: null,

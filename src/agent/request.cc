@@ -124,10 +124,10 @@ void Agent::AnnounceDeliveries(const json& deliveries) {
   }
   if (!updated.empty()) {
     json snapshot = DisplaySnapshot();
-    for (const json& block : snapshot["blocks"]) {
+    for (const json& node : snapshot["nodes"]) {
       if (std::find(updated.begin(), updated.end(),
-                    JsonValue(block, "id", "")) != updated.end()) {
-        Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+                    JsonValue(node, "id", "")) != updated.end()) {
+        Emit(Event{EventId::kMessageChanged, {{"node", node}}});
       }
     }
   }
@@ -296,7 +296,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   api_.forbid_tool_calls = std::string_view(purpose) == "compact";
   api_.exchange_context = {{"turn_root", turn_root_},
-                           {"reply_to", reply_to_},
                            {"request", request},
                            {"turn", turn_id_},
                            {"response_base", "r-" + std::to_string(turn_id_) +

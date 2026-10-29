@@ -263,11 +263,11 @@ void Agent::PublishMessage(const std::string& request_id) {
                                 {{"request_id", request_id}});
   }
   for (json& node : LastNodes(conversation_)) {
-    json data = {{"block", std::move(node)}};
+    json data = {{"node", std::move(node)}};
     // A diff stored whole goes to the host beside its node, never in it: the
     // path is private, and only the host's detail lookup reads it.
     const json* facts = JsonObject(conversation_.DisplayFacts(),
-                                   JsonValue(data["block"], "id", "").c_str());
+                                   JsonValue(data["node"], "id", "").c_str());
     if (facts && facts->contains("change_path")) {
       data["change_path"] = (*facts)["change_path"];
     }
@@ -491,7 +491,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   total_user_turns_ = record.metadata.turns;
   // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"), which live
   // views match on across worker generations. A resumed runtime must continue
-  // the persisted numbering or its live blocks collide with earlier turns'.
+  // the persisted numbering or its live nodes collide with earlier turns'.
   turn_id_ = record.metadata.turns;
   title_thread_ = {};
   {

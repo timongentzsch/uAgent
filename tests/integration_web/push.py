@@ -118,13 +118,13 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
                 done["state"].get("stop", {}).get("detail", "") == "", done["state"].get("stop")
             )
             summaries = [
-                block.get("summary", {})
-                for block in done["state"]["view"]["blocks"]
-                if block.get("summary")
+                node.get("summary", {})
+                for node in done["state"]["view"]["nodes"]
+                if node.get("summary")
             ]
             assert_true(
                 summaries and all(summary.get("outcome") == "complete" for summary in summaries),
-                done["state"]["view"]["blocks"],
+                done["state"]["view"]["nodes"],
             )
 
 
@@ -205,8 +205,8 @@ def test_web_queue_next_runs_after_the_turn(root, home, *, binary):
                     not value["metadata"]["turn_active"] and "queued answer" in json.dumps(value)
                 ),
             )
-            summaries = [block for block in done["state"]["view"]["blocks"] if block.get("summary")]
-            assert_true(len(summaries) == 2, done["state"]["view"]["blocks"])
+            summaries = [node for node in done["state"]["view"]["nodes"] if node.get("summary")]
+            assert_true(len(summaries) == 2, done["state"]["view"]["nodes"])
 
 
 def test_web_recall_queued_guidance(root, home, *, binary):
@@ -313,7 +313,7 @@ def test_web_insert_queued_guidance(root, home, *, binary):
                 assert_true(not finished.is_set(), "insert waited for original model call")
                 users = [
                     b
-                    for b in done["state"]["view"]["blocks"]
+                    for b in done["state"]["view"]["nodes"]
                     if b.get("kind") == "turn" or b.get("role") == "user"
                 ]
                 assert_true(sum(b.get("request_id") == target for b in users) == 1, users)

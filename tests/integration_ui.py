@@ -141,7 +141,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
                 b"/q\n",
             ],
             timeout=10,
-            args=("--verbosity", "full"),
+            args=("--detail", "full"),
             binary=binary,
         )
         assert_true(code == 0, verbose)
@@ -200,8 +200,8 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
             env,
             [
                 # The reply's own row, not the echo of what was typed.
-                (b"/verbosity full\n", b"- verbosity full"),
-                (b"/verbosity default\n", b"- verbosity default"),
+                (b"/detail full\n", b"- detail full"),
+                (b"/detail default\n", b"- detail default"),
                 (b"go\n", b"ascii-ok", b"Ready", None),
                 (b"/cost\n", b"total"),
                 b"/q\n",
@@ -215,13 +215,13 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
 
 
 def test_keys_typed_ahead_survive_a_redraw(root, home, *, binary):
-    # /verbosity shows the conversation again at the new level. A line that
+    # /detail shows the conversation again at the new level. A line that
     # arrived with the command is still sent afterwards.
     with Server([event({"content": "typed-ahead-ok"})]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(b"/verbosity full\ngo\n", b"typed-ahead-ok", b"Ready", None), b"/q\n"],
+            [(b"/detail full\ngo\n", b"typed-ahead-ok", b"Ready", None), b"/q\n"],
             binary=binary,
         )
     assert_true(code == 0, output[-2000:])
@@ -314,7 +314,7 @@ def test_long_diff_reads_the_same_live_and_on_resume(root, home, *, binary):
     with Server([write, event({"content": "wrote-ok"})]) as server:
         # Room for the call's arguments, so the turn does not compact.
         env = base_env(home, server.url) | {"UAGENT_CONTEXT": "200000"}
-        full = ("--plain", "--verbosity", "full")
+        full = ("--plain", "--detail", "full")
         for args, payload in (
             (("--yolo", *full), [(b"go\n", b"wrote-ok"), (b"/q\n", None)]),
             (("-c", *full), [(b"/q\n", None)]),
@@ -639,7 +639,7 @@ def test_tool_output_drops_its_own_colours(root, home, *, binary):
                 root,
                 base_env(home, server.url),
                 [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
-                args=("--yolo", *(("--verbosity", "full") * verbose)),
+                args=("--yolo", *(("--detail", "full") * verbose)),
                 binary=binary,
             )
             assert_true(code == 0, output[-2000:])

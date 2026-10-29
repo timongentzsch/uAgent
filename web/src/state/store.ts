@@ -52,16 +52,16 @@ export function keepOlderPages(
     a.dropped_segments !== b.dropped_segments
   )
     return latest;
-  const first = b.before || b.blocks[0]?.sequence;
+  const first = b.before || b.nodes[0]?.sequence;
   if (!first) return latest;
-  const older = a.blocks.filter((node) => (node.sequence || 0) < first);
-  const blocks = mergeNodes(older, b.blocks);
-  if (blocks === b.blocks) return latest;
+  const older = a.nodes.filter((node) => (node.sequence || 0) < first);
+  const nodes = mergeNodes(older, b.nodes);
+  if (nodes === b.nodes) return latest;
   return {
     ...latest,
     state: {
       ...latest.state,
-      view: { ...b, blocks, before: a.before, more: a.more },
+      view: { ...b, nodes, before: a.before, more: a.more },
     },
   };
 }
@@ -108,17 +108,17 @@ export function applySessionEvent(
   }
   if (event.type === "config.changed" && data.permissions)
     state = { ...(state || {}), permissions: data.permissions };
-  if (event.kind === "block")
+  if (event.kind === "node")
     state = {
       ...(state || {}),
       view: {
         ...state?.view,
-        blocks: placeNode(state?.view?.blocks || [], event),
+        nodes: placeNode(state?.view?.nodes || [], event),
       },
     };
   const incoming = Math.max(
     current.metadata?.incoming || 0,
-    (event.kind === "block" && event.block?.incoming) || 0,
+    (event.kind === "node" && event.node?.incoming) || 0,
   );
   const metadata =
     incoming === (current.metadata?.incoming || 0)
@@ -208,10 +208,10 @@ export function confirmOutgoing(
 export function isIncoming(event: HostEvent) {
   return (
     event.type === "activity.completed" ||
-    (event.kind === "block" &&
+    (event.kind === "node" &&
       (!!event.append?.text ||
-        event.block?.role === "assistant" ||
-        event.block?.kind === "notice"))
+        event.node?.role === "assistant" ||
+        event.node?.kind === "notice"))
   );
 }
 

@@ -151,7 +151,7 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 attachment_ids=[asset["id"]],
             )
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
-            rows = snapshot["state"]["view"]["blocks"]
+            rows = snapshot["state"]["view"]["nodes"]
             request = rows[0]
             # Clients get the asset id, never the private upload path.
             assert_true(request.get("files"), request)
@@ -236,7 +236,7 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             reply = next(
                 row
-                for row in reversed(snapshot["state"]["view"]["blocks"])
+                for row in reversed(snapshot["state"]["view"]["nodes"])
                 if row.get("role") == "assistant"
             )
             exchanges = reply["http"]
@@ -275,9 +275,9 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             exchange = snapshot["state"]["http"][-1]
             failed_user = next(
-                block
-                for block in snapshot["state"]["view"]["blocks"]
-                if block.get("body", {}).get("text") == "Fail this request"
+                node
+                for node in snapshot["state"]["view"]["nodes"]
+                if node.get("body", {}).get("text") == "Fail this request"
             )
             assert_true(
                 failed_user["http"][-1]["id"] == exchange["id"],
@@ -549,7 +549,7 @@ def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
             client.until(
                 session,
                 lambda value: any(
-                    row.get("role") == "assistant" for row in value["state"]["view"]["blocks"]
+                    row.get("role") == "assistant" for row in value["state"]["view"]["nodes"]
                 ),
             )
             assert_true(served == ["beta"], served)

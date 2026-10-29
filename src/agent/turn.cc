@@ -593,7 +593,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   if (json files = edits_.Files(turn_id_); !files.empty()) {
     summary["files"] = std::move(files);
   }
-  // The stored block already carries the full summary: the footer the live
+  // The stored node already carries the full summary: the footer the live
   // turn prints and the one --resume replays read identical inputs.
   summary.update({{"messages", conversation_.Size()},
                   {"context_tokens", ContextUsed()},
@@ -602,8 +602,8 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
                 {"turn_root", turn_root_},
                 {"summary", summary}};
   // A turn that only passed or waited leaves no row of its own.
-  json block = conversation_.RecordEntry(std::move(entry));
-  Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
+  json node = conversation_.RecordEntry(std::move(entry));
+  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
   Emit(Event{EventId::kTurnCompleted, std::move(summary)});
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   PublishSideContext();

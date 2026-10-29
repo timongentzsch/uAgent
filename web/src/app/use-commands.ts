@@ -95,7 +95,7 @@ export function useCommands({
   const screens: Record<string, () => void> = {
     "/context": () => showContext(),
     "/config": () => open({ type: "settings" }),
-    "/verbosity": () => open({ type: "settings", section: "user" }),
+    "/detail": () => open({ type: "settings", section: "user" }),
     "/permissions": () => open({ type: "settings", section: "user" }),
     "/mcp": () => open({ type: "settings", section: "user" }),
     "/tools": () => setModal({ type: "tools", session_id: selected }),
@@ -144,9 +144,9 @@ export function useCommands({
     else if (name === "/reset") await startConversation(session!.cwd!);
     else if (name === "/panel")
       await startConversation(folderOf(session!), true);
-    else if (name === "/verbosity") {
+    else if (name === "/detail") {
       if (!levels.includes(argument))
-        throw new Error(`Use /verbosity ${levels.join("|")}`);
+        throw new Error(`Use /detail ${levels.join("|")}`);
       changeDetail(argument);
     }
     // In a terminal /quit detaches and the runtime stays; here that is just

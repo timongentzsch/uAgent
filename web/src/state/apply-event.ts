@@ -38,7 +38,7 @@ export interface EventHost {
   localRequests: Ref<Set<string>>;
   flush: Ref<(id?: string) => void>;
   setManagementVersion: Dispatch<StateUpdater<number>>;
-  setVerbosityLevel: (level: string) => void;
+  setDetail: (level: string) => void;
   setCatalogue: Dispatch<StateUpdater<Catalogue>>;
   patchSession: (id: string, change: (item: Session) => Session) => void;
   upsertSession: (session: Session) => void;
@@ -64,7 +64,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     localRequests,
     flush,
     setManagementVersion,
-    setVerbosityLevel,
+    setDetail,
     setCatalogue,
     patchSession,
     upsertSession,
@@ -85,7 +85,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
   }
   // Something saved changed: the detail level, and whatever shows settings.
   if (event.kind === "settings.changed") {
-    setVerbosityLevel(event.level);
+    setDetail(event.level);
     setManagementVersion((version) => version + 1);
     return;
   }
@@ -133,11 +133,11 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     );
   };
   switch (event.kind) {
-    case "block":
-      if (event.block) {
-        const block = event.block;
-        setOutgoing((items) => confirmOutgoing(items, block.request_id));
-        const incoming = block.incoming;
+    case "node":
+      if (event.node) {
+        const node = event.node;
+        setOutgoing((items) => confirmOutgoing(items, node.request_id));
+        const incoming = node.incoming;
         if (incoming) patchSession(id, (item) => raiseIncoming(item, incoming));
       }
       if (current) live.current[id] = applySessionEvent(current, event);

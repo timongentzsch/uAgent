@@ -8,7 +8,7 @@
 #include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/transcript.h"
-#include "include/core/verbosity.h"
+#include "include/core/detail.h"
 #include "include/tools/tool.h"
 #include "include/ui/presentation.h"
 #include "tests/unit/terminal_test_support.h"
@@ -73,7 +73,7 @@ std::vector<std::string> Drawings(const json& nodes) {
     TerminalPresenter presenter;
     presenter.SetDetail(DetailFor(level));
     drawings.push_back(
-        Plain(CaptureStdout([&] { presenter.Draw({{"blocks", nodes}}); })));
+        Plain(CaptureStdout([&] { presenter.Draw({{"nodes", nodes}}); })));
   }
   return drawings;
 }
@@ -88,7 +88,7 @@ class Recorder {
   }
 
   const Conversation& History() const { return conversation_; }
-  const json& Live() const { return live_["view"]["blocks"]; }
+  const json& Live() const { return live_["view"]["nodes"]; }
   // What a terminal at `level` draws as the events arrive: the replies as
   // they stream, and the tree's nodes as they settle.
   void Watch(std::string_view level) { watcher_.SetDetail(DetailFor(level)); }
@@ -207,14 +207,12 @@ class Recorder {
       if (type == "tool.call" || type == "message.changed") {
         ApplySessionEvent(terminal_, type, data);
       }
-      if (const json* node = JsonObject(data, "block")) {
+      if (const json* node = JsonObject(data, "node")) {
         watcher_.Update(terminal_["view"], *node);
       }
     });
   }
-  void Changed(const json& node) {
-    Event("message.changed", {{"block", node}});
-  }
+  void Changed(const json& node) { Event("message.changed", {{"node", node}}); }
   // The last message's facts recorded, then its nodes published.
   void Published(json facts) {
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
@@ -223,8 +221,8 @@ class Recorder {
   }
 
   Conversation conversation_;
-  json live_ = {{"view", {{"blocks", json::array()}}}};
-  json terminal_ = {{"view", {{"blocks", json::array()}}}};
+  json live_ = {{"view", {{"nodes", json::array()}}}};
+  json terminal_ = {{"view", {{"nodes", json::array()}}}};
   TerminalPresenter watcher_;
   std::string watched_;
   std::string turn_;
@@ -242,7 +240,7 @@ void TestGoldenPlainAnswer() {
   turn.Say("hi");
   turn.Reply("r-1-1-1", "Hello.");
   turn.Footer(800, "complete");
-  const auto page = Lines(ConversationView(turn.History())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["nodes"]);
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"hi\"",
                      "message r-1-1-1 < m-2 \"Hello.\"",
@@ -251,7 +249,7 @@ void TestGoldenPlainAnswer() {
   CHECK(Lines(turn.Live()) == page);
   // The terminal draws the same at every depth: nothing is folded.
   const std::string plain = "> hi\nuagent\nHello.\n0 in · 0 out · 800ms\n";
-  CHECK((Drawings(ConversationView(turn.History())["blocks"]) ==
+  CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{plain, plain, plain}));
   CHECK(turn.Watched() == plain);
 }
@@ -284,7 +282,7 @@ void TestGoldenChainOfCalls() {
   turn.Step({a, b}, {{"items", 3}, {"errors", 0}, {"edited", 1}});
   turn.Reply("r-1-2-1", "Fixed.");
   turn.Footer(124000, "complete");
-  const auto page = Lines(ConversationView(turn.History())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["nodes"]);
   // The work folds what the turn did, the group the calls that read alike;
   // the answer and the footer close the turn.
   CHECK((page ==
@@ -305,7 +303,7 @@ void TestGoldenChainOfCalls() {
   CHECK(Lines(turn.Live()) == page);
   // The terminal opens the work at depth 1 and everything at depth all; an
   // open node adds its body's tail, and closed thinking says nothing.
-  CHECK((Drawings(ConversationView(turn.History())["blocks"]) ==
+  CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
@@ -369,7 +367,7 @@ void TestGoldenFailedCalls() {
   turn.Step({}, {{"items", 4}, {"errors", 4}, {"edited", 0}});
   turn.Reply("r-1-2-1", "Nothing worked.");
   turn.Footer(3000, "complete");
-  const auto page = Lines(ConversationView(turn.History())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["nodes"]);
   CHECK((page ==
          std::vector<std::string>{
              "turn m-2 < - \"try\"",
@@ -390,7 +388,7 @@ void TestGoldenFailedCalls() {
       "    · Ran make · cancelled · 5ms\n"
       "    ✗ Ran rm -rf out · denied · 5ms\n"
       "    ✗ Read /etc · rejected: path is outside the folder · 5ms\n";
-  CHECK((Drawings(ConversationView(turn.History())["blocks"]) ==
+  CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{
              "> try\n  · Worked 4 steps · 4 errors · 3.0s\n"
              "uagent\nNothing worked.\n0 in · 0 out · 3.0s\n",
@@ -428,7 +426,7 @@ void TestGoldenFileHandedOver() {
   turn.Reply("r-1-2-1", "Here it is.");
   turn.Footer(2000, "complete");
   const json view = ConversationView(turn.History());
-  const auto page = Lines(view["blocks"]);
+  const auto page = Lines(view["nodes"]);
   // The file is the turn's, so it shows at every depth; the call keeps its
   // other parts.
   CHECK((page == std::vector<std::string>{
@@ -440,15 +438,15 @@ void TestGoldenFileHandedOver() {
                      "footer m-6 < m-2",
                  }));
   CHECK(Lines(turn.Live()) == page);
-  CHECK(view["blocks"][2]["parts"] == json::array({link}));
-  CHECK(view["blocks"][3]["parts"] == json::array({file}));
+  CHECK(view["nodes"][2]["parts"] == json::array({link}));
+  CHECK(view["nodes"][3]["parts"] == json::array({file}));
   // The terminal lists the file under the turn at every depth; an open call
   // adds the parts it kept.
   const std::string work = "> make a report\n  · Worked 1 step · 2.0s\n";
   const std::string call = "    · Shared report.html · 5ms\n";
   const std::string rest =
       "  ↳ report.html · 2 kB\nuagent\nHere it is.\n0 in · 0 out · 2.0s\n";
-  CHECK((Drawings(view["blocks"]) ==
+  CHECK((Drawings(view["nodes"]) ==
          std::vector<std::string>{work + rest, work + call + rest,
                                   work + call + "      ↳ Open · 7\n" + rest}));
   CHECK(turn.Watched() ==
@@ -471,7 +469,7 @@ void TestGoldenBlankReplyAndMcpCall() {
   turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-2-1", "\n");
   turn.Footer(1500, "complete");
-  const auto page = Lines(ConversationView(turn.History())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["nodes"]);
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"look it up\"",
                      "work w-m-2 < m-2 [ok] Worked 1 step · 1.5s",
@@ -483,7 +481,7 @@ void TestGoldenBlankReplyAndMcpCall() {
   const std::string work = "  · Worked 1 step · 1.5s\n";
   const std::string call = "    · Called Search · 5ms\n";
   const std::string footer = "0 in · 0 out · 1.5s\n";
-  CHECK((Drawings(ConversationView(turn.History())["blocks"]) ==
+  CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{"> look it up\n" + work + footer,
                                   "> look it up\n" + work + call + footer,
                                   "> look it up\n" + work + call + footer}));
@@ -497,7 +495,7 @@ void TestGoldenRunningTurn() {
   const std::string b = turn.Call(
       "r-1-1-1", "b", "run", {{"verb", {"Running", "Ran"}}, {"target", "make"}},
       "running", {}, "", "run");
-  const auto page = Lines(ConversationView(turn.History())["blocks"]);
+  const auto page = Lines(ConversationView(turn.History())["nodes"]);
   // An interim reply is a step of the work, which runs until the footer.
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"build\"",
@@ -511,7 +509,7 @@ void TestGoldenRunningTurn() {
   // streamed.
   const std::string open =
       "> build\n  → Working\n    Building now.\n    → Running make\n";
-  CHECK((Drawings(ConversationView(turn.History())["blocks"]) ==
+  CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{"> build\n  → Working\n", open, open}));
   CHECK(turn.Watched() == "> build\nuagent\nBuilding now.");
 }
@@ -529,7 +527,7 @@ void TestGoldenPagesEndOnWholeTurns() {
   size_t seen = 0;
   for (bool more = true; more;) {
     const json page = view.Page(before);
-    const json& nodes = page["blocks"];
+    const json& nodes = page["nodes"];
     REQUIRE(!nodes.empty());
     // Each page starts on a turn and holds whole turns: three nodes each.
     CHECK(nodes.front()["kind"] == "turn");

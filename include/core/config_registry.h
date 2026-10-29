@@ -141,8 +141,8 @@ inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kSandboxLevels[] = {"readonly", "default",
                                                       "relaxed", "off"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
-inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
-                                                        "full"};
+inline constexpr std::string_view kDetailLevels[] = {"minimal", "default",
+                                                     "full"};
 
 // Sent when a route has no credential; local OpenAI-compatible servers accept
 // any bearer value, and "no key configured" checks compare against it.
@@ -830,13 +830,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Plain output")),
     registry::Named(
         registry::Choice(
-            registry::Str("verbosity", "UAGENT_VERBOSITY", {}, "default",
+            registry::Str("detail", "UAGENT_DETAIL", {}, "default",
                           ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "behaviour",
                           "how much of the agent's work is shown: minimal, "
                           "default or full; display only"),
-            kVerbosityLevels),
-        "Detail shown"),
+            kDetailLevels),
+        "Detail"),
 };
 
 inline std::span<const ConfigDescriptor> ConfigRegistry() {

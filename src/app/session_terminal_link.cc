@@ -7,12 +7,12 @@
 #include <utility>
 
 #include "include/agent/transcript.h"
+#include "include/core/detail.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/core/turn_status.h"
-#include "include/core/verbosity.h"
 #include "include/ui/interactive.h"
 #include "include/ui/presentation.h"
 #include "src/app/session_terminal_internal.h"
@@ -102,19 +102,19 @@ void Terminal::ReceiveState(const json& frame) {
       }
     }
     const json* view = JsonObject(state, "view");
-    if (view && JsonArray(*view, "blocks")) {
+    if (view && JsonArray(*view, "nodes")) {
       transcript_["view"] = *view;
       presenter_.Draw(*view);
       history_ = true;
     }
-  } else if (const DetailPolicy* detail = detail_;
+  } else if (const DetailLevel* detail = detail_;
              detail != &presenter_.Detail()) {
     // Another level: the tree held here again, open to its depth, and why
     // the screen changed where the eye is.
     presenter_.SetDetail(*detail);
     presenter_.Draw(transcript_["view"]);
     WriteTerminalRecord(
-        Note(Tone::kNeutral, "verbosity " + std::string(detail->level)));
+        Note(Tone::kNeutral, "detail " + std::string(detail->name)));
   }
   // A panel holding thread events says why, once per change.
   if (std::string paused = JsonValue(state, "paused", ""); paused != paused_) {
@@ -146,7 +146,7 @@ bool Terminal::ReceiveEvent(const json& frame) {
     // The held tree takes the event and what settled in it is drawn. A
     // message this terminal echoed as it was typed is on screen already.
     ApplySessionEvent(transcript_, type, data);
-    if (const json* node = JsonObject(data, "block")) {
+    if (const json* node = JsonObject(data, "node")) {
       if (raw_ &&
           (JsonValue(*node, "kind", "") == "turn" ||
            JsonValue(*node, "role", "") == "user") &&
@@ -169,9 +169,8 @@ bool Terminal::ReceiveEvent(const json& frame) {
     // The level changed elsewhere (another terminal, the web, the file).
     if (const json* changed = JsonArray(data, "changed");
         type == AppType(EventId::kConfigChanged) && !pinned_ && changed &&
-        std::ranges::find(*changed, json(kVerbositySetting)) !=
-            changed->end()) {
-      if (const DetailPolicy* detail = &ConfiguredDetail({});
+        std::ranges::find(*changed, json(kDetailSetting)) != changed->end()) {
+      if (const DetailLevel* detail = &ConfiguredDetail({});
           detail != detail_) {
         Restyle(*detail);
       }

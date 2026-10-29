@@ -59,25 +59,25 @@ ToolResult Search(const std::string& folder, const std::string& query) {
 ToolResult Read(const SessionInfo& info, uint64_t before) {
   return WithConversation(info, [&](const Conversation& conversation) {
     json page = ConversationView(conversation, before);
-    json blocks = json::array();
-    const json& all = page["blocks"];
+    json nodes = json::array();
+    const json& all = page["nodes"];
     const size_t first =
         all.size() > kReadBlocks ? all.size() - kReadBlocks : 0;
     for (size_t index = first; index < all.size(); ++index) {
-      const json& block = all[index];
-      const std::string kind = JsonValue(block, "kind", "");
+      const json& node = all[index];
+      const std::string kind = JsonValue(node, "kind", "");
       const bool spoken = kind == "turn" || kind == "message";
-      json row = {{"id", JsonValue(block, "id", "")}, {"kind", kind}};
+      json row = {{"id", JsonValue(node, "id", "")}, {"kind", kind}};
       for (const char* field : {"headline", "summary"}) {
-        if (block.contains(field)) row[field] = block[field];
+        if (node.contains(field)) row[field] = node[field];
       }
       const std::string text =
-          JsonValue(JsonValue(block, "body", json::object()), "text", "");
+          JsonValue(JsonValue(node, "body", json::object()), "text", "");
       if (!text.empty()) {
         row["text"] =
             Utf8Prefix(text, spoken ? kReadTextChars : kToolTextChars);
       }
-      blocks.push_back(std::move(row));
+      nodes.push_back(std::move(row));
     }
     // Older rows page back through `before`, the sequence of the oldest row
     // shown that has one, as a page names it; detail expands one row.
@@ -89,7 +89,7 @@ ToolResult Read(const SessionInfo& info, uint64_t before) {
       }
     }
     json result = {{"title", info.title},
-                   {"blocks", std::move(blocks)},
+                   {"nodes", std::move(nodes)},
                    {"before", std::move(older)},
                    {"more", first > 0 || JsonValue(page, "more", false)}};
     return ToolSuccess(AsData(SessionIdFor(info.path), JsonDump(result, 1)));

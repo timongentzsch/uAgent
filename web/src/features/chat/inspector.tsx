@@ -64,11 +64,11 @@ import { MessageActions } from "./message-actions.ts";
 type Page = {
   title: string;
   raw?: RawOptions;
-  stats?: { blockId?: string };
+  stats?: { nodeId?: string };
 };
 
-// A stable empty list: the history hook compares the newest block each render.
-const noBlocks: readonly { id: string }[] = [];
+// A stable empty list: the history hook compares the newest node each render.
+const noNodes: readonly { id: string }[] = [];
 
 const childStateOf = (detail: ActivityDetail): State => ({
   view: detail.conversation,
@@ -119,7 +119,7 @@ async function fetchActivityDetail(
   );
   if (response.pending)
     throw new Error("Activity is still loading. Try again shortly.");
-  await prepareHistoryNodes(response.result.conversation?.blocks || []);
+  await prepareHistoryNodes(response.result.conversation?.nodes || []);
   return {
     ...item,
     ...response.result,
@@ -128,10 +128,10 @@ async function fetchActivityDetail(
       ? {
           conversation: {
             ...response.result.conversation,
-            blocks: keepFirst(
+            nodes: keepFirst(
               mergeNodes(
-                response.result.conversation.blocks,
-                prior.conversation.blocks,
+                response.result.conversation.nodes,
+                prior.conversation.nodes,
               ),
               maxHistoryNodes,
             ),
@@ -251,19 +251,19 @@ export default function Inspector({
       inspect(target.item).catch(report);
       return;
     }
-    const { block } = target;
-    const item = rows.find((row) => row.id === block.activity_id);
+    const { node } = target;
+    const item = rows.find((row) => row.id === node.activity_id);
     const receipt: ActivityDetail = {
       ...item,
-      activity_id: block.activity_id,
-      agent_id: block.agent_id,
-      label: block.label || "Recorded event",
-      status: block.state,
-      memory: block.memory,
-      command: block.command || item?.command,
-      output: block.text,
+      activity_id: node.activity_id,
+      agent_id: node.agent_id,
+      label: node.label || "Recorded event",
+      status: node.state,
+      memory: node.memory,
+      command: node.command || item?.command,
+      output: node.text,
     };
-    if (item || block.agent_id || block.memory) inspect(receipt).catch(report);
+    if (item || node.agent_id || node.memory) inspect(receipt).catch(report);
     else {
       ++inspection.current;
       setDetail(receipt);
@@ -356,7 +356,7 @@ export default function Inspector({
                 )}
                 <StatisticsContent
                   state={childStateOf(detail)}
-                  blockId={page.stats?.blockId}
+                  nodeId={page.stats?.nodeId}
                 />
               </>
             )
@@ -433,7 +433,7 @@ function DetailBody({
   const thread = useTranscriptHistory(
     setFollowing,
     historyKey,
-    detail.conversation?.blocks || noBlocks,
+    detail.conversation?.nodes || noNodes,
   );
   // Guidance submit lives here (not the panel) so every nesting level
   // sends with its own text and receipt.
@@ -448,7 +448,7 @@ function DetailBody({
   const [model, setModel] = useState("");
   const showTurnStats = useCallback(
     (node: Pick<Node, "id">) =>
-      page({ title: "Subagent statistics", stats: { blockId: node.id } }),
+      page({ title: "Subagent statistics", stats: { nodeId: node.id } }),
     [page],
   );
   const childState = childStateOf(detail);
@@ -461,7 +461,7 @@ function DetailBody({
   // the same history/rendering path and a Back action instead of recursive
   // dialogs with separate scroll and loading state.
   const [ancestors, setAncestors] = useState<ActivityDetail[]>([]);
-  // Key scope and the default block reader follow the CHILD
+  // Key scope and the default node reader follow the CHILD
   // conversation: stable child ids must never inherit parent row state.
   const childSession = useMemo(
     () => ({
@@ -511,19 +511,19 @@ function DetailBody({
     [readDetail, report, page],
   );
   const openNested = useCallback(
-    async (block: ActivityTarget) => {
+    async (node: ActivityTarget) => {
       const { signal } = lifetime.current;
       try {
         const full = await fetchActivityDetail(
           session,
           cwd,
           {
-            activity_id: block.activity_id,
-            agent_id: block.agent_id,
-            label: block.label || "Subagent",
-            status: block.state,
-            command: block.command,
-            output: block.text,
+            activity_id: node.activity_id,
+            agent_id: node.agent_id,
+            label: node.label || "Subagent",
+            status: node.state,
+            command: node.command,
+            output: node.text,
           },
           undefined,
           undefined,
@@ -634,7 +634,7 @@ function DetailBody({
               {detail.conversation ? (
                 <MessageActions.Provider value={threadActions}>
                   <Transcript
-                    nodes={detail.conversation.blocks}
+                    nodes={detail.conversation.nodes}
                     online={online}
                     session={childSession}
                   />

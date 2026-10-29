@@ -73,7 +73,7 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
                 session,
                 lambda value: (
                     value["metadata"]["status"] == "idle"
-                    and bool(value["state"].get("view", {}).get("blocks"))
+                    and bool(value["state"].get("view", {}).get("nodes"))
                 ),
             )
             assert_true(image["id"] in json.dumps(value), value)
@@ -382,8 +382,8 @@ def test_web_orchestrator_can_share_an_artifact(root, home, *, binary):
             assert_true(not {"write_file", "edit_file", "scratch"} & names, names)
             files = [
                 part
-                for block in value["state"]["view"]["blocks"]
-                for part in block.get("parts") or []
+                for node in value["state"]["view"]["nodes"]
+                for part in node.get("parts") or []
                 if part["kind"] == "file"
             ]
             assert_true([file["name"] for file in files] == ["report.html"], files)
@@ -420,8 +420,8 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
             )
             files = [
                 part
-                for block in value["state"]["view"]["blocks"]
-                for part in block.get("parts") or []
+                for node in value["state"]["view"]["nodes"]
+                for part in node.get("parts") or []
                 if part["kind"] == "file"
             ]
             assert_true([file["name"] for file in files] == ["report.html", "picture.svg"], files)
@@ -481,7 +481,7 @@ def test_web_rows_show_output_while_the_model_reads_hints(root, home, *, binary)
     assert_true(len(told) == 2, told)
     assert_true(told[0].startswith("error: visible-out\n") and "[exit code 3]" in told[0], told)
     assert_true(told[1].startswith("first\nsecond\n") and "lines 1-2 of 2]" in told[1], told)
-    ran, read = [block for block in value["state"]["view"]["blocks"] if block.get("kind") == "call"]
+    ran, read = [node for node in value["state"]["view"]["nodes"] if node.get("kind") == "call"]
     # A person reads the output and the facts, worded once by the host.
     assert_true(ran["body"]["text"] == "error: visible-out\n", ran)
     assert_true(ran["state"] == "failed" and ran["result"]["exit"] == {"code": 3}, ran)
@@ -516,9 +516,9 @@ def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binar
             def diff_row(value):
                 return next(
                     (
-                        block
-                        for block in value["state"]["view"]["blocks"]
-                        if block.get("body", {}).get("kind") == "diff"
+                        node
+                        for node in value["state"]["view"]["nodes"]
+                        if node.get("body", {}).get("kind") == "diff"
                     ),
                     None,
                 )

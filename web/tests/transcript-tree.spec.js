@@ -56,7 +56,7 @@ async function open(page, level) {
         epoch: "e",
         cursor: 1,
         metadata: SESSION,
-        state: { phase: "idle", view: { blocks: conversation } },
+        state: { phase: "idle", view: { nodes: conversation } },
         pending: null,
       });
     return json({ error: "Not in this mock" }, 404);

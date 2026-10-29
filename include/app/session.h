@@ -15,7 +15,7 @@
 #include "include/transport/session.h"
 namespace uagent::session {
 // State only checkpoints carry. Between them clients keep the last
-// checkpoint's and apply block events to its view, so these large fields
+// checkpoint's and apply node events to its view, so these large fields
 // never cross the wire on every phase or usage change.
 inline constexpr const char* kCheckpointFields[] = {"view", "http",
                                                     "system_prompt", "answer"};

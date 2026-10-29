@@ -51,7 +51,7 @@ constexpr FlagSpec kFlags[] = {
      .key = "UAGENT_MEMORY",
      .help = "disable memory recall and writes for this conversation",
      .preset = "0"},
-    {"--verbosity", FlagKind::kConfig, nullptr, "UAGENT_VERBOSITY", "LEVEL",
+    {"--detail", FlagKind::kConfig, nullptr, "UAGENT_DETAIL", "LEVEL",
      "detail shown in this terminal: minimal, default or full"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
      "conversation model as [provider/]model[:effort]"},

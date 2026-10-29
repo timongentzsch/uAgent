@@ -99,13 +99,13 @@ def answer(handler, body):
             {"command": "printf BROWSER_ACTIVITY; sleep 10", "yield_ms": 250},
             call_id="browser-activity",
         )
-    if "Plan probe" in prompt:
+    if "Todo probe" in prompt:
         items = [
             {"text": "Read the parser", "status": "done"},
             {"text": "Fix the lexer", "status": "in_progress"},
             {"text": "Add tests", "status": "pending"},
         ]
-        return tool_call("plan", {"items": items}, call_id="plan-write")
+        return tool_call("todo", {"items": items}, call_id="todo-write")
     if "Unknown tool probe" in prompt and not any(
         message.get("tool_call_id") == "unknown-tool" for message in body["messages"]
     ):

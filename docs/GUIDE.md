@@ -249,7 +249,7 @@ switches to one; in the web an agent's link opens it.
   two levels deep at most (`agents.depth`). An agent's spend counts in its
   parent's, and under a budget each one gets a share of what is left.
 
-### The plan
+### The to-do list
 
 For work with several parts an agent keeps a to-do list: each item pending,
 in progress or done, at most one in progress. It is kept with the

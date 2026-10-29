@@ -153,9 +153,9 @@ class Conversation {
   int64_t dropped_segments_ = 0;
 };
 
-// A plan's items ({text, status}) as the model reads them, one per line:
+// A to-do list's items ({text, status}) as the model reads them, one per line:
 // "- [in_progress] Fix the lexer".
-std::string PlanText(const json& items);
+std::string TodoText(const json& items);
 
 json MessageKindsJson(const std::vector<MessageKind>& kinds);
 bool ParseMessageKinds(const json& value, size_t expected,

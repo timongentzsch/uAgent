@@ -48,8 +48,9 @@ Application::Application(AppContext& context)
         if (event.type != AppType(EventId::kMessageChanged)) {
           return;
         }
-        // A changed plan reaches clients as it changes, not as the turn ends.
-        if (channel_ && agent_.Plan() != plan_) PublishChannelState(false);
+        // A changed to-do list reaches clients as it changes, not as the turn
+        // ends.
+        if (channel_ && agent_.Todo() != todo_) PublishChannelState(false);
         // A message of yours is saved as it arrives.
         const json& node = event.data["node"];
         if ((JsonValue(node, "kind", "") == "turn" ||

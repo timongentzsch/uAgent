@@ -53,7 +53,7 @@ every metric.
   script with `uagent -p "..." --json`.
 - **Works in parallel.** A conversation starts agents, conversations of
   their own that research or change code and report back; a folder's lead
-  agent keeps a plan and leaves the changes to them.
+  agent keeps a to-do list and leaves the changes to them.
 - **Remembers and repeats.** Memory, skills, scheduled tasks and MCP servers,
   managed from the terminal or the web.
 - **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,

@@ -11,11 +11,11 @@
 
 namespace uagent {
 
-void RegisterPlanTool(std::vector<Tool>& tools) {
-  Tool& plan = AddTool(
+void RegisterTodoTool(std::vector<Tool>& tools) {
+  Tool& todo = AddTool(
       tools,
       MakeTool(
-          "plan",
+          "todo",
           "Your to-do list for this conversation; you and the user see it "
           "until it is done. Each call replaces the whole list. Keep one for "
           "work of three or more steps: mark an item in_progress as you start "
@@ -29,43 +29,43 @@ void RegisterPlanTool(std::vector<Tool>& tools) {
             "required":["items"]})json"),
           [](const json& a, const ToolContext&) {
             ToolResult result =
-                ToolSuccess(a["items"].empty() ? "The plan is empty."
-                                               : PlanText(a["items"]));
+                ToolSuccess(a["items"].empty() ? "The to-do list is empty."
+                                               : TodoText(a["items"]));
             result.body_kind = "markdown";
-            result.plan = a["items"];
+            result.todo = a["items"];
             return result;
           }));
-  // Planning changes nothing outside the conversation, so it needs no
+  // The list changes nothing outside the conversation, so it needs no
   // capability.
-  plan.capabilities = 0;
-  plan.category = "collaborate";
-  plan.intent = "plan";
-  plan.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
+  todo.capabilities = 0;
+  todo.category = "collaborate";
+  todo.intent = "todo";
+  todo.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     const json* items = JsonArray(a, "items");
     if (items && std::ranges::count_if(*items, [](const json& item) {
                    return JsonValue(item, "status", "") == "in_progress";
                  }) > 1) {
-      return ArgumentIssue("plan.in_progress",
+      return ArgumentIssue("todo.in_progress",
                            "at most one item is in_progress; mark the others "
                            "pending or done",
                            "items");
     }
     return std::nullopt;
   };
-  plan.headline = [](const json& a) {
+  todo.headline = [](const json& a) {
     const json* items = JsonArray(a, "items");
     if (!items || items->empty()) {
-      return Headline{"Clearing", "Cleared", "plan"};
+      return Headline{"Clearing", "Cleared", "to-dos"};
     }
     const auto done = std::ranges::count_if(*items, [](const json& item) {
       return JsonValue(item, "status", "") == "done";
     });
     return Headline{
-        "Updating plan", "Updated plan",
+        "Updating to-dos", "Updated to-dos",
         std::to_string(done) + "/" + std::to_string(items->size()) + " done"};
   };
   // The result shows the list.
-  plan.present = [](const json&) { return json::array(); };
+  todo.present = [](const json&) { return json::array(); };
 }
 
 }  // namespace uagent

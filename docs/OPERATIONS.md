@@ -96,7 +96,7 @@ session limit and the lead agent's daily cost limit.
 | an agent's report / the answers one `agent_start` waits for | 6,000 characters / 48 KiB shared | |
 | a parent's decision for its agent / turns agents' mail starts in a row | 5 minutes, then a person decides / 3 | |
 | reported cost per day of a lead agent and its agents | $20 | `UAGENT_PANEL_DAILY_SPEND_USD` |
-| steps in a lead agent's plan | 24 | |
+| items in a conversation's to-do list | 24 | |
 | idle session runtime | stops after 15 minutes, an agent's with no client about 1 s after its turn; the next message starts it | `UAGENT_IDLE_MINUTES` |
 | undo journal | 2 MiB per file, 64 MiB per session | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | `UAGENT_MEMORY_BYTES`, `UAGENT_MEMORY_MAX`, `UAGENT_MEMORY_ALWAYS_BYTES` |

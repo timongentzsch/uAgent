@@ -261,8 +261,8 @@ export interface Activity {
   // A command the turn is still waiting on, until moved to the background.
   detached?: boolean;
 }
-// One item of a conversation's plan, its to-do list (the plan tool).
-export interface PlanItem {
+// One item of a conversation's to-do list (the todo tool).
+export interface TodoItem {
   text: string;
   status: "pending" | "in_progress" | "done";
 }
@@ -404,7 +404,7 @@ export interface State {
   statistics?: Statistics;
   turn_status?: string;
   activities?: Activity[];
-  plan?: PlanItem[];
+  todo?: TodoItem[];
   context_tokens?: number;
   context_window?: number;
   permissions?: Permissions;

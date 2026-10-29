@@ -211,7 +211,7 @@ add_library(
   src/tools/registry_exec.cc
   src/tools/registry_files.cc
   src/tools/registry_memory.cc
-  src/tools/registry_plan.cc
+  src/tools/registry_todo.cc
   src/tools/shell.cc
   src/tools/web_fetch.cc
   src/tools/web_search.cc)

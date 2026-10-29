@@ -268,8 +268,8 @@ before Submit.
   and then runs it as its own turn.
 - After a turn stopped short (Stop, an error, a step or budget limit) the
   status line reads **Stopped** with **Continue**, which sends `continue`.
-- While the agent keeps a [plan](GUIDE.md#the-plan), its
-  to-do list sits above the input: the item in progress stands out, done
+- While the agent keeps a [to-do list](GUIDE.md#the-to-do-list), it
+  sits above the input: the item in progress stands out, done
   ones are struck through.
 - `/` opens slash commands with suggestions and Tab completion. The list
   offers the commands the page has no control for; others still run when
@@ -336,7 +336,7 @@ before Submit.
 
 ### Agents and the lead agent
 
-[The guide](GUIDE.md#agents) explains agents, the lead agent and the plan.
+[The guide](GUIDE.md#agents) explains agents, the lead agent and the to-do list.
 In the web:
 
 - A place's name in the sidebar, or search, opens its lead agent. Agents are

@@ -19,7 +19,7 @@ layer.
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
-| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory, plan); `registry.cc` only orders the families |
+| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory, todo); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
 | `src/browser/` | The web host's browser service: owns Chrome and Xvnc behind a private socket |
 | `src/core/` | Shared policy, events, limits, settings, mailboxes, sandbox, filesystem, signals and platform primitives |
@@ -150,7 +150,7 @@ delegates but never writes: it has no tool that edits, and its runtime forces
 the `readonly` sandbox level, so its commands write nothing but temporary
 files. The agents it starts may edit.
 
-Every conversation keeps its plan, the to-do list the `plan` tool replaces,
+Every conversation keeps its to-do list, which the `todo` tool replaces,
 as a fact of its session file, so it survives a reload, compaction and a
 fork. While it has items it rides on the tail of every model request, beside
 a lead agent's board and clock, and never enters the stored history.

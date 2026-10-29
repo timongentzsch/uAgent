@@ -445,9 +445,9 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, model_results[index], task.result, task.duration_ms);
     if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
-    if (!task.result.plan.is_null()) {
-      conversation_.RecordDisplay("plan",
-                                  {{"items", std::move(task.result.plan)}});
+    if (!task.result.todo.is_null()) {
+      conversation_.RecordDisplay("todo",
+                                  {{"items", std::move(task.result.todo)}});
     }
     if (!task.result.recovery_key.empty()) {
       auto& failures = loop.recovery.edit_failures;

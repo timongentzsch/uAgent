@@ -140,9 +140,9 @@ class Agent {
   json HttpExchanges() const;
   json SessionSettings() const;
   void SessionSettings(const json& settings);
-  // The conversation's plan: the items its last plan call left, kept in the
-  // session file; empty when it has none.
-  json Plan() const;
+  // The conversation's to-do list: the items its last todo call left, kept
+  // in the session file; empty when it has none.
+  json Todo() const;
   json ToolCatalogue() const;
   // The tools this conversation has switched on, by name: the most a child
   // it delegates to may be given.
@@ -406,7 +406,7 @@ class Agent {
   // request byte for provider caching without repeating cwd metadata each turn.
   void EnsureRuntimeContext();
   // What every request carries beyond the stored conversation: a panel's
-  // context (SetRuntimeContext), then the plan while it has items; empty
+  // context (SetRuntimeContext), then the to-do list while it has items; empty
   // when there is neither.
   std::string RequestContext() const;
   json WithRequestContext(json messages, std::string context) const;

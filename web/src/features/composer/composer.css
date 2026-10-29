@@ -233,52 +233,52 @@
   }
 }
 
-/* A bounded tray in the composer keeps pending input and the plan above the
+/* A bounded tray in the composer keeps pending input and the to-dos above the
    keyboard, independent of transcript scrolling. Text and actions have their
    own rows. */
 .guidance-queue,
-.plan-list {
+.todo-list {
   border: var(--border-field);
   background: var(--raised);
   margin-bottom: var(--space-2);
   min-width: 0;
 }
 .queue-heading,
-.plan-heading {
+.todo-heading {
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-small);
   border-bottom: var(--border-field);
 }
 .queue-items,
-.plan-items {
+.todo-items {
   max-height: min(var(--scroll-s), var(--pane));
   overflow: auto;
   overscroll-behavior: contain;
 }
-.plan-items {
+.todo-items {
   list-style: none;
   margin: 0;
   padding: var(--space-2) var(--space-3);
 }
-.plan-items li {
+.todo-items li {
   display: flex;
   align-items: center;
   gap: var(--gap);
   overflow-wrap: anywhere;
 }
-.plan-items .lucide {
+.todo-items .lucide {
   flex: none;
   width: var(--icon-s);
   height: var(--icon-s);
   color: var(--muted);
 }
-.plan-items [data-status="in_progress"] {
+.todo-items [data-status="in_progress"] {
   font-weight: var(--weight-strong);
 }
-.plan-items [data-status="in_progress"] .lucide {
+.todo-items [data-status="in_progress"] .lucide {
   color: var(--text);
 }
-.plan-items [data-status="done"] {
+.todo-items [data-status="done"] {
   color: var(--muted);
   text-decoration: line-through;
 }

@@ -346,9 +346,9 @@ void Agent::SessionSettings(const json& settings) {
   ++revision_;
   PublishSideContext();
 }
-json Agent::Plan() const {
+json Agent::Todo() const {
   return JsonValue(
-      JsonValue(conversation_.DisplayFacts(), "plan", json::object()), "items",
+      JsonValue(conversation_.DisplayFacts(), "todo", json::object()), "items",
       json::array());
 }
 json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }

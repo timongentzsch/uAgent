@@ -41,7 +41,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
-| `plan` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |
+| `todo` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |
 | `agent_start` | start agents, each a conversation of its own on a brief; see [Agents](#agents) | unless this agent is `agents.depth` levels deep |
 | `agent_send`, `agents`, `decide` | message the parent, an agent or its siblings; list, read, stop, close or delete agents; answer what an agent asks | always |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never a headless run); an agent's questions go to its parent first |

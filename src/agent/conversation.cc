@@ -320,9 +320,10 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   // by key order and re-trigger their notices on every later step. The fact
   // just written never goes: a fresh response would otherwise lose the id
   // that rejoins its live row. Nor does what the conversation is rather
-  // than shows: its chosen settings, its plan and where it was forked from.
+  // than shows: its chosen settings, its to-do list and where it was forked
+  // from.
   const auto evictable = [&key](const std::string& name) {
-    return name != key && name != "session-settings" && name != "plan" &&
+    return name != key && name != "session-settings" && name != "todo" &&
            name != "fork-origin" && name != "side-origin";
   };
   const auto stored_bytes = [this](const std::string& name, const json& value) {
@@ -741,7 +742,7 @@ std::string Conversation::ArchiveText() const {
   return text + "]";
 }
 
-std::string PlanText(const json& items) {
+std::string TodoText(const json& items) {
   std::string text;
   for (const json& item : items) {
     text += "- [" + JsonValue(item, "status", "") + "] " +

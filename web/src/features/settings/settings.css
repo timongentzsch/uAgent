@@ -12,9 +12,6 @@
 .setting-summary[data-default] {
   color: var(--muted);
 }
-dialog.settings-view {
-  --dialog-width: calc(880rem / 14);
-}
 .settings-content {
   flex: 1;
   padding: 0;

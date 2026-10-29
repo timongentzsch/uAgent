@@ -42,6 +42,9 @@ function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
   if (cache.has(key)) return Promise.resolve(cache.get(key)!);
   const result = queue.then(async () => {
     if (cache.has(key)) return cache.get(key)!;
+    // Drawn in the palette's tokens, as the terminal is.
+    const style = getComputedStyle(document.documentElement);
+    const token = (name: string) => style.getPropertyValue(`--${name}`).trim();
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
@@ -52,13 +55,13 @@ function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
       theme: "base",
       themeVariables: {
         darkMode: dark,
-        background: dark ? "#000" : "#fff",
-        primaryColor: dark ? "#151515" : "#f5f5f5",
-        primaryTextColor: dark ? "#eee" : "#111",
-        primaryBorderColor: dark ? "#aaa" : "#555",
-        lineColor: dark ? "#aaa" : "#555",
-        secondaryColor: dark ? "#222" : "#eee",
-        tertiaryColor: dark ? "#111" : "#fafafa",
+        background: token("bg"),
+        primaryColor: token("raised"),
+        primaryTextColor: token("text"),
+        primaryBorderColor: token("muted"),
+        lineColor: token("muted"),
+        secondaryColor: token("hover"),
+        tertiaryColor: token("surface"),
         fontFamily: "monospace",
       },
     });
@@ -147,6 +150,7 @@ export default function Diagram({ source }: { source: string }) {
         <Modal
           title="Diagram"
           close={() => setExpanded(false)}
+          size="xl"
           className="diagram-expanded"
         >
           <img src={url} alt="Mermaid diagram" />

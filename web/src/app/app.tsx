@@ -673,7 +673,7 @@ function App() {
                 key={overlay}
                 title={overlay === "search" ? "Search" : "Keyboard shortcuts"}
                 layout={overlay === "search" ? "spotlight" : "sheet"}
-                size="narrow"
+                size="s"
                 header={overlay !== "search"}
                 close={() => setOverlay(null)}
               >

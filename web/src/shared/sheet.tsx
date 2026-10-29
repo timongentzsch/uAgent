@@ -73,7 +73,7 @@ export function SheetButton({
         <Modal
           title={heading}
           layout="sheet"
-          size="narrow"
+          size="s"
           className={sheetClass}
           close={() => setOpen(false)}
         >

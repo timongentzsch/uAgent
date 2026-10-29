@@ -48,7 +48,7 @@
 }
 .files-dir {
   color: var(--muted);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 .files-download {
   display: inline-flex;
@@ -99,7 +99,7 @@
 }
 .files-crumbs [aria-current] {
   color: var(--text);
-  font-weight: 700;
+  font-weight: var(--weight-strong);
 }
 .files-entries,
 .files-results {

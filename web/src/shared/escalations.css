@@ -19,7 +19,7 @@
 .escalation-paused {
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  border-left: 3px solid var(--mark);
+  border-left: var(--stripe-callout) solid var(--mark);
   background: var(--raised);
   font-size: var(--font-small);
 }

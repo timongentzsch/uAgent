@@ -18,7 +18,7 @@
 }
 @container app (max-height: 500px) {
   .activity-list {
-    max-height: calc(var(--viewport-height) * 0.18);
+    max-height: var(--scroll-s);
   }
 }
 .activities {

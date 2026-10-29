@@ -46,7 +46,7 @@
 /* The draft and its controls are one box, so the box takes the ring. */
 .composer > form:has(> .message-input > textarea:focus-visible) {
   outline: var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: var(--focus-offset);
 }
 .composer > form > .message-input > textarea:focus-visible {
   outline: none;
@@ -64,7 +64,7 @@
 }
 /* A pending decision holds the input; Permissions can still settle it. */
 .composer-actions[data-held] > :not(.permission-control) {
-  opacity: 0.5;
+  opacity: var(--opacity-disabled);
   pointer-events: none;
 }
 /* Send and Stop are one control: the icons sit on top of each other and
@@ -194,12 +194,6 @@
     gap: var(--space-2);
   }
 }
-@container app (max-height: 500px) {
-  .composer > form > .message-input {
-    --input-min-height: max(calc(38rem / 14), calc(1.5em + var(--space-6)));
-    --input-max-height: calc(var(--viewport-height) * 0.2);
-  }
-}
 
 /* A bounded tray in the composer keeps pending input and the plan above the
    keyboard, independent of transcript scrolling. Text and actions have their
@@ -219,7 +213,7 @@
 }
 .queue-items,
 .plan-items {
-  max-height: min(calc(var(--viewport-height) * 0.25), var(--pane));
+  max-height: min(var(--scroll-s), var(--pane));
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -241,7 +235,7 @@
   color: var(--muted);
 }
 .plan-items [data-status="in_progress"] {
-  font-weight: 600;
+  font-weight: var(--weight-strong);
 }
 .plan-items [data-status="in_progress"] .lucide {
   color: var(--text);

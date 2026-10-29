@@ -3,17 +3,17 @@
 }
 .command-suggestions {
   position: absolute;
-  bottom: calc(100% + 4rem / 14);
+  bottom: calc(100% + var(--space-2));
   inset-inline: 0;
   z-index: var(--z-popover);
-  max-height: min(var(--pane), calc(var(--viewport-height) * 0.4));
+  max-height: min(var(--pane), var(--scroll-m));
   overflow-y: auto;
   overscroll-behavior: contain;
   border: var(--border-field);
   background: var(--surface);
 }
 .suggestions button {
-  border-left: 2px solid transparent;
+  border-left: var(--stripe) solid transparent;
 }
 .suggestions [aria-selected="true"] {
   border-left-color: var(--accent);

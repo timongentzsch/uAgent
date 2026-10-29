@@ -1,7 +1,3 @@
-.sidebar {
-  /* What a place's contents are set in from its header by. */
-  --indent: calc(20rem / 14);
-}
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -33,7 +29,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  border-left: 2px solid transparent;
+  border-left: var(--stripe) solid transparent;
 }
 /* The header is marked as a row is: when its panel is open, and when it is
    folded over the open conversation. */
@@ -46,7 +42,7 @@
   min-width: 0;
   margin: 0;
   font-size: var(--font-small);
-  font-weight: 600;
+  font-weight: var(--weight-strong);
 }
 /* The name's text lines up with the conversations' under it. */
 .sidebar h2 button {
@@ -71,7 +67,7 @@
 }
 /* What a folded place holds: how many, or how many need you. */
 .place-count {
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--muted);
 }
 .place-count.attention {
@@ -92,7 +88,7 @@
   justify-content: flex-start;
   gap: var(--gap);
   font-size: var(--font-small);
-  font-weight: 600;
+  font-weight: var(--weight-strong);
   color: var(--accent);
 }
 /* One line to a row: the title and its state. The time and the menu show

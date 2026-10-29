@@ -12,7 +12,7 @@
   font: inherit;
   font-size: var(--font-small);
   margin: 0;
-  max-height: 40vh;
+  max-height: var(--scroll-m);
   overflow: auto;
 }
 .instruction-card {
@@ -44,5 +44,5 @@
 }
 /* An empty file is one line; it grows with what is typed. */
 .instruction-card .text-control:has(> textarea) {
-  --input-min-height: calc(40rem / 14);
+  --input-min-height: var(--control-l);
 }

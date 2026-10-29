@@ -37,6 +37,7 @@
     "--conversation-measure",
     `${(1040 * 100) / z}px`,
   );
+  // Each palette's --bg, before the stylesheet that holds them has loaded.
   document.querySelector('meta[name="theme-color"]').content =
     t === "dark" ? "#000000" : "#ffffff";
   // iOS reads this once at launch; translucent draws under the status bar

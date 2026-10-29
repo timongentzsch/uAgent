@@ -75,7 +75,7 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   padding: 0 var(--space-3);
-  border: 1px solid var(--line-more);
+  border: var(--border-field);
   font-size: var(--font-small);
 }
 .risk-chip:is([data-risk="runs"], [data-risk="outside"]) {

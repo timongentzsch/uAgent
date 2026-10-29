@@ -3,7 +3,7 @@
   gap: var(--space-3);
   flex-wrap: wrap;
   padding: var(--space-3) 0;
-  max-height: calc(var(--viewport-height) * 0.16);
+  max-height: var(--scroll-s);
   overflow: auto;
 }
 /* Before sending: one strip that scrolls sideways, never another line. */
@@ -112,7 +112,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: var(--weight-strong);
 }
 .attachment-card small {
   color: var(--muted);

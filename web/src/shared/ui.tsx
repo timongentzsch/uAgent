@@ -574,7 +574,7 @@ export function Modal({
   children,
   close,
   className = "",
-  size = "compact",
+  size = "m",
   layout = "content",
   actions,
   header = true,
@@ -583,9 +583,10 @@ export function Modal({
   children: ComponentChildren;
   close: () => void;
   className?: string;
-  // "narrow": a sheet of a few actions or one control (see SheetButton),
-  // which rises from the bottom on a phone instead of filling the screen.
-  size?: "narrow" | "compact" | "medium" | "wide" | "browser";
+  // Its width, one of the --dialog-* sizes. "s": a sheet of a few actions or
+  // one control (see SheetButton), which rises from the bottom on a phone
+  // instead of filling the screen.
+  size?: "s" | "m" | "l" | "xl";
   // "sheet": full height at the right edge (full screen on a phone).
   // "spotlight": centered high in the window, as tall as its content.
   layout?: "content" | "panel" | "sheet" | "spotlight";

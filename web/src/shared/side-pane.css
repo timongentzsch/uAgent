@@ -105,7 +105,7 @@
    does; the sheet follows the visible area, so the keyboard shrinks it
    instead of covering it. */
 dialog.terminal-sheet[data-layout="sheet"] {
-  --dialog-width: 100vw;
+  --dialog-width: var(--content-width);
   border-width: 0;
 }
 .terminal-sheet > .dialog-body {

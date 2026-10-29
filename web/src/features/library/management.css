@@ -19,7 +19,7 @@
   flex: 1;
 }
 .management-list {
-  flex: 0 0 15rem;
+  flex: 0 0 var(--pane);
   padding: var(--pad);
   overflow: auto;
   border-right: var(--border);
@@ -65,7 +65,7 @@
 .library-group h2 {
   margin: 0;
   font-size: var(--font-small);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--muted);
 }
 .library-group h2 > .folder-label {
@@ -95,7 +95,7 @@
 }
 .document-input {
   flex: 1;
-  --input-min-height: min(14rem, calc(var(--viewport-height) * 0.3));
+  --input-min-height: min(var(--pane), var(--scroll-s));
   min-height: var(--input-min-height);
   flex-shrink: 0;
   font-family: inherit;

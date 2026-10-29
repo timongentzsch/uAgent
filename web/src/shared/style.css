@@ -5,6 +5,13 @@
   /* Image markup: one colour that reads on any screenshot, in any theme. */
   --mark: #ff3b30;
   --on-mark: #fff;
+  /* The remote browser's screen: a dark desktop in either theme, its
+     overlays' ink and scrim, and where a touch landed. */
+  --screen-bg: #171717;
+  --screen-ink: #e5e5e5;
+  --screen-scrim: rgb(0 0 0 / 0.78);
+  --screen-mark: #fff;
+  --screen-mark-fill: rgb(255 255 255 / 0.25);
   --viewport-height: 100dvh;
   --viewport-width: 100%;
   --viewport-top: 0px;
@@ -77,6 +84,12 @@
   --font-body: 1rem;
   --font-title: 1.1rem;
   --font-display: 1.2rem;
+  /* Weights: running text, and what stands out (a label, a heading). */
+  --weight-regular: 400;
+  --weight-strong: 600;
+  /* Letter spacing: a title drawn tighter, a caption's capitals wider. */
+  --tracking-title: -0.025em;
+  --tracking-caps: 0.04em;
   /* Line heights: snug for labels and short rows, prose for reading text. */
   --leading: 1.5;
   --leading-snug: 1.4;
@@ -84,6 +97,19 @@
   /* Icons: --icon beside text in a control, --icon-s for a spinner. */
   --icon: 1.1rem;
   --icon-s: 1rem;
+  /* An inline icon sits on the text's baseline, dropped to its middle. */
+  --icon-align: -0.2em;
+  /* The line of a drawn mark: a status light, a spinner. */
+  --stroke: max(1px, 0.12rem);
+  /* The accent at the start of the current entry, and of a notice. */
+  --stripe: 2px;
+  --stripe-callout: 3px;
+  /* The focus ring's distance outside its box (inside, where a box clips). */
+  --focus-offset: 2px;
+  /* What cannot be used now: disabled, or held while something is decided. */
+  --opacity-disabled: 0.45;
+  /* What a place's contents are set in from its header by. */
+  --indent: var(--icon-l);
   /* Motion: the only durations and easings in the app. Reduced motion
      zeroes the durations below, which turns every transition off. */
   --motion-fast: 120ms;
@@ -111,8 +137,24 @@
   --z-popover: 5;
   --z-toast: 10;
   --z-skip-link: 20;
-  --dialog-width: calc(560rem / 14);
-  --dialog-height: calc(680rem / 14);
+  /* Dialog widths (Modal's size): a few actions, a form, a document or
+     list, the browser; and a panel's height. */
+  --dialog-s: calc(400rem / 14);
+  --dialog-m: var(--sheet);
+  --dialog-l: calc(900rem / 14);
+  --dialog-xl: calc(1350rem / 14);
+  --dialog-height: calc(1000rem / 14);
+  /* The most a scrolling area takes of the visible height: a short list, a
+     popover's list, a card that holds a long preview. */
+  --scroll-s: calc(var(--viewport-height) / 4);
+  --scroll-m: calc(var(--viewport-height) * 0.4);
+  --scroll-l: calc(var(--viewport-height) * 0.65);
+  /* The reading column's side inset: the transcript, the composer and
+     anything between them line up on it. */
+  --column-inset: max(
+    var(--pad),
+    calc((100% - var(--conversation-measure)) / 2)
+  );
   /* One density on every screen: what a phone needed is enough on a wide
      one too, and more of the conversation fits. */
   --gap: var(--space-3);
@@ -133,7 +175,7 @@
 [data-theme="light"] .message.user,
 [data-theme="dark"] .message.user :is(dialog, .menu-panel) {
   color-scheme: dark;
-  --bg: #000;
+  --bg: #000000;
   --surface: #0a0a0a;
   --raised: #171717;
   --hover: #232323;
@@ -190,7 +232,7 @@
 [data-theme="dark"] .message.user,
 [data-theme="light"] .message.user :is(dialog, .menu-panel) {
   color-scheme: light;
-  --bg: #fff;
+  --bg: #ffffff;
   --surface: #fafafa;
   --raised: #eee;
   --hover: #e2e2e2;
@@ -352,7 +394,7 @@ input[type="radio"] {
   border-color: var(--accent);
 }
 .switch input[role="switch"]:checked::before {
-  translate: calc(16rem / 14) 0;
+  translate: calc(var(--control-l) - var(--icon-l)) 0;
   background: var(--on-accent);
 }
 /* Every button: its content centred in a --control-tall box, padded only
@@ -370,7 +412,7 @@ button,
 }
 button:disabled,
 select:disabled {
-  opacity: 0.45;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 .primary {
@@ -440,7 +482,7 @@ button[aria-pressed="true"] {
   width: var(--icon);
   height: var(--icon);
   flex-shrink: 0;
-  vertical-align: -3px;
+  vertical-align: var(--icon-align);
   stroke-width: 1.75;
 }
 button:focus-visible,
@@ -452,7 +494,7 @@ select:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible,
 .file-button:has(:focus-visible) {
   outline: var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: var(--focus-offset);
 }
 /* Pointer-driven focus restoration must not look like keyboard selection.
    Editable fields retain their native focus indication in either mode. */
@@ -494,7 +536,7 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 .select {
-  --input-padding-end: calc(34rem / 14);
+  --input-padding-end: calc(var(--icon) + var(--space-6) + var(--space-4));
   position: relative;
   display: block;
   min-width: 0;
@@ -539,7 +581,7 @@ p {
 h1 {
   font-size: var(--font-title);
   line-height: var(--leading-snug);
-  letter-spacing: -0.025em;
+  letter-spacing: var(--tracking-title);
 }
 h2,
 h3 {
@@ -585,7 +627,7 @@ pre code {
   padding: 0 var(--pad);
 }
 .diff-head {
-  font-weight: 600;
+  font-weight: var(--weight-strong);
 }
 .diff-add {
   color: var(--added);
@@ -680,11 +722,11 @@ pre code {
   }
 }
 .error-banner {
-  max-height: calc(var(--viewport-height) / 4);
+  max-height: var(--scroll-s);
   overflow: auto;
 }
 .update-banner {
-  border-left: 3px solid var(--live);
+  border-left: var(--stripe-callout) solid var(--live);
 }
 .load-error {
   padding: var(--space-4) 0;
@@ -710,7 +752,7 @@ pre code {
 .spinner {
   width: var(--icon-s);
   height: var(--icon-s);
-  border: max(1px, 0.12rem) solid var(--line);
+  border: var(--stroke) solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin var(--motion-spin) linear infinite;
@@ -814,13 +856,13 @@ dialog.sidebar:not([open]) {
 .folder-parent {
   min-width: 0;
   color: var(--muted);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 .session-row {
   display: flex;
   align-items: center;
   min-width: 0;
-  border-left: 2px solid transparent;
+  border-left: var(--stripe) solid transparent;
 }
 .session-row:has(:focus-visible),
 .session-row:has([aria-current]) {
@@ -835,7 +877,7 @@ dialog.sidebar:not([open]) {
   width: var(--space-4);
   height: var(--space-4);
   border-radius: 50%;
-  border: 1.5px solid currentColor;
+  border: var(--stroke) solid currentColor;
   box-sizing: border-box;
 }
 .status-led.active,
@@ -869,7 +911,7 @@ dialog.sidebar:not([open]) {
 }
 @keyframes pulse {
   50% {
-    opacity: 0.4;
+    opacity: var(--opacity-disabled);
   }
 }
 .connection {
@@ -881,12 +923,6 @@ dialog.sidebar:not([open]) {
   margin-right: var(--space-3);
 }
 .conversation {
-  /* The reading column's side inset: the transcript, the composer and
-     anything between them line up on it. */
-  --column-inset: max(
-    var(--pad),
-    calc((100% - var(--conversation-measure)) / 2)
-  );
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -974,7 +1010,7 @@ dialog.sidebar:not([open]) {
 }
 .tips dt {
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--weight-strong);
   white-space: nowrap;
 }
 .tips dd {
@@ -985,7 +1021,7 @@ dialog.sidebar:not([open]) {
   padding: 0 var(--space-1);
   border: var(--border);
   font: inherit;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 .mark.cursor-mark {
   width: var(--logo);
@@ -1014,7 +1050,7 @@ dialog.sidebar:not([open]) {
   border-width: calc(1px / var(--input-scale));
   transform: scale(var(--input-scale));
   transform-origin: top left;
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--focus-offset));
 }
 /* Field width belongs to its responsive wrapper. Native horizontal resizing
    writes a fixed inline width that breaks subsequent layout/zoom changes. */
@@ -1138,10 +1174,7 @@ details > summary::before {
   gap: var(--space-3);
   border: 1px solid var(--accent);
   padding: var(--space-4) var(--space-6);
-  max-height: min(
-    calc(var(--viewport-height) * 0.65),
-    calc(var(--viewport-height) - calc(100rem / 14))
-  );
+  max-height: var(--scroll-l);
   transition: var(--enter);
 }
 @starting-style {
@@ -1231,6 +1264,7 @@ details > summary::before {
 
 /* Modal header and close button stay outside the scrolling body. */
 dialog {
+  --dialog-width: var(--dialog-m);
   position: fixed;
   inset: auto;
   top: calc(var(--viewport-top) + var(--safe-top) + var(--content-height) / 2);
@@ -1253,15 +1287,14 @@ dialog {
   max-height: max(0px, calc(var(--content-height) - 2 * var(--inset-x)));
   overflow: hidden;
 }
-dialog[data-size="medium"] {
-  --dialog-width: calc(700rem / 14);
+dialog[data-size="s"] {
+  --dialog-width: var(--dialog-s);
 }
-dialog[data-size="wide"] {
-  --dialog-width: calc(1100rem / 14);
+dialog[data-size="l"] {
+  --dialog-width: var(--dialog-l);
 }
-dialog[data-size="browser"] {
-  --dialog-width: calc(1350rem / 14);
-  --dialog-height: calc(1000rem / 14);
+dialog[data-size="xl"] {
+  --dialog-width: var(--dialog-xl);
 }
 dialog[data-layout="panel"] {
   height: min(
@@ -1285,7 +1318,7 @@ dialog[data-layout="spotlight"] {
     0.15
   );
   transform: translateX(-50%);
-  max-height: calc(var(--content-height) * 0.7);
+  max-height: var(--scroll-l);
 }
 dialog[data-layout="spotlight"]:has(.spotlight-preview) {
   --dialog-width: var(--spotlight-wide);
@@ -1303,7 +1336,6 @@ dialog[data-layout="spotlight"]:has(.spotlight-preview) {
 /* Sheet: full content height at the right edge, beside the conversation;
    the mirror of the sidebar drawer. Full screen on a phone. */
 dialog[data-layout="sheet"] {
-  --dialog-width: calc(600rem / 14);
   top: calc(var(--viewport-top) + var(--safe-top));
   left: calc(
     var(--viewport-left) +
@@ -1329,43 +1361,11 @@ dialog[data-layout="sheet"] {
     border-width: 0;
   }
 }
-/* A side sheet keeps its right edge on a phone too, most of the width, the
-   mirror of the sessions drawer: it holds a list to glance at and leave. */
+/* A small sheet holds a few actions or one control (SheetButton): on a
+   phone it rises from the bottom only as tall as its content, like a native
+   action sheet. */
 @media (max-width: 600px) {
-  dialog[data-layout="sheet"].side-sheet {
-    --dialog-width: min(calc(340rem / 14), calc(var(--content-width) * 0.86));
-    left: calc(
-      var(--viewport-left) +
-      var(--safe-left) +
-      var(--content-width) -
-      var(--dialog-width)
-    );
-    width: var(--dialog-width);
-    border-width: 0 0 0 1px;
-  }
-  dialog[data-layout="sheet"].side-sheet[open][data-leaving] {
-    translate: 100% 0;
-  }
-  @starting-style {
-    dialog[data-layout="sheet"].side-sheet[open] {
-      translate: 100% 0;
-    }
-  }
-}
-/* A narrow sheet holds a few actions or one control (SheetButton): it keeps
-   the right edge but not the full width, and on a phone rises from the
-   bottom only as tall as its content, like a native action sheet. */
-dialog[data-layout="sheet"][data-size="narrow"] {
-  --dialog-width: calc(400rem / 14);
-}
-dialog[data-layout="sheet"][data-size="medium"] {
-  --dialog-width: calc(700rem / 14);
-}
-dialog[data-layout="sheet"][data-size="wide"] {
-  --dialog-width: calc(900rem / 14);
-}
-@media (max-width: 600px) {
-  dialog[data-layout="sheet"][data-size="narrow"] {
+  dialog[data-layout="sheet"][data-size="s"] {
     top: calc(var(--viewport-top) + var(--viewport-height));
     transform: translateY(-100%);
     height: auto;
@@ -1501,7 +1501,7 @@ dialog section {
   .message button::after {
     content: "";
     position: absolute;
-    inset: calc((32rem - 44rem) / 28) 0;
+    inset: calc((var(--control-m) - var(--touch)) / 2) 0;
   }
 }
 @media (max-width: 900px) {
@@ -1720,9 +1720,9 @@ dialog > header .icon-button {
   padding-inline: var(--inset-x);
   color: var(--muted);
   font-size: var(--font-small);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
 }
 .group {
   margin: 0 0 var(--space-12);

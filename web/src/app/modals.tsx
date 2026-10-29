@@ -183,7 +183,7 @@ export default function Modals({
         <Modal
           title="Browser"
           className="browser-view"
-          size="browser"
+          size="xl"
           layout={compact ? "sheet" : "panel"}
           close={close}
         >
@@ -284,7 +284,7 @@ export default function Modals({
                   : "Full content"
           }
           className="raw-view"
-          size="wide"
+          size="l"
           layout="sheet"
           close={close}
         >
@@ -302,7 +302,7 @@ export default function Modals({
         </Modal>
       )}
       {modal?.type === "instructions" && (
-        <Modal title="Instructions" size="wide" layout="sheet" close={close}>
+        <Modal title="Instructions" size="l" layout="sheet" close={close}>
           <Instructions
             session={session}
             projects={projects}
@@ -315,7 +315,7 @@ export default function Modals({
       {modal?.type === "settings" && (
         <Modal
           title="Settings"
-          className="settings-view"
+          size="l"
           layout="sheet"
           header={false}
           close={close}
@@ -335,7 +335,7 @@ export default function Modals({
         </Modal>
       )}
       {modal?.type === "tools" && (
-        <Modal title="Tools" size="medium" layout="sheet" close={close}>
+        <Modal title="Tools" size="l" layout="sheet" close={close}>
           {toolsSession ? (
             <Tools
               session={toolsSession}

@@ -74,7 +74,7 @@ export function TurnFooter({
         <Modal
           title="Changed files"
           layout="sheet"
-          size="narrow"
+          size="s"
           close={() => setReviewing(false)}
         >
           <TurnReview files={files} turn={summary.turn} session={session} />

@@ -276,8 +276,8 @@ function arrows(
 }
 
 // A row's one line: its headline, then its result word. A failed row reads
-// red, a running one shimmers, and a closed running row says what it is
-// doing now and for how long.
+// red, a running one shimmers and counts its time, and a closed running row
+// says what it is doing now.
 class NodeRow extends Component<{
   node: Node;
   open: boolean;
@@ -309,7 +309,10 @@ function RowLine({
   step,
   since,
 }: NodeRow["props"]) {
-  const elapsed = useElapsed(!!step, since ? Date.parse(since) : undefined);
+  const elapsed = useElapsed(
+    node.state === "running",
+    since ? Date.parse(since) : undefined,
+  );
   const headline = [headlineOf(node), step].filter(Boolean).join(" · ");
   const word = [node.result?.word, elapsed].filter(Boolean).join(" · ");
   const content = (

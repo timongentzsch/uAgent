@@ -21,7 +21,6 @@ import type {
   State,
   Draft,
   Pending,
-  SessionStatus,
   Node,
   Outgoing,
 } from "../../shared/types.ts";
@@ -39,7 +38,7 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton, TurnStatus } from "../../shared/turn-status.tsx";
+import { ActivityButton } from "../../shared/turn-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import {
@@ -52,11 +51,7 @@ import {
   maxRecalledPromptSessions,
   stopGuardMs,
 } from "../../shared/limits.ts";
-import {
-  capitalize,
-  permissionLabel,
-  permissionLabels,
-} from "../../shared/display.ts";
+import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 import GuidanceQueue from "./guidance-queue.tsx";
 import TodoList from "./todo-list.tsx";
 import { focusComposer } from "../../shared/navigation.ts";
@@ -84,6 +79,8 @@ function Composer({
   openBrowser,
   stopped,
   resume,
+  agents,
+  choose,
 }: {
   session: Session;
   queued?: Outgoing[];
@@ -105,6 +102,9 @@ function Composer({
   stopped?: string;
   // Continues that stopped turn.
   resume?: () => void;
+  // The agents it started that are working, and opening one.
+  agents: Session[];
+  choose: (id: string) => void;
 }) {
   const { online, connection, report, showContext } = useHostContext();
   const { upload, uploading, busy, act, following } = useConversation();
@@ -257,13 +257,6 @@ function Composer({
   }, [pending]);
   const running = isRunning(session, online);
   const openContext = useCallback(() => showContext(), [showContext]);
-  // A session without a live worker names its lifecycle state here instead
-  // of a phase, so closing a session still reports that it was saved.
-  const detached = (
-    ["saved", "interrupted", "draft", "starting"] as SessionStatus[]
-  ).includes(session?.status!)
-    ? capitalize(session?.status || "")
-    : "";
   const empty = !draft.text.trim() && !draft.files.length;
   // The one primary control: Stop while a turn runs and there is nothing
   // to send, Send otherwise. Its icons cross-fade in place.
@@ -276,8 +269,8 @@ function Composer({
       : stopped === "error"
         ? "Stopped by an error"
         : `Stopped: ${stopped.replaceAll("_", " ")}`;
-  // The status line's one action slot: Queue next while a turn runs with
-  // a draft, Continue after a stop. It shows by opacity, never by reflow.
+  // Queue next shows while a turn runs with a draft, by opacity, never by
+  // reflow.
   const queueing = running && !pending && !empty;
   const continuing = !running && !pending && !!stopLabel && !!resume;
   const permission = state?.permissions;
@@ -318,55 +311,6 @@ function Composer({
         recall={recall}
         insert={insert}
       />
-      {/* The state above the input: counts live on ActivityButton below it. */}
-      <div class="activities">
-        <div class="status-line">
-          <span class="turn-status-row">
-            <TurnStatus
-              phase={
-                detached || state?.turn_status || (state ? "Ready" : "Loading…")
-              }
-              running={running}
-              started={state?.turn_started_ms}
-              pending={pending}
-              stopped={continuing ? stopLabel : undefined}
-              present={online && !!session?.presence}
-              connection={connection}
-              announce
-            />
-          </span>
-          {(running || continuing) && (
-            <span class="status-action">
-              {continuing ? (
-                <Button
-                  variant="quiet"
-                  size="compact"
-                  disabled={!online}
-                  onClick={resume}
-                >
-                  Continue
-                </Button>
-              ) : (
-                <Button
-                  variant="quiet"
-                  size="compact"
-                  data-shown={queueing}
-                  aria-label="Queue next"
-                  aria-keyshortcuts="Alt+Enter"
-                  title="Send when this turn ends (Alt+Enter)"
-                  disabled={!queueing || !online || busy || uploading}
-                  onClick={(event) => send(event, true)}
-                >
-                  Queue next{" "}
-                  <kbd class="muted" aria-hidden="true">
-                    Alt+Enter
-                  </kbd>
-                </Button>
-              )}
-            </span>
-          )}
-        </div>
-      </div>
       <form onSubmit={send}>
         {suggestions.list}
         {mentionOpen && (
@@ -623,13 +567,41 @@ function Composer({
         </div>
       </form>
       <div class="composer-metrics">
-        <ActivityButton
-          open={openInspector}
-          session={session}
-          online={online}
-          report={report}
-          items={state?.activities || NONE}
-        />
+        <div class="status-line">
+          <ActivityButton
+            open={openInspector}
+            choose={choose}
+            session={session}
+            online={online}
+            connection={connection}
+            report={report}
+            items={state?.activities || NONE}
+            agents={agents}
+            running={running}
+            started={state?.turn_started_ms}
+            pending={!!pending}
+            stopped={continuing ? stopLabel : undefined}
+            resume={resume}
+          />
+          {running && (
+            <Button
+              variant="quiet"
+              size="compact"
+              class="queue-next"
+              data-shown={queueing}
+              aria-label="Queue next"
+              aria-keyshortcuts="Alt+Enter"
+              title="Send when this turn ends (Alt+Enter)"
+              disabled={!queueing || !online || busy || uploading}
+              onClick={(event) => send(event, true)}
+            >
+              Queue next{" "}
+              <kbd class="muted" aria-hidden="true">
+                Alt+Enter
+              </kbd>
+            </Button>
+          )}
+        </div>
         <div class="metrics small">
           <ContextSummary state={state} open={openContext} online={online} />
           <SessionSummary state={state} open={showStatistics} />

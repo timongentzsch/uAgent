@@ -49,6 +49,16 @@ export function focusDecision() {
   });
 }
 
+// Scrolls the transcript to the turn's newest running row.
+export function revealLiveRow() {
+  const rows = document.querySelectorAll<HTMLElement>(
+    ".transcript .node.running > .node-row",
+  );
+  const row = rows[rows.length - 1];
+  row?.scrollIntoView({ block: "center" });
+  row?.focus({ preventScroll: true });
+}
+
 // #session=ID&decision=…: open the session and focus its decision. The
 // address keeps only the session, so back and reload stay plain.
 export function followDecisionLink() {

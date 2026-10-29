@@ -464,9 +464,7 @@ test.describe("composer footer", () => {
         exact: true,
       });
       await expect(context).toBeEnabled();
-      await expect(
-        footer.getByRole("button", { name: "Activity", exact: true }),
-      ).toContainText("2 commands");
+      await expect(footer.locator(".activity-button")).toHaveText("2 commands");
       await expect(
         context.locator(width < 600 ? ".context-compact" : ".context-full"),
       ).toBeVisible();
@@ -501,7 +499,7 @@ test.describe("composer footer", () => {
         expect(button.height).toBeGreaterThanOrEqual(32);
       }
       await page.screenshot({ path: testInfo.outputPath("footer.png") });
-      await footer.getByRole("button", { name: "Activity", exact: true }).tap();
+      await footer.locator(".activity-button").tap();
       await expect(
         page.getByRole("dialog", { name: "Activity", exact: true }),
       ).toBeVisible();

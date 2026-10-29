@@ -173,6 +173,10 @@ const char* ResultState(CompletionStatus status) {
   return "failed";
 }
 
+const char* RowState(const ToolResult& result) {
+  return result.background ? "running" : ResultState(result.status);
+}
+
 std::string ResultWord(const ResultFacts& facts, std::string_view state,
                        double duration_ms) {
   std::string word;

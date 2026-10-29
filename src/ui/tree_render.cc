@@ -228,8 +228,7 @@ void TerminalPresenter::DrawTree(const json& view, bool live) {
   const auto draw = [&](const auto& self, const json& node,
                         size_t level) -> void {
     const std::string_view kind = Field(node, "kind");
-    if (kind == "notice" && JsonValue(node, "routine", false) &&
-        depth != kDepthAll) {
+    if (JsonValue(node, "routine", false) && depth != kDepthAll) {
       return;
     }
     const bool open = level <= static_cast<size_t>(depth);

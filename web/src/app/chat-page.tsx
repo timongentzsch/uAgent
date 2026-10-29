@@ -27,6 +27,7 @@ import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
+import { isRunning } from "../state/attention.ts";
 import SideAnswer from "../features/chat/side-answer.tsx";
 
 // Empty lists, so an idle context value or prop never changes identity.
@@ -195,10 +196,20 @@ export default function ChatPage({
     () => setModal({ type: "browser", handoff: true }),
     [setModal],
   );
+  // The agents it started that are working, for the status control.
+  const sessions = catalogue.sessions;
+  const agents = useMemo(
+    () =>
+      sessions.filter(
+        (item) => item.parent === selected && isRunning(item, online),
+      ),
+    [sessions, selected, online],
+  );
+  const open = useCallback((id: string) => void choose(id), [choose]);
   if (!active) return null;
 
   // The last turn stopped short, and nothing new has been sent since: the
-  // status line above the composer says so and offers Continue.
+  // status control says so and offers Continue.
   const stop = snapshot?.state?.stop;
   const stopped =
     stop &&
@@ -233,6 +244,8 @@ export default function ChatPage({
       openBrowser={openBrowser}
       stopped={stopped}
       resume={actions.resume}
+      agents={agents}
+      choose={open}
     />
   );
   return shown ? (

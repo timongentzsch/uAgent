@@ -150,6 +150,8 @@ struct TurnStatusView {
   size_t foreground = 0;
   size_t queued = 0;
   bool interrupting = false;
+  // The detail level, named when it is not the default, as on the idle row.
+  std::string detail = "default";
 };
 
 // The working row: spinner frame, status label, and the same "drop what does
@@ -169,10 +171,11 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
   std::string suffix =
-      " · " + JoinDot({view.model, seconds,
-                       ContextSummary(view.context_used, view.context_window),
-                       counted("act:", view.background),
-                       counted("steer:", view.queued)});
+      " · " +
+      JoinDot({view.model, seconds,
+               ContextSummary(view.context_used, view.context_window),
+               counted("act:", view.background), counted("steer:", view.queued),
+               view.detail == "default" ? "" : view.detail});
   // The keys that act on a running turn: the lowest priority, so the hint is
   // the first thing a narrow terminal gives up.
   std::string hint = " · Esc stop · Ctrl+B background";

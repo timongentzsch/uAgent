@@ -100,6 +100,15 @@ struct ResultFacts {
   bool no_change = false;   // it found or changed nothing new
 };
 
+// A background command a call saw end: the row of the call that started it
+// takes this as its result.
+struct EndedCommand {
+  int64_t activity_id = 0;
+  int status = 0;  // its wait status
+  std::string output;
+  double duration_ms = 0;
+};
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   // What the call returned: the model reads it and a person sees it.
@@ -131,6 +140,11 @@ struct ToolResult {
   // text. Reads cannot erase this identity; different revisions do not collide.
   std::string recovery_key;
   bool activity_terminal = false;
+  // The activity of a command this call left running in the background:
+  // the call's row runs until the command ends (Agent::FinishCommandRow).
+  int64_t background = 0;
+  // Background commands this call saw end.
+  std::vector<EndedCommand> ended;
 
   bool Ok() const { return status == CompletionStatus::kSuccess; }
 };
@@ -164,6 +178,9 @@ std::string ModelHint(const ToolResult& result);
 // The one state vocabulary of rows and receipts: ok, failed or cancelled once
 // finished, "running" before.
 const char* ResultState(CompletionStatus status);
+// A call's row state: running while the command it left in the background
+// runs, else its result's.
+const char* RowState(const ToolResult& result);
 // The words a row's result reads as, from its facts and state, then its
 // duration when one is given (>= 0): "exit 2 · 1.4s", "+3 −1 · 20ms".
 std::string ResultWord(const ResultFacts& facts, std::string_view state,
@@ -274,6 +291,9 @@ struct Tool {
   // ToolActivityCategory); presentation and grouping only, never authority.
   std::string intent;
   Approval mutates;  // argument-dependent mutation (e.g. memory save)
+  // Calls that only observe earlier work (a wait, a list): their rows show
+  // at full detail only.
+  Approval routine;
   Run run;
   Canonicalize canonicalize;   // materialized provider args -> operation args
   Validate validate;           // semantic issue before approval/execution

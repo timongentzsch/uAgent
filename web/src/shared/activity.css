@@ -1,4 +1,5 @@
-/* The activity sheet on the status line, and the inspector sheet. */
+/* The status control under the input, its activity sheet, and the
+   inspector sheet. */
 
 .turn-status {
   display: inline-flex;
@@ -7,25 +8,11 @@
   min-width: 0;
   max-width: 100%;
 }
-.turn-status-caption {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.turn-status-counts {
-  flex-shrink: 0;
-}
 @container app (max-height: 500px) {
   .activity-list {
     max-height: var(--scroll-s);
   }
 }
-.activities {
-  min-width: 0;
-  max-width: 100%;
-}
-
 .activity-list {
   min-width: 0;
   list-style: none;
@@ -159,17 +146,23 @@
   width: var(--icon);
   height: var(--icon);
 }
-.activity-button.idle {
-  color: var(--muted);
+/* Needs you, or stopped short: the state and its one action. */
+.activity-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-left: var(--space-3);
+  font-size: var(--font-small);
 }
-.activity-button .short {
-  display: none;
+.activity-state > svg {
+  flex: none;
+  width: var(--icon);
+  height: var(--icon);
 }
-@media (max-width: 600px) {
-  .activity-button .long {
-    display: none;
-  }
-  .activity-button .short {
-    display: inline;
-  }
+.activity-state > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

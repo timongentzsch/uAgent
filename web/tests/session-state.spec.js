@@ -233,7 +233,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(391);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await prompt.fill("Memory receipt probe: please save this test memory");
   await prompt.press("Enter");
   // The receipt opens to a link to the memory.
@@ -253,7 +253,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   expect(body.y - (caption.y + caption.height)).toBeLessThan(24);
   await page.keyboard.press("Escape");
   await expect(memory).toHaveCount(0);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await page.locator(".transcript").evaluate((element) => {
     element.scrollTop = 0;
   });
@@ -423,7 +423,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await expect(page.locator(".composer .status-led.running")).toHaveCount(0, {
     timeout: 30_000,
   });
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   const maximumLength = await page.evaluate(() => window.__maximumAnswerLength);
   const finalSnapshot = await (
     await request.get(`/api/sessions/${session.id}`)
@@ -498,9 +498,7 @@ test("compaction never opens an unsolicited viewer", async ({
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".composer .turn-status-caption")).toHaveText(
-    "Ready",
-  );
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await composer.fill("/compact");
   await composer.press("Enter");
   await expect(
@@ -518,20 +516,15 @@ test("compaction never opens an unsolicited viewer", async ({
     .click();
   await composer.fill("Background activity probe");
   await composer.press("Enter");
-  // A finished background task reads like any row, open at default to its
-  // last output lines; it has no exchange of its own to inspect.
-  const receipt = page
-    .locator(".node")
-    .filter({ has: page.locator(".node-row", { hasText: "Finished" }) })
-    .filter({ hasText: "BROWSER_ACTIVITY" })
-    .last();
-  await expect(receipt).toBeVisible();
-  await expect(
-    receipt.getByRole("button", { name: "Input and output" }),
-  ).toHaveCount(0);
+  // A command left running in the background keeps its own row, which
+  // takes the result when the command ends: one row, after a reload too.
+  const row = page.locator(".node.ok > .node-row", {
+    hasText: "BROWSER_ACTIVITY",
+  });
+  await expect(row).toBeVisible({ timeout: 20_000 });
   await page.reload();
-  await expect(receipt).toBeVisible();
-  await expect(receipt).toHaveCount(1);
+  await expect(row).toBeVisible();
+  await expect(row).toHaveCount(1);
 });
 
 test("denied browser storage keeps the conversation usable in memory", async ({

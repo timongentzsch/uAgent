@@ -32,7 +32,7 @@ export async function startInFolder(page, path) {
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
 }
 
 // Opens a session's folder's panel from the place's name in the list, and

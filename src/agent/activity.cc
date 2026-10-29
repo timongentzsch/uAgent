@@ -1095,7 +1095,8 @@ std::vector<ActivityCompletion> TakeCompleted(ActivitySupervisor& supervisor,
     AddHint(notes, SandboxRestoreNote(job.watch.get(), CanonicalCwd()));
     completions.push_back({ActivityId(job), job.kind, status, job.cmd,
                            std::move(output), std::move(notes.hint),
-                           job.display_label, job.receipt_path, job.source_id});
+                           job.display_label, job.receipt_path, job.source_id,
+                           job.started_ms});
   }
   return completions;
 }
@@ -1129,6 +1130,9 @@ ToolResult WaitResult(const std::vector<ActivityCompletion>& completions,
   ToolResult result = ToolSuccess(LimitOutput(std::move(output), cap));
   result.body_kind = "tail";
   result.hint = std::move(notes.hint);
+  for (const ActivityCompletion& completion : completions) {
+    result.ended.push_back(EndedOf(completion));
+  }
   AddHint(result, note);
   if (named) {
     result.facts.items = static_cast<int64_t>(completions.size());
@@ -1144,6 +1148,12 @@ ToolResult WaitResult(const std::vector<ActivityCompletion>& completions,
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind) {
   return TakeCompleted(supervisor, kind, nullptr, AutomaticResultCap());
+}
+
+EndedCommand EndedOf(const ActivityCompletion& completion) {
+  return {completion.activity_id, completion.status,
+          completion.output == kNoNewActivityOutput ? "" : completion.output,
+          static_cast<double>(NowMillis() - completion.started_ms)};
 }
 
 std::string ActivityCompletionText(const ActivityCompletion& completion,

@@ -112,7 +112,7 @@ std::vector<std::string> ModelFacingToolResults(
 
 json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
                     int64_t step) {
-  const char* state = ResultState(task.result.status);
+  const char* state = RowState(task.result);
   json data = {
       {"turn", turn},
       {"step", step},
@@ -133,7 +133,9 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"hint", task.result.hint},
       {"result_chars", task.result.output.size()},
       {"state", state},
-      {"facts", ResultJson(task.result.facts, state, task.duration_ms)},
+      {"facts", task.result.background
+                    ? json::object()
+                    : ResultJson(task.result.facts, state, task.duration_ms)},
       {"body_kind", task.result.body_kind},
       {"no_change", task.result.facts.no_change},
       {"activity_terminal", task.result.activity_terminal},

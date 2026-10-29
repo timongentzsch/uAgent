@@ -118,7 +118,9 @@ exits. Guidance sent meanwhile moves the command to the background, as it
 ends an `activity` wait. Set `tty=true` only when the process needs
 interactive input; a PTY keeps merged output, writable input, interruption
 and resize. `detach=true` keeps the command running after the session ends,
-with a rotating log.
+with a rotating log. A command left in the background keeps its call's row
+running until it ends; that row then takes its exit, time and last output,
+whether the result arrives on its own or through a wait.
 
 Every `activity` call names one `operation`:
 
@@ -228,7 +230,9 @@ Nothing in it names a tool, provider or model; an MCP or unknown tool reads
 Adjacent successful calls of one kind fold into one group (Explored,
 Researched, Verified or Edited). A failure or an approval prompt keeps its
 own row. The work line counts what it holds: "Worked 6 steps · edited 1
-file · 1 error".
+file · 1 error". A tool declares the calls that only look at earlier work
+`routine` (an `activity` wait, poll or list, an `agents` list): their rows
+show at full detail only.
 
 The terminal and the web draw the same tree. The detail level,
 `UAGENT_DETAIL`, only sets how deep it starts open, and the model never
@@ -238,7 +242,7 @@ reads it:
 | --- | --- | --- |
 | `minimal` | 0 | each turn's work as one line (the current step while it runs) |
 | `default` | 1 | the work's steps, each one closed line |
-| `full` | all | every row open, routine notices included |
+| `full` | all | every row open, routine rows included |
 
 `/detail LEVEL` changes it for every terminal, and a browser starts at it;
 Detail in a web conversation's menu sets that browser's own level.

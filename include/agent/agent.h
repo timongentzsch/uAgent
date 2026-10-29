@@ -198,6 +198,9 @@ class Agent {
   void ReportMemoryCompletion(ActivityCompletion& completion);
   void DeliverActivityCompletions(
       const std::vector<ActivityCompletion>& completions);
+  // Gives a call's row, which ran while its command did in the background,
+  // the command's result; false when no row waits on it.
+  bool FinishCommandRow(const EndedCommand& ended);
 
   // Takes this session's pending mail (core/mailbox.h) that session_links.h
   // allows into the conversation, each message as an arrival (below): an idle

@@ -488,6 +488,20 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
+  // Commands end with the runtime that ran them: a row still running from
+  // an earlier one was cut off with it.
+  std::vector<std::string> cut;
+  for (const auto& [key, facts] : conversation_.DisplayFacts().items()) {
+    if (facts.contains("activity_id") &&
+        JsonValue(facts, "state", "") == "running") {
+      cut.push_back(key);
+    }
+  }
+  for (const std::string& key : cut) {
+    conversation_.RecordDisplay(
+        key,
+        {{"state", "cancelled"}, {"result", ResultJson({}, "cancelled", -1)}});
+  }
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   delivered_mail_ = std::move(record.state.delivered_mail);
   RefreshBaseline();

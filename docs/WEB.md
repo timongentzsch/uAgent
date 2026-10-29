@@ -214,7 +214,7 @@ When the connection drops or the page reloads:
   with the conversation list.
 - A host that cannot be reached keeps the app on screen and says so while it
   tries again; only a host that refuses this device shows the pairing form.
-- The status line shows "Reconnecting…". The browser reopens the event stream
+- The status control under the input shows "Reconnecting…". The browser reopens the event stream
   at the last event it applied and the host replays the rest; the list and
   open conversation are read again only when the host can no longer replay.
   Controls stay disabled until the browser has caught up.
@@ -231,8 +231,18 @@ Cost and the context counter work as in the terminal; see
 
 ### Status and decisions
 
-A conversation with a pending decision shows "Needs your input". Decisions
-waiting on you are counted once, across every folder:
+One control under the input says how the conversation stands, and nothing
+else does: "Working · 4m 02s · 1 command · 2 agents" while a turn runs or
+work runs behind it, **Needs you** with **Show** (to the decision),
+**Stopped · reason** with **Continue**, or "Reconnecting…". It is absent
+while nothing runs. It never names a step; the step's own row does, with its
+time. Its sheet starts with the turn (to its live row), then the background
+commands and the agents this conversation started, each with Stop. A
+command moved to the background keeps its row running until it ends, and
+that row then takes its result; a wait or a list that only looks at earlier
+work shows at full detail only.
+
+Decisions waiting on you are counted once, across every folder:
 
 - The count heads the sidebar ("2 need you") and opens every waiting
   decision, with its folder and question, to answer there or open in place.
@@ -263,11 +273,11 @@ before Submit.
 - Enter sends; Shift+Enter inserts a newline. On a touch keyboard Enter
   inserts a newline and the Send button sends.
 - While a turn runs, Enter adds guidance to it and Esc stops it; with an
-  empty draft the Send button is Stop. **Queue next** (Alt+Enter), on the
-  status line once there is a draft, holds the message until the turn ends
-  and then runs it as its own turn.
+  empty draft the Send button is Stop. **Queue next** (Alt+Enter), beside
+  the status control once there is a draft, holds the message until the turn
+  ends and then runs it as its own turn.
 - After a turn stopped short (Stop, an error, a step or budget limit) the
-  status line reads **Stopped** with **Continue**, which sends `continue`.
+  status control reads **Stopped** with **Continue**, which sends `continue`.
 - While the agent keeps a [to-do list](GUIDE.md#the-to-do-list), it
   sits above the input: the item in progress stands out, done
   ones are struck through.

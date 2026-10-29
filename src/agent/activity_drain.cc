@@ -25,6 +25,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
@@ -201,22 +202,6 @@ void Agent::DeliverActivityCompletions(
     if (!label.empty()) {
       record.title += " · " + Utf8Trunc(label, kStatusLabelBytes);
     }
-    ResultFacts facts;
-    facts.exit = ExitFacts(completion.status);
-    json node = Receipt(
-        {"Running", succeeded ? "Finished" : "Failed",
-         Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
-        succeeded ? "ok" : "failed", facts, completion.output, "tail",
-        json::array(
-            {LinkPart("activity", completion.activity_id, "Open activity")}));
-    node["activity_id"] = completion.activity_id;
-    // The full command travels with the record (bounded): rows and titles
-    // abbreviate, but the popup and history must not lose it when the
-    // supervisor no longer retains the activity.
-    node["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
-    node["turn_root"] = turn_root_;
-    node = conversation_.RecordEntry(std::move(node));
-    Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
     Event display{
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},
@@ -225,8 +210,28 @@ void Agent::DeliverActivityCompletions(
          {"status",
           WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
          {"output_chars", completion.output.size()}}};
-    record.title += succeeded ? " completed" : " failed";
-    display.presentation = std::move(record);
+    // Its call's row takes the result; a receipt and a notice say it
+    // otherwise.
+    if (!FinishCommandRow(EndedOf(completion))) {
+      ResultFacts facts;
+      facts.exit = ExitFacts(completion.status);
+      json node = Receipt(
+          {"Running", succeeded ? "Finished" : "Failed",
+           Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
+          succeeded ? "ok" : "failed", facts, completion.output, "tail",
+          json::array(
+              {LinkPart("activity", completion.activity_id, "Open activity")}));
+      node["activity_id"] = completion.activity_id;
+      // The full command travels with the record (bounded): rows and titles
+      // abbreviate, but the popup and history must not lose it when the
+      // supervisor no longer retains the activity.
+      node["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
+      node["turn_root"] = turn_root_;
+      node = conversation_.RecordEntry(std::move(node));
+      Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
+      record.title += succeeded ? " completed" : " failed";
+      display.presentation = std::move(record);
+    }
     Emit(std::move(display));
 
     std::string note = ActivityCompletionText(completion, completion.output);
@@ -248,6 +253,40 @@ void Agent::DeliverActivityCompletions(
   }
   DebugLog("background_results_delivered",
            {{"count", delivered}, {"reduced", reduced}});
+}
+
+bool Agent::FinishCommandRow(const EndedCommand& ended) {
+  std::string id;
+  json row;
+  for (const auto& [key, facts] : conversation_.DisplayFacts().items()) {
+    if (JsonValue(facts, "activity_id", int64_t{0}) == ended.activity_id &&
+        JsonValue(facts, "state", "") == "running") {
+      id = key;
+      row = facts;
+      break;
+    }
+  }
+  if (id.empty()) return false;
+  ResultFacts facts;
+  facts.exit = ExitFacts(ended.status);
+  const char* state = ExitedOk(ended.status) ? "ok" : "failed";
+  // What it printed before and after it left; a long one keeps its end,
+  // where a command says how it went.
+  std::string output = JsonValue(row, "output", "") + ended.output;
+  if (output.size() > kPreviewChars) {
+    output =
+        output.substr(Utf8BoundaryAfter(output, output.size() - kPreviewChars));
+  }
+  const json update = {{"state", state},
+                       {"result", ResultJson(facts, state, ended.duration_ms)},
+                       {"body_kind", "tail"},
+                       {"output", output},
+                       {"duration_ms", ended.duration_ms}};
+  row.update(update);
+  conversation_.RecordDisplay(id, update);
+  Emit(Event{EventId::kMessageChanged,
+             {{"node", CallNode(row, JsonValue(row, "work", ""))}}});
+  return true;
 }
 
 bool Agent::DrainActivities(bool start_turn) {

@@ -61,7 +61,7 @@ test.describe("mobile navigation and commands", () => {
     await choose(firstTitle);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
-    await expect(page.locator(".composer .status-led.active")).toBeVisible();
+    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
     // On a soft keyboard return writes a new line; Send sends.
     const send = page.getByRole("button", { name: "Send", exact: true });
     await prompt.fill("/model mock/model-b");
@@ -77,7 +77,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(
       page.getByRole("heading", { name: "Verified response" }),
     ).toBeVisible();
-    await expect(page.locator(".composer .status-led.active")).toBeVisible();
+    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
     await expect(
       page.getByText("[image: blocked]", { exact: true }),
     ).toBeVisible();
@@ -207,7 +207,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(page.locator(".conversation-head h1")).toHaveText(
       "Slash fork",
     );
-    await expect(page.locator(".composer .status-led.active")).toBeVisible();
+    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
     await prompt.fill("/sessions");
     await send.tap();
     await expect(
@@ -222,7 +222,7 @@ test.describe("mobile navigation and commands", () => {
       .getByRole("dialog", { name: "New folder" })
       .getByRole("button", { name: "Start conversation" })
       .click();
-    await expect(page.locator(".composer .status-led.active")).toBeVisible();
+    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
     await expect(page.locator(".message.user")).toHaveCount(0);
     // An unsent draft survives a reload (an evicted installed app).
     await prompt.fill("Survives reload");

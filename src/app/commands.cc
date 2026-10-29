@@ -239,6 +239,16 @@ CommandReply RunSlashCommand(AppSession& session,
                      (level.empty() ? "" : "; sandbox " + level));
       break;
     }
+    case SlashCommandId::kPlan: {
+      const bool planning = CurrentApprovalMode() == ApprovalMode::kPlan;
+      result = PermissionControl(session.context,
+                                 {{"mode", planning ? "default" : "plan"}});
+      reply.Note(Tone::kNeutral,
+                 planning ? "plan mode off"
+                          : "plan mode on — only reads until you approve a "
+                            "plan");
+      break;
+    }
     case SlashCommandId::kCompact:
       session.ActiveAgent().Compact();
       SteeringState().Take();

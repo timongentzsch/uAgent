@@ -1,20 +1,20 @@
 import { Circle, CircleCheck, CircleDot } from "lucide-preact";
-import type { PlanItem } from "../../shared/types.ts";
+import type { TodoItem } from "../../shared/types.ts";
 import { cleanText } from "../../shared/ui.tsx";
 
 const ICONS = { pending: Circle, in_progress: CircleDot, done: CircleCheck };
 
-// The conversation's plan while it has items: the item in progress stands
-// out, done ones are struck through.
-export default function PlanList({ items }: { items?: PlanItem[] }) {
+// The conversation's to-do list while it has items: the item in progress
+// stands out, done ones are struck through.
+export default function TodoList({ items }: { items?: TodoItem[] }) {
   if (!items?.length) return null;
   const done = items.filter((item) => item.status === "done").length;
   return (
-    <section class="plan-list" aria-label="Plan">
-      <div class="plan-heading">
-        Plan · {done}/{items.length} done
+    <section class="todo-list" aria-label="To-dos">
+      <div class="todo-heading">
+        To-dos · {done}/{items.length} done
       </div>
-      <ol class="plan-items">
+      <ol class="todo-items">
         {items.map((item, index) => {
           const Icon = ICONS[item.status];
           return (

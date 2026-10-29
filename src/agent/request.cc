@@ -260,8 +260,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     }
   }
   const json* chosen = projected.is_null() ? &source : &projected;
-  // The plan and a panel's board and clock change between requests, so they
-  // ride on the request's tail and never enter the stored conversation:
+  // The to-do list and a panel's board and clock change between requests, so
+  // they ride on the request's tail and never enter the stored conversation:
   // rewriting history there would move display rows and spoil the cached
   // prefix.
   json tailed;
@@ -759,6 +759,13 @@ std::string Agent::RuntimeContextText() const {
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +
       ModelVideoInputInstruction(api_.capabilities.video_input);
+  if (CurrentApprovalMode() == ApprovalMode::kPlan) {
+    content +=
+        "\n[plan mode: you only read; commands change nothing and agents you "
+        "start only read. Research, then write the plan (markdown) to " +
+        PlanFile() +
+        "; it is shown to the person for approval when your turn ends]";
+  }
   if (const json agent = AgentOf(session_role_); !agent.empty()) {
     // What it cannot infer from its prompt: who reads its answer, and that
     // the parent's guidance may arrive mid-turn as a message.
@@ -797,12 +804,12 @@ void Prefix(json& message, const std::string& text) {
 
 std::string Agent::RequestContext() const {
   std::string context = runtime_context_ ? runtime_context_() : "";
-  if (const json plan = Plan(); !plan.empty()) {
+  if (const json todo = Todo(); !todo.empty()) {
     if (!context.empty()) context += '\n';
     context +=
-        "[your plan; kept with this conversation, the plan tool replaces "
-        "it]\n" +
-        PlanText(plan);
+        "[your to-do list; kept with this conversation, the todo tool "
+        "replaces it]\n" +
+        TodoText(todo);
   }
   return context;
 }

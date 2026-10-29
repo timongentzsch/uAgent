@@ -51,7 +51,7 @@ PANEL_TOOLS = {
     "agents",
     "decide",
     "ask",
-    "plan",
+    "todo",
     "browser",
     "artifact",
     "web_search",
@@ -270,7 +270,7 @@ def test_panel_holds_agent_events_at_the_spend_limit(root, home, *, binary):
             stop_sessions(home)
 
 
-def test_panel_context_carries_instructions_plan_board_and_time(root, home, *, binary):
+def test_panel_context_carries_instructions_todo_board_and_time(root, home, *, binary):
 
     instructions = home / ".uagent" / "PANEL.md"
     instructions.parent.mkdir(parents=True, exist_ok=True)
@@ -278,7 +278,7 @@ def test_panel_context_carries_instructions_plan_board_and_time(root, home, *, b
     items = [{"text": "Tag it", "status": "done"}, {"text": "Ship v1", "status": "in_progress"}]
     with Server(
         [
-            tool_call("plan", {"items": items}),
+            tool_call("todo", {"items": items}),
             tool_call(
                 "uagent_instructions",
                 {

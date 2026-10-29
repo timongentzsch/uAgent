@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import pathlib
+import re
 import signal
 import tempfile
 import threading
@@ -99,13 +100,22 @@ def answer(handler, body):
             {"command": "printf BROWSER_ACTIVITY; sleep 10", "yield_ms": 250},
             call_id="browser-activity",
         )
-    if "Plan probe" in prompt:
+    if "Todo probe" in prompt:
         items = [
             {"text": "Read the parser", "status": "done"},
             {"text": "Fix the lexer", "status": "in_progress"},
             {"text": "Add tests", "status": "pending"},
         ]
-        return tool_call("plan", {"items": items}, call_id="plan-write")
+        return tool_call("todo", {"items": items}, call_id="todo-write")
+    if "Plan probe" in prompt and not any(
+        message.get("tool_call_id") == "plan-write" for message in body["messages"]
+    ):
+        plan = re.findall(r"write the plan \(markdown\) to (\S+?);", json.dumps(body["messages"]))
+        return tool_call(
+            "write_file",
+            {"path": plan[-1], "content": "# Plan\n\n1. Read the parser\n2. Fix the lexer\n"},
+            call_id="plan-write",
+        )
     if "Unknown tool probe" in prompt and not any(
         message.get("tool_call_id") == "unknown-tool" for message in body["messages"]
     ):

@@ -190,6 +190,19 @@ else that always asks: those go to you.
 (in the web, Undo under the turn). Changes a shell command made are not
 tracked. [Security](../SECURITY.md) has the full rules.
 
+### Plan mode
+
+`/plan` (in the web, Plan in the approval control) has the agent research
+and write a plan before anything changes. It only reads: commands run in the
+`readonly` sandbox, agents it starts only read, and any other change is
+refused. The plan is a markdown file kept beside the conversation, never in
+the folder. Each turn ends with the plan shared in the conversation and three
+choices: **Approve and run in auto** or **Approve and ask before changes**
+leave plan mode in that mode and start the work; **Keep planning** sends your
+feedback for another round. A turn that writes no plan says so and the
+conversation stays in plan mode, through a restart too; `/plan` again leaves
+it.
+
 ## Leaving and coming back
 
 `/quit`, Ctrl+D and closing the browser tab leave; the conversation keeps
@@ -249,7 +262,7 @@ switches to one; in the web an agent's link opens it.
   two levels deep at most (`agents.depth`). An agent's spend counts in its
   parent's, and under a budget each one gets a share of what is left.
 
-### The plan
+### The to-do list
 
 For work with several parts an agent keeps a to-do list: each item pending,
 in progress or done, at most one in progress. It is kept with the

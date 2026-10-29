@@ -243,8 +243,9 @@ void TestSandboxLevels() {
 }
 
 // Yolo raises the default level to relaxed while it holds, and only that
-// level; switching back restores the default level's own status.
-void TestSandboxFollowsYolo() {
+// level; plan mode lowers it to readonly; switching back restores the default
+// level's own status.
+void TestSandboxFollowsApprovalMode() {
   CHECK(YoloSandboxPreset(SandboxPreset::kDefault) == SandboxPreset::kRelaxed);
   for (SandboxPreset kept : {SandboxPreset::kReadOnly, SandboxPreset::kRelaxed,
                              SandboxPreset::kOff}) {
@@ -281,6 +282,14 @@ void TestSandboxFollowsYolo() {
     SandboxPolicy carried;
     REQUIRE(SandboxPolicyFromJson(inherited["policy"], &carried));
     CHECK(carried.withheld == raised.policy.withheld);
+    SetApprovalMode(ApprovalMode::kPlan);
+    const SandboxStatus& planning = SandboxRuntime();
+    CHECK(planning.preset == "readonly (plan)");
+    CHECK(planning.mode == SandboxMode::kEnforced);
+    CHECK(planning.policy.read_only && !planning.policy.allow_network);
+    CHECK(!SandboxWritable(planning.policy, CanonicalCwd() + "/notes.txt"));
+    CHECK(planning.policy.unreadable == asked.policy.unreadable);
+    CHECK(&SandboxRuntime() == &planning);
     SetApprovalMode(ApprovalMode::kAuto);
     CHECK(&SandboxRuntime() == &asked);
     CHECK(SandboxDiagnosticJson()["level"] == "default");

@@ -76,7 +76,7 @@ int64_t RepeatedCallStopAfter();
 // live in environ: spawning a child iterates environ on another thread while
 // /yolo would be rewriting it. Children receive it as an explicit override.
 // The modes are in kApprovalModes' order.
-enum class ApprovalMode { kAsk, kAuto, kYolo };
+enum class ApprovalMode { kAsk, kAuto, kYolo, kPlan };
 const char* ApprovalModeName(ApprovalMode mode);
 bool ParseApprovalMode(std::string_view value, ApprovalMode& mode);
 ApprovalMode CurrentApprovalMode();

@@ -22,6 +22,8 @@ EnvironmentOverrides ChildAgentEnvironment(Route route,
 // The saved session file of this process (UAGENT_INTERNAL_SESSION_PATH,
 // exported on first save), or empty for a run that never saves.
 std::string OwnSessionFile();
+// Plan mode's plan, beside that file; empty with it.
+std::string PlanFile();
 
 }  // namespace uagent
 

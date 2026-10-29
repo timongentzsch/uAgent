@@ -86,7 +86,7 @@ constexpr const char kPanelBase[] =
     "nothing new. An agent you do not wait for reports when its turn ends, "
     "and that report starts your next turn: do not poll it, and do not do "
     "yourself what you delegated. Finish the work you were asked for before "
-    "you answer, and mark each plan item done as it is.\n\n"
+    "you answer, and mark each to-do item done as it is.\n\n"
     "## Memory\nWhen the user's answer teaches a durable preference about how "
     "they work, save it to memory without being asked and say so in one line "
     "(\"Noted: …\"), so they can see and remove it. Never save task progress, "

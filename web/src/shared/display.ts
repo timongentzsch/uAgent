@@ -12,10 +12,15 @@ export const permissionLabels = {
   ask: "Ask",
   auto: "Auto review",
   yolo: "YOLO",
+  plan: "Plan",
 } as const;
 // Any other mode asks.
 export const permissionLabel = (mode?: string) =>
-  permissionLabels[mode === "yolo" || mode === "auto" ? mode : "ask"];
+  permissionLabels[
+    mode && mode in permissionLabels
+      ? (mode as keyof typeof permissionLabels)
+      : "ask"
+  ];
 
 // A word as a label starts it: "saved" reads "Saved".
 export const capitalize = (text: string) =>

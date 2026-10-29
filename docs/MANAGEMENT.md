@@ -97,7 +97,7 @@ skipped.
 Each run is an ordinary session, started from a frozen copy of the task:
 
 - `model`: the task's model; blank uses the folder default.
-- `permissions`: the approval mode, `ask` (the default), `auto` or `yolo`.
+- `permissions`: the approval mode, `ask` (the default), `auto`, `yolo` or `plan`.
   When a run needs a decision, open it in the web UI or terminal.
 - `environment`: `worktree` (the default) runs in a git worktree detached
   at the committed `HEAD`; `local` runs in the folder.

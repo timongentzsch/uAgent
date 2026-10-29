@@ -140,7 +140,7 @@ void Application::PublishChannelState(bool checkpoint) {
   }
   state["turns"] = agent_.UserTurns();
   state["activities"] = runtime_.processes.ActivityViews();
-  state["plan"] = plan_ = agent_.Plan();
+  state["todo"] = todo_ = agent_.Todo();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleChars);
   state["stop"] = agent_.LastStop();

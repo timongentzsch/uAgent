@@ -56,6 +56,13 @@ json Receipt(const Headline& headline, std::string_view state,
 
 }  // namespace
 
+void Agent::RecordReceipt(const Headline& headline, json parts) {
+  json node = Receipt(headline, "ok", {}, "", "text", std::move(parts));
+  node["turn_root"] = turn_root_;
+  node = conversation_.RecordEntry(std::move(node));
+  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
+}
+
 // One finished extraction: its receipt decides what the memory event records,
 // and only a change or a failure is worth a line on screen.
 void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {

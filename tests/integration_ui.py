@@ -22,6 +22,7 @@ from integration_support import (
     timeout_setting,
     tool_call,
     tool_calls,
+    tool_results,
     wait_for_echo,
     wait_until_stopped,
     write_mcp_server,
@@ -78,6 +79,35 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
         assert_true("env-off-ok" in result.stdout, result.stdout)
         assert_true(result.stdout.count("Allow run?") == 1, result.stdout)
         assert_true(len(server.requests) == 4, server.requests)
+
+
+def test_plan_toggles_plan_mode_and_asks_to_approve_the_plan(root, home, *, binary):
+    """/plan enters plan mode; the plan comes back as a prompt with its
+    choices, and approving one leaves plan mode for that mode."""
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "The plan is approved" in text:
+            return event({"content": "CARRIED-OUT"})
+        if tool_results(body["messages"]):
+            return event({"content": "PLANNED"})
+        plan = re.findall(r"write the plan \(markdown\) to (\S+?);", text)[-1]
+        return tool_call("write_file", {"path": plan, "content": "1. Step one\n"})
+
+    with Server([route]) as server:
+        result = run_dialog(
+            root, base_env(home, server.url), "/plan\nPlan it\nc\n/q\n", binary=binary
+        )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        for shown in (
+            "plan mode on",
+            "1. Step one",
+            "Approve the plan?  [y] Approve and run in auto  [c] Approve and ask before changes",
+            "CARRIED-OUT",
+        ):
+            assert_true(shown in result.stdout, (shown, result.stdout))
+        approved = json.dumps(server.requests[-1][1]["messages"])
+        assert_true(re.findall(r"; approval (\w+)", approved)[-1] == "ask", approved)
 
 
 def test_command_help(root, home, *, binary):

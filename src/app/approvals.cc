@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
 #include "include/agent/session_role.h"
 #include "include/app/panel.h"
@@ -114,6 +115,25 @@ bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
          SandboxRuntime().mode == SandboxMode::kEnforced &&
          (WrapsCommands(tool) ||
           (tool.needs_approval && !tool.needs_approval(arguments)));
+}
+
+// Plan mode only reads. What runs there without asking although it may
+// change something: a command the readonly sandbox holds, as for an agent that
+// may not edit, and a file tool's call on the plan, the one file it writes.
+bool PlanModeAllows(const Tool& tool, const json& arguments, bool mandatory) {
+  const SandboxStatus& sandbox = SandboxRuntime();
+  if ((tool.capabilities & Capability(ToolCapability::kExecute)) &&
+      !mandatory && sandbox.mode == SandboxMode::kEnforced &&
+      sandbox.policy.read_only) {
+    return true;
+  }
+  constexpr uint32_t kFiles = Capability(ToolCapability::kInspect) |
+                              Capability(ToolCapability::kMutate);
+  const std::string plan = PlanFile();
+  return !plan.empty() && tool.capabilities != 0 &&
+         (tool.capabilities & ~kFiles) == 0 &&
+         CanonicalAccessPath(JsonValue(arguments, "path", "")) ==
+             CanonicalAccessPath(plan);
 }
 
 // The outcome of an approval. A refusal says what was not approved, not who
@@ -293,10 +313,19 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool session_rule = !mandatory && app->session_approvals.contains(key);
     bool repository_rule =
         !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
+    const bool planning = CurrentApprovalMode() == ApprovalMode::kPlan;
+    const bool planned = planning && PlanModeAllows(tool, arguments, mandatory);
     bool automatic =
         !mandatory && (ApprovalIsYolo() || session_rule || repository_rule ||
-                       ReviewedByPolicy(app, tool, arguments));
+                       ReviewedByPolicy(app, tool, arguments) || planned);
     Verdict verdict;
+    // Anything else that changes something is refused before anyone is
+    // asked; a read that asks, asks.
+    if (planning && !planned && ToolMutates(tool, arguments)) {
+      automatic = true;
+      verdict = {false,
+                 "plan mode is read-only; write the plan to " + PlanFile()};
+    }
     json review = json::object();
     std::string request_id =
         "approval-" + std::to_string(sequence.fetch_add(1) + 1);

@@ -3,7 +3,9 @@ import { failure } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Actions, Button, cleanText, Input, Textarea } from "./ui.tsx";
 import Ask from "./ask.tsx";
+import { AttachmentList } from "./attachments.tsx";
 import DiffView from "./diff-view.tsx";
+import { routes } from "../state/api.ts";
 import "./decision.css";
 
 // The approval's own answers (the host's choice table); anything else it
@@ -181,6 +183,13 @@ export default function Decision({
           {approval?.review && (
             <p class="small">{cleanText(approval.review)}</p>
           )}
+          <AttachmentList
+            files={(pending.files ?? []).map((file) => ({
+              ...file,
+              image: file.mime.startsWith("image/"),
+            }))}
+            href={(id) => routes.asset(session, id)}
+          />
           <p>{cleanText(pending.prompt)}</p>
         </div>
       )}

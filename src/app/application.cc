@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
+#include "include/agent/node.h"
+#include "include/app/asset_store.h"
 #include "include/app/launch.h"
 #include "include/browser/browser.h"
 #include "include/cli/cli.h"
@@ -30,6 +32,7 @@
 #include "include/tools/web_search.h"
 #include "include/ui/sessions.h"
 #include "src/app/application_internal.h"
+#include "src/app/bootstrap_internal.h"
 
 namespace uagent {
 Application::Application(AppContext& context)
@@ -48,8 +51,9 @@ Application::Application(AppContext& context)
         if (event.type != AppType(EventId::kMessageChanged)) {
           return;
         }
-        // A changed plan reaches clients as it changes, not as the turn ends.
-        if (channel_ && agent_.Plan() != plan_) PublishChannelState(false);
+        // A changed to-do list reaches clients as it changes, not as the turn
+        // ends.
+        if (channel_ && agent_.Todo() != todo_) PublishChannelState(false);
         // A message of yours is saved as it arrives.
         const json& node = event.data["node"];
         if ((JsonValue(node, "kind", "") == "turn" ||
@@ -162,6 +166,13 @@ void Application::RunTurns(const std::string& input, json content,
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
   agent_.Turn(input, std::move(content), images, request_id_, origin_);
   SteeringState().Take();
+  while (CurrentApprovalMode() == ApprovalMode::kPlan) {
+    const std::string next = PresentPlan();
+    if (next.empty()) break;
+    PublishChannelState(false);
+    agent_.Turn(next);
+    SteeringState().Take();
+  }
 #ifdef UAGENT_BROWSER
   // The turn is over: the shared browser is free for the next conversation.
   if (!context_.browser_lease.empty()) {
@@ -171,6 +182,45 @@ void Application::RunTurns(const std::string& input, json content,
   }
 #endif
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
+}
+
+// Every turn in plan mode ends with its plan shared in the conversation and
+// put to the person: approved, the conversation leaves plan mode and carries
+// it out; with feedback, planning goes on.
+std::string Application::PresentPlan() {
+  const std::string path = PlanFile();
+  std::string plan, error;
+  if (path.empty() ||
+      !ReadRegularFile(path, session::kUploadBytes, plan, error) ||
+      Blank(plan)) {
+    agent_.RecordReceipt({"Planning", "No plan written", "still in plan mode"},
+                         json::array());
+    return "";
+  }
+  session::AssetStoreResult stored = session::SessionAssets().Store(
+      session_file_, plan, "plan.md", /*committed=*/true);
+  json files = json::array();
+  if (stored.error.empty()) {
+    stored.value["kind"] = "file";
+    files.push_back(std::move(stored.value));
+  }
+  agent_.RecordReceipt({"Sharing", "Shared", "the plan"}, files);
+  if (!InteractiveApprovalAvailable()) return "";
+  bool cancelled = false;
+  bool eof = false;
+  std::string answer = ReadChoiceLine(
+      {.kind = "approval",
+       .prompt = "Approve the plan?",
+       .description = plan + "\n",
+       .options = json::array(
+           {{{"value", "y"}, {"label", "Approve and run in auto"}},
+            {{"value", "c"}, {"label", "Approve and ask before changes"}},
+            {{"value", "guidance"}, {"label", "Keep planning"}}}),
+       .files = std::move(files)},
+      cancelled, eof);
+  if (answer != "y" && answer != "c") return answer;
+  PermissionControl(context_, {{"mode", answer == "y" ? "auto" : "ask"}});
+  return "The plan is approved; carry it out. It is at " + path + ".";
 }
 
 void Application::LogSessionEnd(const char* reason) const {

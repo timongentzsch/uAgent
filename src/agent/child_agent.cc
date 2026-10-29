@@ -7,6 +7,7 @@
 
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/sandbox.h"
 
 namespace uagent {
@@ -27,5 +28,10 @@ EnvironmentOverrides ChildAgentEnvironment(Route route,
 }
 
 std::string OwnSessionFile() { return EnvStr("UAGENT_INTERNAL_SESSION_PATH"); }
+
+std::string PlanFile() {
+  const std::string session = OwnSessionFile();
+  return session.empty() ? session : session + kSessionPlanSuffix;
+}
 
 }  // namespace uagent

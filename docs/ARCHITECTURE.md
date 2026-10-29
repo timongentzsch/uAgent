@@ -19,7 +19,7 @@ layer.
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
-| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory, plan); `registry.cc` only orders the families |
+| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory, todo); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
 | `src/browser/` | The web host's browser service: owns Chrome and Xvnc behind a private socket |
 | `src/core/` | Shared policy, events, limits, settings, mailboxes, sandbox, filesystem, signals and platform primitives |
@@ -150,7 +150,7 @@ delegates but never writes: it has no tool that edits, and its runtime forces
 the `readonly` sandbox level, so its commands write nothing but temporary
 files. The agents it starts may edit.
 
-Every conversation keeps its plan, the to-do list the `plan` tool replaces,
+Every conversation keeps its to-do list, which the `todo` tool replaces,
 as a fact of its session file, so it survives a reload, compaction and a
 fork. While it has items it rides on the tail of every model request, beside
 a lead agent's board and clock, and never enters the stored history.
@@ -325,7 +325,7 @@ conversations and this folder (both in `~/.uagent/config/settings.json`),
 the environment, the command line and this conversation (its session).
 Only the model (`UAGENT_MODEL`, with its effort) and the approval mode
 (`UAGENT_APPROVAL`) can be set for one conversation: `/model`, `/effort`,
-`/permissions` and `/yolo` set them there, and `--model` or `--yolo` sets them
+`/permissions`, `/yolo` and `/plan` set them there, and `--model` or `--yolo` sets them
 for the conversation it starts. One resolver answers what applies, where it
 comes from and what each scope holds, so a settings list can say what a change
 would override. Settings reload at a turn boundary; controls report the ones

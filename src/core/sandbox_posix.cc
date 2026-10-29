@@ -513,13 +513,14 @@ SandboxStatus InheritedStatus(const std::string& text) {
   return status;
 }
 
-// The status at the configured level and, when yolo would raise that level,
-// the inputs of the raised one: made from the configured level's at start, so
-// it follows the configuration the session started with, not one changed
+// The status at the configured level and, when it is enforced, the inputs it
+// was composed from: yolo's and plan mode's statuses are composed from them,
+// so they follow the configuration the session started with, not one changed
 // since.
 struct ConfiguredSandbox {
   SandboxStatus status;
-  std::optional<SandboxInputs> raised;
+  SandboxPreset preset = SandboxPreset::kDefault;
+  std::optional<SandboxInputs> inputs;
 };
 
 ConfiguredSandbox BuildStatus() {
@@ -587,10 +588,8 @@ ConfiguredSandbox BuildStatus() {
   status.policy = std::move(built.policy);
   status.rejected = std::move(built.rejected);
   status.mode = SandboxMode::kEnforced;
-  if (YoloSandboxPreset(preset) != preset) {
-    Relax(&inputs);
-    configured.raised = std::move(inputs);
-  }
+  configured.preset = preset;
+  configured.inputs = std::move(inputs);
   return configured;
 }
 
@@ -598,11 +597,40 @@ ConfiguredSandbox BuildStatus() {
 // network, so nothing the configured one passed is asked again.
 SandboxStatus RaisedStatus(const ConfiguredSandbox& configured) {
   SandboxStatus status = configured.status;
-  if (!configured.raised) return status;
-  SandboxPolicyResult built = BuildSandboxPolicy(*configured.raised);
+  if (!configured.inputs ||
+      YoloSandboxPreset(configured.preset) == configured.preset) {
+    return status;
+  }
+  SandboxInputs inputs = *configured.inputs;
+  Relax(&inputs);
+  SandboxPolicyResult built = BuildSandboxPolicy(inputs);
   status.policy = std::move(built.policy);
   status.rejected = std::move(built.rejected);
   status.preset = "relaxed (yolo)";
+  return status;
+}
+
+// The configured status lowered to readonly, for plan mode: commands look and
+// change nothing, the network included.
+SandboxStatus ReadOnlyStatus(const ConfiguredSandbox& configured) {
+  SandboxStatus status = configured.status;
+  if (!configured.inputs || configured.preset == SandboxPreset::kReadOnly) {
+    return status;
+  }
+  if (status.level != SandboxLevel::kFilesystemAndNetwork) {
+    status.mode = SandboxMode::kRefused;
+    status.reason =
+        "this kernel's Landlock cannot restrict the network (needs ABI 4), "
+        "so plan mode runs no commands";
+    return status;
+  }
+  SandboxInputs inputs = *configured.inputs;
+  inputs.read_only = true;
+  inputs.allow_network = false;
+  SandboxPolicyResult built = BuildSandboxPolicy(inputs);
+  status.policy = std::move(built.policy);
+  status.rejected = std::move(built.rejected);
+  status.preset = "readonly (plan)";
   return status;
 }
 
@@ -621,10 +649,19 @@ const char* MechanismName() {
 
 const SandboxStatus& SandboxRuntime() {
   static const ConfiguredSandbox kConfigured = BuildStatus();
-  if (!kConfigured.raised || !ApprovalIsYolo()) return kConfigured.status;
-  // Composed on first use, once and thread-safely, like the one above.
-  static const SandboxStatus kRaised = RaisedStatus(kConfigured);
-  return kRaised;
+  // Each composed on first use, once and thread-safely, like the one above.
+  switch (CurrentApprovalMode()) {
+    case ApprovalMode::kYolo: {
+      static const SandboxStatus kRaised = RaisedStatus(kConfigured);
+      return kRaised;
+    }
+    case ApprovalMode::kPlan: {
+      static const SandboxStatus kReadOnly = ReadOnlyStatus(kConfigured);
+      return kReadOnly;
+    }
+    default:
+      return kConfigured.status;
+  }
 }
 
 std::string SandboxInheritance() {

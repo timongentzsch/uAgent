@@ -1,8 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -67,6 +69,13 @@ json PermissionControl(AppContext& context, const json& request) {
   json result = ApprovalState(context.config_manager.Read(), agent);
   ApprovalMode effective = ApprovalMode::kAsk;
   ParseApprovalMode(JsonValue(result, "effective", ""), effective);
+  // Planning starts afresh: a plan from before is not put to the person
+  // again.
+  if (!mode.empty() && effective == ApprovalMode::kPlan &&
+      CurrentApprovalMode() != ApprovalMode::kPlan) {
+    std::error_code ignored;
+    std::filesystem::remove(PlanFile(), ignored);
+  }
   SetApprovalMode(effective);
   if (!mode.empty()) {
     Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});

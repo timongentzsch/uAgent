@@ -42,7 +42,7 @@ inline constexpr const char* kPanelTools[] = {
     "agent_send",
     "agents",
     "decide",
-    "plan",
+    "todo",
     "ask",
     "browser",
     "artifact",

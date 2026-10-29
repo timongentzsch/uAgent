@@ -149,6 +149,10 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kYolo, "/yolo", "",
      "toggle acting without asking; the sandbox setting still applies",
      kNoViewer | kTerminal},
+    {SlashCommandId::kPlan, "/plan", "",
+     "toggle plan mode: research and write a plan; nothing changes until you "
+     "approve it",
+     kNoViewer | kTerminal},
     {SlashCommandId::kPanel, "/panel", "", "open this folder's lead agent",
      kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kOpen, "/open", "ID",

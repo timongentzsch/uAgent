@@ -2,15 +2,14 @@
 
 #include "include/app/artifact.h"
 
-#include <filesystem>
 #include <string>
 #include <utility>
 
 #include "include/agent/path_policy.h"
 #include "include/app/asset_store.h"
-#include "include/app/session.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "src/app/bootstrap_internal.h"
 
 namespace uagent {
 
@@ -24,20 +23,20 @@ Tool ArtifactTool(const std::string& session_path) {
         "properties":{"path":{"type":"string","minLength":1}},
         "required":["path"]})json"),
       [session_path](const json& args, const ToolContext&) {
-        const std::string path = JsonValue(args, "path", "");
-        std::string bytes, error;
-        if (!ReadRegularFile(path, session::kUploadBytes, bytes, error)) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments, error);
-        }
-        session::AssetStoreResult stored = session::SessionAssets().Store(
-            session_path, bytes, std::filesystem::path(path).filename(),
-            /*committed=*/true);
+        session::AssetStoreResult stored =
+            StoreSessionFile(session_path, JsonValue(args, "path", ""), "",
+                             /*tool_copy=*/false);
+        // A file that cannot be read is the call's mistake; one the store
+        // refuses (status set) is not.
         if (!stored.error.empty()) {
-          return ToolFailure(ToolErrorCode::kInternal, stored.error);
+          return ToolFailure(stored.status == 200
+                                 ? ToolErrorCode::kInvalidArguments
+                                 : ToolErrorCode::kInternal,
+                             stored.error);
         }
         ToolResult result =
             ToolSuccess("shared " + JsonValue(stored.value, "name", "") + " (" +
-                        FmtCount(static_cast<int64_t>(bytes.size())) +
+                        FmtCount(JsonValue(stored.value, "bytes", int64_t{0})) +
                         " bytes); it is shown in the conversation, where the "
                         "user can open or download it");
         stored.value["kind"] = "file";

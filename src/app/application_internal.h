@@ -31,6 +31,9 @@ class Application {
   void ReloadConfigAtTurnBoundary();
   void RunTurns(const std::string& input, json content = nullptr,
                 const json& images = json::array());
+  // Puts plan mode's plan to the person as a turn ends; returns the message
+  // their answer starts the next turn with, or nothing.
+  std::string PresentPlan();
   void LogSessionEnd(const char* reason) const;
   void Teardown(const char* reason);
   int FinishHeadless(std::string answer, std::string error, int exit_code);
@@ -72,8 +75,8 @@ class Application {
   std::string request_id_;
   json origin_;
   uint64_t message_subscription_ = 0;
-  // The plan clients were last sent.
-  json plan_ = json::array();
+  // The to-do list clients were last sent.
+  json todo_ = json::array();
   std::string input_error_;
   ApplicationChannel* channel_ = nullptr;
 };

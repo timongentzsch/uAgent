@@ -208,7 +208,7 @@ std::string Application::PresentPlan() {
   if (!InteractiveApprovalAvailable()) return "";
   bool cancelled = false;
   bool eof = false;
-  const std::string answer = ReadChoiceLine(
+  std::string answer = ReadChoiceLine(
       {.kind = "approval",
        .prompt = "Approve the plan?",
        .description = plan + "\n",

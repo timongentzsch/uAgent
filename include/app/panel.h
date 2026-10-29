@@ -28,7 +28,7 @@ std::vector<SessionInfo> FolderSessions(const std::string& folder);
 std::vector<SessionInfo> OwnThreads(const std::string& folder);
 
 // A JSON object the panel keeps beside its session file, under
-// `suffix`: its plan and spend. Not named *.json, so the
+// `suffix`: its spend. Not named *.json, so the
 // session catalogue never mistakes one for a session. Reading gives an
 // empty object when there is none; writing returns why it failed.
 json ReadPanelFile(const std::string& folder, const char* suffix);
@@ -39,12 +39,8 @@ std::string WritePanelFile(const std::string& folder, const char* suffix,
 // fresh on each request; never stored.
 std::string PanelBoard(const std::string& folder);
 
-// The panel's plan as a client shows it: goals, decisions, open questions and
-// steps.
-json PanelPlan(const std::string& folder);
-
-// What a panel sees fresh every turn: the time, its pinned notes and
-// the board. Outside the transcript, so compaction never loses it.
+// What a panel sees fresh every turn: the time and the board. Outside the
+// transcript, so compaction never loses it.
 std::string PanelContext(const std::string& folder);
 
 // Records the panel's session cost before each of its requests; the

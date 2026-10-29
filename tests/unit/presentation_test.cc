@@ -274,6 +274,15 @@ void TestToolViews() {
   CHECK(ToolView(&run, {{"command", command}})["input"][0]["text"] == command);
   // Unparseable arguments still render, as the raw text.
   CHECK(ToolView(nullptr, json("{broken"))["input"][0]["text"] == "{broken");
+  // A plan reads as its progress; its result shows the list.
+  ActivitySupervisor supervisor;
+  const std::vector<Tool> tools = BuiltinTools(supervisor);
+  const json plan = ToolView(FindTool(tools, "plan"),
+                             {{"items",
+                               {{{"text", "a"}, {"status", "done"}},
+                                {{"text", "b"}, {"status", "pending"}}}}});
+  CHECK(plan["verb"] == json::array({"Updating plan", "Updated plan"}));
+  CHECK(plan["target"] == "1/2 done" && plan["input"].empty());
 }
 
 // The model reads the output, then the hints; a person reads the output.

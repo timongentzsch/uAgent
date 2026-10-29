@@ -658,7 +658,7 @@ def test_a_batch_of_six_children_runs_at_once(root, home, *, binary):
 def test_a_child_answer_is_held_to_the_schema_it_was_asked_for(root, home, *, binary):
     """A child given a schema is told the format in its brief. An answer that
     does not fit goes back to it with the reason, and the one that fits
-    reaches the parent. The plan step it works for is kept in its role."""
+    reaches the parent. The schema is kept in its role."""
     schema = {
         "type": "object",
         "required": ["claims"],
@@ -677,7 +677,7 @@ def test_a_child_answer_is_held_to_the_schema_it_was_asked_for(root, home, *, bi
             return event({"content": '{"findings": []}'})
         if results := tool_results(messages):
             return event({"content": results[0]})
-        return tool_call("subagent", {"prompt": "child", "step": "s1", "schema": schema})
+        return tool_call("subagent", {"prompt": "child", "schema": schema})
 
     with Server([route]) as server:
         env = base_env(home, server.url)
@@ -688,7 +688,7 @@ def test_a_child_answer_is_held_to_the_schema_it_was_asked_for(root, home, *, bi
         assert_true("[answer format]" in briefs[0] and '"claims"' in briefs[0], briefs[0])
         [child] = child_sessions(home)
         role = json.loads(child.read_text().split("\n", 1)[0])["delegation"]
-        assert_true(role["step"] == "s1" and role["schema"] == schema, role)
+        assert_true(role["schema"] == schema, role)
 
 
 def test_a_fanout_keeps_only_what_its_refuters_cannot_refute(root, home, *, binary):
@@ -720,7 +720,6 @@ def test_a_fanout_keeps_only_what_its_refuters_cannot_refute(root, home, *, bina
                 "items": ["a", "b"],
                 "prompt": "find in {item}",
                 "finding": finding,
-                "step": "s1",
             },
         )
 
@@ -735,11 +734,6 @@ def test_a_fanout_keeps_only_what_its_refuters_cannot_refute(root, home, *, bina
         )
         assert_true(report["children"] == 5 and not report["failed_items"], report)
         assert_true(running.most == 2, running.most)
-        roles = [
-            json.loads(path.read_text().split("\n", 1)[0])["delegation"]
-            for path in child_sessions(home)
-        ]
-        assert_true(len(roles) == 5 and all(role["step"] == "s1" for role in roles), roles)
 
 
 def test_a_fanout_without_refuters_verifies_nothing(root, home, *, binary):

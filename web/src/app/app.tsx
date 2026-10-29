@@ -22,7 +22,7 @@ import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
 import { ConversationMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
-import { isRunning, sessionById, threadsOf } from "../state/attention.ts";
+import { isRunning, sessionById } from "../state/attention.ts";
 import { lockPageZoom, useCompact } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useLatest } from "../shared/use-latest.ts";
@@ -88,9 +88,9 @@ function App() {
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
   const compact = useCompact();
-  // What opens over the page: the conversations drawer, the board sheet, the
-  // app's dialogs, the palette or shortcuts sheet, the image viewer, the
-  // inspector and the /btw card.
+  // What opens over the page: the conversations drawer, the app's dialogs,
+  // the palette or shortcuts sheet, the image viewer, the inspector and the
+  // /btw card.
   const [drawer, setDrawer] = useState(false);
   // The conversation's files: beside the chat, or a sheet on a small screen.
   const [filesOpen, setFilesOpen] = useState(false);
@@ -288,12 +288,6 @@ function App() {
       changeDetail,
       askSide: ask,
     },
-  );
-  // The other conversations of the open one's folder. A panel's chat
-  // names who of them wrote what and shows each one's prompt.
-  const threads = useMemo(
-    () => threadsOf(catalogue.sessions, session?.cwd || ""),
-    [catalogue.sessions, session?.cwd],
   );
   const chatActions = useMessageActions({
     online,
@@ -559,7 +553,6 @@ function App() {
                       session={session}
                       opening={opening}
                       booting={booting}
-                      threads={threads}
                       placeName={places.placeName}
                       browserAvailable={browserAvailable}
                       terminal={
@@ -574,8 +567,6 @@ function App() {
                       open={open}
                       settings={settings}
                       menu={conversationMenu}
-                      choose={choose}
-                      openInspector={setInspector}
                     />
                     {filesOpen && compact && page === "chat" && session && (
                       <Modal
@@ -619,12 +610,10 @@ function App() {
                       }
                       selected={selected}
                       session={session}
-                      threads={session?.kind === "panel" ? threads : undefined}
                       opening={opening}
                       catalogue={catalogue}
                       outgoing={outgoing}
                       loadError={loadErrors[selected]}
-                      menu={conversationMenu}
                       newPlace={newPlace}
                       updateView={updateView}
                       choose={choose}

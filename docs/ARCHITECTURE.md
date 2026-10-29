@@ -14,12 +14,12 @@ layer.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's lead agent (board, plan, history, background agents, `panel -p`) and where a launched session runs |
+| `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's lead agent (board, history, background agents, `panel -p`) and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
-| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
+| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory, plan); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
 | `src/browser/` | The web host's browser service: owns Chrome and Xvnc behind a private socket |
 | `src/core/` | Shared policy, events, limits, settings, mailboxes, sandbox, filesystem, signals and platform primitives |
@@ -154,9 +154,12 @@ which run at the default level, or relaxed while in yolo.
 
 The lead agent asks its questions of subagents: it has the `subagent` tool,
 and its children get only what their parent has, its sandbox included, so
-they read and research and change nothing; starting one needs no approval. Its plan (goals, decisions, open questions and steps) is saved
-beside its session and rebuilt into its context every turn, with the
-subagents and background agents that carry each step's id.
+they read and research and change nothing; starting one needs no approval.
+
+Every conversation keeps its plan, the to-do list the `plan` tool replaces,
+as a fact of its session file, so it survives a reload, compaction and a
+fork. While it has items it rides on the tail of every model request, beside
+a lead agent's board and clock, and never enters the stored history.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its

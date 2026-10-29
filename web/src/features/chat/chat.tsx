@@ -137,26 +137,14 @@ function Chat({
         {snapshot && prepared && nodes.length === 0 && (
           <Welcome
             title="What are we working on?"
-            tips={
-              session.kind === "panel"
-                ? [
-                    [
-                      "Plan",
-                      "The steps, and what each subagent and background agent is doing.",
-                    ],
-                  ]
-                : [
-                    [<kbd>/</kbd>, "Lists the commands."],
-                    [
-                      <kbd>@</kbd>,
-                      "Refers to a file you dropped or pasted in.",
-                    ],
-                    [
-                      <kbd>Esc</kbd>,
-                      "Stops a turn. Undo under a finished turn puts back the files it changed.",
-                    ],
-                  ]
-            }
+            tips={[
+              [<kbd>/</kbd>, "Lists the commands."],
+              [<kbd>@</kbd>, "Refers to a file you dropped or pasted in."],
+              [
+                <kbd>Esc</kbd>,
+                "Stops a turn. Undo under a finished turn puts back the files it changed.",
+              ],
+            ]}
           >
             <p>
               {session.kind === "panel"

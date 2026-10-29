@@ -125,7 +125,6 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kDetail:
     case SlashCommandId::kBtw:
     case SlashCommandId::kPanel:
-    case SlashCommandId::kBoard:
     case SlashCommandId::kOpen:
     case SlashCommandId::kClear:
     case SlashCommandId::kShare:

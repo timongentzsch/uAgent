@@ -116,18 +116,11 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   await expect(page.locator(".transcript .tips")).toContainText(
     "Lists the commands",
   );
-  await expect(page.getByRole("complementary", { name: "Plan" })).toHaveCount(
-    0,
-  );
 
   // The panel of that folder opens from the folder's name in the list.
   await page.getByTitle(/^Lead agent of /).click();
-  const board = page.getByRole("complementary", { name: "Plan" });
-  await expect(board).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Lead · / })).toBeVisible();
   // Its empty chat explains itself.
-  await expect(page.locator(".transcript .tips")).toContainText(
-    "what each subagent and background agent is doing",
-  );
   await expect(page.locator(".transcript .empty")).toContainText(
     "hands code changes to background agents",
   );

@@ -340,6 +340,11 @@ void Agent::SessionSettings(const json& settings) {
   ++revision_;
   PublishSideContext();
 }
+json Agent::Plan() const {
+  return JsonValue(
+      JsonValue(conversation_.DisplayFacts(), "plan", json::object()), "items",
+      json::array());
+}
 json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }
 
 std::vector<std::string> Agent::EnabledTools() const {

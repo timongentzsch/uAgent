@@ -16,6 +16,7 @@ std::vector<Tool> BuiltinTools(ActivitySupervisor& supervisor,
   RegisterExecTools(tools, supervisor, workspace);
   RegisterActivityTool(tools, supervisor);
   RegisterMemoryTool(tools);
+  RegisterPlanTool(tools);
   return tools;
 }
 

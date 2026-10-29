@@ -119,6 +119,37 @@ test("a call that names no tool reads as what it called, never as its JSON", asy
   await expect(row).toContainText("Called Read Paths /etc");
 });
 
+test("a plan reads as its progress and stays above the composer", async ({
+  page,
+  session,
+  command,
+}) => {
+  await selectProbeModel(command, session, { yolo: true });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const plan = page.getByRole("region", { name: "Plan" });
+  await expect(plan).toHaveCount(0);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Plan probe");
+  await prompt.press("Enter");
+  // The call's row counts what is done; opened, it is the list.
+  const call = await openRow(page, "Updated plan");
+  await expect(call.locator(".node-row")).toContainText("1/3 done");
+  await expect(call).toContainText("[in_progress] Fix the lexer");
+  await expect(plan.getByText("Plan · 1/3 done")).toBeVisible();
+  await expect(plan.getByRole("listitem")).toHaveCount(3);
+  await expect(plan.locator('[aria-current="step"]')).toHaveText(
+    "Fix the lexer",
+  );
+  await expect(plan.locator('[data-status="done"]')).toHaveCSS(
+    "text-decoration-line",
+    "line-through",
+  );
+  // Kept with the conversation: a reload shows it again.
+  await page.reload();
+  await expect(plan.getByRole("listitem")).toHaveCount(3);
+});
+
 test("a long diff shows whole on its row, live and after a reload", async ({
   page,
   session,

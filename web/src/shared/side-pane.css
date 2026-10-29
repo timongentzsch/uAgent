@@ -27,9 +27,6 @@
   flex: 1;
   min-height: 0;
 }
-.side-pane[data-pane="board"] {
-  width: var(--board-width, var(--pane));
-}
 .side-pane[data-pane="files"] {
   width: var(--files-width, clamp(var(--popover), 45cqi, var(--sheet) * 1.5));
 }

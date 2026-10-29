@@ -128,8 +128,8 @@ class Agent {
   void SetUsagePurpose(std::string purpose) {
     usage_purpose_ = std::move(purpose);
   }
-  // Extra context rebuilt for every model request (a panel's clock,
-  // pinned notes and board): appended to the request, never stored.
+  // Extra context rebuilt for every model request (a panel's clock and
+  // board): appended to the request, never stored.
   void SetRuntimeContext(std::function<std::string()> extra) {
     runtime_context_ = std::move(extra);
   }
@@ -140,6 +140,9 @@ class Agent {
   json HttpExchanges() const;
   json SessionSettings() const;
   void SessionSettings(const json& settings);
+  // The conversation's plan: the items its last plan call left, kept in the
+  // session file; empty when it has none.
+  json Plan() const;
   json ToolCatalogue() const;
   // The tools this conversation has switched on, by name: the most a child
   // it delegates to may be given.
@@ -397,7 +400,11 @@ class Agent {
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.
   void EnsureRuntimeContext();
-  json PanelRequest(json messages) const;
+  // What every request carries beyond the stored conversation: a panel's
+  // context (SetRuntimeContext), then the plan while it has items; empty
+  // when there is neither.
+  std::string RequestContext() const;
+  json WithRequestContext(json messages, std::string context) const;
 
   std::string ProjectInstructionText() const;
   std::string MemoryText() const;

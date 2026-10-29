@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { devicePrefs, type Pane } from "./device-prefs.ts";
 
-// Docked panes (the sidebar, files, the plan) beside the chat and the
+// Docked panes (the sidebar, files) beside the chat and the
 // terminal under it: their resize handle and the layout that sizes each pane.
 
 const rem = () =>
@@ -104,8 +104,8 @@ export function ResizeHandle({
   );
 }
 
-// A conversation with a pane docked beside it (a panel's board, the
-// files): the chat keeps the rest of the row. The chat sits in the same
+// A conversation with a pane docked beside it (the files): the chat keeps
+// the rest of the row. The chat sits in the same
 // place with or without a pane, so opening one only narrows it: a new
 // parent would remount the transcript and load its history again.
 export function SideLayout({

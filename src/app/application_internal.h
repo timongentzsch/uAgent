@@ -66,6 +66,8 @@ class Application {
   std::string request_id_;
   json origin_;
   uint64_t message_subscription_ = 0;
+  // The plan clients were last sent.
+  json plan_ = json::array();
   std::string input_error_;
   ApplicationChannel* channel_ = nullptr;
 };

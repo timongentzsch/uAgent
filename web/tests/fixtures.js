@@ -45,12 +45,7 @@ export async function openPanel(page, session) {
   await expect(drawer.or(button)).toBeVisible();
   if (await drawer.isVisible()) await drawer.click();
   await button.click();
-  // Beside the chat, or behind the header's Plan button on a phone.
-  await expect(
-    page
-      .getByRole("complementary", { name: "Plan" })
-      .or(page.getByRole("button", { name: /^Plan(,|$)/ })),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Lead · / })).toBeVisible();
   return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
 }
 

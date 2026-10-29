@@ -332,7 +332,9 @@ def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
                 body["messages"][-1],
             )
             return event({"content": "SIDE-PANEL-DONE"})
-        return tool_call("plan", {"action": "show"}, call_id="side-panel-plan")
+        return tool_call(
+            "history", {"action": "search", "query": "state"}, call_id="side-panel-history"
+        )
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
@@ -352,8 +354,7 @@ def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
                 ),
             )
             assert_true(
-                {"plan", "decide", "history", "artifact"} <= offered[0]
-                and "thread" not in offered[0],
+                {"decide", "history", "artifact"} <= offered[0] and "thread" not in offered[0],
                 offered,
             )
             assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)

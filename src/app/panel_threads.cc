@@ -100,9 +100,6 @@ ToolResult Spawn(const std::string& folder, const json& a,
                  {"folder", folder},
                  {"day", Today()},
                  {"ceiling", {{"budget_usd", budget}}}};
-  if (std::string step = JsonValue(a, "step", ""); !step.empty()) {
-    thread["step"] = std::move(step);
-  }
   thread["brief"] = {{"objective", objective},
                      {"output", JsonValue(a, "output", "")},
                      {"done_when", JsonValue(a, "done_when", "")},
@@ -219,10 +216,9 @@ Tool ThreadSpawnTool(const std::string& folder,
       "thread_spawn",
       "Delegate work to a background agent: an ordinary session that edits "
       "and runs code for you, started on a brief (output, done_when and "
-      "boundaries add to it; environment worktree or local; step, the plan "
-      "step it works for). One background agent per independent part; keep "
-      "dependent steps in one. A question that only needs reading goes to a "
-      "subagent instead.",
+      "boundaries add to it; environment worktree or local). One background "
+      "agent per independent part; keep dependent steps in one. A question "
+      "that only needs reading goes to a subagent instead.",
       json::parse(R"json({"type":"object","properties":{
         "title":{"type":"string","minLength":1},
         "objective":{"type":"string","minLength":1},
@@ -230,8 +226,7 @@ Tool ThreadSpawnTool(const std::string& folder,
         "done_when":{"type":"string"},
         "boundaries":{"type":"string"},
         "environment":{"type":"string","enum":["worktree","local"]},
-        "model":{"type":"string"},
-        "step":{"type":"string","maxLength":64}},
+        "model":{"type":"string"}},
         "required":["title","objective"]})json"),
       [folder, own_model = std::move(own_model)](const json& a,
                                                  const ToolContext&) {

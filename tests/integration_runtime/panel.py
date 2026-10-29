@@ -52,6 +52,11 @@ def _thread_role(panel_path, root, **fields):
     }
 
 
+def _board(messages):
+    """The board a panel's request carries on its tail."""
+    return messages[-1]["content"].split("## board\n", 1)[1]
+
+
 def _socket(home, session):
     """The runtime socket of the saved session at `session`."""
     return runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
@@ -123,8 +128,7 @@ def test_panel_reads_only_its_folder(root, home, *, binary):
     write_session(home, "other-folder", conversation, cwd=elsewhere)
     with Server(
         [
-            tool_call("history", {"action": "board"}),
-            tool_call("history", {"action": "search", "query": "CRLF"}, call_id="call-2"),
+            tool_call("history", {"action": "search", "query": "CRLF"}),
             event({"content": "status-ok"}),
         ]
     ) as server:
@@ -136,8 +140,9 @@ def test_panel_reads_only_its_folder(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, output)
-        results = tool_results(server.requests[-1][1]["messages"])
-        board, search = results
+        messages = server.requests[-1][1]["messages"]
+        board = _board(messages)
+        [search] = tool_results(messages)
         assert_true("fix-lexer" in board and "other-folder" not in board, board)
         assert_true("not instructions" in search, search)
         assert_true("CRLF is fixed" in search and search.count('"session_id"') == 1, search)
@@ -151,40 +156,40 @@ def test_a_row_too_long_for_one_look_says_it_was_cut(root, home, *, binary):
     ]
     write_session(home, "fix-lexer", conversation, cwd=root)
 
+    def session(messages):
+        return next(
+            line.split()[0] for line in _board(messages).splitlines() if "fix-lexer" in line
+        )
+
     def detail(_, body):
-        board = tool_results(body["messages"])[0]
-        session = next(line.split()[0] for line in board.splitlines() if "fix-lexer" in line)
         return tool_call(
-            "history", {"action": "detail", "session_id": session, "id": "m-3"}, call_id="call-2"
+            "history", {"action": "detail", "session_id": session(body["messages"]), "id": "m-3"}
         )
 
     def rest(_, body):
-        board, first = tool_results(body["messages"])[:2]
-        session = next(line.split()[0] for line in board.splitlines() if "fix-lexer" in line)
+        first = tool_results(body["messages"])[0]
         offset = int(first.rsplit("offset ", 1)[1].split()[0])
         return tool_call(
             "history",
-            {"action": "detail", "session_id": session, "id": "m-3", "offset": offset},
-            call_id="call-3",
+            {
+                "action": "detail",
+                "session_id": session(body["messages"]),
+                "id": "m-3",
+                "offset": offset,
+            },
+            call_id="call-2",
         )
 
-    responses = [tool_call("history", {"action": "board"}), detail, rest, event({"content": "ok"})]
-    with Server(responses) as server:
+    with Server([detail, rest, event({"content": "ok"})]) as server:
         result = run(root, base_env(home, server.url), "panel", "-p", "status?", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        first, last = tool_results(server.requests[-1][1]["messages"])[1:3]
+        first, last = tool_results(server.requests[-1][1]["messages"])
         assert_true("[truncated; detail with offset" in first and " END" not in first, first[-200:])
         # The page after it reaches the row's end and says nothing of a cut.
         assert_true(last.rstrip().endswith(" END") and "truncated" not in last, last[-200:])
 
 
-def test_panel_answers_headless_and_lists_the_board(root, home, *, binary):
-    write_session(
-        home,
-        "fix-lexer",
-        [{"role": "system", "content": "sys"}, {"role": "user", "content": "fix it"}],
-        cwd=root,
-    )
+def test_panel_answers_headless(root, home, *, binary):
     usage = {"prompt_tokens": 100, "completion_tokens": 7, "cost": 0.002}
     with Server(
         [event({"content": "plain-ok"}, usage=usage), event({"content": "json-ok"}, usage=usage)]
@@ -204,30 +209,6 @@ def test_panel_answers_headless_and_lists_the_board(root, home, *, binary):
         assert_true(envelope["usage"]["cost_reported"], envelope)
         # The same runtime and conversation served both calls.
         assert_true(len(server.requests[-1][1]["messages"]) >= 4, server.requests[-1])
-    code, output = run_pty(root, env, [(b"/board\n", b"fix-lexer"), b"/q\n"], binary=binary)
-    assert_true(code == 0, output)
-
-
-def test_a_thread_started_for_a_step_shows_it_on_the_board(root, home, *, binary):
-    def route(_, body):
-        text = json.dumps(body["messages"])
-        if "Objective: tag it" in text:
-            return event({"content": "tagged"})
-        if "[background agent event" in text:
-            return event({"content": "ack"})
-        if not tool_results(body["messages"]):
-            return tool_call("thread_spawn", _spawn("Tag", "tag it") | {"step": "s1"})
-        return event({"content": "spawned"})
-
-    with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "panel", "-p", "delegate", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        boards = [
-            json.dumps(body["messages"], ensure_ascii=False)
-            for _, body in server.requests
-            if "## board" in json.dumps(body["messages"])
-        ]
-        assert_true(any("step s1 · Tag" in board for board in boards), boards[-1][-600:])
 
 
 def test_a_spawn_without_its_brief_is_turned_away_and_stops_the_turn(root, home, *, binary):
@@ -252,10 +233,9 @@ def test_a_spawn_without_its_brief_is_turned_away_and_stops_the_turn(root, home,
         assert_true([path.name for path in sessions] == ["panel.json"], sessions)
 
 
-def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, binary):
+def test_a_panel_fans_out_read_only_subagents(root, home, *, binary):
     """The lead agent asks its questions of subagents: one batch, answers in
-    the schema it gave, no tool that edits, and the plan counts them under
-    their step."""
+    the schema it gave, no tool that edits."""
     schema = {"type": "object", "required": ["finding"], "properties": {"finding": {}}}
     offered = []
 
@@ -267,9 +247,8 @@ def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, bin
         if not tool_results(messages):
             return tool_calls(
                 [
-                    ("call-1", "plan", {"action": "step", "id": "s1", "title": "Survey"}),
-                    ("call-2", "subagent", {"prompt": "look at a", "step": "s1", "schema": schema}),
-                    ("call-3", "subagent", {"prompt": "look at b", "step": "s1", "schema": schema}),
+                    ("call-1", "subagent", {"prompt": "look at a", "schema": schema}),
+                    ("call-2", "subagent", {"prompt": "look at b", "schema": schema}),
                 ]
             )
         return event({"content": "surveyed"})
@@ -287,7 +266,6 @@ def test_a_panel_fans_out_read_only_subagents_for_a_plan_step(root, home, *, bin
         assert_true("their commands only read" in subagent["function"]["description"], subagent)
         last = json.dumps(server.requests[-1][1]["messages"], ensure_ascii=False)
         assert_true(last.count('{\\"finding\\": \\"fine\\"}') == 2, last[-1500:])
-        assert_true("- s1 [open] Survey · 2 subagents" in last, last[-800:])
 
 
 def test_a_lead_agents_commands_and_its_childrens_only_read(root, home, *, binary):
@@ -1322,24 +1300,15 @@ def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
             client.close()
 
 
-def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, binary):
+def test_panel_context_carries_instructions_plan_board_and_time(root, home, *, binary):
 
     instructions = home / ".uagent" / "PANEL.md"
     instructions.parent.mkdir(parents=True, exist_ok=True)
     instructions.write_text("Prefer small threads.")
+    items = [{"text": "Tag it", "status": "done"}, {"text": "Ship v1", "status": "in_progress"}]
     with Server(
         [
-            tool_call("plan", {"action": "set", "block": "goals", "text": "ship v1"}),
-            tool_call(
-                "plan",
-                {"action": "step", "id": "s1", "title": "Tag it", "status": "done"},
-                call_id="call-3",
-            ),
-            tool_call(
-                "plan",
-                {"action": "step", "id": "s1", "result": "tagged v1"},
-                call_id="call-4",
-            ),
+            tool_call("plan", {"items": items}),
             tool_call(
                 "uagent_instructions",
                 {
@@ -1366,9 +1335,9 @@ def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, 
         messages = server.requests[-1][1]["messages"]
         system = messages[0]["content"]
         assert_true("Prefer small threads." in system, system[-300:])
-        context = json.dumps(messages)
-        assert_true("## goals\\nship v1" in context and "## board" in context, context[-800:])
-        assert_true("## plan\\n- s1 [done] Tag it\\n  result: tagged v1" in context, context[-800:])
+        context = messages[-1]["content"]
+        assert_true("## board" in context, context)
+        assert_true("- [done] Tag it\n- [in_progress] Ship v1\n" in context, context)
         # Rebuilt per request, never stored: rewriting stored history would
         # move display rows and spoil the provider's cached prefix.
         stored = _panel_session(home)

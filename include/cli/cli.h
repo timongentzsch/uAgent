@@ -51,7 +51,6 @@ enum class SlashCommandId {
   kBtw,
   kYolo,
   kPanel,
-  kBoard,
   kOpen,
 };
 

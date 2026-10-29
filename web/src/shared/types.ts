@@ -277,23 +277,13 @@ export interface Agent {
   description?: string;
   model?: string;
   status?: string;
-  // The panel plan step it works for.
-  step?: string;
   // Every token its calls processed, as of its last save.
   tokens?: number;
 }
-// A panel's plan (its plan tool): what the lead agent keeps between turns.
-export interface PlanStep {
-  id: string;
-  title: string;
-  status: "open" | "running" | "done" | "failed";
-  result?: string;
-}
-export interface Plan {
-  goals?: string;
-  decisions?: string;
-  open_questions?: string;
-  steps?: PlanStep[];
+// One item of a conversation's plan, its to-do list (the plan tool).
+export interface PlanItem {
+  text: string;
+  status: "pending" | "in_progress" | "done";
 }
 export interface ActivityDetail extends Activity {
   phase?: ExecutionPhase;
@@ -407,11 +397,9 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // A folder's panel, or a thread it launched (in `folder`), and the plan step
-  // the thread works for.
+  // A folder's panel, or a thread it launched (in `folder`).
   kind?: "panel" | "thread" | "";
   folder?: string;
-  step?: string;
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -449,8 +437,7 @@ export interface State {
   turn_status?: string;
   activities?: Activity[];
   agents?: Agent[];
-  // A panel's plan.
-  plan?: Plan;
+  plan?: PlanItem[];
   context_tokens?: number;
   context_window?: number;
   permissions?: Permissions;

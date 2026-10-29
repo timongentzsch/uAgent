@@ -1,3 +1,10 @@
+.brand {
+  text-decoration: none;
+}
+.brand .mark {
+  width: var(--control-m);
+  height: var(--control-m);
+}
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -84,6 +91,22 @@
   font-weight: var(--weight-strong);
   color: var(--accent);
 }
+.session-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.session-row:has(:focus-visible) {
+  background: var(--raised);
+}
+@media (hover: hover) and (pointer: fine) {
+  .session-row:hover {
+    background: var(--raised);
+  }
+  .session-row > .list-row:hover {
+    background: none;
+  }
+}
 /* One line to a row: the title and its state. The time and the menu show
    while the row is pointed at or focused, and always on a touch screen. */
 .sidebar .session {
@@ -148,4 +171,16 @@
 .sidebar-sections button {
   flex: 1;
   font-size: var(--font-small);
+}
+.connection {
+  flex: 1;
+}
+.connection .status-led {
+  margin-right: var(--space-3);
+}
+/* The drawer opens on the list; the mark stays in the header. */
+@media (max-width: 900px) {
+  .drawer .sidebar-head .brand {
+    display: none;
+  }
 }

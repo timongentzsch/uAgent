@@ -11,6 +11,7 @@
   container: composer / inline-size;
 }
 .composer > form {
+  position: relative;
   gap: 0;
   border: var(--border-field);
   background: var(--raised);
@@ -50,6 +51,17 @@
 }
 .composer > form > .message-input > textarea:focus-visible {
   outline: none;
+}
+/* Before sending: one strip that scrolls sideways, never another line. */
+.composer .attachments {
+  flex-wrap: nowrap;
+  max-height: none;
+  padding: var(--space-2) var(--space-4);
+  overscroll-behavior-x: contain;
+}
+.composer .file-chip {
+  flex: none;
+  max-width: var(--pane);
 }
 /* Fixed slots in every turn state: Attach, Model (the one flexible item),
    Permissions, then the primary circle. Nothing is inserted or removed, so
@@ -158,6 +170,31 @@
     inset: calc(-1 * var(--space-6)) 0 calc(-1 * var(--space-2));
   }
 }
+.turn-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  min-width: 0;
+  min-height: var(--control-slim);
+  padding: 0 var(--space-1);
+  font-size: var(--font-small);
+}
+.metrics {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.metrics > button {
+  font-size: inherit;
+  min-height: var(--control-slim);
+  min-width: 0;
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Under the input: background work left and context/totals right.
    Phones give activity its own row so neither competes for space. */
 .composer-metrics {
@@ -177,6 +214,9 @@
   margin-bottom: var(--space-2);
 }
 @media (max-width: 600px) {
+  .metrics {
+    margin-left: auto;
+  }
   .composer {
     margin: 0 var(--space-4);
     padding-top: var(--space-2);

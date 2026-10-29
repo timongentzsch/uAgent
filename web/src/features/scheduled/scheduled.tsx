@@ -391,7 +391,7 @@ export default function Scheduled({
                     )}
                   </div>
                   {task.schedule.type === "weekly" && (
-                    <div class="weekdays" role="group" aria-label="Weekdays">
+                    <div class="segmented" role="group" aria-label="Weekdays">
                       {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                         (day, index) => (
                           <Button

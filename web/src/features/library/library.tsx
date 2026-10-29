@@ -512,7 +512,7 @@ export default function Library({
                     </Button>
                   </p>
                 )}
-                <div class="document-toolbar">
+                <div class="segmented document-toolbar">
                   {item.writable && !editing && (
                     <Button onClick={() => setEditing(true)}>
                       <Pencil />

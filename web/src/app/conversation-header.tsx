@@ -1,3 +1,4 @@
+import "./conversation-header.css";
 import type { ComponentChildren } from "preact";
 import type { AppModal, Session } from "../shared/types.ts";
 import { Button, IconButton } from "../shared/ui.tsx";

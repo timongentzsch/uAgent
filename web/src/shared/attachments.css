@@ -6,17 +6,6 @@
   max-height: var(--scroll-s);
   overflow: auto;
 }
-/* Before sending: one strip that scrolls sideways, never another line. */
-.composer .attachments {
-  flex-wrap: nowrap;
-  max-height: none;
-  padding: var(--space-2) var(--space-4);
-  overscroll-behavior-x: contain;
-}
-.composer .file-chip {
-  flex: none;
-  max-width: var(--pane);
-}
 .file-chip {
   padding-block: var(--space-2);
   text-decoration: none;

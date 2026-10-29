@@ -72,6 +72,9 @@
      sheet sets them. */
   --control: var(--control-m);
   --row: var(--control);
+  /* The line of small controls under the input (status, activity, totals):
+     short for a mouse; on touch taller, and a hit area reaches --touch. */
+  --control-slim: var(--control-s);
   /* The inline padding of every control and row, and a surface's inset
      from the edge of the screen. */
   --inset-x: var(--space-4);
@@ -169,11 +172,12 @@
 :root[data-keyboard] {
   --safe-bottom: 0px;
 }
-/* The two palettes. A user message draws in the other one, and a sheet or
-   menu it opens returns to the page's, so every surface gets a complete set. */
+/* The two palettes. An .inverse surface (your message) draws in the other
+   one, and a sheet or menu it opens returns to the page's, so every surface
+   gets a complete set. */
 :root,
-[data-theme="light"] .message.user,
-[data-theme="dark"] .message.user :is(dialog, .menu-panel) {
+[data-theme="light"] .inverse,
+[data-theme="dark"] .inverse :is(dialog, .popover-list) {
   color-scheme: dark;
   --bg: #000000;
   --surface: #0a0a0a;
@@ -229,8 +233,8 @@
   --focus-ring: 2px solid var(--accent);
 }
 :root[data-theme="light"],
-[data-theme="dark"] .message.user,
-[data-theme="light"] .message.user :is(dialog, .menu-panel) {
+[data-theme="dark"] .inverse,
+[data-theme="light"] .inverse :is(dialog, .popover-list) {
   color-scheme: light;
   --bg: #ffffff;
   --surface: #fafafa;
@@ -435,12 +439,6 @@ select:disabled {
   }
   .quiet:enabled:hover {
     background: var(--raised);
-  }
-  .session-row:hover {
-    background: var(--raised);
-  }
-  .session-row > .list-row:hover {
-    background: none;
   }
 }
 button:enabled:active,
@@ -839,13 +837,6 @@ kbd {
   vertical-align: middle;
   flex-shrink: 0;
 }
-.brand {
-  text-decoration: none;
-}
-.brand .mark {
-  width: var(--control-m);
-  height: var(--control-m);
-}
 
 /* The shell has one header per column; only the transcript owns chat scrolling. */
 .shell {
@@ -885,27 +876,6 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   margin-right: var(--space-2);
 }
-/* One line: the words truncate, the link to its instructions stays. */
-.panel-subtitle {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-}
-.panel-subtitle :is(span, button) {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* A link in the line: cut short too, never pushed under the buttons. */
-.panel-subtitle button {
-  display: block;
-  font-size: inherit;
-  min-height: 0;
-  padding: 0;
-  text-decoration: underline;
-}
 .folder-label > span {
   display: flex;
   gap: var(--gap);
@@ -924,14 +894,6 @@ dialog.sidebar:not([open]) {
 .folder-parent {
   min-width: 0;
   font-weight: var(--weight-regular);
-}
-.session-row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.session-row:has(:focus-visible) {
-  background: var(--raised);
 }
 .status-led {
   display: inline-block;
@@ -959,17 +921,6 @@ dialog.sidebar:not([open]) {
   border-color: var(--removed);
   border-radius: 0;
 }
-/* A corner dot on an icon button, e.g. the agent using the browser. */
-.browser-toggle {
-  position: relative;
-}
-.browser-toggle > .status-led {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  width: var(--space-3);
-  height: var(--space-3);
-}
 /* Alive: work under way, or content on its way in. */
 .status-led.running,
 .skeleton > div,
@@ -981,12 +932,6 @@ dialog.sidebar:not([open]) {
   50% {
     opacity: var(--opacity-disabled);
   }
-}
-.connection {
-  flex: 1;
-}
-.connection .status-led {
-  margin-right: var(--space-3);
 }
 .conversation {
   min-width: 0;
@@ -1148,65 +1093,6 @@ dialog.sidebar:not([open]) {
     scale: 0.97;
   }
 }
-.turn-status-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  text-align: left;
-  min-width: 0;
-  min-height: var(--control-s);
-  padding: 0 var(--space-1);
-  font-size: var(--font-small);
-}
-.activity-button {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  min-height: var(--control-s);
-  padding: 0 var(--space-3);
-  font-size: var(--font-small);
-}
-.activity-button > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.activity-button > svg {
-  flex: none;
-  width: var(--icon);
-  height: var(--icon);
-}
-.activity-button.idle {
-  color: var(--muted);
-}
-.activity-button .short {
-  display: none;
-}
-@media (max-width: 600px) {
-  .activity-button .long {
-    display: none;
-  }
-  .activity-button .short {
-    display: inline;
-  }
-}
-.metrics {
-  display: flex;
-  align-items: center;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-.metrics > button {
-  font-size: inherit;
-  min-height: var(--control-s);
-  min-width: 0;
-  padding: 0 var(--space-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 /* Every disclosure reads like a row that opens: a chevron that turns as it
    opens. */
 details > summary::before {
@@ -1218,21 +1104,6 @@ details > summary::before {
   mask:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
     center / contain no-repeat;
-}
-.decision {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  border-color: var(--accent);
-  background: none;
-  max-height: var(--scroll-l);
-  transition: var(--enter);
-}
-@starting-style {
-  .decision {
-    opacity: 0;
-    translate: 0 var(--rise);
-  }
 }
 
 /* A sheet's button, like any control beside the composer's file input,
@@ -1294,9 +1165,7 @@ details > summary::before {
   flex-wrap: wrap;
 }
 .segmented,
-.tabs,
-.document-toolbar,
-.weekdays {
+.tabs {
   display: flex;
   align-items: center;
   gap: var(--gap);
@@ -1462,12 +1331,6 @@ dialog p {
 dialog section {
   margin: var(--pad) 0;
 }
-.raw-view > .dialog-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
 /* Shared shells exist before their lazy feature CSS arrives. */
 .management {
   display: flex;
@@ -1525,11 +1388,7 @@ dialog section {
 @media (pointer: coarse) {
   :root {
     --control: var(--touch);
-  }
-  .turn-status-row,
-  .activity-button,
-  .metrics > button {
-    min-height: var(--control-m);
+    --control-slim: var(--control-m);
   }
   /* Dense rows keep their 32px look but take a 44px touch: an invisible
      hit area extends above and below, never over a neighbour. */
@@ -1547,7 +1406,7 @@ dialog section {
   .message button::after {
     content: "";
     position: absolute;
-    inset: calc((var(--control-m) - var(--touch)) / 2) 0;
+    inset: calc((var(--control-slim) - var(--touch)) / 2) 0;
   }
 }
 @media (max-width: 900px) {
@@ -1581,9 +1440,6 @@ dialog section {
     gap: var(--gap);
     padding: var(--space-4);
   }
-  .drawer .sidebar-head .brand {
-    display: none;
-  }
 }
 @media (max-width: 600px) {
   .conversation-head h1 {
@@ -1594,13 +1450,6 @@ dialog section {
     padding: var(--space-4);
     scrollbar-gutter: auto;
   }
-  .metrics {
-    margin-left: auto;
-  }
-  .raw-view {
-    width: calc(var(--content-width) - 2 * var(--inset-x));
-    height: calc(var(--content-height) - 2 * var(--inset-x));
-  }
 }
 @container app (max-height: 500px) {
   .conversation-head {
@@ -1608,9 +1457,6 @@ dialog section {
   }
   .transcript {
     padding-block: var(--space-2);
-  }
-  .decision {
-    max-height: calc(var(--viewport-height) - 2 * var(--touch));
   }
 }
 /* Surfaces arrive with a short, native motion and leave the way they
@@ -1695,11 +1541,11 @@ dialog.sidebar.drawer[open][data-leaving] {
    so the inverted user message keeps its own. */
 @media (prefers-contrast: more) {
   :root,
-  [data-theme="light"] .message.user,
-  [data-theme="dark"] .message.user :is(dialog, .menu-panel),
+  [data-theme="light"] .inverse,
+  [data-theme="dark"] .inverse :is(dialog, .popover-list),
   :root[data-theme="light"],
-  [data-theme="dark"] .message.user,
-  [data-theme="light"] .message.user :is(dialog, .menu-panel) {
+  [data-theme="dark"] .inverse,
+  [data-theme="light"] .inverse :is(dialog, .popover-list) {
     --muted: var(--muted-more);
     --line: var(--line-more);
     --field-border: var(--field-border-more);

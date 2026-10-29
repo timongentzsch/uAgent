@@ -1,3 +1,18 @@
+.decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-color: var(--accent);
+  background: none;
+  max-height: var(--scroll-l);
+  transition: var(--enter);
+}
+@starting-style {
+  .decision {
+    opacity: 0;
+    translate: 0 var(--rise);
+  }
+}
 .decision-preview {
   min-height: 0;
   overflow: auto;
@@ -126,4 +141,9 @@
   margin: 0;
   padding: 0;
   border: 0;
+}
+@container app (max-height: 500px) {
+  .decision {
+    max-height: calc(var(--viewport-height) - 2 * var(--touch));
+  }
 }

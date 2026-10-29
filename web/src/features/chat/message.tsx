@@ -132,7 +132,11 @@ function Message({
   const reply = node.role === "assistant";
   // Mail from another conversation or the harness has your message's line,
   // not its bubble.
-  const chrome = reply ? "response" : node.origin === "mail" ? "mail" : "user";
+  const chrome = reply
+    ? "response"
+    : node.origin === "mail"
+      ? "mail"
+      : "user inverse";
   const load = useNodeReader(session, read);
   const truncated = node.body?.truncated;
   const fullText = useResource(

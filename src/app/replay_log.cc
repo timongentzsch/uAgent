@@ -26,9 +26,9 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   const std::string kind = JsonValue(value, "kind", "");
   HostNotice notice;
   notice.session = session;
-  // A decision routed to a thread's panel reaches a person only once
-  // the panel yields it (approval.escalated).
-  const bool routed = RoutedToPanel(JsonValue(value, "data", json::object()));
+  // A decision routed to an agent's parent reaches a person only once
+  // the parent yields it (approval.escalated).
+  const bool routed = RoutedToParent(JsonValue(value, "data", json::object()));
   if (type == AppType(EventId::kTurnCompleted) ||
       ((type == AppType(EventId::kApprovalRequested) ||
         type == "ask.requested") &&

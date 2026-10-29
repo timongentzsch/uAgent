@@ -123,7 +123,6 @@ enum class Fault {
   kRepeat,
   kQuietPoll,
   kFailedTools,
-  kAnswerShape,
   kCount
 };
 
@@ -224,15 +223,6 @@ inline constexpr FaultRule kFaultRules[] = {
        "the shared premise or execution environment before trying another "
        "variant; use existing evidence or a different approach when "
        "possible."}}},
-    // A delegated child's answer that misses the schema its parent asked for
-    // goes back to it; FinishWithProse bounds the retries.
-    {"answer_shape",
-     0,
-     TurnStopReason::kNone,
-     "",
-     {{0,
-       "[answer format] {x}. Send the whole final answer again as only one "
-       "JSON value matching the JSON Schema in your task."}}},
 };
 #undef UAGENT_WAIT_INSTEAD
 

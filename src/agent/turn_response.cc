@@ -25,31 +25,6 @@
 #include "src/agent/turn_internal.h"
 
 namespace uagent {
-namespace {
-// Retries a delegated child gets to make its answer fit the schema it was
-// asked for; after them the answer stands as written, for its parent to read.
-constexpr int64_t kAnswerShapeRetries = 2;
-
-// Why `answer` is not the JSON `schema` asks for, or empty when it is. The
-// JSON is the whole answer, or one fenced block that is the whole answer.
-std::string AnswerShapeIssue(const json& schema, std::string answer) {
-  answer = Trim(answer);
-  if (answer.starts_with("```")) {
-    const size_t open = answer.find('\n');
-    const size_t close = answer.rfind("```");
-    if (open != std::string::npos && close > open) {
-      answer = answer.substr(open + 1, close - open - 1);
-    }
-  }
-  const json value = json::parse(answer, nullptr, false);
-  if (value.is_discarded()) return "Your final answer is not valid JSON";
-  const auto issue = FindSchemaIssue(schema, value, "answer");
-  return issue
-             ? "Your final answer does not match the schema: " + issue->message
-             : "";
-}
-}  // namespace
-
 void Agent::RecordModelResponse(
     ChatResult& response, TurnExecution& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
@@ -283,16 +258,6 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   DeliverMail();
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
-  const json* schema = JsonObject(OwnDelegation(), "schema");
-  if (schema &&
-      loop.recovery.strikes[static_cast<size_t>(Fault::kAnswerShape)] <
-          kAnswerShapeRetries) {
-    if (std::string issue = AnswerShapeIssue(*schema, LastText());
-        !issue.empty()) {
-      Strike(Fault::kAnswerShape, state, loop, issue);
-      return StepFlow::kNextStep;
-    }
-  }
   state.complete = true;
   state.stop.outcome = TurnOutcome::kComplete;
   return StepFlow::kEndTurn;

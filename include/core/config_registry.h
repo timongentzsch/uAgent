@@ -73,7 +73,7 @@ inline constexpr ConfigCategory kConfigCategories[] = {
     {"budget", "Limits"},
     {"request", "Requests"},
     {"tools", "Tools"},
-    {"delegation", "Subagents"},
+    {"delegation", "Agents"},
     {"coordination", "Panel"},
     {"search", "Web search"},
     {"memory", "Memory"},
@@ -140,7 +140,6 @@ inline constexpr std::string_view kWebSearchBackends[] = {"auto", "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kSandboxLevels[] = {"readonly", "default",
                                                       "relaxed", "off"};
-inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kDetailLevels[] = {"minimal", "default",
                                                      "full"};
 
@@ -469,9 +468,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Parallel tool calls"),
     registry::Named(
         registry::Int("activities.maxConcurrent", "UAGENT_MAX_ACTIVITIES", {},
-                      8, 3, 64, ReloadPolicy::kNextUserTurn, "tools",
-                      "commands and subagents one conversation runs at once; "
-                      "two slots stay free of subagents for its own commands"),
+                      8, 1, 64, ReloadPolicy::kNextUserTurn, "tools",
+                      "commands one conversation runs at once"),
         "Activities at once"),
     registry::Named(
         registry::Int("activities.logMb", "UAGENT_ACTIVITY_LOG_MB", {}, 64, 1,
@@ -535,65 +533,26 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "may read, colon-separated"),
         "Sandbox revealed paths"),
 
-    // Delegation.
+    // Agents.
     registry::Named(
-        registry::Int("subagent.depth", "UAGENT_SUBAGENT_DEPTH", {}, 2, 0,
-                      kConfigAnyMax, ReloadPolicy::kRestartRequired,
-                      "delegation", "deepest delegation level allowed"),
-        "Delegation depth"),
-    registry::Named(
-        registry::Str("subagent.model", "UAGENT_SUBAGENT_MODEL", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "delegation",
-                      "route a subagent runs on when its call names none; "
-                      "empty runs it on its parent's"),
-        "Sub-agent model"),
-    registry::Named(
-        registry::Int("subagent.maxSteps", "UAGENT_SUBAGENT_MAX_STEPS", {}, 100,
-                      kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
-                      "delegation", "model rounds per delegated child"),
-        "Sub-agent steps"),
-    registry::Named(
-        registry::Int("subagent.maxToolCalls", "UAGENT_SUBAGENT_MAX_TOOL_CALLS",
-                      {}, 240, kConfigAnyMin, kConfigAnyMax,
+        registry::Int("agents.max", "UAGENT_AGENTS_MAX", {}, 8, 1, 64,
                       ReloadPolicy::kNextUserTurn, "delegation",
-                      "tool calls per delegated child"),
-        "Sub-agent tool calls"),
+                      "agents one conversation may have at work at once"),
+        "Agents at once"),
     registry::Named(
-        registry::Int("subagent.timeout", "UAGENT_SUBAGENT_TIMEOUT", {}, 0, 0,
-                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
-                      "wall-clock ceiling per delegated child; 0 is the turn"),
-        "Sub-agent time limit"),
-    registry::Named(
-        registry::Int("subagent.callsPerTurn", "UAGENT_SUBAGENT_CALLS_PER_TURN",
-                      {}, 32, 1, 1000, ReloadPolicy::kRestartRequired,
-                      "delegation", "subagent calls one turn may make"),
-        "Sub-agent calls per turn"),
+        registry::Int("agents.depth", "UAGENT_AGENTS_DEPTH", {}, 2, 0,
+                      kConfigAnyMax, ReloadPolicy::kRestartRequired,
+                      "delegation",
+                      "how deep agents may start agents of their own"),
+        "Agent depth"),
 
     // Coordination.
     registry::Named(
-        registry::Int("panel.maxThreads", "UAGENT_PANEL_MAX_THREADS", {}, 5, 1,
-                      64, ReloadPolicy::kNextUserTurn, "coordination",
-                      "background agents one lead agent may run at once"),
-        "Lead agent: background agents"),
-    registry::Named(
         registry::Dbl("panel.dailySpendUsd", "UAGENT_PANEL_DAILY_SPEND_USD", {},
                       20.0, ReloadPolicy::kNextUserTurn, "coordination",
-                      "reported cost a lead agent and its background agents "
-                      "may spend per day; at it, their events wait. 0 "
-                      "disables it"),
+                      "reported cost a lead agent and its agents may spend "
+                      "per day; at it, their events wait. 0 disables it"),
         "Lead agent daily spend"),
-    registry::Named(
-        registry::Choice(
-            registry::Str(
-                "panel.environment", "UAGENT_PANEL_ENVIRONMENT", {}, "worktree",
-                ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                "coordination",
-                "where background agents run: a fresh git worktree, or "
-                "the "
-                "folder itself; a folder outside git runs in place"),
-            kThreadEnvironments),
-        "Where background agents run"),
 
     // Web search.
     registry::Named(

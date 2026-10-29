@@ -22,7 +22,6 @@
 #include "include/core/strings.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
-#include "include/tools/subagent.h"
 #include "src/app/commands_internal.h"
 
 namespace uagent {
@@ -31,7 +30,7 @@ namespace uagent {
 // chosen at its scope, and "default" takes the choice back.
 constexpr char kApprovalKey[] = "UAGENT_APPROVAL";
 
-json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread) {
+json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
   // An unreadable value reads as asking.
   auto parsed = [](const std::string& text) {
     ApprovalMode value = ApprovalMode::kAsk;
@@ -42,10 +41,10 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread) {
       JsonValue(configured.sources, kApprovalKey, "") == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
-  // A thread works unattended for its panel: it reviews (Auto) unless a
-  // mode is chosen for its own conversation; the saved setting does not
-  // reach it.
-  if (thread) {
+  // An agent works unattended for its parent: it reviews (Auto) unless a
+  // mode is chosen for its own conversation, as its start does for a
+  // parent that asks; the saved setting does not reach it.
+  if (agent) {
     inherited = ApprovalMode::kAuto;
     if (!chosen) effective = inherited;
   }
@@ -55,7 +54,7 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread) {
 }
 
 json PermissionControl(AppContext& context, const json& request) {
-  const bool thread = context.options.Thread();
+  const bool agent = !context.options.AgentRole().empty();
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
     ApprovalMode chosen = ApprovalMode::kAsk;
@@ -65,7 +64,7 @@ json PermissionControl(AppContext& context, const json& request) {
     context.config_manager.ChooseForConversation(
         kApprovalKey, mode == "default" ? "" : ApprovalModeName(chosen));
   }
-  json result = ApprovalState(context.config_manager.Read(), thread);
+  json result = ApprovalState(context.config_manager.Read(), agent);
   ApprovalMode effective = ApprovalMode::kAsk;
   ParseApprovalMode(JsonValue(result, "effective", ""), effective);
   SetApprovalMode(effective);
@@ -171,34 +170,6 @@ json ConfigureSession(AppSession& session, const json& request) {
   return reply;
 }
 
-// A follow-up to a delegated agent, or the activity operations.
-json SessionActivity(AppSession& session, const json& request) {
-  if (JsonValue(request, "operation", "") != "followup") {
-    return ActivityControl(session.Runtime().processes, request);
-  }
-  Tool tool =
-      SubagentTool(session.ApiClient(), session.Runtime().processes,
-                   session.context.provider.routes,
-                   session.context.provider.providers, Debug().Enabled());
-  // From the interface it runs beside the conversation, never in its way.
-  json arguments = {{"operation", "followup"},
-                    {"agent_id", JsonValue(request, "agent_id", "")},
-                    {"prompt", JsonValue(request, "text", "")},
-                    {"background", true}};
-  const std::string model = JsonValue(request, "model", "");
-  if (!model.empty()) arguments["model"] = model;
-  if (auto issue = FindToolArgumentIssue(tool, arguments)) {
-    return {{"error", issue->message}};
-  }
-  // A follow-up is not a decision about tools: the child keeps the ceiling
-  // of the conversation it belongs to.
-  ToolContext context;
-  context.enabled_tools = session.ActiveAgent().EnabledTools();
-  ToolResult result = tool.run(arguments, context);
-  return result.Ok() ? json{{"output", result.output}}
-                     : json{{"error", result.output}};
-}
-
 // The model chosen in the interface becomes the session's, and maybe the
 // default.
 json SelectModelControl(AppSession& session, const json& request) {
@@ -255,7 +226,9 @@ json SessionControl(AppSession& session, const json& request) {
     return {{"exchanges", json::array({std::move(preview)})}};
   }
 
-  if (kind == "activity") return SessionActivity(session, request);
+  if (kind == "activity") {
+    return ActivityControl(session.Runtime().processes, request);
+  }
   if (JsonValue(request, "operation", "") == "catalog") {
     return ModelCatalogue(session.ApiClient(), session.context.provider.routes,
                           session.context.provider.providers,
@@ -276,67 +249,32 @@ json ActivityControl(ActivitySupervisor& processes, const json& request) {
   }
   if (operation == "list") return {{"activities", processes.ActivityViews()}};
   int64_t id = JsonValue(request, "activity_id", int64_t{0});
-  auto job = processes.Find(id);
-  std::string agent = job ? job->source_id : JsonValue(request, "agent_id", "");
-  if (operation == "inspect") {
-    json result = job ? processes.InspectActivity(id) : json::object();
-    if (!agent.empty()) {
-      result.update(InspectAgent(processes, agent, request));
-    }
-    return result.empty()
-               ? json{{"error", "activity unavailable in this conversation"}}
-               : result;
-  }
-  ToolResult result;
-  if (operation == "message" && !agent.empty() &&
-      !JsonValue(request, "text", "").empty()) {
-    // An idle child is messaged by id; ownership is its header's to decide.
-    result = MessageAgent(processes, agent, JsonValue(request, "text", ""));
-  } else if (!job) {
+  if (!processes.Find(id)) {
     return {{"error", "activity unavailable in this conversation"}};
-  } else if (operation == "stop") {
-    result = ToolActivityStop(processes, id);
-  } else {
+  }
+  if (operation == "inspect") return processes.InspectActivity(id);
+  if (operation != "stop") {
     return {{"error", "unsupported activity operation"}};
   }
+  ToolResult result = ToolActivityStop(processes, id);
   return result.Ok() ? json{{"output", result.output}, {"operation", operation}}
                      : json{{"error", result.output}};
 }
 
 std::string ActivityText(const json& result) {
-  for (const char* key : {"activities", "agents"}) {
-    if (const json* rows = JsonArray(result, key)) {
-      const bool agents = std::string_view(key) == "agents";
-      std::string text = std::string(agents ? "subagents" : "activities") +
-                         " (" + FmtCount(static_cast<int64_t>(rows->size())) +
-                         ")\n";
-      for (const json& row : *rows) {
-        if (JsonValue(row, "detached", false)) text += "[detached] activity ";
-        auto id = row.find("id");
-        const std::string id_text = id == row.end() ? "—" : JsonText(*id);
-        if (agents) {
-          // Agents are named teammates, not tasks: name first, id for reuse.
-          const std::string name = JsonValue(row, "name", "");
-          text += name.empty() ? id_text : name + " (" + id_text + ")";
-        } else {
-          text += id_text;
-        }
-        text += "  " +
-                JoinDot({JsonValue(row, "status", ""),
-                         JsonValue(row, "mode", JsonValue(row, "label", "")),
-                         JsonValue(row, "model", ""),
-                         JsonValue(row, "progress", "")}) +
-                "\n";
-        if (agents) {
-          const std::string about =
-              Utf8Trunc(JsonValue(row, "description", ""), 120);
-          if (!about.empty()) text += "  " + about + "\n";
-        }
-      }
-      return text;
-    }
+  const json* rows = JsonArray(result, "activities");
+  if (!rows) return JsonDump(result, 2) + "\n";
+  std::string text =
+      "activities (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
+  for (const json& row : *rows) {
+    if (JsonValue(row, "detached", false)) text += "[detached] activity ";
+    auto id = row.find("id");
+    text += (id == row.end() ? "—" : JsonText(*id)) + "  " +
+            JoinDot({JsonValue(row, "status", ""), JsonValue(row, "label", ""),
+                     JsonValue(row, "progress", "")}) +
+            "\n";
   }
-  return JsonDump(result, 2) + "\n";
+  return text;
 }
 
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
@@ -345,30 +283,18 @@ json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
   input >> target >> operation;
   std::getline(input, text);
   text = Trim(text);
-  auto& processes = session.Runtime().processes;
   if (target.empty()) {
-    return command.spec->id == SlashCommandId::kAgents
-               ? json{{"agents", AgentsJson(session)}}
-               : json{{"activities", processes.ActivityViews()}};
+    return {{"activities", session.Runtime().processes.ActivityViews()}};
   }
   json request = {{"kind", "activity"},
                   {"operation", operation.empty() ? "inspect" : operation},
                   {"text", text}};
   if (operation == "output") request["operation"] = "inspect";
-  if (command.spec->id == SlashCommandId::kAgents) {
-    request["agent_id"] = target;
-    for (const json& row : processes.ActivityViews()) {
-      if (JsonValue(row, "agent_id", "") == target) {
-        request["activity_id"] = row["id"];
-      }
-    }
-  } else {
-    int64_t id = 0;
-    if (!ParseInt64(target.c_str(), id)) {
-      return {{"error", "invalid activity id"}};
-    }
-    request["activity_id"] = id;
+  int64_t id = 0;
+  if (!ParseInt64(target.c_str(), id)) {
+    return {{"error", "invalid activity id"}};
   }
+  request["activity_id"] = id;
   return SessionControl(session, request);
 }
 

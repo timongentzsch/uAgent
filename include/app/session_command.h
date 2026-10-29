@@ -64,7 +64,7 @@ struct SessionCommand {
   std::string title;
   std::string operation;
   bool cancelled = false;
-  bool from_panel = false;  // sent by the session's panel
+  bool from_parent = false;  // sent by the agent's parent
   // The whole command, for the fields only one handler reads.
   json raw;
 };

@@ -199,8 +199,7 @@ json JournalProjection(const Event& event) {
   };
   switch (event.id) {
     case EventId::kSessionReady:
-      copy({"model", "route", "context_window", "capabilities", "toolset",
-            "provenance"});
+      copy({"model", "route", "context_window", "capabilities", "provenance"});
       if (event.data.contains("base_url") &&
           event.data["base_url"].is_string()) {
         data["host"] = UrlHost(event.data["base_url"].get<std::string>());
@@ -256,16 +255,6 @@ json JournalProjection(const Event& event) {
     data["presentation"] = PresentationJson(*event.presentation);
   }
   return data;
-}
-
-// Process children reuse the same caption through their existing progress
-// log. The parent exposes its latest checkpoint without a second event bus.
-void EchoHeadlessProgress(const Event& event) {
-  static const bool kEnabled = HeadlessProgressEnabled();
-  if (!kEnabled || event.id != EventId::kTurnStatus) return;
-  const std::string line = JsonValue(event.data, "turn_status", "");
-  fprintf(stderr, "%s%s\n", kHeadlessProgressPrefix,
-          TerminalSafe(line).c_str());
 }
 
 }  // namespace
@@ -474,7 +463,6 @@ void Observability::Emit(Event event) noexcept {
     if (policy.Durable()) {
       journal_.Append(event, policy);
     }
-    EchoHeadlessProgress(event);
     if (!subscribers_.empty()) {
       app_event = {++app_sequence_, UtcStamp(), policy.app_type,
                    AppProjection(event), policy.Durable()};

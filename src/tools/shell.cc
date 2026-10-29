@@ -141,19 +141,6 @@ ToolResult ActivityLimitError() {
       "activity limit reached (" + std::to_string(MaxActivities()) + ")");
 }
 
-// A child refused for headroom must not read as the pool being full: the
-// parent can still run its own commands, and that is the point.
-ToolResult DelegatedActivityLimitError() {
-  return ToolFailure(ToolErrorCode::kLimitExceeded,
-                     "no free activity slot for a delegated child (at "
-                     "most " +
-                         std::to_string(MaxDelegatedActivities()) +
-                         " concurrent children of " +
-                         std::to_string(MaxActivities()) +
-                         " activity slots; the rest stay reserved for this "
-                         "agent's own commands). Wait for a child to finish");
-}
-
 // Resolves the wrapper argv for one spawn, or reports why this command cannot
 // run. Both failures are the same rule: a session that was told to confine and
 // cannot must not spawn anyway. That would be a silent unsandboxed command --
@@ -327,13 +314,9 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper, watch);
 
   // Everything below is the supervised foreground lifecycle.
-  bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
-  const std::string agent_id = spec.source_id;
-  std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
-      MaxActivities(), is_subagent ? MaxDelegatedActivities() : 0);
-  if (!reservation) {
-    return {is_subagent ? DelegatedActivityLimitError() : ActivityLimitError()};
-  }
+  std::optional<ActivityReservation> reservation =
+      supervisor.ReserveActivity(MaxActivities());
+  if (!reservation) return {ActivityLimitError()};
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
   ScopedTempFile pending(UagentDir(kActivityDir) + "/pending-" +
@@ -410,7 +393,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                       .display_label = std::move(spec.activity_label),
                       .receipt_path = std::move(spec.receipt_path),
                       .source_id = std::move(spec.source_id),
-                      .completion_notes = std::move(spec.completion_notes),
                       .watch = watch,
                       .metadata = std::move(spec.activity_metadata)};
   std::optional<int64_t> registered = reservation->Register(foreground);
@@ -426,7 +408,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
 
   // Registered for the signal handler's kill sweep from spawn onward, so a
   // Ctrl-C at any point, including the handover below, reaches the child.
-  ActivityTrackSignal(pid, true, is_subagent);
+  ActivityTrackSignal(pid, true);
   bool cancelled = false;
   bool handed_off = false;
   bool exited = false;
@@ -539,21 +521,6 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
     (void)ToolActivityStop(supervisor, activity_id);
     return {ToolCancelled("error: command cancelled by user"), std::nullopt,
             /*launched=*/true};
-  }
-  if (is_subagent) {
-    return {
-        LinkResult(kStartedSubagentMarker + agent_id + " (activity " +
-                       std::to_string(activity_id) + ")" +
-                       (supervisor.WakesSession()
-                            ? "; its result reaches you when it ends, even "
-                              "after this turn; inspect activity output for "
-                              "progress"
-                            : "; completion is added to the next natural model "
-                              "call without starting one; inspect activity "
-                              "output for progress/readiness, or wait when the "
-                              "next step is blocked"),
-                   LinkPart("activity", activity_id, "Open activity")),
-        std::nullopt, /*launched=*/true};
   }
   std::string initial_output;
   {

@@ -5,7 +5,6 @@
 #include <utility>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/session_role.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
@@ -20,7 +19,6 @@
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
-#include "include/tools/subagent.h"
 #include "src/app/application_internal.h"
 
 namespace uagent {
@@ -91,11 +89,10 @@ int Application::RunChannel() {
       ProcessInput(std::move(input->text));
       // Mail that came as the turn was ending starts the next one.
       agent_.DeliverMail(channel_->HoldMail());
-      // A thread's spend is its panel's too, reported before the turn's end
-      // wakes the panel.
-      if (context_.options.Thread()) {
-        ReportUsage(UsageLedger(
-            JsonValue(ThreadRole(context_.options.session), "parent", "")));
+      // An agent's spend is its parent's too, reported before the turn's
+      // end wakes the parent.
+      if (const json agent = context_.options.AgentRole(); !agent.empty()) {
+        ReportUsage(UsageLedger(JsonValue(agent, "parent", "")));
       }
     }
     SaveSession(input->title.has_value());
@@ -117,14 +114,14 @@ void Application::PublishChannelState(bool checkpoint) {
     state["view"] = agent_.DisplaySnapshot();
     state["system_prompt"] = agent_.LastSentPrompt();
     state["http"] = agent_.HttpExchanges();
-    // A thread's last answer whole, for the report to its panel: the
+    // An agent's last answer whole, for the report to its parent: the
     // view holds a long one's opening only. Well inside what one mail holds.
-    if (context_.options.Thread()) {
+    if (!context_.options.AgentRole().empty()) {
       constexpr size_t kAnswerBytes = kMailBytes / 4;
       std::string answer = agent_.LastText();
       if (answer.size() > kAnswerBytes) {
         answer = Utf8Prefix(answer, kAnswerBytes) +
-                 "\n[cut short here; history shows the rest]";
+                 "\n[cut short here; agents read shows the rest]";
       }
       state["answer"] = std::move(answer);
     }
@@ -143,7 +140,6 @@ void Application::PublishChannelState(bool checkpoint) {
   }
   state["turns"] = agent_.UserTurns();
   state["activities"] = runtime_.processes.ActivityViews();
-  state["agents"] = AgentSummaries(runtime_.processes);
   state["plan"] = plan_ = agent_.Plan();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleChars);

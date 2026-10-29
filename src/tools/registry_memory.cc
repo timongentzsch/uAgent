@@ -67,7 +67,6 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
                              {"search", {"key"}}}};
   memory.capabilities = Capability(ToolCapability::kInspect) |
                         Capability(ToolCapability::kMutate);
-  memory.available_in_lean = false;
   memory.memory_store = true;
   memory.retain_output = true;
   memory.intent = "memory";

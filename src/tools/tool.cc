@@ -517,11 +517,6 @@ ApprovalClass RequiredApproval(const Tool& tool, const json& arguments) {
   return required ? ApprovalClass::kYoloEligibleMutation : ApprovalClass::kNone;
 }
 
-void KeepLeanTools(std::vector<Tool>& tools) {
-  std::erase_if(tools,
-                [](const Tool& tool) { return !tool.available_in_lean; });
-}
-
 std::string ToolDescription(const Tool& tool) {
   std::string s = tool.description;
   const ActionRequires& table = tool.action_requires;

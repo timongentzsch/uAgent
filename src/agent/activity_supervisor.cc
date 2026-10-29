@@ -46,8 +46,6 @@ void CloseSessionIo(const std::shared_ptr<ActivitySession>& session) {
 
 std::string ActivityKindName(ActivityKind kind) {
   switch (kind) {
-    case ActivityKind::kSubagent:
-      return "subagent";
     case ActivityKind::kMemory:
       return "memory";
     case ActivityKind::kDetached:
@@ -99,23 +97,20 @@ ActivityReservation::~ActivityReservation() { Reset(); }
 // under. ReserveActivity hands its result through an optional, so this runs on
 // the way out of every reservation.
 ActivityReservation::ActivityReservation(ActivityReservation&& other) noexcept
-    : supervisor_(std::exchange(other.supervisor_, nullptr)),
-      subagent_(other.subagent_),
-      id_(other.id_) {}
+    : supervisor_(std::exchange(other.supervisor_, nullptr)), id_(other.id_) {}
 
 ActivityReservation& ActivityReservation::operator=(
     ActivityReservation&& other) noexcept {
   if (this == &other) return *this;
   Reset();
   supervisor_ = std::exchange(other.supervisor_, nullptr);
-  subagent_ = other.subagent_;
   id_ = other.id_;
   return *this;
 }
 
 void ActivityReservation::Reset() {
   if (!supervisor_) return;
-  supervisor_->ReleaseReservation(subagent_);
+  supervisor_->ReleaseReservation();
   supervisor_ = nullptr;
 }
 
@@ -123,7 +118,7 @@ std::optional<int64_t> ActivityReservation::Register(Activity job) {
   if (!supervisor_) return std::nullopt;
   ActivitySupervisor* supervisor = supervisor_;
   supervisor_ = nullptr;
-  return supervisor->CommitReservation(std::move(job), subagent_);
+  return supervisor->CommitReservation(std::move(job));
 }
 
 ActivitySupervisor::ActivitySupervisor() {
@@ -200,7 +195,7 @@ void ActivitySupervisor::AssignId(Activity& job) {
 }
 
 std::optional<ActivityReservation> ActivitySupervisor::ReserveActivity(
-    int64_t max_pending, int64_t max_subagents) {
+    int64_t max_pending) {
   std::lock_guard<std::mutex> lock(mutex_);
   size_t live =
       foreground_.size() +
@@ -210,33 +205,17 @@ std::optional<ActivityReservation> ActivitySupervisor::ReserveActivity(
   if (static_cast<int64_t>(live) + reservations_ >= max_pending) {
     return std::nullopt;
   }
-  // A child competes against other children, never against the parent's own
-  // commands, which would refuse delegation the moment the parent was busy.
-  bool subagent = max_subagents > 0;
-  if (subagent) {
-    auto child = [](const Activity& current) {
-      return !current.Detached() && current.kind == ActivityKind::kSubagent;
-    };
-    int64_t children = static_cast<int64_t>(std::count_if(
-                           foreground_.begin(), foreground_.end(), child)) +
-                       static_cast<int64_t>(std::count_if(
-                           activities_.begin(), activities_.end(), child));
-    if (children + subagent_reservations_ >= max_subagents) return std::nullopt;
-    ++subagent_reservations_;
-  }
   ++reservations_;
   NotifyLocked();
   // Spent whether or not the reservation commits: ids are opaque, so a gap
   // costs nothing and pre-allocation is what lets the caller name its log.
-  return ActivityReservation(this, subagent, next_id_++);
+  return ActivityReservation(this, next_id_++);
 }
 
-std::optional<int64_t> ActivitySupervisor::CommitReservation(Activity job,
-                                                             bool subagent) {
+std::optional<int64_t> ActivitySupervisor::CommitReservation(Activity job) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (reservations_ <= 0) return std::nullopt;
   --reservations_;
-  if (subagent && subagent_reservations_ > 0) --subagent_reservations_;
   if (stopping_) {
     NotifyLocked();
     return std::nullopt;
@@ -247,10 +226,9 @@ std::optional<int64_t> ActivitySupervisor::CommitReservation(Activity job,
   return ActivityId(foreground_.back());
 }
 
-void ActivitySupervisor::ReleaseReservation(bool subagent) {
+void ActivitySupervisor::ReleaseReservation() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (reservations_ > 0) --reservations_;
-  if (subagent && subagent_reservations_ > 0) --subagent_reservations_;
   NotifyLocked();
 }
 
@@ -358,26 +336,6 @@ size_t ActivitySupervisor::Count() const {
   return activities_.size();
 }
 
-std::vector<SubagentView> ActivitySupervisor::SubagentViews() const {
-  std::vector<SubagentView> views;
-  const int64_t now = NowMillis();
-  for (const json& row : ActivityViews()) {
-    const std::string status = JsonValue(row, "status", "");
-    if (JsonValue(row, "kind", "") != "subagent" ||
-        (status != "running" && status != "starting" &&
-         status != "finishing")) {
-      continue;
-    }
-    views.push_back(
-        {JsonValue(row, "id", int64_t{0}), JsonValue(row, "agent_id", ""),
-         JsonValue(row, "model", JsonValue(row, "label", "")),
-         JsonValue(row, "progress", ""),
-         std::chrono::milliseconds(
-             std::max(int64_t{0}, now - JsonValue(row, "started_ms", now)))});
-  }
-  return views;
-}
-
 void ActivitySupervisor::SetOwner(std::string owner) {
   std::lock_guard lock(mutex_);
   owner_ = std::move(owner);
@@ -410,7 +368,6 @@ json ActivitySupervisor::ActivityViews() const {
     row["id"] = ActivityId(job);
     // The turn is waiting on it, as opposed to running behind it.
     row["foreground"] = index >= background && index < background + foreground;
-    row["agent_id"] = job.source_id;
     row["detached"] = job.Detached();
     row["kind"] = ActivityKindName(job.kind);
     row["label"] =
@@ -429,15 +386,7 @@ json ActivitySupervisor::ActivityViews() const {
     row["status"] = "running";
     if (job.session) {
       std::lock_guard lock(job.session->mutex);
-      std::string progress = job.session->transcript.TailLine();
-      if (job.kind != ActivityKind::kSubagent ||
-          progress.starts_with(kHeadlessProgressPrefix)) {
-        if (job.kind == ActivityKind::kSubagent) {
-          progress.erase(
-              0, std::char_traits<char>::length(kHeadlessProgressPrefix));
-        }
-        row["progress"] = Utf8Trunc(progress, 240);
-      }
+      row["progress"] = Utf8Trunc(job.session->transcript.TailLine(), 240);
       if (job.session->stop_requested) row["status"] = "stopping";
       if (job.session->state == ActivityState::kStopped) {
         row["status"] = "stopped";
@@ -467,8 +416,7 @@ json ActivitySupervisor::ActivityViews() const {
 json ActivitySupervisor::InspectActivity(int64_t id) const {
   auto job = Find(id);
   if (!job) return {{"error", "activity unavailable in this session"}};
-  json result = {
-      {"id", id}, {"agent_id", job->source_id}, {"command", job->cmd}};
+  json result = {{"id", id}, {"command", job->cmd}};
   // Inspection never takes the consuming tool's interaction lock or output.
   if (job->session) {
     std::lock_guard lock(job->session->mutex);
@@ -477,15 +425,6 @@ json ActivitySupervisor::InspectActivity(int64_t id) const {
     result["output"] = ReadLogTail(job->log, static_cast<int64_t>(KiB(64)));
   }
   return result;
-}
-
-size_t ActivitySupervisor::JoinableCount() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(std::count_if(
-      activities_.begin(), activities_.end(), [](const Activity& job) {
-        return !job.Detached() && job.session &&
-               job.kind == ActivityKind::kSubagent;
-      }));
 }
 
 bool ActivitySupervisor::IsLive(int64_t id) const {

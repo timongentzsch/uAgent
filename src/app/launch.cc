@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
@@ -125,5 +126,24 @@ std::string CloseRuntime(const std::string& path) {
       std::chrono::steady_clock::now() + session::kWorkerShutdownTimeout);
   return session::Connect(path).socket ? "the session did not exit in time"
                                        : "";
+}
+std::string RuntimeStatus(const std::string& path) {
+  session::Connection connection = session::Connect(path);
+  if (!connection.socket) return "saved";
+  if (!connection.status.empty()) return connection.status;
+  // One still starting has said nothing yet: its first state says it.
+  std::string status = "idle";
+  session::ReadFrames(
+      connection.socket.Get(), -1, session::kFrameBytes,
+      [&](const json& frame) {
+        if (JsonValue(frame, "kind", "") != "state") return true;
+        status = Standing(JsonValue(frame, "pending", json()),
+                          JsonValue(frame, "busy", false));
+        return false;
+      },
+      // A live runtime answers at once; a stuck one must not hold up who
+      // asks.
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(500));
+  return status;
 }
 }  // namespace uagent

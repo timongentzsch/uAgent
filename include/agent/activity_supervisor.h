@@ -26,9 +26,7 @@
 
 namespace uagent {
 
-// A subagent activity is a delegated child whose result joins the parent
-// conversation when it finishes.
-enum class ActivityKind : uint8_t { kCommand, kSubagent, kMemory, kDetached };
+enum class ActivityKind : uint8_t { kCommand, kMemory, kDetached };
 enum class ActivityState : uint8_t {
   kStarting,
   kRunning,
@@ -86,7 +84,6 @@ struct Activity {
   std::string display_label{};
   std::string receipt_path{};
   std::string source_id{};
-  std::vector<std::string> completion_notes{};
   // Put right when the activity ends, where the sandbox could not deny its
   // writes.
   std::shared_ptr<const SandboxWatch> watch{};
@@ -107,18 +104,6 @@ inline int64_t ActivityId(const Activity& job) {
   return job.id > 0 ? job.id : static_cast<int64_t>(job.pid);
 }
 
-// A running delegated child, reduced to what a one-row status display can
-// carry. `tail` is the child's newest headless-progress line and empty when its
-// newest output is anything else, so it never shows the answer envelope. It is
-// terminal output from another process -- the renderer must sanitize it.
-struct SubagentView {
-  int64_t id = 0;
-  std::string source_id;
-  std::string label;
-  std::string tail;
-  std::chrono::steady_clock::duration elapsed{};
-};
-
 class ActivitySupervisor;
 
 class ActivityReservation {
@@ -138,11 +123,10 @@ class ActivityReservation {
 
  private:
   friend class ActivitySupervisor;
-  ActivityReservation(ActivitySupervisor* supervisor, bool subagent, int64_t id)
-      : supervisor_(supervisor), subagent_(subagent), id_(id) {}
+  ActivityReservation(ActivitySupervisor* supervisor, int64_t id)
+      : supervisor_(supervisor), id_(id) {}
   void Reset();
   ActivitySupervisor* supervisor_ = nullptr;
-  bool subagent_ = false;
   int64_t id_ = 0;
 };
 
@@ -156,9 +140,7 @@ class ActivitySupervisor {
   // Takes ownership of output_fd, input_fd, and log_fd.
   void RegisterIo(const std::shared_ptr<ActivitySession>& session,
                   int output_fd, int input_fd, int log_fd, int64_t log_limit);
-  // max_subagents caps delegated children only; 0 means no per-kind cap.
-  std::optional<ActivityReservation> ReserveActivity(int64_t max_pending,
-                                                     int64_t max_subagents = 0);
+  std::optional<ActivityReservation> ReserveActivity(int64_t max_pending);
   std::optional<Activity> RemoveForeground(pid_t pid);
   std::optional<Activity> MoveForegroundToBackground(pid_t pid);
   bool WaitForForeground(size_t count,
@@ -168,10 +150,6 @@ class ActivitySupervisor {
   bool TryAdd(Activity job, int64_t max_pending);
   size_t PendingCount() const;
   size_t Count() const;
-  size_t JoinableCount() const;
-  // Background delegated children, newest last. Takes no lock a tool holds, so
-  // a status repaint never waits on one.
-  std::vector<SubagentView> SubagentViews() const;
   json ActivityViews() const;
   json InspectActivity(int64_t id) const;
   void SetOwner(std::string owner);
@@ -201,8 +179,8 @@ class ActivitySupervisor {
 
  private:
   friend class ActivityReservation;
-  std::optional<int64_t> CommitReservation(Activity job, bool subagent);
-  void ReleaseReservation(bool subagent);
+  std::optional<int64_t> CommitReservation(Activity job);
+  void ReleaseReservation();
   std::optional<Activity> TakeForegroundLocked(pid_t pid)
       UAGENT_REQUIRES(mutex_);
   void AssignId(Activity& job) UAGENT_REQUIRES(mutex_);
@@ -230,7 +208,6 @@ class ActivitySupervisor {
   bool child_wake_registered_ = false;
   bool stopping_ UAGENT_GUARDED_BY(mutex_) = false;
   int64_t reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
-  int64_t subagent_reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t generation_ UAGENT_GUARDED_BY(mutex_) = 0;
   std::string owner_ UAGENT_GUARDED_BY(mutex_);
   int64_t next_id_ UAGENT_GUARDED_BY(mutex_) = int64_t{1} << 30;

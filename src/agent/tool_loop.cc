@@ -331,16 +331,14 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   ToolContext context{deadline};
   context.turn_id = turn_id_;
   context.hops = turn_hops_;
-  context.enabled_tools = EnabledTools();
   context.delegations =
       std::max<int64_t>(1, std::ranges::count_if(runnable, [&](size_t index) {
                           return tasks[index].tool->delegates;
                         }));
-  // A child blocks its worker for its whole run, so a batch of children
-  // gets a worker each, up to the slots children may hold at once.
-  const size_t width = static_cast<size_t>(
-      std::max(ToolConcurrency(),
-               std::min(context.delegations, MaxDelegatedActivities())));
+  // A call that waits for agents blocks its worker for their whole run, so
+  // each gets one.
+  const size_t width =
+      static_cast<size_t>(std::max(ToolConcurrency(), context.delegations));
   if (Debug().Enabled()) {
     // Any two adjacent runnable calls that are both parallel-safe form a batch.
     bool parallel = false;

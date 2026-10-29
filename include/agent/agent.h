@@ -122,7 +122,7 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
-  // Panel/thread role ({kind, thread}), saved in the session header.
+  // Panel or agent role ({kind} or {agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
   // Bills every response under this purpose instead of the conversation.
   void SetUsagePurpose(std::string purpose) {
@@ -308,6 +308,9 @@ class Agent {
   void PushStepNote(StepState& loop, const std::string& note);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
+  // An agent counts the turns mail starts in a row (agent.streak, which
+  // agent_send reads); a person's message starts the count over.
+  void CountStreak(const json& origin);
   StepFlow PrepareStep(TurnExecution& state, StepState& loop);
   StepFlow HandleFailedResponse(ChatResult& response, TurnExecution& state,
                                 StepState& loop, const json& schemas,

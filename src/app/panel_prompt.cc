@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "include/agent/session_store.h"
+#include "include/app/agent_tools.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
@@ -132,7 +133,7 @@ void AwaitPanel(PanelRequest& panel) {
       continue;
     }
     if (!panel.submitted || !panel.completed || panel.busy ||
-        !panel.probe.empty() || (!panel.paused && ThreadsOwe(panel.cwd))) {
+        !panel.probe.empty() || (!panel.paused && AgentsOwe(panel.path))) {
       continue;
     }
     panel.probe = NewRequestId();

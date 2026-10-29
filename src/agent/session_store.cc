@@ -120,9 +120,7 @@ json HeaderJson(const SessionMetadata& metadata) {
                  {kSessionHeaderParent, metadata.parent_session_id},
                  {kSessionHeaderForkTurn, metadata.forked_at_turn},
                  {kSessionHeaderForkTime, metadata.forked_at_time}};
-  if (!metadata.delegation.empty()) {
-    header[kSessionHeaderDelegation] = metadata.delegation;
-  }
+  if (!metadata.agent.empty()) header[kSessionHeaderAgent] = metadata.agent;
   if (!metadata.kind.empty()) header[kSessionHeaderKind] = metadata.kind;
   if (!metadata.memory) header["memory"] = false;
   return header;
@@ -284,7 +282,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTurn, int64_t{0});
   record.metadata.forked_at_time =
       JsonValue(header, kSessionHeaderForkTime, "");
-  record.metadata.delegation = DelegationOf(header);
+  record.metadata.agent = AgentOf(header);
   record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
@@ -327,6 +325,29 @@ std::string PanelPath(const std::string& cwd) {
       .string();
 }
 
+std::vector<SessionInfo> SessionsBeside(const std::string& path) {
+  const std::filesystem::path directory =
+      std::filesystem::path(path).parent_path();
+  std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  std::erase_if(sessions, [&](const SessionInfo& info) {
+    return !info.error.empty() || info.kind == kSessionKindPanel ||
+           std::filesystem::path(info.path).parent_path() != directory;
+  });
+  return sessions;
+}
+
+std::string AgentParentPath(const std::string& path,
+                            const std::string& parent) {
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(
+           std::filesystem::path(path).parent_path(), ec)) {
+    if (!parent.empty() && SessionIdFor(entry.path().string()) == parent) {
+      return entry.path().string();
+    }
+  }
+  return "";
+}
+
 std::string SessionLockPath(const std::string& path) {
   return CanonicalAccessPath(path).string() + kSessionLockSuffix;
 }
@@ -356,12 +377,10 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       }
     }
   }
-  // Every scope but kAll, the host's whole view, leaves panels out.
   const auto listed = [&](const SessionInfo& info) {
-    return (scope == SessionScope::kAll ||
-            (info.cwd == current && info.kind != kSessionKindPanel)) &&
-           (!info.delegation.empty() && !ThreadLifetime(info.delegation)) ==
-               (scope == SessionScope::kChildren);
+    return scope == SessionScope::kAll ||
+           (info.cwd == current && info.kind != kSessionKindPanel &&
+            info.parent.empty());
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
@@ -399,7 +418,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
         item.tokens = JsonValue(header, "tokens", int64_t{0});
-        item.delegation = DelegationOf(header);
+        item.parent = JsonValue(AgentOf(header), "parent", "");
         item.kind = JsonValue(header, kSessionHeaderKind, "");
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
@@ -579,11 +598,9 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.metadata.session_id = identity;
   record.metadata.parent_session_id = parent_session_id;
   // A fork is the user's own conversation: never a second panel, and
-  // no longer a thread its panel steers.
+  // no longer an agent its parent steers.
   record.metadata.kind.clear();
-  if (ThreadLifetime(record.metadata.delegation)) {
-    record.metadata.delegation = json::object();
-  }
+  record.metadata.agent = json::object();
   record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
   if (!title.empty()) {
@@ -732,31 +749,15 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   // a completed deletion. Acquire ownership before changing any files.
   if (!draft_path.empty()) fs::remove(draft_path, ec);
   // What the session owns sits beside it: its siblings (assets, edits,
-  // journal, a panel's plan, the lock) and its subagents' transcripts, which
-  // are never listed on their own. A thread is a conversation of its own and
-  // stays.
+  // journal, a panel's spend, the lock). Its agents are conversations of
+  // their own and stay.
   const fs::path own = CanonicalAccessPath(path);
   const std::string prefix = own.filename().string() + ".";
   std::vector<fs::path> siblings;
-  std::vector<std::string> subagents;
   std::error_code scan;
   for (const auto& entry : fs::directory_iterator(own.parent_path(), scan)) {
-    const std::string name = entry.path().filename().string();
-    if (name.starts_with(prefix)) {
+    if (entry.path().filename().string().starts_with(prefix)) {
       siblings.push_back(entry.path());
-      continue;
-    }
-    if (entry.path().extension() != ".json") continue;
-    const json role = DelegationOf(SessionHeader(entry.path().string()));
-    const std::string parent = JsonValue(role, "parent_session", "");
-    if (!parent.empty() && !ThreadLifetime(role) &&
-        CanonicalAccessPath(parent) == own) {
-      subagents.push_back(entry.path().string());
-    }
-  }
-  for (const std::string& subagent : subagents) {
-    if (SessionStoreStatus removed = Remove(subagent, ""); !removed.Ok()) {
-      return removed;
     }
   }
   // remove_all never follows symlinks. The lock goes last, still held.

@@ -88,9 +88,9 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // "panel", "thread" or empty; a thread names its `folder`. `model` is
-  // the one the file names.
-  std::string kind, folder, model;
+  // "panel" or empty; `parent` names the session that started an agent.
+  // `model` is the one the file names.
+  std::string kind, parent, model;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
@@ -202,7 +202,7 @@ class SessionHost {
                     std::string& error);
   json Configure(const json& command);
   std::string AssetPath(const std::string& id) const;
-  // The folder a conversation works in: a thread's folder, else its own.
+  // The folder a conversation works in.
   std::string Folder(const std::string& id) const;
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);

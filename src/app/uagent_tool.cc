@@ -24,7 +24,6 @@ void RequireHuman(Tool& tool) {
     return ApprovalClass::kMandatoryHuman;
   };
   tool.capabilities = 0;
-  tool.available_in_lean = false;
   tool.category = "system";
   tool.intent = "setup";
 }
@@ -85,7 +84,6 @@ Tool UagentTool(SelfDescriptionProvider describe) {
   // Inspection survives restricted policies.
   tool.capabilities = 0;
   tool.parallel_safe = true;
-  tool.available_in_lean = false;
   tool.category = "system";
   tool.intent = "setup";
   tool.headline = [](const json& arguments) {

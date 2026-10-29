@@ -19,16 +19,14 @@ namespace uagent {
 namespace {
 constexpr size_t kDeliveredIds = 256;
 
-// Who may talk to whom is MayMail's; this process is the recipient. A thread
-// carries its role in its options, a subagent in its environment, and both
-// know it before a header is saved.
+// Who may talk to whom is MayMail's; this process is the recipient, and
+// knows its role before its header is saved.
 bool MailAllowed(const Mail& mail, const std::string& own_path,
                  const json& role) {
-  MailParty to = SessionParty(own_path);
-  to.delegation = OwnDelegation().empty() ? ThreadRole(role) : OwnDelegation();
-  if (mail.sender_path.empty()) return MayMail(OwnerParty(mail.from), to);
-  return MailboxIdFor(mail.sender_path) == mail.from &&
-         MayMail(SessionParty(mail.sender_path), to);
+  return !mail.sender_path.empty() &&
+         MailboxIdFor(mail.sender_path) == mail.from &&
+         MayMail(SessionParty(mail.sender_path),
+                 SessionParty(own_path, AgentOf(role)));
 }
 }  // namespace
 

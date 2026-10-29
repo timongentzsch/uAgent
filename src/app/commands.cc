@@ -12,6 +12,7 @@
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/transcript.h"
+#include "include/app/agent_tools.h"
 #include "include/app/control.h"
 #include "include/app/self_description.h"
 #include "include/core/config_registry.h"
@@ -28,7 +29,6 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/providers/providers.h"
-#include "include/tools/session.h"
 #include "src/app/commands_internal.h"
 
 namespace uagent {
@@ -307,8 +307,10 @@ CommandReply RunSlashCommand(AppSession& session,
                                          {"mime", attachment.mime}});
       }
       break;
-    case SlashCommandId::kProcesses:
     case SlashCommandId::kAgents:
+      reply.Print("%s", TerminalSafe(AgentTree(session.session_file)).c_str());
+      return reply;
+    case SlashCommandId::kProcesses:
       result = ActivityCommand(session, command);
       reply.Print("%s", TerminalSafe(ActivityText(result)).c_str());
       return reply;

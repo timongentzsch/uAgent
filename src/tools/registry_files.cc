@@ -123,7 +123,6 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
       }));
   write.mutates = outside_scratch;
   write.capabilities = Capability(ToolCapability::kMutate);
-  write.available_in_lean = false;
   write.headline = [](const json& a) {
     return Headline{"Writing", "Wrote", JsonValue(a, "path", "")};
   };
@@ -152,7 +151,6 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
       }));
   edit.mutates = outside_scratch;
   edit.capabilities = Capability(ToolCapability::kMutate);
-  edit.available_in_lean = false;
   edit.headline = [](const json& a) {
     return Headline{"Editing", "Edited", JsonValue(a, "path", "")};
   };
@@ -179,7 +177,6 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
       }));
   remove.mutating = true;
   remove.capabilities = Capability(ToolCapability::kMutate);
-  remove.available_in_lean = false;
   remove.headline = [](const json& a) {
     return Headline{"Deleting", "Deleted", JsonValue(a, "path", "")};
   };

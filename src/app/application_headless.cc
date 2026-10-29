@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <poll.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -7,6 +9,7 @@
 #include <string>
 #include <utility>
 
+#include "include/app/agent_tools.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -22,6 +25,7 @@
 
 namespace uagent {
 namespace {
+constexpr int kAgentPollMs = 250;
 
 // A session's totals less what they were at `before`, route by route.
 json UsedSince(const Agent& agent, const json& before) {
@@ -161,19 +165,17 @@ int Application::RunHeadless() {
   };
   answer_mail();
   PublishChannelState();
-  // Background work is observational and never starts a model turn. Keep the
-  // process alive long enough to publish completion and drain retained state.
-  while (runtime_.processes.JoinableCount() > 0 && !stopping()) {
-    uint64_t generation = runtime_.processes.Generation();
-    if (!agent_.DrainActivities()) {
-      (void)runtime_.processes.WaitForChange(generation, deadline);
-    }
-    agent_.AccountSideUsage();
+  // The agents it started are part of its answer: it waits while they owe
+  // it a report, and takes each up as a turn. One waiting on a person is
+  // not waited for.
+  while (!stopping() && AgentsOwe(session_file_)) {
+    pollfd wake{AbortWakeFd(), POLLIN, 0};
+    poll(&wake, 1, kAgentPollMs);
     answer_mail();
     SaveSession();
   }
-  out_of_time_ = runtime_.processes.JoinableCount() > 0 &&
-                 std::chrono::steady_clock::now() >= deadline;
+  out_of_time_ =
+      std::chrono::steady_clock::now() >= deadline && AgentsOwe(session_file_);
   agent_.AccountSideUsage();
   context_.output.Restore();
 

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
+#include "include/app/agent_tools.h"
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
 #include "include/app/config_proposal.h"
@@ -27,9 +28,7 @@
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
-#include "include/tools/session.h"
 #include "include/tools/skill.h"
-#include "include/tools/subagent.h"
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "src/app/bootstrap_internal.h"
@@ -59,8 +58,8 @@ std::vector<Tool> BuildTools(AppContext& context,
                              std::vector<Skill> skills, std::string& error) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
-  // One read of the toolset selector: the three shapes it can take are one
-  // decision, not three unrelated conditions.
+  // A memory extractor gets its memory tools only; a tool-less child remains
+  // useful for constrained internal tasks.
   const std::string toolset = EnvStr("UAGENT_INTERNAL_TOOLSET");
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
@@ -72,7 +71,6 @@ std::vector<Tool> BuildTools(AppContext& context,
     std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
     return tools;
   }
-  // A tool-less child remains useful for constrained internal tasks.
   if (toolset == "none") return {};
   tools.push_back(UagentTool([app = &context](SelfTopic topic,
                                               const std::string& name) {
@@ -98,11 +96,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
-  if (!session_path.empty() && AgentDepth() == 0) {
-    tools.push_back(ArtifactTool(session_path));
-  }
-  // Only a session someone can answer gets ask: never headless runs or
-  // delegated children, which could only ever time out.
+  if (!session_path.empty()) tools.push_back(ArtifactTool(session_path));
+  // Only a session someone can answer gets ask: never a headless run, which
+  // could only ever time out.
   if (context.channel && InteractiveApprovalAvailable()) {
     // Option images are snapshotted into the session, as artifacts are, so
     // every client can show them.
@@ -128,7 +124,7 @@ std::vector<Tool> BuildTools(AppContext& context,
 #ifdef UAGENT_BROWSER
   // The web host runs the browser; any top-level session that reaches it may
   // use it, one at a time. A one-shot run has no session file to be named by.
-  if (!browser::DataDirectory().empty() && AgentDepth() == 0 &&
+  if (!browser::DataDirectory().empty() &&
       browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
     context.browser_lease =
         session_path.empty() ? RandomToken(16) : SessionIdFor(session_path);
@@ -146,69 +142,34 @@ std::vector<Tool> BuildTools(AppContext& context,
         }));
   }
 #endif
-  // The default lean child is an isolation and context-efficiency boundary:
-  // do not clone the parent's entire MCP fleet into every delegation. A root
-  // lean session and an explicitly requested full child still get MCP. A
-  // panel may call none of their tools, so it starts none of them.
-  if (!context.options.Panel() && (AgentDepth() == 0 || toolset != "lean")) {
+  // An agent's MCP servers are its first ancestor's: each agent starting
+  // its own fleet would multiply them. A panel may call none of their tools,
+  // so it starts none of them.
+  if (!context.options.Panel() && AgentDepth() == 0) {
     error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
     if (!error.empty()) return {};
   }
-  if (CanDelegate()) {
-    tools.push_back(
-        SubagentTool(api, runtime.processes, context.provider.routes,
-                     context.provider.providers, context.options.debug));
-    tools.push_back(
-        SubagentFanoutTool(api, runtime.processes, context.provider.routes,
-                           context.provider.providers, context.options.debug));
-  }
-  // Peer sessions are text-only and isolation-gated by links, so the session
-  // tools are safe in every toolset, lean included.
-  tools.push_back(SessionTool());
-  tools.push_back(SessionMessageTool([](const std::string& path) {
-    std::string ignored;  // the mail is queued either way
-    session::Wake(JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
-                  ignored);
-  }));
-  // A side fork keeps a lead agent's folder tools without becoming another
-  // panel. Its saved tool ceiling still decides which of them are offered.
-  bool side_panel_tools = false;
+  AddAgentTools(tools, api, [app = &context] {
+    return ChosenSelection(app->runtime.api, app->provider.providers);
+  });
+  if (context.options.Panel()) AdaptPanelTools(tools);
+  // A lead agent's side conversation runs in the ordinary sandbox, so a
+  // lead agent's read-only commands do not come with it.
   if (!context.options.Panel() && !session_path.empty()) {
     const auto loaded = SessionStore::Inspect(session_path);
-    if (loaded.record) {
-      const json origin = JsonValue(
-          JsonValue(loaded.record->state.display, "facts", json::object()),
-          "side-origin", json::object());
-      if (const json* names = JsonArray(origin, "tools")) {
-        side_panel_tools = std::ranges::any_of(*names, [](const json& name) {
-          return name == "thread" || name == "history" || name == "decide";
-        });
-      }
+    if (loaded.record &&
+        JsonValue(JsonValue(JsonValue(loaded.record->state.display, "facts",
+                                      json::object()),
+                            "side-origin", json::object()),
+                  "parent", "") == SessionIdFor(PanelPath(CanonicalCwd()))) {
+      std::erase_if(tools, [](const Tool& tool) { return tool.name == "run"; });
     }
-  }
-  if (context.options.Panel() || side_panel_tools) {
-    AddPanelTools(tools, CanonicalCwd(), [app = &context] {
-      return ChosenSelection(app->runtime.api, app->provider.providers);
-    });
-  }
-  // A side fork runs in the ordinary sandbox, so a lead agent's read-only
-  // commands do not come with it.
-  if (side_panel_tools && !context.options.Panel()) {
-    std::erase_if(tools, [](const Tool& tool) { return tool.name == "run"; });
-  }
-  if (toolset == "lean") {
-    KeepLeanTools(tools);
   }
   ApplyToolPolicy(tools, context.tool_policy);
   // A command in the readonly sandbox changes nothing, so it needs no
-  // approval, and a child inherits that sandbox.
+  // approval.
   const SandboxStatus& sandbox = SandboxRuntime();
-  const bool read_only =
-      sandbox.mode == SandboxMode::kEnforced && sandbox.policy.read_only;
-  const bool commands = std::ranges::any_of(tools, [](const Tool& tool) {
-    return tool.capabilities & Capability(ToolCapability::kExecute);
-  });
-  if (read_only) {
+  if (sandbox.mode == SandboxMode::kEnforced && sandbox.policy.read_only) {
     for (Tool& tool : tools) {
       if (tool.name != "run") continue;
       tool.mutating = false;
@@ -217,25 +178,6 @@ std::vector<Tool> BuildTools(AppContext& context,
       tool.description +=
           " Commands here only read: they write nothing but temporary "
           "files and reach no network.";
-    }
-  }
-  // A child gets only the tools its parent has, and a lean one none that
-  // edit: where nothing here runs commands, or only read-only ones, a lean
-  // child only reads, so starting one is no change to approve, as starting a
-  // thread is not.
-  if (!commands || read_only) {
-    for (Tool& tool : tools) {
-      if (!tool.delegates) continue;
-      // So a brief does not ask a child for what it cannot do.
-      tool.description +=
-          commands
-              ? " Children have only your tools and sandbox: their commands "
-                "only read, and write nothing but temporary files."
-              : " Children have only your tools: none of them runs commands.";
-      tool.mutating = false;
-      tool.mutates = [](const json& a) {
-        return JsonValue(a, "mode", "lean") == "full";
-      };
     }
   }
   std::vector<std::string> tool_names = ToolNames(tools);

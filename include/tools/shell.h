@@ -43,7 +43,6 @@ struct ShellCommand {
   std::string activity_label = {};
   std::string receipt_path = {};
   std::string source_id = {};
-  std::vector<std::string> completion_notes = {};
   json activity_metadata = json::object();
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =

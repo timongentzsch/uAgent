@@ -200,7 +200,7 @@ std::string ChooseModel(const std::vector<std::string>& ids,
                              : "Enter keeps ",
            fallback.c_str());
     fflush(stdout);
-    const std::string answer = ReadLine();
+    std::string answer = ReadLine();
     if (answer.empty()) return current.empty() ? suggested : "";
     int64_t picked = 0;
     if (ParseInt64(answer.c_str(), picked) && picked >= 1 &&

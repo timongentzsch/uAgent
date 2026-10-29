@@ -117,9 +117,11 @@ def test_a_start_without_a_provider_says_why(root, home, *, binary):
     for name in ("UAGENT_BASE_URL", "UAGENT_MODEL", "OPENROUTER_API_KEY"):
         env.pop(name, None)
     result = run_dialog(root, env, "", binary=binary)
-    assert_true(result.returncode == 1, result.stdout + result.stderr)
-    assert_true("no provider configured — run uagent setup" in result.stderr, result.stderr)
-    assert_true("ended while starting" not in result.stderr, result.stderr)
+    # Before a client connects it reaches stderr, after one does the screen.
+    output = result.stdout + result.stderr
+    assert_true(result.returncode == 1, output)
+    assert_true("no provider configured — run uagent setup" in output, output)
+    assert_true("ended while starting" not in output, output)
 
 
 def test_command_help(root, home, *, binary):

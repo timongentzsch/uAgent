@@ -128,6 +128,64 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
             )
 
 
+def test_web_guidance_starts_its_own_work(root, home, *, binary):
+    """Guidance read between steps shows where it was read, after the work
+    before it, and the work after it replies to it, live and saved alike."""
+    workspace = root / "steer-work"
+    workspace.mkdir()
+    (workspace / "a.txt").write_text("alpha")
+    (workspace / "b.txt").write_text("beta")
+    entered, steered = threading.Event(), threading.Event()
+
+    def responder(_, body):
+        called = {message.get("tool_call_id") for message in body["messages"]}
+        if "first" not in called:
+            # The first step holds until the guidance waits behind it.
+            entered.set()
+            steered.wait(timeout=budget(10))
+            return tool_call("read_path", {"path": "a.txt"}, call_id="first")
+        if "second" not in called:
+            return tool_call("read_path", {"path": "b.txt"}, call_id="second")
+        return event({"content": "steered answer"})
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="Read a.txt")
+            assert_true(entered.wait(budget(10)), "the turn never asked the model")
+            client.command("steer", session, text="also read b.txt")
+            steered.set()
+            done = client.until(
+                session,
+                lambda value: (
+                    not value["metadata"]["turn_active"] and "steered answer" in json.dumps(value)
+                ),
+            )
+            nodes = done["state"]["view"]["nodes"]
+            turn = nodes[0]["id"]
+            guidance = next(node["id"] for node in nodes if node.get("role") == "user")
+            shape = [(node["kind"], node["parent"]) for node in nodes]
+            assert_true(
+                shape
+                == [
+                    ("turn", None),
+                    ("work", turn),
+                    ("call", f"w-{turn}"),
+                    ("message", turn),
+                    ("work", guidance),
+                    ("call", f"w-{guidance}"),
+                    ("message", turn),
+                    ("footer", turn),
+                ],
+                nodes,
+            )
+            status, saved, _ = client.json(f"/api/sessions/{session['id']}?before=0")
+            assert_true(status == 200, saved)
+            saved_shape = [(node["id"], node["parent"]) for node in saved["state"]["view"]["nodes"]]
+            assert_true(saved_shape == [(node["id"], node["parent"]) for node in nodes], saved)
+
+
 def test_web_a_message_with_files_during_a_turn_is_guidance(root, home, *, binary):
     """Sent while a turn runs, a message with files steers it as a steer
     would, instead of being turned away as busy."""

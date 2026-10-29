@@ -435,6 +435,8 @@ class Agent {
   void PublishWork(const std::vector<CallTask>& tasks,
                    const std::vector<json>& activities,
                    const std::vector<json>& groups);
+  // Ends the work replying to the latest message of yours as `outcome`.
+  void CloseWork(const std::string& outcome);
   // True when the user interrupted the batch.
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
@@ -468,12 +470,15 @@ class Agent {
   RouteUsage route_usage_;
   std::string session_id_;
   bool retain_exchanges_ = false;
+  // The turn's message, and the latest message of yours, which the work
+  // since replies to.
   std::string turn_root_, reply_to_;
-  // What this turn's calls did, for its work node.
-  struct TurnWork {
+  // What that work's calls did and when it began, for its work node.
+  struct Work {
     int64_t steps = 0, errors = 0;
     std::set<std::string> edited;
-  } turn_work_;
+    std::chrono::steady_clock::time_point started;
+  } work_;
   // Image analyses by key, the most recently used first.
   std::list<std::pair<std::string, std::string>> image_analyses_;
   // Images whose analysis failed this turn. Each later step would otherwise

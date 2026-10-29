@@ -222,7 +222,9 @@ void TerminalPresenter::DrawTree(const json& view, bool live) {
   }
   const int depth = detail_->depth;
   // `level` is how far below a root a node sits: a turn is 0, its work 1,
-  // the work's steps 2. A node is open while its level is within the depth.
+  // the work's steps 2, and the work replying to a message of yours sits at
+  // that message's level, as the web draws it. A node is open while its
+  // level is within the depth.
   const auto draw = [&](const auto& self, const json& node,
                         size_t level) -> void {
     const std::string_view kind = Field(node, "kind");
@@ -251,8 +253,11 @@ void TerminalPresenter::DrawTree(const json& view, bool live) {
       if (settled) drawn_.emplace(id);
     }
     const auto under = children.find(id);
-    if (!open || under == children.end()) return;
-    for (const json* child : under->second) self(self, *child, level + 1);
+    const bool message = kind == "message";
+    if ((!open && !message) || under == children.end()) return;
+    for (const json* child : under->second) {
+      self(self, *child, message ? level : level + 1);
+    }
   };
   if (const auto roots = children.find(std::string_view());
       roots != children.end()) {

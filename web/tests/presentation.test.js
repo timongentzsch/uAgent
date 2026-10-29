@@ -474,6 +474,44 @@ test("a running turn's work line says what it is doing now", () => {
   assert.equal(currentStep(turn.kids[0]), "Running make");
 });
 
+test("guidance read mid-turn shows where it was read, at every depth", () => {
+  const { minimal, default: middle, full } = depths(golden.steered);
+  const [ask, steer] = ["you: check the disk", "you: also look at /home"];
+  const end = ["Both have room.", "footer"];
+  assert.deepEqual(minimal, [
+    ask,
+    "› Worked 1 step · 41s",
+    steer,
+    "› Worked 1 step · 18s",
+    ...end,
+  ]);
+  assert.deepEqual(middle, [
+    ask,
+    "⌄ Worked 1 step · 41s",
+    "  › Ran df · 5ms",
+    steer,
+    "⌄ Worked 1 step · 18s",
+    "  › Ran du /home · 5ms",
+    ...end,
+  ]);
+  assert.deepEqual(full, [
+    ask,
+    "⌄ Worked 1 step · 41s",
+    "  ⌄ Ran df · 5ms",
+    steer,
+    "⌄ Worked 1 step · 18s",
+    "  ⌄ Ran du /home · 5ms",
+    ...end,
+  ]);
+  // Live, each work arrives after its first call, and every node lands
+  // where the saved page has it.
+  const [turn, first, df, guidance, second, du, ...rest] = golden.steered;
+  const live = [turn, df, first, guidance, du, second, ...rest]
+    .map((node) => ({ kind: "node", node }))
+    .reduce(placeNode, []);
+  assert.deepEqual(live, golden.steered);
+});
+
 test("paged history reads older pages in front, the newer copy winning", () => {
   const [older, newer] = golden.pages;
   const merged = mergeNodes(older, newer);

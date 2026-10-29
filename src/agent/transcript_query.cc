@@ -60,9 +60,7 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
 
 // `nodes` with the work and group nodes they sit under, each before its
 // first node.
-std::vector<json> WithStructure(
-    std::vector<json> nodes, const json& facts,
-    const std::map<std::string, const json*>& summaries) {
+std::vector<json> WithStructure(std::vector<json> nodes, const json& facts) {
   std::set<std::string> held;
   for (const json& node : nodes) held.insert(JsonValue(node, "id", ""));
   std::vector<json> out;
@@ -72,13 +70,8 @@ std::vector<json> WithStructure(
       return;
     }
     const json& recorded = JsonValue(facts, id.c_str(), kNone);
-    const auto summary = summaries.find(id.substr(2));
-    json node = id.starts_with("g-")
-                    ? GroupNode(id, recorded)
-                    : WorkNode(id.substr(2), recorded,
-                               summary == summaries.end()
-                                   ? nullptr
-                                   : JsonObject(*summary->second, "summary"));
+    json node = id.starts_with("g-") ? GroupNode(id, recorded)
+                                     : WorkNode(id.substr(2), recorded);
     ensure(JsonValue(node, "parent", ""));
     out.push_back(std::move(node));
   };
@@ -94,14 +87,7 @@ TranscriptView::TranscriptView(const Conversation& conversation)
     : conversation_(conversation) {}
 
 const std::map<uint64_t, TranscriptEntry>& TranscriptView::Index() const {
-  std::call_once(indexed_, [this] {
-    entries_ = Entries(conversation_);
-    for (const auto& [sequence, entry] : entries_) {
-      if (entry.kind == "turn_summary") {
-        summaries_[JsonValue(*entry.message, "turn_root", "")] = entry.message;
-      }
-    }
-  });
+  std::call_once(indexed_, [this] { entries_ = Entries(conversation_); });
   return entries_;
 }
 
@@ -136,7 +122,7 @@ json TranscriptView::Page(uint64_t before) const {
   // The page ends on a whole turn, unless one turn is larger than a page.
   if (more && whole) page.resize(whole);
   std::reverse(page.begin(), page.end());
-  page = WithStructure(std::move(page), facts, summaries_);
+  page = WithStructure(std::move(page), facts);
   const auto first = std::ranges::find_if(
       page, [](const json& node) { return node.contains("sequence"); });
   const json oldest = first == page.end() ? json(0) : (*first)["sequence"];

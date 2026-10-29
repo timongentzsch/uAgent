@@ -6,9 +6,10 @@
 //   {id, parent, kind, headline {verb, target}, result {word, facts...},
 //    state, routine, time?, body {kind, text, ...}}
 // `parent` is null at the root; siblings keep the order they arrived in.
-// Kinds: turn (a message of yours), message, work (a turn's steps), group
-// (like calls of one step), call, thinking, notice and footer. State is
-// running, ok, failed or cancelled. Blank text is never a body.
+// Kinds: turn (a message of yours), message, work (the steps replying to a
+// message of yours, under it), group (like calls of one step), call,
+// thinking, notice and footer. State is running, ok, failed or cancelled.
+// Blank text is never a body.
 
 #include <string>
 #include <string_view>
@@ -25,9 +26,10 @@ json MakeNode(std::string id, std::string_view parent, std::string_view kind,
 void SetBody(json& node, std::string_view kind, const std::string& text,
              bool truncated = false);
 bool Blank(std::string_view text);
-std::string WorkId(std::string_view turn);
+// The work replying to `message`; "" for none.
+std::string WorkId(std::string_view message);
 std::string ThinkingId(std::string_view message);
-// A reply's thinking: a node of its own under its turn's work.
+// A reply's thinking: a node of its own under its work.
 json ThinkingNode(std::string_view message, std::string_view work,
                   json fields = json::object());
 
@@ -36,21 +38,21 @@ json ThinkingNode(std::string_view message, std::string_view work,
 json CallHeadline(const json& view, std::string_view state,
                   const std::string& sent);
 // A call as recorded or announced (tool.call); it sits under its group, else
-// under the work of `turn`.
-json CallNode(const json& record, const std::string& turn);
+// under `work`.
+json CallNode(const json& record, std::string_view work);
 // The files a call handed to the person, as a node of their own under its
 // turn, so they show at every depth; null when it handed none. The call's
 // node keeps its other parts.
 json FilesNode(const json& record, std::string_view turn);
-// A turn's work from its counts ({items, edited, errors}), finished by the
-// turn's `summary` when it has one: headline "Worked" and its counts
-// ("6 steps · 1 error"), and how long it took as the result word.
-json WorkNode(const std::string& turn, const json& counts,
-              const json* summary = nullptr);
+// The work replying to `message` from its facts ({items, edited, errors}),
+// finished once they hold its `outcome` and `duration_ms`: headline "Worked"
+// and its counts ("6 steps · 1 error"), and how long it took as the result
+// word.
+json WorkNode(const std::string& message, const json& facts);
 // The groups a step's calls fold into, from their activities: adjacent,
 // successful calls of one groupable intent. Each {id, verb, members}.
 std::vector<json> GroupCalls(const std::vector<json>& activities);
-// A group as recorded: {verb, calls, turn}: "Explored" and "3 calls".
+// A group as recorded: {verb, calls, work}: "Explored" and "3 calls".
 json GroupNode(const std::string& id, const json& group);
 // A recorded entry: a receipt or a compaction is a notice, a turn's summary
 // its footer.

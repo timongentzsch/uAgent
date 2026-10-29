@@ -189,6 +189,7 @@ namespace uagent {
   X(TestGoldenFileHandedOver)                     \
   X(TestGoldenBlankReplyAndMcpCall)               \
   X(TestGoldenRunningTurn)                        \
+  X(TestGoldenSteeredTurn)                        \
   X(TestGoldenPagesEndOnWholeTurns)               \
   X(TestCompactionNoticeSaysWhatWent)             \
   X(TestObservabilityEvents)                      \

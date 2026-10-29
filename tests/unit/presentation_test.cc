@@ -121,17 +121,17 @@ void TestTreeRows() {
                     {"target", "x"}};
   // A failed call's row says so; what it printed stays in its body, which
   // only an open row shows.
-  std::string drawn = Drawn({CallNode(record, "m-1")});
+  std::string drawn = Drawn({CallNode(record, "w-m-1")});
   CHECK(drawn.find("    ✗ Started agent x · failed\n") != std::string::npos);
   CHECK(drawn.find("body-must-not-enter-row") == std::string::npos);
-  CHECK(Drawn({CallNode(record, "m-1")}, "full").find("      │ ") !=
+  CHECK(Drawn({CallNode(record, "w-m-1")}, "full").find("      │ ") !=
         std::string::npos);
 
   // Closed, a call is one line, whatever its output says; only the recorded
   // state marks a failure.
   json command = Record("c2", "run", "ok", "error: printed by command");
   command["view"] = {{"verb", {"Running", "Ran"}}, {"target", "make\nmore"}};
-  drawn = Drawn({CallNode(command, "m-1")});
+  drawn = Drawn({CallNode(command, "w-m-1")});
   CHECK(drawn.find("    · Ran make\n") != std::string::npos);
   CHECK(drawn.find("printed by command") == std::string::npos);
   CHECK(drawn.find("more") == std::string::npos);
@@ -140,7 +140,7 @@ void TestTreeRows() {
   command["body_kind"] = "tail";
   command["truncated"] = true;
   command["tail"] = "98\n\x1b[31m99\x1b[0m\n100\n101\n";
-  drawn = Drawn({CallNode(command, "m-1")}, "full");
+  drawn = Drawn({CallNode(command, "w-m-1")}, "full");
   CHECK(drawn.find("      │ 99\n      │ 100\n      │ 101\n") !=
         std::string::npos);
   CHECK(drawn.find("98") == std::string::npos);
@@ -149,7 +149,7 @@ void TestTreeRows() {
   // A label is stored text: shown, never obeyed.
   CHECK(Drawn({GroupNode("g-t-c1", {{"verb", "Explored\x1b[2J"},
                                     {"calls", 2},
-                                    {"turn", "m-1"}})})
+                                    {"work", "w-m-1"}})})
             .find("Explored\\x1b[2J 2 calls") != std::string::npos);
 
   // A terminal whose locale cannot decode UTF-8 gets the same rows in ASCII
@@ -158,7 +158,7 @@ void TestTreeRows() {
   content["view"] = {{"verb", {"Running", "Ran"}}, {"target", "µ"}};
   bool prior_unicode = g_unicode;
   g_unicode = false;
-  drawn = Drawn({CallNode(content, "m-1")}, "full");
+  drawn = Drawn({CallNode(content, "w-m-1")}, "full");
   CHECK(drawn.find("    x Ran µ - failed\n") != std::string::npos);
   CHECK(drawn.find("      | model text: µ · ← …") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
@@ -166,7 +166,7 @@ void TestTreeRows() {
 
   // Plain mode speaks each row's kind instead of drawing its glyph.
   g_plain = true;
-  CHECK(Drawn({CallNode(content, "m-1")}).find("failed: Ran µ") !=
+  CHECK(Drawn({CallNode(content, "w-m-1")}).find("failed: Ran µ") !=
         std::string::npos);
   CHECK(Note(Tone::kError, "gone") == "error: gone\n");
   CHECK(Note(Tone::kNeutral, "compacted") == "compacted\n");
@@ -206,7 +206,7 @@ void TestTreeDrawsLiveAsResumed() {
       {"nodes",
        json::array({{{"id", "m-1"}, {"parent", nullptr}, {"kind", "turn"}},
                     work,
-                    CallNode(record, "m-1")})}};
+                    CallNode(record, "w-m-1")})}};
   TerminalPresenter presenter;
   std::string drawn = CaptureStdout([&] { presenter.Draw(view); });
   CHECK(drawn.find("  → Working\n    → Reading a.txt\n") != std::string::npos);
@@ -214,7 +214,7 @@ void TestTreeDrawsLiveAsResumed() {
   CHECK(CaptureStdout([&] { presenter.Update(view, work); }).empty());
   record["state"] = "ok";
   record["output"] = "alpha";
-  view["nodes"][2] = CallNode(record, "m-1");
+  view["nodes"][2] = CallNode(record, "w-m-1");
   // A call that settled waits for its step to end, then is drawn once.
   CHECK(
       CaptureStdout([&] { presenter.Update(view, view["nodes"][2]); }).empty());
@@ -223,7 +223,7 @@ void TestTreeDrawsLiveAsResumed() {
     presenter.Update(view, work);
   });
   CHECK(settled == "    · Read a.txt\n");
-  CHECK(Drawn({CallNode(record, "m-1")}).ends_with(settled));
+  CHECK(Drawn({CallNode(record, "w-m-1")}).ends_with(settled));
   // What a terminal echoed as it was typed is not drawn again.
   const json echoed = {{"id", "m-2"},
                        {"parent", nullptr},

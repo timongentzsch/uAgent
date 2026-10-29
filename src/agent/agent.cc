@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -11,6 +12,7 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
+#include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/agent/trace.h"
@@ -245,11 +247,15 @@ void Agent::StartTitle(const std::string& user_input) {
 void Agent::PublishMessage(const std::string& request_id) {
   ++revision_;
   auto kind = conversation_.KindAt(conversation_.Size() - 1);
+  // Each message of yours ends the work before it and starts its own.
   if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) {
+    CloseWork("complete");
     reply_to_ = conversation_.LastDisplayId();
     if (turn_root_.empty()) turn_root_ = reply_to_;
+    work_ = {};
+    work_.started = std::chrono::steady_clock::now();
   }
-  json links = {{"turn_root", turn_root_}};
+  json links = {{"turn_root", turn_root_}, {"work", WorkId(reply_to_)}};
   if (kind == MessageKind::kAssistant) links["http"] = api_.http_exchanges;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(links));
   if (kind == MessageKind::kAssistant) {

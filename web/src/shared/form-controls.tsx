@@ -1,6 +1,6 @@
 import {
   createElement,
-  type InputHTMLAttributes,
+  type LooseInputHTMLAttributes,
   type RefObject,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -25,7 +25,7 @@ export type TextareaProps = Omit<
   role?: string;
 };
 type ControlProps =
-  | InputHTMLAttributes<HTMLInputElement>
+  | LooseInputHTMLAttributes<HTMLInputElement>
   | TextareaProps
   | SelectHTMLAttributes<HTMLSelectElement>;
 type Sizing = {
@@ -106,8 +106,10 @@ function Control({
   );
 }
 
+// Preact 11.0.2 ties input props to literal types and roles; the wrapper
+// passes both through as values, so it takes the loose type.
 export function Input(
-  props: InputHTMLAttributes<HTMLInputElement> & { list?: string },
+  props: LooseInputHTMLAttributes<HTMLInputElement> & { list?: string },
 ) {
   // These controls have no editable text and already scale with the UI tokens.
   if (

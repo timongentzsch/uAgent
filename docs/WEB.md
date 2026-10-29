@@ -56,7 +56,7 @@ file offers a download. What is open is read again when a turn ends.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 
-Drag the edge of the sidebar, the plan, Files or its list, or the top of the
+Drag the edge of the sidebar, Files or its list, or the top of the
 terminal, to resize it, or focus the edge and use the arrow keys (Shift for
 larger steps). A double-click or Enter restores the default size. Each device
 keeps its own sizes.
@@ -268,11 +268,14 @@ before Submit.
   and then runs it as its own turn.
 - After a turn stopped short (Stop, an error, a step or budget limit) the
   status line reads **Stopped** with **Continue**, which sends `continue`.
+- While the agent keeps a [plan](GUIDE.md#questions-and-the-plan), its
+  to-do list sits above the input: the item in progress stands out, done
+  ones are struck through.
 - `/` opens slash commands with suggestions and Tab completion. The list
   offers the commands the page has no control for; others still run when
   typed. `/restart` does the same as the menu; `/quit` closes nothing here;
   `/panel` opens the lead agent. A terminal command the page has no equivalent
-  for (`/clear`, `/board`, `/open`) says so instead of running.
+  for (`/clear`, `/open`) says so instead of running.
 - Typed without an argument, `/config`, `/detail`, `/permissions`,
   `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`, `/context`
   and `/sessions` open their screen. With an argument they run on the host,
@@ -342,12 +345,7 @@ and the plan. In the web:
 - A place's name in the sidebar, or search, opens its lead agent. The
   background agents it started are listed under the name, and a background
   agent links back to its lead agent under its title.
-- The **plan** beside the chat (a button in the header on a phone) shows the
-  lead agent's goal, then each step with its status. A running step is open;
-  any step opens to its result, the background agents working for it and
-  its subagents with their status, time and tokens, and a subagent opens in
-  the inspector. Below, **Background agents** lists those no step names. A
-  background agent's menu renames or removes it. What needs you is above
+- A background agent's menu renames or removes it. What needs you is above
   the input and in the sidebar's "need you" count.
 - A background agent's approvals and questions go to its lead agent first.
   Once you write in the background agent's own chat, those of that turn

@@ -22,6 +22,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
 void RegisterActivityTool(std::vector<Tool>& tools,
                           ActivitySupervisor& supervisor);
 void RegisterMemoryTool(std::vector<Tool>& tools);
+void RegisterPlanTool(std::vector<Tool>& tools);
 
 }  // namespace uagent
 

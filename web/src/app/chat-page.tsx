@@ -17,9 +17,7 @@ import { useConversation, useHostContext } from "../state/host-context.ts";
 import { Welcome, Button, Actions } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
-import Board from "../features/panel/board.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
-import { usePhone } from "../shared/layout.ts";
 import WaitingList from "../shared/escalations.tsx";
 import Chat, { prepareHistoryNodes } from "../features/chat/chat.tsx";
 import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
@@ -71,12 +69,10 @@ export default function ChatPage({
   historyKey,
   selected,
   session,
-  threads,
   opening,
   catalogue,
   outgoing,
   loadError,
-  menu,
   newPlace,
   updateView,
   choose,
@@ -92,14 +88,10 @@ export default function ChatPage({
   historyKey: string;
   selected: string;
   session?: Session;
-  // The open panel's threads.
-  threads?: Session[];
   opening: boolean;
   catalogue: Catalogue;
   outgoing: Outgoing[];
   loadError: unknown;
-  // A board row's own actions.
-  menu: (item: Session) => ComponentChildren;
   // Asks for a workspace's name or a folder's path, to start a conversation.
   newPlace: (place: "workspace" | "folder") => void;
   updateView: (id: string, update: (snapshot: Snapshot) => Snapshot) => void;
@@ -108,8 +100,7 @@ export default function ChatPage({
   closeSide: () => void;
   actions: MessageActions;
   setInspector: (target: InspectorTarget | null) => void;
-  // The files pane, when it is open beside the chat; it takes the board's
-  // place while it is.
+  // The files pane, when it is open beside the chat.
   files?: ComponentChildren;
   // The find bar's request, for whichever conversation it was opened in.
   find: FindRequest | null;
@@ -117,7 +108,6 @@ export default function ChatPage({
 }) {
   const { store, online, report, load, setModal } = useHostContext();
   const { setFollowing, draft, setDraft, submit } = useConversation();
-  const phone = usePhone();
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
   const allNodes = useMemo(
@@ -218,7 +208,6 @@ export default function ChatPage({
     !nodes.at(-1)?.id.startsWith("outgoing-")
       ? stop.reason
       : undefined;
-  // A panel's board, escalations and chat read the same threads.
   // A conversation opened by its link before the list names it is drawn the
   // same way: its transcript from samples until it loads, its composer inert
   // until the page is online.
@@ -251,21 +240,7 @@ export default function ChatPage({
       pane={
         files
           ? { name: "files", label: "Resize the files", content: files }
-          : threads && !phone
-            ? {
-                name: "board",
-                label: "Resize the plan",
-                content: (
-                  <Board
-                    threads={threads}
-                    choose={choose}
-                    menu={menu}
-                    state={snapshot?.state}
-                    open={setInspector}
-                  />
-                ),
-              }
-            : undefined
+          : undefined
       }
     >
       {find?.session === selected && (
@@ -310,7 +285,7 @@ export default function ChatPage({
           close={closeSide}
         />
       )}
-      {threads && (
+      {session?.kind === "panel" && (
         <WaitingList
           sessions={catalogue.sessions}
           folder={shown.cwd || ""}

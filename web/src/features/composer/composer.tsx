@@ -58,6 +58,7 @@ import {
   permissionLabels,
 } from "../../shared/display.ts";
 import GuidanceQueue from "./guidance-queue.tsx";
+import PlanList from "./plan-list.tsx";
 import { focusComposer } from "../../shared/navigation.ts";
 import "./composer.css";
 // Prompts sent from this page per session, oldest first: Up and Down recall
@@ -309,6 +310,7 @@ function Composer({
           />
         )
       )}
+      <PlanList items={state?.plan} />
       <GuidanceQueue
         items={queued}
         online={online}

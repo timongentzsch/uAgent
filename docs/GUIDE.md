@@ -238,10 +238,9 @@ turn ends. The lead agent answers the approvals a background agent cannot
 settle or passes them to you; once you write to the background agent
 yourself, the rest of that turn's come to you directly.
 
-- **The plan pane** shows the plan, with each step's subagents and
-  background agents, and the folder's other background agents with what
-  waits on you: beside the chat in the web, `/board` in the terminal.
-  `/open ID` switches to one.
+- **The folder's conversations** are listed when the lead agent opens in
+  the terminal, and under the place's name in the web. `/open ID` switches
+  to one.
 - **Where a background agent works.** By default in a git worktree of its
   own under `~/.uagent/worktrees/`, started from your `HEAD`, so your
   checkout stays as it is while several work. Ask the lead agent for a
@@ -264,14 +263,14 @@ us?", "where can this proxy leak a key?") the lead agent asks **subagents**:
 short-lived helpers that read, search and fetch but change nothing, several
 at once, each answering in the shape the lead agent asked for. It can have
 other subagents try to refute what they found, and reports only what holds.
-They are not conversations of their own: open one from the plan or from its
-row in the lead agent's answer.
+They are not conversations of their own: open one from its row in the lead
+agent's answer.
 
-- **The plan.** For work with several parts the lead agent keeps a plan:
-  your goal, decisions, open questions, and steps with their status and a
-  short result each. It sees the plan every turn, so it survives a long
-  conversation and a restart; a background agent or subagent started for a
-  step is shown with it.
+- **The plan.** For work with several parts an agent, the lead agent or any
+  other, keeps a to-do list: each item pending, in progress or done, at most
+  one in progress. It is kept with the conversation and shown to the agent
+  on every request, so it survives a long conversation, a restart and a
+  fork; the web shows it above the input.
 - **Background agents or subagents.** Background agents change files and
   run for as long as the work takes, in their own worktree; subagents
   answer within the lead agent's turn and leave nothing behind but their

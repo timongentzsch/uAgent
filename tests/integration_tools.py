@@ -140,6 +140,41 @@ def test_a_malformed_tool_call_is_answered_not_fatal(root, home, *, binary):
         assert_true(len(server.requests) == 4, len(server.requests))
 
 
+def test_a_plan_is_one_list_kept_with_the_conversation(root, home, *, binary):
+    """Every conversation has a plan: each call replaces the whole list, a
+    second item in progress is turned away, and the list rides on the tail of
+    every later request, after a resume too, kept in the session file."""
+    items = [
+        {"text": "Read the parser", "status": "done"},
+        {"text": "Fix the lexer", "status": "in_progress"},
+        {"text": "Add tests", "status": "pending"},
+    ]
+    listed = "- [done] Read the parser\n- [in_progress] Fix the lexer\n- [pending] Add tests\n"
+    with Server(
+        [
+            tool_call("plan", {"items": [dict(item, status="in_progress") for item in items]}),
+            tool_call("plan", {"items": items}, call_id="call-2"),
+            event({"content": "planned"}),
+            event({"content": "resumed"}),
+        ]
+    ) as server:
+        env = base_env(home, server.url)
+        first = run(root, env, "-p", "plan it", binary=binary)
+        assert_true(first.returncode == 0, first.stderr)
+        # Without a plan, nothing rides on a request's tail.
+        assert_true(server.requests[1][1]["messages"][-1]["role"] == "tool", server.requests[1])
+        refused, echoed = tool_results(server.requests[2][1]["messages"])
+        assert_true("at most one item is in_progress" in refused, refused)
+        assert_true(echoed.startswith(listed), echoed)
+        again = run(root, env, "-c", "-p", "go on", binary=binary)
+        assert_true(again.returncode == 0, again.stderr)
+        tail = server.requests[-1][1]["messages"][-1]
+        assert_true(tail["role"] == "user" and listed in tail["content"], tail)
+        [session] = session_files(home)
+        state = json.loads(session.read_text().split("\n", 1)[1])
+        assert_true(state["display"]["facts"]["plan"] == {"items": items}, state["display"])
+
+
 def test_a_loaded_skill_survives_compaction(root, home, *, binary):
     """The summary replaces the turns, not the procedure being followed."""
     workspace = root / "skill-compact-workspace"

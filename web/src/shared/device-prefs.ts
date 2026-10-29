@@ -7,7 +7,7 @@ import { detailLevels } from "./tree.ts";
 
 // The docked panes someone can resize (shared/side-pane.tsx); each width
 // (the terminal's height) is kept in rem, so it follows the text size.
-export type Pane = "sidebar" | "board" | "files" | "files-list" | "terminal";
+export type Pane = "sidebar" | "files" | "files-list" | "terminal";
 
 // This browser's preferences.
 export const devicePrefs = {

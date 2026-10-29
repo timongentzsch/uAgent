@@ -471,8 +471,8 @@ void TestActionRequiresDeclarations() {
                 std::string::npos);
     }
   }
-  std::vector<std::string> multi_action = {"activity", "history",  "memory",
-                                           "plan",     "subagent", "thread"};
+  std::vector<std::string> multi_action = {"activity", "history", "memory",
+                                           "subagent", "thread"};
 #ifdef UAGENT_BROWSER
   multi_action.emplace_back("browser");
 #endif

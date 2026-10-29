@@ -201,23 +201,54 @@
   }
 }
 
-/* A bounded tray in the composer keeps pending input above the keyboard,
-   independent of transcript scrolling. Text and actions have their own rows. */
-.guidance-queue {
+/* A bounded tray in the composer keeps pending input and the plan above the
+   keyboard, independent of transcript scrolling. Text and actions have their
+   own rows. */
+.guidance-queue,
+.plan-list {
   border: var(--border-field);
   background: var(--raised);
   margin-bottom: var(--space-2);
   min-width: 0;
 }
-.queue-heading {
+.queue-heading,
+.plan-heading {
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-small);
   border-bottom: var(--border-field);
 }
-.queue-items {
+.queue-items,
+.plan-items {
   max-height: min(calc(var(--viewport-height) * 0.25), var(--pane));
   overflow: auto;
   overscroll-behavior: contain;
+}
+.plan-items {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+}
+.plan-items li {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  overflow-wrap: anywhere;
+}
+.plan-items .lucide {
+  flex: none;
+  width: var(--icon-s);
+  height: var(--icon-s);
+  color: var(--muted);
+}
+.plan-items [data-status="in_progress"] {
+  font-weight: 600;
+}
+.plan-items [data-status="in_progress"] .lucide {
+  color: var(--text);
+}
+.plan-items [data-status="done"] {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 .queue-item {
   padding: var(--space-2) var(--space-3);

@@ -5,7 +5,6 @@
 #include <utility>
 
 #include "include/agent/child_agent.h"
-#include "include/app/panel.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
@@ -137,7 +136,7 @@ void Application::PublishChannelState(bool checkpoint) {
   state["turns"] = agent_.UserTurns();
   state["activities"] = runtime_.processes.ActivityViews();
   state["agents"] = AgentSummaries(runtime_.processes);
-  if (context_.options.Panel()) state["plan"] = PanelPlan(CanonicalCwd());
+  state["plan"] = plan_ = agent_.Plan();
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), kUserTitleChars);
   state["stop"] = agent_.LastStop();

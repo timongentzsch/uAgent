@@ -102,7 +102,7 @@ class Terminal {
   // The folder whose panel this session answers to: a thread's
   // folder, else the session's own folder.
   std::string Folder() const;
-  // A /board id prefix or a unique title match among the folder's sessions.
+  // A session id prefix or a unique title match among the folder's sessions.
   std::string MatchFolderSession(const std::string& argument) const;
   // Says so when a turn is running, which switching would abandon.
   bool TurnActive(const std::string& before);

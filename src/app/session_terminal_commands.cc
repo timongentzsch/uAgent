@@ -49,9 +49,6 @@ std::optional<Terminal::Command> Terminal::SessionCommand(
         fflush(stdout);
       }
       return Command::kDone;
-    case SlashCommandId::kBoard:
-      WriteTerminalRecord(TerminalSafe(PanelBoard(Folder())));
-      return Command::kDone;
     case SlashCommandId::kPanel:
     case SlashCommandId::kOpen: {
       std::string target;
@@ -60,7 +57,7 @@ std::optional<Terminal::Command> Terminal::SessionCommand(
         target = PanelPath(next_folder_);
       } else if (target = MatchFolderSession(argument); target.empty()) {
         WriteTerminalRecord(
-            Note(Tone::kNeutral, "no unique session in /board matches \"" +
+            Note(Tone::kNeutral, "no unique session in this folder matches \"" +
                                      TerminalSafe(argument) + "\""));
         return Command::kDone;
       }

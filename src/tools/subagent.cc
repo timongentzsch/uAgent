@@ -38,7 +38,6 @@ constexpr size_t kAgentDescriptionMax = 280;
 // prefix; the brief itself lives in the conversation.
 constexpr size_t kAgentDirectiveMax = 4096;
 constexpr size_t kAgentSchemaMax = 4096;
-constexpr size_t kAgentStepMax = 64;
 
 // A child is a session file in this folder's history, named by its id.
 std::string AgentPath(const std::string& id) {
@@ -114,7 +113,6 @@ json AgentRow(const std::string& id, const json& role, int64_t tokens = 0) {
           {"model", JsonValue(role, "route", JsonValue(role, "model", ""))},
           {"label", JsonValue(role, "label", "Subagent")},
           {"mode", JsonValue(role, "mode", "lean")},
-          {"step", JsonValue(role, "step", "")},
           {"tokens", tokens},
           {"status", "idle"}};
 }
@@ -326,7 +324,7 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
   }
   // An empty value is one that was not given: models that fill in every
   // optional field would otherwise wipe what an earlier call had set.
-  for (const char* field : {"name", "description", "directive", "step"}) {
+  for (const char* field : {"name", "description", "directive"}) {
     std::string given = JsonValue(arguments, field, "");
     if (!given.empty()) role[field] = std::move(given);
   }
@@ -507,7 +505,6 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
        .completion_notes = clamped,
        .activity_metadata = {{"label", JsonValue(role, "label", "")},
                              {"name", name},
-                             {"step", JsonValue(role, "step", "")},
                              {"mode", mode},
                              {"model", model_label},
                              {"route", route_label}},
@@ -606,7 +603,7 @@ ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
   const auto refuters = static_cast<size_t>(
       std::clamp<int64_t>(JsonValue(arguments, "refuters", int64_t{1}), 0, 3));
   json child = {{"operation", "spawn"}, {"mode", "lean"}};
-  for (const char* field : {"step", "model", "limits"}) {
+  for (const char* field : {"model", "limits"}) {
     if (arguments.contains(field)) child[field] = arguments[field];
   }
   // Children of one round run together and share what the session has left.
@@ -698,15 +695,10 @@ ToolResult RunFanout(const Api& api, ActivitySupervisor& processes,
   return result;
 }
 
-// The fields both delegating tools hand to a child: its plan step, model and
-// ceilings.
+// The fields both delegating tools hand to a child: its model and ceilings.
 json ChildProperties(const std::vector<Route>& routes,
                      const std::vector<Endpoint>& providers) {
   return {
-      {"step",
-       {{"type", "string"},
-        {"maxLength", kAgentStepMax},
-        {"description", "the plan step this child works for"}}},
       {"model",
        {{"type", "string"},
         {"description", ModelPropertyDescription(routes, providers)}}},

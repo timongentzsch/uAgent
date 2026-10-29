@@ -124,6 +124,9 @@ struct ToolResult {
   // model-facing: links to work the call started and files it shared.
   json parts = nullptr;
   std::optional<FileEffect> effect;
+  // The conversation's plan as the call leaves it, its items ({text,
+  // status}); the conversation keeps it (Agent::Plan). Null leaves it as is.
+  json plan = nullptr;
   // Opaque identity of a failed exact edit: target, original revision and old
   // text. Reads cannot erase this identity; different revisions do not collide.
   std::string recovery_key;

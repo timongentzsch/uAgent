@@ -74,9 +74,10 @@ std::string Agent::PrepareRequestMessages(const json& source, json& projected,
 json Agent::ModelRequest() {
   json projected;
   PrepareRequestMessages(conversation_.Messages(), projected, false);
-  if (runtime_context_) {
-    projected = PanelRequest(projected.is_null() ? conversation_.Messages()
-                                                 : projected);
+  if (std::string context = RequestContext(); !context.empty()) {
+    projected = WithRequestContext(
+        projected.is_null() ? conversation_.Messages() : projected,
+        std::move(context));
   }
   json selected = json::array();
   for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
@@ -258,12 +259,14 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     }
   }
   const json* chosen = projected.is_null() ? &source : &projected;
-  // A panel's board and clock change every request, so they ride on
-  // the request's tail and never enter the stored conversation: rewriting
-  // history there would move display rows and spoil the cached prefix.
+  // The plan and a panel's board and clock change between requests, so they
+  // ride on the request's tail and never enter the stored conversation:
+  // rewriting history there would move display rows and spoil the cached
+  // prefix.
   json tailed;
-  if (runtime_context_ && !request_messages) {
-    tailed = PanelRequest(*chosen);
+  if (std::string context = request_messages ? "" : RequestContext();
+      !context.empty()) {
+    tailed = WithRequestContext(*chosen, std::move(context));
     chosen = &tailed;
   }
   const json& messages = *chosen;
@@ -796,16 +799,28 @@ void Prefix(json& message, const std::string& text) {
 }
 }  // namespace
 
-// What a panel's model reads beyond the stored conversation: each user
+std::string Agent::RequestContext() const {
+  std::string context = runtime_context_ ? runtime_context_() : "";
+  if (const json plan = Plan(); !plan.empty()) {
+    if (!context.empty()) context += '\n';
+    context +=
+        "[your plan; kept with this conversation, the plan tool replaces "
+        "it]\n" +
+        PlanText(plan);
+  }
+  return context;
+}
+
+// What the model reads beyond the stored conversation: on a panel, each user
 // message's recorded arrival time (and a line after an hour of silence, which
-// usually means a new topic), then the context rebuilt for this request.
+// usually means a new topic); then `context`, rebuilt for this request.
 // Everything is derived from stored facts, so earlier messages read the same
 // on every request and the cached prefix holds; the text people typed is
 // never rewritten.
-json Agent::PanelRequest(json messages) const {
+json Agent::WithRequestContext(json messages, std::string context) const {
   const auto& ids = conversation_.DisplayIds();
   const auto& kinds = conversation_.Kinds();
-  if (messages.size() == ids.size()) {
+  if (runtime_context_ && messages.size() == ids.size()) {
     std::time_t previous = 0;
     for (size_t index = 0; index < messages.size(); ++index) {
       if (kinds[index] != MessageKind::kUser) continue;
@@ -830,9 +845,9 @@ json Agent::PanelRequest(json messages) const {
   }
   // Harness context in the user role: strict chat templates accept a single
   // system message, at index zero.
-  json context = HarnessMessage(runtime_context_());
-  context["role"] = "user";
-  messages.push_back(std::move(context));
+  json tail = HarnessMessage(std::move(context));
+  tail["role"] = "user";
+  messages.push_back(std::move(tail));
   return messages;
 }
 

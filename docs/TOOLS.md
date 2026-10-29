@@ -41,7 +41,8 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
-| `thread_spawn`, `thread`, `decide`, `plan`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start background agents (`thread_spawn`); guide, stop and remove them (`thread`); answer what a background agent asks or pass it to you; keep the plan (goals, decisions, open questions, and steps with their status and result); search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
+| `plan` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |
+| `thread_spawn`, `thread`, `decide`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start background agents (`thread_spawn`); guide, stop and remove them (`thread`); answer what a background agent asks or pass it to you; search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
 | `session`, `session_message` | list linked sessions, and message them; an idle one starts a turn on the message | always; a lead agent and its background agents are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first, except in a turn the user started or wrote into |
 | `subagent`, `subagent_fanout` | delegate a subtask to a durable child session, or one prompt over many items with each finding checked | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
@@ -157,7 +158,6 @@ activity ID at once.
 - `schema` (a JSON Schema) makes the child answer with only that JSON. The
   brief tells it the format; an answer that does not parse or fit goes back
   to it with the reason, twice at most, after which it stands as written.
-- `step` names the plan step the child works for; `list` reports it.
 - `subagent_fanout` runs `prompt` once per entry of `items` (put in its
   `{item}`), each child answering with findings of the `finding` schema. Then
   `refuters` children (default 1, at most 3) try to refute each finding.

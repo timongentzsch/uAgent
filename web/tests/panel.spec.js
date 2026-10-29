@@ -1,7 +1,5 @@
-// A place's panel opens from the place's name; its board lists what it
-// started beside the chat, and slides in from the right on a phone. What it
-// started lists under the place's name in the sidebar.
-import { mkdir, realpath, writeFile } from "node:fs/promises";
+// A place's panel opens from the place's name. What it started lists under
+// the place's name in the sidebar.
 import {
   test,
   expect,
@@ -16,31 +14,6 @@ const VIEWPORTS = [
   ["laptop", { width: 900, height: 860 }],
   ["phone", { width: 390, height: 844 }],
 ];
-
-test("on a phone the board slides in from the right", async ({
-  page,
-  session,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openPanel(page, session);
-  // Nothing stacks above the chat.
-  await expect(page.locator(".conversation .board")).toHaveCount(0);
-  await page.getByRole("button", { name: /^Plan(,|$)/ }).click();
-  const sheet = page.getByRole("dialog", { name: "Plan" });
-  await expect(
-    sheet.getByRole("complementary", { name: "Plan" }),
-  ).toBeVisible();
-  // Settled against the right edge, leaving the chat visible to its left.
-  await expect
-    .poll(async () => {
-      const box = await sheet.boundingBox();
-      return Math.round(box.x + box.width);
-    })
-    .toBe(390);
-  expect((await sheet.boundingBox()).x).toBeGreaterThan(30);
-  await page.keyboard.press("Escape");
-  await expect(sheet).toHaveCount(0);
-});
 
 async function shot(page, name) {
   if (process.env.UAGENT_SCREENSHOTS) {
@@ -67,8 +40,7 @@ for (const [name, viewport] of VIEWPORTS) {
     ).toBeLessThanOrEqual(0);
     const head = page.locator(".conversation-head");
     if (name === "phone") {
-      // A phone keeps the title, the board and the menu, which holds the
-      // instructions.
+      // A phone keeps the title and the menu, which holds the instructions.
       await expect(head.locator(".panel-subtitle")).toHaveCount(0);
       await head.getByRole("button", { name: "Conversation menu" }).click();
       await expect(
@@ -212,105 +184,4 @@ test("instructions read well on a phone", async ({ page, session }) => {
     await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
   ).toBe(true);
   await shot(page, "instructions-phone");
-});
-
-// The native session and workspace hash (src/core/strings.cc HashHex): FNV-1a
-// over 64 bits.
-function fnv1a64(text) {
-  let value = 14695981039346656037n;
-  for (const byte of new TextEncoder().encode(text)) {
-    value = BigInt.asUintN(64, (value ^ BigInt(byte)) * 0x100000001b3n);
-  }
-  return value.toString(16).padStart(16, "0");
-}
-
-// A session file in the current shape, beside the panel's.
-async function seed(dir, name, header) {
-  const state = {
-    messages: [{ role: "user", content: "go" }],
-    message_kinds: ["user"],
-    archive: [],
-    archive_dropped_segments: 0,
-    context_tokens: 0,
-    context_window: 0,
-    usage: {},
-    last_sent_prompt: "",
-    display: {},
-    delivered_mail: [],
-  };
-  await writeFile(
-    `${dir}/${name}.json`,
-    `${JSON.stringify({ format: 3, model: "test", turns: 1, session_id: name, ...header })}\n${JSON.stringify(state)}`,
-    { mode: 0o600 },
-  );
-}
-
-test("the board shows the panel's plan with what works for each step", async ({
-  page,
-  host,
-  session,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const project = await realpath(host.project);
-  const dir = `${host.home}/.uagent/history/${fnv1a64(project)}`;
-  const panel = `${dir}/panel.json`;
-  await mkdir(dir, { recursive: true });
-  await writeFile(
-    `${panel}.pinned`,
-    JSON.stringify({
-      goals: "Review the proxy",
-      steps: [
-        {
-          id: "s1",
-          title: "Survey the code",
-          status: "done",
-          result: "3 issues held",
-        },
-        { id: "s2", title: "Fix the lexer", status: "running" },
-      ],
-    }),
-  );
-  const role = { parent: fnv1a64(panel), parent_session: panel };
-  await seed(dir, "thread-lexer", {
-    cwd: project,
-    title: "Lexer fix",
-    kind: "thread",
-    delegation: { ...role, lifetime: "thread", folder: project, step: "s2" },
-  });
-  await seed(dir, "agent-aaaa1111", {
-    cwd: project,
-    title: "review",
-    tokens: 12400,
-    delegation: { ...role, name: "reviewer-a", label: "Review a", step: "s1" },
-  });
-  await openPanel(page, session);
-  const board = page.getByRole("complementary", { name: "Plan" });
-  await expect(board.getByRole("heading", { name: /^Plan/ })).toContainText(
-    "1/2",
-  );
-  await expect(board).toContainText("Review the proxy");
-  // A running step is open with its thread; it is not listed again as work.
-  const running = board
-    .locator(".plan-step")
-    .filter({ hasText: "Fix the lexer" });
-  await expect(running.getByText("Lexer fix")).toBeVisible();
-  await expect(
-    board
-      .locator("section")
-      .filter({ hasText: /^Background agents/ })
-      .getByText("Lexer fix"),
-  ).toHaveCount(0);
-  // A finished one opens to its result and its subagents, one opening the
-  // inspector.
-  const done = board
-    .locator(".plan-step")
-    .filter({ hasText: "Survey the code" });
-  await expect(done).toContainText("1 subagent");
-  await done.locator("summary").click();
-  await expect(done.getByText("3 issues held")).toBeVisible();
-  await expect(done).toContainText("12.4k tokens");
-  await done.getByRole("button", { name: /reviewer-a/ }).click();
-  await expect(
-    page.getByRole("dialog").filter({ hasText: "reviewer-a" }),
-  ).toBeVisible();
 });

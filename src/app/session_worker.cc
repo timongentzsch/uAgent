@@ -22,7 +22,6 @@
 #include "include/app/asset_store.h"
 #include "include/app/bootstrap.h"
 #include "include/app/launch.h"
-#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/transient_batcher.h"
@@ -108,13 +107,12 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool panel, const json& agent)
+                std::string title, const json& agent)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
-        mail_(MailboxIdFor(path_)),
-        panel_(panel) {
+        mail_(MailboxIdFor(path_)) {
     if (!agent.empty()) {
       link_.emplace(path_, id_,
                     AgentParentPath(path_, JsonValue(agent, "parent", "")));
@@ -221,10 +219,7 @@ class WorkerChannel final : public ApplicationChannel {
           std::lock_guard lock(mutex_);
           link_->Resend();
         }
-        // Mail held at the spend limit is looked at again; the application
-        // delivers it once the limit allows.
-        if (Paused() ||
-            (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty())) {
+        if (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty()) {
           return ApplicationInput{.wake = true};
         }
         // Idle is measured from the last input or wake.
@@ -340,7 +335,6 @@ class WorkerChannel final : public ApplicationChannel {
     state_["notices"] = notices_;
     state_["turn_status"] = activity;
     state_["phase"] = phase;
-    if (!paused_.empty()) state_["paused"] = paused_;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -403,12 +397,10 @@ class WorkerChannel final : public ApplicationChannel {
     return link_ ? kAgentIdle : IdlePeriod();
   }
 
-  // A session wakes to notice it is idle, and a panel a minute later
-  // while the spend limit holds its mail. Without a mailbox watch, mail is
+  // A session wakes to notice it is idle. Without a mailbox watch, mail is
   // looked for once a second.
   int PollTimeout() {
     if (mail_.Get() < 0) return 1000;
-    if (Paused()) return static_cast<int>(kSpendRecheck.count());
     return static_cast<int>(
         std::min<int64_t>(kIdlePoll.count(), Idle().count() / 4));
   }
@@ -421,28 +413,6 @@ class WorkerChannel final : public ApplicationChannel {
     if (link_ && link_->Owes()) return true;
     const json* activities = JsonArray(state_, "activities");
     return activities && std::ranges::any_of(*activities, ActivityRuns);
-  }
-
-  bool Paused() {
-    std::lock_guard lock(mutex_);
-    return !paused_.empty();
-  }
-
-  // At today's spend limit a panel keeps its mail pending and says so
-  // in its state. Checked outside the lock: it reads the panel's file.
-  bool HoldMail() override {
-    const std::string pause = panel_ ? PanelPause(CanonicalCwd()) : "";
-    std::lock_guard lock(mutex_);
-    if (pause != paused_) {
-      paused_ = pause;
-      if (pause.empty()) {
-        state_.erase("paused");
-      } else {
-        state_["paused"] = pause;
-      }
-      SendState();
-    }
-    return !pause.empty();
   }
 
   // The routed decision becomes the user's: shown as theirs, and announced so
@@ -812,20 +782,16 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kAgentIdle = std::chrono::milliseconds(1000);
   // How long a parent has to decide before its agent asks the person.
   static constexpr int64_t kParentDecisionS = 300;
-  static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ UAGENT_GUARDED_BY(mutex_) = false;
   bool busy_ UAGENT_GUARDED_BY(mutex_) = true;
   bool turn_active_ UAGENT_GUARDED_BY(mutex_) = false;
   // The running turn is the person's: their message started it or arrived
   // while it ran. Not the parent's brief, mail or queued guidance.
   bool person_turn_ UAGENT_GUARDED_BY(mutex_) = false;
-  const bool panel_ = false;
   std::optional<AgentLink> link_;  // set when this session is an agent
   bool reply_cancelled_ UAGENT_GUARDED_BY(mutex_) = false;
   bool ready_ UAGENT_GUARDED_BY(mutex_) = false;
   json notices_ UAGENT_GUARDED_BY(mutex_) = json::array();
-  std::string paused_
-      UAGENT_GUARDED_BY(mutex_);  // why a panel holds its mail, if it does
   std::function<json(const json&)> activity_control_
       UAGENT_GUARDED_BY(control_mutex_);
   // Permission and activity controls that arrived before the application.
@@ -864,29 +830,20 @@ int WorkerMain(int argc, char** argv) {
   // Before anyone can connect: a runtime that cannot work never answers.
   if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
-  // The panel is known by its path; an agent's role is fixed at its start
-  // and afterwards read back from its own header.
+  // An agent's role is fixed at its start and afterwards read back from its
+  // own header.
   json agent = AgentOf(SessionHeader(argv[3]));
   if (const json* role = JsonObject(launch, "session"); agent.empty() && role) {
     agent = AgentOf(*role);
   }
-  if (argv[3] == PanelPath(argv[2])) {
-    options.session = {{"kind", kSessionKindPanel}};
-  } else if (!agent.empty()) {
-    options.session = {{"agent", agent}};
-  }
+  if (!agent.empty()) options.session = {{"agent", agent}};
   // An agent runs sandboxed, at its depth and within its budget however its
   // runtime is started again, so a restart never widens it: neither a
   // sandbox policy nor a depth inherited through the environment stands in
   // for its own. One that may not edit only reads (bootstrap.cc). Its
   // approval mode defaults to Auto where the mode is resolved
-  // (PermissionControl). A lead agent's commands only read, so its "never
-  // changes anything" holds by the OS and not by its prompt.
+  // (PermissionControl).
   ::unsetenv("UAGENT_INTERNAL_DEPTH");
-  if (options.Panel()) {
-    ::unsetenv("UAGENT_INTERNAL_SANDBOX");
-    options.overrides["UAGENT_SANDBOX"] = "readonly";
-  }
   if (!agent.empty()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     ::setenv("UAGENT_INTERNAL_DEPTH",
@@ -898,8 +855,7 @@ int WorkerMain(int argc, char** argv) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }
   }
-  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.Panel(), agent);
+  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5], agent);
   if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);

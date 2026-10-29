@@ -1,7 +1,7 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
-import type { ComponentChildren } from "preact";
+import { Fragment, type ComponentChildren } from "preact";
 import { useMemo } from "preact/hooks";
-import type { Session, Space } from "../../shared/types.ts";
+import type { Session, Space, TerminalInfo } from "../../shared/types.ts";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,6 +14,7 @@ import {
   CircleAlert,
   TriangleAlert,
   Inbox,
+  Terminal,
 } from "lucide-preact";
 import { useHostContext } from "../../state/host-context.ts";
 import {
@@ -35,7 +36,7 @@ import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, useFolding } from "./folding.ts";
+import { collapsed, unfolded, useFolding } from "./folding.ts";
 import "./sidebar.css";
 
 // Before the catalogue arrives, the list draws these (see <Placeholder>).
@@ -60,46 +61,62 @@ const STATES: Partial<
   working: { label: "Working" },
 };
 
-type Place = {
-  panel?: Session;
-  agents: Session[];
-  others: Session[];
-};
+// A conversation and the agents it started, which are listed beneath it:
+// those at work (or waiting on you) one by one, the finished ones folded
+// into one line until it is opened.
+type Entry = { item: Session; working: Entry[]; finished: Entry[] };
 
-// The list's places in its order, newest first: each one's panel, the
-// agents it started, then its conversations, each followed by its own
-// agents. An agent whose parent is not listed is an ordinary row. A
+// The list's places in its order, newest first, each with its
+// conversations. An agent whose parent is not listed is an ordinary row. A
 // workspace is a place whether or not anything is in it yet.
-function groupSessions(sessions: Session[], spaces: Space[] = []) {
-  const groups = new Map<string, Place>();
+function groupSessions(
+  sessions: Session[],
+  spaces: Space[] = [],
+  online = true,
+) {
+  const groups = new Map<string, Entry[]>();
   const place = (path: string) => {
-    if (!groups.has(path)) groups.set(path, { agents: [], others: [] });
+    if (!groups.has(path)) groups.set(path, []);
     return groups.get(path)!;
   };
   const sorted = [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
   const listed = new Set(sorted.map((item) => item.id));
-  const agents = (item: Session): Session[] =>
-    sorted
+  const entry = (item: Session): Entry => {
+    const agents = sorted
       .filter((agent) => agent.parent === item.id)
-      .flatMap((agent) => [agent, ...agents(agent)]);
-  for (const item of sorted) {
-    if (item.parent && listed.has(item.parent)) continue;
-    const path = folderOf(item);
-    if (item.kind === "panel") {
-      place(path).panel = item;
-      place(path).agents = agents(item);
-    } else place(path).others.push(item, ...agents(item));
-  }
+      .map(entry);
+    const idle = (agent: Entry) => statusOf(agent.item, online) === "idle";
+    return {
+      item,
+      working: agents.filter((agent) => !idle(agent)),
+      finished: agents.filter(idle),
+    };
+  };
+  for (const item of sorted)
+    if (!item.parent || !listed.has(item.parent))
+      place(folderOf(item)).push(entry(item));
   for (const space of spaces) place(space.path);
   return groups;
 }
 
+// The rows a conversation shows, in order: itself, its working agents, and
+// its finished ones once unfolded.
+const rowsOf = ({ item, working, finished }: Entry): Session[] => [
+  item,
+  ...working.flatMap(rowsOf),
+  ...(unfolded.has(item.id) ? finished.flatMap(rowsOf) : []),
+];
+
 // The places under the word for their kind, workspaces first: one is
 // µAgent's to keep and remove, the other a directory of yours.
-function placesByKind(sessions: Session[], spaces: Space[] = []) {
-  const places = [...groupSessions(sessions, spaces)];
+function placesByKind(
+  sessions: Session[],
+  spaces: Space[] = [],
+  online = true,
+) {
+  const places = [...groupSessions(sessions, spaces, online)];
   const space = (path: string) => spaces.some((item) => item.path === path);
   return (
     [
@@ -113,16 +130,11 @@ function placesByKind(sessions: Session[], spaces: Space[] = []) {
 export const sessionOrder = (
   sessions: Session[],
   spaces: Space[] | undefined,
+  online = true,
 ) =>
-  placesByKind(sessions, spaces).flatMap(([, places]) =>
-    places.flatMap(([path, group]) =>
-      collapsed.has(path)
-        ? []
-        : [
-            ...(group.panel ? [group.panel] : []),
-            ...group.agents,
-            ...group.others,
-          ],
+  placesByKind(sessions, spaces, online).flatMap(([, places]) =>
+    places.flatMap(([path, entries]) =>
+      collapsed.has(path) ? [] : entries.flatMap(rowsOf),
     ),
   );
 
@@ -201,9 +213,17 @@ type SidebarProps = {
   settings: () => void;
   // Asks for a workspace's name or a folder's path, then starts there.
   create: (place: "workspace" | "folder") => void;
-  // A new conversation in a place, and the place's panel.
+  // A new conversation in a place, and the place's overview.
   start: (cwd: string) => void;
-  openPanel: (cwd: string) => void;
+  overview: (cwd: string) => void;
+  // The place whose overview is open.
+  shownPlace: string;
+  // The folders' terminals, the one shown, and opening one; a new one only
+  // while the host offers them.
+  terminals?: TerminalInfo[] | null;
+  shownTerminal?: string;
+  showTerminal: (terminal: TerminalInfo) => void;
+  newTerminal?: (folder: string) => void;
   // Search over every conversation, command and setting.
   search: () => void;
 };
@@ -221,7 +241,12 @@ function SidebarView({
   settings,
   create,
   start,
-  openPanel,
+  overview,
+  shownPlace,
+  terminals,
+  shownTerminal,
+  showTerminal,
+  newTerminal,
   page,
   navigate,
   scheduledUnread,
@@ -235,8 +260,8 @@ function SidebarView({
   // Grouped again only when the list, the places or the search change, not
   // for a selection, an unread mark or a fold.
   const places = useMemo(
-    () => placesByKind(all, drawing ? [] : spaces),
-    [all, drawing, spaces],
+    () => placesByKind(all, drawing ? [] : spaces, online),
+    [all, drawing, spaces, online],
   );
   // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
@@ -256,18 +281,53 @@ function SidebarView({
       menu={menu}
     />
   );
+  // A conversation's rows: itself, then its agents beneath it.
+  const conversation = (entry: Entry) => {
+    const { item, working, finished } = entry;
+    const open = unfolded.has(item.id);
+    return (
+      <Fragment key={item.id}>
+        {row(item)}
+        {(working.length > 0 || finished.length > 0) && (
+          <div
+            class="place-agents"
+            role="group"
+            aria-label={`Agents of ${item.title || "this conversation"}`}
+          >
+            {working.map(conversation)}
+            {finished.length > 0 && (
+              <Button
+                variant="quiet"
+                class="agents-fold entry small"
+                aria-expanded={open}
+                onClick={() => unfolded.set(item.id, !open)}
+              >
+                {open ? <ChevronDown /> : <ChevronRight />}
+                {plural(finished.length, "agent")}
+              </Button>
+            )}
+            {open && finished.map(conversation)}
+          </div>
+        )}
+      </Fragment>
+    );
+  };
   const kept = new Map(spaces.map((space) => [space.path, space]));
-  const place = ([cwd, group]: [string, Place]) => {
+  const place = ([cwd, entries]: [string, Entry[]]) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
     const folded = collapsed.has(cwd);
-    const { panel } = group;
-    const conversations = [...group.agents, ...group.others];
-    const holdsOpen = [panel, ...conversations].some(
-      (item) => item?.id === selected,
-    );
-    const attention = [panel, ...conversations].filter(
-      (item) => item && ["waiting", "failed"].includes(statusOf(item, online)),
+    const conversations = entries.flatMap(function all(entry): Session[] {
+      return [
+        entry.item,
+        ...entry.working.flatMap(all),
+        ...entry.finished.flatMap(all),
+      ];
+    });
+    const shells = (terminals || []).filter((item) => item.folder === cwd);
+    const holdsOpen = conversations.some((item) => item.id === selected);
+    const attention = conversations.filter((item) =>
+      ["waiting", "failed"].includes(statusOf(item, online)),
     ).length;
     return (
       <section key={cwd}>
@@ -275,11 +335,7 @@ function SidebarView({
           <IconButton
             label={`Conversations of ${name}`}
             aria-expanded={!folded}
-            aria-current={
-              folded && holdsOpen && !(panel && selected === panel.id)
-                ? "true"
-                : undefined
-            }
+            aria-current={folded && holdsOpen ? "true" : undefined}
             onClick={(event) => {
               // Focus stays on the header, not in the rows it takes away.
               event.currentTarget.focus();
@@ -291,21 +347,14 @@ function SidebarView({
           <h2>
             <Button
               variant="quiet"
-              title={`Lead agent of ${name}`}
-              disabled={drawing || (!panel && !online)}
-              aria-current={panel && selected === panel.id ? "page" : undefined}
-              onClick={() => (panel ? choose(panel.id) : openPanel(cwd))}
+              title={`Overview of ${name}`}
+              disabled={drawing}
+              aria-current={shownPlace === cwd ? "page" : undefined}
+              onClick={() => overview(cwd)}
             >
               <FolderLabel path={cwd} space={!!space}>
                 {space?.name}
               </FolderLabel>
-              {panel && unread.has(panel.id) && (
-                <span
-                  class="status-led unread"
-                  role="img"
-                  aria-label="Unread messages"
-                />
-              )}
               {folded && conversations.length > 0 && (
                 <span
                   class={`place-count${attention ? " attention" : ""}`}
@@ -320,29 +369,52 @@ function SidebarView({
               )}
             </Button>
           </h2>
-          <IconButton
-            label={`New conversation in ${name}`}
-            disabled={!online}
-            onClick={() => {
-              collapsed.set(cwd, false);
-              start(cwd);
-            }}
+          <Menu
+            label={`New in ${name}`}
+            trigger={
+              <>
+                <Plus />
+                <span class="sr-only">New in {name}</span>
+              </>
+            }
           >
-            <Plus />
-          </IconButton>
+            <MenuItem
+              disabled={!online}
+              onClick={() => {
+                collapsed.set(cwd, false);
+                start(cwd);
+              }}
+            >
+              Conversation
+            </MenuItem>
+            {newTerminal && (
+              <MenuItem disabled={!online} onClick={() => newTerminal(cwd)}>
+                Terminal
+              </MenuItem>
+            )}
+          </Menu>
           {space && spaceMenu(space, counts.get(cwd) || 0)}
         </div>
         {!folded && (
           <div class="place-body">
-            {group.agents.length > 0 && (
-              <div role="group" aria-label={`Agents of ${name}`}>
-                {group.agents.map(row)}
+            {shells.map((terminal, index) => (
+              <div class="session-row entry" key={terminal.id}>
+                <ListRow
+                  class="session"
+                  aria-current={
+                    terminal.id === shownTerminal ? "page" : undefined
+                  }
+                  onClick={() => showTerminal(terminal)}
+                  title={
+                    <>
+                      <Terminal class="row-icon" aria-hidden="true" />
+                      Terminal{shells.length > 1 ? ` ${index + 1}` : ""}
+                    </>
+                  }
+                />
               </div>
-            )}
-            {group.agents.length > 0 && group.others.length > 0 && (
-              <hr class="place-rule" />
-            )}
-            {group.others.map(row)}
+            ))}
+            {entries.map(conversation)}
           </div>
         )}
       </section>

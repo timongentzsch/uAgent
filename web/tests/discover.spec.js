@@ -87,7 +87,7 @@ test("? lists the shortcuts, and Alt+arrows step through conversations", async (
     .toBe(`#session=${session.id}`);
 });
 
-test("an empty workspace says what to do, and a folder's panel is one step away", async ({
+test("an empty workspace says what to do, and a folder's overview is one step away", async ({
   page,
   host,
 }) => {
@@ -102,7 +102,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   ).toContainText("No conversations yet");
   const tips = page.locator(".empty .tips dd");
   await expect(tips).toHaveCount(3);
-  await expect(tips.first()).toContainText("starts agents");
+  await expect(tips.first()).toContainText("opens its overview");
   await expect(tips.nth(1)).toContainText("Searches every conversation");
 
   // Enter in the dialog starts a conversation, as its primary button does.
@@ -117,12 +117,21 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
     "Lists the commands",
   );
 
-  // The panel of that folder opens from the folder's name in the list.
-  await page.getByTitle(/^Lead agent of /).click();
-  await expect(page.getByRole("heading", { name: /^Lead · / })).toBeVisible();
-  // Its empty chat explains itself.
-  await expect(page.locator(".transcript .empty")).toContainText(
-    "starts agents for the work",
+  // The folder's name in the list opens its overview, which lists the
+  // conversation and opens it again.
+  await page.getByTitle(/^Overview of /).click();
+  const overview = page.getByRole("region", { name: /^Overview of / });
+  await expect(overview.getByRole("term")).toHaveText([
+    "Working",
+    "Needs you",
+    "Today",
+    "Changed today",
+    "Conversations",
+  ]);
+  await expect(overview.locator(".overview-card")).toHaveCount(1);
+  await overview.locator(".overview-card").click();
+  await expect(page.locator(".transcript .tips")).toContainText(
+    "Lists the commands",
   );
 });
 

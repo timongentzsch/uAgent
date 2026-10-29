@@ -32,21 +32,7 @@ export async function startInFolder(page, path) {
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
-}
-
-// Opens a session's folder's panel from the place's name in the list, and
-// returns the panel's id.
-export async function openPanel(page, session) {
-  await page.goto(`/#session=${session.id}`);
-  // Narrow layouts keep the sessions in a drawer.
-  const drawer = page.getByLabel("Open conversations");
-  const button = page.getByTitle(/^Lead agent of /).first();
-  await expect(drawer.or(button)).toBeVisible();
-  if (await drawer.isVisible()) await drawer.click();
-  await button.click();
-  await expect(page.getByRole("heading", { name: /^Lead · / })).toBeVisible();
-  return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
 }
 
 // Puts a session on the model the host's scripted provider answers as
@@ -63,21 +49,6 @@ export async function selectProbeModel(
     model: "mock/model-b",
   });
   if (yolo) await command("permissions", { ...target, mode: "yolo" });
-}
-
-// openPanel, with the panel on the probe model once its runtime is up.
-export async function openProbePanel(page, session, command, request) {
-  const id = await openPanel(page, session);
-  let panel;
-  await expect
-    .poll(async () => {
-      panel = (await (await request.get(`/api/sessions/${id}`)).json())
-        .metadata;
-      return panel.generation;
-    })
-    .toBeTruthy();
-  await selectProbeModel(command, panel);
-  return id;
 }
 
 // Saves a conversation the way the host keeps one, for the list to show;

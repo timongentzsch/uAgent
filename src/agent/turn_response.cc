@@ -47,13 +47,9 @@ void Agent::RecordModelResponse(
                      "enforceable"));
     DebugLog("token_usage_unavailable", {{"route", ActiveRoute()}});
   }
-  // Dollar limits read reported cost: the session's budget, and a panel's
-  // daily spend for itself and its agents.
+  // Dollar limits read reported cost: the session's budget.
   if (response.usage.is_object() && !response_usage.cost_reported &&
-      !cost_warning_shown_ &&
-      (state.limits.session_budget > 0 ||
-       (JsonValue(session_role_, "kind", "") == kSessionKindPanel &&
-        DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD")) > 0))) {
+      !cost_warning_shown_ && state.limits.session_budget > 0) {
     cost_warning_shown_ = true;
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "provider does not report cost; dollar limits are not "

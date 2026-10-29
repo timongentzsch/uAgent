@@ -87,10 +87,17 @@ class Socket:
         self.connection.close()
 
 
-def open_terminal(client, cwd=""):
-    result = client.command("terminal", action="open", cwd=cwd)
+def open_terminal(client, cwd="", folder=""):
+    result = client.command("terminal", action="open", cwd=cwd, folder=folder)
     assert_true(result["accepted"], result)
     return result["result"]["id"]
+
+
+def listed(client):
+    """The folders' shells every device lists, from the catalogue."""
+    status, catalogue, _ = client.json("/api/sessions")
+    assert_true(status == 200, catalogue)
+    return catalogue["terminals"]
 
 
 def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
@@ -100,13 +107,13 @@ def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url, extra_env=shell) as (client, code, _, _):
             client.pair(code)
-            status, catalogue, _ = client.json("/api/sessions")
-            assert_true(status == 200 and catalogue["terminal"] is True, catalogue)
-            terminal = open_terminal(client, str(project))
-            status, listed, _ = client.json("/api/terminals")
+            assert_true(listed(client) == [], "a shell before any was opened")
+            terminal = open_terminal(client, str(project), str(project))
+            shells = listed(client)
             assert_true(
-                status == 200 and [entry["id"] for entry in listed["terminals"]] == [terminal],
-                listed,
+                [(entry["id"], entry["folder"]) for entry in shells]
+                == [(terminal, str(project.resolve()))],
+                shells,
             )
             path = f"/api/terminals/{terminal}"
 
@@ -134,8 +141,7 @@ def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
             _, notices, _ = second.until("never printed")
             assert_true({"type": "exit", "code": 4} in notices, notices)
             second.close()
-            status, listed, _ = client.json("/api/terminals")
-            assert_true(listed["terminals"] == [], listed)
+            assert_true(listed(client) == [], "an exited shell is still listed")
 
             # Folders only; closing ends a shell.
             status, refused, _ = client.json(
@@ -149,10 +155,22 @@ def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
                 },
             )
             assert_true(status == 409 and "not a folder" in refused["error"], refused)
-            terminal = open_terminal(client)
+            terminal = open_terminal(client, folder=str(project))
             assert_true(client.command("terminal", action="close", id=terminal)["accepted"], "")
-            status, listed, _ = client.json("/api/terminals")
-            assert_true(listed["terminals"] == [], listed)
+            assert_true(listed(client) == [], "a closed shell is still listed")
+
+            # The page's own shell, of no folder, is never listed and ends
+            # with its one viewer: no other device takes it up.
+            own = open_terminal(client)
+            assert_true(listed(client) == [], "the page's own shell is listed")
+            viewer = Socket(client, f"/api/terminals/{own}")
+            viewer.type("echo own-shell\n")
+            viewer.until("own-shell")
+            viewer.close()
+            again = Socket(client, f"/api/terminals/{own}")
+            _, notices, _ = again.until("never printed")
+            assert_true({"type": "exit", "code": -1} in notices, notices)
+            again.close()
 
 
 def test_web_terminal_can_be_turned_off(root, home, *, binary):
@@ -161,10 +179,7 @@ def test_web_terminal_can_be_turned_off(root, home, *, binary):
             binary, root, home, provider.url, extra_env={"UAGENT_WEB_TERMINAL": "false"}
         ) as (client, code, _, _):
             client.pair(code)
-            status, catalogue, _ = client.json("/api/sessions")
-            assert_true(catalogue["terminal"] is False, catalogue)
-            status, value, _ = client.json("/api/terminals")
-            assert_true(status == 403 and "turned off" in value["error"], value)
+            assert_true(listed(client) is None, "a list of a terminal turned off")
             status, value, _ = client.json(
                 "/api/command",
                 {"v": 2, "kind": "terminal", "request_id": "e" * 32, "action": "open"},

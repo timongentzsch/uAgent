@@ -66,9 +66,7 @@ test("always allowing an action remembers it in Settings", async ({
   await expect
     .poll(() => exists(`${host.project}/browser-proof.txt`))
     .toBe(true);
-  await expect(page.locator(".composer .turn-status-caption")).toHaveText(
-    "Ready",
-  );
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await send(page, "/permissions");
   const settings = page.getByRole("dialog", { name: "Settings" });
   // What this repository remembers is among the project's settings.
@@ -174,13 +172,14 @@ test("a stopped turn ends with Continue", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
   await send(page, "Long continuity probe");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
-  // The status line above the input counts the turn's seconds while it runs.
+  // The status control under the input counts the turn's seconds while it
+  // runs, and names no step.
   const line = page.locator(".composer .status-line");
-  await expect(line.locator(".turn-status-counts")).toHaveText(/ · \d+s$/);
+  await expect(line.locator(".activity-button")).toHaveText(/^Working · \d+s$/);
   await page.getByLabel("Message or guidance").press("Escape");
   // It says the turn stopped, drops the count and offers the way on.
-  await expect(line.locator(".turn-status-caption")).toHaveText("Stopped");
-  await expect(line.locator(".turn-status-counts")).toHaveCount(0);
+  await expect(line.locator(".activity-state")).toContainText("Stopped");
+  await expect(line.locator(".activity-button")).toHaveCount(0);
   await expect(line.getByRole("status")).toHaveText("Stopped");
   const resume = line.getByRole("button", { name: "Continue" });
   await resume.click();

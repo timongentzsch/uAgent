@@ -40,11 +40,10 @@ def test_the_offered_tools_hold_while_background_work_starts(root, home, *, bina
     assert_true("activity" in offered[0], offered)
 
 
-def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
+def test_instructions_follow_the_base(root, home, *, binary):
     (home / ".uagent").mkdir(parents=True, exist_ok=True)
     (home / ".uagent" / "AGENTS.md").write_text("user-rule")
     (root / "AGENTS.md").write_text("project-rule")
-    (home / ".uagent" / "PANEL.md").write_text("panel-rule")
     with Server([event({"content": "unexpected model call"})]) as server:
         env = base_env(home, server.url)
         result = run(root, env, "--show-system-prompt", "--json", binary=binary)
@@ -54,18 +53,7 @@ def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
             effective.find("Read only what the task needs") < effective.find("user-rule"), effective
         )
         assert_true(effective.find("user-rule") < effective.find("project-rule"), effective)
-        assert_true("panel-rule" not in effective, effective)
         assert_true(server.requests == [], server.requests)
-
-    def panel(_, body):
-        prompt = body["messages"][0]["content"]
-        assert_true(prompt.find("project-rule") < prompt.find("panel-rule"), prompt)
-        return event({"content": "panel-ok"})
-
-    with Server([panel]) as server:
-        result = run(root, base_env(home, server.url), "panel", "-p", "hi", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "panel-ok", result.stdout)
 
 
 def test_stream_error_is_not_an_empty_response(root, home, *, binary):

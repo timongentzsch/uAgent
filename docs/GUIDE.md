@@ -6,9 +6,8 @@ has the install and a one-screen quick start.
 
 Terms: a **conversation** is what you talk in (its file and its running
 process are a *session*); an **agent** is a conversation another one
-started to do part of its work; a **lead agent** plans a folder's work; an
-**activity** is a command that keeps running in the background;
-**approval** is being asked before an action.
+started to do part of its work; an **activity** is a command that keeps
+running in the background; **approval** is being asked before an action.
 
 ## A first conversation
 
@@ -269,21 +268,14 @@ in progress or done, at most one in progress. It is kept with the
 conversation and shown to the agent on every request, so it survives a long
 conversation, a restart and a fork; the web shows it above the input.
 
-## The lead agent
+## A folder at a glance
 
-`uagent panel` opens the folder's lead agent (`/panel` from inside a
-conversation; in the web, the place's name in the sidebar). It plans the
-work and never changes files itself: its commands only read, in a
-read-only sandbox, and its agents make the changes.
-
-- **The folder's conversations** are listed when the lead agent opens in
-  the terminal, and under the place's name in the web.
-- **Limits.** $20 of reported cost a day for a lead agent and its agents
-  (`panel.dailySpendUsd`), an agent's turn counted once it ends; at the
-  limit, their reports wait. A route that reports no cost cannot reach it,
-  and the lead agent says so.
-- **Instructions.** Every lead agent reads `PANEL.md` at start
-  ([Instructions](INSTRUCTIONS.md)).
+In the web, a folder's name in the sidebar opens its overview: what needs
+you, answered in place, and the folder's conversations with their state,
+current step, to-do progress and cost, beside what they spent and changed
+today ([Web interface](WEB.md#quick-start)). `/overview` prints the same in
+a terminal: conversations at work, spend today and over 7 days, files
+changed today, and what needs you.
 
 ## Memory, skills and schedules
 
@@ -302,7 +294,6 @@ uagent -p "inspect this repository"
 uagent -p "inspect this repository" --json          # one JSON envelope
 uagent -p "inspect this repository" --json-stream   # one JSON event per line
 uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
-uagent panel -p "status of the agents"              # ask the lead agent
 ```
 
 - `--json` prints one object with `schema` (`uagent.headless.v1`), `answer`,

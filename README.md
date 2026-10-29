@@ -52,8 +52,8 @@ every metric.
   phone (an installable web app with notifications), or run a turn from a
   script with `uagent -p "..." --json`.
 - **Works in parallel.** A conversation starts agents, conversations of
-  their own that research or change code and report back; a folder's lead
-  agent keeps a to-do list and leaves the changes to them.
+  their own that research or change code and report back, listed beneath it;
+  a folder's overview shows what works, what needs you, spend and changes.
 - **Remembers and repeats.** Memory, skills, scheduled tasks and MCP servers,
   managed from the terminal or the web.
 - **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,
@@ -99,7 +99,7 @@ uagent                                 # Enter sends, Esc stops, / lists command
   to keep it.
 - **Come back:** `/quit` leaves it running; `uagent -c` continues the latest.
 - **Phone:** `uagent --web` prints a pairing link.
-- **Parallel work:** `uagent panel` opens the folder's lead agent.
+- **The folder at a glance:** `/overview`, or the folder's name in the web.
 
 The [guide](docs/GUIDE.md) covers the rest in order; `uagent --help` lists
 every flag.

@@ -68,7 +68,7 @@ def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
             )
 
 
-def test_panel_orchestrator_can_use_the_shared_browser(root, home, *, binary):
+def test_a_conversation_uses_the_shared_browser(root, home, *, binary):
     offered = []
 
     def answer(_, body):
@@ -76,8 +76,8 @@ def test_panel_orchestrator_can_use_the_shared_browser(root, home, *, binary):
         return tool_call("browser", {"action": "status"})
 
     with (
-        tempfile.TemporaryDirectory(prefix="ua-panel-b-", dir=os.path.realpath("/tmp")) as data,
-        Server([answer, event({"content": "moderator-browser-ok"})]) as provider,
+        tempfile.TemporaryDirectory(prefix="ua-browser-", dir=os.path.realpath("/tmp")) as data,
+        Server([answer, event({"content": "browser-ok"})]) as provider,
         web_host(binary, root, home, provider.url, extra_env={"UAGENT_BROWSER_DATA": data}) as (
             web,
             code,
@@ -86,15 +86,14 @@ def test_panel_orchestrator_can_use_the_shared_browser(root, home, *, binary):
         ),
     ):
         web.pair(code)
-        project = root / "moderator"
+        project = root / "browsing"
         project.mkdir()
-        session = web.command("create", cwd=str(project), panel=True)["session"]
+        session = web.command("create", cwd=str(project))["session"]
         session = web.command("activate", session)["session"]
         web.until(session, lambda value: value["metadata"]["status"] == "idle")
         web.command("submit", session, text="Check browser availability directly")
-        web.until(session, lambda value: "moderator-browser-ok" in json.dumps(value))
+        web.until(session, lambda value: "browser-ok" in json.dumps(value))
         assert_true("browser" in offered, offered)
-        assert_true("write_file" not in offered and "edit_file" not in offered, offered)
         result = next(m for m in provider.requests[-1][1]["messages"] if m.get("role") == "tool")
         assert_true('"parallel_capacity":0' in result["content"].replace(" ", ""), result)
         configured = web.command("browser", action="configure", parallel_capacity=2)["result"]

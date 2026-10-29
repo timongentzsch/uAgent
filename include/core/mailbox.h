@@ -2,7 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_MAILBOX_H_
 #define UAGENT_INCLUDE_CORE_MAILBOX_H_
-// One durable mailbox per agent (a session, a panel, a delegated child),
+// One durable mailbox per conversation (an agent's included),
 // addressed by its session id: ~/.uagent/mail/<id>/{new,cur}. A send commits
 // by an atomic rename into new/. The recipient takes a message by moving it to
 // cur/ and acknowledges it once its transcript is saved, so a crash in between
@@ -47,7 +47,7 @@ std::string MailboxDir(const std::string& id);
 // a sender over its rate and a message forwarded kMailMaxHops times, each with
 // a reason the sender can act on. A duplicate of a pending message is
 // dropped. `rate_limited` is false for what a session owes another, such as a
-// thread's reports to its panel, however many.
+// an agent's reports to its parent, however many.
 std::string SendMail(Mail mail, bool rate_limited = true);
 
 // Pending messages in the order they were sent. Those `accept` takes move to

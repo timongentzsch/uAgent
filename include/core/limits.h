@@ -242,8 +242,7 @@ inline constexpr int kLogPumpPollMs = 100;
 // Host and runtime pacing. The web host rescans the session catalogue at
 // most once a second and keeps a few saved histories parsed for paging; a
 // long text is read a page at a time; a stopping runtime gives its clients
-// this long to take what is queued for them. An hour of silence in a panel
-// usually means a new topic.
+// this long to take what is queued for them.
 inline constexpr int64_t kCatalogueRescanSeconds = 1;
 inline constexpr size_t kHistoryCacheEntries = 3;
 inline constexpr size_t kHistoryCacheBytes = MiB(32);

@@ -507,7 +507,7 @@ void TestFileTools() {
     // project's are ordinary repository files.
     for (const std::string& instructions :
          {GlobalBase() + "/AGENTS.md", GlobalBase() + "/AGENTS.override.md",
-          GlobalBase() + "/CLAUDE.md", GlobalBase() + "/PANEL.md"}) {
+          GlobalBase() + "/CLAUDE.md"}) {
       CHECK(PathApprovalClass(instructions, PathAccess::kRead) ==
             ApprovalClass::kNone);
       CHECK(PathApprovalClass(instructions, PathAccess::kWrite) ==

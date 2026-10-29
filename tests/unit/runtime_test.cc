@@ -19,6 +19,7 @@
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/api/retry.h"
+#include "include/app/launch.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
 #include "include/core/child_env.h"
@@ -645,12 +646,13 @@ void TestEffectiveImageModel() {
 
 // Mail that wakes a session is its to lose until the turn it starts has the
 // text: a runtime killed between the save and that turn receives it again.
-// Helpers the panel, its chat and their threads share.
-void TestSharedPanelHelpers() {
+// A harness note is labelled as not the user's, and a worktree's .git
+// file counts as a repository.
+void TestHarnessNoteAndRepository() {
   CHECK(HarnessNote("chat", "Nobody is typing now.") ==
         "[chat, not a user message] Nobody is typing now.");
 
-  TestWorkspace workspace("shared-panel-helpers");
+  TestWorkspace workspace("harness-note-and-repository");
   const std::filesystem::path nested = workspace.workspace / "a" / "b";
   std::filesystem::create_directories(nested);
   CHECK(!InGitRepository(nested));
@@ -665,10 +667,10 @@ void TestSharedPanelHelpers() {
 void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
-  const std::string path = PanelPath(folder);
+  const std::string path = HistoryPath(folder, "parent");
   const std::string own = MailboxIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
-  // From the panel's agent, saved beside it, which names it its parent.
+  // From its agent, saved beside it, which names it its parent.
   const std::filesystem::path agent =
       std::filesystem::path(path).parent_path() / "agent-a.json";
   std::filesystem::create_directories(agent.parent_path());

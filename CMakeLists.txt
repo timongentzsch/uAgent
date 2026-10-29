@@ -239,10 +239,10 @@ add_library(
   src/app/control.cc
   src/app/schedule.cc
   src/app/launch.cc
+  src/app/folder_overview.cc
   src/app/agent_link.cc
   src/app/agent_tools.cc
   src/app/uagent_tool.cc
-  src/app/panel.cc
   src/cli/options.cc
   src/app/runtime.cc
   src/app/self_description.cc
@@ -259,7 +259,6 @@ add_library(
   src/app/session_server.cc
   src/app/session_worker.cc
   src/app/transient_batcher.cc
-  src/app/panel_prompt.cc
   src/app/session_terminal.cc
   src/app/session_terminal_commands.cc
   src/app/session_terminal_link.cc

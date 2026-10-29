@@ -22,7 +22,6 @@
 #include "include/api/client.h"
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
-#include "include/app/panel.h"
 #include "include/app/self_description.h"
 #include "include/app/session.h"
 #include "include/cli/cli.h"
@@ -161,10 +160,10 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      const RuntimeConfig& config,
-                                     bool memory_child, bool panel) {
+                                     bool memory_child) {
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, ProjectDocBytes(), panel);
+    instructions = LoadProjectInstructions(workspace, ProjectDocBytes());
   }
   if (config.memory_enabled) {
     // A delegated child's brief is standalone: re-inlining every always-on
@@ -208,8 +207,7 @@ void ReportSandbox() {
   // The folder is said in full: "not granted" alone does not tell a person
   // that every command in this conversation is about to fail to save its work.
   const std::string workspace = CanonicalCwd();
-  // At the readonly level, a lead agent's, the folder is not writable on
-  // purpose.
+  // At the readonly level the folder is not writable on purpose.
   if (std::string refusal = SandboxWorkspaceRefusal();
       !refusal.empty() && !status.policy.read_only) {
     Emit(NoticeEvent(PresentationStatus::kWarned,
@@ -393,8 +391,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   Api& api = context->runtime.api;
   ProjectInstructions instructions =
-      LoadInstructions(workspace, context->runtime.config, memory_child,
-                       context->options.Panel());
+      LoadInstructions(workspace, context->runtime.config, memory_child);
   if (instructions.truncated) {
     PrintWarning("folder instructions truncated at " +
                  std::to_string(ProjectDocBytes()) + " bytes");
@@ -442,10 +439,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // Before the tools, whose servers are started with it.
   PermissionControl(*context, json::object());
   context->tool_policy = ToolPolicyFromEnvironment();
-  if (context->options.Panel()) {
-    context->tool_policy.tool_allowlist.assign(std::begin(kPanelTools),
-                                               std::end(kPanelTools));
-  }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
   context->tools =
@@ -458,13 +451,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
   if (memory_child) context->agent->SetUsagePurpose("memory_extract");
-  if (context->options.Panel()) {
-    context->agent->SetRuntimeContext(
-        [folder = CanonicalCwd(), agent = context->agent.get()] {
-          RecordPanelCost(folder, agent->SessionUsage().cost);
-          return PanelContext(folder);
-        });
-  }
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +
                                     kSessionEditsSuffix);

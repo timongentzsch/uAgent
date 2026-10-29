@@ -72,15 +72,18 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   // The row as a person reads it: the output without the model's hints, and
   // its facts. The tool message below is what the model reads.
   const std::string& output = original.output;
-  const char* state = ResultState(original.status);
-  json facts = {{"name", call.name},
-                {"state", state},
-                {"result", ResultJson(original.facts, state, duration_ms)},
-                {"body_kind", original.body_kind},
-                {"duration_ms", duration_ms},
-                {"output", Utf8Trunc(output, kPreviewChars)},
-                {"truncated", output.size() > kPreviewChars},
-                {"change", original.diff}};
+  const char* state = RowState(original);
+  json facts = {
+      {"name", call.name},
+      {"state", state},
+      {"result", original.background
+                     ? json::object()
+                     : ResultJson(original.facts, state, duration_ms)},
+      {"body_kind", original.body_kind},
+      {"duration_ms", duration_ms},
+      {"output", Utf8Trunc(output, kPreviewChars)},
+      {"truncated", output.size() > kPreviewChars},
+      {"change", original.diff}};
   // The preview keeps the start of a long result; its end is where a command
   // reports how it went, so rows can show that tail.
   if (output.size() > kPreviewChars) {
@@ -105,6 +108,11 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   }
   if (original.artifact) facts["artifact"] = original.artifact->path;
   if (original.parts.is_array()) facts["parts"] = original.parts;
+  // Where the row is, for when its command ends (FinishCommandRow).
+  if (original.background) {
+    facts["activity_id"] = original.background;
+    facts["work"] = WorkId(reply_to_);
+  }
   facts["call_id"] = call.id;
   facts["response_id"] = call.response_id;
   facts["occurrence_id"] = call.occurrence_id;
@@ -244,12 +252,15 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   // A rejected call shows the arguments it sent, not a confident headline.
   if (task.issue) view.erase("verb");
   task.headline = CallHeadline(view, "ok", task.label);
-  conversation_.RecordDisplay(call.detail_id,
-                              {{"activity", task.activity}, {"view", view}});
+  // Its start, which a running row counts from.
+  json row = {{"activity", task.activity},
+              {"view", std::move(view)},
+              {"time", UtcStamp()}};
+  if (tool && tool->routine && tool->routine(arguments)) row["routine"] = true;
+  conversation_.RecordDisplay(call.detail_id, row);
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
   call_event.data["work"] = WorkId(reply_to_);
-  call_event.data["activity"] = task.activity;
-  call_event.data["view"] = std::move(view);
+  call_event.data.update(row);
   if (task.issue) {
     call_event.data["issue_code"] = task.issue->code;
     call_event.data["issue_field"] = task.issue->field;
@@ -420,7 +431,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   activities.reserve(tasks.size());
   for (CallTask& task : tasks) {
     json activity = task.activity;
-    activity["state"] = ResultState(task.result.status);
+    activity["state"] = RowState(task.result);
     // A change keeps its own row: its diff comes from the operation, never
     // from shell intent.
     if (task.result.Ok() && !task.result.diff.empty()) {
@@ -445,6 +456,9 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, model_results[index], task.result, task.duration_ms);
     if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
+    for (const EndedCommand& ended : task.result.ended) {
+      FinishCommandRow(ended);
+    }
     if (!task.result.todo.is_null()) {
       conversation_.RecordDisplay("todo",
                                   {{"items", std::move(task.result.todo)}});

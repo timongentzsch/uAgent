@@ -16,6 +16,19 @@
       "tool_result_chars": 75,
       "initial_schema_bytes": 11965
     },
+    "agent_fanout/control": {
+      "score": 5,
+      "checks_total": 5,
+      "model_requests": 2,
+      "tool_calls": 2,
+      "max_batch": 2,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_context_bytes": 15966,
+      "cumulative_estimated_context_bytes": 30966,
+      "tool_result_chars": 313,
+      "initial_schema_bytes": 11941
+    },
     "background_activity/control": {
       "score": 7,
       "checks_total": 7,
@@ -94,20 +107,7 @@
       "tool_result_chars": 116,
       "initial_schema_bytes": 11965
     },
-    "panel_fanout/control": {
-      "score": 5,
-      "checks_total": 5,
-      "model_requests": 2,
-      "tool_calls": 2,
-      "max_batch": 2,
-      "no_action_rounds": 0,
-      "compactions": 0,
-      "max_estimated_context_bytes": 15472,
-      "cumulative_estimated_context_bytes": 29978,
-      "tool_result_chars": 313,
-      "initial_schema_bytes": 11510
-    },
-    "panel_status/control": {
+    "folder_status/control": {
       "score": 5,
       "checks_total": 5,
       "model_requests": 2,
@@ -115,10 +115,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 15201,
-      "cumulative_estimated_context_bytes": 29825,
-      "tool_result_chars": 281,
-      "initial_schema_bytes": 11510
+      "max_estimated_context_bytes": 15779,
+      "cumulative_estimated_context_bytes": 30703,
+      "tool_result_chars": 559,
+      "initial_schema_bytes": 11941
     },
     "parallel_batch/control": {
       "score": 7,

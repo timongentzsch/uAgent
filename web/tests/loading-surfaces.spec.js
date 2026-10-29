@@ -34,10 +34,6 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     "Built-in base",
     "Yours · every conversation",
     "Folder · every conversation",
-    "Lead agent",
-    "Built-in lead agent base",
-    "Yours · lead agent",
-    "Folder · lead agent",
   ]);
   const yours = dialog.getByLabel("Yours · every conversation");
   await yours.fill("Prefer small diffs.\nKeep this line break.");
@@ -290,7 +286,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Raw context", exact: true }),
   ).toContainText("/1.3M · 99% left");
@@ -431,7 +427,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   const reply = page.locator(".message.response").last();
   // Tailnet HTTP has no Clipboard API; a user click must still copy.
   await page.evaluate(() =>

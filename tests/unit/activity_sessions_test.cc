@@ -26,8 +26,8 @@
 #include "include/agent/activity.h"
 #include "include/agent/session_links.h"
 #include "include/agent/transcript.h"
+#include "include/app/folder_overview.h"
 #include "include/app/launch.h"
-#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
@@ -241,7 +241,7 @@ void TestSignalAndFileWatch() {
   REQUIRE(mkdtemp(project_root) != nullptr);
   int catalogue_wake[2] = {-1, -1};
   REQUIRE(pipe(catalogue_wake) == 0);
-  const std::string prompt = std::string(project_root) + "/.uagent/PANEL.md";
+  const std::string prompt = std::string(project_root) + "/AGENTS.md";
   FileWaitResult catalogue_changed = FileWaitResult::kTimedOut;
   std::thread catalogue_watcher([&] {
     catalogue_changed = WaitForAnyFileChange(
@@ -1324,18 +1324,14 @@ void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
   CHECK(!std::filesystem::exists(tree));
 }
 
-void TestPanelCountsItsOwnSpend() {
-  TestWorkspace workspace("panel-spend");
-  ScopedEnv limit("UAGENT_PANEL_DAILY_SPEND_USD", "1");
+// /overview: the folder, its conversations and what needs you, as text.
+void TestFolderOverviewText() {
+  TestWorkspace workspace("folder-overview");
   const std::string folder = CanonicalCwd();
-  // The day's first request sets the baseline: yesterday's spend is not
-  // today's.
-  RecordPanelCost(folder, 5.0);
-  CHECK(PanelPause(folder).empty());
-  RecordPanelCost(folder, 5.5);
-  CHECK(PanelPause(folder).empty());
-  RecordPanelCost(folder, 6.0);
-  CHECK(PanelPause(folder).find("spend limit") != std::string::npos);
+  const std::string text = FolderOverviewText(folder);
+  CHECK(text.starts_with(folder + "\n0 conversations · 0 working\nSpent "));
+  CHECK(text.find("changed 0 files today (+0 −0)") != std::string::npos);
+  CHECK(text.ends_with("\nNothing needs you.\n"));
 }
 
 void TestChildSessionsStayOutOfTheCatalogue() {
@@ -1358,9 +1354,6 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   write("agent-aaaa1111",
         {{kSessionHeaderAgent,
           {{"parent", SessionIdFor((dir / "ordinary.json").string())}}}});
-  // A folder lists its panel only in the host's whole view.
-  write("panel", {{kSessionHeaderKind, kSessionKindPanel}});
-  CHECK(PanelPath(CanonicalCwd()) == (dir / "panel.json").string());
   auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
     for (const SessionInfo& info : ListSessions(scope)) {
@@ -1371,8 +1364,7 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   CHECK(ids(SessionScope::kWorkspace) == std::vector<std::string>{"ordinary"});
   auto all = ids(SessionScope::kAll);
   std::ranges::sort(all);
-  CHECK(all ==
-        (std::vector<std::string>{"agent-aaaa1111", "ordinary", "panel"}));
+  CHECK(all == (std::vector<std::string>{"agent-aaaa1111", "ordinary"}));
   // An agent is found beside its parent, which it names by its id.
   const std::string parent = (dir / "ordinary.json").string();
   const std::vector<SessionInfo> beside = SessionsBeside(parent);

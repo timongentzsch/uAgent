@@ -26,11 +26,12 @@ CLI and web sessions share one request encoder and one usage accounting path.
   request to an endpoint that declares `prompt_cache_control` (OpenRouter
   does) carries the same top-level `cache_control`. See
   [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching).
-- **Panels.** A panel's request ends in a context note that changes every
-  time and is never stored. The last stored message carries an explicit
-  breakpoint (`cache_control` on Anthropic and on Chat Completions endpoints
-  that declare `prompt_cache_control`), so the stored history is read from
-  cache instead of the moving automatic breakpoint landing on the note.
+- **To-do lists.** While a conversation keeps a to-do list, its request ends
+  in a note of it that can change between requests and is never stored. The
+  last stored message carries an explicit breakpoint (`cache_control` on
+  Anthropic and on Chat Completions endpoints that declare
+  `prompt_cache_control`), so the stored history is read from cache instead
+  of the moving automatic breakpoint landing on the note.
 - **Compaction.** The summary request is the live request (same system
   messages, tools and conversation) plus one instruction, so the conversation
   is a cache read. Chat Completions and Responses requests also set

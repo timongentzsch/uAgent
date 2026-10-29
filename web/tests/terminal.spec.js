@@ -42,11 +42,44 @@ test("terminal tabs run commands and add their text to the chat", async ({
   await expect(composer).not.toHaveValue(/second-6/);
   await expect(composer).toBeFocused();
 
-  // The panel hides and comes back with both shells still running.
+  // The page's own shells end with the panel; it opens again with a new one.
   await headerAction(page, "Terminal");
   await expect(dock).toHaveCount(0);
   await headerAction(page, "Terminal");
-  await expect(dock.locator(".terminal-tab")).toHaveCount(2);
+  await expect(dock.locator(".terminal-tab")).toHaveCount(1);
+  await expect(shown.locator(".xterm-rows")).not.toContainText("first-42");
+});
+
+test("a folder's terminal opens in the page, keeps running and closes", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  const place = page.locator(".place-head").first();
+  await place.getByRole("button", { name: /^New in / }).click();
+  await page.getByRole("menuitem", { name: "Terminal" }).click();
+  const shell = page.getByRole("region", { name: /^Terminal in / });
+  await expect(shell.locator(".xterm-rows")).toContainText(/\S/);
+  await shell.locator(".xterm").click();
+  await page.keyboard.type("echo kept-$((5*5))\n");
+  await expect(shell.locator(".xterm-rows")).toContainText("kept-25");
+  // Listed under its folder: away and back, it shows what it printed.
+  await page
+    .locator(".session", { hasText: session.title || "" })
+    .first()
+    .click();
+  await expect(shell).toHaveCount(0);
+  const row = page.locator(".place-body .session", { hasText: "Terminal" });
+  await row.click();
+  await expect(shell.locator(".xterm-rows")).toContainText("kept-25");
+  await expect(row).toHaveAttribute("aria-current", "page");
+  // Closing it ends the shell and shows the folder's overview.
+  await shell.getByRole("button", { name: "Close terminal" }).click();
+  await expect(
+    page.getByRole("region", { name: /^Overview of / }),
+  ).toBeVisible();
+  await expect(row).toHaveCount(0);
 });
 
 test("on a phone the terminal takes the whole screen", async ({

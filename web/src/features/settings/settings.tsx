@@ -50,7 +50,7 @@ export default function Settings(props: SettingsProps) {
       <>
         {instructions(
           "Instructions",
-          "What every conversation and each folder's lead agent read at start.",
+          "What every conversation reads at start.",
         )}
         {mcp("global")}
       </>
@@ -59,7 +59,7 @@ export default function Settings(props: SettingsProps) {
       <>
         {instructions(
           "Folder instructions",
-          "What conversations and the lead agent read at start in this folder.",
+          "What conversations read at start in this folder.",
         )}
         {mcp("project")}
         <PermissionsPane />

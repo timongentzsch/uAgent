@@ -1646,7 +1646,7 @@ def test_instructions_editor_reaches_new_sessions(root, home, *, binary):
     code, output = run_pty(
         root,
         env,
-        [(b"/instructions edit sessions user\n", b"restarted sessions read it"), b"/q\n"],
+        [(b"/instructions edit user\n", b"restarted sessions read it"), b"/q\n"],
         binary=binary,
     )
     assert_true(code == 0, output)

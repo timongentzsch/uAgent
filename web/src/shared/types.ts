@@ -366,8 +366,6 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // A folder's panel, or not.
-  kind?: "panel" | "";
   // The conversation that started this one as its agent.
   parent?: string;
   // The model its file names.
@@ -384,6 +382,16 @@ export interface Session {
   activities?: Activity[];
   guidance?: number;
   error?: string;
+  // Its spend, and how far its to-do list is (the item in progress).
+  cost?: number;
+  todo?: { done: number; total: number; current: string } | null;
+}
+// A folder at a glance, from the host: what its conversations spent today
+// and in 7 days, the files they changed today, and its repository.
+export interface FolderFacts {
+  spend: { today: number; week: number };
+  changed: { files: number; added: number; removed: number };
+  git?: { branch: string; uncommitted: number };
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
 export interface State {
@@ -396,13 +404,9 @@ export interface State {
   effort?: string;
   efforts?: string[];
   view?: View;
-  // Bumped by an in-place rewind, which replaces the view.
-  view_epoch?: number;
   turns?: number;
   usage?: Usage;
   system_prompt?: string;
-  // Why a panel holds its mail (today's spend limit).
-  paused?: string;
   statistics?: Statistics;
   turn_status?: string;
   activities?: Activity[];
@@ -471,8 +475,9 @@ export interface Catalogue {
   // The detail level a device starts at until it chooses its own.
   detail?: string;
   scheduled?: ScheduledState;
-  // Whether paired devices may open terminals (web.terminal).
-  terminal?: boolean;
+  // The folders' shells; null while paired devices may open none
+  // (web.terminal).
+  terminals?: TerminalInfo[] | null;
   epoch?: string;
   cursor?: number;
   sessions: Session[];
@@ -580,6 +585,7 @@ export type HostEvent = HostEnvelope &
       }
     | { kind: "settings.changed"; level: string }
     | { kind: "spaces.changed"; spaces: Space[] }
+    | { kind: "terminals.changed"; terminals: TerminalInfo[] | null }
   );
 export interface BodyPage {
   text: string;
@@ -676,7 +682,6 @@ export interface ToolCatalogue {
 // One instruction file a person edits: for every conversation or a folder's
 // panel, yours or the folder's.
 export interface InstructionFile {
-  audience: "sessions" | "panel";
   scope: "user" | "project";
   path: string;
   text: string;
@@ -684,7 +689,7 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: { sessions: string; panel: string };
+  base: string;
 }
 export interface CommandResults {
   browser: {
@@ -708,8 +713,7 @@ export interface CommandResults {
   context: { exchanges: Exchange[] };
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A fork cut before a message returns that message, to edit (prompt).
-  // A panel rewinds itself in place (`rewound`) instead of forking.
-  fork: { id: string; prompt?: string; rewound?: boolean };
+  fork: { id: string; prompt?: string };
   share: { path: string };
   side: { id: string };
   create: never;
@@ -759,7 +763,6 @@ export interface CommandInputs {
   instructions: {
     action: string;
     cwd?: string;
-    audience?: string;
     scope?: string;
     text?: string;
     // The text an edit started from; a changed file refuses.
@@ -813,7 +816,7 @@ export interface CommandInputs {
   share: None;
   side: { operation: string; text: string };
   // A workspace by its name (`space`), in place of `cwd`.
-  create: { cwd?: string; space?: string; panel?: boolean };
+  create: { cwd?: string; space?: string };
   activate: None;
   close: None;
   rename: { title: string };
@@ -835,7 +838,9 @@ export interface CommandInputs {
   revoke_device: { device_id: string };
   test_notification: None;
   // A shell in a folder, the home folder without one; or the end of one.
-  terminal: { action: "open"; cwd?: string } | { action: "close"; id: string };
+  terminal:
+    | { action: "open"; cwd?: string; folder?: string }
+    | { action: "close"; id: string };
 }
 export type CommandFields<K extends CommandKind> = CommandInputs[K] & {
   request_id?: string;
@@ -1002,12 +1007,15 @@ export type InspectorTarget =
   | { item: Activity }
   | { raw: RawOptions; title: string };
 
-// A shell the web host runs for paired devices, in the folder it started in.
+// A shell the web host runs for paired devices: where it started, and the
+// folder or workspace it belongs to ("" for the page's own, which ends with
+// its view).
 export interface TerminalInfo {
   id: string;
   cwd: string;
+  folder: string;
 }
-// The shells running, and the one just opened.
+// The folders' shells, and the one just opened.
 export interface TerminalList {
   id?: string;
   terminals: TerminalInfo[];

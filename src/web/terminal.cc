@@ -42,6 +42,8 @@ constexpr uint16_t kStartColumns = 80;
 // shell has to exit after its hangup before it is killed.
 constexpr int kInputMs = 2000;
 constexpr std::chrono::milliseconds kStopGrace{1000};
+// How long a page's own shell waits for its first viewer.
+constexpr std::chrono::seconds kFirstViewer{30};
 // What one read of a terminal takes; a wake reads at most the kept output,
 // so a shell that never stops printing cannot hold up the others.
 constexpr size_t kReadBytes = KiB(16);
@@ -55,8 +57,10 @@ int ExitCode(int status) {
 }  // namespace
 
 struct TerminalShell {
-  std::string id, cwd;
+  // No folder: the page's own shell, which ends with its viewer.
+  std::string id, cwd, folder;
   pid_t pid = -1;
+  int wake = -1;  // the loop's, for a viewer that leaves
   // Read and closed only by the loop; written and resized under
   // `input_mutex`, which the loop takes to close it.
   Fd controller;
@@ -128,6 +132,15 @@ void Finish(TerminalShell& shell, std::optional<int> status) {
   shell.changed.notify_all();
 }
 
+// How long a shell no viewer holds lives on: a folder's the idle time, the
+// page's own until its first viewer comes, and no longer once it has left.
+std::chrono::milliseconds Patience(const TerminalShell& shell,
+                                   std::chrono::milliseconds idle)
+    UAGENT_REQUIRES(shell.mutex) {
+  if (!shell.folder.empty()) return idle;
+  return shell.generations > 0 ? std::chrono::milliseconds(0) : kFirstViewer;
+}
+
 }  // namespace
 
 TerminalViewer::TerminalViewer(std::shared_ptr<TerminalShell> shell,
@@ -139,6 +152,7 @@ TerminalViewer::~TerminalViewer() {
   if (shell_->viewer == generation_) {
     shell_->viewer = 0;
     shell_->quiet_since = Clock::now();
+    if (shell_->folder.empty()) WakeDescriptor(shell_->wake);
   }
 }
 
@@ -205,8 +219,9 @@ void TerminalViewer::Wake() {
   shell_->changed.notify_all();
 }
 
-Terminals::Terminals(size_t limit, std::chrono::milliseconds idle)
-    : limit_(limit), idle_(idle) {
+Terminals::Terminals(size_t limit, std::chrono::milliseconds idle,
+                     std::function<void()> changed)
+    : limit_(limit), idle_(idle), changed_(std::move(changed)) {
   int wake[2] = {-1, -1};
   if (OpenNonblockingPipe(wake)) {
     wake_read_.Reset(wake[0]);
@@ -226,19 +241,27 @@ Terminals::~Terminals() {
   }
 }
 
-std::string Terminals::Open(const std::string& directory, std::string& error) {
-  const std::string folder = directory.empty() ? UserHome() : directory;
-  const auto resolved = folder.starts_with('/')
-                            ? CanonicalDirectory(folder)
-                            : std::optional<std::filesystem::path>();
-  if (!resolved) {
-    error = "not a folder: " + folder;
-    return {};
+std::string Terminals::Open(const std::string& directory,
+                            const std::string& folder, std::string& error) {
+  // Both named as the catalogue names folders, so a shell lists under its.
+  std::string paths[] = {directory.empty() ? UserHome() : directory, folder};
+  for (std::string& path : paths) {
+    if (path.empty()) continue;
+    const auto resolved = path.starts_with('/')
+                              ? CanonicalDirectory(path)
+                              : std::optional<std::filesystem::path>();
+    if (!resolved) {
+      error = "not a folder: " + path;
+      return {};
+    }
+    path = resolved->string();
   }
   auto shell = std::make_shared<TerminalShell>();
   shell->id = RandomToken(16);
-  shell->cwd = resolved->string();
-  std::lock_guard lock(mutex_);
+  shell->cwd = paths[0];
+  shell->folder = paths[1];
+  shell->wake = wake_write_.Get();
+  UniqueLock lock(mutex_);
   if (stopping_ || shell->id.empty()) {
     error = "the terminal is unavailable";
     return {};
@@ -284,24 +307,33 @@ std::string Terminals::Open(const std::string& directory, std::string& error) {
   }
   shells_.push_back(shell);
   WakeDescriptor(wake_write_.Get());
+  lock.unlock();
+  if (changed_) changed_();
   return shell->id;
 }
 
 bool Terminals::Close(const std::string& id) {
-  std::lock_guard lock(mutex_);
-  const auto found = std::ranges::find(shells_, id, &TerminalShell::id);
-  if (found == shells_.end()) return false;
-  closing_.push_back(*found);
-  shells_.erase(found);
-  WakeDescriptor(wake_write_.Get());
+  {
+    std::lock_guard lock(mutex_);
+    const auto found = std::ranges::find(shells_, id, &TerminalShell::id);
+    if (found == shells_.end()) return false;
+    closing_.push_back(*found);
+    shells_.erase(found);
+    WakeDescriptor(wake_write_.Get());
+  }
+  if (changed_) changed_();
   return true;
 }
 
 std::vector<TerminalInfo> Terminals::List() const {
   std::lock_guard lock(mutex_);
   std::vector<TerminalInfo> list;
-  list.reserve(shells_.size());
-  for (const auto& shell : shells_) list.push_back({shell->id, shell->cwd});
+  for (const auto& shell : shells_) {
+    if (!shell->folder.empty()) {
+      list.push_back({shell->id, shell->cwd, shell->folder});
+    }
+  }
+  std::ranges::stable_sort(list, {}, &TerminalInfo::folder);
   return list;
 }
 
@@ -316,7 +348,10 @@ std::unique_ptr<TerminalViewer> Terminals::Attach(const std::string& id) {
   uint64_t generation = 0;
   {
     std::lock_guard lock(shell->mutex);
-    if (shell->ended) return nullptr;
+    // A page's own shell has one viewer, ever.
+    if (shell->ended || (shell->folder.empty() && shell->generations > 0)) {
+      return nullptr;
+    }
     generation = ++shell->generations;
     shell->viewer = generation;
     // The viewer it replaces learns so.
@@ -365,7 +400,8 @@ void Terminals::Loop() {
       ready.push_back({shell->controller.Get(), POLLIN, 0});
       std::lock_guard lock(shell->mutex);
       if (shell->viewer == 0) {
-        deadline = std::min(deadline, shell->quiet_since + idle_);
+        deadline =
+            std::min(deadline, shell->quiet_since + Patience(*shell, idle_));
       }
     }
     const int64_t wait = std::clamp<int64_t>(
@@ -389,17 +425,21 @@ void Terminals::Loop() {
         bool idle = false;
         {
           std::lock_guard lock(shell.mutex);
-          idle = shell.viewer == 0 && Clock::now() - shell.quiet_since >= idle_;
+          idle = shell.viewer == 0 &&
+                 Clock::now() - shell.quiet_since >= Patience(shell, idle_);
         }
         if (!idle) continue;
         Finish(shell, std::nullopt);
       }
       done.push_back(live[at]);
     }
-    std::lock_guard lock(mutex_);
-    for (const auto& shell : done) {
-      std::erase(shells_, shell);
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& shell : done) {
+        std::erase(shells_, shell);
+      }
     }
+    if (!done.empty() && changed_) changed_();
   }
 }
 

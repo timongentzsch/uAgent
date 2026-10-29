@@ -54,8 +54,6 @@ class Terminal {
 
   int Run(const std::vector<std::string>& attachments);
   const std::string& Next() const { return next_; }
-  // Where Next() opens when it has no file yet (a folder's first panel).
-  const std::string& NextFolder() const { return next_folder_; }
   // What the next session's composer starts with.
   const std::string& Carry() const { return carry_; }
   const std::string& SideQuestion() const { return side_question_; }
@@ -99,8 +97,8 @@ class Terminal {
   Command ConversationCommand(const ParsedSlashCommand& slash,
                               std::vector<std::string>& files);
   Command SetDetail(const std::string& argument);
-  // The folder whose panel this session answers to: an agent's first
-  // ancestor's, else the session's own folder.
+  // The folder this session works for: an agent's first ancestor's, else
+  // the session's own.
   std::string Folder() const;
   // A session id prefix or a unique title match among the folder's sessions.
   std::string MatchFolderSession(const std::string& argument) const;
@@ -135,8 +133,6 @@ class Terminal {
 
   Connection connection_;
   std::string path_, decision_, draft_, tail_, waiting_, next_;
-  std::string next_folder_;
-  std::string paused_;
   InteractiveOutput output_;
   LiveRegion region_;
   RawComposer composer_;

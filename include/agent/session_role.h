@@ -1,14 +1,12 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_AGENT_SESSION_ROLE_H_
 #define UAGENT_INCLUDE_AGENT_SESSION_ROLE_H_
-// The roles a session can have beyond an ordinary conversation: a folder's
-// panel, whose header's `kind` names it, or an agent another conversation
-// started, whose header's `agent` says by whom and how.
+// The role a session can have beyond an ordinary conversation: an agent
+// another conversation started, whose header's `agent` says by whom and how.
 
 #include "include/core/json.h"
 
 namespace uagent {
-inline constexpr const char* kSessionKindPanel = "panel";
 // A decision with this route is the agent's parent's to answer, and a
 // command with this origin is the parent's: its brief or its decision.
 inline constexpr const char* kRouteParent = "parent";

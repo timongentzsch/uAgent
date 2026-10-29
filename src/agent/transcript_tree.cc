@@ -191,7 +191,7 @@ json CallNode(const json& record, std::string_view work) {
     }
     if (!kept.empty()) node["parts"] = std::move(kept);
   }
-  Keep(node, record, {"result"});
+  Keep(node, record, {"result", "routine", "time"});
   return node;
 }
 

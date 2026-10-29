@@ -121,7 +121,6 @@ json HeaderJson(const SessionMetadata& metadata) {
                  {kSessionHeaderForkTurn, metadata.forked_at_turn},
                  {kSessionHeaderForkTime, metadata.forked_at_time}};
   if (!metadata.agent.empty()) header[kSessionHeaderAgent] = metadata.agent;
-  if (!metadata.kind.empty()) header[kSessionHeaderKind] = metadata.kind;
   if (!metadata.memory) header["memory"] = false;
   return header;
 }
@@ -172,11 +171,19 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});
-  // Spend is read across many sessions (a panel's daily limit), so it
-  // rides in the header instead of needing the whole state parsed.
+  // Spend is read across many sessions (the conversation list), so it rides
+  // in the header instead of needing the whole state parsed.
   header["cost"] = record.state.usage.cost;
   header["tokens"] = SaturatingNonnegativeAdd(
       record.state.usage.PromptTokens(), record.state.usage.GeneratedTokens());
+  // So is how far its to-do list is.
+  if (json todo = TodoProgress(JsonValue(
+          JsonValue(JsonValue(record.state.display, "facts", json::object()),
+                    "todo", json::object()),
+          "items", json::array()));
+      !todo.is_null()) {
+    header["todo"] = std::move(todo);
+  }
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
     return Error(SessionStoreError::kInvalid,
@@ -283,7 +290,6 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.metadata.forked_at_time =
       JsonValue(header, kSessionHeaderForkTime, "");
   record.metadata.agent = AgentOf(header);
-  record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
@@ -319,18 +325,12 @@ json SessionHeader(const std::string& path) {
   return ValidHeader(header) ? header : json::object();
 }
 
-std::string PanelPath(const std::string& cwd) {
-  return (std::filesystem::path(GlobalBase()) / kHistoryDir / WorkspaceId(cwd) /
-          kPanelRecordFile)
-      .string();
-}
-
 std::vector<SessionInfo> SessionsBeside(const std::string& path) {
   const std::filesystem::path directory =
       std::filesystem::path(path).parent_path();
   std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
   std::erase_if(sessions, [&](const SessionInfo& info) {
-    return !info.error.empty() || info.kind == kSessionKindPanel ||
+    return !info.error.empty() ||
            std::filesystem::path(info.path).parent_path() != directory;
   });
   return sessions;
@@ -353,8 +353,8 @@ std::string SessionLockPath(const std::string& path) {
 }
 
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
-  // One cache per process: a repeated listing (a panel's board every
-  // step) re-reads only the headers that changed.
+  // One cache per process: a repeated listing re-reads only the headers
+  // that changed.
   static std::mutex mutex;
   static SessionCatalogue catalogue UAGENT_GUARDED_BY(mutex);
   std::lock_guard lock(mutex);
@@ -379,8 +379,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   }
   const auto listed = [&](const SessionInfo& info) {
     return scope == SessionScope::kAll ||
-           (info.cwd == current && info.kind != kSessionKindPanel &&
-            info.parent.empty());
+           (info.cwd == current && info.parent.empty());
   };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
@@ -418,8 +417,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
         item.tokens = JsonValue(header, "tokens", int64_t{0});
+        item.todo = JsonValue(header, "todo", json(nullptr));
         item.parent = JsonValue(AgentOf(header), "parent", "");
-        item.kind = JsonValue(header, kSessionHeaderKind, "");
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
@@ -597,9 +596,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};
   record.metadata.session_id = identity;
   record.metadata.parent_session_id = parent_session_id;
-  // A fork is the user's own conversation: never a second panel, and
-  // no longer an agent its parent steers.
-  record.metadata.kind.clear();
+  // A fork is the user's own conversation, no longer an agent its parent
+  // steers.
   record.metadata.agent = json::object();
   record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
@@ -749,7 +747,7 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   // a completed deletion. Acquire ownership before changing any files.
   if (!draft_path.empty()) fs::remove(draft_path, ec);
   // What the session owns sits beside it: its siblings (assets, edits,
-  // journal, a panel's spend, the lock). Its agents are conversations of
+  // journal, the lock). Its agents are conversations of
   // their own and stay.
   const fs::path own = CanonicalAccessPath(path);
   const std::string prefix = own.filename().string() + ".";

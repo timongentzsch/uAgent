@@ -387,14 +387,19 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
                 "activity", session, operation="inspect", activity_id=row["id"]
             )["result"]
             assert_true(first == second and "BACKGROUND_DONE" in first["output"], (first, second))
+            # The command's own row runs until it ends and then takes its
+            # result: no receipt row of its own.
             snapshot = client.until(
                 session,
                 lambda value: any(
-                    node["kind"] == "notice" for node in value["state"]["view"]["nodes"]
+                    node["kind"] == "call"
+                    and node["state"] == "ok"
+                    and "BACKGROUND_DONE" in node.get("body", {}).get("text", "")
+                    for node in value["state"]["view"]["nodes"]
                 ),
             )
             nodes = snapshot["state"]["view"]["nodes"]
-            assert_true(len([node for node in nodes if node["kind"] == "notice"]) == 1, nodes)
+            assert_true(not [node for node in nodes if node["kind"] == "notice"], nodes)
             # The read is the turn's second call, a node by its own id.
             detail_id = [node["id"] for node in nodes if node["kind"] == "call"][1]
             raw = ""
@@ -431,6 +436,83 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             count = len(provider.requests)
             client.command("activity", session, operation="list")
             assert_true(len(provider.requests) == count, "inspection invoked model")
+
+
+def test_web_background_command_keeps_its_row_and_waits_are_routine(root, home, *, binary):
+    project = root / "background-row"
+    project.mkdir()
+
+    def answer(_, body):
+        results = [message for message in body["messages"] if message.get("role") == "tool"]
+        if not results:
+            return tool_call(
+                "run", {"command": "sleep 1; printf ROW_DONE", "yield_ms": 250}, call_id="run-1"
+            )
+        if len(results) == 1:
+            return tool_call("activity", {"operation": "wait", "wait_ms": 5000}, call_id="wait-1")
+        return event({"content": "Waited"})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="Run it behind and wait")
+            snapshot = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(
+                        node.get("body", {}).get("text") == "Waited"
+                        for node in value["state"]["view"]["nodes"]
+                    )
+                ),
+            )
+            calls = [node for node in snapshot["state"]["view"]["nodes"] if node["kind"] == "call"]
+            run_row, wait_row = calls
+            # The wait took the command's end: its result is on the command's
+            # own row, and the wait shows only at full detail.
+            assert_true(run_row["state"] == "ok" and "ROW_DONE" in run_row["body"]["text"], run_row)
+            assert_true(run_row["result"]["exit"] == {"code": 0}, run_row)
+            assert_true(wait_row.get("routine") is True and not run_row.get("routine"), calls)
+
+
+def test_web_stopped_background_command_ends_its_row(root, home, *, binary):
+    project = root / "background-stop"
+    project.mkdir()
+
+    def answer(_, body):
+        if not [message for message in body["messages"] if message.get("role") == "tool"]:
+            return tool_call("run", {"command": "sleep 30", "yield_ms": 250}, call_id="run-1")
+        return event({"content": "Left running"})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="Run it behind")
+            snapshot = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(row.get("status") == "running" for row in value["state"]["activities"])
+                ),
+            )
+            activity = snapshot["state"]["activities"][0]["id"]
+            client.command("activity", session, operation="stop", activity_id=activity)
+            # A stop ends the row the command started on, as its own end would.
+            snapshot = client.until(
+                session,
+                lambda value: any(
+                    node["kind"] == "call" and node["state"] == "cancelled"
+                    for node in value["state"]["view"]["nodes"]
+                ),
+            )
+            row = next(n for n in snapshot["state"]["view"]["nodes"] if n["kind"] == "call")
+            assert_true(row["result"]["word"].startswith("stopped"), row)
 
 
 def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):

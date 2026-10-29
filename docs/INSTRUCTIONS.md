@@ -1,8 +1,8 @@
 # Instructions and the system prompt
 
-Instructions tell the agent how to work: `AGENTS.md` for every session,
-`PANEL.md` for a folder's lead agent. `/init` drafts a folder `AGENTS.md`, and
-`/instructions` shows what a session reads.
+Instructions tell the agent how to work: `AGENTS.md` for every session.
+`/init` drafts a folder `AGENTS.md`, and `/instructions` shows what a session
+reads.
 
 A session's system message is the built-in base followed by these
 instructions. Instructions only add; nothing a person or an agent writes
@@ -13,37 +13,36 @@ the cached prefix.
 
 ## Instruction files
 
-| | Every session | A folder's lead agent |
-| --- | --- | --- |
-| Yours, in every folder | `~/.uagent/AGENTS.md` | `~/.uagent/PANEL.md` |
-| The folder's | `AGENTS.md` at the repository root | `<folder>/.uagent/PANEL.md` |
+| Whose | File |
+| --- | --- |
+| Yours, in every folder | `~/.uagent/AGENTS.md` |
+| The folder's | `AGENTS.md` at the repository root |
 
 A session reads one instruction file per directory, from `~/.uagent` and
 then from the repository root down to its working directory. In each
 directory it takes `AGENTS.override.md`, else `AGENTS.md`, else `CLAUDE.md`
 when `UAGENT_OTHER_AGENTS` names `claude`; the editors below open whichever
-file a level uses. A lead agent then reads its `PANEL.md` files, yours first.
+file a level uses.
 
 Together the files are bounded to 32 KiB. They and memory are read once
 when a session starts, so an edit or a saved memory reaches new and
 restarted sessions (`/restart`), not a running one.
 
-A folder's `AGENTS.md` and `.uagent/PANEL.md` are ordinary repository
-files. Writing yours (`PANEL.md` or any of the three names in
-`~/.uagent`) always needs a person, including under YOLO; reading them does
-not. Editors never write through a symbolic link.
+A folder's `AGENTS.md` is an ordinary repository file. Writing yours (any of
+the three names in `~/.uagent`) always needs a person, including under YOLO;
+reading them does not. Editors never write through a symbolic link.
 
 ## Editing
 
 - Web: **Settings → All conversations** (or **This folder**) **→
   Instructions** shows the files in the order the model reads them, each
   editable in place.
-- Terminal: `/instructions` shows it; `/instructions edit sessions|panel
-  user|project` opens `$VISUAL` or `$EDITOR`.
+- Terminal: `/instructions` shows it; `/instructions edit user|project`
+  opens `$VISUAL` or `$EDITOR`.
 - Agents: `uagent` topic `instructions`, and `uagent_instructions` with
-  `audience`, `scope` and the whole `text`; the user approves the exact diff.
+  `scope` and the whole `text`; the user approves the exact diff.
 - Scripts: `uagent --control` with `kind=instructions`, `action=show|set`,
-  optional `cwd`, and for `set` the `audience`, `scope` and `text`.
+  optional `cwd`, and for `set` the `scope` and `text`.
 
 `uagent --show-system-prompt [--json]` prints what the model would read, without
 a model call; `/context` shows a live conversation's full request.

@@ -14,7 +14,7 @@ test("appearance and configuration remain usable at large scales", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await headerAction(page, "Settings");
   // A phone opens settings on its section list.
   await page
@@ -247,11 +247,10 @@ test("unread completions, background activity and conversation lifecycle", async
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".decision")).toContainText("BROWSER_ACTIVITY");
   await page.getByRole("button", { name: "Allow once", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Activity", exact: true }),
-  ).toContainText("1 command");
-  // "Now" lists the running command; its row opens the inspector sheet.
-  const now = page.getByRole("button", { name: "Activity", exact: true });
+  // The status control counts the running command; its sheet lists it, and
+  // its row opens the inspector sheet.
+  const now = page.locator(".composer .activity-button");
+  await expect(now).toContainText("1 command");
   await now.click();
   const activity = page
     .locator(".activity-row")
@@ -266,16 +265,14 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await now.click();
   await activity.getByRole("button", { name: /^Stop / }).click();
-  await expect(page.locator(".composer .turn-status-row")).not.toContainText(
-    "1 command",
-  );
-  // Finished work leaves "now"; its call's row is not running.
+  // Nothing runs any more, so the status control goes; the stopped
+  // command's own row ends.
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
     page.locator(".node:not(.running) > .node-row", {
       hasText: "BROWSER_ACTIVITY",
     }),
   ).toBeVisible();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   // The activity sheet is modal: close it before reaching the page again.
   await page.keyboard.press("Escape");
   await conversationMenu.click();
@@ -286,7 +283,6 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(page.locator(".conversation-head h1")).toHaveText(
     "Fork of Unread completion probe",
   );
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(model).toHaveText(/mock\/model-b/);
   await expect(page.locator(".message.user").first()).toContainText(
     "Unread completion probe",

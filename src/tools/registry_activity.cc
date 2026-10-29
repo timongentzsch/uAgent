@@ -129,6 +129,11 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     std::string operation = JsonValue(a, "operation", "");
     return operation == "write" || operation == "resize" || operation == "stop";
   };
+  // A wait, a poll or a list observes commands whose own rows show them.
+  activity.routine = [](const json& a) {
+    const std::string operation = JsonValue(a, "operation", "");
+    return operation == "list" || operation == "poll" || operation == "wait";
+  };
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
   // An empty write is intentional, so chars, given or not, is never missing.

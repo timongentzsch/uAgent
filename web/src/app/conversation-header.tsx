@@ -1,6 +1,6 @@
 import "./conversation-header.css";
 import type { ComponentChildren } from "preact";
-import type { AppModal, Session } from "../shared/types.ts";
+import type { Session } from "../shared/types.ts";
 import { Button, IconButton } from "../shared/ui.tsx";
 import { MenuItem } from "../shared/menu.tsx";
 import {
@@ -16,6 +16,7 @@ import { useCompact, usePhone } from "../shared/layout.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
+import type { Page } from "./app.tsx";
 
 // The page's title and what acts on the open conversation: the browser, its
 // files, Settings on a small screen and the conversation's menu. A phone
@@ -28,25 +29,22 @@ export default function ConversationHeader({
   parent,
   opening,
   booting,
-  placeName,
   browserAvailable,
   terminal,
   filesOpen,
   setFilesOpen,
   openDrawer,
   choose,
-  open,
   settings,
   menu,
 }: {
-  page: "chat" | "library" | "scheduled";
+  page: Page;
   selected: string;
   session?: Session;
   // The conversation that started this one, when listed.
   parent?: Session;
   opening: boolean;
   booting: boolean;
-  placeName: (path?: string) => string;
   browserAvailable: boolean;
   // Present while the host offers terminals.
   terminal?: { open: boolean; toggle: () => void };
@@ -54,7 +52,6 @@ export default function ConversationHeader({
   setFilesOpen: (open: boolean) => void;
   openDrawer: () => void;
   choose: (id: string) => void;
-  open: (modal: AppModal) => void;
   settings: () => void;
   menu: (
     item: Session,
@@ -71,10 +68,7 @@ export default function ConversationHeader({
   // On a phone the conversation's menu holds the header's other actions;
   // without a conversation there is no menu, and Settings keeps its button.
   const inMenu = phone && page === "chat" && !!(session || opening);
-  const titleOf = (item: Session) =>
-    item.kind === "panel"
-      ? `Lead · ${placeName(item.cwd)}`
-      : item.title || "Conversation";
+  const titleOf = (item: Session) => item.title || "Conversation";
   const phoneItems = inMenu && (
     <>
       <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
@@ -88,11 +82,6 @@ export default function ConversationHeader({
       {terminal && (
         <MenuItem onClick={terminal.toggle}>
           {terminal.open ? "Hide terminal" : "Terminal"}
-        </MenuItem>
-      )}
-      {session?.kind === "panel" && (
-        <MenuItem onClick={() => open({ type: "instructions" })}>
-          Edit instructions
         </MenuItem>
       )}
       <MenuItem onClick={settings}>Settings</MenuItem>
@@ -111,6 +100,10 @@ export default function ConversationHeader({
             "Library"
           ) : page === "scheduled" ? (
             "Scheduled"
+          ) : page === "folder" ? (
+            "Overview"
+          ) : page === "terminal" ? (
+            "Terminal"
           ) : session ? (
             titleOf(session)
           ) : opening ? (
@@ -123,14 +116,11 @@ export default function ConversationHeader({
         </h1>
         {/* An agent leads back to the conversation that started it. */}
         {page === "chat" && parent && (
-          <p class="panel-subtitle small">
+          <p class="head-subtitle small">
             <Button variant="quiet" onClick={() => choose(parent.id)}>
               ‹ {titleOf(parent)}
             </Button>
           </p>
-        )}
-        {!phone && page === "chat" && session?.kind === "panel" && (
-          <PanelHelp editInstructions={() => open({ type: "instructions" })} />
         )}
       </div>
       {browserAvailable && (!inMenu || browsing) && (
@@ -181,21 +171,5 @@ export default function ConversationHeader({
           </IconButton>
         ) : null)}
     </header>
-  );
-}
-
-// What a panel is, in one line under its title, with the way to
-// change what it reads.
-function PanelHelp({ editInstructions }: { editInstructions: () => void }) {
-  return (
-    <p class="panel-subtitle small">
-      <span>
-        Plans this folder&rsquo;s work and starts agents (↳) for it; never edits
-        files itself.
-      </span>
-      <Button variant="quiet" onClick={editInstructions}>
-        Edit instructions
-      </Button>
-    </p>
   );
 }

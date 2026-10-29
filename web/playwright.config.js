@@ -40,7 +40,7 @@ export default defineConfig({
     {
       name: "webkit",
       testMatch:
-        "**/{btw,guidance-queue,phone-layout,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,panel,search}.spec.js",
+        "**/{btw,guidance-queue,phone-layout,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,scroll-restore,scroll-stick,search}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

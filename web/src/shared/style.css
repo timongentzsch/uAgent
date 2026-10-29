@@ -1392,15 +1392,9 @@ dialog section {
   }
   /* Dense rows keep their 32px look but take a 44px touch: an invisible
      hit area extends above and below, never over a neighbour. */
-  :where(
-    .turn-status-row,
-    .activity-button,
-    .metrics > button,
-    .message button
-  ) {
+  :where(.activity-button, .metrics > button, .message button) {
     position: relative;
   }
-  .turn-status-row::after,
   .activity-button::after,
   .metrics > button::after,
   .message button::after {

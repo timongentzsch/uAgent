@@ -23,6 +23,7 @@
 #include "include/core/output_buffer.h"
 #include "include/core/sandbox_watch.h"
 #include "include/core/thread_annotations.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 
@@ -162,6 +163,10 @@ class ActivitySupervisor {
   // What runs now: the background activities and those a tool call waits on.
   std::vector<Activity> Running() const;
   std::vector<Activity> TakeAllForShutdown();
+  // Commands a stop ended, which report no completion: their rows take
+  // their end from here (Agent::DrainActivities).
+  void Stopped(EndedCommand ended);
+  std::vector<EndedCommand> TakeStopped();
 
   uint64_t Generation() const;
   void Wake();
@@ -208,6 +213,7 @@ class ActivitySupervisor {
   bool stopping_ UAGENT_GUARDED_BY(mutex_) = false;
   int64_t reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t generation_ UAGENT_GUARDED_BY(mutex_) = 0;
+  std::vector<EndedCommand> stopped_ UAGENT_GUARDED_BY(mutex_);
   std::string owner_ UAGENT_GUARDED_BY(mutex_);
   int64_t next_id_ UAGENT_GUARDED_BY(mutex_) = int64_t{1} << 30;
 };

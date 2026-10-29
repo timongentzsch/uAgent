@@ -66,13 +66,13 @@ int Application::RunChannel() {
   // Mail a previous runtime took but never saved is delivered again, and
   // mail that arrived while none ran starts a turn now.
   RecoverMail(MailboxIdFor(session_file_));
-  if (agent_.DeliverMail(channel_->HoldMail())) SaveSession(false);
+  if (agent_.DeliverMail()) SaveSession(false);
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
     // Background work's result arrives on its own; an idle session also
     // takes it up at once, as a turn, since it started the work to hear back.
     agent_.DrainActivities(input->wake);
-    agent_.DeliverMail(channel_->HoldMail());
+    agent_.DeliverMail();
     agent_.AccountSideUsage();
     request_id_ = input->request_id;
     origin_ = input->origin;
@@ -88,7 +88,7 @@ int Application::RunChannel() {
       }
       ProcessInput(std::move(input->text));
       // Mail that came as the turn was ending starts the next one.
-      agent_.DeliverMail(channel_->HoldMail());
+      agent_.DeliverMail();
       // An agent's spend is its parent's too, reported before the turn's
       // end wakes the parent.
       if (const json agent = context_.options.AgentRole(); !agent.empty()) {
@@ -126,7 +126,6 @@ void Application::PublishChannelState(bool checkpoint) {
       state["answer"] = std::move(answer);
     }
   }
-  state["view_epoch"] = agent_.ViewEpoch();
   state["usage"] = UsageJson(agent_.SessionUsage());
   state["route_usage"] = agent_.RouteUsageJson();
   state["statistics"] = agent_.Statistics();

@@ -44,27 +44,20 @@ In every mode:
   - the `uagent_configure` and `uagent_instructions` tools;
   - `run(sandbox=false)`.
 
-Two kinds of session act for you unattended:
-
-- A **lead agent** always runs at the `readonly` level, whatever the
-  settings say: its commands read the folder and change nothing, so they run
-  without review. `sandbox.network` and `sandbox.write` do not widen that
-  level. A `/btw` conversation forked from it runs in the ordinary sandbox
-  and so gets no `run`.
-- An **agent**, a conversation another one started, takes its parent's
-  approval mode, auto at most, unless a mode is chosen for its own
-  conversation (`/permissions`, `--yolo`, or the web's approval control); the
-  saved setting does not reach it. One started with `edits` none runs at the
-  `readonly` level with no tool that edits, whatever its settings say, and so
-  do the agents it starts. Any other runs at the `default` level, or
-  `relaxed` while it is in yolo. While that sandbox is enforced and it is in
-  auto, its `run` and `scratch` commands and its file changes inside the
-  folder run without review; everything else goes through its approval mode.
-  What would ask a person goes to its parent first, which decides or passes
-  it to you, and to you after five minutes. Once you write to the agent
-  yourself, what its turn still asks comes to you directly: in a turn your
-  message started, or one you wrote into while it ran. What always needs a
-  person never goes to the parent.
+An **agent**, a conversation another one started, acts for you unattended.
+It takes its parent's approval mode, auto at most, unless a mode is chosen
+for its own conversation (`/permissions`, `--yolo`, or the web's approval
+control); the saved setting does not reach it. One started with `edits` none
+runs at the `readonly` level with no tool that edits, whatever its settings
+say, and so do the agents it starts. Any other runs at the `default` level,
+or `relaxed` while it is in yolo. While that sandbox is enforced and it is
+in auto, its `run` and `scratch` commands and its file changes inside the
+folder run without review; everything else goes through its approval mode.
+What would ask a person goes to its parent first, which decides or passes it
+to you, and to you after five minutes. Once you write to the agent yourself,
+what its turn still asks comes to you directly: in a turn your message
+started, or one you wrote into while it ran. What always needs a person
+never goes to the parent.
 
 ## Trust boundaries
 
@@ -194,8 +187,8 @@ stores. The browser profile, µAgent's settings and the credential stores
 stay out of reach. The change holds from the next command after `/yolo`,
 `/permissions` or the web's control, and `/status` names the level in
 effect (`relaxed (yolo)`). `readonly`, `relaxed` and `off`, set explicitly,
-stay as they are; a lead agent stays at `readonly`. Plan mode runs commands
-at `readonly (plan)` whatever the level, except `off`, where it runs none.
+stay as they are. Plan mode runs commands at `readonly (plan)` whatever the
+level, except `off`, where it runs none.
 
 A value that is no level (`strict` included, which is gone) is not read as
 `default`: commands are refused until it is fixed, so a typo cannot open the
@@ -342,9 +335,8 @@ trust still follows `.mcp.json`'s content. This is a check at the end of a
 command, not a wall: a hook added by a long-running command is live until it
 ends, a change you make to those paths while a sandboxed command runs is
 undone with it, and a detached activity still running when the session ends is
-not checked. A folder's instruction files (`AGENTS.md`,
-`.uagent/PANEL.md`) are ordinary repository files that any session in it may
-edit.
+not checked. A folder's instruction file (`AGENTS.md`) is an ordinary
+repository file that any session in it may edit.
 
 **MCP servers.** A stdio server is spawned under the same policy as a
 command, hidden stores included, with the folder and the package caches

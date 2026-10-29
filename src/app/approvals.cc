@@ -17,7 +17,6 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/path_policy.h"
 #include "include/agent/session_role.h"
-#include "include/app/panel.h"
 #include "include/app/permissions.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
@@ -138,7 +137,7 @@ bool PlanModeAllows(const Tool& tool, const json& arguments, bool mandatory) {
 
 // The outcome of an approval. A refusal says what was not approved, not who
 // refused it: a person may have declined, or a client with nobody behind it
-// (`uagent panel -p`) declined for them.
+// declined for them.
 struct Verdict {
   bool granted = true;
   std::string refusal = "this action was not approved";

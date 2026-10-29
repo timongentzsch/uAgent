@@ -238,8 +238,7 @@ const char* UsageText() {
       row.append(column - row.size(), ' ');
       listing += row + spec.help + "\n";
     }
-    return synopsis + "\n       uagent panel [options]\n\n" + listing +
-           "  panel                   open this folder's panel\n"
+    return synopsis + "\n\n" + listing +
            "\nsettings: what is saved for all conversations, then for this "
            "folder (/config, or the web settings); process UAGENT_* "
            "variables override both, and the flags above override all "

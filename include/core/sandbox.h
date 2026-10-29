@@ -97,8 +97,9 @@ struct SandboxInputs {
 // The `sandbox.level` setting: what a command may do before the individual
 // overrides (sandbox.network, sandbox.write, sandbox.hide, sandbox.reveal)
 // apply. Not SandboxLevel, which is what the host can enforce.
-// readonly is a lead agent's and plan mode's: its commands may look but change
-// nothing, the folder and the network included, whatever the overrides say.
+// readonly is plan mode's and a read-only agent's: its commands may look but
+// change nothing, the folder and the network included, whatever the overrides
+// say.
 enum class SandboxPreset { kReadOnly, kDefault, kRelaxed, kOff };
 
 // readonly, default, relaxed and off. False for anything else, leaving

@@ -22,9 +22,6 @@ for (const labels of [false, true])
     const started = performance.now();
     await page.goto(`/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeEnabled();
-    await expect(page.locator(".composer .turn-status-caption")).toHaveText(
-      "Ready",
-    );
     const startupMs = performance.now() - started;
     const snapshot = await (
       await request.get(`/api/sessions/${session.id}`)

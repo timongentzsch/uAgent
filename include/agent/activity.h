@@ -39,6 +39,7 @@ struct ActivityCompletion {
   std::string display_label;
   std::string receipt_path;
   std::string source_id;
+  int64_t started_ms = 0;  // when it started, in Unix milliseconds
 };
 
 struct DetachedActivity {
@@ -101,6 +102,8 @@ std::string ActivityResultHeader(const ActivityCompletion& completion);
 // cut of it), its hint, and how it exited.
 std::string ActivityCompletionText(const ActivityCompletion& completion,
                                    std::string_view body);
+// A completion as its call's row takes it.
+EndedCommand EndedOf(const ActivityCompletion& completion);
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind = {});
 void ActivityShutdownAll(ActivitySupervisor& supervisor);

@@ -74,7 +74,6 @@ inline constexpr ConfigCategory kConfigCategories[] = {
     {"request", "Requests"},
     {"tools", "Tools"},
     {"delegation", "Agents"},
-    {"coordination", "Panel"},
     {"search", "Web search"},
     {"memory", "Memory"},
     {"skills", "Skills"},
@@ -487,8 +486,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                           "tools",
                           "how far the OS sandbox confines shell commands: "
-                          "readonly (temporary files only, no network; a "
-                          "lead agent's always), default (relaxed "
+                          "readonly (temporary files only, no network), "
+                          "default (relaxed "
                           "under yolo), relaxed (home writable and "
                           "readable) or "
                           "off; below relaxed, commands read in your home "
@@ -546,14 +545,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "delegation",
                       "how deep agents may start agents of their own"),
         "Agent depth"),
-
-    // Coordination.
-    registry::Named(
-        registry::Dbl("panel.dailySpendUsd", "UAGENT_PANEL_DAILY_SPEND_USD", {},
-                      20.0, ReloadPolicy::kNextUserTurn, "coordination",
-                      "reported cost a lead agent and its agents may spend "
-                      "per day; at it, their events wait. 0 disables it"),
-        "Lead agent daily spend"),
 
     // Web search.
     registry::Named(

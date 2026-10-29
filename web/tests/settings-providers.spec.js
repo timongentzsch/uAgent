@@ -16,7 +16,7 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
     )?.all?.providers;
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .locator(".settings-nav")

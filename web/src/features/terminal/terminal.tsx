@@ -9,10 +9,9 @@ import type {
   Report,
   TerminalControl,
   TerminalInfo,
-  TerminalList,
   TerminalNotice,
 } from "../../shared/types.ts";
-import { api, manage, routes } from "../../state/api.ts";
+import { manage, routes } from "../../state/api.ts";
 import { Button, IconButton, Spinner } from "../../shared/ui.tsx";
 import { KeyBar, type BarKey } from "../../shared/key-bar.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
@@ -25,16 +24,16 @@ import {
   terminalScrollbackLines,
 } from "../../shared/limits.ts";
 
-// The terminal panel: tabs of shells the host runs for this user, each an
-// xterm.js view on a socket. Loaded the first time the panel opens. The
-// agent never sees a terminal; "Add to chat" puts text into the composer.
+// Terminals: shells the host runs for this user, each an xterm.js view on a
+// socket. A folder's terminal fills the page in the conversation's place;
+// the panel under the chat holds the page's own, which end with it. Loaded
+// the first time one opens. The agent never sees a terminal; "Add to chat"
+// puts text into the composer.
 
 // What the panel asks of the open tab.
 interface View {
   text: () => string;
   focus: () => void;
-  // A key from the touch key bar.
-  press: (key: BarKey) => void;
 }
 type ViewState = "connecting" | "live" | "replaced" | "ended";
 
@@ -108,21 +107,18 @@ function fenced(text: string) {
 
 const folderName = (cwd: string) => cwd.slice(cwd.lastIndexOf("/") + 1) || cwd;
 
-// One shell: its screen, and a socket that reattaches until the shell ends
-// or another device takes it.
+// One shell: its screen, the touch key bar under it, and a socket that
+// reattaches until the shell ends or another device takes it.
 function TerminalView({
   id,
-  active,
-  register,
-  input,
-  ended,
+  active = true,
+  register = () => {},
+  ended = () => {},
 }: {
   id: string;
-  active: boolean;
-  register: (id: string, view: View | null) => void;
-  // What a typed key sends, after a sticky Ctrl from the key bar.
-  input: (data: string) => string;
-  ended: (id: string) => void;
+  active?: boolean;
+  register?: (id: string, view: View | null) => void;
+  ended?: (id: string) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -132,7 +128,23 @@ function TerminalView({
   const [code, setCode] = useState(-1);
   // Bumped to take the shell back from another device.
   const [attempt, setAttempt] = useState(0);
-  const latest = useLatest({ input, ended, register });
+  // The key bar's Ctrl, held for the next key.
+  const [ctrl, setCtrl] = useState(false);
+  const send = (data: string | Uint8Array<ArrayBuffer>) => {
+    if (socket.current?.readyState === WebSocket.OPEN)
+      socket.current.send(data);
+  };
+  // What a typed key sends: with a held Ctrl, a letter or @[\]^_ is that
+  // character's control code.
+  const typed = (data: string) => {
+    if (!latest.current.ctrl || data.length !== 1) return data;
+    setCtrl(false);
+    const letter = data.toUpperCase().charCodeAt(0);
+    return letter >= 64 && letter < 96
+      ? String.fromCharCode(letter - 64)
+      : data;
+  };
+  const latest = useLatest({ ctrl, ended, register, send, typed });
 
   useEffect(() => {
     const element = box.current;
@@ -160,21 +172,17 @@ function TerminalView({
     term.open(element);
     terminal.current = term;
     fit.current = fitting;
-    const send = (data: string | Uint8Array<ArrayBuffer>) => {
-      if (socket.current?.readyState === WebSocket.OPEN)
-        socket.current.send(data);
-    };
     const encoder = new TextEncoder();
-    const typed = term.onData((data) =>
-      send(encoder.encode(latest.current.input(data))),
+    const keyed = term.onData((data) =>
+      latest.current.send(encoder.encode(latest.current.typed(data))),
     );
     // Some mouse modes report raw bytes.
     const binary = term.onBinary((data) =>
-      send(Uint8Array.from(data, (char) => char.charCodeAt(0))),
+      latest.current.send(Uint8Array.from(data, (char) => char.charCodeAt(0))),
     );
     const resized = term.onResize(({ rows, cols }) => {
       const control: TerminalControl = { type: "resize", rows, cols };
-      send(JSON.stringify(control));
+      latest.current.send(JSON.stringify(control));
     });
     const observer = new ResizeObserver(() => {
       if (element.offsetParent) fitting.fit();
@@ -209,13 +217,12 @@ function TerminalView({
         return lines.join("\n").trimEnd();
       },
       focus: () => term.focus(),
-      press: (key) => send(sequence(key, term.modes.applicationCursorKeysMode)),
     });
     return () => {
       latest.current.register(id, null);
       observer.disconnect();
       restyle.disconnect();
-      typed.dispose();
+      keyed.dispose();
       binary.dispose();
       resized.dispose();
       term.dispose();
@@ -310,10 +317,62 @@ function TerminalView({
           )}
         </p>
       )}
+      {active && coarsePointer() && (
+        <div class="terminal-keys">
+          <KeyBar
+            press={(key) => {
+              const term = terminal.current;
+              if (term)
+                send(sequence(key, term.modes.applicationCursorKeysMode));
+              setCtrl(false);
+            }}
+            ctrl={ctrl}
+            setCtrl={setCtrl}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
+// A folder's terminal, in the conversation's place: its folder, Close, and
+// the shell, which runs on when this page leaves it.
+export function FolderTerminal({
+  terminal,
+  closed,
+  report,
+}: {
+  terminal: TerminalInfo;
+  closed: () => void;
+  report: Report;
+}) {
+  return (
+    <section
+      class="terminal-panel"
+      aria-label={`Terminal in ${folderName(terminal.cwd)}`}
+    >
+      <div class="terminal-bar">
+        <span class="terminal-place small" title={terminal.cwd}>
+          {terminal.cwd}
+        </span>
+        <Button
+          onClick={() =>
+            void manage("terminal", { action: "close", id: terminal.id }).then(
+              closed,
+              report,
+            )
+          }
+        >
+          Close terminal
+        </Button>
+      </div>
+      <TerminalView key={terminal.id} id={terminal.id} />
+    </section>
+  );
+}
+
+// The page's own terminals, as tabs under the chat; closing the panel or
+// the page ends them.
 export default function TerminalPanel({
   cwd,
   request,
@@ -331,31 +390,20 @@ export default function TerminalPanel({
   close: () => void;
   report: Report;
 }) {
-  const [tabs, setTabs] = useState<TerminalInfo[] | null>(null);
+  const [tabs, setTabs] = useState<TerminalInfo[]>([]);
   const [active, setActive] = useState("");
   const [ended, setEnded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [ctrl, setCtrl] = useState(false);
   const views = useRef(new Map<string, View>());
   const handled = useRef(0);
-  const latest = useLatest({ ctrl });
 
   const open = async (folder: string) => {
     setBusy(true);
     try {
-      const result = await manage("terminal", { action: "open", cwd: folder });
-      // The host lists running shells; a tab whose shell ended stays.
-      setTabs((current) => [
-        ...(current || []).filter(
-          (tab) =>
-            ended.includes(tab.id) ||
-            result.terminals.some((item) => item.id === tab.id),
-        ),
-        ...result.terminals.filter(
-          (item) => !current?.some((tab) => tab.id === item.id),
-        ),
-      ]);
-      if (result.id) setActive(result.id);
+      const { id } = await manage("terminal", { action: "open", cwd: folder });
+      if (!id) return;
+      setTabs((current) => [...current, { id, cwd: folder, folder: "" }]);
+      setActive(id);
     } catch (error) {
       report(error);
     } finally {
@@ -363,59 +411,33 @@ export default function TerminalPanel({
     }
   };
   const remove = async (id: string) => {
-    let rest = (tabs || []).filter((tab) => tab.id !== id);
     if (!ended.includes(id)) {
       try {
-        rest = (await manage("terminal", { action: "close", id })).terminals;
+        await manage("terminal", { action: "close", id });
       } catch (error) {
         report(error);
         return;
       }
     }
-    // Shells that ended stay as tabs until closed.
-    const kept = (tabs || []).filter(
-      (tab) =>
-        tab.id !== id &&
-        (ended.includes(tab.id) || rest.some((item) => item.id === tab.id)),
-    );
+    const kept = tabs.filter((tab) => tab.id !== id);
     setTabs(kept);
     if (!kept.length) close();
     else if (active === id) setActive(kept[kept.length - 1].id);
   };
 
-  // The shells already running, as tabs; with none, a new one.
+  // A new shell when the panel opens, and one for each folder asked for.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once, and for each new request
   useEffect(() => {
-    const controller = new AbortController();
-    api<TerminalList>(routes.terminals, undefined, {
-      signal: controller.signal,
-    }).then(
-      (list) => {
-        setTabs(list.terminals);
-        const last = list.terminals[list.terminals.length - 1];
-        if (last) setActive(last.id);
-      },
-      (error) => controller.signal.aborted || report(error),
-    );
-    return () => controller.abort();
-  }, [report]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once the list is read, and for each new request
-  useEffect(() => {
-    if (!tabs) return;
     if (request && handled.current !== request.at) {
       handled.current = request.at;
       void open(request.cwd);
-    } else if (!handled.current && !tabs.length) {
+    } else if (!handled.current) {
       handled.current = -1;
       void open(cwd);
     }
-  }, [request, tabs === null]);
+  }, [request]);
 
-  const press = (key: BarKey) => {
-    views.current.get(active)?.press(key);
-    setCtrl(false);
-  };
-
-  if (!tabs) return <Spinner label="Opening the terminal…" />;
+  if (!tabs.length && busy) return <Spinner label="Opening the terminal…" />;
   return (
     <div class="terminal-panel">
       <div class="terminal-bar">
@@ -476,25 +498,11 @@ export default function TerminalPanel({
             if (view) views.current.set(id, view);
             else views.current.delete(id);
           }}
-          input={(data) => {
-            if (!latest.current.ctrl || data.length !== 1) return data;
-            setCtrl(false);
-            // Ctrl with a letter or @[\]^_ is that character's control code.
-            const letter = data.toUpperCase().charCodeAt(0);
-            return letter >= 64 && letter < 96
-              ? String.fromCharCode(letter - 64)
-              : data;
-          }}
           ended={(id) => setEnded((list) => [...list, id])}
         />
       ))}
       {!tabs.length && (
         <p class="terminal-note small">No terminal is running.</p>
-      )}
-      {coarsePointer() && (
-        <div class="terminal-keys">
-          <KeyBar press={press} ctrl={ctrl} setCtrl={setCtrl} />
-        </div>
       )}
     </div>
   );

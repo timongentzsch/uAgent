@@ -76,11 +76,11 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .click();
   await page.getByLabel("Message or guidance").fill("Show a researched answer");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const reply = page.locator(".message").filter({
     has: page.getByRole("heading", { name: "Verified response" }),
@@ -192,8 +192,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByRole("heading", { name: "Needs your decision" }),
   ).toBeVisible();
-  // Waiting for a person keeps the runtime active without a running pulse.
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  // Waiting for a person says so under the input, without a running pulse.
+  await expect(page.locator(".composer .activity-state")).toContainText(
+    "Needs you",
+  );
   await expect(page.locator(".decision")).toContainText("browser-proof.txt");
   await page.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(
@@ -209,7 +211,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
       ),
     )
     .toBe("approved from browser");
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   // Up recalls the last prompt sent from this page; Down returns to empty.
   const composerInput = page.getByLabel("Message or guidance");
   await composerInput.press("ArrowUp");
@@ -250,7 +252,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   // The native host accepts the send while its HTTP acknowledgement is held.
   // Editing the next draft in that interval must not erase the new text.
   const { promise: held, resolve: release } = Promise.withResolvers();
@@ -284,7 +286,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByText("Delayed acknowledgement", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await page.getByLabel("Message or guidance").fill("");
   const answers = page.getByRole("heading", {
     name: "Verified response",
@@ -305,7 +307,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.locator(".message").getByAltText("one-pixel.png"),
   ).toBeVisible();
   await expect(answers).toHaveCount(answerCount + 1);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   answerCount = await answers.count();
   await page.locator('input[type="file"]').setInputFiles({
     name: "opaque.bin",
@@ -320,7 +322,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.locator(".message").getByRole("link", { name: /opaque.bin/ }),
   ).toBeVisible();
   await expect(answers).toHaveCount(answerCount + 1);
-  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await page.getByLabel("Message or guidance").fill("/help");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("/model");

@@ -32,7 +32,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | web host discovery, devices and push keys | `web/*` |
 | settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |
 | folder trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
-| your instructions | `AGENTS.md`, `PANEL.md` |
+| your instructions | `AGENTS.md` |
 | your skills | `skills/*` |
 | shared browser profile (saved logins, cookies) | the directory `UAGENT_BROWSER_DATA` names |
 | runtime sockets and their leases | `/tmp/uagent-<uid>-<hash>/*.sock`, `*.sock.lock` |
@@ -40,14 +40,15 @@ Paths are under `~/.uagent` unless shown otherwise.
 | scratch scripts | `<folder>/.uagent/scratch/*` |
 | Playwright snapshots and logs | `<folder>/.playwright-cli/*` |
 
-`<folder-hash>` is a hash of the folder's path; each session file's
-header records its `cwd` and title. Live activities (IDs, PTYs, incremental
-output) exist only in memory and end with the process.
+`<folder-hash>` is a hash of the folder's path; each session file's header
+records its `cwd`, title, `cost` and to-do progress (`todo`). Live
+activities (IDs, PTYs, incremental output) exist only in memory and end with
+the process.
 
-No settings are read from a folder. µAgent reads from it only
-`.mcp.json` (once trusted), instruction files (`AGENTS.md`,
-`.uagent/PANEL.md`) and skills (`.agents/skills`, `.uagent/skills`; see
-[Bundled skills](../skills/README.md#discovery) for the rest).
+No settings are read from a folder. µAgent reads from it only `.mcp.json`
+(once trusted), instruction files (`AGENTS.md`) and skills (`.agents/skills`,
+`.uagent/skills`; see [Bundled skills](../skills/README.md#discovery) for the
+rest).
 
 ## Settings
 

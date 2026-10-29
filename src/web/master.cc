@@ -14,13 +14,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
 #include "include/app/bootstrap.h"
+#include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
 #include "include/browser/browser.h"
@@ -304,8 +307,14 @@ bool Master::Initialize(std::string& error) {
     response.set_header("Vary", "Accept-Encoding");
   });
   if (options_.terminal) {
+    // Every device lists the folders' shells as they come and go.
     terminals_ = std::make_unique<Terminals>(
-        kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes));
+        kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes),
+        [this] {
+          host_.Publish(
+              "", "",
+              {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});
+        });
   }
   RegisterApiRoutes();
   RegisterTerminalRoutes();
@@ -362,7 +371,7 @@ int Master::Run() {
         break;
       }
       PublishSettings();
-      // Sessions a panel creates or deletes reach every client.
+      // Sessions an agent creates or deletes reach every client.
       host_.RefreshCatalogue();
       bool observed;
       {
@@ -460,7 +469,7 @@ void Master::RegisterApiRoutes() {
                            {"capabilities", push_->Capabilities(device)},
                            {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
-                           {"terminal", terminals_ != nullptr},
+                           {"terminals", TerminalList()},
                            {"device", device}};
         Reply(response, body);
       });
@@ -524,6 +533,16 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Search(request, response);
               });
+  // A folder at a glance, for its overview: spend, changes and git.
+  server_.Get("/api/folder", [](const Request& request, Response& response) {
+    const std::optional<std::filesystem::path> folder =
+        CanonicalDirectory(request.get_param_value("path"));
+    if (!folder) {
+      Error(response, "not found", 404);
+      return;
+    }
+    Reply(response, FolderFacts(folder->string()));
+  });
   server_.Get("/api/events",
               [this](const Request& request, Response& response) {
                 Events(request, response);

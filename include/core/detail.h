@@ -17,7 +17,7 @@ inline constexpr std::string_view kDetailSetting = "UAGENT_DETAIL";
 inline constexpr int kDepthAll = std::numeric_limits<int>::max();
 
 // A level is only a depth: 0 shows each turn's work as one line, 1 opens the
-// work to its steps, and all opens everything, routine notices included.
+// work to its steps, and all opens everything, routine rows included.
 struct DetailLevel {
   std::string_view name;
   int depth;

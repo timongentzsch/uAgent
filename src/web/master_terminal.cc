@@ -16,25 +16,21 @@ namespace {
 // How long the output relay waits before looking again; it is woken sooner
 // by output, an end or its socket closing.
 constexpr auto kRelayWait = std::chrono::seconds(30);
+}  // namespace
 
-json TerminalList(const Terminals& terminals) {
+json Master::TerminalList() const {
+  if (!terminals_) return nullptr;
   json list = json::array();
-  for (const TerminalInfo& terminal : terminals.List()) {
-    list.push_back({{"id", terminal.id}, {"cwd", terminal.cwd}});
+  for (const TerminalInfo& terminal : terminals_->List()) {
+    list.push_back({{"id", terminal.id},
+                    {"cwd", terminal.cwd},
+                    {"folder", terminal.folder}});
   }
   return list;
 }
-}  // namespace
 
-// The shells a paired device may open: their list and one socket each.
+// One socket for each shell a paired device may open.
 void Master::RegisterTerminalRoutes() {
-  server_.Get("/api/terminals", [this](const Request&, Response& response) {
-    if (!terminals_) {
-      Error(response, "the terminal is turned off (web.terminal)", 403);
-      return;
-    }
-    Reply(response, {{"terminals", TerminalList(*terminals_)}});
-  });
   server_.WebSocket(
       R"(/api/terminals/([a-f0-9]{16,64}))",
       [this](const Request& request, httplib::ws::WebSocket& socket) {
@@ -122,7 +118,8 @@ void Master::TerminalSocket(const Request& request,
   --terminal_sockets_;
 }
 
-// Opens a shell in a folder (the home folder without one), or closes one.
+// Opens a shell in a directory (the home folder without one), of a folder or
+// the page's own, or closes one.
 void Master::TerminalCommand(CommandCall& call) {
   if (!terminals_) {
     call.error = "the terminal is turned off (web.terminal)";
@@ -132,7 +129,8 @@ void Master::TerminalCommand(CommandCall& call) {
   json result;
   if (action == "open") {
     const std::string id =
-        terminals_->Open(JsonValue(call.command, "cwd", ""), call.error);
+        terminals_->Open(JsonValue(call.command, "cwd", ""),
+                         JsonValue(call.command, "folder", ""), call.error);
     if (id.empty()) return;
     result["id"] = id;
   } else if (action == "close") {
@@ -144,7 +142,7 @@ void Master::TerminalCommand(CommandCall& call) {
     call.error = "unsupported terminal action";
     return;
   }
-  result["terminals"] = TerminalList(*terminals_);
+  result["terminals"] = TerminalList();
   call.outcome["result"] = std::move(result);
 }
 

@@ -990,8 +990,8 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
         )
     assert_true(code == 0, output)
     assert_true(b"cannot write the folder" in output, f"startup was silent: {output!r}")
-    # At the readonly level, a lead agent's, an unwritable workspace is the
-    # point, and startup does not warn about it.
+    # At the readonly level an unwritable workspace is the point, and
+    # startup does not warn about it.
     with Server([event({"content": "ready-ok"})]) as server:
         code, output = run_pty(
             workspace(root),

@@ -146,11 +146,7 @@ function Chat({
               ],
             ]}
           >
-            <p>
-              {session.kind === "panel"
-                ? "The lead agent plans and starts agents for the work. It never edits files itself."
-                : "Describe a task."}
-            </p>
+            <p>Describe a task.</p>
           </Welcome>
         )}
         {snapshot && prepared && (

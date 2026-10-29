@@ -79,7 +79,7 @@ def close_sessions(home):
 
 def stop_sessions(home, settle=0.0):
     """Close every runtime of `home`. With `settle`, keep closing those a
-    finishing session starts meanwhile (a thread waking its panel)
+    finishing session starts meanwhile (an agent waking its parent)
     until none has appeared for that many seconds, within a short bound."""
     close_sessions(home)
     if not settle:

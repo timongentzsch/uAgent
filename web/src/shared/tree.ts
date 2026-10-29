@@ -22,7 +22,7 @@ export const depthOf = (level: string) =>
 export const isRow = (node: Node) => !!node.headline;
 
 // Whether a row `depth` rows deep starts open at a level `level` deep.
-// Routine notices show only when everything does.
+// Routine rows show only when everything does.
 export const opens = (depth: number, level: number) => depth < level;
 export const visible = (node: Node, level: number) =>
   !node.routine || level === Infinity;

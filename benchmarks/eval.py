@@ -301,8 +301,8 @@ def run_case(
 
         script = Script(scenario.get("script", []), scenario.get("capture", {}))
         mock = Server([script])
-        # Saved conversations the folder already has, in its history, for a
-        # panel to read.
+        # Saved conversations the folder already has, in its history, for
+        # the conversation to read.
         history = fnv1a64(str(workspace.resolve()))
         (home / ".uagent" / "history" / history).mkdir(parents=True)
         for saved in scenario.get("sessions", []):
@@ -326,8 +326,6 @@ def run_case(
             prompt = prompt.replace("${workspace}", str(workspace))
             prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
             cli = [
-                # A panel scenario talks to the folder's panel.
-                *(["panel"] if scenario.get("panel") else []),
                 "--json",
                 "--no-memory",
                 f"--debug={trace_path}",
@@ -362,7 +360,7 @@ def run_case(
                 )
             elapsed = time.monotonic() - started
         finally:
-            # Threads a panel started outlive its answer; none may
+            # Agents a conversation started outlive its answer; none may
             # outlive the case.
             stop_sessions(home)
             remove_runtime(home)

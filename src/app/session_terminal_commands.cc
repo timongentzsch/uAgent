@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "include/app/config_proposal.h"
-#include "include/app/panel.h"
+#include "include/app/folder_overview.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/detail.h"
@@ -49,13 +49,12 @@ std::optional<Terminal::Command> Terminal::SessionCommand(
         fflush(stdout);
       }
       return Command::kDone;
-    case SlashCommandId::kPanel:
+    case SlashCommandId::kOverview:
+      WriteTerminalRecord(TerminalSafe(FolderOverviewText(Folder())));
+      return Command::kDone;
     case SlashCommandId::kOpen: {
-      std::string target;
-      if (slash.spec->id == SlashCommandId::kPanel) {
-        next_folder_ = Folder();
-        target = PanelPath(next_folder_);
-      } else if (target = MatchFolderSession(argument); target.empty()) {
+      std::string target = MatchFolderSession(argument);
+      if (target.empty()) {
         WriteTerminalRecord(
             Note(Tone::kNeutral, "no unique session in this folder matches \"" +
                                      TerminalSafe(argument) + "\""));

@@ -1,6 +1,6 @@
 // What needs you, across folders: the sidebar's inbox answers any folder's
 // decision, the tab title counts them, a notification's link lands on the
-// decision itself, and a panel's agents nest under its header.
+// decision itself, and a conversation's agents sit beneath it.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, expect, selectProbeModel } from "./fixtures.js";
@@ -87,28 +87,32 @@ test("a notification's link opens the session at its decision", async ({
     .toBe(`#session=${other.id}`);
 });
 
-test("what a panel started nests under it", async ({
+test("a conversation's agents sit beneath it, the finished ones folded", async ({
   page,
   host,
   session,
   command,
 }) => {
-  const { session: panel } = await command("create", {
-    cwd: host.project,
-    panel: true,
-  });
-  // Only a model starts agents; this conversation is drawn as the panel's.
+  const { session: other } = await command("create", { cwd: host.project });
+  const { session: done } = await command("create", { cwd: host.project });
+  // Only a model starts agents; these two are drawn as the conversation's,
+  // one at work and one finished.
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
     const catalogue = await response.json();
     for (const item of catalogue.sessions)
-      if (item.id === session.id) item.parent = panel.id;
+      if (item.id === other.id || item.id === done.id) {
+        item.parent = session.id;
+        item.turn_active = item.id === other.id;
+      }
     await route.fulfill({ response, json: catalogue });
   });
   await page.goto("/");
-  // Under the panel's header.
   const agents = page.getByRole("group", { name: /^Agents of / });
   await expect(agents.locator(".session")).toHaveCount(1);
-  // A shape and words beside the colour: nothing waits here, so no icon.
-  await expect(agents.locator(".session-state")).toHaveCount(0);
+  await expect(agents.locator(".session-state .status-led")).toHaveCount(1);
+  const fold = agents.getByRole("button", { name: "1 agent" });
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await fold.click();
+  await expect(agents.locator(".session")).toHaveCount(2);
 });

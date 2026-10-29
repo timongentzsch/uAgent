@@ -15,20 +15,18 @@ const session = (id, index) => ({
   presence: "active",
   updated: 1_700_000_000_000 - index * 60_000,
 });
-// A panel with an agent under it, whose rows the stream must leave alone.
-const PANEL = {
-  ...session("c".repeat(32), 90),
-  kind: "panel",
-  cwd: "/project-1",
-};
+// A conversation with a working agent under it, whose rows the stream must
+// leave alone.
+const PARENT = { ...session("c".repeat(32), 90), cwd: "/project-1" };
 const AGENT = {
   ...session("d".repeat(32), 91),
   cwd: "/project-1",
-  parent: PANEL.id,
+  parent: PARENT.id,
+  turn_active: true,
 };
 const SESSIONS = [
   session(ID, 0),
-  PANEL,
+  PARENT,
   AGENT,
   ...Array.from({ length: 40 }, (_, index) =>
     session((index + 1).toString(16).padStart(32, "b"), index + 1),

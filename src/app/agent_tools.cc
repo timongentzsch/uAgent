@@ -650,6 +650,10 @@ Tool AgentsTool() {
                : ApprovalClass::kNone;
   };
   tool.mandatory_reason = "deleting an agent";
+  // A list observes agents whose own rows show them.
+  tool.routine = [](const json& a) {
+    return JsonValue(a, "action", "") == "list";
+  };
   tool.headline = [](const json& a) {
     const std::string action = JsonValue(a, "action", "");
     const std::string target = JsonValue(a, "id", JsonValue(a, "query", ""));

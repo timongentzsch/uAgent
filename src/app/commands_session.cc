@@ -242,18 +242,16 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
 // between them and the file; an agent asks through uagent_instructions.
 void HandleInstructions(const std::string& argument, CommandReply& reply) {
   std::istringstream words(argument);
-  std::string action, audience, scope;
-  words >> action >> audience >> scope;
+  std::string action, scope;
+  words >> action >> scope;
   const std::string cwd = CanonicalCwd();
   if (action == "edit") {
-    bool panel = false, project = false;
-    if (!ParseInstructionTarget(audience, scope, panel, project)) {
-      reply.Print("%s",
-                  "usage: /instructions edit sessions|panel "
-                  "user|project\n");
+    bool project = false;
+    if (!ParseInstructionScope(scope, project)) {
+      reply.Print("%s", "usage: /instructions edit user|project\n");
       return;
     }
-    const auto path = InstructionPath(panel, project, cwd);
+    const auto path = InstructionPath(project, cwd);
     const std::string base = ReadInstructionFile(path);
     bool cancelled = false;
     const std::string text = ReadInteraction(
@@ -263,29 +261,24 @@ void HandleInstructions(const std::string& argument, CommandReply& reply) {
       reply.Note(Tone::kNeutral, "instructions unchanged");
       return;
     }
-    const std::string error =
-        WriteInstructionFile(panel, project, cwd, text, base);
+    const std::string error = WriteInstructionFile(project, cwd, text, base);
     reply.Note(Tone::kNeutral, error.empty()
                                    ? "saved; new and restarted sessions read it"
                                    : TerminalSafe(error));
     return;
   }
   if (!action.empty()) {
-    reply.Print("%s",
-                "usage: /instructions [edit sessions|panel "
-                "user|project]\n");
+    reply.Print("%s", "usage: /instructions [edit user|project]\n");
     return;
   }
   // The stack in the order a session reads it, after the built-in base.
   const json stack = InstructionFiles(cwd);
   for (const json& file : stack["files"]) {
     const std::string text = JsonValue(file, "text", "");
-    reply.Print(
-        "%s%s · %s%s  %s\n%s\n\n", BOLD(),
-        JsonValue(file, "scope", "") == "user" ? "yours" : "folder",
-        JsonValue(file, "audience", "") == "panel" ? "panel" : "every session",
-        RST(), TerminalSafe(JsonValue(file, "path", "")).c_str(),
-        text.empty() ? "(empty)" : TerminalSafe(text).c_str());
+    reply.Print("%s%s%s  %s\n%s\n\n", BOLD(),
+                JsonValue(file, "scope", "") == "user" ? "yours" : "folder",
+                RST(), TerminalSafe(JsonValue(file, "path", "")).c_str(),
+                text.empty() ? "(empty)" : TerminalSafe(text).c_str());
   }
   for (const json& also : stack["also_loaded"]) {
     reply.Print("also read: %s\n",

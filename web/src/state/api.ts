@@ -23,10 +23,11 @@ export const routes = {
   browserStatus: "/api/browser/status",
   browserViewer: "/api/browser/viewer",
   command: "/api/command",
-  terminals: "/api/terminals",
   // A terminal's socket.
   terminal: (id: string) => `/api/terminals/${id}`,
   pushSubscriptions: "/api/push/subscriptions",
+  // A folder at a glance: its spend, changes and git.
+  folder: (path: string) => `/api/folder?path=${encodeURIComponent(path)}`,
   sessions: "/api/sessions",
   refreshedSessions: "/api/sessions?refresh=1",
   events: (cursor: string) => `/api/events?cursor=${cursor}`,

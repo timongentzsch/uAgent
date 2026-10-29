@@ -77,24 +77,6 @@ void Agent::Arrive(const std::string& text, const std::string& mail, int hops) {
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
-json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
-  if (!message_id.empty()) {
-    uint64_t display_id = 0;
-    if (message_id.starts_with("m-")) {
-      std::from_chars(message_id.data() + 2,
-                      message_id.data() + message_id.size(), display_id);
-    }
-    turn = display_id ? conversation_.UserMessageNumber(display_id) : 0;
-  }
-  const std::string prompt = conversation_.UserMessageText(turn);
-  if (!conversation_.TruncateBeforeUserTurn(turn)) {
-    return {{"error", "that message is no longer in the live conversation"}};
-  }
-  ++revision_;
-  ++view_epoch_;
-  return {{"prompt", prompt}};
-}
-
 void Agent::PublishSideContext() {
   auto checkpoint = std::make_shared<SideCheckpoint>();
   checkpoint->record = Snapshot();
@@ -425,7 +407,6 @@ SessionRecord Agent::Snapshot() const {
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
                      .agent = AgentOf(session_role_),
-                     .kind = JsonValue(session_role_, "kind", ""),
                      .memory = api_.config.memory_enabled};
   record.state = {.context_tokens = ContextUsed(),
                   .context_window = api_.ctx_window,
@@ -488,6 +469,20 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
+  // Commands end with the runtime that ran them: a row still running from
+  // an earlier one was cut off with it.
+  std::vector<std::string> cut;
+  for (const auto& [key, facts] : conversation_.DisplayFacts().items()) {
+    if (facts.contains("activity_id") &&
+        JsonValue(facts, "state", "") == "running") {
+      cut.push_back(key);
+    }
+  }
+  for (const std::string& key : cut) {
+    conversation_.RecordDisplay(
+        key,
+        {{"state", "cancelled"}, {"result", ResultJson({}, "cancelled", -1)}});
+  }
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   delivered_mail_ = std::move(record.state.delivered_mail);
   RefreshBaseline();

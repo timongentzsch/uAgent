@@ -8,11 +8,12 @@ import type {
   CommandFields,
   AppModal,
   InspectorTarget,
+  TerminalInfo,
 } from "../shared/types.ts";
 import { render, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
-import { command } from "../state/api.ts";
+import { command, manage } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
 import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
@@ -50,12 +51,17 @@ import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import Library from "../features/library/library.tsx";
 import Scheduled from "../features/scheduled/scheduled.tsx";
+import FolderOverview from "../features/overview/overview.tsx";
 import Pairing from "../features/pairing/pairing.tsx";
 import Files from "../features/files/files.tsx";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
 // The terminal's code (xterm.js) is fetched the first time it opens.
 const terminalPanel = () => import("../features/terminal/terminal.tsx");
+const folderTerminal = () =>
+  import("../features/terminal/terminal.tsx").then((module) => ({
+    default: module.FolderTerminal,
+  }));
 
 // Own scroll restoration from the first paint. history restoration only
 // covers the document; the early opt-out in index.html (<head>, before any
@@ -70,7 +76,7 @@ if (typeof history !== "undefined") history.scrollRestoration = "manual";
 // its agent browses, whether any turn waits), so a streamed frame re-renders
 // the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
-type Page = "chat" | "library" | "scheduled";
+export type Page = "chat" | "library" | "scheduled" | "folder" | "terminal";
 // The page this tab showed, so a reload comes back to it.
 const keptPage = stored<Page>(
   storageKeys.page,
@@ -83,6 +89,10 @@ const keptPage = stored<Page>(
 function App() {
   const [page, setPage] = useState<Page>(keptPage.read);
   useEffect(() => keptPage.write(page), [page]);
+  // The folder or workspace whose overview the folder page shows, and the
+  // folder terminal the terminal page shows.
+  const [place, setPlace] = useState("");
+  const [shell, setShell] = useState<TerminalInfo | null>(null);
   // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
@@ -261,7 +271,7 @@ function App() {
     setModal,
     setBusy,
   });
-  const { startConversation, newPlace, startIn, openPanel, projects } = places;
+  const { startConversation, newPlace, startIn, projects } = places;
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
       host,
@@ -358,12 +368,26 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces);
+    const order = sessionOrder(listed, catalogue.spaces, online);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
   };
-  const terminalAvailable = !!catalogue.terminal;
+  const terminalAvailable = !!catalogue.terminals;
+  const showTerminal = useCallback((terminal: TerminalInfo) => {
+    setShell(terminal);
+    setPage("terminal");
+    setDrawer(false);
+  }, []);
+  // A folder's new terminal, shown at once.
+  const newTerminal = useCallback(
+    (folder: string) =>
+      void manage("terminal", { action: "open", cwd: folder, folder }).then(
+        ({ id }) => id && showTerminal({ id, cwd: folder, folder }),
+        report,
+      ),
+    [showTerminal, report],
+  );
   const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
   // A tab in a folder of the conversation's; on a phone the files sheet
   // makes way for it.
@@ -427,6 +451,11 @@ function App() {
     setPage(value);
     setDrawer(false);
   }, []);
+  const overview = useCallback((cwd: string) => {
+    setPlace(cwd);
+    setPage("folder");
+    setDrawer(false);
+  }, []);
   const settings = useCallback(() => open({ type: "settings" }), [open]);
   const hostContext = useMemo(
     () => ({
@@ -485,7 +514,12 @@ function App() {
       settings={settings}
       create={newPlace}
       start={startIn}
-      openPanel={openPanel}
+      overview={overview}
+      shownPlace={page === "folder" ? place : ""}
+      terminals={catalogue.terminals}
+      showTerminal={showTerminal}
+      newTerminal={terminalAvailable ? newTerminal : undefined}
+      shownTerminal={page === "terminal" ? shell?.id : ""}
       search={openSearch}
     />
   );
@@ -554,7 +588,6 @@ function App() {
                       session={session}
                       opening={opening}
                       booting={booting}
-                      placeName={places.placeName}
                       browserAvailable={browserAvailable}
                       terminal={
                         terminalAvailable
@@ -566,7 +599,6 @@ function App() {
                       parent={sessionById(catalogue.sessions, session?.parent)}
                       openDrawer={() => setDrawer(true)}
                       choose={choose}
-                      open={open}
                       settings={settings}
                       menu={conversationMenu}
                     />
@@ -592,6 +624,35 @@ function App() {
                         cwd={session?.cwd || projects[0] || ""}
                         online={online}
                         version={managementVersion}
+                      />
+                    )}
+                    {page === "folder" && (
+                      <FolderOverview
+                        key={place}
+                        folder={place}
+                        space={catalogue.spaces?.find(
+                          (item) => item.path === place,
+                        )}
+                        sessions={catalogue.sessions}
+                        choose={choose}
+                        start={(cwd: string, text: string) =>
+                          startConversation(cwd, "", text)
+                        }
+                        terminals={catalogue.terminals}
+                        showTerminal={showTerminal}
+                        newTerminal={
+                          terminalAvailable ? newTerminal : undefined
+                        }
+                      />
+                    )}
+                    {page === "terminal" && shell && (
+                      <Deferred
+                        key={shell.id}
+                        load={folderTerminal}
+                        fallback={<Spinner label="Opening the terminal…" />}
+                        terminal={shell}
+                        closed={() => overview(shell.folder)}
+                        report={report}
                       />
                     )}
                     {page === "scheduled" && (
@@ -687,8 +748,8 @@ function App() {
                       void choose(id);
                       setFind({ session: id, words, sequence, at: Date.now() });
                     }}
-                    start={(cwd: string, panel?: boolean) =>
-                      void startConversation(cwd, panel).catch(report)
+                    start={(cwd: string) =>
+                      void startConversation(cwd).catch(report)
                     }
                     run={runCommand}
                     settings={(section: string) =>

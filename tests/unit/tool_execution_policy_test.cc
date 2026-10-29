@@ -238,29 +238,9 @@ void TestToolExecutionPolicy() {
   mutate.capabilities = Capability(ToolCapability::kMutate);
   std::vector<Tool> restricted{inspect, mutate};
   ApplyToolPolicy(restricted, {.allowed = Capability(ToolCapability::kInspect),
-                               .tool_allowlist = {"inspect", "mutate"},
                                .error = ""});
   CHECK(FindTool(restricted, "inspect") != nullptr);
   CHECK(FindTool(restricted, "mutate") == nullptr);
-
-  // An allowlist (a panel's) keeps only its named tools, even when
-  // every capability is allowed.
-  Tool read_tool = inspect;
-  read_tool.name = "read_path";
-  Tool memory_tool = mutate;
-  memory_tool.name = "memory";
-  Tool config_tool = inspect;
-  config_tool.name = "uagent_configure";
-  config_tool.capabilities = 0;
-  std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate};
-  ApplyToolPolicy(
-      pinned, {.tool_allowlist = {"read_path", "memory", "uagent_configure"},
-               .error = ""});
-  // uagent_configure stays: its writes always need the user.
-  CHECK(pinned.size() == 3);
-  CHECK(FindTool(pinned, "read_path") != nullptr);
-  CHECK(FindTool(pinned, "memory") != nullptr);
-  CHECK(FindTool(pinned, "uagent_configure") != nullptr);
 
   namespace fs = std::filesystem;
   fs::path log_root = fs::temp_directory_path() /
@@ -464,7 +444,7 @@ void TestPayloadToolsRequireTheirPayload() {
       {"agent_start", R"(["brief"])"},
       {"agent_send", R"(["id","text"])"},
       {"uagent_configure", R"(["scope","changes"])"},
-      {"uagent_instructions", R"(["audience","scope","text"])"}};
+      {"uagent_instructions", R"(["scope","text"])"}};
   for (const auto& [name, required] : expected) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parameters["required"] == json::parse(required));

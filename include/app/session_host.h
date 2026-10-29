@@ -88,9 +88,12 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // "panel" or empty; `parent` names the session that started an agent.
-  // `model` is the one the file names.
-  std::string kind, parent, model;
+  // `parent` names the session that started an agent; `model` is the one
+  // the file names.
+  std::string parent, model;
+  // Its spend and to-do progress as last saved, until its runtime says.
+  double cost = 0;
+  json todo = nullptr;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;

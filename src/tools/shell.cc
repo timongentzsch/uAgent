@@ -537,6 +537,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                : "it keeps running while you work; poll or wait on it for "
                  "output"),
       LinkPart("activity", activity_id, "Open activity"));
+  running.background = activity_id;
   if (!initial_output.empty()) {
     running.output = std::move(initial_output);
     running.body_kind = "tail";

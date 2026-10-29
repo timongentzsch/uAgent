@@ -44,27 +44,25 @@ In every mode:
 
 Two kinds of session act for you unattended:
 
-- A **subagent** approves its own tool calls; approving the delegation is the
-  gate, and the approval says so. It runs its commands under the sandbox of
-  the session that delegated to it, as that sandbox was when it started
-  (`relaxed` from a yolo session at the `default` level), whatever its own
-  configuration says.
 - A **lead agent** always runs at the `readonly` level, whatever the
-  settings say, and so do its subagents: its commands read the folder and
-  change nothing, so they run without review. `sandbox.network` and
-  `sandbox.write` do not widen that level. A `/btw` conversation forked
-  from it runs in the ordinary sandbox and so gets no `run`.
-- A lead agent's **background agent** runs in auto unless a mode is chosen
-  for its own conversation (`/permissions`, `--yolo`, or the web's approval
-  control); the saved setting does not reach it. Its sandbox is always on, at
-  the `default` level, or `relaxed` while it is in yolo. While that sandbox
-  is enforced, its `run` and `scratch` commands and its file changes inside
-  the folder run without review; everything else goes through its approval
-  mode. What would ask a person goes to its lead agent first, which decides
-  or passes it to you, and to you after five minutes. Once you write to the
-  background agent yourself, what its turn still asks comes to you directly:
-  in a turn your message started, or one you wrote into while it ran.
-  What always needs a person never goes to the lead agent.
+  settings say: its commands read the folder and change nothing, so they run
+  without review. `sandbox.network` and `sandbox.write` do not widen that
+  level. A `/btw` conversation forked from it runs in the ordinary sandbox
+  and so gets no `run`.
+- An **agent**, a conversation another one started, takes its parent's
+  approval mode, auto at most, unless a mode is chosen for its own
+  conversation (`/permissions`, `--yolo`, or the web's approval control); the
+  saved setting does not reach it. One started with `edits` none runs at the
+  `readonly` level with no tool that edits, whatever its settings say, and so
+  do the agents it starts. Any other runs at the `default` level, or
+  `relaxed` while it is in yolo. While that sandbox is enforced and it is in
+  auto, its `run` and `scratch` commands and its file changes inside the
+  folder run without review; everything else goes through its approval mode.
+  What would ask a person goes to its parent first, which decides or passes
+  it to you, and to you after five minutes. Once you write to the agent
+  yourself, what its turn still asks comes to you directly: in a turn your
+  message started, or one you wrote into while it ran. What always needs a
+  person never goes to the parent.
 
 ## Trust boundaries
 
@@ -106,7 +104,7 @@ Two kinds of session act for you unattended:
   IPv4 or IPv6 destinations. The resolved address is checked before every
   connection, including redirects; proxy variables are ignored so they cannot
   bypass that check.
-- Shell commands and subagents run in managed process groups. Child processes
+- Shell commands run in managed process groups. Child processes
   receive a centralized secret-deny environment; only class-specific
   credentials are re-added. Approved `run` commands can opt in exact
   variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to MCP
@@ -284,7 +282,7 @@ refused command is told which folder closed and that `sandbox.read` opens
 one. A stdio MCP server you configured reads as before: it lives wherever
 you keep it. The file tools ask a person before reading or changing a
 closed folder (a failed edit shows lines of the file), even under auto, and
-refuse it where nobody can answer, as in a subagent. Yolo at the `default`
+refuse it where nobody can answer, as in a headless run. Yolo at the `default`
 level closes none. `/status`
 lists the folders opened for reading. On macOS a closed folder cannot be listed; on Linux, Landlock
 lists its names but refuses its files.
@@ -359,8 +357,8 @@ unconfined, and a changed entry asks again like any other change to the file.
 **Not confined by the sandbox:** the built-in file tools (approval and path
 checks govern them; they reach `.mcp.json`, and the `uagent` tool reaches the
 saved settings, with mandatory human approval for each change), an MCP
-server that opts out, and the µAgent process of a subagent (its commands are
-confined).
+server that opts out, and the µAgent process of a memory extraction (its
+commands are confined).
 
 Besides `off`, a session can run unconfined in two ways, both reported:
 

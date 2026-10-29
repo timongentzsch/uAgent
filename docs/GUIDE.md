@@ -5,11 +5,10 @@ to do and links to the reference with the detail. The [README](../README.md)
 has the install and a one-screen quick start.
 
 Terms: a **conversation** is what you talk in (its file and its running
-process are a *session*); a **lead agent** plans a folder's work; a
-**background agent** is a conversation a lead agent started to do work; a
-**subagent** is a short-lived helper that answers one question
-inside a turn; an **activity** is a command or agent that keeps running in
-the background; **approval** is being asked before an action.
+process are a *session*); an **agent** is a conversation another one
+started to do part of its work; a **lead agent** plans a folder's work; an
+**activity** is a command that keeps running in the background;
+**approval** is being asked before an action.
 
 ## A first conversation
 
@@ -53,8 +52,8 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
 - With no model set, the first start opens the model picker and saves your
   choice as `/model NAME --default` does. `-p` and `--json` never choose for
   you: they exit with an error that lists up to ten of the endpoint's models.
-- Background activities use your conversation's model unless you name one: the
-  title (`title.model`, or `off`), memory extraction and subagents. Image
+- Background work uses your conversation's model unless you name one: the
+  title (`title.model`, or `off`), memory extraction and agents. Image
   reading does too when that model accepts images; otherwise it uses the
   first model of the same endpoint that does, or tells you to set
   `image.model`.
@@ -207,10 +206,9 @@ running and stops by itself after 15 minutes with nothing to do.
 | make room in a long conversation | `/compact` |
 
 `/btw` copies the conversation's current checkpoint into a separate, saved
-conversation with the parent's model, approval setting and enabled tools
-(including a lead agent's own tools). Its messages stay out of the parent's
-transcript, but its tools work in the same folder and can change files or
-external state. In the web its card stays beside the input: follow up there,
+conversation with the parent's model, approval setting and enabled tools.
+Its messages stay out of the parent's transcript, but its tools work in the
+same folder and can change files or external state. In the web its card stays beside the input: follow up there,
 or open it as a full conversation. Closing the card hides it; the
 conversation stays in the list. In a terminal, `/btw` opens that
 conversation.
@@ -226,55 +224,53 @@ conversation open in a terminal is the same one in the browser.
 [Web interface](WEB.md) covers phones, other machines and notifications;
 [The agent's browser](BROWSER.md) covers the Chrome the agent can drive.
 
+## Agents
+
+For work with independent parts the agent starts **agents**: conversations
+of their own, each on a brief, listed under the conversation that started
+them (their parent). `/agents` lists them in the terminal and `/open ID`
+switches to one; in the web an agent's link opens it.
+[Tools](TOOLS.md#agents) has the detail.
+
+- **What an agent may change.** By default nothing: it reads, searches and
+  runs read-only commands. For a change it works in a git worktree of its
+  own under `~/.uagent/worktrees/`, started from your `HEAD`, or in the
+  folder itself. To take worktree work, have it commit, then merge or
+  cherry-pick that commit from your checkout.
+- **Answers.** The parent usually waits for its agents' answers; Esc stops
+  them. An agent it does not wait for reports when its turn ends, and the
+  report starts the parent's next turn. A message to an agent starts it
+  again.
+- **Approvals.** An agent takes its parent's approval mode, Auto at most.
+  Its approvals and questions go to its parent, which decides or passes them
+  to you ([Tools](TOOLS.md#approval)); once you write into an agent's turn,
+  that turn's come to you.
+- **Limits.** Eight agents at work per conversation (`agents.max`), started
+  two levels deep at most (`agents.depth`). An agent's spend counts in its
+  parent's, and under a budget each one gets a share of what is left.
+
+### The plan
+
+For work with several parts an agent keeps a to-do list: each item pending,
+in progress or done, at most one in progress. It is kept with the
+conversation and shown to the agent on every request, so it survives a long
+conversation, a restart and a fork; the web shows it above the input.
+
 ## The lead agent
 
 `uagent panel` opens the folder's lead agent (`/panel` from inside a
 conversation; in the web, the place's name in the sidebar). It plans the
 work and never changes files itself: its commands only read, in a
-read-only sandbox. Ask it a question and it asks
-**subagents**; ask it for a change and it starts **background agents**:
-conversations of their own, each on a brief, that report back when their
-turn ends. The lead agent answers the approvals a background agent cannot
-settle or passes them to you; once you write to the background agent
-yourself, the rest of that turn's come to you directly.
+read-only sandbox, and its agents make the changes.
 
 - **The folder's conversations** are listed when the lead agent opens in
-  the terminal, and under the place's name in the web. `/open ID` switches
-  to one.
-- **Where a background agent works.** By default in a git worktree of its
-  own under `~/.uagent/worktrees/`, started from your `HEAD`, so your
-  checkout stays as it is while several work. Ask the lead agent for a
-  background agent's diff. To take the work, have it commit, then merge or
-  cherry-pick that commit from your checkout (the worktree shares your
-  repository). With `panel.environment=local`, or in a folder outside git
-  such as a workspace, background agents work in the folder itself.
-- **Limits.** Five background agents at once (`panel.maxThreads`) and $20 of
-  reported cost a day for a lead agent and its background agents
-  (`panel.dailySpendUsd`), a background agent's turn counted once it ends;
-  at the limit, their reports wait. A route that reports no cost
-  cannot reach it, and the lead agent says so.
+  the terminal, and under the place's name in the web.
+- **Limits.** $20 of reported cost a day for a lead agent and its agents
+  (`panel.dailySpendUsd`), an agent's turn counted once it ends; at the
+  limit, their reports wait. A route that reports no cost cannot reach it,
+  and the lead agent says so.
 - **Instructions.** Every lead agent reads `PANEL.md` at start
   ([Instructions](INSTRUCTIONS.md)).
-
-### Questions and the plan
-
-For a question rather than a change ("which of these three libraries fits
-us?", "where can this proxy leak a key?") the lead agent asks **subagents**:
-short-lived helpers that read, search and fetch but change nothing, several
-at once, each answering in the shape the lead agent asked for. It can have
-other subagents try to refute what they found, and reports only what holds.
-They are not conversations of their own: open one from its row in the lead
-agent's answer.
-
-- **The plan.** For work with several parts an agent, the lead agent or any
-  other, keeps a to-do list: each item pending, in progress or done, at most
-  one in progress. It is kept with the conversation and shown to the agent
-  on every request, so it survives a long conversation, a restart and a
-  fork; the web shows it above the input.
-- **Background agents or subagents.** Background agents change files and
-  run for as long as the work takes, in their own worktree; subagents
-  answer within the lead agent's turn and leave nothing behind but their
-  answer.
 
 ## Memory, skills and schedules
 
@@ -293,7 +289,7 @@ uagent -p "inspect this repository"
 uagent -p "inspect this repository" --json          # one JSON envelope
 uagent -p "inspect this repository" --json-stream   # one JSON event per line
 uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
-uagent panel -p "status of the background agents"   # ask the lead agent
+uagent panel -p "status of the agents"              # ask the lead agent
 ```
 
 - `--json` prints one object with `schema` (`uagent.headless.v1`), `answer`,

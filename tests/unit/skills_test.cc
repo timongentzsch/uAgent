@@ -49,9 +49,9 @@ void TestSkillDiscovery() {
         found_fusion = true;
         CHECK(skill.description.find("only when the user invokes $fusion") !=
               std::string::npos);
-        CHECK(
-            skill.required_tools ==
-            std::vector<std::string>({"subagent", "read_path", "grep", "run"}));
+        CHECK(skill.required_tools ==
+              std::vector<std::string>(
+                  {"agent_start", "read_path", "grep", "run"}));
       }
     }
     CHECK(found_fusion);

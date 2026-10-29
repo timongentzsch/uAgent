@@ -14,7 +14,7 @@ layer.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/panel*.cc`, `thread_link.cc`, `launch.cc` | A folder's lead agent (board, history, background agents, `panel -p`) and where a launched session runs |
+| `src/app/panel*.cc`, `launch.cc` | A folder's lead agent (board, `panel -p`) and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
@@ -85,7 +85,7 @@ runs a second agent or reconciles competing conversation files.
 | `SessionHost` facets | `src/app/session_router.cc` (commands), `session_supervisor.cc` (runtimes), `session_schedules.cc`, `session_snapshot.cc`, `session_assets.cc`; event log in `replay_log.cc`, attachments in `asset_store.cc`, receipts in `outcome_store.cc` |
 | Frame format and limits | `include/transport/session.h` |
 | Headless `-p` run | `src/app/application_headless.cc` |
-| Subagents | `src/tools/subagent.cc`, `src/agent/child_agent.cc` |
+| Agents | `src/app/agent_tools.cc`, `agent_link.cc` |
 | Mailboxes | `src/core/mailbox.cc`, `src/agent/mail_delivery.cc` |
 
 The runtime owns the agent, provider session identity, tools, approvals,
@@ -136,25 +136,19 @@ prompt and library invalidation uses the same multi-path watcher and wakes at
 the next schedule deadline. Independent conversations may share a folder
 folder; edits to shared files still need coordination.
 
-A delegated child is a headless `-p` run of the same binary, supervised as a
-background activity of its parent. It saves an ordinary session file in the
-folder's history whose header carries a `delegation` object (parent, name,
-directive, mode, model, route); the catalogue hides such files, and the parent
-finds its children by that header. A child approves its own tool calls and
-runs its commands under its parent's sandbox. A follow-up, or a message to a
-finished child, starts a new bounded child process from the saved
-conversation. The result reaches the parent as an activity completion, which
-an idle parent takes up at once as a turn.
+An agent is a session another session started. Its file is saved beside its
+parent's, with an `agent` header object (`parent`, `edits`, `depth`,
+`budget`, `streak`), and it runs in a runtime of its own like any
+conversation, a `worktree` agent in `~/.uagent/worktrees/<id>`. Its runtime
+sets its role from that header on every start, so a restart never widens
+it: the `readonly` sandbox for `edits` none and `default` otherwise, its
+depth, and its budget as the session budget. Its reports and the decisions
+its parent takes travel as mail.
 
 A folder's lead agent (internally a panel) is a session that reads and
 delegates but never writes: it has no tool that edits, and its runtime forces
 the `readonly` sandbox level, so its commands write nothing but temporary
-files. The sessions it starts are its background agents (internally threads),
-which run at the default level, or relaxed while in yolo.
-
-The lead agent asks its questions of subagents: it has the `subagent` tool,
-and its children get only what their parent has, its sandbox included, so
-they read and research and change nothing; starting one needs no approval.
+files. The agents it starts may edit.
 
 Every conversation keeps its plan, the to-do list the `plan` tool replaces,
 as a fact of its session file, so it survives a reload, compaction and a
@@ -162,19 +156,20 @@ fork. While it has items it rides on the tail of every model request, beside
 a lead agent's board and clock, and never enters the stored history.
 
 Sessions message each other through durable mailboxes
-([PERSISTENCE.md](PERSISTENCE.md#mail)): a parent and its children, and
-children of one parent; a folder's lead agent is its background agents'
-parent.
+([PERSISTENCE.md](PERSISTENCE.md#mail)): a parent and its agents, and
+agents of one parent.
 
 - Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
   the next model step, including after a final answer, which reopens the turn.
-- An idle runtime starts a turn on mail meant to wake it. A headless child
-  answers mail that arrives after its last step before it exits.
-- A background agent's finished turns, and its questions in turns the person
-  did not start or write into, reach its lead agent within milliseconds, starting the lead
-  agent's runtime when none runs. At the daily spend limit its mail waits.
+- An idle runtime starts a turn on mail, and mail to a session with no
+  runtime starts one. A headless run takes up its agents' reports as turns
+  before it exits.
+- An agent's finished turns, and its approvals and questions in turns the
+  person did not start or write into, reach its parent within milliseconds.
+  Under a lead agent at its daily spend limit, its mail waits.
 - A sender is refused, visibly, past 64 pending messages, 20 a minute or 8
-  forwards (`include/core/mailbox.h`).
+  forwards (`include/core/mailbox.h`), and agents' mail starts at most 3
+  turns of one session in a row before a person speaks there.
 
 Headless `-p` runs use the same application, agent and event policies in one
 process, with their own bounded invocation and machine-output contract.
@@ -261,12 +256,12 @@ Unknown cost stays unknown. Every model call is charged to a route keyed
 under their provider, and titles, compaction, memory extraction, image
 analysis, web search and permission review under their purpose, so `/cost`
 names what each one spent. Turn statistics describe one turn; compaction has
-its own display record and never appears as another turn. Children report
-what they spend to their parent session's ledger, which the parent folds
-into its totals: a subagent and memory extraction when they end, a
-background agent at each turn's end. Spend that a background child reports
-after its turn ended is added to that turn and journaled as
-`turn.usage_amended`, since `turn.completed` is written once.
+its own display record and never appears as another turn. Memory extraction
+and agents report what they spend to their parent session's ledger, which
+the parent folds into its totals: memory extraction when it ends, an agent
+at each of its turns' end. Spend reported after the parent's turn ended is
+added to that turn and journaled as `turn.usage_amended`, since
+`turn.completed` is written once.
 Durations and time to first token describe the attempt that answered; retry
 backoff shows only in the end-to-end time.
 

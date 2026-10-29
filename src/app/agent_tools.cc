@@ -104,7 +104,7 @@ bool Working(const SessionInfo& info) {
 
 // How every agent agent_start starts is set up, and what it got.
 struct Launch {
-  std::string edits, model, approval;
+  std::string edits{}, model{}, approval{};
   double budget = 0;
 };
 
@@ -397,7 +397,8 @@ ToolResult Search(const std::string& own, const std::string& query) {
 // Its latest rows, each cut to what tells them apart.
 ToolResult Rows(const SessionInfo& info) {
   return WithConversation(info, [&](const Conversation& conversation) {
-    const json& all = ConversationView(conversation)["nodes"];
+    const json page = ConversationView(conversation);
+    const json& all = page["nodes"];
     json rows = json::array();
     for (size_t index = all.size() > kReadRows ? all.size() - kReadRows : 0;
          index < all.size(); ++index) {

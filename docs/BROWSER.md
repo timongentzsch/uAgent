@@ -135,9 +135,8 @@ host's memory and CPU before going higher.
   remaining capacity. Turning it off moves waiting work to the shared queue.
 - `browser=shared` selects the persistent signed-in browser for a
   conversation that holds no slot; release a research slot first. All
-  callers, including a lead agent and its background agents, use the same
-  broker, so a lead agent should release its browser before waiting on a
-  background agent that needs it.
+  callers, agents included, use the same broker, so a conversation should
+  release its browser before waiting on an agent that needs it.
 - **Viewing** switches between instances and names the conversation that
   owns each. Take over, Done, profile controls and clipboard input apply only
   to the instance shown. A turn that ends while you hold its browser releases

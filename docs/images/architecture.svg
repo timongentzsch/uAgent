@@ -69,7 +69,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size:
 <text x="470" y="155">Tools in the sandbox</text>
 <text class="m" x="470" y="175">files, commands, MCP</text>
 <text class="m" x="470" y="193">the browser tool</text>
-<text class="m" x="470" y="211">subagents</text>
+<text class="m" x="470" y="211">agents</text>
 <rect class="box" x="440" y="404" width="220" height="56" rx="8"/>
 <text class="t" x="456" y="427">Headless run</text>
 <text class="m" x="456" y="446">one turn in its own process</text>

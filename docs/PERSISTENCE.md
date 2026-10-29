@@ -17,17 +17,17 @@ Paths are under `~/.uagent` unless shown otherwise.
 | undo journal: each turn's changed files as they were before it, and whole diffs | `<session>.json.edits/{index.json,<turn>-<hash>,diff-*}` |
 | debug traces | `sessions/*.jsonl` |
 | captured large outputs and HTTP exchanges | `artifacts/*` |
-| activity logs, and what children report spending to their parent session | `activity/*`, `activity/usage-<session id>.jsonl` |
+| activity logs, and what agents report spending to their parent session | `activity/*`, `activity/usage-<session id>.jsonl` |
 | detached terminal records and logs | `terminals/<pid>.json`, `terminals/logs/*` |
-| delegated children | `history/<folder-hash>/agent-<id>.json`, sessions whose header carries `delegation` |
-| mail between sessions, panels and children | `mail/<id>/{new,cur}/*.json` |
+| agents, beside their parent wherever they run | `history/<folder-hash>/agent-<id>.json`, sessions whose header carries `agent` |
+| mail between sessions | `mail/<id>/{new,cur}/*.json` |
 | MCP server logs | `mcp/*` |
 | provider model catalogues, one per endpoint and wire protocol, fresh for 24 hours; no credential is written or hashed into them | `models/<hash>.json` |
 | memories | `memory/{global,projects/<repository>}/*.md` |
 | memory audit and extraction claims | `memory/events.jsonl`, `memory/.processed/*` |
 | a skill being imported from Claude Code or Codex, until it moves into `skills/` | `staging/<name>.<random>/` |
 | scheduled tasks | `scheduled/state.json` |
-| worktrees of scheduled runs and panel threads | `worktrees/<id>` |
+| worktrees of scheduled runs and agents | `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
 | settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |
@@ -96,7 +96,7 @@ reconstructed. Interactive model calls also keep private HTTP request and
 response captures in `artifacts/` for `/http`; credential headers are
 redacted, prompts and tool output are not.
 
-## Activities and delegated children
+## Activities
 
 Completed output larger than `UAGENT_TOOL_RESULT_CHARS` moves to
 `artifacts/` instead of entering context whole, so a returned path can expire
@@ -104,21 +104,17 @@ with retention. Detached terminal records store a boot-scoped process
 identity; a record whose identity is missing or does not match is treated as
 exited and never signalled.
 
-Each delegated child has a durable ID naming its session file, and a
-follow-up starts a new supervised child from that saved conversation. Saved
-conversations resume after a restart; live activities, PTYs and output
-buffers do not.
+Saved conversations, agents included, resume after a restart; live
+activities, PTYs and output buffers do not.
 
 ## Mail
 
-Sessions, a folder's lead agent and its background agents, and delegated children talk
-through one mailbox each, `mail/<id>/`, where `<id>` hashes the canonical
-session file. A message is a private JSON file with sender, correlation id
-and body. Mail has no kinds: every delivered message wakes an idle recipient
-and is read at a working one's next step. A message is allowed only between
-a parent, its children and siblings under one parent (a lead agent is its
-background agents' parent); the recipient checks this again when it takes
-the message.
+Sessions talk through one mailbox each, `mail/<id>/`, where `<id>` hashes
+the canonical session file. A message is a private JSON file with sender,
+correlation id and body. Mail has no kinds: every delivered message wakes an
+idle recipient and is read at a working one's next step. A message is
+allowed only between a parent, its agents and agents of one parent; the
+recipient checks this again when it takes the message.
 
 - A send commits by an atomic rename into `new/`.
 - The recipient moves what it takes to `cur/` and deletes it once the
@@ -161,14 +157,14 @@ To keep conversations longer, raise the days, for example
 `/config user UAGENT_HISTORY_DAYS=180`. Each file count applies to a folder
 tree as a whole.
 
-Delegated children age out with `history/`. A session's journal, undo data
+Agents age out with `history/`. A session's journal, undo data
 and uploads age out with it and do not count against the file limit.
 Orphaned journals are removed, and so are the socket and lease of a runtime
 that was killed. Each process log is also bounded in size: 64 MiB for
 commands (`UAGENT_ACTIVITY_LOG_MB`), 16 MiB for an MCP server.
 
 Not pruned: `config/`, memories, skills, scheduled tasks, the browser
-profile, and `worktrees/` (a thread's worktree is removed when the thread is
+profile, and `worktrees/` (an agent's worktree is removed when the agent is
 deleted, and only when it holds no uncommitted or unbranched work).
 
 ## Removal

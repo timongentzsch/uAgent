@@ -30,9 +30,9 @@ The sidebar lists this OS user's conversations by place: **Workspaces**
 first, then **Folders**. A place's header is its lead agent: the name opens
 it (starting one the first time), the chevron before it folds the place
 away (remembered per browser) and **+** starts a conversation there. Under
-the header come the background agents the lead agent started, a
-divider, then the place's own conversations. Browsing saved history starts no
-model and runs no command.
+the header come the agents the lead agent started, a divider, then the
+place's own conversations, each followed by its agents. Browsing saved
+history starts no model and runs no command.
 
 **New** at the top of the sidebar opens a **Workspace…** (a name, new or
 existing) at its lead agent, or starts a conversation in a **Folder…** (a
@@ -268,7 +268,7 @@ before Submit.
   and then runs it as its own turn.
 - After a turn stopped short (Stop, an error, a step or budget limit) the
   status line reads **Stopped** with **Continue**, which sends `continue`.
-- While the agent keeps a [plan](GUIDE.md#questions-and-the-plan), its
+- While the agent keeps a [plan](GUIDE.md#the-plan), its
   to-do list sits above the input: the item in progress stands out, done
   ones are struck through.
 - `/` opens slash commands with suggestions and Tab completion. The list
@@ -300,10 +300,7 @@ before Submit.
   request and response captures. Credential headers are redacted; bodies can
   contain sensitive folder content.
 - Background completions, memory updates and compaction appear as notice
-  rows. Subagent views work like the main conversation. Ordinary
-  subagent follow-ups can select another model; persistent agents keep their
-  runtime model. Process children show statistics from their latest saved
-  checkpoint, labelled as such.
+  rows. An agent's link opens its conversation.
 - Markdown supports code highlighting, math and fenced `mermaid` diagrams
   (the ELK layout engine is left out: a diagram that asks for it is laid out
   by dagre). A code block is highlighted once it closes, not while it streams.
@@ -317,7 +314,7 @@ before Submit.
   `/sessions` opens it, as a panel in the middle of the window (atop the
   screen on a phone). An empty field lists recent conversations. Words list
   conversations and folders by name (letters in order, prefixes first),
-  then the messages that hold them (threads and panels included, tool
+  then the messages that hold them (agents and lead agents included, tool
   output too): grouped by folder, the open conversation's first, and under
   each conversation its newest three with the words marked, then a row for
   the rest. Actions, slash commands and settings follow; `>` lists only
@@ -337,20 +334,18 @@ before Submit.
   controls the active schema. Close a live runtime before deleting its
   history; files in the folder are unaffected.
 
-### The lead agent
+### Agents and the lead agent
 
-[The guide](GUIDE.md#the-lead-agent) explains background agents, subagents
-and the plan. In the web:
+[The guide](GUIDE.md#agents) explains agents, the lead agent and the plan.
+In the web:
 
-- A place's name in the sidebar, or search, opens its lead agent. The
-  background agents it started are listed under the name, and a background
-  agent links back to its lead agent under its title.
-- A background agent's menu renames or removes it. What needs you is above
-  the input and in the sidebar's "need you" count.
-- A background agent's approvals and questions go to its lead agent first.
-  Once you write in the background agent's own chat, those of that turn
-  come to you directly. Its approval control offers every mode, yolo
-  included.
+- A place's name in the sidebar, or search, opens its lead agent. Agents are
+  listed under the conversation that started them, and an agent links back
+  to it under its title.
+- What needs you is above the input and in the sidebar's "need you" count.
+- An agent's approvals and questions go to its parent first. Once you write
+  in the agent's own chat, those of that turn come to you directly. Its
+  approval control offers every mode, yolo included.
 
 ### Settings
 

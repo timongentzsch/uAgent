@@ -51,9 +51,9 @@ every metric.
 - **One conversation, every device.** Start in the terminal, continue on your
   phone (an installable web app with notifications), or run a turn from a
   script with `uagent -p "..." --json`.
-- **Works in parallel.** A folder's lead agent keeps a plan, fans questions
-  out to read-only subagents and starts background agents that change code
-  and report back.
+- **Works in parallel.** A conversation starts agents, conversations of
+  their own that research or change code and report back; a folder's lead
+  agent keeps a plan and leaves the changes to them.
 - **Remembers and repeats.** Memory, skills, scheduled tasks and MCP servers,
   managed from the terminal or the web.
 - **Any endpoint.** Chat Completions, OpenAI Responses and Anthropic Messages,

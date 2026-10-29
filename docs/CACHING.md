@@ -84,8 +84,6 @@ per task, the read share per route was:
 | Task | Responses | Anthropic Messages |
 |---|---|---|
 | 20-step coding task | 93% | 94% |
-| background subagent and its completion note | 83% | 88% |
-| lead agent with subagents | 77% | 77% |
 | 15-action browser form | 86% | 85% |
 
 To compare a change, record route, context size, cache reads and writes,

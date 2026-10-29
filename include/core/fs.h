@@ -109,6 +109,8 @@ inline constexpr const char* kSessionLockSuffix = ".lock";
 inline constexpr const char* kSessionJournalSuffix = ".events.jsonl";
 inline constexpr const char* kSessionAssetsSuffix = ".assets";
 inline constexpr const char* kSessionEditsSuffix = ".edits";
+// Plan mode's plan, the one file a conversation in it may write.
+inline constexpr const char* kSessionPlanSuffix = ".plan.md";
 // Remembered approval rules under kConfigDir; they grant future authority.
 inline constexpr const char* kPermissionStoreFile = "permissions.json";
 

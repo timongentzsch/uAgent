@@ -123,6 +123,27 @@ def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *,
         assert_true(header(agent)["turns"] == 2, header(agent))
 
 
+def test_plan_mode_starts_agents_that_only_read(root, home, *, binary):
+    """Whatever it asks for, an agent started in plan mode only reads; a turn
+    that writes no plan still ends cleanly."""
+
+    def route(_, body):
+        if brief_of(body):
+            return event({"content": "agent looked"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF change it", "edits": "folder"})
+        return event({"content": "parent planned nothing"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_APPROVAL"] = "plan"
+        result = run(root, env, "-p", "plan with an agent", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "parent planned nothing", result.stdout)
+        (agent,) = agent_files(home)
+        assert_true(header(agent)["agent"]["edits"] == "none", header(agent))
+
+
 def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(root, home, *, binary):
     def route(_, body):
         if brief_of(body):

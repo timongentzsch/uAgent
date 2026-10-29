@@ -325,7 +325,7 @@ conversations and this folder (both in `~/.uagent/config/settings.json`),
 the environment, the command line and this conversation (its session).
 Only the model (`UAGENT_MODEL`, with its effort) and the approval mode
 (`UAGENT_APPROVAL`) can be set for one conversation: `/model`, `/effort`,
-`/permissions` and `/yolo` set them there, and `--model` or `--yolo` sets them
+`/permissions`, `/yolo` and `/plan` set them there, and `--model` or `--yolo` sets them
 for the conversation it starts. One resolver answers what applies, where it
 comes from and what each scope holds, so a settings list can say what a change
 would override. Settings reload at a turn boundary; controls report the ones

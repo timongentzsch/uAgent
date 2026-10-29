@@ -97,6 +97,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   add(0, view.model);
   add(1, view.approval == "yolo"   ? "YOLO"
          : view.approval == "auto" ? "Auto"
+         : view.approval == "plan" ? "Plan"
                                    : "Ask");
   add(1, ContextLeftSummary(view.context_used, view.context_window));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));

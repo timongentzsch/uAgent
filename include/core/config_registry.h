@@ -137,7 +137,8 @@ struct ConfigDescriptor {
 inline constexpr std::string_view kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "off"};
-inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
+inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo",
+                                                      "plan"};
 inline constexpr std::string_view kSandboxLevels[] = {"readonly", "default",
                                                       "relaxed", "off"};
 inline constexpr std::string_view kDetailLevels[] = {"minimal", "default",
@@ -737,7 +738,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             registry::Str("approval.mode", "UAGENT_APPROVAL", "approval", "ask",
                           ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "behaviour",
-                          "ask, auto reviewer, or yolo for ordinary mutations"),
+                          "ask, auto reviewer, or yolo for ordinary mutations; "
+                          "plan only reads until a plan is approved"),
             kApprovalModes),
         "Approval mode")),
     registry::Named(

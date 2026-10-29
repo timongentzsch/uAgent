@@ -65,9 +65,11 @@ every approval mode.
 
 Reading and searching inside the folder needs no approval. Calls that
 change files, run commands, use the network or touch a path outside the
-folder follow the approval mode: `ask` (the default), `auto` or `yolo`
-(also `/yolo` or `--yolo`), set with `/permissions` and saved as the default
-with `UAGENT_APPROVAL`. Reading one of your other folders, such as another
+folder follow the approval mode: `ask` (the default), `auto`, `yolo`
+(also `/yolo` or `--yolo`) or `plan` (also `/plan`), set with `/permissions`
+and saved as the default with `UAGENT_APPROVAL`. In `plan` only reads run,
+commands in the `readonly` sandbox, and the one file written is the
+conversation's plan; the [guide](GUIDE.md#plan-mode) says how it ends. Reading one of your other folders, such as another
 repository in the home folder, always asks a person (`sandbox.read` opens a
 folder), except under yolo, which opens them. The
 [guide](GUIDE.md#approvals-and-the-sandbox) explains the modes; none of them

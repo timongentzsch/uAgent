@@ -14,13 +14,15 @@ restricted account for untrusted code.
 
 The approval mode decides who is asked; the sandbox decides what a command
 can reach. No approval mode turns the sandbox off, but yolo raises the
-`default` level to `relaxed` (see [Sandboxing](#sandboxing)).
+`default` level to `relaxed` and plan mode lowers it to `readonly` (see
+[Sandboxing](#sandboxing)).
 
 | Mode | Set with | Effect |
 | --- | --- | --- |
 | `ask` (default) | `/permissions ask` | a person approves each mutating, process, network, cost-bearing or untrusted MCP call, and each read outside the folder |
 | `auto` | `/permissions auto`, `UAGENT_APPROVAL=auto` | a decision model allows or denies the calls the sandbox contains; what it cannot decide, every call that leaves the sandbox or the folder, and every `run` or `scratch` call while the sandbox is off or not enforced go to a person, and are denied when nobody can answer |
 | `yolo` | `--yolo`, `/yolo`, `/permissions yolo` | those calls run unasked; commands stay sandboxed, at the `relaxed` level where the level is `default` |
+| `plan` | `/plan`, `/permissions plan` | only reads run: commands at the `readonly` level and calls on the conversation's plan file; every other change is refused, and reads outside the folder ask as in `ask` |
 
 In every mode:
 
@@ -192,7 +194,8 @@ stores. The browser profile, µAgent's settings and the credential stores
 stay out of reach. The change holds from the next command after `/yolo`,
 `/permissions` or the web's control, and `/status` names the level in
 effect (`relaxed (yolo)`). `readonly`, `relaxed` and `off`, set explicitly,
-stay as they are; a lead agent stays at `readonly`.
+stay as they are; a lead agent stays at `readonly`. Plan mode runs commands
+at `readonly (plan)` whatever the level, except `off`, where it runs none.
 
 A value that is no level (`strict` included, which is gone) is not read as
 `default`: commands are refused until it is fixed, so a typo cannot open the

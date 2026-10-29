@@ -245,6 +245,9 @@ class Agent {
   void Turn(const std::string& user_input, json user_content = nullptr,
             const json& images = json::array(),
             const std::string& request_id = "", const json& origin = nullptr);
+  // A row in the last turn, in a call's shape, for what the host did as it
+  // ended: plan mode's plan, shared for approval.
+  void RecordReceipt(const Headline& headline, json parts);
 
  private:
   struct TurnExecution;

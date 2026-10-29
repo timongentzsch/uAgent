@@ -31,6 +31,9 @@ class Application {
   void ReloadConfigAtTurnBoundary();
   void RunTurns(const std::string& input, json content = nullptr,
                 const json& images = json::array());
+  // Puts plan mode's plan to the person as a turn ends; returns the message
+  // their answer starts the next turn with, or nothing.
+  std::string PresentPlan();
   void LogSessionEnd(const char* reason) const;
   void Teardown(const char* reason);
   int FinishHeadless(std::string answer, std::string error, int exit_code);

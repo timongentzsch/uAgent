@@ -97,8 +97,8 @@ struct SandboxInputs {
 // The `sandbox.level` setting: what a command may do before the individual
 // overrides (sandbox.network, sandbox.write, sandbox.hide, sandbox.reveal)
 // apply. Not SandboxLevel, which is what the host can enforce.
-// readonly is a lead agent's: its commands may look but change nothing, the
-// folder and the network included, whatever the overrides say.
+// readonly is a lead agent's and plan mode's: its commands may look but change
+// nothing, the folder and the network included, whatever the overrides say.
 enum class SandboxPreset { kReadOnly, kDefault, kRelaxed, kOff };
 
 // readonly, default, relaxed and off. False for anything else, leaving
@@ -197,15 +197,17 @@ struct SandboxStatus {
   // Why the mode is kDegraded or kRefused. Empty otherwise.
   std::string reason;
   // The sandbox.level in effect, as /status names it: "default", or
-  // "relaxed (yolo)" where yolo raised it. A child carries its parent's.
+  // "relaxed (yolo)" where yolo raised it, "readonly (plan)" in plan mode. A
+  // child carries its parent's.
   std::string preset;
 };
 
 // Reads the configuration, composes the policy and probes the host once, and
-// at the default level composes it once more at relaxed the first time yolo
-// asks. Returns the one for the approval mode now: every spawn asks, so a
-// mode switched mid-session holds from the next command. Neither status is
-// ever rebuilt, so the reference stays good.
+// composes it once more the first time another approval mode asks: at the
+// default level relaxed for yolo, and readonly for plan mode. Returns the one
+// for the approval mode now: every spawn asks, so a mode switched mid-session
+// holds from the next command. No status is ever rebuilt, so the reference
+// stays good.
 const SandboxStatus& SandboxRuntime();
 
 // That status as the value of UAGENT_INTERNAL_SANDBOX, which makes a child

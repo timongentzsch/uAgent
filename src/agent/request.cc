@@ -759,6 +759,13 @@ std::string Agent::RuntimeContextText() const {
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +
       ModelVideoInputInstruction(api_.capabilities.video_input);
+  if (CurrentApprovalMode() == ApprovalMode::kPlan) {
+    content +=
+        "\n[plan mode: you only read; commands change nothing and agents you "
+        "start only read. Research, then write the plan (markdown) to " +
+        PlanFile() +
+        "; it is shown to the person for approval when your turn ends]";
+  }
   if (const json agent = AgentOf(session_role_); !agent.empty()) {
     // What it cannot infer from its prompt: who reads its answer, and that
     // the parent's guidance may arrive mid-turn as a message.

@@ -264,6 +264,8 @@ ToolResult StartAgents(const Api& api,
                        "you only read, so the agents you start only read "
                        "too: start them with edits none");
   }
+  // Plan mode only reads, and so do the agents it starts.
+  if (CurrentApprovalMode() == ApprovalMode::kPlan) launch.edits = "none";
   if (launch.edits == "worktree" && !InGitRepository(CanonicalCwd())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "this folder is not in git, so there is no worktree; "

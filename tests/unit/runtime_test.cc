@@ -460,6 +460,8 @@ void TestPermissionPolicy() {
   CHECK(approval == ApprovalMode::kAuto);
   CHECK(ParseApprovalMode("yolo", approval));
   CHECK(approval == ApprovalMode::kYolo);
+  CHECK(ParseApprovalMode("plan", approval));
+  CHECK(approval == ApprovalMode::kPlan);
   CHECK(!ParseApprovalMode("guess", approval));
 
   Tool tool;

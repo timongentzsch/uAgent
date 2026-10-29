@@ -50,6 +50,7 @@ enum class SlashCommandId {
   kDetail,
   kBtw,
   kYolo,
+  kPlan,
   kPanel,
   kOpen,
 };
@@ -113,7 +114,8 @@ struct InteractionRequest {
   // Shown above the prompt: what is being chosen between.
   std::string description = "";
   json options = json::array();
-  json questions = nullptr;  // kind "ask": what the ask tool puts to them
+  json questions = nullptr;    // kind "ask": what the ask tool puts to them
+  json files = json::array();  // shared files it is about (FilePart)
 };
 
 using InteractiveReadHandler =

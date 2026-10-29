@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -140,6 +142,11 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"artifact_bytes",
        task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
   if (task.result.parts.is_array()) data["parts"] = task.result.parts;
+  // For the host's detail lookup from the moment the row exists; browsers
+  // get the row, never this event.
+  if (!task.result.diff_path.empty()) {
+    data["change_path"] = task.result.diff_path;
+  }
   // The operation is a schema enum, not an argument value. It is enough to
   // distinguish a quiet poll from a wait without journalling ids or input.
   if (call.name == "activity" && task.args.is_object()) {
@@ -197,9 +204,22 @@ void CancelCall(CallTask& task) {
   task.trace_status = steered ? "steered" : "cancelled";
 }
 
+namespace {
+// A fact and a frame are bounded, so a long diff is stored whole, before its
+// result is published, and the row carries its opening.
+void StoreWholeDiff(ToolResult& result, const std::string& diffs) {
+  std::string& diff = result.diff;
+  if (diffs.empty() || diff.size() <= kChangePreviewChars) return;
+  CreatePrivateDirectories(std::filesystem::path(diffs).parent_path());
+  ScopedTempFile file(diffs);
+  if (file && WriteAll(file.Get(), diff)) result.diff_path = file.Release();
+  diff = Utf8Prefix(std::move(diff), kChangePreviewChars);
+}
+}  // namespace
+
 void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                  int64_t step, const ToolContext& context,
-                 int64_t global_timeout_s) {
+                 int64_t global_timeout_s, const std::string& diffs) {
   auto started = std::chrono::steady_clock::now();
   task.started = true;
   if (SteeringState().Requested() || AbortRequested()) {
@@ -250,6 +270,7 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
     task.trace_status = task.result.Ok() ? "ok" : "error";
   }
   task.duration_ms = ElapsedMs(started);
+  StoreWholeDiff(task.result, diffs);
   EmitToolResultObservation(task, call, turn, step);
 }
 

@@ -355,6 +355,12 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                                  {"parallel", parallel},
                                  {"concurrency_limit", width}});
   }
+  // A long diff is kept with the session's edits, where it lasts as long as
+  // the conversation; a run without a session file keeps it with the
+  // retained exchanges.
+  const std::string diffs = edits_.Directory().empty()
+                                ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
+                                : edits_.Directory() + "/diff-XXXXXX";
 
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
@@ -364,7 +370,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     size_t end = ParallelRunEnd(runnable, tasks, begin);
     if (end <= begin + 1) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                  api_.config.tool_timeout_s);
+                  api_.config.tool_timeout_s, diffs);
       ++begin;
       continue;
     }
@@ -378,7 +384,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                           (work = next.fetch_add(1)) < end;) {
           size_t call_index = runnable[work];
           ExecuteCall(tasks[call_index], calls[call_index], turn_id_, step,
-                      context, api_.config.tool_timeout_s);
+                      context, api_.config.tool_timeout_s, diffs);
         }
       }));
     }
@@ -403,23 +409,6 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   std::vector<json> activities;
   activities.reserve(tasks.size());
   for (CallTask& task : tasks) {
-    // A fact and a frame are bounded, so a long diff is stored whole and the
-    // row carries its opening. It is kept with the session's edits, where it
-    // lasts as long as the conversation; a run without a session file keeps
-    // it with the retained exchanges.
-    if (std::string& diff = task.result.diff;
-        diff.size() > kChangePreviewChars) {
-      if (!edits_.Directory().empty()) {
-        CreatePrivateDirectories(edits_.Directory());
-      }
-      ScopedTempFile file(edits_.Directory().empty()
-                              ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
-                              : edits_.Directory() + "/diff-XXXXXX");
-      if (file && WriteAll(file.Get(), diff)) {
-        task.result.diff_path = file.Release();
-      }
-      diff = Utf8Prefix(std::move(diff), kChangePreviewChars);
-    }
     json activity = task.activity;
     activity["state"] = ResultState(task.result.status);
     // A change keeps its own row: its diff comes from the operation, never

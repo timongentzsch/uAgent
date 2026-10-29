@@ -113,14 +113,16 @@ void InitializeNotificationsOnce() {
   }
 }
 
+// Never destroyed: a detached thread may still read them as the process
+// exits.
 std::string& MutableExecutablePath() {
-  static std::string path;
-  return path;
+  static auto* path = new std::string;
+  return *path;
 }
 
 std::string& StartupExecutableIdentity() {
-  static std::string identity;
-  return identity;
+  static auto* identity = new std::string;
+  return *identity;
 }
 
 }  // namespace

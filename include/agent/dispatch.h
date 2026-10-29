@@ -72,9 +72,11 @@ json ToolCallData(const ToolCall& call, int64_t turn, int64_t step);
 
 void CancelCall(CallTask& task);
 
+// `diffs` is the file template (ending in XXXXXX) a long diff is stored
+// whole in; empty keeps it in the result.
 void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                  int64_t step, const ToolContext& context,
-                 int64_t global_timeout_s);
+                 int64_t global_timeout_s, const std::string& diffs);
 
 }  // namespace uagent
 

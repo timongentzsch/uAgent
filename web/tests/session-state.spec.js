@@ -355,21 +355,27 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     window.__stableCopyControl = node;
   });
   await stableTable.evaluate((node) => {
-    // How much of the answer shows. A reference streamed before its
-    // definition shows as written ("[label][name]") until the definition
-    // arrives; it counts as its label.
-    window.__answerLength = () =>
-      (
-        document.querySelector(".message.response > .markdown")?.textContent ||
-        ""
-      ).replace(/\[([^\]]*)\]\[[^\]]*\]/g, "$1").length;
+    // How much of the answer shows: all of it, or only its settled blocks.
+    // The block still streaming can show raw syntax for a moment (a
+    // reference before its definition, a half-written marker), so only the
+    // blocks before it are held to the end. A reference counts as its label.
+    window.__answerLength = (settled = false) => {
+      const blocks = [
+        ...(document.querySelector(".message.response > .markdown")?.children ||
+          []),
+      ];
+      return (settled ? blocks.slice(0, -1) : blocks)
+        .map((block) => block.textContent || "")
+        .join("")
+        .replace(/\[([^\]]*)\]\[[^\]]*\]/g, "$1").length;
+    };
     window.__stableMarkdownTable = node;
     window.__stableRemovalCount = 0;
     window.__maximumAnswerLength = 0;
     window.__stableRemovalObserver = new MutationObserver((records) => {
       window.__maximumAnswerLength = Math.max(
         window.__maximumAnswerLength,
-        window.__answerLength(),
+        window.__answerLength(true),
       );
       for (const record of records)
         for (const removed of record.removedNodes)
@@ -388,7 +394,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
       document.querySelector(".message.response > .markdown"),
       { childList: true, subtree: true },
     );
-    window.__maximumAnswerLength = window.__answerLength();
+    window.__maximumAnswerLength = window.__answerLength(true);
   });
 
   await opening.evaluate((node) => {
@@ -461,7 +467,8 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
         table:
           window.__stableMarkdownTable ===
           document.querySelector(".message.response table"),
-        length: window.__answerLength(),
+        // Nothing that settled while streaming is gone at the end.
+        kept: window.__answerLength() >= window.__maximumAnswerLength,
         removals: window.__stableRemovalCount,
       })),
     )
@@ -471,7 +478,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
       thinking: "true",
       copy: true,
       table: true,
-      length: maximumLength,
+      kept: true,
       removals: 0,
     });
   await page.evaluate(() => window.__stableRemovalObserver.disconnect());

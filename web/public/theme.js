@@ -39,7 +39,7 @@
   );
   // Each palette's --bg, before the stylesheet that holds them has loaded.
   document.querySelector('meta[name="theme-color"]').content =
-    t === "dark" ? "#000000" : "#ffffff";
+    t === "dark" ? "#000" : "#fff";
   // iOS reads this once at launch; translucent draws under the status bar
   // (safe areas apply) but always with white text, so light keeps the default.
   document.querySelector(

@@ -179,7 +179,7 @@
 [data-theme="light"] .inverse,
 [data-theme="dark"] .inverse :is(dialog, .popover-list) {
   color-scheme: dark;
-  --bg: #000000;
+  --bg: #000;
   --surface: #0a0a0a;
   --raised: #171717;
   --hover: #232323;
@@ -236,7 +236,7 @@
 [data-theme="dark"] .inverse,
 [data-theme="light"] .inverse :is(dialog, .popover-list) {
   color-scheme: light;
-  --bg: #ffffff;
+  --bg: #fff;
   --surface: #fafafa;
   --raised: #eee;
   --hover: #e2e2e2;

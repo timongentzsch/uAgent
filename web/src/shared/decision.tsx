@@ -141,11 +141,9 @@ export default function Decision({
         )}
       </div>
       {pending.route === "parent" && (
-        <p class="decision-note small">You can still answer first.</p>
+        <p class="small">You can still answer first.</p>
       )}
-      {pending.note && (
-        <p class="decision-note small">{cleanText(pending.note)}</p>
-      )}
+      {pending.note && <p class="small">{cleanText(pending.note)}</p>}
       {!asking && (
         <div class="decision-preview">
           {approval && (
@@ -181,7 +179,7 @@ export default function Decision({
             </>
           )}
           {approval?.review && (
-            <p class="decision-note small">{cleanText(approval.review)}</p>
+            <p class="small">{cleanText(approval.review)}</p>
           )}
           <p>{cleanText(pending.prompt)}</p>
         </div>

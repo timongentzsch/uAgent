@@ -28,7 +28,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
     "content",
-    "#ffffff",
+    "#fff",
   );
   const composer = page.getByLabel("Message or guidance");
   const originalText = await composer.evaluate(

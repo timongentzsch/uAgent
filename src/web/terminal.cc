@@ -243,18 +243,23 @@ Terminals::~Terminals() {
 
 std::string Terminals::Open(const std::string& directory,
                             const std::string& folder, std::string& error) {
-  const std::string start = directory.empty() ? UserHome() : directory;
-  const auto resolved = start.starts_with('/')
-                            ? CanonicalDirectory(start)
-                            : std::optional<std::filesystem::path>();
-  if (!resolved) {
-    error = "not a folder: " + start;
-    return {};
+  // Both named as the catalogue names folders, so a shell lists under its.
+  std::string paths[] = {directory.empty() ? UserHome() : directory, folder};
+  for (std::string& path : paths) {
+    if (path.empty()) continue;
+    const auto resolved = path.starts_with('/')
+                              ? CanonicalDirectory(path)
+                              : std::optional<std::filesystem::path>();
+    if (!resolved) {
+      error = "not a folder: " + path;
+      return {};
+    }
+    path = resolved->string();
   }
   auto shell = std::make_shared<TerminalShell>();
   shell->id = RandomToken(16);
-  shell->cwd = resolved->string();
-  shell->folder = folder;
+  shell->cwd = paths[0];
+  shell->folder = paths[1];
   shell->wake = wake_write_.Get();
   UniqueLock lock(mutex_);
   if (stopping_ || shell->id.empty()) {

@@ -21,6 +21,9 @@
   flex: 1;
   min-width: 0;
 }
+.overview-start button {
+  white-space: nowrap;
+}
 /* The summary: five figures in a row, two to a row on a phone. */
 .overview-stats {
   display: grid;
@@ -63,7 +66,7 @@
 }
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--pane), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--sidebar), 1fr));
   gap: var(--space-4);
 }
 /* One conversation: title and state, its step, its to-do, then its agents,

@@ -111,7 +111,8 @@ def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
             terminal = open_terminal(client, str(project), str(project))
             shells = listed(client)
             assert_true(
-                [(entry["id"], entry["folder"]) for entry in shells] == [(terminal, str(project))],
+                [(entry["id"], entry["folder"]) for entry in shells]
+                == [(terminal, str(project.resolve()))],
                 shells,
             )
             path = f"/api/terminals/{terminal}"

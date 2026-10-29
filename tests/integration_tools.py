@@ -1108,8 +1108,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
         )
 
 
-def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, binary):
-    """An exact action is remembered; a different command still asks."""
+def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, *, binary):
+    """A command and its subcommand are remembered; another program still asks."""
     refusal = {}
 
     def route(_, body):
@@ -1121,7 +1121,7 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         if not results:
             return tool_call("run", {"command": "git status --short"})
         if len(results) == 1:
-            return tool_call("run", {"command": "git status --short"})
+            return tool_call("run", {"command": "git status"})
         return tool_call("run", {"command": "rm -rf /tmp/uagent-nothing"})
 
     with Server([route]) as server:
@@ -1129,7 +1129,7 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"Allow for this conversation"),
+                (b"go\n", b"Allow for this conversation: run git status *"),
                 (
                     b"s\n",
                     b"rm -rf /tmp/uagent-nothing",
@@ -1144,8 +1144,9 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         )
         assert_true(status == 0, output)
         assert_true(b"[y] Allow once" in output and b"[n] Deny" in output, output)
-        # Reaching rm proves the exact repeat ran without consuming the refusal;
-        # rm is a different command, so that refusal is delivered there.
+        # Reaching rm proves `git status *` covered the second call without
+        # consuming the refusal; rm is only ever exact, so that refusal is
+        # delivered there.
         assert_true(b"Ran rm -rf /tmp/uagent-nothing" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))

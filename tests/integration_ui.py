@@ -1640,7 +1640,7 @@ def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
         result = run_dialog(
             root,
             base_env(home, server.url),
-            "First approval\na\n/fork\nSecond approval\nn\n/q\n",
+            "First approval\ns\n/fork\nSecond approval\nn\n/q\n",
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
@@ -1726,7 +1726,7 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*All conversations", output), output)
         assert_true("history kept" in output, output)
         assert_true("mcp.timeout" not in saved_settings(home), "reset")
-        assert_true("no remembered actions for this repository" in output, output)
+        assert_true("no rules for this repository" in output, output)
         # A typed rename keeps to the rule a title has everywhere else.
         assert_true("title must be 1" in output, output)
         assert_true(

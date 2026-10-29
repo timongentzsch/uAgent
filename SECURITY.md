@@ -28,9 +28,12 @@ In every mode:
 
 - Reads inside the folder need no approval, apart from the files named
   below.
-- An exact action you allowed for the session, or remembered for the
-  repository, is not asked again. `/permissions rules` lists what is
-  remembered and `/permissions forget N` removes one.
+- A call a rule you kept covers is not asked again: a rule for the session
+  or for the repository names a tool and what it covers (a simple command's
+  prefix, a folder, a host, or the exact call). A command that chains,
+  substitutes or redirects matches no prefix, and shells, interpreters,
+  `sudo` and `rm` are only ever allowed exactly. `/permissions rules` lists
+  the rules and `/permissions forget N` removes one.
 - Some operations always require a person, even under yolo, auto or a
   remembered rule, and are denied when no interactive client can answer, as
   in a delegated child:

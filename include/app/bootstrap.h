@@ -10,7 +10,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -98,9 +97,8 @@ struct AppContext {
   // The name this session holds the shared browser under, when it has the
   // browser tool: what a finished turn gives the browser back by.
   std::string browser_lease;
-  // What "don't ask again" granted, bound to the tool's current provider,
-  // schema and approval policy. Session-scoped by construction: it dies here.
-  std::unordered_set<std::string> session_approvals;
+  // What "allow for this conversation" granted; it dies with the session.
+  std::vector<PermissionRule> session_rules;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

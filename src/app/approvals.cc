@@ -57,6 +57,7 @@ enum class ApprovalAnswer { kOnce, kSession, kRepository, kDeny, kGuidance };
 struct ApprovalChoice {
   ApprovalAnswer answer;
   std::string_view value;
+  // Before the rule's words for the two that keep one.
   std::string_view label;
   std::array<std::string_view, 3> aliases;
 };
@@ -65,20 +66,22 @@ constexpr ApprovalChoice kApprovalChoices[] = {
     {ApprovalAnswer::kOnce, "y", "Allow once", {"y", "yes"}},
     {ApprovalAnswer::kSession,
      "s",
-     "Allow for this conversation",
+     "Allow for this conversation: ",
      {"s", "session"}},
     {ApprovalAnswer::kRepository,
      "a",
-     "Always allow this exact action here",
+     "Always allow here: ",
      {"a", "always", "repository"}},
     {ApprovalAnswer::kDeny, "n", "Deny", {"n", "no"}},
     {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},
 };
 
-json ApprovalOptions() {
+json ApprovalOptions(const PermissionRule& rule) {
   json options = json::array();
   for (const ApprovalChoice& choice : kApprovalChoices) {
-    options.push_back({{"value", choice.value}, {"label", choice.label}});
+    std::string label(choice.label);
+    if (label.ends_with(": ")) label += RuleLabel(rule);
+    options.push_back({{"value", choice.value}, {"label", label}});
   }
   return options;
 }
@@ -217,7 +220,7 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
 // Puts the call to a person, and remembers an answer they ask to keep.
 Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
                   const std::string& raw_payload, const std::string& request_id,
-                  const std::string& root, const std::string& key,
+                  const std::string& root, const PermissionRule& rule,
                   bool mandatory, const json& review) {
   Verdict verdict;
   // A tool escalates by its path for reaching µAgent's own configuration or
@@ -264,7 +267,7 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
     verdict.granted = Confirm(std::move(request));
     verdict.refusal += " (" + reason + ")";
   } else {
-    request.options = ApprovalOptions();
+    request.options = ApprovalOptions(rule);
     bool cancelled = false;
     bool eof = false;
     std::string answer =
@@ -274,13 +277,10 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
     verdict.granted = chosen == ApprovalAnswer::kOnce ||
                       chosen == ApprovalAnswer::kSession ||
                       chosen == ApprovalAnswer::kRepository;
-    if (chosen == ApprovalAnswer::kSession) {
-      app->session_approvals.insert(key);
-    }
+    if (chosen == ApprovalAnswer::kSession) app->session_rules.push_back(rule);
     if (chosen == ApprovalAnswer::kRepository) {
       std::string error;
-      if (!RememberRepositoryPermission(root, key, tool.name, raw_payload,
-                                        error)) {
+      if (!RememberRepositoryRule(root, rule, error)) {
         Emit(NoticeEvent(
             PresentationStatus::kWarned,
             "allowed once; could not save permission rule: " + error));
@@ -307,11 +307,20 @@ Agent::Approver MakeApprover(AppContext* app) {
     static std::atomic<uint64_t> sequence{0};
     ApprovalClass required = RequiredApproval(tool, arguments);
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
-    std::string key = PermissionKey(tool, arguments, required);
     const std::string root = CanonicalCwd();
-    bool session_rule = !mandatory && app->session_approvals.contains(key);
-    bool repository_rule =
-        !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
+    // The rule that allows it, if one does; else the one a person is
+    // offered.
+    PermissionRule rule;
+    const auto covered = [&](const PermissionRule& held) {
+      return RuleCovers(held, tool, arguments, root);
+    };
+    auto held = std::ranges::find_if(app->session_rules, covered);
+    bool session_rule = !mandatory && held != app->session_rules.end();
+    if (session_rule) rule = *held;
+    bool repository_rule = !mandatory && !session_rule &&
+                           RepositoryRuleAllows(root, tool, arguments, &rule);
+    const bool by_rule = session_rule || repository_rule;
+    if (!by_rule) rule = SuggestRule(tool, arguments, root);
     const bool planning = CurrentApprovalMode() == ApprovalMode::kPlan;
     const bool planned = planning && PlanModeAllows(tool, arguments, mandatory);
     bool automatic =
@@ -352,7 +361,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     }
     if (!automatic) {
       verdict = AskPerson(app, tool, arguments, raw_payload, request_id, root,
-                          key, mandatory, review);
+                          rule, mandatory, review);
     }
     DebugLog("approval", {{"tool", tool.name},
                           {"automatic", automatic},
@@ -366,6 +375,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                {{"id", request_id},
                 {"tool", tool.name},
                 {"automatic", automatic},
+                {"rule", by_rule ? RuleLabel(rule) : std::string()},
                 {"mode", ApprovalModeName(CurrentApprovalMode())},
                 {"review", review},
                 {"mandatory_human", mandatory},

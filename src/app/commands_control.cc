@@ -194,7 +194,7 @@ json SessionControl(AppSession& session, const json& request) {
         McpControl(request, app.tools, app.runtime.mcp, app.runtime.config);
     if (app.runtime.mcp.registry_changed) {
       ApplyToolPolicy(app.tools, app.tool_policy);
-      app.session_approvals.clear();
+      app.session_rules.clear();
     }
     return result;
   }

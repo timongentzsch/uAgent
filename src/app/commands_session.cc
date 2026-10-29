@@ -400,7 +400,7 @@ void HandleConfig(AppSession& session, const std::string& argument,
              "KEY=VALUE, unset KEY, or reset (keeps secrets)");
 }
 
-// This repository's remembered actions, numbered so one can be forgotten,
+// This repository's rules, numbered so one can be forgotten,
 // as in the web settings.
 void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   json listed = PermissionRulesControl({{"action", "list"}});
@@ -412,10 +412,11 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
       listed = PermissionRulesControl({{"action", "clear"}});
     } else if (ParseInt64(which.c_str(), index) && index >= 1 &&
                index <= static_cast<int64_t>(rules.size())) {
-      listed = PermissionRulesControl(
-          {{"action", "delete"},
-           {"key",
-            JsonValue(rules[static_cast<size_t>(index - 1)], "key", "")}});
+      const json& rule = rules[static_cast<size_t>(index - 1)];
+      listed =
+          PermissionRulesControl({{"action", "delete"},
+                                  {"tool", JsonValue(rule, "tool", "")},
+                                  {"match", JsonValue(rule, "match", "")}});
     } else {
       listed = {{"error", "usage: /permissions forget N|all"}};
     }
@@ -424,13 +425,12 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   if (NoteError(reply, listed)) return;
   const json& rules = listed["rules"];
   if (rules.empty()) {
-    reply.Note(Tone::kNeutral, "no remembered actions for this repository");
+    reply.Note(Tone::kNeutral, "no rules for this repository");
   }
   for (size_t i = 0; i < rules.size(); ++i) {
-    reply.Print("%zu. %s %s· %s%s\n", i + 1,
-                TerminalSafe(JsonValue(rules[i], "tool", "")).c_str(), DIM(),
-                TerminalSafe(JsonValue(rules[i], "preview", "")).c_str(),
-                RST());
+    const PermissionRule rule{JsonValue(rules[i], "tool", ""),
+                              JsonValue(rules[i], "match", "")};
+    reply.Print("%zu. %s\n", i + 1, TerminalSafe(RuleLabel(rule)).c_str());
   }
 }
 

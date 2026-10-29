@@ -59,7 +59,7 @@ test("always allowing an action remembers it in Settings", async ({
   await card.getByRole("button", { name: "+ guidance" }).click();
   await expect(card.getByLabel("Guidance")).toBeVisible();
   await card
-    .getByRole("checkbox", { name: "Always allow this exact action here" })
+    .getByRole("checkbox", { name: /^Always allow here: write_file / })
     .check();
   await card.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(card).toHaveCount(0);

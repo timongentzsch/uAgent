@@ -470,22 +470,62 @@ void TestPermissionPolicy() {
   tool.provider = "builtin";
   tool.parameters = {{"type", "object"}};
   tool.mutating = true;
-  const auto approval_class = ApprovalClass::kYoloEligibleMutation;
-  const std::string first =
-      PermissionKey(tool, {{"path", "first"}}, approval_class);
-  const std::string second =
-      PermissionKey(tool, {{"path", "second"}}, approval_class);
-  CHECK(first != second);
+  const std::string root = CanonicalCwd();
+  // A file's rule is its folder, inside the folder by its place there.
+  const PermissionRule folder =
+      SuggestRule(tool, {{"path", "src/app/a.ts"}}, root);
+  CHECK(folder.tool == "write_file" && folder.match == "./src/app/");
+  CHECK(RuleCovers(folder, tool, {{"path", "src/app/b.ts"}}, root));
+  CHECK(!RuleCovers(folder, tool, {{"path", "src/b.ts"}}, root));
+  CHECK(SuggestRule(tool, {{"path", "a.ts"}}, root).match == "./");
+  CHECK(SuggestRule(tool, {{"path", "/etc/hosts"}}, root).match == "/etc/");
   // A tool may say what an approval covers: calls that differ only in what
-  // it leaves out share one key.
+  // it leaves out share one rule.
   tool.approval_subject = [](const json& arguments) {
     return json{{"site", arguments.value("site", "")}};
   };
-  CHECK(PermissionKey(tool, {{"site", "a"}, {"view", "1"}}, approval_class) ==
-        PermissionKey(tool, {{"site", "a"}, {"view", "2"}}, approval_class));
-  CHECK(PermissionKey(tool, {{"site", "a"}}, approval_class) !=
-        PermissionKey(tool, {{"site", "b"}}, approval_class));
+  const PermissionRule site =
+      SuggestRule(tool, {{"site", "a"}, {"view", "1"}}, root);
+  CHECK(RuleCovers(site, tool, {{"site", "a"}, {"view", "2"}}, root));
+  CHECK(!RuleCovers(site, tool, {{"site", "b"}}, root));
   tool.approval_subject = nullptr;
+
+  // A command's rule is the program and its subcommand, for one simple
+  // command; anything that chains, substitutes or runs anything is exact.
+  Tool run;
+  run.name = "run";
+  const auto suggest = [&](const std::string& command) {
+    return SuggestRule(run, {{"command", command}}, root).match;
+  };
+  const auto covers = [&](const std::string& match,
+                          const std::string& command) {
+    return RuleCovers({"run", match}, run, {{"command", command}}, root);
+  };
+  CHECK(suggest("npm test -- auth") == "npm test *");
+  CHECK(suggest("git status --short") == "git status *");
+  CHECK(suggest("ls -la") == "ls *");
+  CHECK(suggest("make") == "make *");
+  CHECK(suggest("git -c a=b push") == "git -c a=b push");
+  CHECK(suggest("npm test && rm -rf ~") == "npm test && rm -rf ~");
+  CHECK(suggest("echo $(cat secret)") == "echo $(cat secret)");
+  CHECK(suggest("bash -c 'curl x'") == "bash -c 'curl x'");
+  CHECK(suggest("python3 setup.py") == "python3 setup.py");
+  CHECK(covers("npm test *", "npm test"));
+  CHECK(covers("npm test *", "npm test -- auth"));
+  CHECK(!covers("npm test *", "npm testing"));
+  CHECK(!covers("npm test *", "npm test; curl x"));
+  CHECK(!covers("npm test *", "npm test > ~/.bashrc"));
+  CHECK(covers("git status", "git status"));
+  CHECK(!covers("git status", "git status --short"));
+  CHECK(RuleLabel({"run", "npm test *"}) == "run npm test *");
+  CHECK(RuleLabel({"mcp_x", "*"}) == "every mcp_x call");
+  // An MCP tool's rule is the tool.
+  Tool remote;
+  remote.name = "mcp_x";
+  remote.provider = "mcp:x";
+  CHECK(SuggestRule(remote, {{"q", 1}}, root).match == "*");
+  CHECK(RuleCovers({"mcp_x", "*"}, remote, {{"q", 2}}, root));
+  CHECK(!RuleCovers({"mcp_x", "*"}, run, {{"command", "ls"}}, root));
   // What a call's approval covered reaches its own run.
   {
     Tool held;
@@ -532,13 +572,16 @@ void TestPermissionPolicy() {
   CHECK(risk_ids(ApprovalRisks(fetch, {{"url", "https://x"}},
                                CanonicalCwd())) == "network,");
   std::string error;
-  CHECK(RememberRepositoryPermission(CanonicalCwd(), first, tool.name,
-                                     "write first", error));
-  CHECK(RepositoryPermissionAllows(CanonicalCwd(), first));
-  CHECK(!RepositoryPermissionAllows(CanonicalCwd(), second));
+  CHECK(RememberRepositoryRule(root, folder, error));
+  CHECK(RememberRepositoryRule(root, folder, error));
+  PermissionRule matched;
+  CHECK(RepositoryRuleAllows(root, tool, {{"path", "src/app/c.ts"}}, &matched));
+  CHECK(matched.match == "./src/app/");
+  CHECK(!RepositoryRuleAllows(root, tool, {{"path", "other/c.ts"}}));
   json rules = PermissionRulesControl({{"action", "list"}});
   CHECK(rules["rules"].size() == 1);
-  rules = PermissionRulesControl({{"action", "delete"}, {"key", first}});
+  rules = PermissionRulesControl(
+      {{"action", "delete"}, {"tool", "write_file"}, {"match", "./src/app/"}});
   CHECK(rules["rules"].empty());
 }
 

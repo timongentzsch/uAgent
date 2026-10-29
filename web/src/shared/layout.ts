@@ -257,10 +257,12 @@ export function applyTheme(theme: string) {
   const apply = () => {
     const resolved =
       theme === "system" ? (media.matches ? "dark" : "light") : theme;
-    document.documentElement.dataset.theme = resolved;
+    const root = document.documentElement;
+    root.dataset.theme = resolved;
+    // The browser's own bars take the palette's background.
     document.querySelector<HTMLMetaElement>(
       'meta[name="theme-color"]',
-    )!.content = resolved === "dark" ? "#000000" : "#ffffff";
+    )!.content = getComputedStyle(root).getPropertyValue("--bg").trim();
   };
   apply();
   media.addEventListener("change", apply);

@@ -48,7 +48,7 @@ function Input({ parts }: { parts: ToolPart[] }) {
           </pre>
         ) : part.kind === "code" ? (
           <figure class="node-code" key={index}>
-            {part.label && <figcaption>{part.label}</figcaption>}
+            {part.label && <figcaption class="small">{part.label}</figcaption>}
             <Markdown text={fenced(cleanText(part.text), part.language)} />
           </figure>
         ) : part.kind === "fields" ? (
@@ -75,7 +75,7 @@ function BrowserLink({ label }: { label: string }) {
   return (
     <Button
       variant="quiet"
-      class="node-action"
+      class="node-action small"
       onClick={() => host.setModal({ type: "browser" })}
     >
       {label}
@@ -131,7 +131,7 @@ function Tail({ node, text, more, online, loadFull }: Parameters<Body>[0]) {
       {more && (
         <Button
           variant="quiet"
-          class="node-action"
+          class="node-action small"
           disabled={!online}
           onClick={loadFull}
         >
@@ -190,7 +190,7 @@ export function NodeBody({
     body?.truncated && !wantFull && body.kind !== "tail" && (
       <Button
         variant="quiet"
-        class="node-action"
+        class="node-action small"
         disabled={!online}
         onClick={() => setWantFull(true)}
       >
@@ -200,7 +200,7 @@ export function NodeBody({
     inspect && node.kind === "call" && (
       <Button
         variant="quiet"
-        class="node-action"
+        class="node-action small"
         onClick={() => inspect(node.id)}
       >
         Input and output
@@ -213,7 +213,7 @@ export function NodeBody({
         activity && (
           <Button
             variant="quiet"
-            class="node-action"
+            class="node-action small"
             disabled={!online}
             onClick={() =>
               part.to === "agent"

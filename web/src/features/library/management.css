@@ -19,7 +19,7 @@
   flex: 1;
 }
 .management-list {
-  flex: 0 0 15rem;
+  flex: 0 0 var(--pane);
   padding: var(--pad);
   overflow: auto;
   border-right: var(--border);
@@ -56,17 +56,12 @@
 .run-history h2 {
   font-size: var(--font-body);
 }
-.library-row[aria-current] {
-  background: var(--raised);
-}
 .library-group + .library-group {
   margin-top: var(--gap);
 }
 .library-group h2 {
   margin: 0;
-  font-size: var(--font-small);
-  font-weight: 400;
-  color: var(--muted);
+  font-weight: var(--weight-regular);
 }
 .library-group h2 > .folder-label {
   padding-inline: var(--inset-x);
@@ -75,27 +70,20 @@
   width: 100%;
   justify-content: flex-start;
   gap: var(--gap);
-  border: 0;
-  background: none;
-  color: inherit;
 }
 .library-group .folder-label {
   min-width: 0;
   flex: 1;
-}
-.library-group button[aria-expanded="false"] > svg {
-  transform: rotate(-90deg);
 }
 .editor-head > strong {
   flex: 1;
 }
 .document-toolbar small {
   margin-left: auto;
-  color: var(--muted);
 }
 .document-input {
   flex: 1;
-  --input-min-height: min(14rem, calc(var(--viewport-height) * 0.3));
+  --input-min-height: min(var(--pane), var(--scroll-s));
   min-height: var(--input-min-height);
   flex-shrink: 0;
   font-family: inherit;
@@ -134,7 +122,6 @@
 }
 .run-row {
   display: flex;
-  border-bottom: var(--border);
   align-items: center;
 }
 .run-row > button:first-child {

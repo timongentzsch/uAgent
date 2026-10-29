@@ -323,7 +323,11 @@ export default function BrowserTouch({
     >
       <div class="browser-rfb" ref={target} />
       <span class="browser-touch" ref={ring} aria-hidden="true" />
-      <div class="browser-view-controls" role="group" aria-label="View">
+      <div
+        class="float-toolbar browser-view-controls"
+        role="group"
+        aria-label="View"
+      >
         <IconButton label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
           <Minus />
         </IconButton>

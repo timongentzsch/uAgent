@@ -290,7 +290,7 @@ function Composer({
         <JumpToLatest unseen={unseen} onClick={jump} />
       )}
       {pending?.kind === "browser" ? (
-        <section class="decision" aria-label="Browser needs you">
+        <section class="card decision" aria-label="Browser needs you">
           <h2>Continue in the browser</h2>
           <p>{pending.prompt || "The agent needs you to finish in Chrome."}</p>
           <Button variant="primary" disabled={!online} onClick={openBrowser}>
@@ -357,7 +357,10 @@ function Composer({
                   disabled={!queueing || !online || busy || uploading}
                   onClick={(event) => send(event, true)}
                 >
-                  Queue next <kbd aria-hidden="true">Alt+Enter</kbd>
+                  Queue next{" "}
+                  <kbd class="muted" aria-hidden="true">
+                    Alt+Enter
+                  </kbd>
                 </Button>
               )}
             </span>
@@ -379,7 +382,7 @@ function Composer({
             {(item) => (
               <>
                 <strong>@{item.name}</strong>
-                <span>{bytes(item.bytes)}</span>
+                <small>{bytes(item.bytes)}</small>
               </>
             )}
           </SuggestionList>
@@ -464,7 +467,7 @@ function Composer({
           <div class="attachments">
             {draft.files.map((asset) => (
               <div
-                class="file-chip"
+                class="chip file-chip"
                 key={asset.id}
                 aria-busy={asset.pending || undefined}
               >
@@ -499,7 +502,7 @@ function Composer({
                     />
                   ) : (
                     <Button
-                      class="chip-name"
+                      class="chip-name quiet"
                       title={`Rename ${asset.name}`}
                       aria-label={`Rename ${asset.name}`}
                       disabled={asset.pending}
@@ -627,7 +630,7 @@ function Composer({
           report={report}
           items={state?.activities || NONE}
         />
-        <div class="metrics">
+        <div class="metrics small">
           <ContextSummary state={state} open={openContext} online={online} />
           <SessionSummary state={state} open={showStatistics} />
           {!!session.guidance && !queued.length && (

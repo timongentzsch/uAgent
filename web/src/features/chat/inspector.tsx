@@ -248,7 +248,7 @@ function DetailBody({
   return (
     <div class="activity-detail">
       {error && <LoadError error={error} retry={retry} />}
-      {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
+      {meta.length > 0 && <p class="detail-meta small">{meta.join(" · ")}</p>}
 
       {detail.command ? (
         <section aria-label="Command">
@@ -266,7 +266,7 @@ function DetailBody({
       {detail.memory ? (
         <section aria-label="Memory">
           <p class="detail-label">{detail.memory.key}</p>
-          <p class="detail-meta">
+          <p class="detail-meta small">
             Saved memory · it may have changed since this event.
           </p>
           {loading && !detail.output ? (

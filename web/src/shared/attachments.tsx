@@ -160,11 +160,11 @@ function FileCard({
     </>
   );
   return href ? (
-    <a class="attachment-card" href={href} target="_blank" rel="noopener">
+    <a class="card attachment-card" href={href} target="_blank" rel="noopener">
       {body}
     </a>
   ) : (
-    <span class="attachment-card">{body}</span>
+    <span class="card attachment-card">{body}</span>
   );
 }
 

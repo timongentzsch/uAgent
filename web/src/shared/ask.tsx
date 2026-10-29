@@ -311,14 +311,14 @@ function QuestionPage({
       <fieldset class="ask-question">
         <legend>
           {/* Its step names it; alone, the chip does. */}
-          {alone && <span class="ask-chip">{heading}</span>}
+          {alone && <span class="chip caption ask-chip">{heading}</span>}
           {cleanText(item.question)}
           {multiple && <small class="muted"> Choose any.</small>}
         </legend>
         <div class={`ask-options${visual ? " visual" : ""}`}>
           {item.options.map((option) => (
             <label
-              class="ask-option"
+              class="card ask-option"
               key={option.label}
               // One choice answers the question: a tap moves on once
               // the choice has shown. Arrow keys only move the choice,
@@ -374,7 +374,7 @@ function QuestionPage({
               )}
             </label>
           ))}
-          <label class="ask-option">
+          <label class="card ask-option">
             <Input
               type={type}
               name={name}
@@ -403,7 +403,7 @@ function QuestionPage({
           />
         )}
         {answer.image ? (
-          <div class="file-chip">
+          <div class="chip file-chip">
             {answer.image.image && (
               <ImageTile
                 name={answer.image.name}
@@ -423,7 +423,7 @@ function QuestionPage({
           </div>
         ) : (
           <label
-            class="file-button quiet"
+            class="file-button quiet small"
             aria-busy={answer.uploading || undefined}
           >
             <ImagePlus />

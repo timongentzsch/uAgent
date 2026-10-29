@@ -217,7 +217,7 @@ export default function Scheduled({
           <div class={`management-body ${task ? "has-selection" : ""}`}>
             <div class="management-list">
               <ListRow
-                class="library-row"
+                class="library-row entry"
                 aria-current={!task || undefined}
                 onClick={() => setTask(null)}
                 title="All runs"
@@ -225,7 +225,7 @@ export default function Scheduled({
               {shown.tasks.map((entry) => (
                 <ListRow
                   key={entry.id}
-                  class="library-row"
+                  class="library-row entry"
                   aria-current={task?.id === entry.id || undefined}
                   disabled={busy}
                   onClick={() => chooseTask(entry)}
@@ -391,7 +391,7 @@ export default function Scheduled({
                     )}
                   </div>
                   {task.schedule.type === "weekly" && (
-                    <div class="weekdays" role="group" aria-label="Weekdays">
+                    <div class="segmented" role="group" aria-label="Weekdays">
                       {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                         (day, index) => (
                           <Button
@@ -534,7 +534,7 @@ export default function Scheduled({
                 </>
               )}
               {error && <LoadError error={error} />}
-              <div class="run-history">
+              <div class="run-history divided">
                 <h2>{task ? "Run history" : "All runs"}</h2>
                 {!runs.length ? (
                   <EmptyState>

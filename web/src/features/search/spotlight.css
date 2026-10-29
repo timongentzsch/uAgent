@@ -39,8 +39,6 @@
   flex: 1;
   min-width: 0;
   padding-left: var(--space-4);
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .spotlight-snippet {
   display: -webkit-box;
@@ -68,25 +66,13 @@
   display: block;
   color: var(--muted);
 }
-.spotlight-detail,
-.spotlight-empty {
-  color: var(--muted);
-  font-size: var(--font-small);
+.spotlight-detail {
   white-space: nowrap;
 }
 .keys {
   display: inline-flex;
   gap: var(--space-1);
   flex-shrink: 0;
-}
-.keys kbd {
-  min-width: 1.6em;
-  padding: 0 var(--space-1);
-  border: var(--border);
-  font: inherit;
-  font-size: var(--font-small);
-  text-align: center;
-  color: var(--muted);
 }
 .shortcut-list {
   display: grid;

@@ -124,7 +124,7 @@ function Chat({
           load={() => olderPage.run(() => preserveWhile(older).catch(report))}
         />
         {snapshot?.live_truncated && (
-          <p class="retention">
+          <p class="retention small">
             The live preview exceeded its buffer. Retained history refreshes
             when this turn saves.
           </p>

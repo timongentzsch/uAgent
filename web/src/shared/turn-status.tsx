@@ -145,7 +145,7 @@ function ActivityButtonView({
     >
       {(close) =>
         rows.length ? (
-          <ul class="activity-list">
+          <ul class="activity-list divided">
             {rows.map((item) => (
               <ActivityRow
                 key={String(item.id ?? item.label)}

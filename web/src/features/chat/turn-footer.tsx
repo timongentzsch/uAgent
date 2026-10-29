@@ -32,14 +32,14 @@ export function TurnFooter({
   const spent = summary.usage.cost > 0 && summary.usage.cost_reported !== false;
   return (
     <div
-      class="turn-footer"
+      class="turn-footer small"
       data-message-id={node.id}
       data-sequence={node.sequence}
     >
       {files.length > 0 && (
         <Button
           variant="quiet"
-          class="turn-files-button"
+          class="turn-files-button small"
           aria-haspopup="dialog"
           onClick={() => setReviewing(true)}
         >
@@ -60,7 +60,7 @@ export function TurnFooter({
         {duration(summary.duration_ms)}
         {summary.outcome !== "complete" && ` · ${summary.outcome}`}
       </span>
-      <span class="message-meta">
+      <span class="message-meta small">
         <Time value={answer?.time ?? node.time} />
         <MessageMenu
           label="Actions for this answer"
@@ -74,7 +74,7 @@ export function TurnFooter({
         <Modal
           title="Changed files"
           layout="sheet"
-          size="narrow"
+          size="s"
           close={() => setReviewing(false)}
         >
           <TurnReview files={files} turn={summary.turn} session={session} />

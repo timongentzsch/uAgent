@@ -1,3 +1,18 @@
+.decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-color: var(--accent);
+  background: none;
+  max-height: var(--scroll-l);
+  transition: var(--enter);
+}
+@starting-style {
+  .decision {
+    opacity: 0;
+    translate: 0 var(--rise);
+  }
+}
 .decision-preview {
   min-height: 0;
   overflow: auto;
@@ -72,11 +87,7 @@
   list-style: none;
 }
 .risk-chip {
-  max-width: 100%;
   overflow-wrap: anywhere;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line-more);
-  font-size: var(--font-small);
 }
 .risk-chip:is([data-risk="runs"], [data-risk="outside"]) {
   border-color: var(--removed);
@@ -101,8 +112,6 @@
 }
 .decision-more > summary {
   width: fit-content;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .decision-more-body {
   display: grid;
@@ -133,7 +142,8 @@
   padding: 0;
   border: 0;
 }
-.decision-note {
-  color: var(--muted);
-  font-size: var(--font-small);
+@container app (max-height: 500px) {
+  .decision {
+    max-height: calc(var(--viewport-height) - 2 * var(--touch));
+  }
 }

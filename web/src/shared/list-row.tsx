@@ -22,7 +22,9 @@ export function ListRow({
       <span class="row-text">
         <span class="row-label">
           {title}
-          {unread && <span class="unread-dot" role="img" aria-label={unread} />}
+          {unread && (
+            <span class="status-led unread" role="img" aria-label={unread} />
+          )}
         </span>
         {meta && <small class="row-detail">{meta}</small>}
       </span>

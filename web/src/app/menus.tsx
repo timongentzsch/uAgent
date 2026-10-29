@@ -136,7 +136,7 @@ export function ConversationMenu({
               {level === detail.level && <Check />}
             </MenuItem>
           ))}
-          <p class="menu-note">On this device.</p>
+          <p class="menu-note small">On this device.</p>
         </MenuSub>
       )}
       {item.generation && (

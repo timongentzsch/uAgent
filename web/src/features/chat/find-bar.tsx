@@ -230,7 +230,7 @@ export function FindBar({
           event.stopPropagation();
         }}
       />
-      <span class="find-count" aria-live="polite">
+      <span class="find-count small" aria-live="polite">
         {spots.length
           ? `${Math.max(current, 0) + 1} of ${spots.length}`
           : query.length >= 2 && saved.words === query

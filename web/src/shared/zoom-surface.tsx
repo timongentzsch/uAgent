@@ -241,7 +241,7 @@ export function ZoomSurface({
         {children}
       </div>
       <div
-        class="zoom-controls"
+        class="float-toolbar zoom-controls"
         role="group"
         aria-label="Zoom"
         // Presses here are the controls', not the surface's gestures.

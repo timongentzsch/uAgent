@@ -163,7 +163,7 @@ export default function Tools({
         reuse.
       </p>
       {busy && (
-        <p class="tools-busy" role="status">
+        <p class="card tools-busy" role="status">
           Finish the current turn before changing tools.
         </p>
       )}
@@ -179,13 +179,13 @@ export default function Tools({
       <div class="tool-groups">
         {groups.map(([category, tools]) => (
           <section class="tool-group" key={category}>
-            <h3>
+            <h3 class="caption">
               <DataText>{labels[category] || category}</DataText>
             </h3>
             {tools.map((tool) => (
               <div
                 key={tool.name}
-                class={`tool-choice ${!tool.available ? "locked" : ""}`}
+                class={`card tool-choice ${!tool.available ? "locked" : ""}`}
               >
                 <label class="tool-toggle">
                   <Input

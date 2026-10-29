@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { Plus, ChevronDown, Pencil, ChevronLeft } from "lucide-preact";
+import { Plus, ChevronRight, Pencil, ChevronLeft } from "lucide-preact";
 import {
   Actions,
   Button,
@@ -274,7 +274,7 @@ export default function Library({
     const list = entries.map((entry) => (
       <ListRow
         key={entry.key}
-        class="library-row"
+        class="library-row entry"
         aria-current={item?.key === entry.key || undefined}
         disabled={busy}
         onClick={() => select(entry)}
@@ -388,7 +388,7 @@ export default function Library({
               <>
                 {scope !== "project" && !projectFilter && (
                   <section class="library-group" aria-label="Global memories">
-                    <h2>
+                    <h2 class="small">
                       <FolderLabel>Global</FolderLabel>
                     </h2>
                     {rows("global")}
@@ -403,8 +403,9 @@ export default function Library({
                         class="library-group"
                         aria-label={path}
                       >
-                        <h2>
+                        <h2 class="small">
                           <Button
+                            variant="quiet"
                             disabled={busy}
                             aria-expanded={path === cwd && expanded}
                             onClick={() =>
@@ -414,7 +415,7 @@ export default function Library({
                             }
                           >
                             <FolderLabel path={path} />
-                            <ChevronDown />
+                            <ChevronRight class="row-chevron" />
                           </Button>
                         </h2>
                         {path === cwd && expanded && rows("project")}
@@ -511,7 +512,7 @@ export default function Library({
                     </Button>
                   </p>
                 )}
-                <div class="document-toolbar">
+                <div class="segmented document-toolbar">
                   {item.writable && !editing && (
                     <Button onClick={() => setEditing(true)}>
                       <Pencil />

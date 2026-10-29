@@ -91,7 +91,7 @@ export default function Configuration({
     <section class="configuration">
       {failed}
       {config.problem && (
-        <p class="group-footer setting-error" role="alert">
+        <p class="group-footer small setting-error" role="alert">
           {config.problem}
         </p>
       )}
@@ -135,7 +135,7 @@ export default function Configuration({
         </Group>
       )}
       {!asFile && INTRO[scope] && !needle && (
-        <p class="group-footer">{INTRO[scope]}</p>
+        <p class="group-footer small">{INTRO[scope]}</p>
       )}
       {!asFile &&
         config.categories.map(({ id, label }) => {
@@ -178,10 +178,10 @@ export default function Configuration({
           ];
         })}
       {!asFile && needle && !listed.length && (
-        <p class="group-footer">No setting matches.</p>
+        <p class="group-footer small">No setting matches.</p>
       )}
       {!asFile && !needle && config.file && (
-        <p class="group-footer">
+        <p class="group-footer small">
           Saved in <code>{config.file}</code>, which an editor can open too:{" "}
           <code>settings.schema.json</code> beside it names every setting.
         </p>

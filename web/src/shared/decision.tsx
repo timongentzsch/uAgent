@@ -119,7 +119,7 @@ export default function Decision({
   const extra = options.filter((item) => !CARD.has(item.value));
   const more = offers(ALWAYS) || offers(GUIDANCE) || extra.length > 0;
   return (
-    <section class="decision" aria-label="Pending decision">
+    <section class="card decision" aria-label="Pending decision">
       <div class="decision-head">
         {/* Announced at once, with what it is about. */}
         <div role="alert">
@@ -141,9 +141,9 @@ export default function Decision({
         )}
       </div>
       {pending.route === "parent" && (
-        <p class="decision-note">You can still answer first.</p>
+        <p class="small">You can still answer first.</p>
       )}
-      {pending.note && <p class="decision-note">{cleanText(pending.note)}</p>}
+      {pending.note && <p class="small">{cleanText(pending.note)}</p>}
       {!asking && (
         <div class="decision-preview">
           {approval && (
@@ -164,7 +164,11 @@ export default function Decision({
                   {!!approval.risks?.length && (
                     <ul class="risk-chips" aria-label="Risks">
                       {approval.risks.map((risk) => (
-                        <li class="risk-chip" data-risk={risk.id} key={risk.id}>
+                        <li
+                          class="chip chip-outline risk-chip"
+                          data-risk={risk.id}
+                          key={risk.id}
+                        >
                           {risk.label}
                         </li>
                       ))}
@@ -175,7 +179,7 @@ export default function Decision({
             </>
           )}
           {approval?.review && (
-            <p class="decision-note">{cleanText(approval.review)}</p>
+            <p class="small">{cleanText(approval.review)}</p>
           )}
           <p>{cleanText(pending.prompt)}</p>
         </div>
@@ -236,7 +240,7 @@ export default function Decision({
           </div>
           {more && (
             <details class="decision-more">
-              <summary>More options</summary>
+              <summary class="small">More options</summary>
               <div class="decision-more-body">
                 {offers(ALWAYS) && (
                   <label class="decision-always">
@@ -342,7 +346,7 @@ export default function Decision({
               <legend>Response</legend>
               <div class="ask-options">
                 {options.map((item) => (
-                  <label class="ask-option" key={item.value}>
+                  <label class="card ask-option" key={item.value}>
                     <Input
                       type="radio"
                       name="reply"

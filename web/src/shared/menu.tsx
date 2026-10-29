@@ -150,7 +150,7 @@ export function Menu({
           popover="auto"
           role="menu"
           aria-label={label}
-          class="menu-panel"
+          class="menu-panel popover-list"
           onKeyDown={(event) => {
             const row = (document.activeElement as HTMLElement | null)?.dataset
               .menuView;

@@ -69,7 +69,7 @@
   word-break: normal;
 }
 .markdown blockquote {
-  border-left: 2px solid var(--accent);
+  border-left: var(--stripe) solid var(--accent);
   padding-left: var(--space-6);
   margin-left: 0;
   color: var(--muted);
@@ -87,7 +87,7 @@
 .hljs-selector-tag,
 .hljs-literal {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--weight-strong);
 }
 .hljs-string,
 .hljs-addition {
@@ -128,7 +128,7 @@
 }
 
 .diagram-preview {
-  height: clamp(calc(140rem / 14), 25vh, calc(240rem / 14));
+  height: clamp(var(--pane-s), var(--scroll-s), var(--pane));
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -149,16 +149,6 @@
   height: auto;
   object-fit: contain;
   margin: auto;
-}
-.diagram summary {
-  color: var(--muted);
-  font-size: var(--font-small);
-}
-.diagram-expanded {
-  width: min(
-    calc(1200rem / 14),
-    calc(var(--content-width) - 2 * var(--space-4))
-  );
 }
 .diagram-expanded img {
   display: block;

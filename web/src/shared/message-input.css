@@ -1,8 +1,5 @@
 .message-input {
-  --input-max-height: min(
-    calc(160rem / 14),
-    calc(var(--viewport-height) * 0.25)
-  );
+  --input-max-height: min(var(--pane-s), var(--scroll-s));
   font-size: var(--font-input);
 }
 .message-input > textarea {

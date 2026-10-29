@@ -49,8 +49,6 @@
   margin: 0;
   padding: var(--space-2) var(--inset-x);
   border-top: var(--border);
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .terminal-keys {
   display: flex;

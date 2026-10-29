@@ -35,8 +35,6 @@
   align-items: center;
   gap: var(--space-2);
   min-height: var(--row);
-  color: var(--muted);
-  font-size: var(--font-small);
   white-space: nowrap;
 }
 .message-meta .action-menu {
@@ -67,8 +65,6 @@
   gap: var(--gap);
   min-height: var(--row);
   padding-inline: var(--inset-x);
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .turn-summary {
   flex: 1;
@@ -81,8 +77,6 @@
   flex: none;
   min-height: var(--row);
   padding-inline: 0;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .turn-files {
   display: grid;
@@ -102,9 +96,6 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.turn-files small {
-  color: var(--muted);
-}
 .turn-files .failure {
   flex-basis: 100%;
   padding: 0;
@@ -120,7 +111,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: calc(var(--viewport-height) * 0.5);
+  max-height: var(--scroll-l);
   margin-bottom: var(--gap);
   padding: var(--space-2) var(--space-4) var(--space-4);
   border: var(--border);

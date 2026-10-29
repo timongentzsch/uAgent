@@ -12,9 +12,6 @@
 .setting-summary[data-default] {
   color: var(--muted);
 }
-dialog.settings-view {
-  --dialog-width: calc(880rem / 14);
-}
 .settings-content {
   flex: 1;
   padding: 0;
@@ -36,9 +33,6 @@ dialog.settings-view {
 }
 .settings-nav .group {
   margin-bottom: var(--pad);
-}
-.settings-nav .row[aria-current="page"] {
-  background: var(--raised);
 }
 /* Beside the pane the list selects rather than drills in: no chevrons. */
 /* The section list is structured by its groups' gaps alone. */
@@ -148,8 +142,6 @@ dialog.settings-view {
   max-width: 100%;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .mcp-log {
   margin: 0;

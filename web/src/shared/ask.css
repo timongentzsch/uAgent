@@ -26,7 +26,6 @@
   white-space: nowrap;
 }
 .ask-steps svg {
-  vertical-align: -0.15em;
   margin-right: var(--space-2);
 }
 .ask-questions {
@@ -64,24 +63,15 @@
   float: left;
   width: 100%;
   padding: 0;
-  font-weight: 600;
+  font-weight: var(--weight-strong);
   line-height: var(--leading-snug);
   overflow-wrap: anywhere;
 }
 .ask-question > legend small {
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 .ask-chip {
-  display: inline-block;
   margin-right: var(--space-3);
-  padding: 0 var(--space-3);
-  background: var(--raised);
-  color: var(--muted);
-  font-size: var(--font-small);
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  vertical-align: 0.1em;
 }
 .ask-options {
   display: grid;
@@ -93,9 +83,6 @@
   grid-template-columns: auto 1fr;
   align-items: start;
   gap: var(--space-4);
-  padding: var(--space-4);
-  border: var(--border-field);
-  background: var(--raised);
   cursor: pointer;
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
@@ -105,7 +92,7 @@
 /* The whole row shows focus; the small native control inside does not. */
 .ask-option:has(:focus-visible) {
   outline: var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: var(--focus-offset);
 }
 .ask-option input:focus-visible {
   outline: none;
@@ -118,11 +105,7 @@
   overflow-wrap: anywhere;
 }
 .ask-option strong {
-  font-weight: 600;
-}
-.ask-option small {
-  color: var(--muted);
-  font-size: var(--font-small);
+  font-weight: var(--weight-strong);
 }
 /* Options the agent showed, with an image or a preview each: cards wide
    enough to compare, the picture or preview under the label. A tap on the
@@ -160,10 +143,6 @@
 .ask-question > .file-button,
 .ask-question > .file-chip {
   justify-self: start;
-}
-.ask-question > .file-button {
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 @media (hover: hover) and (pointer: fine) {
   .ask-option:hover {

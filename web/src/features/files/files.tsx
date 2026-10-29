@@ -15,6 +15,7 @@ import { api, routes } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import {
   Button,
+  EmptyState,
   IconButton,
   LoadError,
   Placeholder,
@@ -274,11 +275,11 @@ export default function Files({
               {found.error ? (
                 <LoadError error={found.error} retry={found.retry} />
               ) : found.value && !results.length ? (
-                <p class="files-note">No file name matches.</p>
+                <EmptyState>No file name matches.</EmptyState>
               ) : (
                 (found.value?.more ||
                   (found.value && found.value.paths.length > SHOWN)) && (
-                  <p class="files-note">
+                  <p class="files-note small">
                     Some entries may not be listed. Keep typing to narrow.
                   </p>
                 )
@@ -303,6 +304,8 @@ export default function Files({
               </div>
               {listing.error ? (
                 <LoadError error={listing.error} retry={listing.retry} />
+              ) : listing.value && !listing.value.entries.length ? (
+                <EmptyState>This folder is empty.</EmptyState>
               ) : (
                 <Placeholder label="Loading files…" when={!listing.value}>
                   <ul class="files-entries">
@@ -312,6 +315,7 @@ export default function Files({
                         <li key={entry.name}>
                           <Button
                             variant="quiet"
+                            class="entry"
                             aria-current={path === file ? "true" : undefined}
                             onClick={() =>
                               entry.dir ? browse(path) : open(path)
@@ -329,14 +333,11 @@ export default function Files({
                         </li>
                       );
                     })}
-                    {listing.value && !listing.value.entries.length && (
-                      <li class="files-note">This folder is empty.</li>
-                    )}
                   </ul>
                 </Placeholder>
               )}
               {listing.value?.more && (
-                <p class="files-note">
+                <p class="files-note small">
                   Some entries may not be listed. Search to find the rest.
                 </p>
               )}
@@ -361,7 +362,7 @@ export default function Files({
           }}
         >
           {!file ? (
-            <p class="files-note">Choose a file to read it here.</p>
+            <EmptyState>Choose a file to read it here.</EmptyState>
           ) : image ? (
             <Button
               variant="quiet"

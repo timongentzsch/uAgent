@@ -27,12 +27,6 @@
   margin: 0;
 }
 
-.tools-busy {
-  padding: var(--space-3);
-  background: var(--raised);
-  border: var(--border);
-}
-
 .tools-search {
   width: 100%;
 }
@@ -44,18 +38,11 @@
 
 .tool-group h3 {
   margin: 0;
-  font-size: var(--font-small);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .tool-choice {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--raised);
-  border: var(--border);
 }
 
 .tool-toggle {
@@ -76,11 +63,6 @@
   gap: var(--space-2);
 }
 
-.tool-choice-head code,
-.tool-choice-head small {
-  color: var(--muted);
-}
-
 .tool-choice-head small {
   margin-left: auto;
 }
@@ -90,7 +72,7 @@
 }
 
 .tool-choice.locked {
-  opacity: 0.65;
+  opacity: var(--opacity-disabled);
 }
 
 @media (max-width: 600px) {

@@ -4,7 +4,7 @@
 /* On a compact screen the browser takes the whole display, landscape too.
    Clip, not hidden: focusing an overlay field must never scroll the body. */
 dialog.browser-view[data-layout="sheet"] {
-  --dialog-width: 100vw;
+  --dialog-width: var(--content-width);
   border-width: 0;
 }
 .browser-view > .dialog-body {
@@ -21,12 +21,11 @@ dialog.browser-view[data-layout="sheet"] {
   margin: 0;
 }
 .browser-screen {
-  --browser-ink: #e5e5e5;
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background: #171717;
-  color: var(--browser-ink);
+  background: var(--screen-bg);
+  color: var(--screen-ink);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -52,7 +51,7 @@ dialog.browser-view[data-layout="sheet"] {
   padding: var(--pad);
   max-width: none;
   text-align: center;
-  color: var(--browser-ink);
+  color: var(--screen-ink);
   pointer-events: none;
 }
 .browser-banner,
@@ -62,8 +61,8 @@ dialog.browser-view[data-layout="sheet"] {
   margin: 0;
   padding: var(--space-4) var(--pad);
   max-width: none;
-  background: rgb(0 0 0 / 0.78);
-  color: var(--browser-ink);
+  background: var(--screen-scrim);
+  color: var(--screen-ink);
   font-size: var(--font-small);
   text-align: center;
   pointer-events: none;
@@ -80,15 +79,8 @@ dialog.browser-view[data-layout="sheet"] {
 }
 /* Zoom and scroll without gestures, in the screen's top corner. */
 .browser-view-controls {
-  position: absolute;
   top: var(--gap);
   right: var(--gap);
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: var(--border);
-  background: var(--surface);
-  color: var(--text);
 }
 .browser-card {
   position: absolute;
@@ -96,18 +88,11 @@ dialog.browser-view[data-layout="sheet"] {
   bottom: var(--gap);
   display: grid;
   gap: var(--gap);
-  padding: var(--pad);
-  border: var(--border);
-  background: var(--surface);
   color: var(--text);
 }
-.browser-card label {
-  font-size: var(--font-small);
-  color: var(--muted);
-}
 .browser-card .text-control {
-  --input-min-height: calc(72rem / 14);
-  --input-max-height: 20dvh;
+  --input-min-height: calc(2 * var(--control-l));
+  --input-max-height: var(--scroll-s);
 }
 .browser-card-actions {
   display: flex;
@@ -120,12 +105,12 @@ dialog.browser-view[data-layout="sheet"] {
   position: absolute;
   top: 0;
   left: 0;
-  width: 44px;
-  height: 44px;
-  margin: -22px 0 0 -22px;
-  border: 2px solid #fff;
+  width: var(--touch);
+  height: var(--touch);
+  margin: calc(var(--touch) / -2) 0 0 calc(var(--touch) / -2);
+  border: var(--stripe) solid var(--screen-mark);
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.25);
+  background: var(--screen-mark-fill);
   opacity: 0;
   pointer-events: none;
 }
@@ -181,7 +166,7 @@ dialog.browser-view[data-layout="sheet"] {
   gap: var(--gap);
 }
 .browser-profile-create .text-control {
-  flex: 1 1 8rem;
+  flex: 1 1 calc(var(--pane) / 2);
   min-width: 0;
 }
 

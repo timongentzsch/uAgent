@@ -433,7 +433,7 @@ if(BUILD_TESTING)
   # at the job's limit.
   set_tests_properties(core PROPERTIES TIMEOUT 600)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  set(_groups runtime tools ui providers mcp delegation sandbox)
+  set(_groups runtime tools ui providers mcp agents sandbox)
   if(UAGENT_WEB)
     list(APPEND _groups web management)
     if(UAGENT_WEB_PUSH)

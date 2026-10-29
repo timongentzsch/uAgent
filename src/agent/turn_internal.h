@@ -110,7 +110,6 @@ struct Agent::TurnExecution {
   // Stopped at a limit and answered all the same: the stop names the limit,
   // and the turn is not reported as a failure.
   bool answered_at_limit = false;
-  bool line_open = false;
 };
 
 // A mistake the model makes in a response or a round of calls. It never ends

@@ -97,21 +97,16 @@ void Agent::RecordModelResponse(
   tool_counts["web_search"] = SaturatingNonnegativeAdd(
       tool_counts["web_search"], response_usage.web_searches);
   turn_search_trace_.Add(response_usage.web_searches, response.annotations);
-  state.line_open = !response.suppressed && !response.content.empty() &&
-                    response.content.back() != '\n';
   std::string citations = CitationMarkdown(response.annotations);
   if (response_usage.web_searches > 0 || !citations.empty()) {
     Event sources{EventId::kResponseSources,
                   {{"searches", response_usage.web_searches},
                    {"annotations", response.annotations},
-                   {"line_open", state.line_open},
                    {"citations", !response.content.empty()}}};
     Emit(std::move(sources));
-    state.line_open = false;
   }
   if (!citations.empty() && !response.content.empty()) {
     response.content += citations;
-    state.line_open = false;
   }
 }
 
@@ -126,7 +121,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
     state.metrics.usage.Merge(AccountModelUsage(response.usage));
   }
   if (response.interrupted) {
-    state.line_open = false;
     conversation_.Push(
         HarnessMessage("(response interrupted; partial output was "
                        "discarded)"),
@@ -138,7 +132,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
     return StepFlow::kEndTurn;
   }
   if (response.error.empty()) return StepFlow::kProceed;
-  state.line_open = false;
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   if (!loop.context_overflow_recovery_attempted &&
       SafeContextRecovery(response) && !attachment) {

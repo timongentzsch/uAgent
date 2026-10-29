@@ -18,23 +18,37 @@ function* sheets(dir, base = "") {
   }
 }
 
-test("colour literals stay in the palettes", () => {
-  const stray = [];
-  for (const path of sheets("src")) {
-    if (EXEMPT.has(path)) continue;
-    let selector = "";
-    for (const [index, line] of readFileSync(join("src", path), "utf8")
-      .split("\n")
-      .entries()) {
-      if (/^\S.*[{,]$/.test(line)) selector += line;
-      // Only a palette's custom properties may name a colour.
-      const tokens = selector.includes(":root") && /^\s*--/.test(line);
-      if (!tokens && COLOUR.test(line.replace(/\/\*.*?\*\//g, "")))
-        stray.push(`${path}:${index + 1}: ${line.trim()}`);
-      if (line.startsWith("}")) selector = "";
-    }
+const files = [...sheets("src")].map((path) => ({
+  path,
+  css: readFileSync(join("src", path), "utf8"),
+}));
+
+// The `file:line: text` of every line `stray` flags, outside the `exempt`
+// sheets. `stray(line, state)` may keep a sheet's own state on `state`.
+function strays(stray, exempt = new Set()) {
+  const found = [];
+  for (const { path, css } of files) {
+    if (exempt.has(path)) continue;
+    const state = { selector: "" };
+    for (const [index, line] of css.split("\n").entries())
+      if (stray(line, state))
+        found.push(`${path}:${index + 1}: ${line.trim()}`);
   }
-  assert.deepEqual(stray, []);
+  return found;
+}
+
+test("colour literals stay in the palettes", () => {
+  assert.deepEqual(
+    strays((line, state) => {
+      if (/^\S.*[{,]$/.test(line)) state.selector += line;
+      // Only a palette's custom properties may name a colour.
+      const tokens = state.selector.includes(":root") && /^\s*--/.test(line);
+      const stray = !tokens && COLOUR.test(line.replace(/\/\*.*?\*\//g, ""));
+      if (line.startsWith("}")) state.selector = "";
+      return stray;
+    }, EXEMPT),
+    [],
+  );
 });
 
 // A divider, a control's edge and the focus ring are --border,
@@ -44,14 +58,10 @@ const EDGE =
   /1px solid var\(--(?:line|field-border)\)|outline:.*var\(--accent\)/;
 
 test("edges and focus rings use their tokens", () => {
-  const stray = [];
-  for (const path of sheets("src"))
-    for (const [index, line] of readFileSync(join("src", path), "utf8")
-      .split("\n")
-      .entries())
-      if (!/^\s*--/.test(line) && EDGE.test(line))
-        stray.push(`${path}:${index + 1}: ${line.trim()}`);
-  assert.deepEqual(stray, []);
+  assert.deepEqual(
+    strays((line) => !/^\s*--/.test(line) && EDGE.test(line)),
+    [],
+  );
 });
 
 // Spacing, type and line height come from the scales at the top of
@@ -71,18 +81,13 @@ const SCALE_EXEMPT = new Set([
 const LITERAL = /[\d.]+(?:px|rem|em)\b|(?:^|[\s:])(?:[2-9]|1\.)[\d.]*\s*$/;
 
 test("spacing, font sizes and line heights use the scale tokens", () => {
-  const stray = [];
-  for (const path of sheets("src")) {
-    if (SCALE_EXEMPT.has(path)) continue;
-    for (const [index, line] of readFileSync(join("src", path), "utf8")
-      .split("\n")
-      .entries()) {
+  assert.deepEqual(
+    strays((line) => {
       const value = SCALED.exec(line)?.[1].replace(/var\([^)]*\)/g, "");
-      if (value && LITERAL.test(value))
-        stray.push(`${path}:${index + 1}: ${line.trim()}`);
-    }
-  }
-  assert.deepEqual(stray, []);
+      return value && LITERAL.test(value);
+    }, SCALE_EXEMPT),
+    [],
+  );
 });
 
 // Fixed sizes come from the size tokens in style.css (--control-s, --pane,
@@ -98,20 +103,15 @@ const SIZE_LITERAL = /[\d.]+(?:px|rem)\b/;
 const STACKED = /^\s*z-index\s*:\s*([^;]*)/;
 
 test("sizes and stacking use the scale tokens", () => {
-  const stray = [];
   const bare = (value) => value?.replace(/var\([^)]*\)/g, "");
-  for (const path of sheets("src")) {
-    if (SCALE_EXEMPT.has(path)) continue;
-    for (const [index, line] of readFileSync(join("src", path), "utf8")
-      .split("\n")
-      .entries()) {
+  assert.deepEqual(
+    strays((line) => {
       const size = bare(SIZED.exec(line)?.[1])?.replace(/\b[01]px\b/g, "");
       const layer = bare(STACKED.exec(line)?.[1]);
-      if ((size && SIZE_LITERAL.test(size)) || (layer && /\d/.test(layer)))
-        stray.push(`${path}:${index + 1}: ${line.trim()}`);
-    }
-  }
-  assert.deepEqual(stray, []);
+      return (size && SIZE_LITERAL.test(size)) || (layer && /\d/.test(layer));
+    }, SCALE_EXEMPT),
+    [],
+  );
 });
 
 // Every animation and transition takes its times and curves from the motion
@@ -123,10 +123,9 @@ const MOTION_LITERAL =
 
 test("animations and transitions use the motion tokens", () => {
   const stray = [];
-  for (const path of sheets("src")) {
-    const css = readFileSync(join("src", path), "utf8").replace(
-      /\/\*[\s\S]*?\*\//g,
-      (comment) => comment.replace(/[^\n]/g, " "),
+  for (const { path, css: raw } of files) {
+    const css = raw.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
+      comment.replace(/[^\n]/g, " "),
     );
     for (const match of css.matchAll(MOTION))
       if (MOTION_LITERAL.test(match[1].replace(/var\([^)]*\)/g, "")))
@@ -142,13 +141,11 @@ test("animations and transitions use the motion tokens", () => {
 // question. This pins the set, and that the scripts use the same numbers.
 test("breakpoints in the stylesheets match the scripts'", () => {
   const found = new Set();
-  for (const path of sheets("src")) {
-    const css = readFileSync(join("src", path), "utf8");
+  for (const { css } of files)
     for (const [, kind, width] of css.matchAll(
       /@media[^{]*\((max|min)-width:\s*(\d+)px\)/g,
     ))
       found.add(`${kind}-width: ${width}px`);
-  }
   // 601 is the first width the 600px phone layout does not cover.
   assert.deepEqual([...found].sort(), [
     "max-width: 600px",
@@ -159,19 +156,17 @@ test("breakpoints in the stylesheets match the scripts'", () => {
   assert.match(layout, /useMedia\("\(max-width: 600px\)"\)/);
   assert.match(layout, /useMedia\("\(max-width: 900px\)"\)/);
 });
+
 // Control and row heights and the spacing between and inside boxes are set
 // in style.css alone (its .dense list and touch rules included). A sheet
 // that redefines one resizes everything inside it, menus too.
 const GEOMETRY = /^\s*--(?:control|row|gap|pad|inset-x)\s*:/;
 test("only style.css sets the control, row and spacing tokens", () => {
-  const stray = [];
-  for (const path of sheets("src")) {
-    if (path === join("shared", "style.css")) continue;
-    for (const [index, line] of readFileSync(join("src", path), "utf8")
-      .split("\n")
-      .entries())
-      if (GEOMETRY.test(line))
-        stray.push(`${path}:${index + 1}: ${line.trim()}`);
-  }
-  assert.deepEqual(stray, []);
+  assert.deepEqual(
+    strays(
+      (line) => GEOMETRY.test(line),
+      new Set([join("shared", "style.css")]),
+    ),
+    [],
+  );
 });

@@ -478,7 +478,9 @@ void TestPermissionPolicy() {
   CHECK(RuleCovers(folder, tool, {{"path", "src/app/b.ts"}}, root));
   CHECK(!RuleCovers(folder, tool, {{"path", "src/b.ts"}}, root));
   CHECK(SuggestRule(tool, {{"path", "a.ts"}}, root).match == "./");
-  CHECK(SuggestRule(tool, {{"path", "/etc/hosts"}}, root).match == "/etc/");
+  // Outside it by its resolved path (/etc is /private/etc on macOS).
+  CHECK(SuggestRule(tool, {{"path", "/etc/hosts"}}, root).match ==
+        CanonicalAccessPath("/etc").generic_string() + "/");
   // A tool may say what an approval covers: calls that differ only in what
   // it leaves out share one rule.
   tool.approval_subject = [](const json& arguments) {

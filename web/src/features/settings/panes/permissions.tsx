@@ -93,8 +93,8 @@ export function PermissionsPane() {
             if (await forget({ action: "clear" })) setConfirm(false);
           }}
         >
-          Every rule for this repository is forgotten. The agent asks again
-          the next time.
+          Every rule for this repository is forgotten. The agent asks again the
+          next time.
         </ConfirmModal>
       )}
     </Group>

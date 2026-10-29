@@ -921,8 +921,11 @@ ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t requested) {
     (void)TransitionActivityLocked(*supervised->session,
                                    ActivityState::kStopped);
   }
-  if (supervised) {
-    (void)supervisor.Take(requested, /*retain=*/true);
+  if (supervised && supervisor.Take(requested, /*retain=*/true)) {
+    supervisor.Stopped({.activity_id = requested,
+                        .duration_ms = static_cast<double>(
+                            NowMillis() - supervised->started_ms),
+                        .stopped = true});
   }
   if (!detached) ActivityTrackSignal(pid, false);
   if (detached) unlink(DetachedRecordPath(pid).c_str());

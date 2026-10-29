@@ -107,6 +107,7 @@ struct EndedCommand {
   int status = 0;  // its wait status
   std::string output;
   double duration_ms = 0;
+  bool stopped = false;  // a stop ended it, not the command itself
 };
 
 struct ToolResult {

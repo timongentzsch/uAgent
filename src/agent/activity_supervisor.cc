@@ -477,6 +477,19 @@ std::vector<Activity> ActivitySupervisor::Running() const {
   return jobs;
 }
 
+void ActivitySupervisor::Stopped(EndedCommand ended) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stopped_.push_back(std::move(ended));
+  }
+  Wake();
+}
+
+std::vector<EndedCommand> ActivitySupervisor::TakeStopped() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return std::exchange(stopped_, {});
+}
+
 std::vector<Activity> ActivitySupervisor::TakeAllForShutdown() {
   std::lock_guard<std::mutex> lock(mutex_);
   std::vector<Activity> jobs;

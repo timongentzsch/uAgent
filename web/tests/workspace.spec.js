@@ -265,10 +265,9 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await now.click();
   await activity.getByRole("button", { name: /^Stop / }).click();
-  await expect(page.locator(".composer .status-line")).not.toContainText(
-    "1 command",
-  );
-  // Finished work leaves "now"; its call's row is not running.
+  // Nothing runs any more, so the status control goes; the stopped
+  // command's own row ends.
+  await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
     page.locator(".node:not(.running) > .node-row", {
       hasText: "BROWSER_ACTIVITY",

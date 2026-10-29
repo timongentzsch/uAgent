@@ -268,8 +268,14 @@ bool Agent::FinishCommandRow(const EndedCommand& ended) {
   }
   if (id.empty()) return false;
   ResultFacts facts;
-  facts.exit = ExitFacts(ended.status);
-  const char* state = ExitedOk(ended.status) ? "ok" : "failed";
+  if (ended.stopped) {
+    facts.outcome = "stopped";
+  } else {
+    facts.exit = ExitFacts(ended.status);
+  }
+  const char* state = ended.stopped            ? "cancelled"
+                      : ExitedOk(ended.status) ? "ok"
+                                               : "failed";
   // What it printed before and after it left; a long one keeps its end,
   // where a command says how it went.
   std::string output = JsonValue(row, "output", "") + ended.output;
@@ -311,6 +317,9 @@ bool Agent::DrainActivities(bool start_turn) {
   }
   if (delivered && start_turn) {
     Arrive(HarnessNote("activity finished", "Its result is above."));
+  }
+  for (const EndedCommand& ended : processes_.TakeStopped()) {
+    changed |= FinishCommandRow(ended);
   }
   if (DrainAttachments()) changed = true;
   {

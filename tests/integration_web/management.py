@@ -478,6 +478,43 @@ def test_web_background_command_keeps_its_row_and_waits_are_routine(root, home, 
             assert_true(wait_row.get("routine") is True and not run_row.get("routine"), calls)
 
 
+def test_web_stopped_background_command_ends_its_row(root, home, *, binary):
+    project = root / "background-stop"
+    project.mkdir()
+
+    def answer(_, body):
+        if not [message for message in body["messages"] if message.get("role") == "tool"]:
+            return tool_call("run", {"command": "sleep 30", "yield_ms": 250}, call_id="run-1")
+        return event({"content": "Left running"})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="Run it behind")
+            snapshot = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(row.get("status") == "running" for row in value["state"]["activities"])
+                ),
+            )
+            activity = snapshot["state"]["activities"][0]["id"]
+            client.command("activity", session, operation="stop", activity_id=activity)
+            # A stop ends the row the command started on, as its own end would.
+            snapshot = client.until(
+                session,
+                lambda value: any(
+                    node["kind"] == "call" and node["state"] == "cancelled"
+                    for node in value["state"]["view"]["nodes"]
+                ),
+            )
+            row = next(n for n in snapshot["state"]["view"]["nodes"] if n["kind"] == "call")
+            assert_true(row["result"]["word"].startswith("stopped"), row)
+
+
 def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
     import http.client
 

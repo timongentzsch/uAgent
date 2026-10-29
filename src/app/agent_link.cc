@@ -2,7 +2,9 @@
 
 #include "include/app/agent_link.h"
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
 #include <thread>
 #include <utility>
@@ -33,18 +35,22 @@ namespace {
 // delivers its pending mail. The mail is written before this returns, so an
 // agent never shows idle with its report still unsent; false when it was
 // refused. The start is off the caller's thread, which may hold its
-// session's lock; `unreachable` runs when the mail cannot be sent or the
-// parent not started.
-bool Deliver(const SessionMail& mail, std::function<void()> unreachable) {
+// session's lock, and is counted in `reaching` while it runs; `unreachable`
+// runs when the mail cannot be sent or the parent not started.
+bool Deliver(const SessionMail& mail,
+             const std::shared_ptr<std::atomic<int>>& reaching,
+             std::function<void()> unreachable) {
   const std::string refused = SendSessionMail(mail);
   if (!refused.empty()) {
     DebugLog("parent_mail_refused", {{"error", refused}});
   }
   // Started also when the mail was refused: a full inbox empties only when
   // its parent runs.
-  std::thread([parent = mail.to_path, refused,
+  ++*reaching;
+  std::thread([parent = mail.to_path, refused, reaching,
                unreachable = std::move(unreachable)] {
     if (!Reach(parent) || !refused.empty()) unreachable();
+    --*reaching;
   }).detach();
   return refused.empty();
 }
@@ -80,7 +86,7 @@ void AgentLink::Ask(const std::string& interaction, const std::string& kind,
            .id = RandomToken(8),
            .report = true,
            .state = "needs decision"},
-          escalate);
+          reaching_, escalate);
 }
 
 // Enough for a whole answer in most cases: reading the rest costs the
@@ -102,10 +108,10 @@ void AgentLink::Report(const std::string& reason, const std::string& title,
   // The latest report is the one that matters: an earlier one still unsent
   // is replaced.
   unsent_.reset();
-  if (!Deliver(report, [] {})) unsent_ = std::move(report);
+  if (!Deliver(report, reaching_, [] {})) unsent_ = std::move(report);
 }
 
 void AgentLink::Resend() {
-  if (unsent_ && Deliver(*unsent_, [] {})) unsent_.reset();
+  if (unsent_ && Deliver(*unsent_, reaching_, [] {})) unsent_.reset();
 }
 }  // namespace uagent::session

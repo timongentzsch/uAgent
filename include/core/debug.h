@@ -28,10 +28,11 @@ std::string LocalDay();
 // `at` in the host's time zone, formatted by strftime.
 std::string LocalTime(std::time_t at, const char* format);
 
-// Subagents are separate processes, so they append what they spent here for
-// this session to fold into its own totals. Named by the parent's pid; pruned
-// with the other background files.
-std::string UsageLedger();
+// Children are separate processes, so they append what they spent here for
+// the session that started them to fold into its own totals. Named by that
+// session's id, so what a child reports after its parent's process is gone
+// counts when the session runs again; pruned with the other background files.
+std::string UsageLedger(const std::string& session_id);
 
 class DebugSink {
  public:

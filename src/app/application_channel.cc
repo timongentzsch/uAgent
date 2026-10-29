@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "include/agent/child_agent.h"
+#include "include/agent/session_role.h"
 #include "include/cli/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
@@ -36,6 +37,7 @@ int Application::RunChannel() {
     agent_.Rename(channel_->InitialTitle());
   }
   SaveSession(true);
+  used_before_ = UsageTotals();
   if (AgentDepth() == 0 && api_.config.memory_enabled &&
       api_.config.memory_generate) {
     std::string error = StartMemoryExtractor(
@@ -89,6 +91,12 @@ int Application::RunChannel() {
       ProcessInput(std::move(input->text));
       // Mail that came as the turn was ending starts the next one.
       agent_.DeliverMail(channel_->HoldMail());
+      // A thread's spend is its panel's too, reported before the turn's end
+      // wakes the panel.
+      if (context_.options.Thread()) {
+        ReportUsage(UsageLedger(
+            JsonValue(ThreadRole(context_.options.session), "parent", "")));
+      }
     }
     SaveSession(input->title.has_value());
     if (!input->title && !input->control.is_null()) {

@@ -34,6 +34,12 @@ class Application {
   void LogSessionEnd(const char* reason) const;
   void Teardown(const char* reason);
   int FinishHeadless(std::string answer, std::string error, int exit_code);
+  // The session's totals now: what ReportUsage counts from.
+  json UsageTotals() const;
+  // What the session spent since `used_before_`, which it counts from again
+  // after: appended to `ledger`, when given, for the parent session that
+  // drains it. A child reports when it ends, a thread at each turn's end.
+  json ReportUsage(const std::string& ledger);
   int RunHeadless();
   // Empty, or why the named conversation could not be continued.
   std::string ResumeAtStartup();
@@ -53,9 +59,9 @@ class Application {
   std::string session_file_;
   uint64_t saved_revision_;
   bool persist_ = false;
-  // What the session had already used when this headless run began: a
-  // continued conversation reports, and a child's parent is owed, only what
-  // this run adds.
+  // What the session had already used when this run began or last reported:
+  // a continued conversation reports, and a child's parent is owed, only
+  // what was added since.
   json used_before_;
   // The settings problem last reported, so that one is said once.
   std::string config_problem_;

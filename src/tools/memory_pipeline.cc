@@ -191,7 +191,7 @@ std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
   }
 
   EnvironmentOverrides environment =
-      ChildAgentEnvironment(std::move(resolved.route));
+      ChildAgentEnvironment(std::move(resolved.route), processes.Owner());
   environment.insert(environment.end(),
                      {{"UAGENT_MAX_STEPS", "5"},
                       {"UAGENT_MAX_TOOL_CALLS", "4"},

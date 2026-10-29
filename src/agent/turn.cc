@@ -274,6 +274,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   // previous turn's stop from a boundary publish before this one ends.
   last_stop_ = nullptr;
   ++turn_id_;
+  turn_hops_ = JsonValue(origin, "hops", 0);
   turn_side_statistics_ = json::object();
   failed_image_analyses_.clear();
   turn_root_.clear();

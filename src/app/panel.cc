@@ -111,30 +111,21 @@ bool Working(const SessionInfo& info) {
   return status == "working" || status == "needs you";
 }
 
-// Totals against the day's baselines (RecordPanelCost): the panel's own
-// session, and each thread from earlier days; a thread spawned today counts
-// in full.
+// The panel's session against the day's baseline (RecordPanelCost), which
+// counts what its threads reported of their finished turns, and what each
+// working thread may still spend.
 double SpentToday(const std::string& folder,
                   const std::vector<SessionInfo>& threads,
                   const std::vector<bool>& working) {
-  const std::string today = Today();
   json spend = JsonValue(ReadPinned(folder), "spend", json::object());
-  if (JsonValue(spend, "day", "") != today) spend = json::object();
+  if (JsonValue(spend, "day", "") != Today()) spend = json::object();
   double spent =
       JsonValue(spend, "cost", 0.0) - JsonValue(spend, "baseline", 0.0);
-  const json baselines = JsonValue(spend, "threads", json::object());
-  for (size_t i = 0; i < threads.size(); ++i) {
-    const SessionInfo& info = threads[i];
-    double cost = info.cost;
-    if (const auto before = baselines.find(info.path);
-        before != baselines.end() && before->is_number()) {
-      cost = std::max(0.0, cost - before->get<double>());
-    } else if (JsonValue(info.delegation, "day", "") != today) {
-      continue;
+  for (size_t i = 0; i < threads.size() && i < working.size(); ++i) {
+    if (working[i]) {
+      spent +=
+          std::max(0.0, ThreadBudget(threads[i].delegation) - threads[i].cost);
     }
-    spent += i < working.size() && working[i]
-                 ? std::max(cost, ThreadBudget(info.delegation))
-                 : cost;
   }
   return spent;
 }
@@ -214,14 +205,7 @@ void RecordPanelCost(const std::string& folder, double cost) {
   json pinned = ReadPinned(folder);
   json spend = JsonValue(pinned, "spend", json::object());
   if (JsonValue(spend, "day", "") != Today()) {
-    // Threads from earlier days count today only for what they spend from now.
-    json threads = json::object();
-    for (const SessionInfo& info : OwnThreads(folder)) {
-      if (JsonValue(info.delegation, "day", "") != Today()) {
-        threads[info.path] = info.cost;
-      }
-    }
-    spend = {{"day", Today()}, {"baseline", cost}, {"threads", threads}};
+    spend = {{"day", Today()}, {"baseline", cost}};
   } else if (JsonValue(spend, "cost", -1.0) == cost) {
     return;
   }
@@ -232,7 +216,7 @@ void RecordPanelCost(const std::string& folder, double cost) {
 
 std::string PanelPause(const std::string& folder) {
   const double limit = DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD"));
-  if (limit <= 0 || SpentToday(folder, OwnThreads(folder), {}) < limit) {
+  if (limit <= 0 || SpentToday(folder, {}, {}) < limit) {
     return "";
   }
   return "Paused: today's spend limit of " + FmtCost(limit) +

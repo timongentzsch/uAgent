@@ -26,8 +26,8 @@ SessionMail Event(const std::string& folder, const std::string& thread_path,
   return {.from_path = thread_path,
           .to_path = PanelPath(folder),
           .text = text,
-          .kind = MailKind::kEvent,
-          .id = RandomToken(8)};
+          .id = RandomToken(8),
+          .report = true};
 }
 
 // Mails the panel and starts its runtime if none runs: a starting

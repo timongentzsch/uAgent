@@ -162,9 +162,9 @@ fork. While it has items it rides on the tail of every model request, beside
 a lead agent's board and clock, and never enters the stored history.
 
 Sessions message each other through durable mailboxes
-([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its
-children, children of one parent, and a folder's lead agent and its
-background agents.
+([PERSISTENCE.md](PERSISTENCE.md#mail)): a parent and its children, and
+children of one parent; a folder's lead agent is its background agents'
+parent.
 
 - Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
   the next model step, including after a final answer, which reopens the turn.
@@ -261,9 +261,12 @@ Unknown cost stays unknown. Every model call is charged to a route keyed
 under their provider, and titles, compaction, memory extraction, image
 analysis, web search and permission review under their purpose, so `/cost`
 names what each one spent. Turn statistics describe one turn; compaction has
-its own display record and never appears as another turn. Spend that a
-background child reports after its turn ended is added to that turn and
-journaled as `turn.usage_amended`, since `turn.completed` is written once.
+its own display record and never appears as another turn. Children report
+what they spend to their parent session's ledger, which the parent folds
+into its totals: a subagent and memory extraction when they end, a
+background agent at each turn's end. Spend that a background child reports
+after its turn ended is added to that turn and journaled as
+`turn.usage_amended`, since `turn.completed` is written once.
 Durations and time to first token describe the attempt that answered; retry
 backoff shows only in the end-to-end time.
 

@@ -42,9 +42,10 @@ std::string Today();
 bool OwnThread(const SessionInfo& info, const std::string& panel);
 // A thread counts against the cap while its runtime is working a turn.
 bool Working(const SessionInfo& info);
-// Today's spend against the daily limit: the panel's own turns and its
-// threads'. A thread flagged in `working` counts its whole budget, so
-// threads running at once can never overshoot the limit.
+// Today's spend against the daily limit: the panel's own turns and what its
+// threads reported into them. A thread flagged in `working` also counts what
+// is left of its budget, so threads running at once cannot overshoot the
+// limit with what they have yet to report.
 double SpentToday(const std::string& folder,
                   const std::vector<SessionInfo>& threads,
                   const std::vector<bool>& working);

@@ -5,10 +5,8 @@
 // Session-to-session interaction: linked uagent sessions (terminals,
 // browsers, headless runs with a saved file) exchange short text messages
 // through one file mailbox, which also carries a parent's guidance to its
-// delegated children. Isolation
-// is the default: two sessions read each other's mail only while a link file
-// names them both. Sessions under yolo, and a panel's threads, join
-// their folder's link by themselves.
+// delegated children. A session reaches only its parent, its children and
+// its siblings (session_links.h).
 
 #include <functional>
 #include <string>

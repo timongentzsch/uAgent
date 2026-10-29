@@ -49,7 +49,7 @@ json SideStatistics(const json& statistics) {
 }  // namespace
 
 void Agent::DrainSubagentUsage() {
-  std::string path = UsageLedger();
+  const std::string path = UsageLedger(processes_.Owner());
   std::string data;
   std::string error;
   if (!TakePrivateText(path, data, error)) {

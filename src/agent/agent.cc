@@ -65,11 +65,11 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
   Reset();
 }
 
-void Agent::Arrive(const std::string& text, const std::string& mail) {
+void Agent::Arrive(const std::string& text, const std::string& mail, int hops) {
   if (!mail.empty()) arriving_mail_.push_back(mail);
   Steering::Message message;
   message.text = text;
-  message.origin = {{"mail", mail}};
+  message.origin = {{"mail", mail}, {"hops", hops}};
   SteeringState().Queue(std::move(message));
 }
 

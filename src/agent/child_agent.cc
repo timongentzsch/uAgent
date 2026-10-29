@@ -182,12 +182,13 @@ std::string ChildAgentFailureReport(std::string_view route,
   return report;
 }
 
-EnvironmentOverrides ChildAgentEnvironment(Route route) {
+EnvironmentOverrides ChildAgentEnvironment(Route route,
+                                           const std::string& session) {
   EnvironmentOverrides environment = RouteEnvironment(route);
   environment.emplace_back("UAGENT_INTERNAL_DEPTH",
                            std::to_string(AgentDepth() + 1));
   environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
-  environment.emplace_back("UAGENT_INTERNAL_USAGE_FILE", UsageLedger());
+  environment.emplace_back("UAGENT_INTERNAL_USAGE_FILE", UsageLedger(session));
   // A child is never less confined than the session that delegates to it,
   // nor more open: it runs under the sandbox this process's commands run
   // under now, not one it composes from a configuration that may have been

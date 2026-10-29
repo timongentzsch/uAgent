@@ -25,6 +25,7 @@
 #include "include/core/child_env.h"
 #include "include/core/config.h"
 #include "include/core/config_registry.h"
+#include "include/core/debug.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -681,9 +682,20 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   const std::string path = PanelPath(folder);
   const std::string own = MailboxIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
-  const Mail wake = MailFrom(
-      (std::filesystem::path(path).parent_path() / "thread-a.json").string(),
-      own, {{"text", "the thread finished\n"}});
+  // From the panel's thread, which its role names its child.
+  const std::filesystem::path thread =
+      std::filesystem::path(path).parent_path() / "thread-a.json";
+  std::filesystem::create_directories(thread.parent_path());
+  std::ofstream(thread) << json{{"format", kSessionFormat},
+                                {"cwd", folder},
+                                {"model", ""},
+                                {"session_id", ""},
+                                {"turns", 0},
+                                {"title", "a"},
+                                {"delegation", {{"parent_session", path}}}}
+                        << "\n";
+  const Mail wake =
+      MailFrom(thread.string(), own, {{"text", "the thread finished\n"}});
   CHECK(wake.from == MailboxIdFor(wake.sender_path));
   CHECK(SendMail(wake).empty());
 
@@ -861,7 +873,8 @@ void TestChildEnvironmentPolicy() {
   route.features = FeaturesOf({Feature::kHostedSearch, Feature::kPdfParser});
   route.options = {{"pdf_engine", "mistral-ocr"}};
   route.hosted_tools = json::array({{{"type", "code_interpreter"}}});
-  EnvironmentOverrides child_overrides = ChildAgentEnvironment(route);
+  EnvironmentOverrides child_overrides =
+      ChildAgentEnvironment(route, "parent-id");
   auto child_value = [&](std::string_view key) {
     auto found =
         std::find_if(child_overrides.begin(), child_overrides.end(),
@@ -870,6 +883,8 @@ void TestChildEnvironmentPolicy() {
   };
   CHECK(child_value("UAGENT_BASE_URL") == "https://child.example/v1");
   CHECK(child_value("UAGENT_API_KEY") == "child-key");
+  // A child reports its spend to its parent session's ledger.
+  CHECK(child_value("UAGENT_INTERNAL_USAGE_FILE") == UsageLedger("parent-id"));
   CHECK(child_value("UAGENT_MODEL") == "child-model");
   CHECK(child_value("UAGENT_CONTEXT") == "32768");
   CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");

@@ -158,7 +158,6 @@ ToolResult MessageAgent(const ActivitySupervisor& processes,
        .from_owner = processes.Owner(),
        .to_path = AgentPath(id),
        .text = text,
-       .kind = MailKind::kGuidance,
        // A child still running has not saved its role.
        .to_delegation = role.empty()
                             ? json{{"parent", processes.Owner()},
@@ -405,7 +404,7 @@ ToolResult RunSubagent(const Api& api, ActivitySupervisor& processes,
       std::max<int64_t>(1, remaining_token_budget / context.delegations);
   const std::string child_model = route.route.model;
   EnvironmentOverrides environment =
-      ChildAgentEnvironment(std::move(route.route));
+      ChildAgentEnvironment(std::move(route.route), processes.Owner());
   // A caller that knows the shape of the subtask may raise or lower the
   // ceiling for that one child; the schema bounds it, and the session
   // budgets still apply underneath.

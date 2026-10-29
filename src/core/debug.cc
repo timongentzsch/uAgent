@@ -69,9 +69,8 @@ std::string LocalDay() {
   return LocalTime(std::time(nullptr), "%Y-%m-%d %Z (UTC%z)");
 }
 
-std::string UsageLedger() {
-  return UagentDir(kActivityDir) + "/usage-" + std::to_string(getpid()) +
-         ".jsonl";
+std::string UsageLedger(const std::string& session_id) {
+  return UagentDir(kActivityDir) + "/usage-" + session_id + ".jsonl";
 }
 
 DebugSink::~DebugSink() { Stop(); }

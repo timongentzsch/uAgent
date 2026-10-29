@@ -4,6 +4,17 @@
   min-height: 0;
   background: var(--bg);
 }
+/* A folder's terminal takes the conversation's place. */
+.conversation > .terminal-panel {
+  flex: 1;
+}
+.terminal-place {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .terminal-bar {
   display: flex;

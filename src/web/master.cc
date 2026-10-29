@@ -307,8 +307,14 @@ bool Master::Initialize(std::string& error) {
     response.set_header("Vary", "Accept-Encoding");
   });
   if (options_.terminal) {
+    // Every device lists the folders' shells as they come and go.
     terminals_ = std::make_unique<Terminals>(
-        kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes));
+        kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes),
+        [this] {
+          host_.Publish(
+              "", "",
+              {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});
+        });
   }
   RegisterApiRoutes();
   RegisterTerminalRoutes();
@@ -463,7 +469,7 @@ void Master::RegisterApiRoutes() {
                            {"capabilities", push_->Capabilities(device)},
                            {"devices", std::move(devices)},
                            {"scheduled", std::move(catalogue["scheduled"])},
-                           {"terminal", terminals_ != nullptr},
+                           {"terminals", TerminalList()},
                            {"device", device}};
         Reply(response, body);
       });

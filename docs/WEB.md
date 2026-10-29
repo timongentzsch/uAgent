@@ -27,16 +27,25 @@ address. Or open the URL and type the code.
   **Log out this device**.
 
 The sidebar lists this OS user's conversations by place: **Workspaces**
-first, then **Folders**. A place's header is its lead agent: the name opens
-it (starting one the first time), the chevron before it folds the place
-away (remembered per browser) and **+** starts a conversation there. Under
-the header come the agents the lead agent started, a divider, then the
-place's own conversations, each followed by its agents. Browsing saved
+first, then **Folders**. A place's name opens its overview, the chevron
+before it folds the place away (remembered per browser) and **+** starts a
+conversation there. Each conversation is followed by its agents: those at
+work or waiting with their state, the finished ones folded into one "N
+agents" line that opens in place (remembered per browser). Browsing saved
 history starts no model and runs no command.
 
-**New** at the top of the sidebar opens a **Workspace…** (a name, new or
-existing) at its lead agent, or starts a conversation in a **Folder…** (a
-directory on the host).
+A place's **overview** shows its name, path and, in a git repository, the
+branch and how many files are uncommitted; a field that starts a
+conversation there; what is working, what needs you, today's spend (and 7
+days'), the files changed today and how many conversations there are. Below
+come the decisions that wait on you, each answered in place as in its
+conversation, and the conversations as cards (a list on a phone; the toggle
+is remembered per browser), each with its state (Working, Needs you,
+Stopped, Idle), current step, to-do progress, agents, last change and cost.
+
+**New** at the top of the sidebar starts a conversation in a
+**Workspace…** (a name, new or existing) or a **Folder…** (a directory on
+the host).
 
 - A **workspace** is a folder the host keeps under `~/.uagent/spaces/`,
   created the first time its name is used. Use one for work that belongs to
@@ -143,11 +152,21 @@ opt in with `-DUAGENT_WEB_PUSH=ON` and need OpenSSL 3.
 
 ## Terminal
 
-**Terminal** (the button in the header, Ctrl+`, also ⌘+` on a Mac) opens a
-panel under the chat and Files with your own shell on the host, in tabs like
-VS Code's terminal. **+** starts another, in the open conversation's folder,
-or in your home folder when no conversation is open. **Open terminal here**
-in Files starts one in the folder it shows. Up to eight run at once.
+A terminal is your own shell on the host. There are two kinds, up to eight
+shells at once:
+
+- **A folder's terminal** starts from **+ → Terminal** on a folder or
+  workspace in the list, or **New terminal** on its overview. It is listed
+  under that place, beside its conversations, and on the overview, on every
+  paired device, and opens in the conversation's place (the whole screen on
+  a phone).
+- **The page's own terminal** (the button in the header, Ctrl+`, also ⌘+`
+  on a Mac) opens a panel under the chat and Files, in tabs like VS Code's
+  terminal. **+** starts another, in the open conversation's folder, or in
+  your home folder when no conversation is open; **Open terminal here** in
+  Files starts one in the folder it shows. Its shells belong to this page:
+  they end when their tab or the panel closes or the page is left or
+  reloaded, and are never listed.
 
 - **It is your shell, unsandboxed.** It runs as you, your login shell
   (`$SHELL`, else `/bin/sh`) with `TERM=xterm-256color`, and can do whatever
@@ -159,16 +178,16 @@ in Files starts one in the folder it shows. Up to eight run at once.
 - **The agent never sees it.** **Add to chat** puts the selection, or what
   the terminal shows, into the conversation's message as a code block. It
   sends nothing; you read it and send it.
-- **It keeps running.** A shell lives in the web host, not the page. A
-  reload, a phone that slept or another device attaches again and is shown
-  the shell's recent output; one device at a time types into it, and the one
-  it moved from offers **Use here**. A shell ends when you close its tab,
-  when it exits, or when no device has had it open and it printed nothing
-  for `UAGENT_WEB_TERMINAL_IDLE_MINUTES`. Stopping the web host ends every
-  shell; nothing is written to disk.
+- **A folder's terminal keeps running.** It lives in the web host, not the
+  page. A reload, a phone that slept or another device opens it again from
+  the list and is shown its recent output; one device at a time types into
+  it, and the one it moved from offers **Use here**. It ends when you close
+  it, when it exits, or when no device has had it open and it printed
+  nothing for `UAGENT_WEB_TERMINAL_IDLE_MINUTES`. Stopping the web host ends
+  every shell; nothing is written to disk.
 - **Turn it off** with `/config user UAGENT_WEB_TERMINAL=off`, or in
   Settings → All conversations; it applies when the web host restarts. The
-  routes then refuse and the panel is gone.
+  routes then refuse and the terminals are gone.
 - **In the Docker image** the web host runs in the container, so the shell
   is one in the container, not on the machine that runs it.
 
@@ -283,9 +302,9 @@ before Submit.
   ones are struck through.
 - `/` opens slash commands with suggestions and Tab completion. The list
   offers the commands the page has no control for; others still run when
-  typed. `/restart` does the same as the menu; `/quit` closes nothing here;
-  `/panel` opens the lead agent. A terminal command the page has no equivalent
-  for (`/clear`, `/open`) says so instead of running.
+  typed. `/restart` does the same as the menu; `/quit` closes nothing here. A
+  terminal command the page has no equivalent for (`/clear`, `/open`,
+  `/overview`) says so instead of running.
 - Typed without an argument, `/config`, `/detail`, `/permissions`,
   `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`, `/context`
   and `/sessions` open their screen. With an argument they run on the host,
@@ -324,10 +343,10 @@ before Submit.
   `/sessions` opens it, as a panel in the middle of the window (atop the
   screen on a phone). An empty field lists recent conversations. Words list
   conversations and folders by name (letters in order, prefixes first),
-  then the messages that hold them (agents and lead agents included, tool
-  output too): grouped by folder, the open conversation's first, and under
-  each conversation its newest three with the words marked, then a row for
-  the rest. Actions, slash commands and settings follow; `>` lists only
+  then the messages that hold them (agents included, tool output too):
+  grouped by folder, the open conversation's first, and under each
+  conversation its newest three with the words marked, then a row for the
+  rest. Actions, slash commands and settings follow; `>` lists only
   those. On a wide window the rows around the selected message show beside
   the list. A message opens its conversation at that message, with find
   open on the words. Esc clears the field, then closes.
@@ -344,14 +363,12 @@ before Submit.
   controls the active schema. Close a live runtime before deleting its
   history; files in the folder are unaffected.
 
-### Agents and the lead agent
+### Agents
 
-[The guide](GUIDE.md#agents) explains agents, the lead agent and the to-do list.
-In the web:
+[The guide](GUIDE.md#agents) explains agents and the to-do list. In the web:
 
-- A place's name in the sidebar, or search, opens its lead agent. Agents are
-  listed under the conversation that started them, and an agent links back
-  to it under its title.
+- Agents are listed under the conversation that started them, and an agent
+  links back to it under its title.
 - What needs you is above the input and in the sidebar's "need you" count.
 - An agent's approvals and questions go to its parent first. Once you write
   in the agent's own chat, those of that turn come to you directly. Its

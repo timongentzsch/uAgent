@@ -475,8 +475,9 @@ export interface Catalogue {
   // The detail level a device starts at until it chooses its own.
   detail?: string;
   scheduled?: ScheduledState;
-  // Whether paired devices may open terminals (web.terminal).
-  terminal?: boolean;
+  // The folders' shells; null while paired devices may open none
+  // (web.terminal).
+  terminals?: TerminalInfo[] | null;
   epoch?: string;
   cursor?: number;
   sessions: Session[];
@@ -584,6 +585,7 @@ export type HostEvent = HostEnvelope &
       }
     | { kind: "settings.changed"; level: string }
     | { kind: "spaces.changed"; spaces: Space[] }
+    | { kind: "terminals.changed"; terminals: TerminalInfo[] | null }
   );
 export interface BodyPage {
   text: string;
@@ -836,7 +838,9 @@ export interface CommandInputs {
   revoke_device: { device_id: string };
   test_notification: None;
   // A shell in a folder, the home folder without one; or the end of one.
-  terminal: { action: "open"; cwd?: string } | { action: "close"; id: string };
+  terminal:
+    | { action: "open"; cwd?: string; folder?: string }
+    | { action: "close"; id: string };
 }
 export type CommandFields<K extends CommandKind> = CommandInputs[K] & {
   request_id?: string;
@@ -1003,12 +1007,15 @@ export type InspectorTarget =
   | { item: Activity }
   | { raw: RawOptions; title: string };
 
-// A shell the web host runs for paired devices, in the folder it started in.
+// A shell the web host runs for paired devices: where it started, and the
+// folder or workspace it belongs to ("" for the page's own, which ends with
+// its view).
 export interface TerminalInfo {
   id: string;
   cwd: string;
+  folder: string;
 }
-// The shells running, and the one just opened.
+// The folders' shells, and the one just opened.
 export interface TerminalList {
   id?: string;
   terminals: TerminalInfo[];

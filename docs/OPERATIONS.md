@@ -69,7 +69,7 @@ holds credentials in clear text; treat it as a secret.
 ## Limits
 
 Rows without a setting are fixed in the binary. `0` switches off a turn or
-session limit and the lead agent's daily cost limit.
+session limit.
 
 | Concern | Default | Setting |
 | --- | --- | --- |
@@ -95,7 +95,6 @@ session limit and the lead agent's daily cost limit.
 | agents at work per conversation / levels of agents | 8 / 2 | `UAGENT_AGENTS_MAX`, `UAGENT_AGENTS_DEPTH` |
 | an agent's report / the answers one `agent_start` waits for | 6,000 characters / 48 KiB shared | |
 | a parent's decision for its agent / turns agents' mail starts in a row | 5 minutes, then a person decides / 3 | |
-| reported cost per day of a lead agent and its agents | $20 | `UAGENT_PANEL_DAILY_SPEND_USD` |
 | items in a conversation's to-do list | 24 | |
 | idle session runtime | stops after 15 minutes, an agent's with no client about 1 s after its turn; the next message starts it | `UAGENT_IDLE_MINUTES` |
 | undo journal | 2 MiB per file, 64 MiB per session | |

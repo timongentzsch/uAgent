@@ -47,7 +47,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never a headless run); an agent's questions go to its parent first |
 | `skill` | load an installed skill | a usable skill is installed |
 | `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | full toolset, while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
-| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a lead agent or an agent |
+| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in an agent |
 
 A result is its output, which the model reads and you see; facts (an exit
 code, lines added and removed, a count, why a call was refused), which every

@@ -8,11 +8,12 @@ import type {
   CommandFields,
   AppModal,
   InspectorTarget,
+  TerminalInfo,
 } from "../shared/types.ts";
 import { render, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { emptyDraft, hasContent } from "../state/store.ts";
-import { command } from "../state/api.ts";
+import { command, manage } from "../state/api.ts";
 import { ConversationContext, HostContext } from "../state/host-context.ts";
 import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
@@ -57,6 +58,10 @@ import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
 
 // The terminal's code (xterm.js) is fetched the first time it opens.
 const terminalPanel = () => import("../features/terminal/terminal.tsx");
+const folderTerminal = () =>
+  import("../features/terminal/terminal.tsx").then((module) => ({
+    default: module.FolderTerminal,
+  }));
 
 // Own scroll restoration from the first paint. history restoration only
 // covers the document; the early opt-out in index.html (<head>, before any
@@ -71,7 +76,7 @@ if (typeof history !== "undefined") history.scrollRestoration = "manual";
 // its agent browses, whether any turn waits), so a streamed frame re-renders
 // the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
-export type Page = "chat" | "library" | "scheduled" | "folder";
+export type Page = "chat" | "library" | "scheduled" | "folder" | "terminal";
 // The page this tab showed, so a reload comes back to it.
 const keptPage = stored<Page>(
   storageKeys.page,
@@ -84,8 +89,10 @@ const keptPage = stored<Page>(
 function App() {
   const [page, setPage] = useState<Page>(keptPage.read);
   useEffect(() => keptPage.write(page), [page]);
-  // The folder or workspace whose overview the folder page shows.
+  // The folder or workspace whose overview the folder page shows, and the
+  // folder terminal the terminal page shows.
   const [place, setPlace] = useState("");
+  const [shell, setShell] = useState<TerminalInfo | null>(null);
   // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
@@ -366,7 +373,21 @@ function App() {
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
   };
-  const terminalAvailable = !!catalogue.terminal;
+  const terminalAvailable = !!catalogue.terminals;
+  const showTerminal = useCallback((terminal: TerminalInfo) => {
+    setShell(terminal);
+    setPage("terminal");
+    setDrawer(false);
+  }, []);
+  // A folder's new terminal, shown at once.
+  const newTerminal = useCallback(
+    (folder: string) =>
+      void manage("terminal", { action: "open", cwd: folder, folder }).then(
+        ({ id }) => id && showTerminal({ id, cwd: folder, folder }),
+        report,
+      ),
+    [showTerminal, report],
+  );
   const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
   // A tab in a folder of the conversation's; on a phone the files sheet
   // makes way for it.
@@ -495,6 +516,10 @@ function App() {
       start={startIn}
       overview={overview}
       shownPlace={page === "folder" ? place : ""}
+      terminals={catalogue.terminals}
+      showTerminal={showTerminal}
+      newTerminal={terminalAvailable ? newTerminal : undefined}
+      shownTerminal={page === "terminal" ? shell?.id : ""}
       search={openSearch}
     />
   );
@@ -613,6 +638,21 @@ function App() {
                         start={(cwd: string, text: string) =>
                           startConversation(cwd, "", text)
                         }
+                        terminals={catalogue.terminals}
+                        showTerminal={showTerminal}
+                        newTerminal={
+                          terminalAvailable ? newTerminal : undefined
+                        }
+                      />
+                    )}
+                    {page === "terminal" && shell && (
+                      <Deferred
+                        key={shell.id}
+                        load={folderTerminal}
+                        fallback={<Spinner label="Opening the terminal…" />}
+                        terminal={shell}
+                        closed={() => overview(shell.folder)}
+                        report={report}
                       />
                     )}
                     {page === "scheduled" && (

@@ -144,6 +144,13 @@
     opacity: 1;
   }
 }
+/* A folder's terminal, marked by its icon. */
+.session .row-icon {
+  width: var(--icon-s);
+  height: var(--icon-s);
+  margin-right: var(--space-2);
+  vertical-align: var(--icon-align);
+}
 .session-state {
   display: inline-flex;
   flex: none;

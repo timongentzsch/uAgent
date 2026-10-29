@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -39,16 +40,19 @@ void TestWebTerminal() {
   ScopedEnv agent("SSH_AUTH_SOCK", "/tmp/agent.sock");
   web::Terminals terminals(2, std::chrono::minutes(1));
   std::string error;
-  CHECK(terminals.Open("relative", error).empty() && !error.empty());
+  const std::string folder = workspace.workspace.string();
+  CHECK(terminals.Open("relative", folder, error).empty() && !error.empty());
   error.clear();
   WriteFile(workspace.workspace / "file", "x");
-  CHECK(terminals.Open((workspace.workspace / "file").string(), error).empty());
+  CHECK(terminals.Open((workspace.workspace / "file").string(), folder, error)
+            .empty());
   CHECK(terminals.Attach("unknown") == nullptr);
   error.clear();
 
-  const std::string id = terminals.Open(workspace.workspace.string(), error);
+  const std::string id = terminals.Open(folder, folder, error);
   CHECK(!id.empty() && error.empty());
-  CHECK(terminals.List().size() == 1 && terminals.List()[0].id == id);
+  CHECK(terminals.List().size() == 1 && terminals.List()[0].id == id &&
+        terminals.List()[0].folder == folder);
   const std::string cwd = terminals.List()[0].cwd;
   auto viewer = terminals.Attach(id);
   CHECK(viewer != nullptr);
@@ -77,9 +81,9 @@ void TestWebTerminal() {
   viewer.reset();
 
   // At most two shells; closing one ends it for its viewer.
-  const std::string other = terminals.Open("", error);
+  const std::string other = terminals.Open("", folder, error);
   CHECK(!other.empty());
-  CHECK(terminals.Open("", error).empty() &&
+  CHECK(terminals.Open("", folder, error).empty() &&
         error.find("at most 2") != std::string::npos);
   CHECK(terminals.Close(id));
   CHECK(!terminals.Close(id));
@@ -96,8 +100,8 @@ void TestWebTerminal() {
   // With no device attached and nothing printed for the idle time, a shell
   // ends; one a device holds stays until it lets go.
   web::Terminals idle(2, std::chrono::milliseconds(200));
-  const std::string unattended = idle.Open("", error);
-  const std::string held = idle.Open("", error);
+  const std::string unattended = idle.Open("", folder, error);
+  const std::string held = idle.Open("", folder, error);
   auto holder = idle.Attach(held);
   CHECK(WaitUntil(
       [&] { return idle.List().size() == 1 && idle.List()[0].id == held; },
@@ -107,6 +111,18 @@ void TestWebTerminal() {
   holder.reset();
   CHECK(WaitUntil([&] { return idle.List().empty(); }, BudgetMs(5000)));
   CHECK(!unattended.empty());
+
+  // The page's own shell, of no folder, is never listed, has one viewer
+  // ever and ends when it leaves; the list's listener hears each change.
+  std::atomic<int> changes = 0;
+  web::Terminals page(2, std::chrono::minutes(1), [&] { ++changes; });
+  const std::string own = page.Open("", "", error);
+  CHECK(!own.empty() && page.List().empty() && changes == 1);
+  auto only = page.Attach(own);
+  CHECK(only != nullptr && page.Attach(own) == nullptr);
+  only.reset();
+  CHECK(WaitUntil([&] { return changes == 2; }, BudgetMs(5000)));
+  CHECK(!page.Close(own));
 }
 
 }  // namespace uagent

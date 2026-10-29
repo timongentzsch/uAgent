@@ -1,14 +1,16 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_TERMINAL_H_
 #define UAGENT_INCLUDE_WEB_TERMINAL_H_
-// The web host's terminals: login shells of the user's on a PTY, unsandboxed,
-// each keeping its recent output so a device can attach again after a reload.
-// The agent never reads them.
+// The web host's terminals: login shells of the user's on a PTY, unsandboxed.
+// A folder's shell keeps its recent output so any device can attach again; a
+// shell of no folder (the page's own) ends with its viewer. The agent never
+// reads them.
 
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -23,10 +25,11 @@ namespace uagent::web {
 
 struct TerminalShell;
 
-// A shell as the page lists it.
+// A shell as the page lists it, under the folder it belongs to.
 struct TerminalInfo {
   std::string id{};
   std::string cwd{};
+  std::string folder{};
 };
 
 // What a viewer receives: the output past what it has read; then, once, that
@@ -41,7 +44,7 @@ struct TerminalOutput {
 
 // One device attached to a shell. Only the newest viewer of a shell types into
 // it; an older one learns it was replaced. Destruction detaches, which starts
-// the shell's idle time.
+// a folder shell's idle time and ends any other.
 class TerminalViewer {
  public:
   TerminalViewer(std::shared_ptr<TerminalShell> shell, uint64_t generation);
@@ -67,19 +70,22 @@ class TerminalViewer {
 
 class Terminals {
  public:
-  // At most `limit` shells at once. One no device has attached that printed
-  // nothing for `idle` ends.
-  Terminals(size_t limit, std::chrono::milliseconds idle);
+  // At most `limit` shells at once. A folder's shell no device has attached
+  // that printed nothing for `idle` ends. `changed` hears that the list did.
+  Terminals(size_t limit, std::chrono::milliseconds idle,
+            std::function<void()> changed = {});
   ~Terminals();
   Terminals(const Terminals&) = delete;
   Terminals& operator=(const Terminals&) = delete;
 
   // A shell in `directory`, an absolute path to a folder (empty: the home
-  // folder). Its id, or empty with `error`.
-  std::string Open(const std::string& directory, std::string& error);
+  // folder), that belongs to `folder`; with none, it ends with its viewer and
+  // is never listed or attached again. Its id, or empty with `error`.
+  std::string Open(const std::string& directory, const std::string& folder,
+                   std::string& error);
   // Ends the shell; false when there is no such shell.
   bool Close(const std::string& id);
-  // The running shells, oldest first.
+  // The running folder shells, by folder, oldest first.
   std::vector<TerminalInfo> List() const;
   // A new viewer of the shell `id`, which replaces any earlier one; null when
   // there is no such shell.
@@ -92,6 +98,7 @@ class Terminals {
 
   const size_t limit_;
   const std::chrono::milliseconds idle_;
+  const std::function<void()> changed_;
   mutable std::mutex mutex_;
   std::vector<std::shared_ptr<TerminalShell>> shells_ UAGENT_GUARDED_BY(mutex_);
   // Closed by a device, for the loop to end.

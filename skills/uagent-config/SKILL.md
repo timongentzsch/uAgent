@@ -24,9 +24,8 @@ release, and it knows more than any copy of its documentation.
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
-| What is a folder's panel, and how is it opened or limited? | `uagent panel --help`, and the `UAGENT_PANEL_*` settings from `uagent` topic `config` |
-| What instructions do sessions and panels read? | `uagent` topic `instructions` |
-| Change instructions | `uagent_instructions` with `audience` (sessions or panel), `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
+| What instructions do sessions read? | `uagent` topic `instructions` |
+| Change instructions | `uagent_instructions` with `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
 
 Do not load every reference; pick the one the question needs. Only
 `self-configuration.md` and `architecture.md` are written by hand; every other

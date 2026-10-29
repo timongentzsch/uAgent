@@ -1,7 +1,7 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Fragment, type ComponentChildren } from "preact";
 import { useMemo } from "preact/hooks";
-import type { Session, Space } from "../../shared/types.ts";
+import type { Session, Space, TerminalInfo } from "../../shared/types.ts";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,6 +14,7 @@ import {
   CircleAlert,
   TriangleAlert,
   Inbox,
+  Terminal,
 } from "lucide-preact";
 import { useHostContext } from "../../state/host-context.ts";
 import {
@@ -217,6 +218,12 @@ type SidebarProps = {
   overview: (cwd: string) => void;
   // The place whose overview is open.
   shownPlace: string;
+  // The folders' terminals, the one shown, and opening one; a new one only
+  // while the host offers them.
+  terminals?: TerminalInfo[] | null;
+  shownTerminal?: string;
+  showTerminal: (terminal: TerminalInfo) => void;
+  newTerminal?: (folder: string) => void;
   // Search over every conversation, command and setting.
   search: () => void;
 };
@@ -236,6 +243,10 @@ function SidebarView({
   start,
   overview,
   shownPlace,
+  terminals,
+  shownTerminal,
+  showTerminal,
+  newTerminal,
   page,
   navigate,
   scheduledUnread,
@@ -313,6 +324,7 @@ function SidebarView({
         ...entry.finished.flatMap(all),
       ];
     });
+    const shells = (terminals || []).filter((item) => item.folder === cwd);
     const holdsOpen = conversations.some((item) => item.id === selected);
     const attention = conversations.filter((item) =>
       ["waiting", "failed"].includes(statusOf(item, online)),
@@ -357,19 +369,54 @@ function SidebarView({
               )}
             </Button>
           </h2>
-          <IconButton
-            label={`New conversation in ${name}`}
-            disabled={!online}
-            onClick={() => {
-              collapsed.set(cwd, false);
-              start(cwd);
-            }}
+          <Menu
+            label={`New in ${name}`}
+            trigger={
+              <>
+                <Plus />
+                <span class="sr-only">New in {name}</span>
+              </>
+            }
           >
-            <Plus />
-          </IconButton>
+            <MenuItem
+              disabled={!online}
+              onClick={() => {
+                collapsed.set(cwd, false);
+                start(cwd);
+              }}
+            >
+              Conversation
+            </MenuItem>
+            {newTerminal && (
+              <MenuItem disabled={!online} onClick={() => newTerminal(cwd)}>
+                Terminal
+              </MenuItem>
+            )}
+          </Menu>
           {space && spaceMenu(space, counts.get(cwd) || 0)}
         </div>
-        {!folded && <div class="place-body">{entries.map(conversation)}</div>}
+        {!folded && (
+          <div class="place-body">
+            {shells.map((terminal, index) => (
+              <div class="session-row entry" key={terminal.id}>
+                <ListRow
+                  class="session"
+                  aria-current={
+                    terminal.id === shownTerminal ? "page" : undefined
+                  }
+                  onClick={() => showTerminal(terminal)}
+                  title={
+                    <>
+                      <Terminal class="row-icon" aria-hidden="true" />
+                      Terminal{shells.length > 1 ? ` ${index + 1}` : ""}
+                    </>
+                  }
+                />
+              </div>
+            ))}
+            {entries.map(conversation)}
+          </div>
+        )}
       </section>
     );
   };

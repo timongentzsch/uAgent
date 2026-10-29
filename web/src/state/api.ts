@@ -23,7 +23,6 @@ export const routes = {
   browserStatus: "/api/browser/status",
   browserViewer: "/api/browser/viewer",
   command: "/api/command",
-  terminals: "/api/terminals",
   // A terminal's socket.
   terminal: (id: string) => `/api/terminals/${id}`,
   pushSubscriptions: "/api/push/subscriptions",

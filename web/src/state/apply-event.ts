@@ -93,6 +93,10 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     setCatalogue((prior) => ({ ...prior, spaces: event.spaces }));
     return;
   }
+  if (event.kind === "terminals.changed") {
+    setCatalogue((prior) => ({ ...prior, terminals: event.terminals }));
+    return;
+  }
   if (event.kind === "scheduled.changed" && event.scheduled) {
     setCatalogue((prior) => ({ ...prior, scheduled: event.scheduled }));
     return;

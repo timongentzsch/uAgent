@@ -82,7 +82,8 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   expect(page.url()).toBe(at);
 
   // + opens the fold, and starts a conversation in the place.
-  await folders.getByRole("button", { name: /^New conversation in / }).click();
+  await folders.getByRole("button", { name: /^New in / }).click();
+  await page.getByRole("menuitem", { name: "Conversation" }).click();
   await expect(folders.locator(".session")).toHaveCount(2);
   await expect(folders.locator(".place-count")).toHaveCount(0);
 });

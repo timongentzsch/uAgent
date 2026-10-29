@@ -14,7 +14,7 @@ layer.
 | `src/app/` | Bootstrap (`bootstrap.cc`; tool assembly in `bootstrap_tools.cc`, approval decisions in `approvals.cc`), session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the web host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/panel*.cc`, `launch.cc` | A folder's lead agent (board, `panel -p`) and where a launched session runs |
+| `src/app/folder_overview.cc`, `launch.cc` | A folder at a glance (spend, changes, git) for the web's overview and `/overview`, and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
@@ -145,15 +145,10 @@ it: the `readonly` sandbox for `edits` none and `default` otherwise, its
 depth, and its budget as the session budget. Its reports and the decisions
 its parent takes travel as mail.
 
-A folder's lead agent (internally a panel) is a session that reads and
-delegates but never writes: it has no tool that edits, and its runtime forces
-the `readonly` sandbox level, so its commands write nothing but temporary
-files. The agents it starts may edit.
-
-Every conversation keeps its to-do list, which the `todo` tool replaces,
-as a fact of its session file, so it survives a reload, compaction and a
-fork. While it has items it rides on the tail of every model request, beside
-a lead agent's board and clock, and never enters the stored history.
+Every conversation keeps its to-do list, which the `todo` tool replaces, as
+a fact of its session file, so it survives a reload, compaction and a fork.
+While it has items it rides on the tail of every model request and never
+enters the stored history.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): a parent and its agents, and
@@ -166,7 +161,6 @@ agents of one parent.
   before it exits.
 - An agent's finished turns, and its approvals and questions in turns the
   person did not start or write into, reach its parent within milliseconds.
-  Under a lead agent at its daily spend limit, its mail waits.
 - A sender is refused, visibly, past 64 pending messages, 20 a minute or 8
   forwards (`include/core/mailbox.h`), and agents' mail starts at most 3
   turns of one session in a row before a person speaks there.

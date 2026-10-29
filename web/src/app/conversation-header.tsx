@@ -102,6 +102,8 @@ export default function ConversationHeader({
             "Scheduled"
           ) : page === "folder" ? (
             "Overview"
+          ) : page === "terminal" ? (
+            "Terminal"
           ) : session ? (
             titleOf(session)
           ) : opening ? (

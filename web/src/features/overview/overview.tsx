@@ -1,7 +1,12 @@
 import type { TargetedSubmitEvent } from "preact";
 import { useState } from "preact/hooks";
-import { CircleAlert, LayoutGrid, List } from "lucide-preact";
-import type { FolderFacts, Session, Space } from "../../shared/types.ts";
+import { CircleAlert, LayoutGrid, List, SquareTerminal } from "lucide-preact";
+import type {
+  FolderFacts,
+  Session,
+  Space,
+  TerminalInfo,
+} from "../../shared/types.ts";
 import { api, routes } from "../../state/api.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
@@ -21,6 +26,7 @@ import {
   EmptyState,
   IconButton,
   Input,
+  Row,
   SectionTitle,
   Time,
 } from "../../shared/ui.tsx";
@@ -46,6 +52,9 @@ export default function FolderOverview({
   sessions,
   choose,
   start,
+  terminals,
+  showTerminal,
+  newTerminal,
 }: {
   folder: string;
   space?: Space;
@@ -53,6 +62,11 @@ export default function FolderOverview({
   choose: (id: string) => void;
   // A new conversation in the folder, with its first message.
   start: (folder: string, text: string) => Promise<unknown>;
+  // The folders' terminals, and opening one; a new one while the host
+  // offers them.
+  terminals?: TerminalInfo[] | null;
+  showTerminal: (terminal: TerminalInfo) => void;
+  newTerminal?: (folder: string) => void;
 }) {
   const { online, report } = useHostContext();
   const phone = usePhone();
@@ -81,6 +95,7 @@ export default function FolderOverview({
     (item) => Date.now() - (item.updated || 0) < 7 * DAY,
   );
   const git = facts?.git;
+  const shells = (terminals || []).filter((item) => item.folder === folder);
   const submit = (event: TargetedSubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     start(folder, text.trim()).then(() => setText(""), report);
@@ -118,6 +133,11 @@ export default function FolderOverview({
         <Button variant="primary" type="submit" disabled={!online}>
           Start
         </Button>
+        {newTerminal && (
+          <Button disabled={!online} onClick={() => newTerminal(folder)}>
+            New terminal
+          </Button>
+        )}
       </form>
       <dl class="overview-stats card divided" aria-label="Summary">
         <Stat
@@ -146,6 +166,22 @@ export default function FolderOverview({
         <div class="overview-section">
           <SectionTitle>Needs you</SectionTitle>
           <WaitingList sessions={here} folder={folder} choose={choose} />
+        </div>
+      )}
+      {shells.length > 0 && (
+        <div class="overview-section">
+          <SectionTitle>Terminals</SectionTitle>
+          <div class="divided">
+            {shells.map((terminal, index) => (
+              <Row
+                key={terminal.id}
+                icon={<SquareTerminal />}
+                label={`Terminal${shells.length > 1 ? ` ${index + 1}` : ""}`}
+                detail={terminal.cwd}
+                onClick={() => showTerminal(terminal)}
+              />
+            ))}
+          </div>
         </div>
       )}
       <div class="overview-section">

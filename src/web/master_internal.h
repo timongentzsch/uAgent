@@ -77,6 +77,9 @@ class Master {
   void RegisterApiRoutes();
   void RegisterBrowserRoutes();
   void RegisterTerminalRoutes();
+  // The folders' shells, as every device lists them; null with the terminal
+  // turned off.
+  json TerminalList() const;
   void TerminalSocket(const Request& request, httplib::ws::WebSocket& socket);
   bool RegisterAssetRoutes(std::string& error);
   const std::string* ExpectedOrigin(const Request& request) const;

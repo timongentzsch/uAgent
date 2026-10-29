@@ -38,7 +38,7 @@ class Application {
   json UsageTotals() const;
   // What the session spent since `used_before_`, which it counts from again
   // after: appended to `ledger`, when given, for the parent session that
-  // drains it. A child reports when it ends, a thread at each turn's end.
+  // drains it. A child reports when it ends, an agent at each turn's end.
   json ReportUsage(const std::string& ledger);
   int RunHeadless();
   // Empty, or why the named conversation could not be continued.

@@ -172,8 +172,8 @@ class SessionHost {
   std::vector<HostNotice> WaitForNotices();
   void Stop();
   void LoadDrafts();
-  // Follows the history on disk: sessions created elsewhere (a panel's
-  // threads) appear, and those deleted elsewhere go, each published. A scan
+  // Follows the history on disk: sessions created elsewhere (agents)
+  // appear, and those deleted elsewhere go, each published. A scan
   // within a second of the last is deferred to RescanDue(), never dropped.
   bool RefreshCatalogue(bool force = false);
   std::optional<std::chrono::steady_clock::time_point> RescanDue() const;

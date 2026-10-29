@@ -177,10 +177,10 @@ class Agent {
   // from that summary — frees the context without losing the thread
   bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
 
-  // Fold in what this session's children (subagents, memory extraction,
-  // threads) reported to its ledger. They bill against the same key, so
+  // Fold in what this session's children (agents, memory extraction)
+  // reported to its ledger. They bill against the same key, so
   // without this their cost is missing from the footer and the status bar.
-  void DrainSubagentUsage();
+  void DrainChildUsage();
 
   // Account finished side work. What the current turn spawned merges into
   // `turn` when given; other tagged delegated work updates its originating
@@ -217,7 +217,7 @@ class Agent {
   }
 
   // The session's undo (EditJournal), kept in `directory`; unset, nothing is
-  // journaled, as for a subagent.
+  // journaled.
   void OpenEditJournal(std::string directory) {
     edits_.Open(std::move(directory));
   }

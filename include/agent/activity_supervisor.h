@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_
 #define UAGENT_INCLUDE_AGENT_ACTIVITY_SUPERVISOR_H_
-// Supervises a conversation's activities: commands, subagents, memory
-// work and detached processes, from start to the result that rejoins the turn.
+// Supervises a conversation's activities: commands, memory work and
+// detached processes, from start to the result that rejoins the turn.
 
 #include <sys/types.h>
 

@@ -48,7 +48,7 @@ void Agent::RecordModelResponse(
     DebugLog("token_usage_unavailable", {{"route", ActiveRoute()}});
   }
   // Dollar limits read reported cost: the session's budget, and a panel's
-  // daily spend for itself and its threads.
+  // daily spend for itself and its agents.
   if (response.usage.is_object() && !response_usage.cost_reported &&
       !cost_warning_shown_ &&
       (state.limits.session_budget > 0 ||

@@ -20,7 +20,7 @@ namespace uagent {
 using SignalFlag = std::atomic<int>;
 extern SignalFlag g_streaming;
 extern SignalFlag g_terminal_resized;
-// argv[0], so the agent can re-invoke itself for a subagent. A bare name is
+// argv[0], so the agent can re-invoke itself for a child. A bare name is
 // resolved by the child's shell via PATH; a relative one still works because
 // fork keeps the cwd.
 void SetExecutablePath(std::string path);

@@ -48,7 +48,7 @@ json SideStatistics(const json& statistics) {
 }
 }  // namespace
 
-void Agent::DrainSubagentUsage() {
+void Agent::DrainChildUsage() {
   const std::string path = UsageLedger(processes_.Owner());
   std::string data;
   std::string error;
@@ -85,7 +85,7 @@ void Agent::DrainSubagentUsage() {
 }
 
 void Agent::AccountSideUsage(Usage* current_turn) {
-  DrainSubagentUsage();
+  DrainChildUsage();
   const AccumulatedUsage batch = side_usage_.TakeAll();
   Usage total = batch.unassigned;
   for (const auto& [route, route_spent] : batch.routes) {

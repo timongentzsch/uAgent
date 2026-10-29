@@ -44,7 +44,7 @@ enum class SessionCommandKind {
   kShare,
   kSide,
   kSubmit,
-  // A panel hands a thread's routed decision to the user.
+  // A parent hands its agent's routed decision to the person.
   kEscalate,
   kCreate,
   kDelete,

@@ -140,8 +140,8 @@ std::optional<Verdict> ReviewAutomatically(AppContext* app, ReviewMemo& memo,
                                            const std::string& raw_payload,
                                            int64_t turn, json& review) {
   Verdict verdict;
-  // The latest message, then what the session was asked first: a thread's
-  // brief still authorizes what a later note from its panel adds. A cut for
+  // The latest message, then what the session was asked first: an agent's
+  // brief still authorizes what a later note from its parent adds. A cut for
   // length takes the brief's end, never the latest word.
   const Conversation& history = app->agent->History();
   std::string request = history.UserMessageText(history.UserTurns());

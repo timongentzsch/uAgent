@@ -611,7 +611,10 @@ def test_a_runtime_that_cannot_listen_says_so_at_once(root, home, *, binary):
     from integration_support import fnv1a64
     from session_support import runtime_directory
 
-    session = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "panel.json"
+    with Server([event({"content": "saved"})]) as server:
+        saved = run(root, base_env(home, server.url), "-p", "hi", binary=binary)
+        assert_true(saved.returncode == 0, saved.stderr)
+    session = next((home / ".uagent" / "history").glob("*/*.json"))
     blocked = runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
     (blocked / "kept").mkdir(parents=True, mode=0o700)
     runtime_directory(home).chmod(0o700)
@@ -619,7 +622,7 @@ def test_a_runtime_that_cannot_listen_says_so_at_once(root, home, *, binary):
     try:
         with Server([event({"content": "unused"})]) as server:
             began = time.monotonic()
-            result = run_dialog(root, base_env(home, server.url), "hello\n", "panel", binary=binary)
+            result = run_dialog(root, base_env(home, server.url), "hello\n", "-c", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true("could not listen" in result.stderr, result.stderr)
         assert_true("another runtime" not in result.stderr, result.stderr)

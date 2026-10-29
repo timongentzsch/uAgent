@@ -14,13 +14,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
 #include "include/app/bootstrap.h"
+#include "include/app/folder_overview.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
 #include "include/browser/browser.h"
@@ -362,7 +365,7 @@ int Master::Run() {
         break;
       }
       PublishSettings();
-      // Sessions a panel creates or deletes reach every client.
+      // Sessions an agent creates or deletes reach every client.
       host_.RefreshCatalogue();
       bool observed;
       {
@@ -524,6 +527,16 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 Search(request, response);
               });
+  // A folder at a glance, for its overview: spend, changes and git.
+  server_.Get("/api/folder", [](const Request& request, Response& response) {
+    const std::optional<std::filesystem::path> folder =
+        CanonicalDirectory(request.get_param_value("path"));
+    if (!folder) {
+      Error(response, "not found", 404);
+      return;
+    }
+    Reply(response, FolderFacts(folder->string()));
+  });
   server_.Get("/api/events",
               [this](const Request& request, Response& response) {
                 Events(request, response);

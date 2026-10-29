@@ -1,18 +1,8 @@
 import { DataText } from "./placeholder.tsx";
 import type { Session } from "./types.ts";
 
-// A session's title wherever it is listed; an agent is marked ↳. A place's
-// panel is its panel, whatever its first message was.
+// A session's title wherever it is listed; an agent is marked ↳.
 export default function SessionName({ item }: { item: Session }) {
-  if (item.kind === "panel")
-    return (
-      <>
-        <span class="thread-mark" aria-hidden="true">
-          ◆
-        </span>
-        <DataText>Lead</DataText>
-      </>
-    );
   return (
     <>
       {item.parent && (

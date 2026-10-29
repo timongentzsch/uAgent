@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_SESSION_SEARCH_H_
 #define UAGENT_INCLUDE_AGENT_SESSION_SEARCH_H_
-// Searching saved sessions' rows. Used by the web search and the panel's
-// history search.
+// Searching saved sessions' rows. Used by the web search and the agents
+// tool's search.
 
 #include <cstddef>
 #include <optional>

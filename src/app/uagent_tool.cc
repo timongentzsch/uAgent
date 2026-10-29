@@ -34,9 +34,8 @@ Tool UagentTool(SelfDescriptionProvider describe) {
       "uagent",
       "Inspect this running build, not the code in the folder: status, "
       "cli, commands, config, tools, "
-      "prompt, routes, or instructions (the AGENTS.md and PANEL.md "
-      "files sessions and panels read at start). Secrets are never "
-      "returned or accepted literally.",
+      "prompt, routes, or instructions (the AGENTS.md files sessions read "
+      "at start). Secrets are never returned or accepted literally.",
       {{"type", "object"},
        {"properties",
         {{"topic",
@@ -204,11 +203,7 @@ Tool UagentInstructionsTool() {
       "text.",
       {{"type", "object"},
        {"properties",
-        {{"audience",
-          {{"type", "string"},
-           {"enum", json::array({"sessions", "panel"})},
-           {"description", "AGENTS.md (every session) or PANEL.md"}}},
-         {"scope",
+        {{"scope",
           {{"type", "string"},
            {"enum", json::array({"user", "project"})},
            {"description",
@@ -216,18 +211,15 @@ Tool UagentInstructionsTool() {
          {"text",
           {{"type", "string"},
            {"description", "the whole new file, Markdown"}}}}},
-       {"required", json::array({"audience", "scope", "text"})}},
+       {"required", json::array({"scope", "text"})}},
       // Reaching here means the user approved this exact text.
       [shown](const json& arguments, const ToolContext&) {
-        bool panel = false, project = false;
-        ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                               JsonValue(arguments, "scope", ""), panel,
-                               project);
+        bool project = false;
+        ParseInstructionScope(JsonValue(arguments, "scope", ""), project);
         std::optional<std::string> base;
         if (shown->first == arguments) base = shown->second;
-        const std::string error =
-            WriteInstructionFile(panel, project, CanonicalCwd(),
-                                 JsonValue(arguments, "text", ""), base);
+        const std::string error = WriteInstructionFile(
+            project, CanonicalCwd(), JsonValue(arguments, "text", ""), base);
         return error.empty()
                    ? ToolSuccess("saved; new and restarted sessions read it")
                    : ToolFailure(ToolErrorCode::kProcessFailed, error);
@@ -245,14 +237,12 @@ Tool UagentInstructionsTool() {
   };
   tool.headline = [](const json& arguments) {
     return Headline{"Configuring", "Configured",
-                    JsonValue(arguments, "scope", "") + " " +
-                        JsonValue(arguments, "audience", "") + " instructions"};
+                    JsonValue(arguments, "scope", "") + " instructions"};
   };
   tool.approval_preview = [shown](const json& arguments) {
-    bool panel = false, project = false;
-    ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                           JsonValue(arguments, "scope", ""), panel, project);
-    const auto path = InstructionPath(panel, project, CanonicalCwd());
+    bool project = false;
+    ParseInstructionScope(JsonValue(arguments, "scope", ""), project);
+    const auto path = InstructionPath(project, CanonicalCwd());
     *shown = {arguments, ReadInstructionFile(path)};
     return ConfigUnifiedDiff(shown->second, JsonValue(arguments, "text", ""),
                              path.string()) +

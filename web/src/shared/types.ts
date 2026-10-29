@@ -366,8 +366,6 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // A folder's panel, or not.
-  kind?: "panel" | "";
   // The conversation that started this one as its agent.
   parent?: string;
   // The model its file names.
@@ -384,6 +382,16 @@ export interface Session {
   activities?: Activity[];
   guidance?: number;
   error?: string;
+  // Its spend, and how far its to-do list is (the item in progress).
+  cost?: number;
+  todo?: { done: number; total: number; current: string } | null;
+}
+// A folder at a glance, from the host: what its conversations spent today
+// and in 7 days, the files they changed today, and its repository.
+export interface FolderFacts {
+  spend: { today: number; week: number };
+  changed: { files: number; added: number; removed: number };
+  git?: { branch: string; uncommitted: number };
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
 export interface State {
@@ -396,13 +404,9 @@ export interface State {
   effort?: string;
   efforts?: string[];
   view?: View;
-  // Bumped by an in-place rewind, which replaces the view.
-  view_epoch?: number;
   turns?: number;
   usage?: Usage;
   system_prompt?: string;
-  // Why a panel holds its mail (today's spend limit).
-  paused?: string;
   statistics?: Statistics;
   turn_status?: string;
   activities?: Activity[];
@@ -676,7 +680,6 @@ export interface ToolCatalogue {
 // One instruction file a person edits: for every conversation or a folder's
 // panel, yours or the folder's.
 export interface InstructionFile {
-  audience: "sessions" | "panel";
   scope: "user" | "project";
   path: string;
   text: string;
@@ -684,7 +687,7 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: { sessions: string; panel: string };
+  base: string;
 }
 export interface CommandResults {
   browser: {
@@ -708,8 +711,7 @@ export interface CommandResults {
   context: { exchanges: Exchange[] };
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A fork cut before a message returns that message, to edit (prompt).
-  // A panel rewinds itself in place (`rewound`) instead of forking.
-  fork: { id: string; prompt?: string; rewound?: boolean };
+  fork: { id: string; prompt?: string };
   share: { path: string };
   side: { id: string };
   create: never;
@@ -759,7 +761,6 @@ export interface CommandInputs {
   instructions: {
     action: string;
     cwd?: string;
-    audience?: string;
     scope?: string;
     text?: string;
     // The text an edit started from; a changed file refuses.
@@ -813,7 +814,7 @@ export interface CommandInputs {
   share: None;
   side: { operation: string; text: string };
   // A workspace by its name (`space`), in place of `cwd`.
-  create: { cwd?: string; space?: string; panel?: boolean };
+  create: { cwd?: string; space?: string };
   activate: None;
   close: None;
   rename: { title: string };

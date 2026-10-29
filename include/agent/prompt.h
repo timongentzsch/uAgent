@@ -21,8 +21,6 @@ namespace uagent {
 // The immutable base every session starts from; the text and the reasoning
 // behind its shape live in prompt.cc.
 const char* SystemPromptBase();
-// The base of a folder panel's prompt, in place of SystemPromptBase.
-const char* PanelPromptBase();
 
 // The base sections an overlay may replace, in prompt order.
 std::vector<std::string_view> PromptSections();

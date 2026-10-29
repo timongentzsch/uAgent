@@ -21,7 +21,6 @@ extern char** environ;
 #include <vector>
 
 #include "include/agent/activity.h"
-#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/bootstrap.h"
 #include "include/app/config_proposal.h"
@@ -156,21 +155,6 @@ int ShowSystemPrompt(Options options, char* executable,
   return result.contains("error") ? 1 : 0;
 }
 
-// `uagent panel`: the folder's panel, one prompt or the terminal.
-int PanelMain(Options options) {
-  if (options.web || options.json_stream || options.resume_latest ||
-      options.resume_pick || (options.json && options.prompt.empty())) {
-    fprintf(stderr, "uagent panel takes session options, -p and --json\n");
-    return 2;
-  }
-  options.session = {{"kind", kSessionKindPanel}};
-  if (!options.prompt.empty()) {
-    return session::PanelPromptMain(options);
-  }
-  ResolveTerminalProfile(options);
-  return session::TerminalMain(std::move(options));
-}
-
 // --web: the master process; only user configuration reaches it.
 int WebMain([[maybe_unused]] const Options& options,
             [[maybe_unused]] char** argv) {
@@ -285,10 +269,7 @@ int Main(int argc, char** argv) {
 #endif
   Observability observability;
   SetObservability(&observability);
-  // `uagent panel` opens the folder's panel; the rest are its options.
-  const bool panel = argc > 1 && std::string_view(argv[1]) == "panel";
-  ParsedOptions parsed =
-      panel ? ParseOptions(argc - 1, argv + 1) : ParseOptions(argc, argv);
+  ParsedOptions parsed = ParseOptions(argc, argv);
   if (!parsed.Ok()) {
     if (parsed.options.json_stream) observability.StartJsonStream();
     return Fail(parsed.options.json_stream, parsed.options.json, parsed.error,
@@ -308,7 +289,6 @@ int Main(int argc, char** argv) {
   if (parsed.options.show_system_prompt) {
     return ShowSystemPrompt(std::move(parsed.options), argv[0], observability);
   }
-  if (panel) return PanelMain(std::move(parsed.options));
   if (parsed.options.web) return WebMain(parsed.options, argv);
   if (parsed.options.prompt.empty() && !parsed.options.json &&
       !parsed.options.json_stream) {

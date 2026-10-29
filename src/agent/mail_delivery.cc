@@ -30,12 +30,12 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
 }
 }  // namespace
 
-bool Agent::DeliverMail(bool hold) {
+bool Agent::DeliverMail() {
   const std::string own_path = OwnSessionFile();
   const std::string own = MailboxIdFor(own_path);
   if (own.empty()) return false;
   std::vector<Mail> taken = TakeMail(own, [&](const Mail& mail) {
-    return !hold && MailAllowed(mail, own_path, session_role_);
+    return MailAllowed(mail, own_path, session_role_);
   });
   for (Mail& mail : taken) {
     const bool seen = std::find(delivered_mail_.begin(), delivered_mail_.end(),

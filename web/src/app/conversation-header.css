@@ -1,18 +1,14 @@
-/* One line: the words truncate, the link to its instructions stays. */
-.panel-subtitle {
+/* One line under the title: a link that is cut short, never pushed under
+   the buttons. */
+.head-subtitle {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
   margin: 0;
 }
-.panel-subtitle :is(span, button) {
+.head-subtitle button {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* A link in the line: cut short too, never pushed under the buttons. */
-.panel-subtitle button {
   display: block;
   font-size: inherit;
   min-height: 0;

@@ -116,14 +116,6 @@ void Terminal::ReceiveState(const json& frame) {
     WriteTerminalRecord(
         Note(Tone::kNeutral, "detail " + std::string(detail->name)));
   }
-  // A panel holding thread events says why, once per change.
-  if (std::string paused = JsonValue(state, "paused", ""); paused != paused_) {
-    paused_ = std::move(paused);
-    if (!paused_.empty()) {
-      presenter_.Consume(
-          NoticeEvent(PresentationStatus::kWarned, paused_, false));
-    }
-  }
   wake_.Wake();
 }
 
@@ -202,10 +194,9 @@ bool Terminal::ReceiveOutcome(const json& frame) {
   } else if (!result.empty()) {
     WriteTerminalRecord(TerminalSafe(JsonDump(result, 2)) + "\n");
   }
-  // A panel rewinds in place: reopening its path shows the
-  // shortened conversation, with the message back in the composer.
-  if (JsonValue(result, "forked", false) ||
-      JsonValue(result, "rewound", false)) {
+  // A fork opens in place of this conversation, an edited message back in
+  // the composer.
+  if (JsonValue(result, "forked", false)) {
     std::lock_guard lock(mutex_);
     next_ = JsonValue(result, "path", "");
     side_question_ = JsonValue(result, "side_question", "");

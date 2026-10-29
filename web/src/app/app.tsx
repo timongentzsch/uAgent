@@ -50,6 +50,7 @@ import type { FindRequest } from "../features/chat/find-bar.tsx";
 import { useMessageActions } from "./use-message-actions.ts";
 import Library from "../features/library/library.tsx";
 import Scheduled from "../features/scheduled/scheduled.tsx";
+import FolderOverview from "../features/overview/overview.tsx";
 import Pairing from "../features/pairing/pairing.tsx";
 import Files from "../features/files/files.tsx";
 import Spotlight, { ShortcutList } from "../features/search/spotlight.tsx";
@@ -70,7 +71,7 @@ if (typeof history !== "undefined") history.scrollRestoration = "manual";
 // its agent browses, whether any turn waits), so a streamed frame re-renders
 // the conversation (<ChatPage>), not the shell and its sidebar.
 const NO_SPACES: Space[] = [];
-type Page = "chat" | "library" | "scheduled";
+export type Page = "chat" | "library" | "scheduled" | "folder";
 // The page this tab showed, so a reload comes back to it.
 const keptPage = stored<Page>(
   storageKeys.page,
@@ -83,6 +84,8 @@ const keptPage = stored<Page>(
 function App() {
   const [page, setPage] = useState<Page>(keptPage.read);
   useEffect(() => keptPage.write(page), [page]);
+  // The folder or workspace whose overview the folder page shows.
+  const [place, setPlace] = useState("");
   // Which Library tab /memory or /skills asked for.
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
@@ -261,7 +264,7 @@ function App() {
     setModal,
     setBusy,
   });
-  const { startConversation, newPlace, startIn, openPanel, projects } = places;
+  const { startConversation, newPlace, startIn, projects } = places;
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
       host,
@@ -358,7 +361,7 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces);
+    const order = sessionOrder(listed, catalogue.spaces, online);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -427,6 +430,11 @@ function App() {
     setPage(value);
     setDrawer(false);
   }, []);
+  const overview = useCallback((cwd: string) => {
+    setPlace(cwd);
+    setPage("folder");
+    setDrawer(false);
+  }, []);
   const settings = useCallback(() => open({ type: "settings" }), [open]);
   const hostContext = useMemo(
     () => ({
@@ -485,7 +493,8 @@ function App() {
       settings={settings}
       create={newPlace}
       start={startIn}
-      openPanel={openPanel}
+      overview={overview}
+      shownPlace={page === "folder" ? place : ""}
       search={openSearch}
     />
   );
@@ -554,7 +563,6 @@ function App() {
                       session={session}
                       opening={opening}
                       booting={booting}
-                      placeName={places.placeName}
                       browserAvailable={browserAvailable}
                       terminal={
                         terminalAvailable
@@ -566,7 +574,6 @@ function App() {
                       parent={sessionById(catalogue.sessions, session?.parent)}
                       openDrawer={() => setDrawer(true)}
                       choose={choose}
-                      open={open}
                       settings={settings}
                       menu={conversationMenu}
                     />
@@ -592,6 +599,20 @@ function App() {
                         cwd={session?.cwd || projects[0] || ""}
                         online={online}
                         version={managementVersion}
+                      />
+                    )}
+                    {page === "folder" && (
+                      <FolderOverview
+                        key={place}
+                        folder={place}
+                        space={catalogue.spaces?.find(
+                          (item) => item.path === place,
+                        )}
+                        sessions={catalogue.sessions}
+                        choose={choose}
+                        start={(cwd: string, text: string) =>
+                          startConversation(cwd, "", text)
+                        }
                       />
                     )}
                     {page === "scheduled" && (
@@ -687,8 +708,8 @@ function App() {
                       void choose(id);
                       setFind({ session: id, words, sequence, at: Date.now() });
                     }}
-                    start={(cwd: string, panel?: boolean) =>
-                      void startConversation(cwd, panel).catch(report)
+                    start={(cwd: string) =>
+                      void startConversation(cwd).catch(report)
                     }
                     run={runCommand}
                     settings={(section: string) =>

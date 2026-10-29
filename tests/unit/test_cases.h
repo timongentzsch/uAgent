@@ -72,7 +72,6 @@ namespace uagent {
   X(TestConfigRegistryContract)                   \
   X(TestRuntimeConfigCoherence)                   \
   X(TestSavedHistoryInvalidation)                 \
-  X(TestArrivalsSurviveFactEviction)              \
   X(TestSavedTranscriptIndex)                     \
   X(TestSessionPersistence)                       \
   X(TestSessionCatalogueCache)                    \
@@ -127,7 +126,7 @@ namespace uagent {
   X(TestActivityDescriptorAndInputPolicy)         \
   X(TestActivityWaitAndDelivery)                  \
   X(TestThreadWorktreesGoOnlyWhenNothingIsLost)   \
-  X(TestPanelCountsItsOwnSpend)                   \
+  X(TestFolderOverviewText)                       \
   X(TestChildSessionsStayOutOfTheCatalogue)       \
   X(TestMailbox)                                  \
   X(TestSessionMail)                              \
@@ -156,7 +155,7 @@ namespace uagent {
   X(TestPermissionPolicy)                         \
   X(TestPermissionReview)                         \
   X(TestAttributedUsageAccumulator)               \
-  X(TestSharedPanelHelpers)                       \
+  X(TestHarnessNoteAndRepository)                 \
   X(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) \
   X(TestMailKeepsItsOriginBesideTheSameWords)     \
   X(TestAgentConfigAllowlist)                     \

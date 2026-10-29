@@ -320,7 +320,7 @@ def test_web_side_conversation_uses_tools_and_keeps_followups(root, home, *, bin
             )
 
 
-def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
+def test_web_side_conversation_keeps_its_conversations_tools(root, home, *, binary):
     offered = []
 
     def responder(_, body):
@@ -331,58 +331,56 @@ def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
                 not str(body["messages"][-1].get("content", "")).startswith("error:"),
                 body["messages"][-1],
             )
-            return event({"content": "SIDE-PANEL-DONE"})
+            return event({"content": "SIDE-DONE"})
         return tool_call(
             "agents",
             {"action": "read", "part": "search", "query": "state"},
-            call_id="side-panel-agents",
+            call_id="side-agents",
         )
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
-            panel = client.command("create", cwd=str(root), panel=True)["session"]
-            panel = client.command("activate", panel)["session"]
-            client.until(panel, lambda value: value["metadata"]["status"] == "idle")
-            client.command("tools", panel, operation="set", name="agent_send", active=False)
-            side_id = client.command("side", panel, operation="create")["result"]["id"]
+            main = client.command("create", cwd=str(root))["session"]
+            main = client.command("activate", main)["session"]
+            client.until(main, lambda value: value["metadata"]["status"] == "idle")
+            client.command("tools", main, operation="set", name="agent_send", active=False)
+            side_id = client.command("side", main, operation="create")["result"]["id"]
             side = client.command("activate", {"id": side_id, "generation": ""})["session"]
             client.until(side, lambda value: value["metadata"]["status"] == "idle")
-            client.command("submit", side, text="Check the panel state")
+            client.command("submit", side, text="Check the state")
             client.until(
                 side,
                 lambda value: (
-                    "SIDE-PANEL-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
+                    "SIDE-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
                 ),
             )
             assert_true(
                 {"decide", "agents", "artifact"} <= offered[0] and "agent_send" not in offered[0],
                 offered,
             )
-            assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)
 
 
-def test_web_orchestrator_can_share_an_artifact(root, home, *, binary):
-    report = b"<html><body>MODERATOR-REPORT</body></html>"
+def test_web_conversation_shares_an_artifact(root, home, *, binary):
+    report = b"<html><body>REPORT</body></html>"
     (root / "report.html").write_bytes(report)
     with Server(
         [tool_call("artifact", {"path": "report.html"}), event({"content": "REPORT-SHARED"})]
     ) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
-            panel = client.command("create", cwd=str(root), panel=True)["session"]
-            panel = client.command("activate", panel)["session"]
-            client.until(panel, lambda value: value["metadata"]["status"] == "idle")
-            client.command("submit", panel, text="Share the completed report")
+            main = client.command("create", cwd=str(root))["session"]
+            main = client.command("activate", main)["session"]
+            client.until(main, lambda value: value["metadata"]["status"] == "idle")
+            client.command("submit", main, text="Share the completed report")
             value = client.until(
-                panel,
+                main,
                 lambda value: (
                     "REPORT-SHARED" in json.dumps(value) and not value["metadata"]["turn_active"]
                 ),
             )
             names = {tool["function"]["name"] for tool in provider.requests[0][1].get("tools", [])}
             assert_true("artifact" in names, names)
-            assert_true(not {"write_file", "edit_file", "scratch"} & names, names)
             files = [
                 part
                 for node in value["state"]["view"]["nodes"]
@@ -390,7 +388,7 @@ def test_web_orchestrator_can_share_an_artifact(root, home, *, binary):
                 if part["kind"] == "file"
             ]
             assert_true([file["name"] for file in files] == ["report.html"], files)
-            url = f"/api/sessions/{panel['id']}/assets/{files[0]['id']}?download=1"
+            url = f"/api/sessions/{main['id']}/assets/{files[0]['id']}?download=1"
             status, body, headers = client.request(url)
             assert_true(status == 200 and body == report, (status, body))
             assert_true('filename="report.html"' in headers.get("Content-Disposition", ""), headers)

@@ -353,9 +353,6 @@ class ToolSelection {
 
 struct ToolPolicy {
   uint32_t allowed = kAllToolCapabilities;
-  // When set, only these tools, whatever the capabilities allow: a folder
-  // panel's.
-  std::vector<std::string> tool_allowlist;
   std::string error;
 };
 

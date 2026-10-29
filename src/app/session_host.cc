@@ -169,9 +169,10 @@ bool SessionHost::RefreshCatalogue(bool force) {
       continue;
     }
     session.cwd = item.cwd;
-    session.kind = item.kind;
     session.parent = item.parent;
     session.model = item.model;
+    session.cost = item.cost;
+    session.todo = item.todo;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
     // The catalogue stated the file already; its time is the one it read.
@@ -186,7 +187,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);
   }
-  // Gone from disk and not running: deleted by a panel or by hand.
+  // Gone from disk and not running: deleted by an agent or by hand.
   // Drafts have no file yet, and a session mid-command is the router's.
   for (auto it = sessions_.begin(); it != sessions_.end();) {
     const HostSession& session = *it->second;
@@ -286,15 +287,15 @@ bool SessionHost::Contains(const std::string& id) const {
 }
 
 json SessionHost::Metadata(const HostSession& session) const {
-  // Waiting on a person: a panel's routed decision is not. What it
-  // waits on is named from the decision in memory, for the inbox row.
+  // Waiting on a person: a decision routed to an agent's parent is not.
+  // What it waits on is named from the decision in memory, for the inbox
+  // row.
   const bool waits = WaitsOnPerson(session.pending);
   return {
       {"id", session.id},
       {"task_id", session.task_id},
       {"run_id", session.run_id},
       {"cwd", session.cwd},
-      {"kind", session.kind},
       {"parent", session.parent},
       {"model", session.model},
       {"title", session.title},
@@ -307,6 +308,11 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"turn_status", JsonValue(session.state, "turn_status", kIdleStatus)},
       {"phase", JsonValue(session.state, "phase", "idle")},
       {"activities", JsonValue(session.state, "activities", json::array())},
+      {"cost", JsonValue(JsonValue(session.state, "usage", json::object()),
+                         "cost", session.cost)},
+      {"todo", session.state.contains("todo")
+                   ? TodoProgress(JsonValue(session.state, "todo", json()))
+                   : session.todo},
       {"error", session.error},
       {"pending", waits},
       {"pending_kind", waits ? JsonValue(session.pending, "kind", "") : ""},

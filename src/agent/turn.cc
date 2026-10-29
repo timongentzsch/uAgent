@@ -168,7 +168,7 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 // Everything that happens before the model call: steering, a refreshed system
 // message, the budget gates, and the schemas this step is allowed to offer.
 Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
-  // Mail from its parent, children, panel or linked sessions arrives as
+  // Mail from its parent, children or their siblings arrives as
   // steering and is applied by the very next statement.
   DeliverMail();
   ApplyQueuedSteering(loop);

@@ -387,11 +387,6 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
     return;
   }
   std::erase_if(tools, [&](const Tool& tool) {
-    if (!policy.tool_allowlist.empty() &&
-        std::find(policy.tool_allowlist.begin(), policy.tool_allowlist.end(),
-                  tool.name) == policy.tool_allowlist.end()) {
-      return true;
-    }
     return (tool.capabilities & ~policy.allowed) != 0;
   });
 }

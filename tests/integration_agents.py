@@ -23,6 +23,7 @@ from integration_support import (
     wait_until,
 )
 from session_support import SessionClient, runtime_directory
+from web_support import web_host
 
 ASKS = re.compile(r"\[agent ([0-9a-f]{16}) .*? \(interaction ([^)]+)\)\]")
 
@@ -472,6 +473,25 @@ def test_agents_started_in_a_row_stop_at_three_and_depth_is_bounded(root, home, 
         assert_true(header(agent_files(home)[0])["agent"]["streak"] == 3, agent_files(home))
 
 
+def test_a_start_without_its_brief_is_turned_away_and_stops_the_turn(root, home, *, binary):
+    """A start missing its brief never reaches the tool: each time the model
+    is told what it needs and what its call carried, and the third such round
+    ends the turn, which then answers from what it has."""
+    responses = [tool_call("agent_start", {}) for _ in range(3)]
+    responses.append(event({"content": "answered-after-the-loop"}))
+    with Server(responses) as server:
+        result = run(root, base_env(home, server.url), "-p", "delegate", binary=binary)
+        assert_true("answered-after-the-loop" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
+        told = "`brief` is required; this call carried nothing"
+        messages = server.requests[-1][1]["messages"]
+        results = tool_results(messages)
+        assert_true(len(results) == 3 and all(told in text for text in results), results)
+        stop = "model repeated an equivalent rejected agent_start call 3 times: " + told
+        assert_true(stop in json.dumps(messages, ensure_ascii=False), messages[-1])
+        assert_true(not agent_files(home), agent_files(home))
+
+
 def test_escape_stops_the_agents_a_call_waits_for(root, home, *, binary):
     state = {"started": threading.Event(), "stopped": threading.Event()}
 
@@ -484,27 +504,23 @@ def test_escape_stops_the_agents_a_call_waits_for(root, home, *, binary):
             return tool_call("agent_start", {"brief": "BRIEF slow"})
         return event({"content": "parent after"})
 
-    with Server([route]) as server:
-        # The folder's lead agent waits in a runtime a person can interrupt.
-        process = popen(binary, root, base_env(home, server.url), "panel", "-p", "wait")
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.command("activate", web.command("create", cwd=str(root))["session"])
+        session = session["session"]
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
         try:
+            web.command("submit", session, text="wait")
             assert_true(state["started"].wait(budget(20)), "the agent never started")
-            panel = next((home / ".uagent" / "history").glob("*/panel.json"))
-            client = SessionClient(socket_of(home, panel))
-            try:
-                client.send("interrupt")
-            finally:
-                client.close()
+            web.command("interrupt", session)
             agent = agent_files(home)[0]
             # Interrupted, its turn ends and its runtime with it, long before
             # its model answers.
             wait_until(
                 lambda: not socket_of(home, agent).exists(), "the agent kept running", timeout=10
             )
-            process.communicate(timeout=budget(20))
         finally:
             state["stopped"].set()
-            process.kill()
 
 
 def test_deleting_an_agent_needs_the_person(root, home, *, binary):

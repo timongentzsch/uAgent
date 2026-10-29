@@ -16,12 +16,8 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   const workspaces = page.getByRole("group", { name: "Workspaces" });
   const folders = page.getByRole("group", { name: "Folders" });
   await expect(workspaces.getByRole("heading")).toContainText("Trip to Rome");
-  // Opening a workspace opens its lead agent, which is the place's header
-  // rather than a row under it.
-  await expect(
-    page.getByRole("heading", { name: "Lead · Trip to Rome" }),
-  ).toBeVisible();
-  await expect(workspaces.locator(".session")).toHaveCount(0);
+  // Opening a workspace starts a conversation in it.
+  await expect(workspaces.locator(".session")).toHaveCount(1);
   await expect(folders.locator(".session")).toHaveCount(1);
 
   // Renamed, it is the same place with the same conversation in it.
@@ -32,9 +28,7 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
   await page.getByLabel("Workspace name").fill("Rome 2027");
   await page.getByRole("button", { name: "Save name" }).click();
   await expect(workspaces.getByRole("heading")).toContainText("Rome 2027");
-  await expect(
-    page.getByRole("heading", { name: "Lead · Rome 2027" }),
-  ).toBeVisible();
+  await expect(workspaces.locator(".session")).toHaveCount(1);
 
   // Deleting says what goes with it, and leaves the folder's alone.
   await workspaces

@@ -17,14 +17,12 @@ import {
 import { ProjectField } from "../../shared/project-field.tsx";
 import "./instructions.css";
 
-// The instruction files a conversation or lead agent reads at start (yours
-// and the folder's), shown in reading order and edited in place.
+// The instruction files a conversation reads at start (yours and the
+// folder's), shown in reading order and edited in place.
 
 const TITLES: Record<string, string> = {
-  "sessions/user": "Yours · every conversation",
-  "sessions/project": "Folder · every conversation",
-  "panel/user": "Yours · lead agent",
-  "panel/project": "Folder · lead agent",
+  user: "Yours · every conversation",
+  project: "Folder · every conversation",
 };
 
 // Everything a session reads before your first message, top to bottom in the
@@ -91,16 +89,13 @@ export default function Instructions({
       ) : (
         <Placeholder label="Loading instructions…" when={!stack}>
           <>
-            <Base text={stack?.base.sessions} label="Built-in base" />
-            {files.filter((file) => file.audience === "sessions").map(card)}
+            <Base text={stack?.base} label="Built-in base" />
+            {files.map(card)}
             {!!stack?.also_loaded.length && (
               <p class="muted instructions-also">
                 Also read here: {stack.also_loaded.join(", ")}
               </p>
             )}
-            <h3>Lead agent</h3>
-            <Base text={stack?.base.panel} label="Built-in lead agent base" />
-            {files.filter((file) => file.audience === "panel").map(card)}
           </>
         </Placeholder>
       )}
@@ -151,7 +146,6 @@ function InstructionCard({
       const value = await command("instructions", null, {
         action: "set",
         cwd,
-        audience: file.audience,
         scope: file.scope,
         text,
         base: draft?.base ?? file.text,
@@ -164,7 +158,7 @@ function InstructionCard({
     // Save leaves with the edit; focus stays in the field, not the page.
     field.current?.focus();
   }
-  const title = TITLES[`${file.audience}/${file.scope}`];
+  const title = TITLES[file.scope];
   return (
     <section class="instruction-card">
       <header>

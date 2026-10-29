@@ -18,7 +18,6 @@ import { Welcome, Button, Actions } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
-import WaitingList from "../shared/escalations.tsx";
 import Chat, { prepareHistoryNodes } from "../features/chat/chat.tsx";
 import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
@@ -298,14 +297,6 @@ export default function ChatPage({
           close={closeSide}
         />
       )}
-      {session?.kind === "panel" && (
-        <WaitingList
-          sessions={catalogue.sessions}
-          folder={shown.cwd || ""}
-          paused={snapshot?.state?.paused}
-          choose={choose}
-        />
-      )}
       {composerFor(shown)}
     </SideLayout>
   ) : (
@@ -314,8 +305,8 @@ export default function ChatPage({
       title="What are we working on?"
       tips={[
         [
-          "Lead agent",
-          "Plans the work in a workspace or folder and starts agents for it. A place’s name in the list opens its lead agent.",
+          "Folders",
+          "A folder’s name in the list opens its overview: what works, what needs you, spend and changes.",
         ],
         [
           <kbd>{keysOf("search").join(" ")}</kbd>,

@@ -106,11 +106,6 @@ class Agent {
   // lives in ui/; the agent only supplies facts.
   const Conversation& History() const { return conversation_; }
   json DisplaySnapshot() const;
-  // Rewinds this conversation in place to just before a user message (by
-  // `turn`, or by its "m-<id>"), returning {prompt} with that message's text,
-  // or {error}. Bumps ViewEpoch: holders of the old view must replace it.
-  json RewindBefore(int64_t turn, const std::string& message_id);
-  uint64_t ViewEpoch() const { return view_epoch_; }
   // /btw forks a resumable side conversation from a checkpoint captured on
   // the turn thread; safe beside a running turn.
   json SideConversation(const std::string& source,
@@ -122,16 +117,11 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
-  // Panel or agent role ({kind} or {agent}), saved in the session header.
+  // An agent's role ({agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
   // Bills every response under this purpose instead of the conversation.
   void SetUsagePurpose(std::string purpose) {
     usage_purpose_ = std::move(purpose);
-  }
-  // Extra context rebuilt for every model request (a panel's clock and
-  // board): appended to the request, never stored.
-  void SetRuntimeContext(std::function<std::string()> extra) {
-    runtime_context_ = std::move(extra);
   }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
@@ -205,9 +195,8 @@ class Agent {
   // Takes this session's pending mail (core/mailbox.h) that session_links.h
   // allows into the conversation, each message as an arrival (below): an idle
   // session starts a turn on it, a working one reads it at its next step. Mail
-  // has no kinds, so every message wakes. With `hold`, all of it stays
-  // pending. True when anything was taken.
-  bool DeliverMail(bool hold = false);
+  // has no kinds, so every message wakes. True when anything was taken.
+  bool DeliverMail();
   // The same, taken as a turn: an idle session starts one on it, a working
   // one reads it at its next step. A turn it starts sends mail with `hops`.
   void Arrive(const std::string& text, const std::string& mail = "",
@@ -411,9 +400,8 @@ class Agent {
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.
   void EnsureRuntimeContext();
-  // What every request carries beyond the stored conversation: a panel's
-  // context (SetRuntimeContext), then the to-do list while it has items; empty
-  // when there is neither.
+  // What every request carries beyond the stored conversation: the to-do
+  // list while it has items, else nothing.
   std::string RequestContext() const;
   json WithRequestContext(json messages, std::string context) const;
 
@@ -510,8 +498,6 @@ class Agent {
   std::vector<std::string> arriving_mail_;
   json delivered_mail_ = json::array();
   EditJournal edits_;
-  uint64_t view_epoch_ = 0;
-  std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

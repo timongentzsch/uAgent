@@ -37,12 +37,9 @@ struct Options {
   std::string prompt;
   std::string control;
   std::vector<std::string> attach_paths;
-  // Session role from the runtime launch: {kind} for a folder's panel,
-  // {agent} for an agent (session_role.h), empty for an ordinary session.
+  // Session role from the runtime launch: {agent} for an agent
+  // (session_role.h), empty for an ordinary session.
   uagent::json session = uagent::json::object();
-  bool Panel() const {
-    return JsonValue(session, "kind", "") == kSessionKindPanel;
-  }
   uagent::json AgentRole() const { return AgentOf(session); }
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.

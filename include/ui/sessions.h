@@ -57,9 +57,8 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
   return UniqueSession(sessions, [&](const SessionInfo& session) {
     const std::string name =
         std::filesystem::path(session.path).filename().string();
-    return session.kind != kSessionKindPanel &&  // `uagent panel`
-           (AsciiLower(name).find(arg) != std::string::npos ||
-            AsciiLower(session.title).find(arg) != std::string::npos);
+    return AsciiLower(name).find(arg) != std::string::npos ||
+           AsciiLower(session.title).find(arg) != std::string::npos;
   });
 }
 

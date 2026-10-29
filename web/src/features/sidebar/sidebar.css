@@ -30,7 +30,7 @@
 .list-group + .list-group {
   margin-top: var(--space-6);
 }
-/* A place's header: fold it, its name (which opens its panel), start a
+/* A place's header: fold it, its name (which opens its overview), start a
    conversation in it, its menu. */
 .place-head {
   display: flex;
@@ -76,11 +76,20 @@
 .place-body {
   padding-left: var(--indent);
 }
-/* What the panel started, then the place's own conversations. */
-.place-rule {
-  margin: var(--space-2) var(--space-4);
-  border: 0;
-  border-top: var(--border);
+/* A conversation's agents, beneath it; the finished ones fold into one
+   line. */
+.place-agents {
+  padding-left: var(--indent);
+}
+.agents-fold {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  color: var(--muted);
+}
+.agents-fold > svg {
+  width: var(--icon-s);
+  height: var(--icon-s);
 }
 /* Every folder's waiting decisions, above the list. */
 .needs-you > button {

@@ -243,17 +243,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
       return result;
     }
     const std::filesystem::path& cwd = *resolved;
-    // A folder has one panel: asking for it again returns it.
-    const bool panel = JsonValue(command, "panel", false);
-    auto path = panel ? PanelPath(cwd.string())
-                      : HistoryPath(cwd.string(), "web-" + RandomToken(16));
-    if (auto known = sessions_.find(SessionIdFor(path));
-        known != sessions_.end()) {
-      result.outcome["session"] = Metadata(*known->second);
-      return result;
-    }
-    auto session = CreateSession(cwd.string(), path, "", result.error);
-    if (session && panel) session->kind = kSessionKindPanel;
+    auto session = CreateSession(
+        cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16)), "",
+        result.error);
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);

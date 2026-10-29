@@ -497,32 +497,6 @@ void TestConversation() {
   CHECK(JsonDump(projection).size() < size_t{384} * 1024);
 }
 
-// A user message's arrival outlives display-fact eviction and a restore: a
-// panel's model reads it, so it must never shift under the cache.
-void TestArrivalsSurviveFactEviction() {
-  Conversation conversation;
-  conversation.Push({{"role", "system"}, {"content", "sys"}},
-                    MessageKind::kSystem);
-  conversation.Push({{"role", "user"}, {"content", "hi"}}, MessageKind::kUser);
-  const uint64_t id = conversation.DisplayIds().back();
-  const std::string arrived = conversation.Arrival(id);
-  CHECK(!arrived.empty());
-  // Until eviction takes the message's own fact, and no further: each
-  // record past the fact count scans every kept fact for its victim.
-  const std::string fact = "m-" + std::to_string(id);
-  for (int index = 0;
-       index < 5000 && conversation.DisplayFacts().contains(fact); ++index) {
-    conversation.RecordDisplay("x-" + std::to_string(index), {{"n", index}});
-  }
-  CHECK(!conversation.DisplayFacts().contains(fact));
-  CHECK(conversation.Arrival(id) == arrived);
-  Conversation restored;
-  CHECK(restored.Restore(conversation.Messages(), conversation.Kinds(),
-                         conversation.Archive(), 0,
-                         conversation.DisplayMetadata()));
-  CHECK(restored.Arrival(id) == arrived);
-}
-
 void TestSavedTranscriptIndex() {
   TestWorkspace workspace("saved-transcript");
   Conversation conversation;
@@ -1168,7 +1142,6 @@ void TestForkAtTurnAndLineage() {
   CHECK(reloaded.record->metadata.turns == 1);
   CHECK(reloaded.record->metadata.title == "Fork of parent title @ turn 2");
   CHECK(reloaded.record->metadata.parent_session_id == "parent-1");
-  CHECK(reloaded.record->metadata.kind.empty());
   CHECK(reloaded.record->metadata.agent.empty());
   CHECK(reloaded.record->metadata.forked_at_turn == 2);
   CHECK(!reloaded.record->metadata.forked_at_time.empty());

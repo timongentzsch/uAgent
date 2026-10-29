@@ -112,8 +112,8 @@ export default function Spotlight({
   choose: (id: string) => void;
   // Opens a conversation at a row, with its find bar on the words.
   find: (id: string, words: string, sequence: number) => void;
-  // A new conversation in a folder, or the folder's lead agent.
-  start: (cwd: string, panel?: boolean) => void;
+  // A new conversation in a folder.
+  start: (cwd: string) => void;
   // A slash command, as if typed in the composer.
   run: (command: SlashCommand) => void;
   settings: (scope: Scope) => void;
@@ -155,9 +155,7 @@ export default function Spotlight({
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
   const name = (item?: Session, title = "") =>
-    item?.kind === "panel"
-      ? `Lead · ${folderName(item.cwd)}`
-      : item?.title || title || "New conversation";
+    item?.title || title || "New conversation";
   const conversation = (item: Session, group: string): Row => ({
     key: `session:${item.id}`,
     group,
@@ -166,33 +164,16 @@ export default function Spotlight({
     detail: folderName(folderOf(item)),
     run: () => choose(item.id),
   });
-  const folders: Row[] = [
-    ...new Set(recent.map(folderOf).filter(Boolean)),
-  ].flatMap((folder) => [
-    {
+  const folders: Row[] = [...new Set(recent.map(folderOf).filter(Boolean))].map(
+    (folder) => ({
       key: `folder:${folder}`,
       group: "Conversations",
       kind: "action" as const,
       label: `New conversation in ${folderName(folder)}`,
       detail: "Folder",
       run: () => start(folder),
-    },
-    // One that exists is listed among the conversations.
-    ...(recent.some(
-      (item) => item.kind === "panel" && folderOf(item) === folder,
-    )
-      ? []
-      : [
-          {
-            key: `panel:${folder}`,
-            group: "Conversations",
-            kind: "action" as const,
-            label: `Lead · ${folderName(folder)}`,
-            detail: "Folder",
-            run: () => start(folder, true),
-          },
-        ]),
-  ]);
+    }),
+  );
   const shortcuts: Row[] = SHORTCUTS.filter((item) => actions[item.id]).map(
     (item) => ({
       key: `action:${item.id}`,

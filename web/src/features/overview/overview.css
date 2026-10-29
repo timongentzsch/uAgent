@@ -1,0 +1,128 @@
+/* A folder's overview: one scrolling column in the conversation's place. */
+.overview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--inset-x);
+}
+.overview-head h2,
+.overview-head p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.overview-start {
+  display: flex;
+  gap: var(--gap);
+}
+.overview-start input {
+  flex: 1;
+  min-width: 0;
+}
+/* The summary: five figures in a row, two to a row on a phone. */
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--pane-s), 1fr));
+  margin: 0;
+  padding: 0;
+}
+.overview-stats > .overview-stat {
+  border-top: 0;
+  border-left: var(--border);
+}
+.overview-stat {
+  padding: var(--space-3) var(--space-4);
+}
+.overview-stat dd {
+  display: grid;
+  margin: 0;
+}
+.overview-stat strong {
+  font-size: var(--font-title);
+}
+.overview-section {
+  display: grid;
+  gap: var(--space-3);
+}
+.overview-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.overview-caption .section-title {
+  flex: 1;
+  margin: 0;
+}
+.overview-grid,
+.overview-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--pane), 1fr));
+  gap: var(--space-4);
+}
+/* One conversation: title and state, its step, its to-do, then its agents,
+   time and cost. A card on the grid, a row in the list. */
+.overview-card {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  align-content: start;
+  justify-items: stretch;
+  text-align: left;
+}
+.overview-card[data-state="waiting"].card {
+  border-color: var(--accent);
+}
+.overview-title,
+.overview-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.overview-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-strong);
+}
+.overview-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+.overview-state > svg {
+  width: var(--icon-s);
+  height: var(--icon-s);
+}
+.overview-card[data-state="waiting"] .overview-state {
+  color: var(--accent);
+}
+.overview-step {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-todo {
+  display: grid;
+  gap: var(--space-1);
+}
+.overview-todo > :last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-todo progress {
+  width: 100%;
+  height: var(--space-2);
+  accent-color: var(--text);
+}

@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "include/app/launch.h"
-#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/cli/cli.h"
 #include "include/core/detail.h"
@@ -318,9 +317,7 @@ void Welcome() {
   fputs(AsciiGlyphs("Welcome to µAgent. Try \"explain this repository\", "
                     "\"fix the failing test\" or /help.\n"
                     "Enter sends · Esc stops a turn · / lists commands · "
-                    "/undo puts back the last turn's file changes\n"
-                    "uagent panel opens a folder's panel, which runs "
-                    "several conversations.\n")
+                    "/undo puts back the last turn's file changes\n")
             .c_str(),
         stdout);
 }
@@ -329,9 +326,7 @@ void Welcome() {
 int TerminalMain(Options options) {
   Welcome();
   std::string path;
-  if (options.Panel()) {
-    path = PanelPath(CanonicalCwd());
-  } else if (options.resume_pick) {
+  if (options.resume_pick) {
     path = PickSession();
   } else if (options.resume_latest) {
     auto sessions = ListSessions();
@@ -342,8 +337,7 @@ int TerminalMain(Options options) {
   const DetailLevel* detail = &ConfiguredDetail(options.overrides);
   TerminalInputDecoder keys;
   for (;;) {
-    // A saved session reopens in its own folder; so does a panel
-    // reached from a session in another directory.
+    // A saved session reopens in its own folder.
     std::string cwd = JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
       path = HistoryPath(cwd, MakeSessionId());
@@ -354,18 +348,6 @@ int TerminalMain(Options options) {
       fprintf(stderr, "%s\n", error.c_str());
       return 1;
     }
-    const bool panel = path == PanelPath(cwd);
-    if (panel) {
-      const std::string board = PanelBoard(cwd);
-      printf("%s", TerminalSafe(board).c_str());
-      // Nothing to manage yet: what it is for, as the web's empty chat says.
-      if (SessionsBeside(path).empty()) {
-        fputs(AsciiGlyphs("\nAsk for work or a question, and it starts agents "
-                          "for it.\n")
-                  .c_str(),
-              stdout);
-      }
-    }
     Terminal terminal(std::move(connection), path, *detail, pinned, keys,
                       draft);
     if (!side_question.empty()) terminal.Ask(side_question);
@@ -373,7 +355,7 @@ int TerminalMain(Options options) {
     draft = terminal.Carry();
     side_question = terminal.SideQuestion();
     detail = &terminal.Detail();
-    // The same session again is drawn anew, e.g. a panel rewound in place.
+    // The same session again is drawn anew.
     const bool redrawn = terminal.Next() == path;
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
@@ -384,12 +366,10 @@ int TerminalMain(Options options) {
       fputs(Note(Tone::kNeutral, still.empty() ? "restarted" : still).c_str(),
             stdout);
     } else if (terminal.Next() == "/reset") {
-      // The folder has one panel; its reset keeps the same file.
-      if (!panel) path.clear();
+      path.clear();
     } else {
       if (redrawn) fputs(ClearScreen(), stdout);
       path = terminal.Next();
-      if (!terminal.NextFolder().empty()) folder = terminal.NextFolder();
     }
   }
 }

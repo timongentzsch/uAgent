@@ -11,7 +11,6 @@ import { emptyDraft } from "../state/store.ts";
 import { command, requestId } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import { outgoingStatus } from "../shared/message-view.ts";
-import { folderOf } from "../shared/display.ts";
 import { restartConversation, shareTranscript } from "./menus.tsx";
 import { parseSlash } from "../features/composer/slash.ts";
 import { focusComposer } from "../shared/navigation.ts";
@@ -19,7 +18,7 @@ import { focusComposer } from "../shared/navigation.ts";
 // Runs what the composer and the command palette send: the shell calls this
 // with its state and gets back submit, guidance and slash-command handlers.
 
-type Page = "chat" | "library" | "scheduled";
+import type { Page } from "./app.tsx";
 
 // What the composer sends and the palette runs: a message, guidance for the
 // running turn, or a slash command, run here when it has a screen or acts
@@ -62,8 +61,8 @@ export function useCommands({
   choose: (id: string) => Promise<void>;
   startConversation: (
     folder: string,
-    panel?: boolean,
     space?: string,
+    text?: string,
   ) => Promise<string | undefined>;
   setModal: (modal: AppModal | null) => void;
   open: (modal: AppModal) => void;
@@ -120,20 +119,13 @@ export function useCommands({
   ) {
     const result = await command("fork", target, fields);
     if (result.pending) return;
-    const { id, prompt, rewound } = result.result;
-    if (!rewound) {
-      await refresh();
-      await choose(id);
-      await command("activate", { id, generation: "" });
-    }
+    const { id, prompt } = result.result;
+    await refresh();
+    await choose(id);
+    await command("activate", { id, generation: "" });
     await load(id);
     if (edit && prompt) setDraft({ text: prompt, files: [] }, id);
-    if (edit)
-      setNotice(
-        rewound
-          ? "The lead agent rewound to this message; edit and send."
-          : "Continuing in a fork. Files on disk are unchanged.",
-      );
+    if (edit) setNotice("Continuing in a fork. Files on disk are unchanged.");
   }
   async function localCommand(text: string) {
     const { name, argument, clientOnly } = parseSlash(
@@ -142,8 +134,6 @@ export function useCommands({
     );
     if (!argument && screens[name]) screens[name]();
     else if (name === "/reset") await startConversation(session!.cwd!);
-    else if (name === "/panel")
-      await startConversation(folderOf(session!), true);
     else if (name === "/detail") {
       if (!levels.includes(argument))
         throw new Error(`Use /detail ${levels.join("|")}`);

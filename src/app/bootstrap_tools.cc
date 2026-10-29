@@ -13,7 +13,6 @@
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
 #include "include/app/config_proposal.h"
-#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/app/uagent_tool.h"
 #include "include/browser/browser.h"
@@ -143,28 +142,14 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
 #endif
   // An agent's MCP servers are its first ancestor's: each agent starting
-  // its own fleet would multiply them. A panel may call none of their tools,
-  // so it starts none of them.
-  if (!context.options.Panel() && AgentDepth() == 0) {
+  // its own fleet would multiply them.
+  if (AgentDepth() == 0) {
     error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
     if (!error.empty()) return {};
   }
   AddAgentTools(tools, api, [app = &context] {
     return ChosenSelection(app->runtime.api, app->provider.providers);
   });
-  if (context.options.Panel()) AdaptPanelTools(tools);
-  // A lead agent's side conversation runs in the ordinary sandbox, so a
-  // lead agent's read-only commands do not come with it.
-  if (!context.options.Panel() && !session_path.empty()) {
-    const auto loaded = SessionStore::Inspect(session_path);
-    if (loaded.record &&
-        JsonValue(JsonValue(JsonValue(loaded.record->state.display, "facts",
-                                      json::object()),
-                            "side-origin", json::object()),
-                  "parent", "") == SessionIdFor(PanelPath(CanonicalCwd()))) {
-      std::erase_if(tools, [](const Tool& tool) { return tool.name == "run"; });
-    }
-  }
   ApplyToolPolicy(tools, context.tool_policy);
   // An agent that may not edit has no tool that edits, whatever its
   // conversation's settings allow; its commands only read (session_worker.cc).

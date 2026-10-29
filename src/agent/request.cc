@@ -260,8 +260,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     }
   }
   const json* chosen = projected.is_null() ? &source : &projected;
-  // The to-do list and a panel's board and clock change between requests, so
-  // they ride on the request's tail and never enter the stored conversation:
+  // The to-do list changes between requests, so it rides on the request's
+  // tail and never enter the stored conversation:
   // rewriting history there would move display rows and spoil the cached
   // prefix.
   json tailed;
@@ -692,9 +692,8 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 }
 
 std::string Agent::PromptBase() const {
-  const bool panel = JsonValue(session_role_, "kind", "") == kSessionKindPanel;
-  return ApplyPromptOverlay(panel ? PanelPromptBase() : SystemPromptBase(),
-                            PromptOverlay(nullptr), nullptr) +
+  return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
+                            nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
 
@@ -783,63 +782,18 @@ std::string Agent::RuntimeContextText() const {
   return content + "\n[end of harness context]";
 }
 
-namespace {
-// "[Tue 29 Sep 08:54 CEST] " for a recorded UTC time, in the host's zone.
-std::string ArrivalStamp(const std::string& utc, std::time_t& seconds) {
-  std::tm parsed{};
-  if (!strptime(utc.c_str(), "%Y-%m-%dT%H:%M:%SZ", &parsed)) return "";
-  seconds = timegm(&parsed);
-  return LocalTime(seconds, "[%a %d %b %H:%M %Z] ");
-}
-
-void Prefix(json& message, const std::string& text) {
-  json& content = message["content"];
-  if (content.is_string()) {
-    content = text + content.get<std::string>();
-  } else if (content.is_array()) {
-    content.insert(content.begin(), {{"type", "text"}, {"text", text}});
-  }
-}
-}  // namespace
-
 std::string Agent::RequestContext() const {
-  std::string context = runtime_context_ ? runtime_context_() : "";
-  if (const json todo = Todo(); !todo.empty()) {
-    if (!context.empty()) context += '\n';
-    context +=
-        "[your to-do list; kept with this conversation, the todo tool "
-        "replaces it]\n" +
-        TodoText(todo);
-  }
-  return context;
+  const json todo = Todo();
+  return todo.empty() ? ""
+                      : "[your to-do list; kept with this conversation, the "
+                        "todo tool replaces it]\n" +
+                            TodoText(todo);
 }
 
-// What the model reads beyond the stored conversation: on a panel, each user
-// message's recorded arrival time (and a line after an hour of silence, which
-// usually means a new topic); then `context`, rebuilt for this request.
-// Everything is derived from stored facts, so earlier messages read the same
-// on every request and the cached prefix holds; the text people typed is
-// never rewritten.
+// What the model reads beyond the stored conversation: `context`, rebuilt
+// for this request, after the stored messages, which are never rewritten,
+// so the cached prefix holds.
 json Agent::WithRequestContext(json messages, std::string context) const {
-  const auto& ids = conversation_.DisplayIds();
-  const auto& kinds = conversation_.Kinds();
-  if (runtime_context_ && messages.size() == ids.size()) {
-    std::time_t previous = 0;
-    for (size_t index = 0; index < messages.size(); ++index) {
-      if (kinds[index] != MessageKind::kUser) continue;
-      std::time_t seconds = 0;
-      std::string stamp =
-          ArrivalStamp(conversation_.Arrival(ids[index]), seconds);
-      if (stamp.empty()) continue;
-      if (previous && seconds - previous >= kSecondsPerHour) {
-        stamp = "\u2014 " +
-                std::to_string((seconds - previous) / kSecondsPerHour) +
-                " h since the last message \u2014\n" + stamp;
-      }
-      previous = seconds;
-      Prefix(messages[index], stamp);
-    }
-  }
   // The context below changes every request, so automatic caching's moving
   // breakpoint would land on it and never read the stored history back: end
   // the cached prefix on the last stored message instead.

@@ -77,24 +77,6 @@ void Agent::Arrive(const std::string& text, const std::string& mail, int hops) {
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
-json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
-  if (!message_id.empty()) {
-    uint64_t display_id = 0;
-    if (message_id.starts_with("m-")) {
-      std::from_chars(message_id.data() + 2,
-                      message_id.data() + message_id.size(), display_id);
-    }
-    turn = display_id ? conversation_.UserMessageNumber(display_id) : 0;
-  }
-  const std::string prompt = conversation_.UserMessageText(turn);
-  if (!conversation_.TruncateBeforeUserTurn(turn)) {
-    return {{"error", "that message is no longer in the live conversation"}};
-  }
-  ++revision_;
-  ++view_epoch_;
-  return {{"prompt", prompt}};
-}
-
 void Agent::PublishSideContext() {
   auto checkpoint = std::make_shared<SideCheckpoint>();
   checkpoint->record = Snapshot();
@@ -425,7 +407,6 @@ SessionRecord Agent::Snapshot() const {
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
                      .agent = AgentOf(session_role_),
-                     .kind = JsonValue(session_role_, "kind", ""),
                      .memory = api_.config.memory_enabled};
   record.state = {.context_tokens = ContextUsed(),
                   .context_window = api_.ctx_window,

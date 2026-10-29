@@ -355,9 +355,7 @@ function Composer({
               ? "Decide above to continue"
               : running
                 ? "Add guidance… (Esc to stop)"
-                : session.kind === "panel"
-                  ? "Ask the lead agent…"
-                  : "Ask µAgent…"
+                : "Ask µAgent…"
           }
           value={draft.text}
           onInput={(event) => {

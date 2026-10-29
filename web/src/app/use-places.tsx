@@ -9,14 +9,12 @@ import type {
   Space,
 } from "../shared/types.ts";
 import { command } from "../state/api.ts";
-import { folderName } from "../shared/folder-label.tsx";
 import { folderOf } from "../shared/display.ts";
 import { SpaceMenu } from "./menus.tsx";
 import { collapsed } from "../features/sidebar/folding.ts";
 
 // The places conversations start in: workspaces by name and folders by
-// path, the New dialog that asks for one, and starting a conversation or a
-// panel there.
+// path, the New dialog that asks for one, and starting a conversation there.
 export function usePlaces({
   catalogue,
   upsertSession,
@@ -40,8 +38,7 @@ export function usePlaces({
 }) {
   const [folder, setFolder] = useState("");
   const [space, setSpace] = useState("");
-  // A workspace typed into the dialog opens its lead agent; a folder, a new
-  // conversation.
+  // A workspace typed into the dialog, or a folder, starts a conversation.
   async function create(event: TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -50,7 +47,6 @@ export function usePlaces({
       const workspace = modal?.type === "new" && modal.place === "workspace";
       await startConversation(
         workspace ? "" : folder,
-        workspace,
         workspace ? space.trim() : "",
       );
       setModal(null);
@@ -60,19 +56,20 @@ export function usePlaces({
       setBusy(false);
     }
   }
-  // The host returns a folder's existing panel rather than a second.
   // One start at a time: a double click must not race two activations.
+  // With `text`, its first message is sent.
   const starting = useRef(false);
   const startConversation = useCallback(
-    async (folder: string, panel = false, space = "") => {
+    async (folder: string, space = "", text = "") => {
       if (starting.current) return;
       starting.current = true;
       try {
         // A workspace is asked for by its name; the host keeps its folder.
-        const created = await command("create", null, {
-          ...(space ? { space } : { cwd: folder }),
-          panel,
-        });
+        const created = await command(
+          "create",
+          null,
+          space ? { space } : { cwd: folder },
+        );
         if (created.pending) return "";
         upsertSession(created.session);
         // The new conversation is not behind a fold.
@@ -82,6 +79,7 @@ export function usePlaces({
         try {
           if (created.session.presence !== "active")
             await command("activate", created.session);
+          if (text) await command("submit", created.session, { text });
         } finally {
           await choose(created.session.id);
         }
@@ -102,16 +100,8 @@ export function usePlaces({
     },
     [open],
   );
-  // A workspace by the name it goes by, a folder by the end of its path.
-  const placeName = (path = "") =>
-    catalogue.spaces?.find((item) => item.path === path)?.name ||
-    folderName(path);
   const startIn = useCallback(
     (cwd: string) => startConversation(cwd).catch(report),
-    [startConversation, report],
-  );
-  const openPanel = useCallback(
-    (cwd: string) => startConversation(cwd, true).catch(report),
     [startConversation, report],
   );
   const projects = useMemo(
@@ -138,9 +128,7 @@ export function usePlaces({
     create,
     startConversation,
     newPlace,
-    placeName,
     startIn,
-    openPanel,
     projects,
     spaceMenu,
   };

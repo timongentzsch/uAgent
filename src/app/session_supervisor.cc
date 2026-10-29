@@ -37,17 +37,13 @@ SessionStatus LiveStatus(const HostSession& session) {
 
 // Sets next["view"]: the held view merged with what the worker sent.
 // Returns the patches of the nodes that changed, or null when a browser
-// holding the view must take all of it: a new view epoch, or a field of the
+// holding the view must take all of it: the first view, or a field of the
 // view that changed other than by rows bounded out (a browser keeps those as
 // older pages).
 json MergeView(HostSession& session, json& next) {
-  // A rewound conversation starts a new view epoch: its old nodes are
-  // gone, so the checkpoint replaces the view instead of merging into it.
   json view = json::object();
   auto held = session.state.find("view");
-  const bool same = held != session.state.end() &&
-                    JsonValue(next, "view_epoch", uint64_t{0}) ==
-                        JsonValue(session.state, "view_epoch", uint64_t{0});
+  const bool same = held != session.state.end();
   if (same) view = std::move(*held);
   json fields = json::object();
   for (auto it = view.begin(); it != view.end(); ++it) {

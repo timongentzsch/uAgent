@@ -33,25 +33,20 @@ json ManagementControl(const json& request) {
     // A person edits these directly; an agent asks through uagent.
     const std::string cwd = CanonicalCwd();
     if (JsonValue(request, "action", "show") == "set") {
-      bool panel = false, project = false;
-      if (!ParseInstructionTarget(JsonValue(request, "audience", ""),
-                                  JsonValue(request, "scope", ""), panel,
-                                  project)) {
-        return {{"error",
-                 "audience is sessions or panel, scope user "
-                 "or project"}};
+      bool project = false;
+      if (!ParseInstructionScope(JsonValue(request, "scope", ""), project)) {
+        return {{"error", "scope is user or project"}};
       }
       std::optional<std::string> base;
       if (const std::string* text = JsonStringRef(request, "base")) {
         base = *text;
       }
       const std::string error = WriteInstructionFile(
-          panel, project, cwd, JsonValue(request, "text", ""), base);
+          project, cwd, JsonValue(request, "text", ""), base);
       if (!error.empty()) return {{"error", error}};
     }
     json shown = InstructionFiles(cwd);
-    shown["base"] = {{"sessions", SystemPromptBase()},
-                     {"panel", PanelPromptBase()}};
+    shown["base"] = SystemPromptBase();
     return shown;
   }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));

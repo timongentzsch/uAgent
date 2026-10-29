@@ -21,6 +21,7 @@ export const storageKeys = {
   detail: "uagent-detail",
   toggles: "uagent-toggles",
   scheduledDraft: "uagent-scheduled-draft",
+  overview: "uagent-overview-layout",
   library: (kind: string, cwd: string) => `uagent-library-${kind}-${cwd}`,
   // Places of the sidebar's list remembered by path, e.g. folded ones.
   places: (name: string) => `uagent.sidebar.${name}`,

@@ -118,8 +118,7 @@ static std::string ChooseForConversation(AppSession& session,
 }
 
 namespace {
-// Forks the conversation, or shares it; in a panel, "edit from here" rewinds
-// it in place instead.
+// Forks the conversation, or shares it.
 json ForkOrShare(AppSession& session, const json& request) {
   const std::string kind = JsonValue(request, "kind", "");
   if (session.session_file.empty()) {
@@ -127,22 +126,6 @@ json ForkOrShare(AppSession& session, const json& request) {
     session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
   }
   std::string error;
-  // A folder has one panel, so "edit from here" rewinds it in place
-  // rather than starting an ordinary conversation beside it.
-  if (kind == "fork" && session.context.options.Panel() &&
-      (JsonValue(request, "turn", int64_t{0}) > 0 ||
-       !JsonValue(request, "message_id", "").empty())) {
-    json rewound = session.ActiveAgent().RewindBefore(
-        JsonValue(request, "turn", int64_t{0}),
-        JsonValue(request, "message_id", ""));
-    if (rewound.contains("error")) return rewound;
-    if (!session.Save(error)) return {{"error", error}};
-    rewound["rewound"] = true;
-    rewound["id"] = SessionIdFor(session.session_file);
-    rewound["path"] = session.session_file;
-    rewound["cwd"] = CanonicalCwd();
-    return rewound;
-  }
   if (!session.Save(error)) return {{"error", error}};
   if (kind == "share") return SessionStore::Share(session.session_file);
   return SessionStore::Fork(session.session_file,

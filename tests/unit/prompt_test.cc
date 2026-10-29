@@ -30,52 +30,46 @@ void TestResolvedPrompt() {
             .contains("error"));
 }
 
-// Four files a person edits; a panel reads its own after AGENTS.md.
+// Two files a person edits: theirs and the folder's.
 void TestInstructionFiles() {
   TestWorkspace workspace("instruction-files");
   const auto cwd = workspace.workspace;
-  CHECK(InstructionPath(false, false, cwd).filename() == "AGENTS.md");
-  CHECK(InstructionPath(true, true, cwd) == cwd / ".uagent" / "PANEL.md");
-  CHECK(WriteInstructionFile(false, true, cwd, "Run ctest.").empty());
-  CHECK(WriteInstructionFile(true, false, cwd, "Keep threads small.").empty());
+  CHECK(InstructionPath(false, cwd).filename() == "AGENTS.md");
+  CHECK(WriteInstructionFile(true, cwd, "Run ctest.").empty());
+  CHECK(WriteInstructionFile(false, cwd, "Keep agents small.").empty());
   struct stat info{};
-  CHECK(stat(InstructionPath(false, true, cwd).c_str(), &info) == 0 &&
+  CHECK(stat(InstructionPath(true, cwd).c_str(), &info) == 0 &&
         (info.st_mode & 0777) == 0644);
-  CHECK(stat(InstructionPath(true, false, cwd).c_str(), &info) == 0 &&
+  CHECK(stat(InstructionPath(false, cwd).c_str(), &info) == 0 &&
         (info.st_mode & 0777) == 0600);
-  CHECK(WriteInstructionFile(true, true, cwd, "Folder rule.").empty());
-  CHECK(stat(InstructionPath(true, true, cwd).c_str(), &info) == 0 &&
-        (info.st_mode & 0777) == 0644);
   const auto session = LoadProjectInstructions(cwd, ProjectDocBytes());
-  CHECK(session.text.find("Run ctest.") != std::string::npos);
-  CHECK(session.text.find("Keep threads small.") == std::string::npos);
-  const auto panel = LoadProjectInstructions(cwd, ProjectDocBytes(), true);
-  CHECK(panel.text.find("Run ctest.") < panel.text.find("Keep threads small."));
+  CHECK(session.text.find("Keep agents small.") <
+        session.text.find("Run ctest."));
   const json shown = InstructionFiles(cwd);
-  CHECK(shown["files"].size() == 4);
+  CHECK(shown["files"].size() == 2);
+  CHECK(shown["files"][0]["text"] == "Keep agents small.");
   CHECK(shown["files"][1]["text"] == "Run ctest.");
-  CHECK(shown["files"][2]["text"] == "Keep threads small.");
-  CHECK(WriteInstructionFile(false, false, cwd,
+  CHECK(WriteInstructionFile(false, cwd,
                              std::string(ProjectDocBytes() + 1, 'x')) != "");
   // Two editors from the same text: the second save is refused, not lost.
-  CHECK(WriteInstructionFile(false, true, cwd, "Mine.", "Run ctest.").empty());
-  CHECK(WriteInstructionFile(false, true, cwd, "Theirs.", "Run ctest.")
+  CHECK(WriteInstructionFile(true, cwd, "Mine.", "Run ctest.").empty());
+  CHECK(WriteInstructionFile(true, cwd, "Theirs.", "Run ctest.")
             .find("changed since") != std::string::npos);
-  CHECK(ReadInstructionFile(InstructionPath(false, true, cwd)) == "Mine.");
+  CHECK(ReadInstructionFile(InstructionPath(true, cwd)) == "Mine.");
   // The editor edits the file the loader reads at that level, and never
   // writes through a link.
   {
     std::ofstream(cwd / "CLAUDE.md") << "Legacy.";
   }
   fs::remove(cwd / "AGENTS.md");
-  CHECK(InstructionPath(false, true, cwd).filename() == "AGENTS.md");
+  CHECK(InstructionPath(true, cwd).filename() == "AGENTS.md");
   setenv("UAGENT_OTHER_AGENTS", "claude", 1);
-  CHECK(InstructionPath(false, true, cwd).filename() == "CLAUDE.md");
+  CHECK(InstructionPath(true, cwd).filename() == "CLAUDE.md");
   CHECK(InstructionFiles(cwd)["files"][1]["text"] == "Legacy.");
   unsetenv("UAGENT_OTHER_AGENTS");
   fs::remove(cwd / "CLAUDE.md");
   fs::create_symlink(cwd / "elsewhere", cwd / "AGENTS.md");
-  CHECK(WriteInstructionFile(false, true, cwd, "x").find("symbolic link") !=
+  CHECK(WriteInstructionFile(true, cwd, "x").find("symbolic link") !=
         std::string::npos);
   CHECK(!fs::exists(cwd / "elsewhere"));
 }

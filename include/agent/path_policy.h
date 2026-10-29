@@ -35,9 +35,8 @@ enum class PathTarget {
 // Any name an instruction file can have, AGENTS.md's fallbacks included.
 inline bool InstructionFileName(const std::filesystem::path& path) {
   const std::string name = path.filename().string();
-  return name == kPanelInstructionFile ||
-         std::ranges::find(kInstructionNames, name) !=
-             std::end(kInstructionNames);
+  return std::ranges::find(kInstructionNames, name) !=
+         std::end(kInstructionNames);
 }
 
 // µAgent's own configuration and trust state. Editing these changes what the
@@ -50,7 +49,7 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  // Your instructions steer every session or panel; a folder's are
+  // Your instructions steer every session; a folder's are
   // ordinary repository files, like the rest of its code.
   if (InstructionFileName(candidate) &&
       candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {

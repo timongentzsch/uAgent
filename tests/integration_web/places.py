@@ -1,8 +1,10 @@
 import json
 import pathlib
+import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 
 from integration_support import (
     Server,
@@ -294,60 +296,6 @@ def test_web_space_is_renamed_and_deleted(root, home, *, binary):
             assert_true(left == [other["cwd"]], left)
 
 
-def test_folder_panel_is_one_session_with_its_own_tools(root, home, *, binary):
-    project = root / "coordinated"
-    project.mkdir()
-    with Server([event({"content": "panel-ok"})]) as provider:
-        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
-            web.pair(code)
-            first = web.command("create", cwd=str(project), panel=True)["session"]
-            again = web.command("create", cwd=str(project), panel=True)["session"]
-            assert_true(first["id"] == again["id"], (first, again))
-            assert_true(first["kind"] == "panel", first)
-            session = web.command("activate", first)["session"]
-            web.until(session, lambda value: value["metadata"]["status"] == "idle")
-            web.command("submit", session, text="status?")
-            web.until(
-                session,
-                lambda value: any(
-                    node.get("body", {}).get("text") == "panel-ok"
-                    for node in value["state"]["view"]["nodes"]
-                ),
-            )
-            _, body = provider.requests[-1]
-            names = {tool["function"]["name"] for tool in body.get("tools", [])}
-            assert_true("agents" in names and "write_file" not in names, names)
-            _, catalogue, _ = web.json("/api/sessions?refresh=1")
-            listed = catalogue["sessions"]
-            kinds = [item.get("kind") for item in listed if item["cwd"] == str(project.resolve())]
-            assert_true(kinds == ["panel"], listed)
-
-
-def test_idle_panel_is_let_go_and_exits(root, home, *, binary):
-    from session_support import runtime_directory
-
-    project = root / "idle"
-    project.mkdir()
-    with Server([event({"content": "ok"})]) as provider:
-        with web_host(
-            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "2"}
-        ) as (web, code, _, _env):
-            web.pair(code)
-            session = web.command("create", cwd=str(project), panel=True)["session"]
-            web.command("activate", session)
-
-            def sockets():
-                return list(runtime_directory(home).glob("*.sock"))
-
-            wait_until(sockets, "panel runtime never started", timeout=10)
-            # The host lets go after the idle period; the runtime then exits.
-            wait_until(lambda: not sockets(), "idle panel kept running", timeout=30)
-            again = web.command("create", cwd=str(project), panel=True)["session"]
-            assert_true(again["id"] == session["id"], again)
-            web.command("activate", again)
-            wait_until(sockets, "panel did not start again", timeout=10)
-
-
 def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary):
     from session_support import runtime_directory
 
@@ -466,40 +414,54 @@ def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root
             )
 
 
-def test_panel_edit_from_here_rewinds_in_place(root, home, *, binary):
-    project = root / "rewind"
+def test_folder_overview_counts_spend_changes_and_git(root, home, *, binary):
+    project = root / "overview"
     project.mkdir()
-    with Server([event({"content": "one-ok"}), event({"content": "two-ok"})]) as provider:
+    subprocess.run(["git", "init", "-q", "-b", "main", str(project)], check=True)
+    (project / "loose.txt").write_text("not committed\n")
+    answers = [
+        tool_call("write_file", {"path": "notes.md", "content": "one\ntwo\n"}),
+        tool_call(
+            "todo",
+            {
+                "items": [
+                    {"text": "Write notes", "status": "done"},
+                    {"text": "Read them", "status": "in_progress"},
+                ]
+            },
+        ),
+        event({"content": "written"}),
+    ]
+    with Server(answers) as provider:
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)
-            session = web.command("create", cwd=str(project), panel=True)["session"]
-            session = web.command("activate", session)["session"]
+            session = web.command("activate", web.command("create", cwd=str(project))["session"])
+            session = session["session"]
             web.until(session, lambda value: value["metadata"]["status"] == "idle")
-            for text, answer in (("first", "one-ok"), ("second", "two-ok")):
-                web.command("submit", session, text=text)
-                web.until(
-                    session,
-                    lambda value, answer=answer: (
-                        value["metadata"]["status"] == "idle"
-                        and any(
-                            node.get("body", {}).get("text") == answer
-                            for node in value["state"]["view"]["nodes"]
-                        )
-                    ),
-                )
-            rewound = web.command("fork", session, turn=2)["result"]
-            assert_true(rewound.get("rewound") and rewound["id"] == session["id"], rewound)
-            assert_true(rewound["prompt"] == "second", rewound)
-            view = web.until(
+            web.command("submit", session, text="/yolo")
+            web.command("submit", session, text="write notes")
+            web.until(
                 session,
                 lambda value: (
-                    not any(
-                        node.get("body", {}).get("text") in ("second", "two-ok")
-                        for node in value["state"]["view"]["nodes"]
-                    )
+                    value["metadata"]["status"] == "idle"
+                    and "written" in json.dumps(value["state"]["view"])
                 ),
             )
-            users = [
-                b["body"]["text"] for b in view["state"]["view"]["nodes"] if b["kind"] == "turn"
-            ]
-            assert_true(users == ["first"], users)
+            path = urllib.parse.quote(str(project.resolve()))
+            status, facts, _ = web.json(f"/api/folder?path={path}")
+            assert_true(status == 200, facts)
+            assert_true(facts["changed"] == {"files": 1, "added": 2, "removed": 0}, facts)
+            assert_true(facts["git"]["branch"] == "main", facts)
+            # The note, and the file the turn wrote.
+            assert_true(facts["git"]["uncommitted"] == 2, facts)
+            assert_true(set(facts["spend"]) == {"today", "week"}, facts)
+            missing = web.json("/api/folder?path=/no/such/folder")[0]
+            assert_true(missing == 404, missing)
+            # The list names each conversation's to-do progress and spend.
+            listed = next(
+                item
+                for item in web.json("/api/sessions?refresh=1")[1]["sessions"]
+                if item["id"] == session["id"]
+            )
+            assert_true(listed["todo"] == {"done": 1, "total": 2, "current": "Read them"}, listed)
+            assert_true(isinstance(listed["cost"], (int, float)), listed)

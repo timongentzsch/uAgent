@@ -4,19 +4,20 @@
 const FENCE = /^[ \t]*(`{3,}|~{3,})/;
 const CLOSING = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
 
+// The fence run still open after `line`, given the one open before it ("" for
+// none). Only a bare run of at least the opening's length and character
+// closes a fence. No markdown-it, so composer code may use it.
+export function nextFence(open: string, line: string): string {
+  if (!open) return line.match(FENCE)?.[1] ?? "";
+  const close = line.match(CLOSING)?.[1];
+  return close?.[0] === open[0] && close.length >= open.length ? "" : open;
+}
+
 export function closedFence(source: string) {
   const lines = source.split("\n");
-  const opening = lines[0].match(FENCE);
+  let open = lines[0].match(FENCE)?.[1] ?? "";
   return (
-    !opening ||
-    lines.slice(1).some((line) => {
-      const match = line.match(CLOSING);
-      return (
-        !!match &&
-        match[1][0] === opening[1][0] &&
-        match[1].length >= opening[1].length
-      );
-    })
+    !open || lines.slice(1).some((line) => !(open = nextFence(open, line)))
   );
 }
 
@@ -32,16 +33,12 @@ function scanHead(source: string, start: number): string {
   let fence = "";
   let opened = 0;
   const read = (line: string) => {
-    if (fence) {
-      const match = line.match(CLOSING);
-      if (match?.[1][0] === fence[0] && match[1].length >= fence.length)
-        fence = "";
-      return;
-    }
-    const match = line.match(FENCE);
+    const inside = fence;
+    fence = nextFence(fence, line);
+    if (inside) return;
     // A code block still open at the end splits right above its fence, so
     // only the block being written re-renders each frame.
-    if (match) [fence, opened] = [match[1], content ? start - 1 : 0];
+    if (fence) opened = content ? start - 1 : 0;
     content ||= !!line.trim();
   };
   for (let end = source.indexOf("\n", start); end >= 0; ) {

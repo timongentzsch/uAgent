@@ -181,6 +181,8 @@ test("a code fence still being written is not highlighted until it closes", asyn
   assert.equal(endsInFence(open), true);
   assert.equal(endsInFence(closed), false);
   assert.equal(endsInFence("```js\nx\n```\n\n~~~\ny"), true);
+  // Text after a closing run keeps the fence open, as the splitter reads it.
+  assert.equal(endsInFence("```\nx\n``` done"), true);
   // Waits for the highlighter to install.
   await renderMarkdownBlocks(closed);
   assert.match(markdownBlocks(open)[0].html, /hljs-/);

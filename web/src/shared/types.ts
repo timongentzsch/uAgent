@@ -152,7 +152,6 @@ export interface TurnSummary {
   generated_tokens?: number;
   messages?: number;
   context_tokens?: number;
-  line_open?: boolean;
 }
 export interface TurnFile {
   path: string;

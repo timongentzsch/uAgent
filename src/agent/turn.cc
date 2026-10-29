@@ -237,7 +237,6 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
         {{"served_by",
           {{served_by, {{"rejected_calls", rejections.size()}}}}}});
   }
-  state.line_open = false;
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
   bool steering_applied = ApplyQueuedSteering(loop);
   if (cancelled) ActivityCancelSubagents(processes_);
@@ -596,9 +595,8 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   }
   // The stored node already carries the full summary: the footer the live
   // turn prints and the one --resume replays read identical inputs.
-  summary.update({{"messages", conversation_.Size()},
-                  {"context_tokens", ContextUsed()},
-                  {"line_open", state.line_open}});
+  summary.update(
+      {{"messages", conversation_.Size()}, {"context_tokens", ContextUsed()}});
   json entry = {{"kind", "turn_summary"},
                 {"turn_root", turn_root_},
                 {"summary", summary}};

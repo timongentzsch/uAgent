@@ -52,6 +52,12 @@ Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 | `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
 | `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
 
+Beyond the runners, `tests/fixtures/` holds the provider route contract, saved
+sessions and the evaluation and browser-runtime fixtures; `tests/package_contents.py`
+validates a release archive and its bundled skill tree; `tests/reviewer_eval/`
+holds labelled tool calls for the approval reviewer (`run.py` checks a model by
+hand with an API key; the unit tests read its questions).
+
 ### Selecting cases
 
 Both runners take `--list`, `--test NAME` (exact) and `-k SUBSTRING`. The

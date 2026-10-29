@@ -259,6 +259,14 @@ test("mention tokens split outside fences, never without files", () => {
   );
 });
 
+test("a mention token stays literal until a fence's whole opening run closes", () => {
+  const text = "````\n```\n![c](attachment:f1)\n````\n![d](attachment:f2)";
+  assert.deepEqual(splitMentionTokens(text), [
+    { text: "````\n```\n![c](attachment:f1)\n````\n" },
+    { mention: { id: "f2", alt: "d" } },
+  ]);
+});
+
 test("call details and statistics name the upstream that served each call", () => {
   assert.equal(servedBy("Wafer"), "served by Wafer");
   assert.equal(servedBy(), "");

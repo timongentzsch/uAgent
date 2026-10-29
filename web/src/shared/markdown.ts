@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import { nextFence } from "./markdown-split.ts";
 // The Markdown renderer: markdown-it with the app's link and heading rules,
 // split into keyed top-level blocks so a streaming reply re-renders only its
 // tail. Loaded on demand through markdown-view.tsx.
@@ -200,7 +201,6 @@ export function markdownBlocks(
   return blocks;
 }
 
-const FENCE = /^[ \t]*(`{3,}|~{3,})/;
 const PIPE = /^\s*\|/;
 const DELIMITER = /^[\s|:]*-[\s|:-]*$/;
 // Nothing but list, heading, quote or rule markers and setext underlines.
@@ -209,12 +209,7 @@ const MARKERS = /^\s*(?:(?:[-=*_+#>]+|\d+[.)]?)\s*)+$/;
 // Whether the text ends inside a code fence that has not closed.
 export function endsInFence(text: string): boolean {
   let open = "";
-  for (const line of text.split("\n")) {
-    const fence = line.match(FENCE)?.[1];
-    if (!fence) continue;
-    if (!open) open = fence;
-    else if (fence[0] === open[0] && fence.length >= open.length) open = "";
-  }
+  for (const line of text.split("\n")) open = nextFence(open, line);
   return !!open;
 }
 

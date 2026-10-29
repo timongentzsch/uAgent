@@ -1,6 +1,6 @@
 {
   "name": "panel_fanout",
-  "description": "Two independent jobs become two agents started in one batch, each with a brief; the panel itself changes nothing.",
+  "description": "Two independent jobs become two agents started in one batch, each with a brief, whose answers come back to the call; the panel itself changes nothing.",
   "tier": "regression",
   "variants": ["control"],
   "panel": true,
@@ -19,19 +19,19 @@
       "when": {"tool_results": 0},
       "respond": {
         "tool_calls": [
-          {"id": "readme", "name": "agent_start", "arguments": {"brief": "README install section\nAdd an Install section to README.md. Done when: README.md has an Install section.", "edits": "folder", "wait": false}},
-          {"id": "changelog", "name": "agent_start", "arguments": {"brief": "CHANGELOG 0.2.0\nAdd a 0.2.0 entry to CHANGELOG.md. Done when: CHANGELOG.md lists 0.2.0.", "edits": "folder", "wait": false}}
+          {"id": "readme", "name": "agent_start", "arguments": {"brief": "README install section\nAdd an Install section to README.md. Done when: README.md has an Install section.", "edits": "folder"}},
+          {"id": "changelog", "name": "agent_start", "arguments": {"brief": "CHANGELOG 0.2.0\nAdd a 0.2.0 entry to CHANGELOG.md. Done when: CHANGELOG.md lists 0.2.0.", "edits": "folder"}}
         ]
       }
     },
     {
-      "respond": {"content": "Started two agents: README install section and CHANGELOG 0.2.0."}
+      "respond": {"content": "Both agents finished: README install section and CHANGELOG 0.2.0."}
     }
   ],
   "checks": {
     "min_batch": 2,
     "answer_contains": ["README", "CHANGELOG"],
-    "result_contains": ["\"state\":\"working\""],
+    "result_contains": ["agent done"],
     "max_requests": 6
   }
 }

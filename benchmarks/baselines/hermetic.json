@@ -97,14 +97,14 @@
     "panel_fanout/control": {
       "score": 5,
       "checks_total": 5,
-      "model_requests": 3,
+      "model_requests": 2,
       "tool_calls": 2,
       "max_batch": 2,
-      "no_action_rounds": 1,
+      "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16158,
-      "cumulative_estimated_context_bytes": 46451,
-      "tool_result_chars": 410,
+      "max_estimated_context_bytes": 15472,
+      "cumulative_estimated_context_bytes": 29978,
+      "tool_result_chars": 313,
       "initial_schema_bytes": 11510
     },
     "panel_status/control": {

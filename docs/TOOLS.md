@@ -214,12 +214,14 @@ self-contained `.html` or `.svg` file the agent wrote, without a server.
 
 The host turns each conversation into one tree of nodes
 ([`node.h`](../include/agent/node.h)): a turn holds your message, a work
-node, the answer and its footer; the work node holds the interim replies,
-thinking, groups and calls. Every row has the same shape: a headline (verb
-and target, e.g. "Ran npm test"), a result word from the call's facts
-(exit code, lines added and removed, a count, or why it stopped), a state
-(running, ok, failed, cancelled) and a body to open. Nothing in it names a
-tool, provider or model; an MCP or unknown tool reads "Called NAME".
+node, the answer and its footer; guidance read while it runs is a message
+of the turn, followed by the work replying to it. A work node holds the
+interim replies, thinking, groups and calls. Every row has the same shape:
+a headline (verb and target, e.g. "Ran npm test"), a result word from the
+call's facts (exit code, lines added and removed, a count, or why it
+stopped), a state (running, ok, failed, cancelled) and a body to open.
+Nothing in it names a tool, provider or model; an MCP or unknown tool reads
+"Called NAME".
 
 Adjacent successful calls of one kind fold into one group (Explored,
 Researched, Verified or Edited). A failure or an approval prompt keeps its

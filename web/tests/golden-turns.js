@@ -25,9 +25,10 @@ const turn = (id, sequence, text) => ({
   time: "2026-10-28T16:00:00.000Z",
   body: { kind: "text", text },
 });
-const work = (turnId, state, counts, word) => ({
-  id: `w-${turnId}`,
-  parent: turnId,
+// The work replying to a message of yours sits under it.
+const work = (message, state, counts, word) => ({
+  id: `w-${message}`,
+  parent: message,
   kind: "work",
   state,
   headline: {
@@ -224,8 +225,29 @@ export const running = [
   call("t-b7", "w-m-62", undefined, "running", "Running", "make"),
 ];
 
+// Guidance read into the running turn stays where it was read, and the work
+// after it replies to it.
+export const steered = [
+  turn("m-72", 72, "check the disk"),
+  work("m-72", "ok", "1 step", "41s"),
+  call("t-df", "w-m-72", 73, "ok", "Ran", "df", "5ms"),
+  {
+    id: "m-75",
+    parent: "m-72",
+    kind: "message",
+    role: "user",
+    sequence: 75,
+    time: "2026-10-28T16:00:41.000Z",
+    body: { kind: "text", text: "also look at /home" },
+  },
+  work("m-75", "ok", "1 step", "18s"),
+  call("t-du", "w-m-75", 76, "ok", "Ran", "du /home", "5ms"),
+  answer("r-8-3-1", "m-72", 78, "Both have room."),
+  footer("m-79", "m-72", 79, 59000),
+];
+
 // Two pages of history: the older one is read in front of the newer.
 export const pages = [plain, chain];
 
-// A conversation with calls, a failure, a group and an answer.
-export const conversation = [...chain, ...failed];
+// A conversation with calls, a failure, a group, guidance and an answer.
+export const conversation = [...chain, ...failed, ...steered];

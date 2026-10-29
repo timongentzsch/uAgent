@@ -132,7 +132,9 @@ void SetBody(json& node, std::string_view kind, const std::string& text,
 bool Blank(std::string_view text) {
   return text.find_first_not_of(" \t\r\n") == std::string_view::npos;
 }
-std::string WorkId(std::string_view turn) { return "w-" + std::string(turn); }
+std::string WorkId(std::string_view message) {
+  return message.empty() ? "" : "w-" + std::string(message);
+}
 std::string ThinkingId(std::string_view message) {
   return std::string(message) + ":thinking";
 }
@@ -153,17 +155,13 @@ json CallHeadline(const json& view, std::string_view state,
           {"target", JsonValue(view, "target", "")}};
 }
 
-json CallNode(const json& record, const std::string& turn) {
+json CallNode(const json& record, std::string_view work) {
   const std::string state = JsonValue(record, "state", "running");
   const json activity = JsonValue(record, "activity", kNone);
   const json view = JsonValue(record, "view", json(nullptr));
   const std::string group = JsonValue(record, "group", "");
   json node = MakeNode(
-      JsonValue(record, "detail_id", ""),
-      !group.empty() ? group
-      : turn.empty() ? ""
-                     : WorkId(turn),
-      "call",
+      JsonValue(record, "detail_id", ""), group.empty() ? work : group, "call",
       {{"state", state},
        {"headline", JsonValue(record, "headline",
                               CallHeadline(view, state,
@@ -210,30 +208,28 @@ json FilesNode(const json& record, std::string_view turn) {
                   {{"role", "assistant"}, {"parts", std::move(files)}});
 }
 
-json WorkNode(const std::string& turn, const json& counts,
-              const json* summary) {
+json WorkNode(const std::string& message, const json& facts) {
   const auto count = [&](const char* key) {
-    return JsonValue(counts, key, int64_t{0});
+    return JsonValue(facts, key, int64_t{0});
   };
   const int64_t steps = count("items"), edited = count("edited"),
                 errors = count("errors");
-  const std::string outcome =
-      summary ? JsonValue(*summary, "outcome", "complete") : "";
+  const std::string outcome = JsonValue(facts, "outcome", "");
+  const bool done = !outcome.empty();
   return MakeNode(
-      WorkId(turn), turn, "work",
-      {{"state", !summary                   ? "running"
+      WorkId(message), message, "work",
+      {{"state", !done                      ? "running"
                  : outcome == "complete"    ? "ok"
                  : outcome == "interrupted" ? "cancelled"
                                             : "failed"},
        {"headline",
-        {{"verb", summary ? "Worked" : "Working"},
+        {{"verb", done ? "Worked" : "Working"},
          {"target", JoinDot({steps ? Plural(steps, "step") : "",
                              edited ? "edited " + Plural(edited, "file") : "",
                              errors ? Plural(errors, "error") : ""})}}},
        {"result",
         {{"word",
-          summary ? FmtDuration(JsonValue(*summary, "duration_ms", 0.0) / 1000)
-                  : ""},
+          done ? FmtDuration(JsonValue(facts, "duration_ms", 0.0) / 1000) : ""},
          {"items", steps},
          {"unit", "step"},
          {"edited", edited},
@@ -268,9 +264,8 @@ std::vector<json> GroupCalls(const std::vector<json>& activities) {
 }
 
 json GroupNode(const std::string& id, const json& group) {
-  const std::string turn = JsonValue(group, "turn", "");
   const int64_t calls = JsonValue(group, "calls", int64_t{0});
-  return MakeNode(id, turn.empty() ? "" : WorkId(turn), "group",
+  return MakeNode(id, JsonValue(group, "work", ""), "group",
                   {{"state", "ok"},
                    {"headline",
                     {{"verb", JsonValue(group, "verb", "")},
@@ -352,7 +347,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   const std::string key = "m-" + std::to_string(sequence);
   const json& metadata = Metadata(facts, sequence);
   const std::string turn = JsonValue(metadata, "turn_root", "");
-  const std::string work = turn.empty() ? "" : WorkId(turn);
+  const std::string work = JsonValue(metadata, "work", "");
   const auto add = [&](json node) {
     node["sequence"] = sequence;
     Keep(node, metadata, {"time"});
@@ -360,7 +355,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   };
   // A call, then the files it handed over.
   const auto add_call = [&](const json& record) {
-    add(CallNode(record, turn));
+    add(CallNode(record, work));
     if (json files = FilesNode(record, turn); !files.is_null()) {
       add(std::move(files));
     }
@@ -385,8 +380,8 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     json thinking = ThinkingNode(id, work);
     SetBody(thinking, "text", EntryText(facts, sequence, message, true));
     if (thinking.contains("body")) add(std::move(thinking));
-    // A reply that made calls is a step of its turn's work; the one after
-    // the last call is its answer.
+    // A reply that made calls is a step of its work; the one after the
+    // last call is its turn's answer.
     node = MakeNode(id, tool_calls && !tool_calls->empty() ? work : turn,
                     "message", {{"role", "assistant"}});
     Keep(node, metadata,
@@ -405,7 +400,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     Keep(node, metadata, {"files", "origin"});
   } else {
     // A message of yours starts its turn; one written into a running turn
-    // is part of it.
+    // is part of it, and the work after it replies to it.
     const bool starts = turn.empty() || turn == key;
     node = MakeNode(key, starts ? "" : turn, starts ? "turn" : "message");
     if (!starts) node["role"] = "user";

@@ -95,10 +95,10 @@ size_t BoundView(json& view) {
   return dropped;
 }
 
-// The turn a held node is under, through its work and group; "" when it is
-// under none the view holds.
+// The turn a held node is under, through its group, work and the message
+// the work replies to; "" when it is under none the view holds.
 std::string TurnOf(json& nodes, std::string_view id) {
-  for (int up = 0; up < 4 && !id.empty(); ++up) {
+  for (int up = 0; up < 5 && !id.empty(); ++up) {
     const auto found = Find(nodes, id);
     if (found == nodes.end()) break;
     if (Field(*found, "kind") == "turn") return std::string(id);
@@ -197,11 +197,10 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     const std::string id = answer ? response_id : ThinkingId(response_id);
     auto found = Find(nodes, id);
     if (found == nodes.end()) {
-      const std::string turn = JsonValue(data, "turn_root", "");
       nodes.push_back(
-          answer ? MakeNode(id, turn, "message",
+          answer ? MakeNode(id, JsonValue(data, "turn_root", ""), "message",
                             {{"role", "assistant"}, {"streaming", true}})
-                 : ThinkingNode(response_id, turn.empty() ? "" : WorkId(turn),
+                 : ThinkingNode(response_id, JsonValue(data, "work", ""),
                                 {{"streaming", true}}));
       found = nodes.end() - 1;
     }
@@ -266,7 +265,7 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     }
   } else if (type == AppType(EventId::kToolCall)) {
     if (JsonValue(data, "detail_id", "").empty()) return true;
-    upsert(CallNode(data, JsonValue(data, "turn_root", "")));
+    upsert(CallNode(data, JsonValue(data, "work", "")));
   } else if (type == AppType(EventId::kToolResult)) {
     if (JsonValue(data, "detail_id", "").empty()) return true;
     // The output is what a person reads; the model's hints never reach it.
@@ -288,14 +287,10 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
       upsert(files);
     }
   } else if (const json* node = JsonObject(data, "node")) {
-    upsert(*node);
-    // A footer ends its turn's work.
-    if (const std::string_view turn = Field(*node, "parent");
-        Field(*node, "kind") == "footer" && !turn.empty()) {
-      if (auto work = Find(nodes, WorkId(turn)); work != nodes.end()) {
-        const json summary = JsonValue(*node, "summary", json::object());
-        upsert(WorkNode(std::string(turn), (*work)["result"], &summary));
-      }
+    // Work is made by the first node under it: alone, it only changes.
+    if (Field(*node, "kind") != "work" ||
+        Find(nodes, Field(*node, "id")) != nodes.end()) {
+      upsert(*node);
     }
   }
   BoundView(state["view"]);

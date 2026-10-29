@@ -14,6 +14,7 @@
 #include "include/agent/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/node.h"
+#include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -246,7 +247,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   conversation_.RecordDisplay(call.detail_id,
                               {{"activity", task.activity}, {"view", view}});
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
-  call_event.data["turn_root"] = turn_root_;
+  call_event.data["work"] = WorkId(reply_to_);
   call_event.data["activity"] = task.activity;
   call_event.data["view"] = std::move(view);
   if (task.issue) {
@@ -276,40 +277,51 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   }
 }
 
-// What a step's calls add to their turn's work, once its calls are
-// published: the groups they fold into, which go before their first call,
-// and the work's counts. Both are recorded, so a saved page shows them too.
+// What a step's calls add to their work, once its calls are published: the
+// groups they fold into, which go before their first call, and the work's
+// counts. Both are recorded, so a saved page shows them too.
 void Agent::PublishWork(const std::vector<CallTask>& tasks,
                         const std::vector<json>& activities,
                         const std::vector<json>& groups) {
-  if (turn_root_.empty()) return;
+  if (reply_to_.empty()) return;
   for (const json& group : groups) {
     const std::string id = JsonValue(group, "id", "");
     const json recorded = {{"verb", group["verb"]},
                            {"calls", group["members"].size()},
-                           {"turn", turn_root_}};
+                           {"work", WorkId(reply_to_)}};
     conversation_.RecordDisplay(id, recorded);
     Emit(Event{EventId::kMessageChanged, {{"node", GroupNode(id, recorded)}}});
   }
   for (size_t index = 0; index < tasks.size(); ++index) {
     const CallTask& task = tasks[index];
-    ++turn_work_.steps;
+    ++work_.steps;
     if (!task.result.Ok()) {
-      ++turn_work_.errors;
+      ++work_.errors;
     } else if (JsonValue(activities[index], "category", "") == "edit") {
       // Files, not edits: two edits of one file are one file.
       const std::string target = JsonValue(task.headline, "target", "");
-      turn_work_.edited.insert(
-          target.empty() ? JsonValue(activities[index], "detail_id", "")
-                         : target);
+      work_.edited.insert(target.empty()
+                              ? JsonValue(activities[index], "detail_id", "")
+                              : target);
     }
   }
-  const json counts = {{"items", turn_work_.steps},
-                       {"errors", turn_work_.errors},
-                       {"edited", turn_work_.edited.size()}};
-  conversation_.RecordDisplay(WorkId(turn_root_), counts);
-  Emit(Event{EventId::kMessageChanged,
-             {{"node", WorkNode(turn_root_, counts)}}});
+  const json counts = {{"items", work_.steps},
+                       {"errors", work_.errors},
+                       {"edited", work_.edited.size()}};
+  conversation_.RecordDisplay(WorkId(reply_to_), counts);
+  Emit(
+      Event{EventId::kMessageChanged, {{"node", WorkNode(reply_to_, counts)}}});
+}
+
+void Agent::CloseWork(const std::string& outcome) {
+  const std::string id = WorkId(reply_to_);
+  if (id.empty()) return;
+  conversation_.RecordDisplay(
+      id, {{"outcome", outcome}, {"duration_ms", ElapsedMs(work_.started)}});
+  Emit(Event{
+      EventId::kMessageChanged,
+      {{"node", WorkNode(reply_to_, JsonValue(conversation_.DisplayFacts(),
+                                              id.c_str(), json::object()))}}});
 }
 
 bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,

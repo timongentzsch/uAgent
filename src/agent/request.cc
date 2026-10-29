@@ -11,6 +11,7 @@
 
 #include "include/agent/agent.h"
 #include "include/agent/child_agent.h"
+#include "include/agent/node.h"
 #include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
@@ -299,6 +300,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   api_.forbid_tool_calls = std::string_view(purpose) == "compact";
   api_.exchange_context = {{"turn_root", turn_root_},
+                           {"work", WorkId(reply_to_)},
                            {"request", request},
                            {"turn", turn_id_},
                            {"response_base", "r-" + std::to_string(turn_id_) +

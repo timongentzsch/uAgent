@@ -97,8 +97,20 @@ class Recorder {
   void Say(const std::string& text) {
     conversation_.Push({{"role", "user"}, {"content", text}},
                        MessageKind::kUser);
-    turn_ = conversation_.LastDisplayId();
-    Published({{"turn_root", turn_}});
+    turn_ = message_ = conversation_.LastDisplayId();
+    spent_ = 0;
+    Published(Links());
+  }
+
+  // Guidance read into the running turn after its work took `took_ms`: that
+  // work ends, and the work after the guidance replies to it.
+  void Steer(const std::string& text, double took_ms) {
+    conversation_.Push({{"role", "user"}, {"content", text}},
+                       MessageKind::kUser);
+    Close(took_ms, "complete");
+    spent_ += took_ms;
+    message_ = conversation_.LastDisplayId();
+    Published(Links());
   }
 
   // A reply streamed, then saved; `calls` are {id, name} pairs.
@@ -106,7 +118,8 @@ class Recorder {
       const std::string& response_id, const std::string& text,
       const std::string& reasoning = "",
       const std::vector<std::pair<std::string, std::string>>& calls = {}) {
-    json context = {{"response_id", response_id}, {"turn_root", turn_}};
+    json context = Links();
+    context["response_id"] = response_id;
     Event("response.started", context);
     if (!reasoning.empty()) {
       Event("response.reasoning.delta", Text(context, reasoning));
@@ -121,7 +134,8 @@ class Recorder {
            {"function", {{"name", name}, {"arguments", "{}"}}}});
     }
     conversation_.Push(std::move(message), MessageKind::kAssistant);
-    json facts = {{"turn_root", turn_}, {"response_id", response_id}};
+    json facts = Links();
+    facts["response_id"] = response_id;
     if (!reasoning.empty()) facts["reasoning"] = reasoning;
     Published(std::move(facts));
   }
@@ -139,7 +153,7 @@ class Recorder {
                         {"name", name},
                         {"activity", activity},
                         {"view", view},
-                        {"turn_root", turn_}});
+                        {"work", WorkId(message_)}});
     if (state == "running") return id;
     const json result = ResultJson(facts, state, 5);
     Event("tool.result", {{"detail_id", id},
@@ -167,27 +181,31 @@ class Recorder {
     }
   }
 
-  // What a step's calls added to the turn: their group and the work's counts.
+  // What a step's calls added to their work: their group and its counts.
   void Step(const std::vector<std::string>& grouped, const json& counts) {
     if (!grouped.empty()) {
       const std::string id = "g-" + grouped.front();
-      const json group = {
-          {"verb", "Explored"}, {"calls", grouped.size()}, {"turn", turn_}};
+      const json group = {{"verb", "Explored"},
+                          {"calls", grouped.size()},
+                          {"work", WorkId(message_)}};
       conversation_.RecordDisplay(id, group);
       Changed(GroupNode(id, group));
     }
-    conversation_.RecordDisplay(WorkId(turn_), counts);
-    Changed(WorkNode(turn_, counts));
+    conversation_.RecordDisplay(WorkId(message_), counts);
+    Changed(WorkNode(message_, counts));
   }
 
   void Result(const std::string& call_id, const std::string& id) {
     conversation_.Push(
         {{"role", "tool"}, {"tool_call_id", call_id}, {"content", "model"}},
         MessageKind::kToolResult);
-    Published({{"turn_root", turn_}, {"detail_id", id}});
+    json facts = Links();
+    facts["detail_id"] = id;
+    Published(std::move(facts));
   }
 
   void Footer(double duration_ms, const std::string& outcome) {
+    Close(duration_ms - spent_, outcome);
     Changed(EntryNode(conversation_.RecordEntry(
         {{"kind", "turn_summary"},
          {"turn_root", turn_},
@@ -195,6 +213,16 @@ class Recorder {
   }
 
  private:
+  json Links() const {
+    return {{"turn_root", turn_}, {"work", WorkId(message_)}};
+  }
+  // The work replying to the latest message of yours ends.
+  void Close(double took_ms, const std::string& outcome) {
+    const std::string id = WorkId(message_);
+    conversation_.RecordDisplay(
+        id, {{"outcome", outcome}, {"duration_ms", took_ms}});
+    Changed(WorkNode(message_, conversation_.DisplayFacts()[id]));
+  }
   static json Text(json context, const std::string& text) {
     context["text"] = text;
     return context;
@@ -225,7 +253,8 @@ class Recorder {
   json terminal_ = {{"view", {{"nodes", json::array()}}}};
   TerminalPresenter watcher_;
   std::string watched_;
-  std::string turn_;
+  std::string turn_, message_;
+  double spent_ = 0;
 };
 
 const json kRead = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
@@ -512,6 +541,69 @@ void TestGoldenRunningTurn() {
   CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{"> build\n  → Working\n", open, open}));
   CHECK(turn.Watched() == "> build\nuagent\nBuilding now.");
+}
+
+void TestGoldenSteeredTurn() {
+  Recorder turn;
+  turn.Say("check the disk");
+  turn.Reply("r-1-1-1", "", "", {{"d", "run"}});
+  const std::string d = turn.Call(
+      "r-1-1-1", "d", "run", {{"verb", {"Running", "Ran"}}, {"target", "df"}},
+      "ok", {}, "", "run");
+  turn.Result("d", d);
+  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Steer("also look at /home", 41000);
+  // Read into the running turn, your message ends the work before it and
+  // shows at once, after that work.
+  const std::vector<std::string> first = {
+      "turn m-2 < - \"check the disk\"",
+      "work w-m-2 < m-2 [ok] Worked 1 step · 41.0s",
+      "call " + d + " < w-m-2 [ok] Ran df · 5ms",
+      "message m-5 < m-2 \"also look at /home\"",
+  };
+  CHECK(Lines(turn.Live()) == first);
+  turn.Reply("r-1-2-1", "", "", {{"h", "run"}});
+  const std::string h =
+      turn.Call("r-1-2-1", "h", "run",
+                {{"verb", {"Running", "Ran"}}, {"target", "du /home"}}, "ok",
+                {}, "", "run");
+  turn.Result("h", h);
+  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Reply("r-1-3-1", "Both have room.");
+  turn.Footer(59000, "complete");
+  const auto page = Lines(ConversationView(turn.History())["nodes"]);
+  // The work after it replies to it and counts its own steps and time; the
+  // footer still totals the turn.
+  std::vector<std::string> whole = first;
+  whole.insert(whole.end(),
+               {
+                   "work w-m-5 < m-5 [ok] Worked 1 step · 18.0s",
+                   "call " + h + " < w-m-5 [ok] Ran du /home · 5ms",
+                   "message r-1-3-1 < m-2 \"Both have room.\"",
+                   "footer m-9 < m-2",
+               });
+  CHECK(page == whole);
+  CHECK(Lines(turn.Live()) == page);
+  // Your message shows at every depth, where it was read.
+  const std::string answer = "uagent\nBoth have room.\n0 in · 0 out · 59.0s\n";
+  const std::string open =
+      "> check the disk\n  · Worked 1 step · 41.0s\n    · Ran df · 5ms\n"
+      "> also look at /home\n  · Worked 1 step · 18.0s\n"
+      "    · Ran du /home · 5ms\n" +
+      answer;
+  CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
+         std::vector<std::string>{
+             "> check the disk\n  · Worked 1 step · 41.0s\n"
+             "> also look at /home\n  · Worked 1 step · 18.0s\n" +
+                 answer,
+             open, open}));
+  // Live, each work's line is drawn once it ends: the first when your
+  // message is read, the last once the turn ends.
+  CHECK(turn.Watched() ==
+        "> check the disk\n    · Ran df · 5ms\n  · Worked 1 step · 41.0s\n"
+        "> also look at /home\n    · Ran du /home · 5ms\n"
+        "uagent\nBoth have room.\n  · Worked 1 step · 18.0s\n"
+        "0 in · 0 out · 59.0s\n");
 }
 
 void TestGoldenPagesEndOnWholeTurns() {

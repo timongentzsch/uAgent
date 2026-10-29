@@ -286,7 +286,6 @@ void Agent::Turn(const std::string& user_input, json user_content,
   failed_image_analyses_.clear();
   turn_root_.clear();
   reply_to_.clear();
-  turn_work_ = {};
   ++revision_;
   ++total_user_turns_;
   std::string title = FirstLine(user_input);
@@ -605,6 +604,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   // turn prints and the one --resume replays read identical inputs.
   summary.update(
       {{"messages", conversation_.Size()}, {"context_tokens", ContextUsed()}});
+  CloseWork(TurnOutcomeName(state.stop.outcome));
   json entry = {{"kind", "turn_summary"},
                 {"turn_root", turn_root_},
                 {"summary", summary}};

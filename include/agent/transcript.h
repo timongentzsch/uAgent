@@ -62,8 +62,6 @@ class TranscriptView {
   const std::map<uint64_t, TranscriptEntry>& Index() const;
   mutable std::once_flag indexed_;
   mutable std::map<uint64_t, TranscriptEntry> entries_;
-  // Each finished turn's summary, by turn id.
-  mutable std::map<std::string, const json*> summaries_;
 };
 
 // Presentation projection only: no system prompts, opaque provider replay,

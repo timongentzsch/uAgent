@@ -24,7 +24,7 @@
 namespace uagent {
 namespace {
 constexpr auto kFresh = std::chrono::seconds(10);
-constexpr std::time_t kWeek = 7 * 24 * 60 * 60;
+constexpr std::chrono::seconds kWeek = std::chrono::days(7);
 
 std::time_t StampTime(const std::string& stamp) {
   std::tm parsed{};
@@ -48,8 +48,7 @@ void AddTurns(const std::vector<SessionInfo>& sessions, json& facts) {
   int64_t added = 0, removed = 0;
   std::set<std::string> files;
   for (const SessionInfo& info : sessions) {
-    if (std::filesystem::file_time_type::clock::now() - info.mtime >
-        std::chrono::seconds(kWeek)) {
+    if (std::filesystem::file_time_type::clock::now() - info.mtime > kWeek) {
       continue;
     }
     SessionLoadResult loaded = SessionStore::Inspect(info.path);
@@ -59,7 +58,7 @@ void AddTurns(const std::vector<SessionInfo>& sessions, json& facts) {
     for (const auto& [key, entry] : display->items()) {
       if (JsonValue(entry, "kind", "") != "turn_summary") continue;
       const std::time_t at = StampTime(JsonValue(entry, "time", ""));
-      if (now - at > kWeek) continue;
+      if (now - at > kWeek.count()) continue;
       const json summary = JsonValue(entry, "summary", json::object());
       const double cost =
           JsonValue(JsonValue(summary, "usage", json::object()), "cost", 0.0);

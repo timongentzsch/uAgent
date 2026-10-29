@@ -480,13 +480,18 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     RetainExchange(session, frame["data"]);
   }
   if (type == AppType(EventId::kMessageChanged)) {
-    const json& node = frame["data"]["node"];
     session.incoming =
-        std::max(session.incoming, JsonValue(node, "incoming", uint64_t{0}));
-    if (const std::string path = JsonValue(frame["data"], "change_path", "");
-        !path.empty()) {
-      session.change_paths[JsonValue(node, "id", "")] = path;
-    }
+        std::max(session.incoming,
+                 JsonValue(frame["data"]["node"], "incoming", uint64_t{0}));
+  }
+  // A call's result and its saved node both name a whole diff's path; the
+  // first to arrive lets the host serve it.
+  if (const std::string path = JsonValue(frame["data"], "change_path", "");
+      !path.empty()) {
+    const json& data = frame["data"];
+    session.change_paths[data.contains("node")
+                             ? JsonValue(data["node"], "id", "")
+                             : JsonValue(data, "detail_id", "")] = path;
   }
   // Browsers receive what changed in the host's view instead of the events
   // that changed it, so they apply rows and never re-derive them.

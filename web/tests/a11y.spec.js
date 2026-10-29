@@ -7,6 +7,7 @@ import {
   test,
   expect,
   headerAction,
+  online,
   selectProbeModel,
   servePending,
   SAMPLE_ASK,
@@ -68,6 +69,8 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   session,
 }) => {
   await page.goto(`/#session=${session.id}`);
+  // Delete waits for the connection; a key press does not.
+  await online(page);
   const trigger = page
     .locator(".conversation-head")
     .getByRole("button", { name: "Conversation menu" });

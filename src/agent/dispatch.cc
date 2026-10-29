@@ -140,6 +140,11 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"artifact_bytes",
        task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
   if (task.result.parts.is_array()) data["parts"] = task.result.parts;
+  // For the host's detail lookup from the moment the row exists; browsers
+  // get the row, never this event.
+  if (!task.result.diff_path.empty()) {
+    data["change_path"] = task.result.diff_path;
+  }
   // The operation is a schema enum, not an argument value. It is enough to
   // distinguish a quiet poll from a wait without journalling ids or input.
   if (call.name == "activity" && task.args.is_object()) {

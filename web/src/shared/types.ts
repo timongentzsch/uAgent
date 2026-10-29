@@ -279,6 +279,8 @@ interface PendingBase {
   options?: (string | { value: string; label?: string; title?: string })[];
   // An agent's decision goes to its parent first; "human" once yielded.
   route?: "parent" | "human";
+  // The shared files it is about: plan mode's plan.
+  files?: FilePart[];
   note?: string;
 }
 // The model's questions; `prompt` repeats the first.
@@ -954,7 +956,7 @@ export interface ScheduledTask {
   prompt: string;
   cwd: string;
   model: string;
-  permissions: "ask" | "auto" | "yolo";
+  permissions: "ask" | "auto" | "yolo" | "plan";
   environment: "local" | "worktree";
   schedule: ScheduleRule;
   enabled: boolean;

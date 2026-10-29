@@ -25,6 +25,13 @@ address. Or open the URL and type the code.
   expired. Run `uagent --web` again.
 - **Remove a device.** Settings → Host → Paired devices → **Revoke**, or
   **Log out this device**.
+- **Keep it running.** The installer offers to run `uagent --web` as a
+  service of yours that starts when you log in: a systemd user unit
+  (`uagent-web`, and with lingering also while you are logged out) on Linux,
+  a launchd agent (`com.github.timongentzsch.uagent.web`, logging to
+  `~/Library/Logs/uagent-web.log`) on macOS. It runs with the `PATH` of the
+  shell that installed it, so agent commands find the same tools, and an
+  update restarts it. `uagent --web` then only prints a pairing code.
 
 The sidebar lists this OS user's conversations by place: **Workspaces**
 first, then **Folders**. A place's name opens its overview, the chevron

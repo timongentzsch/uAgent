@@ -110,6 +110,20 @@ def test_plan_toggles_plan_mode_and_asks_to_approve_the_plan(root, home, *, bina
         assert_true(re.findall(r"; approval (\w+)", approved)[-1] == "ask", approved)
 
 
+def test_a_start_without_a_provider_says_why(root, home, *, binary):
+    # The runtime fails before a terminal has connected; its reason still
+    # reaches the terminal instead of only its exit status.
+    env = base_env(home, "")
+    for name in ("UAGENT_BASE_URL", "UAGENT_MODEL", "OPENROUTER_API_KEY"):
+        env.pop(name, None)
+    result = run_dialog(root, env, "", binary=binary)
+    # Before a client connects it reaches stderr, after one does the screen.
+    output = result.stdout + result.stderr
+    assert_true(result.returncode == 1, output)
+    assert_true("no provider configured — run uagent setup" in output, output)
+    assert_true("ended while starting" not in output, output)
+
+
 def test_command_help(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         result = run_dialog(

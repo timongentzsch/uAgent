@@ -865,7 +865,15 @@ int WorkerMain(int argc, char** argv) {
   BootstrapResult boot =
       Bootstrap(std::move(options), argv[0], observation, &channel);
   int status = boot.Ok() ? RunApplication(*boot.context) : boot.exit_code;
-  if (!boot.Ok()) channel.Send({{"kind", "error"}, {"error", boot.error}});
+  if (!boot.Ok()) {
+    channel.Send({{"kind", "error"}, {"error", boot.error}});
+    // No client may have connected yet to read that: leave the reason where
+    // the one who started this runtime looks once it has ended.
+    std::string ignored;
+    if (WritePrivateFile(WorkerErrorPath(argv[6]), boot.error, ignored)) {
+      status = kWorkerBootFailed;
+    }
+  }
   boot.context.reset();
   observation.Unsubscribe(subscriber);
   SetObservability(nullptr);

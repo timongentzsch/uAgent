@@ -36,6 +36,8 @@ test("install rebuilds changed frontend inputs and reuses unchanged dependencies
       new URL("../scripts/build-state.js", import.meta.url),
       resolve(web, "scripts/build-state.js"),
     );
+    // A checkout, which the installer builds instead of a release.
+    await writeFile(resolve(root, "CMakeLists.txt"), "");
     await writeFile(
       resolve(root, "build/release/CMakeCache.txt"),
       "configured",
@@ -80,6 +82,7 @@ const { pathToFileURL } = require("node:url");
           UAGENT_BUILD_DIR: resolve(root, "build/release"),
           UAGENT_PREFIX: resolve(root, "prefix"),
           INSTALL_TEST_LOG: log,
+          UAGENT_NONINTERACTIVE: "1",
           ...extra,
         },
       });

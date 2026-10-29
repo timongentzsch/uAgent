@@ -62,6 +62,13 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
 - The `auto` approval reviewer needs an endpoint that declares `decisions`
   (OpenRouter does). With none, Auto mode asks you.
 
+`uagent setup` asks for an OpenRouter, OpenAI and Anthropic key (Enter skips
+one), checks each against its endpoint, and saves them for all conversations
+with a default model it suggests from the first endpoint that has a key. An
+OpenAI or Anthropic key becomes a provider named `openai` or `anthropic` that
+refers to it as a variable, so `anthropic/claude-sonnet-5-5` names a model
+there. Run it again to change them; a start with no key offers it.
+
 To keep a key between shells, save it once instead of exporting it. It
 applies to conversations started afterwards (`/restart` applies it to this
 one):

@@ -239,6 +239,8 @@ const char* UsageText() {
       listing += row + spec.help + "\n";
     }
     return synopsis + "\n\n" + listing +
+           "\nuagent setup                  save API keys and a default model "
+           "for all conversations\n" +
            "\nsettings: what is saved for all conversations, then for this "
            "folder (/config, or the web settings); process UAGENT_* "
            "variables override both, and the flags above override all "

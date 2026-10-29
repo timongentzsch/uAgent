@@ -26,6 +26,7 @@ extern char** environ;
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/session.h"
+#include "include/app/setup.h"
 #include "include/browser/browser.h"
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
@@ -262,6 +263,7 @@ int Main(int argc, char** argv) {
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }
+  if (argc == 2 && std::string_view(argv[1]) == "setup") return SetupMain();
 #ifdef UAGENT_WEB
   if (argc == 2 && std::string_view(argv[1]) == "--browser-service") {
     return browser::ServiceMain(3);

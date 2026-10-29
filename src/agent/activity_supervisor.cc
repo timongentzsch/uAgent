@@ -364,17 +364,14 @@ json ActivitySupervisor::ActivityViews() const {
   for (size_t index = 0; index < jobs.size(); ++index) {
     const Activity& job = jobs[index];
     if (job.kind == ActivityKind::kMemory) continue;
-    json row = job.metadata;
-    row["id"] = ActivityId(job);
+    json row = {{"id", ActivityId(job)}};
     // The turn is waiting on it, as opposed to running behind it.
     row["foreground"] = index >= background && index < background + foreground;
     row["detached"] = job.Detached();
     row["kind"] = ActivityKindName(job.kind);
-    row["label"] =
-        JsonValue(row, "label",
-                  job.display_label.empty()
-                      ? Utf8Trunc(FirstLine(job.cmd), kStatusLabelBytes)
-                      : job.display_label);
+    row["label"] = job.display_label.empty()
+                       ? Utf8Trunc(FirstLine(job.cmd), kStatusLabelBytes)
+                       : job.display_label;
     // The modal shows the full command scrollable on top. Rows only carry
     // the 160-char label, and inspect fails once a finished activity leaves the
     // retained set, so the command travels here (bounded like transcript

@@ -161,27 +161,37 @@ std::string Start(const std::string& own, const Launch& launch,
   return error;
 }
 
-// Waits on the mailbox of `own` until every child has reported or one asks
-// for a decision, starting the rest of `briefs` as slots free up. Escape
-// stops the children; the turn's deadline leaves them working.
-void Wait(const std::string& own, const Launch& launch,
-          const std::vector<std::string>& briefs, std::vector<Child>& rows,
-          size_t& next, int64_t running, const ToolContext& context) {
-  const std::string box = MailboxIdFor(own);
-  const auto start_next = [&] {
+// The agents one call starts, a row each, started as slots free up.
+struct Batch {
+  std::string own;
+  Launch launch;
+  std::vector<std::string> briefs;
+  std::vector<Child> rows = std::vector<Child>(briefs.size());
+  size_t next = 0;
+  int64_t running = 0;
+
+  // Starts the next brief that starts; those that fail say why in their row.
+  void StartNext() {
     for (; next < rows.size(); ++next) {
       Child& row = rows[next];
-      const std::string error = Start(own, launch, briefs[next], row);
-      if (error.empty()) {
+      row.answer = Start(own, launch, briefs[next], row);
+      if (row.answer.empty()) {
         ++next;
         ++running;
         return;
       }
       row.state = "failed";
-      row.answer = error;
     }
-  };
-  for (int tick = 0; running > 0 && !context.Expired(); ++tick) {
+  }
+};
+
+// Waits on the mailbox of the batch's parent until every agent has
+// reported or one asks for a decision, starting the rest as slots free up.
+// Escape stops them; the turn's deadline leaves them working.
+void Wait(Batch& batch, const ToolContext& context) {
+  std::vector<Child>& rows = batch.rows;
+  const std::string box = MailboxIdFor(batch.own);
+  for (int tick = 0; batch.running > 0 && !context.Expired(); ++tick) {
     if (AbortRequested()) {
       for (Child& row : rows) {
         if (row.state != "working" || row.path.empty()) continue;
@@ -219,15 +229,15 @@ void Wait(const std::string& own, const Launch& launch,
         asks = true;
         continue;
       }
-      --running;
-      start_next();
+      --batch.running;
+      batch.StartNext();
     }
     for (Child& row : rows) {
       if (row.state != "working" || !gone.contains(row.path)) continue;
       row.state = "failed";
       row.answer = "its runtime ended without a report";
-      --running;
-      start_next();
+      --batch.running;
+      batch.StartNext();
     }
     if (asks) return;
     pollfd wake{AbortWakeFd(), POLLIN, 0};
@@ -288,24 +298,15 @@ ToolResult StartAgents(const Api& api,
                              "little to start agents with");
     }
   }
-  std::vector<Child> rows(briefs.size());
+  Batch batch{.own = own, .launch = launch, .briefs = std::move(briefs)};
+  std::vector<Child>& rows = batch.rows;
   for (size_t index = 0; items && index < rows.size(); ++index) {
     rows[index].item = (*items)[index].get<std::string>();
   }
-  size_t next = 0;
-  int64_t running = 0;
-  for (; next < rows.size() && running < free; ++next) {
-    if (const std::string error = Start(own, launch, briefs[next], rows[next]);
-        !error.empty()) {
-      rows[next].state = "failed";
-      rows[next].answer = error;
-    } else {
-      ++running;
-    }
-  }
+  while (batch.next < rows.size() && batch.running < free) batch.StartNext();
   ToolResult result;
   if (!items && !JsonValue(a, "wait", true)) {
-    if (running == 0) return Unavailable(rows[0].answer);
+    if (batch.running == 0) return Unavailable(rows[0].answer);
     result = ToolSuccess(JsonDump(
         {{"id", rows[0].id},
          {"state", "working"},
@@ -315,7 +316,7 @@ ToolResult StartAgents(const Api& api,
           "turn. Unless other work is waiting, end this turn with one line "
           "saying what you started."}}));
   } else {
-    Wait(own, launch, briefs, rows, next, running, context);
+    Wait(batch, context);
     json waited = json::array();
     for (const Child& row : rows) {
       json one = {

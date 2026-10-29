@@ -477,225 +477,23 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await page.evaluate(() => window.__stableRemovalObserver.disconnect());
 });
 
-test("subagent tasks are readable and compaction never opens an unsolicited viewer", async ({
+test("compaction never opens an unsolicited viewer", async ({
   page,
   session,
   command,
 }) => {
   await selectProbeModel(command, session, { yolo: true });
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
-  await page.evaluate(() => {
-    document.documentElement.style.setProperty("--safe-top", "47px");
-    document.documentElement.style.setProperty("--safe-bottom", "34px");
-  });
   await online(page);
   const composer = page.getByLabel("Message or guidance");
-  await composer.fill("Delegate preview task");
+  await composer.fill("Compaction probe");
   await composer.press("Enter");
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  // The first load is held, to see the sheet's layout while it loads, and
-  // the refresh that follows it, to see it land on a follow-up being typed.
-  // The refresh forces a retained older page, whose control shows that it
-  // was applied and must share the thread's scroll.
-  const held = [Promise.withResolvers(), Promise.withResolvers()];
-  let loads = 0;
-  await page.route("**/api/command", async (route) => {
-    const body = route.request().postDataJSON();
-    if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
-      return route.continue();
-    const load = loads++;
-    await held[load]?.promise;
-    const response = await route.fetch();
-    const value = await response.json();
-    if (load && value.result?.conversation) {
-      value.result.conversation.more = true;
-      value.result.conversation.before = 1;
-    }
-    await route.fulfill({ response, json: value });
-  });
-  // The subagent's own call opens to it: the row names the task and its
-  // body keeps a link to the agent instead of repeating its whole answer.
-  const subagentRow = await openRow(page, /Delegated .*Review the full task\./);
-  await expect(subagentRow).not.toContainText("resume with subagent");
-  await subagentRow
-    .getByRole("button", { name: "Open agent", exact: true })
-    .click();
-  // One sheet; its title follows the page shown in it.
-  const detail = page.locator("dialog.activity-view");
-  await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
-  // While the thread loads, every section already holds its final place:
-  // the thread shows a skeleton and the guidance form sits where it stays.
-  await expect(detail.getByText("Loading the thread…")).toBeVisible();
-  const place = () =>
-    Promise.all(
-      [".child-thread", ".guidance-form"].map((selector) =>
-        detail.locator(selector).boundingBox(),
-      ),
-    );
-  const loadingPlace = await place();
-  held[0].resolve();
-  await expect(detail.locator(".child-thread .message").first()).toBeVisible();
-  expect(await place()).toEqual(loadingPlace);
-  await expect(detail.getByText("Process output")).toHaveCount(0);
-  await expect(
-    detail.getByLabel("Estimated context", { exact: true }),
-  ).toHaveText(/est\. ctx [\d.]+k?\/[\d.]+[kM]? · \d+% left/);
-  await expect(detail.locator(".detail-label, .detail-task")).toHaveCount(0);
-  const followUp = detail.getByRole("textbox", { name: "Follow-up" });
-  await expect(followUp).toHaveCSS("border-top-style", "solid");
-  const followUpNode = await followUp.elementHandle();
-  await followUp.fill("Retained follow-up");
-  await followUp.focus();
-  const thread = detail.locator('[aria-label="Subagent task"]');
-  const older = thread.getByRole("button", {
-    name: "Load older retained messages",
-    exact: true,
-  });
-  await expect(older).toHaveCount(0);
-  held[1].resolve();
-  await expect(older).toHaveCount(1);
-  expect(await followUpNode?.evaluate((element) => element.isConnected)).toBe(
-    true,
-  );
-  await expect(followUp).toHaveValue("Retained follow-up");
-  await expect(followUp).toBeFocused();
-  // Popup threads carry the same rows and viewers as chat history.
-  await expect(thread.locator(".message")).not.toHaveCount(0);
-  expect(
-    await older.evaluate((button) => {
-      const first = button.closest(".child-thread").querySelector(".message");
-      return !!(
-        button.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING
-      );
-    }),
-  ).toBe(true);
-
-  // The thread's own work opens like the transcript's.
-  await openRow(thread, /^Work/);
-  const toolRow = await openRow(thread.locator(".node-kids"), /./);
-  await toolRow
-    .getByRole("button", { name: "Input and output", exact: true })
-    .click();
-  // A page inside the same sheet, never a second dialog; Back returns.
-  const heading = detail.locator(":scope > header > h2");
-  await expect(heading).toHaveText("Tool input/output");
-  await expect(page.locator("dialog[open]")).toHaveCount(1);
-  await detail.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(heading).toHaveText("Subagent");
-  await detail
-    .getByRole("button", { name: "Conversation statistics", exact: true })
-    .click();
-  const stats = detail;
-  await expect(heading).toHaveText("Subagent statistics");
-  await expect(stats.locator("dt").filter({ hasText: /^Cost$/ })).toBeVisible();
-  await expect(
-    stats.getByText("Parent turn time", { exact: true }),
-  ).toBeVisible();
-  await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
-  const statsBody = stats.locator(".activity-page");
-  await expect(statsBody).toHaveCSS("overflow-y", "auto");
-  // Short enough that the page overflows, which then scrolls as a whole.
-  await page.setViewportSize({ width: page.viewportSize().width, height: 480 });
-  await statsBody.hover();
-  await page.mouse.wheel(0, 600);
-  await expect
-    .poll(() => statsBody.evaluate((node) => node.scrollTop))
-    .toBeGreaterThan(0);
-  await detail.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(detail).toHaveCSS("outline-style", "none");
-  await expect(detail.locator(":scope > header > h2")).toHaveCSS(
-    "outline-style",
-    "none",
-  );
-  // Native close may fall back to the dialog when its previous opener is gone.
-  await detail.evaluate((node) => node.focus());
-  await expect(detail).toBeFocused();
-  await expect(detail).toHaveCSS("outline-style", "none");
-  await expect(detail.locator(":scope > header > h2")).toHaveCSS(
-    "outline-style",
-    "none",
-  );
-  // A turn's statistics are in its answer's menu, at the end of its footer.
-  await thread
-    .getByRole("button", { name: "Actions for this answer" })
-    .last()
-    .click();
-  await page.getByRole("menuitem", { name: "Statistics", exact: true }).click();
-  await expect(
-    stats.getByText("Model at completion", { exact: true }),
-  ).toBeVisible();
-  await expect(stats.getByText("TTFT", { exact: true })).toBeVisible();
-  await detail.getByRole("button", { name: "Back", exact: true }).click();
-  await detail
-    .getByRole("button", { name: "Model and effort", exact: true })
-    .click();
-  const childModel = page.getByRole("dialog", {
-    name: "Model and effort",
-    exact: true,
-  });
-  await childModel
-    .getByRole("combobox", { name: "Model", exact: true })
-    .fill("mock/main");
-  await childModel.getByRole("option").filter({ hasText: "mock/main" }).click();
-  await childModel.getByRole("button", { name: "Apply", exact: true }).click();
-  const followUpRequest = page.waitForRequest((request) => {
-    if (!request.url().endsWith("/api/command") || request.method() !== "POST")
-      return false;
-    const body = request.postDataJSON();
-    return body.kind === "activity" && body.operation === "followup";
-  });
-  // Follow-up sends from the popup and receipts like the composer.
-  await detail
-    .getByRole("button", { name: "Start follow-up", exact: true })
-    .click();
-  expect((await followUpRequest).postDataJSON().model).toBe("mock/main");
-  await expect(page.locator(".composer > form .model-selector")).toContainText(
-    "mock/model-b",
-  );
-  await expect(detail.getByText("Follow-up started.")).toBeVisible({
-    timeout: 20000,
-  });
-  await expect(
-    thread.getByRole("heading", { name: "Verified response", exact: true }),
-  ).toHaveCount(2);
-  await expect(detail).not.toContainText("saved model is unavailable");
-  await expect(detail.locator(".model-selector")).toContainText("mock/main");
-  await detail
-    .getByRole("button", { name: "Show full message", exact: true })
-    .click();
-  await expect(detail.locator('[aria-label="Subagent task"]')).toContainText(
-    "TASK-END-MARKER",
-  );
-  expect(
-    (await detail.locator('[aria-label="Subagent task"]').textContent()).length,
-  ).toBeGreaterThan(16000);
-  // Do not create empty metadata sections for ordinary agents.
-  await expect(detail.getByText("System prompt", { exact: true })).toHaveCount(
-    0,
-  );
-  await detail.getByText("Task and run details").click();
-  await expect(detail.locator('section[aria-label="Run details"]')).toHaveCount(
-    0,
-  );
-  await detail
-    .getByRole("button", { name: "Close subagent", exact: true })
-    .click();
   await expect(page.locator(".composer .turn-status-caption")).toHaveText(
     "Ready",
   );
-  // A finished subagent stays reachable from the status line, like /agents.
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
-  const idle = page.locator(".activity-sheet .activity-open");
-  await expect(idle).toHaveCount(1);
-  await expect(idle).toContainText("idle");
-  await idle.click();
-  await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
-  await detail
-    .getByRole("button", { name: "Close subagent", exact: true })
-    .click();
   await composer.fill("/compact");
   await composer.press("Enter");
   await expect(

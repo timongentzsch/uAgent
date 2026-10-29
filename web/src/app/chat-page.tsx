@@ -302,7 +302,7 @@ export default function ChatPage({
       tips={[
         [
           "Lead agent",
-          "Plans the work in a workspace or folder and runs subagents and background agents for it. A place’s name in the list opens its lead agent.",
+          "Plans the work in a workspace or folder and starts agents for it. A place’s name in the list opens its lead agent.",
         ],
         [
           <kbd>{keysOf("search").join(" ")}</kbd>,

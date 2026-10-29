@@ -621,7 +621,6 @@ function Composer({
       </form>
       <div class="composer-metrics">
         <ActivityButton
-          agents={state?.agents || NONE}
           open={openInspector}
           session={session}
           online={online}

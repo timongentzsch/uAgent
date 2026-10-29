@@ -250,7 +250,8 @@ def test_a_decision_its_parent_yields_or_leaves_reaches_the_person(root, home, *
         result = run(root, base_env(home, server.url), "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(state["asked"].wait(budget(20)), "the request never reached the parent")
-        client = client_of(home, agent_files(home)[0])
+        (first,) = agent_files(home)
+        client = client_of(home, first)
         try:
             yielded = client.until(to_person)["pending"]
             assert_true(yielded["note"] == "writes outside the brief", yielded)
@@ -260,14 +261,12 @@ def test_a_decision_its_parent_yields_or_leaves_reaches_the_person(root, home, *
             client.close()
     # A parent that does not decide in time leaves it to the person too.
     route, state = ask_then(None, path="late.txt")
-    for path in agent_files(home):
-        path.unlink()
     with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_INTERNAL_PARENT_DECISION_S"] = "1"
         result = run(root, env, "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        client = client_of(home, agent_files(home)[0])
+        client = client_of(home, next(p for p in agent_files(home) if p != first))
         try:
             late = client.until(to_person)["pending"]
             assert_true(late["note"] == "The parent agent did not decide in time.", late)

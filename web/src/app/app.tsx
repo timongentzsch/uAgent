@@ -305,6 +305,7 @@ function App() {
     snapshots,
     setInspector,
     setModal,
+    choose,
   });
   // The host context and the conversation menus must keep their functions;
   // they read the latest ones through a ref.
@@ -562,8 +563,9 @@ function App() {
                       }
                       filesOpen={filesOpen}
                       setFilesOpen={setFilesOpen}
+                      parent={sessionById(catalogue.sessions, session?.parent)}
                       openDrawer={() => setDrawer(true)}
-                      openPanel={openPanel}
+                      choose={choose}
                       open={open}
                       settings={settings}
                       menu={conversationMenu}

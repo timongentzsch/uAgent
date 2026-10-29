@@ -1,6 +1,6 @@
 // What needs you, across folders: the sidebar's inbox answers any folder's
 // decision, the tab title counts them, a notification's link lands on the
-// decision itself, and a panel's threads nest under its header.
+// decision itself, and a panel's agents nest under its header.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, expect, selectProbeModel } from "./fixtures.js";
@@ -93,21 +93,22 @@ test("what a panel started nests under it", async ({
   session,
   command,
 }) => {
-  await command("create", { cwd: host.project, panel: true });
-  // Only a panel's model starts threads; this one is drawn as one.
+  const { session: panel } = await command("create", {
+    cwd: host.project,
+    panel: true,
+  });
+  // Only a model starts agents; this conversation is drawn as the panel's.
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
     const catalogue = await response.json();
     for (const item of catalogue.sessions)
-      if (item.id === session.id)
-        Object.assign(item, { kind: "thread", folder: host.project });
+      if (item.id === session.id) item.parent = panel.id;
     await route.fulfill({ response, json: catalogue });
   });
   await page.goto("/");
-  // Under the panel's header. Where the host's paths differ (a symlinked
-  // temp folder), the panel is another place and the thread is listed flat.
-  const threads = page.getByRole("group", { name: /^Background agents of / });
-  await expect(threads.locator(".session")).toHaveCount(1);
+  // Under the panel's header.
+  const agents = page.getByRole("group", { name: /^Agents of / });
+  await expect(agents.locator(".session")).toHaveCount(1);
   // A shape and words beside the colour: nothing waits here, so no icon.
-  await expect(threads.locator(".session-state")).toHaveCount(0);
+  await expect(agents.locator(".session-state")).toHaveCount(0);
 });

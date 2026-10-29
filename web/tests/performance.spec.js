@@ -104,9 +104,7 @@ for (const labels of [false, true])
               send("activities.changed", {
                 activities: ["child-a", "child-b"].map((id, index) => ({
                   id: index + 1,
-                  kind: "subagent",
-                  agent_id: id,
-                  name: id,
+                  label: id,
                   status: "running",
                   progress: `Thinking · Reviewing module ${action}`,
                 })),

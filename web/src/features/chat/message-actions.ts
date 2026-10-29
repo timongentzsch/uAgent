@@ -7,8 +7,8 @@ import type {
 } from "../../shared/types.ts";
 
 // What a transcript node can ask of the surface showing it: the
-// conversation's handlers, or the inspector's for a subagent thread. Nodes
-// read them from context, so their equality check covers only node data.
+// conversation's handlers, or none of them for a side answer. Nodes read
+// them from context, so their equality check covers only node data.
 export interface MessageActions {
   report: Report;
   read?: (
@@ -19,6 +19,8 @@ export interface MessageActions {
   inspect?: (id: string) => void;
   statistics?: (node: Node) => void;
   activity?: (target: ActivityTarget) => void;
+  // Opens a conversation: an agent a row links to.
+  open?: (id: string) => void;
   recall?: (node: Node) => Promise<void>;
   insert?: (node: Node) => Promise<void>;
   // Sends a message that failed again.

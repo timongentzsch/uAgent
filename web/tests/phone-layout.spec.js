@@ -451,8 +451,8 @@ test.describe("composer footer", () => {
             cost: 1234.56,
           },
           activities: [
-            { id: 12, kind: "subagent", status: "running", label: "Research" },
-            { id: 13, kind: "command", status: "running", label: "Build" },
+            { id: 12, status: "running", label: "Research" },
+            { id: 13, status: "running", label: "Build" },
           ],
         };
         await route.fulfill({ response, json: snapshot });
@@ -466,7 +466,7 @@ test.describe("composer footer", () => {
       await expect(context).toBeEnabled();
       await expect(
         footer.getByRole("button", { name: "Activity", exact: true }),
-      ).toContainText("1 agent · 1 command");
+      ).toContainText("2 commands");
       await expect(
         context.locator(width < 600 ? ".context-compact" : ".context-full"),
       ).toBeVisible();

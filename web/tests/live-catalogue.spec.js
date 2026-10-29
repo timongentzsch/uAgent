@@ -1,5 +1,5 @@
-// Sessions created or deleted outside this browser (a panel spawning or
-// deleting its threads) reach the list on their own, without a refresh.
+// Sessions created or deleted outside this browser (a conversation starting or
+// deleting its agents) reach the list on their own, without a refresh.
 import { test, expect, saveHistory } from "./fixtures.js";
 import { rm } from "node:fs/promises";
 

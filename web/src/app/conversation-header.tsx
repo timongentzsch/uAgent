@@ -24,6 +24,7 @@ export default function ConversationHeader({
   page,
   selected,
   session,
+  parent,
   opening,
   booting,
   placeName,
@@ -32,7 +33,7 @@ export default function ConversationHeader({
   filesOpen,
   setFilesOpen,
   openDrawer,
-  openPanel,
+  choose,
   open,
   settings,
   menu,
@@ -40,6 +41,8 @@ export default function ConversationHeader({
   page: "chat" | "library" | "scheduled";
   selected: string;
   session?: Session;
+  // The conversation that started this one, when listed.
+  parent?: Session;
   opening: boolean;
   booting: boolean;
   placeName: (path?: string) => string;
@@ -49,7 +52,7 @@ export default function ConversationHeader({
   filesOpen: boolean;
   setFilesOpen: (open: boolean) => void;
   openDrawer: () => void;
-  openPanel: (cwd: string) => void;
+  choose: (id: string) => void;
   open: (modal: AppModal) => void;
   settings: () => void;
   menu: (
@@ -67,6 +70,10 @@ export default function ConversationHeader({
   // On a phone the conversation's menu holds the header's other actions;
   // without a conversation there is no menu, and Settings keeps its button.
   const inMenu = phone && page === "chat" && !!(session || opening);
+  const titleOf = (item: Session) =>
+    item.kind === "panel"
+      ? `Lead · ${placeName(item.cwd)}`
+      : item.title || "Conversation";
   const phoneItems = inMenu && (
     <>
       <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
@@ -103,10 +110,8 @@ export default function ConversationHeader({
             "Library"
           ) : page === "scheduled" ? (
             "Scheduled"
-          ) : session?.kind === "panel" ? (
-            `Lead · ${placeName(session.cwd)}`
           ) : session ? (
-            session.title || "Conversation"
+            titleOf(session)
           ) : opening ? (
             <span class="text-skeleton" aria-hidden="true">
               Loading conversation
@@ -115,14 +120,11 @@ export default function ConversationHeader({
             "µAgent"
           )}
         </h1>
-        {/* What a panel started leads back to it. */}
-        {page === "chat" && session?.kind === "thread" && (
+        {/* An agent leads back to the conversation that started it. */}
+        {page === "chat" && parent && (
           <p class="panel-subtitle">
-            <Button
-              variant="quiet"
-              onClick={() => openPanel(session.folder || "")}
-            >
-              ‹ Lead · {placeName(session.folder)}
+            <Button variant="quiet" onClick={() => choose(parent.id)}>
+              ‹ {titleOf(parent)}
             </Button>
           </p>
         )}
@@ -187,8 +189,8 @@ function PanelHelp({ editInstructions }: { editInstructions: () => void }) {
   return (
     <p class="panel-subtitle">
       <span>
-        Plans this folder&rsquo;s work, asks subagents its questions and hands
-        code changes to background agents (↳); never edits files itself.
+        Plans this folder&rsquo;s work and starts agents (↳) for it; never edits
+        files itself.
       </span>
       <Button variant="quiet" onClick={editInstructions}>
         Edit instructions

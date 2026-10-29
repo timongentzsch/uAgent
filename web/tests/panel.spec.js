@@ -51,9 +51,7 @@ for (const [name, viewport] of VIEWPORTS) {
       // What it is, in one line under its title, with its instructions a
       // tap away even where the words truncate.
       const subtitle = page.locator(".panel-subtitle");
-      await expect(subtitle).toContainText(
-        "hands code changes to background agents",
-      );
+      await expect(subtitle).toContainText("starts agents (↳) for it");
       const button = subtitle.getByRole("button", {
         name: "Edit instructions",
       });

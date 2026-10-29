@@ -69,7 +69,7 @@ BROWSER_FRAMES = frozenset(
 DOCUMENTED_INTERNAL = frozenset(
     {
         "close",
-        # A panel yields a thread's routed decision to the user.
+        # A parent yields its agent's routed decision to the user.
         "escalate",
         "fork",
         "hello",
@@ -80,7 +80,7 @@ DOCUMENTED_INTERNAL = frozenset(
         "retiring",
         "share",
         "side",
-        # A thread's finished turn, sent to its panel's runtime.
+        # Guidance for a running turn.
         "steer",
         "submit",
     }

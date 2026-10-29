@@ -87,7 +87,6 @@ struct Activity {
   // Put right when the activity ends, where the sandbox could not deny its
   // writes.
   std::shared_ptr<const SandboxWatch> watch{};
-  json metadata = json::object();
   int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();

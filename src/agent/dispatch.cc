@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -202,9 +204,22 @@ void CancelCall(CallTask& task) {
   task.trace_status = steered ? "steered" : "cancelled";
 }
 
+namespace {
+// A fact and a frame are bounded, so a long diff is stored whole, before its
+// result is published, and the row carries its opening.
+void StoreWholeDiff(ToolResult& result, const std::string& diffs) {
+  std::string& diff = result.diff;
+  if (diffs.empty() || diff.size() <= kChangePreviewChars) return;
+  CreatePrivateDirectories(std::filesystem::path(diffs).parent_path());
+  ScopedTempFile file(diffs);
+  if (file && WriteAll(file.Get(), diff)) result.diff_path = file.Release();
+  diff = Utf8Prefix(std::move(diff), kChangePreviewChars);
+}
+}  // namespace
+
 void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                  int64_t step, const ToolContext& context,
-                 int64_t global_timeout_s) {
+                 int64_t global_timeout_s, const std::string& diffs) {
   auto started = std::chrono::steady_clock::now();
   task.started = true;
   if (SteeringState().Requested() || AbortRequested()) {
@@ -255,6 +270,7 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
     task.trace_status = task.result.Ok() ? "ok" : "error";
   }
   task.duration_ms = ElapsedMs(started);
+  StoreWholeDiff(task.result, diffs);
   EmitToolResultObservation(task, call, turn, step);
 }
 

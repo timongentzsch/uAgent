@@ -502,7 +502,7 @@ void TestPermissionPolicy() {
     call.id = "held-1";
     call.name = "held";
     call.args = "{}";
-    ExecuteCall(task, call, 1, 1, ToolContext{}, 30);
+    ExecuteCall(task, call, 1, 1, ToolContext{}, 30, "");
     CHECK(reached == task.approved);
   }
 

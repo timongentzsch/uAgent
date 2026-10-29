@@ -1,3 +1,4 @@
+import { nextFence } from "./markdown-split.ts";
 import type { Node } from "./types.ts";
 
 // What a message of yours shows until the host's own row replaces it.
@@ -31,7 +32,6 @@ export const recallable = (
 type TextPart = { text: string } | { mention: { id: string; alt: string } };
 
 const kMentionToken = /!\[([^\]\n]*)\]\(attachment:([A-Za-z0-9_-]+)\)/g;
-const kFence = /^\s*(`{3,}|~{3,})/;
 
 // Split @-mention tokens out of user text for inline rendering. Fenced code
 // blocks are opaque: discussing the token syntax must not resolve it.
@@ -51,14 +51,9 @@ export function splitMentionTokens(text: string): TextPart[] {
   for (let number = 0; number < lines.length; number++) {
     if (number > 0) pushText("\n");
     const line = lines[number];
-    const fence = line.match(kFence)?.[1] ?? "";
-    if (fence) {
-      if (!inFence) inFence = fence[0];
-      else if (fence[0] === inFence) inFence = "";
-      pushText(line);
-      continue;
-    }
-    if (inFence) {
+    const wasOpen = inFence;
+    inFence = nextFence(inFence, line);
+    if (wasOpen || inFence) {
       pushText(line);
       continue;
     }

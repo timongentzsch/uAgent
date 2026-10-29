@@ -359,10 +359,9 @@ int TerminalMain(Options options) {
       const std::string board = PanelBoard(cwd);
       printf("%s", TerminalSafe(board).c_str());
       // Nothing to manage yet: what it is for, as the web's empty chat says.
-      if (FolderSessions(cwd).empty()) {
-        fputs(AsciiGlyphs("\nAsk for work and it starts threads that do it. "
-                          "Ask a question and it fans out\nsubagents and "
-                          "reports what held up.\n")
+      if (SessionsBeside(path).empty()) {
+        fputs(AsciiGlyphs("\nAsk for work or a question, and it starts agents "
+                          "for it.\n")
                   .c_str(),
               stdout);
       }

@@ -60,7 +60,7 @@
     "read_paths": ["ISSUE.md", "src/cache.py", "tests/test_cache.py"],
     "answer_contains": ["src/cache.py", "key in cache", "cache[key]", "test_cache_hit"],
     "answer_shape": ["defect", "fix", "regression", "scope"],
-    "forbidden_tools": ["run", "edit_file", "write_file", "subagent", "memory", "web_search"],
+    "forbidden_tools": ["run", "edit_file", "write_file", "agent_start", "memory", "web_search"],
     "max_requests": 4,
     "max_tool_calls": 3,
     "min_batch": 2

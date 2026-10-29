@@ -79,7 +79,7 @@ session limit and the lead agent's daily cost limit.
 | turn generated tokens / reported cost | unlimited | `UAGENT_MAX_TURN_TOKENS`, `UAGENT_MAX_TURN_COST` |
 | identical consecutive tool calls that end a turn | 12 (the model is warned at 3 and 6) | `UAGENT_REPEATED_CALL_STOP` (at least 7) |
 | session generated tokens / reported cost | unlimited | `UAGENT_SESSION_TOKEN_BUDGET` (`--token-budget`), `UAGENT_SESSION_BUDGET` (`--budget`) |
-| one tool call | 30 s; `run`, `scratch`, `activity` and `subagent` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
+| one tool call | 30 s; `run`, `scratch`, `activity` and `agent_start` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
 | tool result / parallel batch | 8,000 / 16,000 characters | `UAGENT_TOOL_RESULT_CHARS` (batch is twice the result cap) |
 | `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES` (default only), `UAGENT_READ_FILE_KB` |
 | `edit_file` / diff | files up to 10 MiB | `UAGENT_EDIT_FILE_MB` |
@@ -88,18 +88,16 @@ session limit and the lead agent's daily cost limit.
 | trace pruning | newest 64 KiB protected; results from 32 KiB pruned | |
 | automatic compaction | 85% of projected context | `UAGENT_AUTO_COMPACT_PCT` |
 | compacted-trace archive | 16 MiB | |
-| background activities / foreground tool workers | 8 (all but 2 open to subagents) / 4, up to the subagent share for a batch of subagents | `UAGENT_MAX_ACTIVITIES`, `UAGENT_TOOL_CONCURRENCY` |
+| background commands / foreground tool workers | 8 / 4, or one per `agent_start` call when more run together | `UAGENT_MAX_ACTIVITIES`, `UAGENT_TOOL_CONCURRENCY` |
 | `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | |
 | activity output buffer / command log | 1 MiB, equal head and tail / 64 MiB | `UAGENT_ACTIVITY_LOG_MB` (log) |
 | retained finished activities | 16 | |
-| subagent completion in context | 6,000 characters each, 12 KiB per batch | |
-| delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
-| wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
-| subagent launches per turn | 32 | `UAGENT_SUBAGENT_CALLS_PER_TURN` |
-| background agents at once / reported cost per day per lead agent | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
-| a background agent's report to its lead agent | 6,000 characters; `history` reads the rest | |
+| agents at work per conversation / levels of agents | 8 / 2 | `UAGENT_AGENTS_MAX`, `UAGENT_AGENTS_DEPTH` |
+| an agent's report / the answers one `agent_start` waits for | 6,000 characters / 48 KiB shared | |
+| a parent's decision for its agent / turns agents' mail starts in a row | 5 minutes, then a person decides / 3 | |
+| reported cost per day of a lead agent and its agents | $20 | `UAGENT_PANEL_DAILY_SPEND_USD` |
 | steps in a lead agent's plan | 24 | |
-| idle session runtime | stops after 15 minutes; the next message starts it | `UAGENT_IDLE_MINUTES` |
+| idle session runtime | stops after 15 minutes, an agent's with no client about 1 s after its turn; the next message starts it | `UAGENT_IDLE_MINUTES` |
 | undo journal | 2 MiB per file, 64 MiB per session | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | `UAGENT_MEMORY_BYTES`, `UAGENT_MEMORY_MAX`, `UAGENT_MEMORY_ALWAYS_BYTES` |
 | memory extraction | 32 KiB of one session after 6 idle hours | `UAGENT_MEMORY_IDLE_HOURS` (idle time) |
@@ -138,10 +136,11 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   when a provider omits it, output marks cost unavailable and warns that the
   limit cannot be enforced.
 - The session token budget survives resume.
-- A delegated child gets only its parent's remaining session allowance; the
-  children of one batch run together and share it equally. While a session
-  budget is set, no child starts while a background one runs. Child usage is
-  charged to the parent by delta, so follow-ups do not reset accounting.
+- An agent's spend counts in its parent's usage and cost. Under a session
+  budget, an agent's ceiling is the parent's remaining budget divided among
+  the free `agents.max` slots (and the `agent_start` calls made together),
+  applied on every start. With less than $0.01 left, a conversation starts
+  no agents.
 - Context size is estimated as serialized request bytes divided by 4, plus
   what the last turn request's reported prompt held beyond its own estimate
   (mostly the provider's fixed tool-use prompt, which bytes cannot show). It
@@ -170,18 +169,19 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   attempts. Repeated no-change `activity` polls of one activity get advice
   after two, a direct instruction after four, and stop after twelve.
 - **Out-of-range pacing arguments.** `run` `yield_ms` and
-  `max_output_chars`, `grep` `context`, `activity` `wait_ms` and
-  `max_output_chars`, and the `subagent` limits are clamped to their bound,
+  `max_output_chars`, `grep` `context`, and `activity` `wait_ms` and
+  `max_output_chars` are clamped to their bound,
   and the result starts with a note such as
   `[clamped context to 10 of 40 requested]`. Any other out-of-range argument
   is rejected with the value and the limit.
 
-## Activities and delegation
+## Activities and agents
 
-Commands, delegated tasks and detached terminals share activity IDs. `/ps`
-lists them, `/ps ID output` shows one and `/ps ID stop` ends it; the status
-bar counts them as `act:N`. [Tools](TOOLS.md#activities) describes how they
-start, what outlives the conversation and how results are delivered.
+Commands and detached terminals share activity IDs. `/ps` lists them,
+`/ps ID output` shows one and `/ps ID stop` ends it; the status bar counts
+them as `act:N`. [Tools](TOOLS.md#activities) describes how they start,
+what outlives the conversation and how results are delivered. `/agents`
+lists this conversation's agents and theirs ([Tools](TOOLS.md#agents)).
 
 ## Images
 

@@ -10,7 +10,7 @@ import SessionName from "./session-name.tsx";
 import { folderName } from "./folder-label.tsx";
 import "./escalations.css";
 
-// Decisions sessions are waiting on: a folder's threads above its
+// Decisions sessions are waiting on: a folder's conversations above its
 // panel's composer, or every folder's in the sidebar's inbox. Each is
 // the session's own pending decision, answered in the session, so answering
 // here or there is the same act and the first answer wins. A pause at the
@@ -22,7 +22,7 @@ export default function WaitingList({
   choose,
 }: {
   sessions: Session[];
-  // One folder's threads; every conversation when absent.
+  // One folder's conversations; every conversation when absent.
   folder?: string;
   paused?: string;
   choose: (id: string) => void;
@@ -93,7 +93,7 @@ function Escalation({
         {where && (
           <span class="escalation-where">
             {" "}
-            · {folderName(item.folder || item.cwd)}
+            · {folderName(item.cwd)}
             {item.pending_prompt && ` · ${item.pending_prompt}`}
           </span>
         )}

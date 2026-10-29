@@ -102,7 +102,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   ).toContainText("No conversations yet");
   const tips = page.locator(".empty .tips dd");
   await expect(tips).toHaveCount(3);
-  await expect(tips.first()).toContainText("subagents and background agents");
+  await expect(tips.first()).toContainText("starts agents");
   await expect(tips.nth(1)).toContainText("Searches every conversation");
 
   // Enter in the dialog starts a conversation, as its primary button does.
@@ -122,7 +122,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
   await expect(page.getByRole("heading", { name: /^Lead · / })).toBeVisible();
   // Its empty chat explains itself.
   await expect(page.locator(".transcript .empty")).toContainText(
-    "hands code changes to background agents",
+    "starts agents for the work",
   );
 });
 

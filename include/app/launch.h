@@ -1,8 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_LAUNCH_H_
 #define UAGENT_INCLUDE_APP_LAUNCH_H_
-// Where a launched session runs and where its file lives. Used by
-// scheduled runs and panel threads.
+// Where a launched session runs and where its file lives, and how to reach
+// its runtime. Used by scheduled runs and agents.
 
 #include <optional>
 #include <string>
@@ -13,8 +13,7 @@
 #include "include/core/json.h"
 
 namespace uagent {
-// Where a launched session runs and where its file lives. Shared by scheduled
-// runs and panel threads so both isolate work the same way.
+// Where a scheduled run runs and where its file lives.
 struct LaunchPaths {
   std::string cwd, path;
 };
@@ -55,5 +54,9 @@ std::optional<std::string> SendToRunning(const std::string& path, json command);
 // Closes the runtime of `path` and waits until it is gone. Returns why it
 // still runs, or empty once nothing does (also when nothing did).
 std::string CloseRuntime(const std::string& path);
+// "saved" without a runtime; else what its runtime said when it answered:
+// waiting on a person ("needs you"), working a turn, or idle. A decision
+// still with a parent counts as working.
+std::string RuntimeStatus(const std::string& path);
 }  // namespace uagent
 #endif

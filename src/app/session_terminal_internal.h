@@ -99,8 +99,8 @@ class Terminal {
   Command ConversationCommand(const ParsedSlashCommand& slash,
                               std::vector<std::string>& files);
   Command SetDetail(const std::string& argument);
-  // The folder whose panel this session answers to: a thread's
-  // folder, else the session's own folder.
+  // The folder whose panel this session answers to: an agent's first
+  // ancestor's, else the session's own folder.
   std::string Folder() const;
   // A session id prefix or a unique title match among the folder's sessions.
   std::string MatchFolderSession(const std::string& argument) const;

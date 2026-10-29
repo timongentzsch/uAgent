@@ -88,9 +88,9 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, error, binary;
   SessionStatus status = SessionStatus::kSaved;
-  // "panel", "thread" or empty; a thread names its `folder`. `model` is
-  // the one the file names.
-  std::string kind, folder, model;
+  // "panel" or empty; `parent` names the session that started an agent.
+  // `model` is the one the file names.
+  std::string kind, parent, model;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
@@ -172,8 +172,8 @@ class SessionHost {
   std::vector<HostNotice> WaitForNotices();
   void Stop();
   void LoadDrafts();
-  // Follows the history on disk: sessions created elsewhere (a panel's
-  // threads) appear, and those deleted elsewhere go, each published. A scan
+  // Follows the history on disk: sessions created elsewhere (agents)
+  // appear, and those deleted elsewhere go, each published. A scan
   // within a second of the last is deferred to RescanDue(), never dropped.
   bool RefreshCatalogue(bool force = false);
   std::optional<std::chrono::steady_clock::time_point> RescanDue() const;
@@ -202,7 +202,7 @@ class SessionHost {
                     std::string& error);
   json Configure(const json& command);
   std::string AssetPath(const std::string& id) const;
-  // The folder a conversation works in: a thread's folder, else its own.
+  // The folder a conversation works in.
   std::string Folder(const std::string& id) const;
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);

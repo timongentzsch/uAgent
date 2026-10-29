@@ -6,24 +6,22 @@
 // its text names the sender.
 
 #include <string>
-#include <vector>
 
 #include "include/core/json.h"
 
 namespace uagent {
 
-// A session as the mail rule sees it. A parent that has no session file is
-// known to its child only by its owner id.
+// A session as the mail rule sees it.
 struct MailParty {
-  std::string id{};    // mailbox id (MailboxIdFor path), or the owner id
-  std::string path{};  // empty for an owner id
-  json delegation = json::object();  // the role it was given, if any
+  std::string id{};      // mailbox id (MailboxIdFor path)
+  std::string path{};    // its session file
+  std::string parent{};  // its parent's mailbox id, for an agent
 };
 
-// A saved session by its file and header role. A header not saved yet falls
-// back to the role this process was started with.
+// A saved session by its file and its header's agent role, or by `role`
+// (AgentOf) when its header is not saved yet.
 MailParty SessionParty(const std::string& path);
-MailParty OwnerParty(const std::string& owner_id);
+MailParty SessionParty(const std::string& path, const json& role);
 
 // Whether `from` may message `to`: its parent, its child, or a sibling under
 // one parent.
@@ -32,31 +30,22 @@ bool MayMail(const MailParty& from, const MailParty& to);
 // Every message wakes an idle recipient, labelled by how its sender stands
 // to the recipient.
 struct SessionMail {
-  std::string from_path{};   // the sender's session file
-  std::string from_owner{};  // its owner id when it has no session file
+  std::string from_path{};  // the sender's session file
   std::string to_path{};
   std::string text{};
-  // The recipient's role when its header is not saved yet, from a caller
-  // that started it (a child is not saved until its first step is over).
-  json to_delegation = json::object();
   std::string id{};  // set to send the same message again as itself
   int hops = 0;
-  // A runtime's report to its parent: it names its sender itself, and is
-  // owed however many, so it is neither labelled nor rate limited.
+  // An agent's report to its parent: it names its sender itself, and is
+  // owed however many, so it is neither labelled nor rate limited. `state`
+  // says what it reports, for a parent waiting on it: the turn's stop
+  // reason, or "needs decision".
   bool report = false;
+  std::string state{};
 };
 
 // Sends it if the rule allows; returns why not, or empty. Waking a recipient
 // that has no runtime is the caller's, which knows how to start one.
 std::string SendSessionMail(SessionMail mail);
-
-// The session file of a session this one may message (MayMail), by id or
-// file stem, or empty.
-std::string LinkedSessionPath(const std::string& id);
-
-// Those sessions plus the folder's others: [{id,title,linked}]. Self
-// excluded.
-std::vector<json> SessionSummaries();
 
 }  // namespace uagent
 #endif

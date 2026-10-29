@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "include/agent/session_store.h"
+#include "include/app/agent_tools.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
@@ -88,7 +89,7 @@ struct PanelRequest {
     // A report it has taken waits as guidance until its turn starts.
     busy = JsonValue(frame, "busy", false) || JsonValue(frame, "guidance", 0);
     paused = state.contains("paused");
-    // A request that met a turn a thread's report had just started was
+    // A request that met a turn an agent's report had just started was
     // taken into that turn, which ends under its own name: idle after the
     // request was accepted is its end too.
     if (!JsonValue(frame, "checkpoint", false) ||
@@ -97,7 +98,7 @@ struct PanelRequest {
          (!accepted || busy))) {
       return true;
     }
-    // A queued thread event may already have started the next turn, which
+    // A queued agent event may already have started the next turn, which
     // clears the stop record: the request's own is kept.
     if (!completed) stop = JsonValue(state, "stop", json::object());
     after = UsageFromJson(JsonValue(state, "usage", json::object()));
@@ -107,10 +108,10 @@ struct PanelRequest {
 };
 
 // The work it delegated is part of the answer. Each step is in place
-// before the one before it ends: a thread mails its report before it shows
+// before the one before it ends: an agent mails its report before it shows
 // idle, the panel queues a report before acknowledging it, and the
-// queue starts its turn. So when no thread owes anything, the panel
-// is asked, and its word that it is idle is the end. A thread that waits
+// queue starts its turn. So when no agent owes anything, the panel
+// is asked, and its word that it is idle is the end. An agent that waits
 // for a person, or whose runtime is gone, is not waited for, nor are
 // reports the spend limit holds. One buffer for the whole wait: a frame
 // may arrive in pieces on either side of a tick.
@@ -132,7 +133,7 @@ void AwaitPanel(PanelRequest& panel) {
       continue;
     }
     if (!panel.submitted || !panel.completed || panel.busy ||
-        !panel.probe.empty() || (!panel.paused && ThreadsOwe(panel.cwd))) {
+        !panel.probe.empty() || (!panel.paused && AgentsOwe(panel.path))) {
       continue;
     }
     panel.probe = NewRequestId();
@@ -141,7 +142,7 @@ void AwaitPanel(PanelRequest& panel) {
 }
 
 // The panel's answer: what it said last. It finishes the work it was asked
-// for before it answers, so an earlier turn's "waiting on a thread" is not
+// for before it answers, so an earlier turn's "waiting on an agent" is not
 // part of it.
 std::string LastAnswer(const std::string& path) {
   SessionLoadResult saved = SessionStore::Inspect(path);
@@ -181,7 +182,7 @@ int PrintAnswer(const PanelRequest& panel, const std::string& answer) {
 }  // namespace
 
 // One request to a folder's panel from the command line: its answer,
-// with what its threads reported, on standard output.
+// with what its agents reported, on standard output.
 int PanelPromptMain(const Options& options) {
   const std::string cwd = CanonicalCwd();
   const std::string path = PanelPath(cwd);

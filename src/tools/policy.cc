@@ -248,22 +248,6 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
   return std::nullopt;
 }
 
-void ReadStringArray(const char* name, std::vector<std::string>& values,
-                     std::string& error) {
-  std::string configured = EnvStr(name);
-  if (configured.empty()) return;
-  json parsed = json::parse(configured, nullptr, false);
-  if (!parsed.is_array() ||
-      !std::all_of(parsed.begin(), parsed.end(),
-                   [](const json& value) { return value.is_string(); })) {
-    error = std::string(name) + " must be a JSON string array";
-    return;
-  }
-  for (const json& value : parsed) {
-    values.push_back(value.get<std::string>());
-  }
-}
-
 }  // namespace
 
 namespace {
@@ -394,9 +378,6 @@ ToolPolicy ToolPolicyFromEnvironment() {
       policy.allowed |= capability;
     }
   }
-
-  ReadStringArray("UAGENT_INTERNAL_TOOL_ALLOWLIST", policy.tool_allowlist,
-                  policy.error);
   return policy;
 }
 

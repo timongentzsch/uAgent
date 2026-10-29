@@ -35,7 +35,6 @@ void HandleMcp(AppSession& session, const std::string& argument,
 void HandlePermissionRules(const std::string& argument, CommandReply& reply);
 void HandleTools(AppSession& session, const std::string& argument,
                  CommandReply& reply);
-json AgentsJson(const AppSession& session);
 SelfDescriptionInputs DescriptionInputs(const AppSession& session);
 
 }  // namespace uagent

@@ -13,6 +13,7 @@
 #include "include/agent/agent.h"
 #include "include/agent/prompt.h"
 #include "include/api/client.h"
+#include "include/app/agent_tools.h"
 #include "include/app/artifact.h"
 #include "include/app/config_proposal.h"
 #include "include/app/uagent_tool.h"
@@ -26,9 +27,7 @@
 #include "include/providers/providers.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
-#include "include/tools/session.h"
 #include "include/tools/skill.h"
-#include "include/tools/subagent.h"
 #include "include/tools/tool.h"
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
@@ -361,8 +360,8 @@ json PromptSurfaceJson() {
     fragments.push_back(
         {{"trigger", trigger}, {"text", CapabilityPrompt(probes)}});
   }
-  std::vector<Tool> research = {probe("web_search"), probe("subagent")};
-  fragments.push_back({{"trigger", "web_search+subagent"},
+  std::vector<Tool> research = {probe("web_search"), probe("agent_start")};
+  fragments.push_back({{"trigger", "web_search+agent_start"},
                        {"text", CapabilityPrompt(research)}});
   json sections = json::array();
   for (std::string_view section : PromptSections()) {
@@ -385,10 +384,6 @@ json ToolSurfaceJson() {
   ActivitySupervisor supervisor;
   Api api;
   UsageAccumulator usage;
-  // Named, not temporaries: the subagent tools' handlers capture routes and
-  // providers by reference, so they must outlive the tools.
-  const std::vector<Route> routes;
-  const std::vector<Endpoint> providers;
   const std::string workspace = CanonicalAccessPath(".");
   std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
@@ -405,14 +400,12 @@ json ToolSurfaceJson() {
   conditional.emplace_back(UagentInstructionsTool(), "interactive approval");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
-  conditional.emplace_back(
-      SubagentTool(api, supervisor, routes, providers, /*debug=*/false),
-      "delegation depth");
-  conditional.emplace_back(
-      SubagentFanoutTool(api, supervisor, routes, providers, /*debug=*/false),
-      "delegation depth");
-  conditional.emplace_back(SessionTool(), "always");
-  conditional.emplace_back(SessionMessageTool(), "always");
+  std::vector<Tool> agent_tools;
+  AddAgentTools(agent_tools, api, [] { return std::string(); });
+  for (Tool& tool : agent_tools) {
+    const char* when = tool.name == "agent_start" ? "agent depth" : "always";
+    conditional.emplace_back(std::move(tool), when);
+  }
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
 #ifdef UAGENT_BROWSER
   conditional.emplace_back(
@@ -428,7 +421,6 @@ json ToolSurfaceJson() {
     out.push_back({{"name", tool.name},
                    {"description", ToolDescription(tool)},
                    {"parameters", ToolParameters(tool)},
-                   {"lean", tool.available_in_lean},
                    {"parallel_safe", tool.parallel_safe},
                    {"when", when}});
   };

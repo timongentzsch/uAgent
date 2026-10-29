@@ -170,7 +170,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     }
     session.cwd = item.cwd;
     session.kind = item.kind;
-    session.folder = JsonValue(item.delegation, "folder", "");
+    session.parent = item.parent;
     session.model = item.model;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
@@ -295,7 +295,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"run_id", session.run_id},
       {"cwd", session.cwd},
       {"kind", session.kind},
-      {"folder", session.folder},
+      {"parent", session.parent},
       {"model", session.model},
       {"title", session.title},
       {"generation", session.generation},

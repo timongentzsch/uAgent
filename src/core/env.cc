@@ -49,39 +49,12 @@ int64_t AutoCompactTokens() {
 int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
 
 bool CanDelegate() {
-  return AgentDepth() < LongSetting(Cfg("UAGENT_SUBAGENT_DEPTH"));
-}
-
-bool LeanToolset() { return EnvStr("UAGENT_INTERNAL_TOOLSET") == "lean"; }
-
-// The parent runs with no step ceiling at all (RuntimeConfig::max_steps), so a
-// child that reads a handful of files per step used to be cut off mid-review
-// while its parent was unbounded. Cost, wall clock and the parent's session
-// budget are the limits that actually protect a delegated run; these only stop
-// a child that has stopped making progress.
-int64_t SubagentMaxSteps() {
-  return LongSetting(Cfg("UAGENT_SUBAGENT_MAX_STEPS"));
-}
-
-std::string SubagentModel() {
-  return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
-}
-
-int64_t SubagentMaxToolCalls() {
-  return LongSetting(Cfg("UAGENT_SUBAGENT_MAX_TOOL_CALLS"));
-}
-
-int64_t SubagentTimeoutSeconds() {
-  return LongSetting(Cfg("UAGENT_SUBAGENT_TIMEOUT"));
+  return AgentDepth() < LongSetting(Cfg("UAGENT_AGENTS_DEPTH"));
 }
 
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would
 // also clamp any thinking budget derived from it.
 int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
-
-bool HeadlessProgressEnabled() {
-  return EnvStr("UAGENT_INTERNAL_HEADLESS_PROGRESS") == "1";
-}
 
 std::string PromptOverlayPath() {
   return EnvStr("UAGENT_INTERNAL_PROMPT_OVERLAY");
@@ -99,16 +72,8 @@ int64_t IdleMinutes() { return LongSetting(Cfg("UAGENT_IDLE_MINUTES")); }
 
 int64_t MaxActivities() { return LongSetting(Cfg("UAGENT_MAX_ACTIVITIES")); }
 
-int64_t MaxDelegatedActivities() {
-  return MaxActivities() - kDelegatedActivityHeadroom;
-}
-
 int64_t ToolConcurrency() {
   return LongSetting(Cfg("UAGENT_TOOL_CONCURRENCY"));
-}
-
-int64_t SubagentCallsPerTurn() {
-  return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
 }
 
 size_t ReadFileBytes() {

@@ -76,7 +76,7 @@ fact comes from the binary.
 - Do not invent settings. `uagent` enumerates every registered setting; if
   a requested behavior is absent from it, say so rather than guessing.
 - Never write the saved settings with the file tools. `uagent_configure`
-  is offered only in a top-level session where a person can
-  approve (a terminal or the web UI, not a headless run or a subagent). When
+  is offered only in a session where a person can approve (a terminal or
+  the web UI, not a headless run). When
   it is absent, give the user the `/config user KEY=VALUE` (or `project`)
   command to run themselves; do not make the change on their behalf.

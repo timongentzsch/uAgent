@@ -324,8 +324,11 @@ struct Server::State {
       for (size_t i = 0; i < clients.size(); ++i) {
         auto& client = clients[i];
         const auto events = watches[i + 2].revents;
-        if (events & (POLLERR | POLLNVAL)) client.fd.Reset();
-        if (events & (POLLIN | POLLHUP)) {
+        // A client that closed with frames unread resets the socket (POLLERR
+        // on Linux), and what it wrote before is still to be read: a command
+        // sent just before closing is taken, and the read ends the client.
+        if (events & POLLNVAL) client.fd.Reset();
+        if (client.fd && (events & (POLLIN | POLLHUP | POLLERR))) {
           char buffer[kIoBufferBytes];
           ssize_t bytes = read(client.fd.Get(), buffer, sizeof buffer);
           if (bytes > 0) {

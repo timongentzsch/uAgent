@@ -1,7 +1,7 @@
 import { DataText } from "./placeholder.tsx";
 import type { Session } from "./types.ts";
 
-// A session's title wherever it is listed; a thread is marked ↳. A place's
+// A session's title wherever it is listed; an agent is marked ↳. A place's
 // panel is its panel, whatever its first message was.
 export default function SessionName({ item }: { item: Session }) {
   if (item.kind === "panel")
@@ -15,10 +15,10 @@ export default function SessionName({ item }: { item: Session }) {
     );
   return (
     <>
-      {item.kind === "thread" && (
+      {item.parent && (
         <span class="thread-mark">
           <span aria-hidden="true">↳</span>
-          <span class="sr-only">Thread: </span>
+          <span class="sr-only">Agent: </span>
         </span>
       )}
       <DataText>{item.title || "Untitled conversation"}</DataText>

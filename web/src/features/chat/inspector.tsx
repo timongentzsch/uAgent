@@ -1,95 +1,34 @@
 import "../../shared/activity.css";
-import MessageInput from "../../shared/message-input.tsx";
-import ModelControl from "../../shared/model-control.tsx";
-import HistoryStart from "./history-start.tsx";
-import {
-  ContextSummary,
-  SessionSummary,
-} from "../../shared/session-summary.tsx";
-import { useDismiss } from "../../shared/dismiss.ts";
 import { duration } from "../../shared/duration.ts";
 import { useElapsed } from "../../shared/time.ts";
 import type {
   Activity,
   ActivityDetail,
-  ActivityTarget,
-  Agent,
   InspectorTarget,
-  JSONValue,
-  Node,
-  RawOptions,
   Report,
   SessionRef,
-  State,
 } from "../../shared/types.ts";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { command, manage } from "../../state/api.ts";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "preact/hooks";
-import { ChevronLeft } from "lucide-preact";
-import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
-import { command, readPages, manage } from "../../state/api.ts";
-import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
-import { keepFirst, mergeNodes } from "../../shared/tree.ts";
-import { maxHistoryNodes } from "../../shared/limits.ts";
-import {
-  Button,
   cleanText,
   EmptyState,
-  Field,
   LoadError,
   Modal,
-  SectionTitle,
   Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
-import {
-  active,
-  ActivityControls,
-  TurnStatus,
-  withAgents,
-} from "../../shared/turn-status.tsx";
+import { active, ActivityControls } from "../../shared/turn-status.tsx";
 import Raw from "./raw.tsx";
-import { StatisticsContent } from "./statistics.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { prepareHistoryNodes } from "./message.tsx";
-import { Transcript } from "./node.tsx";
-import { MessageActions } from "./message-actions.ts";
 
-// A page shown over the current detail inside the same sheet (Back returns),
-// never a second dialog.
-type Page = {
-  title: string;
-  raw?: RawOptions;
-  stats?: { nodeId?: string };
-};
-
-// A stable empty list: the history hook compares the newest node each render.
-const noNodes: readonly { id: string }[] = [];
-
-const childStateOf = (detail: ActivityDetail): State => ({
-  view: detail.conversation,
-  context_tokens: detail.context_tokens,
-  context_window: detail.context_window,
-  usage: detail.usage,
-  statistics: detail.statistics,
-  turns: detail.turns,
-  route: detail.route || detail.model,
-});
-
-// Pure fetch half of an activity inspect: memory content or the full
-// agent/activity detail, with older-page appends merged. State (version
-// guards, loading, errors) stays with the caller so panel and nested
-// viewers share the loader without sharing UI state.
+// Pure fetch half of an activity inspect: memory content or the
+// activity's output. State (version guards, loading, errors) stays with the
+// caller.
 async function fetchActivityDetail(
   session: SessionRef,
   cwd: string,
   item: ActivityDetail,
-  before?: number,
-  prior?: ActivityDetail | null,
   signal?: AbortSignal,
 ): Promise<ActivityDetail> {
   if (item.memory) {
@@ -112,44 +51,20 @@ async function fetchActivityDetail(
     {
       operation: "inspect",
       activity_id: item.id || item.activity_id || 0,
-      agent_id: item.agent_id || "",
-      ...(before ? { before } : {}),
     },
     { signal },
   );
   if (response.pending)
     throw new Error("Activity is still loading. Try again shortly.");
-  await prepareHistoryNodes(response.result.conversation?.nodes || []);
-  return {
-    ...item,
-    ...response.result,
-    olderWindow: !!before,
-    ...(before && prior?.conversation && response.result.conversation
-      ? {
-          conversation: {
-            ...response.result.conversation,
-            nodes: keepFirst(
-              mergeNodes(
-                response.result.conversation.nodes,
-                prior.conversation.nodes,
-              ),
-              maxHistoryNodes,
-            ),
-          },
-        }
-      : {}),
-  };
+  return { ...item, ...response.result };
 }
 
-// One inspector for everything the agent started: a command, a subagent, a
-// memory or a tool's input/output. It opens as a side sheet; drilling into a
-// nested agent or a tool page stays inside it with Back.
+// One inspector for what the agent started: a command, a memory or a
+// tool's input/output, in a side sheet.
 export default function Inspector({
   target,
   items,
-  agents,
   cwd,
-  running,
   session,
   online,
   report,
@@ -157,21 +72,15 @@ export default function Inspector({
 }: {
   target: InspectorTarget;
   items: Activity[];
-  agents: Agent[];
   cwd: string;
-  running?: boolean;
   session: SessionRef;
   online: boolean;
   report: Report;
   close: () => void;
 }) {
-  const rows = withAgents(items, agents);
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [page, setPage] = useState<Page | null>(null);
-  // An inner page is a layer of its own: back returns to the activity.
-  useDismiss(page !== null, () => setPage(null));
   const inspection = useRef(0);
   const inspectionRequest = useRef<AbortController | undefined>(undefined);
   // Progress ticks can outpace a refresh: one runs at a time and the latest
@@ -187,11 +96,7 @@ export default function Inspector({
     [],
   );
 
-  async function inspect(
-    item: ActivityDetail,
-    before?: number,
-    refresh = false,
-  ) {
+  async function inspect(item: ActivityDetail, refresh = false) {
     if (refresh && refreshing.current) {
       queuedRefresh.current = item;
       return;
@@ -201,12 +106,7 @@ export default function Inspector({
     inspectionRequest.current?.abort();
     const controller = new AbortController();
     inspectionRequest.current = controller;
-    if (!before)
-      setDetail((prior) =>
-        prior?.id === item.id && prior?.agent_id === item.agent_id
-          ? prior
-          : item,
-      );
+    setDetail((prior) => (prior?.id === item.id ? prior : item));
     if (!refresh) {
       setLoading(true);
       setError(null);
@@ -216,8 +116,6 @@ export default function Inspector({
         session,
         cwd,
         item,
-        before,
-        before ? detail : undefined,
         controller.signal,
       );
       if (version !== inspection.current) return;
@@ -231,7 +129,7 @@ export default function Inspector({
         const queued = queuedRefresh.current;
         queuedRefresh.current = null;
         if (queued && version === inspection.current)
-          inspect(queued, undefined, true).catch(report);
+          inspect(queued, true).catch(report);
       }
     }
   }
@@ -240,11 +138,9 @@ export default function Inspector({
   // an activity the supervisor no longer retains still opens with its record.
   // biome-ignore lint/correctness/useExhaustiveDependencies: opens the record when the target changes, not when rows stream in
   useEffect(() => {
-    setPage(null);
     if ("raw" in target) {
       ++inspection.current;
       setDetail(null);
-      setPage({ title: target.title, raw: target.raw });
       return;
     }
     if ("item" in target) {
@@ -252,18 +148,17 @@ export default function Inspector({
       return;
     }
     const { node } = target;
-    const item = rows.find((row) => row.id === node.activity_id);
+    const item = items.find((row) => row.id === node.activity_id);
     const receipt: ActivityDetail = {
       ...item,
       activity_id: node.activity_id,
-      agent_id: node.agent_id,
       label: node.label || "Recorded event",
       status: node.state,
       memory: node.memory,
       command: node.command || item?.command,
       output: node.text,
     };
-    if (item || node.agent_id || node.memory) inspect(receipt).catch(report);
+    if (item || node.memory) inspect(receipt).catch(report);
     else {
       ++inspection.current;
       setDetail(receipt);
@@ -272,44 +167,25 @@ export default function Inspector({
     }
   }, [target]);
 
-  // The parent stream already reports agent and activity progress.
-  // Refresh an open child only when that authoritative state changes instead
-  // of running a second polling clock beside SSE.
-  const rowsVersion = rows
+  // The parent stream already reports activity progress. Refresh an open
+  // one only when that authoritative state changes instead of running a
+  // second polling clock beside SSE.
+  const rowsVersion = items
     .map((item) =>
-      [
-        item.id,
-        item.agent_id,
-        item.status,
-        item.progress,
-        item.duration_ms,
-      ].join(":"),
+      [item.id, item.status, item.progress, item.duration_ms].join(":"),
     )
     .join("|");
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshes when the rows' state (rowsVersion) or the open record's identity changes, not on each new detail object
   useEffect(() => {
-    if (!detail || loading || detail.olderWindow) return;
-    inspect(current || detail, undefined, true).catch(report);
-  }, [rowsVersion, detail?.id, detail?.agent_id, detail?.olderWindow, loading]);
+    if (!detail || loading) return;
+    inspect(current || detail, true).catch(report);
+  }, [rowsVersion, detail?.id, loading]);
 
   const current =
-    (detail &&
-      rows.find((item) =>
-        detail.agent_id
-          ? item.agent_id === detail.agent_id
-          : item.id === detail.id,
-      )) ||
-    detail;
-  const isAgent = !!detail?.agent_id && !detail.memory;
+    (detail && items.find((item) => item.id === detail.id)) || detail;
   const title =
-    page?.title ||
-    (detail?.memory
-      ? "Memory"
-      : isAgent
-        ? detail?.name || "Subagent"
-        : "Activity");
-
-  const live = !!current && !page && active(current);
+    "raw" in target ? target.title : detail?.memory ? "Memory" : "Activity";
+  const live = !!current && active(current);
 
   return (
     <Modal
@@ -329,63 +205,20 @@ export default function Inspector({
         )
       }
     >
-      {page && (
+      {"raw" in target ? (
         <div class="activity-detail activity-page">
-          {detail && (
-            <Button
-              variant="quiet"
-              class="activity-back"
-              onClick={() => setPage(null)}
-            >
-              <ChevronLeft />
-              Back
-            </Button>
-          )}
-          {page.raw ? (
-            <Raw {...page.raw} />
-          ) : (
-            detail && (
-              <>
-                {/* A subagent's totals come from its saved session, so
-                    running work is not in them yet. */}
-                {active(current || detail) && (
-                  <p class="muted">
-                    Totals reflect the latest saved checkpoint. Current work may
-                    not yet be included.
-                  </p>
-                )}
-                <StatisticsContent
-                  state={childStateOf(detail)}
-                  nodeId={page.stats?.nodeId}
-                />
-              </>
-            )
-          )}
+          <Raw {...target.raw} />
         </div>
-      )}
-      {detail && current ? (
+      ) : detail && current ? (
         <DetailBody
           detail={detail}
           current={current}
-          running={running}
-          online={online}
-          session={session}
           loading={loading}
           error={error}
-          inspect={inspect}
-          report={report}
-          navigate={(next) => {
-            // A newer page wins over any load still in flight.
-            ++inspection.current;
-            inspectionRequest.current?.abort();
-            setDetail(next);
-          }}
-          page={setPage}
-          cwd={cwd}
-          hidden={!!page}
+          retry={() => inspect(detail)}
         />
       ) : (
-        !page && <Spinner surface />
+        <Spinner surface />
       )}
     </Modal>
   );
@@ -394,282 +227,38 @@ export default function Inspector({
 function DetailBody({
   detail,
   current,
-  running,
-  online,
-  session,
   loading,
   error,
-  inspect,
-  report,
-  navigate,
-  page,
-  cwd,
-  hidden,
+  retry,
 }: {
-  // Hidden, not unmounted, while a page is shown: the draft and thread
-  // scroll survive a visit to tool input/output or statistics.
-  hidden: boolean;
   detail: ActivityDetail;
   current: Activity;
-  running?: boolean;
-  online: boolean;
-  session: SessionRef;
   loading: boolean;
   error: unknown;
-  inspect: (item: ActivityDetail, before?: number) => Promise<void>;
-  report: Report;
-  navigate: (detail: ActivityDetail) => void;
-  page: (page: Page) => void;
-  cwd: string;
+  retry: () => Promise<void>;
 }) {
-  const isAgent = !!detail.agent_id && !detail.memory;
-  const isLive = active(current);
   const elapsed = useElapsed(current.duration_ms == null, current.started_ms);
-  // Thread follows the live edge exactly like the transcript (same
-  // hook, keyed by agent): growth pins while sticky, any upward move
-  // breaks, and the jump button below re-pins.
-  const [following, setFollowing] = useState(true);
-  const historyKey = `agent:${detail.agent_id || detail.id || "detail"}`;
-  const thread = useTranscriptHistory(
-    setFollowing,
-    historyKey,
-    detail.conversation?.nodes || noNodes,
-  );
-  // Guidance submit lives here (not the panel) so every nesting level
-  // sends with its own text and receipt.
-  const [text, setText] = useState("");
-  const lifetime = useRef(new AbortController());
-  useEffect(() => {
-    lifetime.current = new AbortController();
-    return () => lifetime.current.abort();
-  }, [detail.agent_id, detail.id]);
-  const [sending, setSending] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [model, setModel] = useState("");
-  const showTurnStats = useCallback(
-    (node: Pick<Node, "id">) =>
-      page({ title: "Subagent statistics", stats: { nodeId: node.id } }),
-    [page],
-  );
-  const childState = childStateOf(detail);
-  useEffect(() => {
-    setText("");
-    setNotice("");
-    setModel("");
-  }, [detail.agent_id]);
-  // One route stack keeps the thread in one stable surface. Nested agents use
-  // the same history/rendering path and a Back action instead of recursive
-  // dialogs with separate scroll and loading state.
-  const [ancestors, setAncestors] = useState<ActivityDetail[]>([]);
-  // Key scope and the default node reader follow the CHILD
-  // conversation: stable child ids must never inherit parent row state.
-  const childSession = useMemo(
-    () => ({
-      id: detail.agent_id || `activity-${detail.id ?? "detail"}`,
-      generation: "",
-    }),
-    [detail.agent_id, detail.id],
-  );
-  const readDetail = useCallback(
-    (id: string, rawFlag: boolean, signal = lifetime.current.signal) =>
-      readPages(async (offset) => {
-        const response = await command(
-          "activity",
-          session,
-          {
-            operation: "inspect",
-            agent_id: detail.agent_id,
-            detail: id,
-            raw: rawFlag,
-            offset,
-          },
-          { signal },
-        );
-        const body = response.pending ? undefined : response.result?.body;
-        if (!body) throw new Error("Message is unavailable.");
-        return body;
-      }, signal),
-    [session, detail.agent_id],
-  );
-  const openRaw = useCallback(
-    async (id: string) => {
-      const { signal } = lifetime.current;
-      try {
-        const body = await readDetail(id, true, signal);
-        page({
-          title: id.startsWith("t-") ? "Tool input/output" : "Full content",
-          raw: {
-            value: id.startsWith("t-")
-              ? (JSON.parse(body.text) as JSONValue)
-              : { output: body.text },
-          },
-        });
-      } catch (failure) {
-        if (!signal.aborted) report(failure);
-      }
-    },
-    [readDetail, report, page],
-  );
-  const openNested = useCallback(
-    async (node: ActivityTarget) => {
-      const { signal } = lifetime.current;
-      try {
-        const full = await fetchActivityDetail(
-          session,
-          cwd,
-          {
-            activity_id: node.activity_id,
-            agent_id: node.agent_id,
-            label: node.label || "Subagent",
-            status: node.state,
-            command: node.command,
-            output: node.text,
-          },
-          undefined,
-          undefined,
-          signal,
-        );
-        signal.throwIfAborted();
-        setAncestors((prior) => [...prior, detail]);
-        navigate(full);
-      } catch (failure) {
-        if (!signal.aborted) report(failure);
-      }
-    },
-    [detail, session, cwd, navigate, report],
-  );
-  const threadActions = useMemo(
-    () => ({
-      report,
-      read: readDetail,
-      inspect: openRaw,
-      activity: openNested,
-      statistics: showTurnStats,
-    }),
-    [report, readDetail, openRaw, openNested, showTurnStats],
-  );
   const meta = [
     current.status,
-    detail.route || detail.model,
     current.started_ms && current.duration_ms != null
       ? duration(current.duration_ms)
       : elapsed,
   ].filter(Boolean);
 
   return (
-    <div class="activity-detail" hidden={hidden}>
-      {ancestors.length > 0 && (
-        <Button
-          variant="quiet"
-          class="activity-back"
-          onClick={() => {
-            const parent = ancestors.at(-1);
-            if (!parent) return;
-            setAncestors((prior) => prior.slice(0, -1));
-            navigate(parent);
-          }}
-        >
-          <ChevronLeft />
-          Back to {ancestors.at(-1)?.name || "parent agent"}
-        </Button>
-      )}
-      {error && <LoadError error={error} retry={() => inspect(detail)} />}
+    <div class="activity-detail">
+      {error && <LoadError error={error} retry={retry} />}
       {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
 
-      {isAgent && (
-        <details class="activity-info">
-          <summary>Task and run details</summary>
-          {detail.description && (
-            <section aria-label="About">
-              <p class="muted">{cleanText(detail.description)}</p>
-            </section>
-          )}
-          {detail.directive && (
-            <section aria-label="Run details">
-              <SectionTitle>Directive</SectionTitle>
-              <Markdown text={detail.directive} />
-            </section>
-          )}
-        </details>
-      )}
-
-      {!isAgent &&
-        !detail.conversation &&
-        (detail.command ? (
-          <section aria-label="Command">
-            <pre class="detail-command" tabIndex={0}>
-              {cleanText(detail.command)}
-            </pre>
-          </section>
-        ) : (
-          detail.label &&
-          !detail.memory && <p class="detail-label">{detail.label}</p>
-        ))}
-
-      {!isAgent && !detail.conversation && detail.task && (
-        <p class="detail-task">{detail.task}</p>
-      )}
-
-      {(isAgent || detail.conversation) && (
-        <section aria-label="Thread">
-          <div
-            class="child-thread dense"
-            data-history-key={historyKey}
-            ref={thread.attachScroller}
-            aria-label="Subagent task"
-          >
-            <div ref={thread.attachContent}>
-              <HistoryStart
-                view={detail.conversation}
-                online={online}
-                loading={loading}
-                load={() =>
-                  thread
-                    .preserveWhile(() =>
-                      inspect(detail, detail.conversation?.before),
-                    )
-                    .catch(report)
-                }
-              />
-              {detail.conversation ? (
-                <MessageActions.Provider value={threadActions}>
-                  <Transcript
-                    nodes={detail.conversation.nodes}
-                    online={online}
-                    session={childSession}
-                  />
-                </MessageActions.Provider>
-              ) : loading ? (
-                <Skeleton label="Loading the thread…" />
-              ) : (
-                <p class="muted">Waiting for the subagent transcript…</p>
-              )}
-              {isAgent && isLive && (
-                <p
-                  class="thread-progress"
-                  title="Latest reported subagent activity"
-                >
-                  <TurnStatus
-                    phase={cleanText(
-                      current.progress || detail.progress || "Working",
-                    )}
-                    running
-                    announce
-                  />
-                </p>
-              )}
-            </div>
-          </div>
-          {!following && (
-            <JumpToLatest
-              unseen={thread.unseen}
-              onClick={() => {
-                thread.jumpToLatest();
-                inspect(detail).catch(report);
-              }}
-            />
-          )}
+      {detail.command ? (
+        <section aria-label="Command">
+          <pre class="detail-command" tabIndex={0}>
+            {cleanText(detail.command)}
+          </pre>
         </section>
+      ) : (
+        detail.label &&
+        !detail.memory && <p class="detail-label">{detail.label}</p>
       )}
 
       {/* Each section holds its place from the first frame: content
@@ -687,94 +276,15 @@ function DetailBody({
           )}
         </section>
       ) : (
-        !isAgent &&
-        !detail.conversation && (
-          <section aria-label="Output">
-            {detail.output ? (
-              <pre>{cleanText(detail.output)}</pre>
-            ) : loading ? (
-              <Skeleton label="Loading the output…" />
-            ) : (
-              <EmptyState>No output recorded.</EmptyState>
-            )}
-          </section>
-        )
-      )}
-
-      {isAgent && (
-        <form
-          class="guidance-form"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            if (!text.trim() || sending) return;
-            setSending(true);
-            try {
-              const response = await command("activity", session, {
-                operation: isLive ? "message" : "followup",
-                activity_id: detail.id || 0,
-                agent_id: detail.agent_id || "",
-                text: text.trim(),
-                ...(!isLive && model ? { model } : {}),
-              });
-              if (!response.pending) {
-                setText("");
-                setNotice(
-                  isLive
-                    ? "Guidance queued for the next step."
-                    : "Follow-up started.",
-                );
-              }
-            } catch (failure) {
-              report(failure);
-            } finally {
-              setSending(false);
-            }
-          }}
-        >
-          <Field label={isLive ? "Guidance" : "Follow-up"}>
-            <MessageInput
-              submit={(event) =>
-                (
-                  event.currentTarget as HTMLTextAreaElement
-                ).form?.requestSubmit()
-              }
-              value={text}
-              rows={2}
-              onInput={(event) => setText(event.currentTarget.value)}
-            />
-          </Field>
-          <div class="composer-actions">
-            <ModelControl
-              session={session}
-              state={childState}
-              selection={model || childState.route}
-              online={online}
-              running={isLive || sending}
-              save={setModel}
-            />
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={
-                !online || sending || !text.trim() || (!isLive && running)
-              }
-            >
-              {sending
-                ? "Sending…"
-                : isLive
-                  ? "Send guidance"
-                  : "Start follow-up"}
-            </Button>
-          </div>
-          <div class="metrics">
-            <ContextSummary state={childState} />
-            <SessionSummary
-              state={childState}
-              open={() => page({ title: "Subagent statistics", stats: {} })}
-            />
-          </div>
-          {notice && <p role="status">{notice}</p>}
-        </form>
+        <section aria-label="Output">
+          {detail.output ? (
+            <pre>{cleanText(detail.output)}</pre>
+          ) : loading ? (
+            <Skeleton label="Loading the output…" />
+          ) : (
+            <EmptyState>No output recorded.</EmptyState>
+          )}
+        </section>
       )}
     </div>
   );

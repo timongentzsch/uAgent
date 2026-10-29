@@ -1,5 +1,5 @@
 import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
-import { conversation } from "./golden-turns.js";
+import { agents, conversation } from "./golden-turns.js";
 
 // The transcript tree on the Vite-served app with a mocked host: a saved
 // conversation of calls, a failure, a group and an answer, at each detail
@@ -18,7 +18,7 @@ const SESSION = {
   updated: 1_700_000_000_000,
 };
 
-async function open(page, level) {
+async function open(page, level, nodes = conversation) {
   await page.addInitScript((detail) => {
     localStorage.setItem("uagent-detail", detail);
     globalThis.EventSource = class extends EventTarget {
@@ -56,7 +56,7 @@ async function open(page, level) {
         epoch: "e",
         cursor: 1,
         metadata: SESSION,
-        state: { phase: "idle", view: { nodes: conversation } },
+        state: { phase: "idle", view: { nodes } },
         pending: null,
       });
     return json({ error: "Not in this mock" }, 404);
@@ -188,4 +188,11 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Minimal" }).click();
   await expect(work).toHaveAttribute("aria-expanded", "false");
+});
+
+test("an agent's link opens its conversation", async ({ page }) => {
+  await open(page, "full", [...conversation, ...agents]);
+  await page.getByRole("button", { name: "Open agent", exact: true }).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
 });

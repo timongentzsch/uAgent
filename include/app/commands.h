@@ -60,9 +60,9 @@ RuntimeConfig::Values RestoreChoices(const json& settings,
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
 // What the approval control shows for these settings: the conversation's
-// own mode or "default", the mode in effect, the one it inherits, and for a
-// thread the limit.
-json ApprovalState(const EffectiveConfigSnapshot& configured, bool thread);
+// own mode or "default", the mode in effect and the one it inherits: Auto
+// for an agent.
+json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent);
 json ActivityControl(ActivitySupervisor& processes, const json& request);
 std::string ActivityText(const json& result);
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);

@@ -103,8 +103,8 @@ export default function Decision({
     if (!typing) heading.current?.focus({ preventScroll: true });
   }, []);
   const title =
-    pending.route === "panel"
-      ? "The lead agent is deciding"
+    pending.route === "parent"
+      ? "The parent agent is deciding"
       : asking
         ? "Needs your answer"
         : "Needs your decision";
@@ -140,7 +140,7 @@ export default function Decision({
           </strong>
         )}
       </div>
-      {pending.route === "panel" && (
+      {pending.route === "parent" && (
         <p class="decision-note">You can still answer first.</p>
       )}
       {pending.note && <p class="decision-note">{cleanText(pending.note)}</p>}

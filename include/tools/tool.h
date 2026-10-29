@@ -186,10 +186,7 @@ struct ToolContext {
   // the turn, 0 when the person did: sessions answering each other stop at
   // kMailMaxHops.
   int hops = 0;
-  // The tools the calling session has enabled, by name: what it may hand on
-  // to a child.
-  std::vector<std::string> enabled_tools;
-  // Delegating calls in the batch this one is part of: children started
+  // Calls that start agents in the batch this one is part of: agents started
   // together share what the session has left.
   int64_t delegations = 1;
   // What this call's approval covered (Tool::approval_subject), taken when it
@@ -304,11 +301,10 @@ struct Tool {
   // model round to say the same thing, and these are the arguments models
   // overshoot most often.
   std::vector<std::string> clamped_arguments;
-  bool available_in_lean = true;  // omit implementation-only schemas in tasks
-  bool retain_output = false;     // keep durable procedure/state in context
-  bool dedupe_output = false;     // collapse verified recent duplicate output
-  bool delegates = false;         // contributes delegation runtime context
-  bool memory_store = false;      // retained only when memory is enabled
+  bool retain_output = false;  // keep durable procedure/state in context
+  bool dedupe_output = false;  // collapse verified recent duplicate output
+  bool delegates = false;      // starts agents (ToolContext::delegations)
+  bool memory_store = false;   // retained only when memory is enabled
   // Asked before every request: false withholds the tool and its prompt line
   // while it cannot run, e.g. on the route in use. Unset means always.
   std::function<bool()> available;
@@ -337,8 +333,8 @@ class ToolSelection {
 
 struct ToolPolicy {
   uint32_t allowed = kAllToolCapabilities;
-  // When set, only these tools, whatever the capabilities allow: a
-  // delegated child's toolset, or a folder panel's.
+  // When set, only these tools, whatever the capabilities allow: a folder
+  // panel's.
   std::vector<std::string> tool_allowlist;
   std::string error;
 };
@@ -366,8 +362,6 @@ const json& CommandIntents();
 // The authority a call needs. A tool may escalate specific arguments; nothing
 // can de-escalate below what the tool itself declares.
 ApprovalClass RequiredApproval(const Tool& tool, const json& arguments);
-
-void KeepLeanTools(std::vector<Tool>& tools);
 
 std::string ToolDescription(const Tool& tool);
 

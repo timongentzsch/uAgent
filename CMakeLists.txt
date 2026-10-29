@@ -213,8 +213,6 @@ add_library(
   src/tools/registry_memory.cc
   src/tools/registry_plan.cc
   src/tools/shell.cc
-  src/tools/session.cc
-  src/tools/subagent.cc
   src/tools/web_fetch.cc
   src/tools/web_search.cc)
 target_link_libraries(uagent_tools PUBLIC uagent_agent)
@@ -241,11 +239,10 @@ add_library(
   src/app/control.cc
   src/app/schedule.cc
   src/app/launch.cc
-  src/app/thread_link.cc
+  src/app/agent_link.cc
+  src/app/agent_tools.cc
   src/app/uagent_tool.cc
   src/app/panel.cc
-  src/app/panel_history.cc
-  src/app/panel_threads.cc
   src/cli/options.cc
   src/app/runtime.cc
   src/app/self_description.cc
@@ -436,7 +433,7 @@ if(BUILD_TESTING)
   # at the job's limit.
   set_tests_properties(core PROPERTIES TIMEOUT 600)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  set(_groups runtime tools ui providers mcp delegation sandbox)
+  set(_groups runtime tools ui providers mcp agents sandbox)
   if(UAGENT_WEB)
     list(APPEND _groups web management)
     if(UAGENT_WEB_PUSH)

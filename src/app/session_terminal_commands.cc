@@ -167,17 +167,23 @@ Terminal::Command Terminal::SetDetail(const std::string& argument) {
   return Command::kDone;
 }
 
+// An agent belongs to the folder its first ancestor works in, wherever it
+// works itself.
 std::string Terminal::Folder() const {
-  const json header = SessionHeader(path_);
-  std::string folder = JsonValue(ThreadRole(header), "folder", "");
-  if (!folder.empty()) return folder;
-  return JsonValue(header, kSessionHeaderCwd, CanonicalCwd());
+  std::string path = path_;
+  for (std::string parent;
+       !(parent = AgentParentPath(
+             path, JsonValue(AgentOf(SessionHeader(path)), "parent", "")))
+            .empty();) {
+    path = parent;
+  }
+  return JsonValue(SessionHeader(path), kSessionHeaderCwd, CanonicalCwd());
 }
 
 std::string Terminal::MatchFolderSession(const std::string& argument) const {
   const std::string wanted = AsciiLower(Trim(argument));
   if (wanted.empty()) return "";
-  return UniqueSession(FolderSessions(Folder()), [&](const SessionInfo& info) {
+  return UniqueSession(SessionsBeside(path_), [&](const SessionInfo& info) {
     return SessionIdFor(info.path).starts_with(wanted) ||
            AsciiLower(info.title).find(wanted) != std::string::npos;
   });

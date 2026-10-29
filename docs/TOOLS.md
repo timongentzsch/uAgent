@@ -21,9 +21,9 @@ such round in a turn ends it.
 ## Inventory
 
 The set is built when a session starts and refreshed when an MCP server's
-tool list changes. "Full toolset" means every session except a `lean`
-subagent, which reads and runs but gets no file-editing, memory, `uagent` or
-`subagent` tools.
+tool list changes. "Full toolset" means every session except an agent
+started with `edits` none, which gets no `write_file`, `edit_file`,
+`delete_file`, `memory` or `browser` tool.
 
 | Tool | Purpose | Available |
 | --- | --- | --- |
@@ -36,19 +36,18 @@ subagent, which reads and runs but gets no file-editing, memory, `uagent` or
 | `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
-| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions) | full toolset |
-| `uagent_configure`, `uagent_instructions` | change settings, or replace an instructions file, by an exact diff a person approves | full toolset, only where a person can approve |
+| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions) | always |
+| `uagent_configure`, `uagent_instructions` | change settings, or replace an instructions file, by an exact diff a person approves | only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
 | `plan` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |
-| `thread_spawn`, `thread`, `decide`, `history` | the lead agent's own (it also has `run`, in the `readonly` sandbox): start background agents (`thread_spawn`); guide, stop and remove them (`thread`); answer what a background agent asks or pass it to you; search and read the folder's conversations | a folder's lead agent, and a `/btw` side conversation started from one; see the [guide](GUIDE.md#the-lead-agent) |
-| `session`, `session_message` | list linked sessions, and message them; an idle one starts a turn on the message | always; a session is linked with its parent, its children and their siblings |
-| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never headless runs or children); a background agent's questions go to its lead agent first, except in a turn the user started or wrote into |
-| `subagent`, `subagent_fanout` | delegate a subtask to a durable child session, or one prompt over many items with each finding checked | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
+| `agent_start` | start agents, each a conversation of its own on a brief; see [Agents](#agents) | unless this agent is `agents.depth` levels deep |
+| `agent_send`, `agents`, `decide` | message the parent, an agent or its siblings; list, read, stop, close or delete agents; answer what an agent asks | always |
+| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never a headless run); an agent's questions go to its parent first |
 | `skill` | load an installed skill | a usable skill is installed |
-| `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | top-level sessions (web, terminal, headless, lead agents and background agents) while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
-| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a lead agent or a lean child |
+| `browser` | drive the web host's shared Chrome; access queues, and isolated parallel research is opt-in | full toolset, while the web host runs the browser named by `UAGENT_BROWSER_DATA`; see [BROWSER.md](BROWSER.md) |
+| `<server>_<tool>` | tools discovered from MCP servers; see [Operations](OPERATIONS.md#mcp) | configured servers; not in a lead agent or an agent |
 
 A result is its output, which the model reads and you see; facts (an exit
 code, lines added and removed, a count, why a call was refused), which every
@@ -58,7 +57,7 @@ captured log is kept, which it reads after the output and no row shows.
 
 Independent calls to parallel-safe tools run up to four at a time; results
 are appended in the order the model issued the calls. A tool with a per-turn
-cap (`web_search` 4, `subagent` 32) is withdrawn for the rest of the turn
+cap (`web_search` 4) is withdrawn for the rest of the turn
 once the cap is reached. Tool limits, timeouts and turn budgets apply in
 every approval mode.
 
@@ -77,8 +76,18 @@ turns the sandbox off.
 `/permissions rules` lists remembered approvals and
 `/permissions forget N|all` removes them.
 [Security](../SECURITY.md#what-the-agent-may-do-without-asking) says what
-each mode covers, what always needs a person, and how subagents and a
-lead agent's background agents differ.
+each mode covers and what always needs a person.
+
+An agent takes its parent's mode, Auto at most: Ask under a parent in Ask,
+Auto otherwise. A person may set any mode for it, yolo included, and that
+survives a restart. In Auto, an agent that may edit acts inside its folder
+without review while the sandbox is enforced. Its approvals and questions go
+to its parent, which answers with `decide` (allow once or for the agent's
+conversation, deny with a reason, answer, or yield). One the parent yields
+or leaves for 5 minutes goes to a person, and so does one that always needs
+a person, such as a command outside the sandbox or `agents` `delete`. Once a
+person writes into an agent's turn, the rest of that turn's decisions are
+theirs.
 
 ## Files and search
 
@@ -131,49 +140,49 @@ to a non-PTY activity is rejected.
 - An activity's result is added once, bounded, to
   the model's next call; output already read is not repeated. If the
   conversation is idle by then, the result starts a turn, so the agent can
-  end its turn instead of waiting. A headless run (`-p`) answers once: it
-  waits for its subagents but starts no turn for a late result, and its
-  commands stop when it ends.
-- A failed child reports its route, failure stage, bounded diagnostics and a
-  remedy. µAgent never silently changes provider, model, pricing or privacy
-  policy for a child.
+  end its turn instead of waiting. A headless run (`-p`) starts no turn for
+  a late command result, and its commands stop when it ends.
 
-## Delegation
+## Agents
 
-`subagent` defaults to `operation=spawn` and waits for the child, returning
-its answer and a durable agent ID; with `background=true` it returns an
-activity ID at once.
+An agent is a conversation another one, its parent, started with
+`agent_start`. It is saved beside its parent, runs in its own runtime, opens
+like any conversation and is listed under its parent; `-c` and `--resume`
+skip it. With no client attached, its runtime stops about a second after its
+turn ends, and a message starts it again.
 
-- `mode` is `lean` by default (read and run, no file-editing tools); `full`
-  adds the editing tools and lets the child delegate in turn. A child never
-  gets a tool its parent has switched off. In a session with no command
-  tool, such as a lead agent, a lean child only reads, so starting one needs
-  no approval, and the tool tells the parent its children cannot run
-  commands.
-- `model` picks the child's route; without it the child runs on the route
-  `subagent.model` names, or on the parent's when that is empty.
-- `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
-  one child, within the session's remaining budgets; `limits.memory=false`
-  withholds memory.
-- `schema` (a JSON Schema) makes the child answer with only that JSON. The
-  brief tells it the format; an answer that does not parse or fit goes back
-  to it with the reason, twice at most, after which it stands as written.
-- `subagent_fanout` runs `prompt` once per entry of `items` (put in its
-  `{item}`), each child answering with findings of the `finding` schema. Then
-  `refuters` children (default 1, at most 3) try to refute each finding.
-  It returns the verified findings, the refuted ones with a reason, and those
-  left unchecked, with no model turn in between. One call starts at most 64
-  children. A finding no refuter checked, with `refuters=0` or past that
-  ceiling, is reported unchecked, never verified.
-- Children started in one batch run at once, up to six; other parallel
-  calls run four at a time.
-- `followup` resumes the child's private conversation and prepends its
-  stored `directive`; a new directive replaces it.
-- `message` delivers one-shot guidance at a running child's next step; a
-  finished child runs again on it.
-- `list` reports this session's children with model, toolset and state.
-- `activity` waits for, reads or stops ordinary children. `/agents` shows the
-  same records.
+`agent_start` takes a `brief` the agent must be able to finish alone.
+
+- `edits` is `none` by default: the agent's commands run in the `readonly`
+  sandbox and it gets no editing tools, whatever its conversation's settings
+  say; the agents it starts are `none` too. `worktree` works in a new git
+  worktree under `~/.uagent/worktrees/`, `folder` in this folder; both run in
+  the `default` sandbox.
+- `model` picks its route; without it, the parent's.
+- With `wait` (the default) the call returns `[{id, state, answer}]` once
+  every agent has reported, or as soon as one asks for a decision (state
+  `needs decision`). Esc stops them; the turn's deadline leaves them
+  working. Without `wait`, the agent's report (its answer, up to 6,000
+  characters) arrives as mail and starts the parent's next turn.
+- `items` (up to 24) starts one agent per item, the item appended to the
+  brief, and adds `item` to each row.
+- A conversation has at most `agents.max` (8) agents at work; items beyond
+  the free slots start as slots free. Agents start agents down to
+  `agents.depth` (2) levels, and start no MCP servers.
+
+A headless run waits while its agents owe it a report, except one waiting on
+a person, and takes each up as a turn.
+
+`agent_send` messages the parent, an agent this conversation started or one
+of its siblings: a running one reads it at its next step, an idle one starts
+a turn on it. Agents' mail starts at most three turns in a row of one
+conversation before a person speaks there.
+
+`agents` lists this conversation's agents; reads any conversation of the
+folder (`part` `rows`, `report`, `diff`, or `search` with `query`), quoted as
+data; and stops, closes or deletes an agent of its own. Deleting asks a
+person and removes the agent's worktree only when nothing in it would be
+lost.
 
 ## Web
 

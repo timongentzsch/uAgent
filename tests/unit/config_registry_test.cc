@@ -41,8 +41,6 @@ constexpr const char* kBoolSettings[] = {
 constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TOOL_RESULT_CHARS", ToolResultCap},
     {"UAGENT_AUTO_COMPACT_PCT", AutoCompactPct},
-    {"UAGENT_SUBAGENT_MAX_STEPS", SubagentMaxSteps},
-    {"UAGENT_SUBAGENT_MAX_TOOL_CALLS", SubagentMaxToolCalls},
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},
     {"UAGENT_READ_FILE_LINES", ReadFileLines},
     {"UAGENT_ATTACHMENT_MB", AttachmentLimitMb},
@@ -53,7 +51,6 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_IDLE_MINUTES", IdleMinutes},
     {"UAGENT_MAX_ACTIVITIES", MaxActivities},
     {"UAGENT_TOOL_CONCURRENCY", ToolConcurrency},
-    {"UAGENT_SUBAGENT_CALLS_PER_TURN", SubagentCallsPerTurn},
     {"UAGENT_LIST_ENTRIES", ListDirEntries},
     {"UAGENT_GREP_RESULTS", GrepResults},
     {"UAGENT_WEB_SEARCH_RESULTS", WebSearchMaxResults},

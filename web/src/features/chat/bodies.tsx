@@ -150,7 +150,6 @@ const linkTarget = (node: Node, link: LinkPart): ActivityTarget => ({
   state: node.state,
   text: node.body?.text,
   command: node.command,
-  agent_id: link.to === "agent" ? String(link.id) : undefined,
   activity_id: link.to === "activity" ? Number(link.id) : undefined,
   memory:
     link.to === "memory"
@@ -168,7 +167,7 @@ export function NodeBody({
   online: boolean;
   session: SessionRef;
 }) {
-  const { read, inspect, activity } = useContext(MessageActions);
+  const { read, inspect, activity, open } = useContext(MessageActions);
   const load = useNodeReader(session, read);
   const body = node.body;
   // A diff cut short loads whole as the row opens; other long bodies when
@@ -216,7 +215,11 @@ export function NodeBody({
             variant="quiet"
             class="node-action"
             disabled={!online}
-            onClick={() => activity(linkTarget(node, part))}
+            onClick={() =>
+              part.to === "agent"
+                ? open?.(String(part.id))
+                : activity(linkTarget(node, part))
+            }
           >
             {part.label}
           </Button>

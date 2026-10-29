@@ -51,12 +51,9 @@ inline constexpr std::string_view kReadableHomePaths[] = {
 
 // How a tool result's hint opens for the model, for the tests that pin it.
 inline constexpr char kDetachedMarker[] = "[detached] pid ";
-inline constexpr char kStartedSubagentMarker[] = "[started] subagent ";
 inline constexpr char kRunningActivityMarker[] = "[running] activity ";
 // Appended by ArtifactHint().
 inline constexpr char kCapturedLogMarker[] = "\n[captured log: ";
-// How a subagent is resumed (ChildAgentResumeNote).
-inline constexpr char kCollaboratorMarker[] = "[collaborator ";
 // A skill body: the skill tool's result and what `$skill` pushed.
 inline constexpr char kSkillMarker[] = "[skill ";
 inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";

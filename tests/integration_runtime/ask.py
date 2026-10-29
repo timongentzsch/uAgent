@@ -214,44 +214,36 @@ def test_ask_is_absent_where_no_one_can_answer(root, home, *, binary):
         assert_true(names and "ask" not in names, names)
 
 
-def test_a_threads_question_goes_to_its_panel(root, home, *, binary):
+def test_an_agents_question_goes_to_its_parent(root, home, *, binary):
     answered = {}
 
     def route(_, body):
-        text = json.dumps(body["messages"])
+        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
         results = tool_results(body["messages"])
-        if "Objective: pick a database" in text:
+        if "pick a database" in users:
             if not results:
                 return tool_call("ask", {"questions": QUESTIONS[:1]})
             answered["result"] = results[0]
-            return event({"content": "thread-done"})
-        if "[question, not a user message]" in text and "sent answer" not in json.dumps(results):
-            match = re.search(r"Background agent ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
+            return event({"content": "agent-done"})
+        text = json.dumps(body["messages"])
+        match = re.search(r"\[agent ([0-9a-f]{16}) .*? \(interaction ([^)]+)\)\]", text)
+        if match and "sent answer" not in json.dumps(results):
             return tool_call(
                 "decide",
                 {
-                    "session_id": match.group(1),
+                    "id": match.group(1),
                     "interaction_id": match.group(2),
                     "decision": "answer",
                     "answers": [{"choices": ["Postgres"], "other": ""}],
                     "reason": "the brief names a server",
                 },
             )
-        if "[question" in text or "[background agent event" in text:
-            return event({"content": "panel-ack"})
-        if not results:
-            return tool_call(
-                "thread_spawn",
-                {
-                    "title": "Database",
-                    "objective": "pick a database",
-                    "environment": "local",
-                },
-            )
-        return event({"content": "spawned-ok"})
+        if not results and not match:
+            return tool_call("agent_start", {"brief": "pick a database"})
+        return event({"content": "parent-ack"})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "panel", "-p", "delegate", binary=binary)
+        result = run(root, base_env(home, server.url), "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        wait_until(lambda: "result" in answered, "the thread never heard its answer")
+        wait_until(lambda: "result" in answered, "the agent never heard its answer")
         assert_true("Which database?\n→ Postgres" in answered["result"], answered)

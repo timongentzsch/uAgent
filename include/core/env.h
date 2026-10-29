@@ -25,22 +25,11 @@ int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
 int64_t AutoCompactPct();
 int64_t AutoCompactTokens();
-// Delegation depth: 0 is a session nobody delegated to. A subagent may delegate
-// again while it stays under the cap, so nesting is bounded, not banned.
+// Agent depth: 0 is a conversation nobody started. An agent may start agents
+// again while it stays under agents.depth, so nesting is bounded, not banned.
 int64_t AgentDepth();
 bool CanDelegate();
-bool LeanToolset();
-// Budgets handed to a delegated child. Lower than its parent's own, so one
-// flailing subagent cannot spend the whole turn.
-int64_t SubagentMaxSteps();
-// The route a subagent runs on when its call names none; empty: the parent's.
-std::string SubagentModel();
-int64_t SubagentMaxToolCalls();
-int64_t SubagentTimeoutSeconds();
 int64_t MaxOutputTokens();
-// A delegated child echoes one line per durable event to stderr, which is the
-// only way its parent can tell work from a stall before the answer arrives.
-bool HeadlessProgressEnabled();
 // Experiment overlay for the base prompt: a path, empty when unset.
 std::string PromptOverlayPath();
 
@@ -54,13 +43,9 @@ int64_t HistoryFiles();
 int64_t LogKeepDays();
 int64_t LogKeepFiles();
 int64_t IdleMinutes();
-// Commands and subagents one conversation runs at once, and the share of them
-// subagents may hold: kDelegatedActivityHeadroom stay free for the agent's own
-// commands, so a fan-out cannot starve the work that checks its results.
+// Commands one conversation runs at once.
 int64_t MaxActivities();
-int64_t MaxDelegatedActivities();
 int64_t ToolConcurrency();
-int64_t SubagentCallsPerTurn();
 // Byte budgets of the file tools; the registry states them in KiB and MiB.
 size_t ReadFileBytes();
 // read_path's result allowance covers its header lines.

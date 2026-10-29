@@ -37,8 +37,7 @@ Application::Application(AppContext& context)
       runtime_(context.runtime),
       api_(runtime_.api),
       agent_(*context.agent),
-      session_file_(context.channel ? context.channel->SessionPath()
-                                    : DelegatedSessionFile()),
+      session_file_(context.channel ? context.channel->SessionPath() : ""),
       saved_revision_(agent_.Revision()),
       config_problem_(context.config_manager.Problem()),
       channel_(context.channel) {
@@ -53,8 +52,7 @@ Application::Application(AppContext& context)
         if (channel_ && agent_.Plan() != plan_) PublishChannelState(false);
         // A message of yours is saved as it arrives.
         const json& node = event.data["node"];
-        if ((!DelegatedSessionFile().empty() ||
-             JsonValue(node, "kind", "") == "turn" ||
+        if ((JsonValue(node, "kind", "") == "turn" ||
              JsonValue(node, "role", "") == "user") &&
             (persist_ || !session_file_.empty())) {
           SaveSession(true);
@@ -212,13 +210,12 @@ std::string Application::ResumeAtStartup() {
     }
   }
   if (!source.empty() && PathExists(source)) {
-    // A thread's sandbox, budget and approval default are applied by its
+    // An agent's sandbox, budget and approval default are applied by its
     // runtime; continued without one it would have none, and lose its role on
     // saving.
-    if (!channel_ && JsonValue(SessionHeader(source), kSessionHeaderKind, "") ==
-                         kSessionKindThread) {
-      return "that session is a panel's thread; continue it in its "
-             "conversation, or name another session";
+    if (!channel_ && !AgentOf(SessionHeader(source)).empty()) {
+      return "that session is an agent; continue it in its conversation, or "
+             "name another session";
     }
     std::string error;
     if (!ResumeInto(agent_, source, session_file_, error)) return error;

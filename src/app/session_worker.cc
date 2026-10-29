@@ -18,13 +18,13 @@
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/transcript.h"
+#include "include/app/agent_link.h"
 #include "include/app/asset_store.h"
 #include "include/app/bootstrap.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
-#include "include/app/thread_link.h"
 #include "include/app/transient_batcher.h"
 #include "include/cli/cli.h"
 #include "include/core/events.h"
@@ -108,14 +108,17 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool panel, json thread)
+                std::string title, bool panel, const json& agent)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
         panel_(panel) {
-    if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
+    if (!agent.empty()) {
+      link_.emplace(path_, id_,
+                    AgentParentPath(path_, JsonValue(agent, "parent", "")));
+    }
   }
   ~WorkerChannel() override { Close(); }
 
@@ -144,15 +147,16 @@ class WorkerChannel final : public ApplicationChannel {
     json data = event.data;
     if (event.type == AppType(EventId::kApprovalRequested)) {
       std::lock_guard lock(mutex_);
-      // A thread's approval that Auto could not settle goes to its
-      // panel first, unless the person started or wrote into this turn and
-      // is there to answer it; one reserved for a person never does.
+      // An agent's approval that Auto could not settle goes to its parent
+      // first, unless the person started or wrote into this turn and is
+      // there to answer it; one reserved for a person never does.
       if (link_ && !person_turn_ &&
           !JsonValue(data, "mandatory_human", false)) {
-        data["route"] = kRoutePanel;
+        data["route"] = kRouteParent;
         link_->Ask(JsonValue(data, "id", ""), "approval request",
                    "asks to run " + JsonValue(data, "tool", ""),
-                   JsonValue(data, "preview", ""), title_);
+                   JsonValue(data, "preview", ""),
+                   JsonValue(state_, "title", title_));
       }
       approval_ = data;
     }
@@ -208,9 +212,9 @@ class WorkerChannel final : public ApplicationChannel {
       if (ready < 0 && errno != EINTR) {
         return std::nullopt;
       }
-      // A signal is no input, so it counts as a quiet wait: a thread's exit
-      // (SIGCHLD) used to start the idle period over, keeping a panel up one
-      // more period per thread. What a child's end means reaches the wake
+      // A signal is no input, so it counts as a quiet wait: an agent's exit
+      // (SIGCHLD) used to start the idle period over, keeping its parent up one
+      // more period per agent. What a child's end means reaches the wake
       // pipe by itself.
       if (ready <= 0) {
         if (link_) {
@@ -224,7 +228,7 @@ class WorkerChannel final : public ApplicationChannel {
           return ApplicationInput{.wake = true};
         }
         // Idle is measured from the last input or wake.
-        if (std::chrono::steady_clock::now() - idle_since < IdlePeriod() ||
+        if (std::chrono::steady_clock::now() - idle_since < Idle() ||
             Occupied()) {
           continue;
         }
@@ -273,12 +277,13 @@ class WorkerChannel final : public ApplicationChannel {
     }
     if (request.kind == "ask") {
       decision_["questions"] = request.questions;
-      // A thread's questions go to its panel first, as its approvals
-      // do; a person is notified only if it yields or does not answer.
+      // An agent's questions go to its parent first, as its approvals do;
+      // a person is notified only if it yields or does not answer.
       if (link_ && !person_turn_) {
-        decision_["route"] = kRoutePanel;
-        link_->Ask(request.id, "question", "asks the user",
-                   JsonDump(request.questions), title_);
+        decision_["route"] = kRouteParent;
+        link_->Ask(request.id, "question", "asks the person",
+                   JsonDump(request.questions),
+                   JsonValue(state_, "title", title_));
       }
       Send({{"kind", "event"},
             {"type", "ask.requested"},
@@ -288,9 +293,12 @@ class WorkerChannel final : public ApplicationChannel {
     }
     state_["phase"] = "decision";
     SendState();
-    const auto routed_until = std::chrono::steady_clock::now() + kPanelDecision;
+    const auto routed_until =
+        std::chrono::steady_clock::now() +
+        std::chrono::seconds(
+            EnvLong("UAGENT_INTERNAL_PARENT_DECISION_S", kParentDecisionS));
     while (!closed_ && !reply_ && !AbortRequested()) {
-      const bool routed = RoutedToPanel(decision_);
+      const bool routed = RoutedToParent(decision_);
       lock.unlock();
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
@@ -298,7 +306,7 @@ class WorkerChannel final : public ApplicationChannel {
       wake_.Drain();
       lock.lock();
       if (routed && std::chrono::steady_clock::now() >= routed_until) {
-        EscalateLocked("The lead agent did not decide in time.");
+        EscalateLocked("The parent agent did not decide in time.");
       }
     }
     if (!decided_.empty()) {
@@ -364,7 +372,6 @@ class WorkerChannel final : public ApplicationChannel {
           input_->attachments.push_back(AttachmentFromJson(item));
         }
         busy_ = turn_active_ = true;
-        if (link_) link_->Restarted();
         BeginTurn();
         wake_.Wake();
       }
@@ -388,6 +395,13 @@ class WorkerChannel final : public ApplicationChannel {
     }
   }
 
+  // How long a session waits with nothing to do before it stops. An agent
+  // stops as its turn ends: what it is for, a message or mail, starts it
+  // again.
+  std::chrono::milliseconds Idle() const {
+    return link_ ? kAgentIdle : IdlePeriod();
+  }
+
   // A session wakes to notice it is idle, and a panel a minute later
   // while the spend limit holds its mail. Without a mailbox watch, mail is
   // looked for once a second.
@@ -395,8 +409,7 @@ class WorkerChannel final : public ApplicationChannel {
     if (mail_.Get() < 0) return 1000;
     if (Paused()) return static_cast<int>(kSpendRecheck.count());
     return static_cast<int>(
-        std::min<int64_t>(kIdlePoll.count(),
-                          std::chrono::milliseconds(IdlePeriod()).count() / 4));
+        std::min<int64_t>(kIdlePoll.count(), Idle().count() / 4));
   }
 
   // Work that a stopped runtime would lose: an input or guidance not yet
@@ -462,7 +475,7 @@ class WorkerChannel final : public ApplicationChannel {
 
  private:
   // A message sent by a client with no origin: the person's own, not the
-  // panel's brief or message.
+  // parent's brief or decision.
   static bool FromPerson(const SessionCommand& parsed) {
     return JsonValue(parsed.raw, "origin", "").empty();
   }
@@ -561,16 +574,6 @@ class WorkerChannel final : public ApplicationChannel {
       kind = SessionCommandKind::kSubmit;
     }
     if (closed_) return false;
-    if (link_ && !parsed.text.empty() &&
-        (kind == SessionCommandKind::kSubmit ||
-         kind == SessionCommandKind::kSteer)) {
-      const std::string refused =
-          link_->Admit(parsed.from_panel, !turn_active_);
-      if (!refused.empty()) {
-        SendOutcome(request, refused);
-        return true;
-      }
-    }
     switch (kind) {
       case SessionCommandKind::kClose:
         lock.unlock();
@@ -587,8 +590,8 @@ class WorkerChannel final : public ApplicationChannel {
         ReplyLocked(parsed, error);
         break;
       case SessionCommandKind::kEscalate:
-        if (StaleLocked(parsed.interaction_id) || !RoutedToPanel(decision_)) {
-          error = "decision is stale or not with the lead agent";
+        if (StaleLocked(parsed.interaction_id) || !RoutedToParent(decision_)) {
+          error = "decision is stale or not with the parent agent";
         } else {
           EscalateLocked(parsed.text);
         }
@@ -633,21 +636,17 @@ class WorkerChannel final : public ApplicationChannel {
         StartSideQuestion(request, parsed.raw);
         return true;
       case SessionCommandKind::kPermissions:
-      case SessionCommandKind::kActivity:
-        if (kind == SessionCommandKind::kPermissions ||
-            parsed.operation != "followup") {
-          lock.unlock();
-          std::lock_guard control(control_mutex_);
-          if (activity_control_) {
-            CompleteControl(request, activity_control_(parsed.raw));
-          } else {
-            // The application is still starting: answered once it is there.
-            early_controls_.emplace_back(request, parsed.raw);
-          }
-          return true;
+      case SessionCommandKind::kActivity: {
+        lock.unlock();
+        std::lock_guard control(control_mutex_);
+        if (activity_control_) {
+          CompleteControl(request, activity_control_(parsed.raw));
+        } else {
+          // The application is still starting: answered once it is there.
+          early_controls_.emplace_back(request, parsed.raw);
         }
-        if (QueueIdleControl(request, parsed.raw, error)) return true;
-        break;
+        return true;
+      }
       case SessionCommandKind::kModel:
       case SessionCommandKind::kTools:
       case SessionCommandKind::kConfig:
@@ -684,9 +683,9 @@ class WorkerChannel final : public ApplicationChannel {
       error = "decision is stale or already answered";
       return;
     }
-    if (parsed.from_panel && !RoutedToPanel(decision_)) {
-      // Only a decision routed to the panel is its to answer.
-      error = "this decision belongs to the user";
+    if (parsed.from_parent && !RoutedToParent(decision_)) {
+      // Only a decision routed to the parent is its to answer.
+      error = "this decision belongs to the person";
       return;
     }
     const bool ask = JsonValue(decision_, "kind", "") == "ask";
@@ -697,10 +696,10 @@ class WorkerChannel final : public ApplicationChannel {
     reply_cancelled_ = parsed.cancelled;
     // The decision log: who decided a routed decision, and why.
     const std::string reason = JsonValue(parsed.raw, "reason", "");
-    if (parsed.from_panel) {
-      decided_ =
-          (ask ? "lead agent answered" : "lead agent decided " + parsed.text) +
-          (reason.empty() ? "" : ": " + reason);
+    if (parsed.from_parent) {
+      decided_ = (ask ? "parent agent answered"
+                      : "parent agent decided " + parsed.text) +
+                 (reason.empty() ? "" : ": " + reason);
     }
     wake_.Wake();
   }
@@ -809,16 +808,18 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kLetGo = std::chrono::milliseconds(2000);
   static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
-  static constexpr auto kPanelDecision = std::chrono::minutes(5);
+  static constexpr auto kAgentIdle = std::chrono::milliseconds(1000);
+  // How long a parent has to decide before its agent asks the person.
+  static constexpr int64_t kParentDecisionS = 300;
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ UAGENT_GUARDED_BY(mutex_) = false;
   bool busy_ UAGENT_GUARDED_BY(mutex_) = true;
   bool turn_active_ UAGENT_GUARDED_BY(mutex_) = false;
   // The running turn is the person's: their message started it or arrived
-  // while it ran. Not the panel's brief or message, mail or queued guidance.
+  // while it ran. Not the parent's brief, mail or queued guidance.
   bool person_turn_ UAGENT_GUARDED_BY(mutex_) = false;
   const bool panel_ = false;
-  std::optional<ThreadLink> link_;  // set when this session is a thread
+  std::optional<AgentLink> link_;  // set when this session is an agent
   bool reply_cancelled_ UAGENT_GUARDED_BY(mutex_) = false;
   bool ready_ UAGENT_GUARDED_BY(mutex_) = false;
   json notices_ UAGENT_GUARDED_BY(mutex_) = json::array();
@@ -862,38 +863,42 @@ int WorkerMain(int argc, char** argv) {
   // Before anyone can connect: a runtime that cannot work never answers.
   if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
-  // The panel is known by its path; a thread's link is fixed at launch
+  // The panel is known by its path; an agent's role is fixed at its start
   // and afterwards read back from its own header.
+  json agent = AgentOf(SessionHeader(argv[3]));
+  if (const json* role = JsonObject(launch, "session"); agent.empty() && role) {
+    agent = AgentOf(*role);
+  }
   if (argv[3] == PanelPath(argv[2])) {
     options.session = {{"kind", kSessionKindPanel}};
-  } else if (const json* role = JsonObject(launch, "session");
-             role && IsThread(*role)) {
-    options.session = *role;
-  } else if (const json header = SessionHeader(argv[3]); IsThread(header)) {
-    options.session = {{"kind", kSessionKindThread},
-                       {"delegation", ThreadRole(header)}};
+  } else if (!agent.empty()) {
+    options.session = {{"agent", agent}};
   }
-  // A thread runs sandboxed and within its budget however its runtime is
-  // started again, so a restart never widens it: not even a sandbox policy
-  // inherited through the environment stands in for its own. Its approval
-  // mode defaults to Auto where the mode is resolved (PermissionControl).
-  // A lead agent's commands only read, so its "never changes anything"
-  // holds by the OS and not by its prompt, and so do its subagents', which
-  // inherit the policy.
+  // An agent runs sandboxed, at its depth and within its budget however its
+  // runtime is started again, so a restart never widens it: neither a
+  // sandbox policy nor a depth inherited through the environment stands in
+  // for its own. One that may not edit only reads (bootstrap.cc). Its
+  // approval mode defaults to Auto where the mode is resolved
+  // (PermissionControl). A lead agent's commands only read, so its "never
+  // changes anything" holds by the OS and not by its prompt.
+  ::unsetenv("UAGENT_INTERNAL_DEPTH");
   if (options.Panel()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     options.overrides["UAGENT_SANDBOX"] = "readonly";
   }
-  if (options.Thread()) {
+  if (!agent.empty()) {
     ::unsetenv("UAGENT_INTERNAL_SANDBOX");
-    options.overrides["UAGENT_SANDBOX"] = "default";
-    const double budget = ThreadBudget(ThreadRole(options.session));
+    ::setenv("UAGENT_INTERNAL_DEPTH",
+             std::to_string(JsonValue(agent, "depth", int64_t{1})).c_str(), 1);
+    options.overrides["UAGENT_SANDBOX"] =
+        JsonValue(agent, "edits", "") == "none" ? "readonly" : "default";
+    const double budget = JsonValue(agent, "budget", 0.0);
     if (budget > 0) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }
   }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.Panel(), ThreadRole(options.session));
+                        options.Panel(), agent);
   if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);

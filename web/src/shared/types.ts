@@ -215,7 +215,6 @@ export interface Node {
   usage_reported?: boolean;
   memory?: MemoryNote;
   activity_id?: number;
-  agent_id?: string;
   command?: string;
   summary?: TurnSummary;
   // A message of yours this device holds until the host's own node
@@ -239,7 +238,6 @@ export interface ActivityTarget {
   text?: string;
   command?: string;
   activity_id?: number;
-  agent_id?: string;
   memory?: MemoryNote;
 }
 // A message of yours, held until the host confirms it.
@@ -254,30 +252,14 @@ export interface View {
 export interface Activity {
   id?: number;
   activity_id?: number;
-  agent_id?: string;
-  kind?: "subagent" | "command";
   label?: string;
-  name?: string;
-  description?: string;
   command?: string;
   status?: string;
   started_ms?: number;
   duration_ms?: number;
   progress?: string;
-  model?: string;
   // A command the turn is still waiting on, until moved to the background.
   detached?: boolean;
-}
-// A child session this conversation delegated to, running or resumable.
-export interface Agent {
-  id: string;
-  label?: string;
-  name?: string;
-  description?: string;
-  model?: string;
-  status?: string;
-  // Every token its calls processed, as of its last save.
-  tokens?: number;
 }
 // One item of a conversation's plan, its to-do list (the plan tool).
 export interface PlanItem {
@@ -285,22 +267,8 @@ export interface PlanItem {
   status: "pending" | "in_progress" | "done";
 }
 export interface ActivityDetail extends Activity {
-  phase?: ExecutionPhase;
-  context_tokens?: number;
-  context_window?: number;
-  route?: string;
-  olderWindow?: boolean;
-  body?: BodyPage;
-  command?: string;
   memory?: MemoryNote;
-  task?: string;
-  directive?: string;
-  system_prompt?: string;
-  conversation?: View;
   output?: string;
-  statistics?: Statistics;
-  usage?: Usage;
-  turns?: number;
 }
 interface PendingBase {
   id: string;
@@ -309,8 +277,8 @@ interface PendingBase {
   // Terminal text shown above the prompt; the web draws `options` instead.
   description?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
-  // A thread's decision goes to its panel first; "human" once yielded.
-  route?: "panel" | "human";
+  // An agent's decision goes to its parent first; "human" once yielded.
+  route?: "parent" | "human";
   note?: string;
 }
 // The model's questions; `prompt` repeats the first.
@@ -396,9 +364,10 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // A folder's panel, or a thread it launched (in `folder`).
-  kind?: "panel" | "thread" | "";
-  folder?: string;
+  // A folder's panel, or not.
+  kind?: "panel" | "";
+  // The conversation that started this one as its agent.
+  parent?: string;
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -430,12 +399,11 @@ export interface State {
   turns?: number;
   usage?: Usage;
   system_prompt?: string;
-  // Why a panel holds its threads' events (today's spend limit).
+  // Why a panel holds its mail (today's spend limit).
   paused?: string;
   statistics?: Statistics;
   turn_status?: string;
   activities?: Activity[];
-  agents?: Agent[];
   plan?: PlanItem[];
   context_tokens?: number;
   context_window?: number;
@@ -524,7 +492,7 @@ export interface Outcome {
 }
 interface EventData extends Omit<Partial<Exchange>, "status"> {
   request_id?: string;
-  // approval.requested: "panel" while a thread's panel decides.
+  // approval.requested: "parent" while an agent's parent decides.
   route?: string;
   inspect?: boolean;
   context_tokens?: number;
@@ -546,7 +514,6 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   arguments?: JSONValue;
   view?: ToolView;
   result?: JSONValue;
-  agent_id?: string;
   activity_id?: number;
   parts?: ToolPart[];
   status?: string | number;
@@ -834,13 +801,6 @@ export interface CommandInputs {
   activity: {
     operation: string;
     activity_id?: number;
-    agent_id?: string;
-    text?: string;
-    model?: string;
-    before?: number;
-    detail?: string;
-    raw?: boolean;
-    offset?: number;
   };
   context: None;
   // The turn (0 = latest) and one file of it, or all.

@@ -237,7 +237,6 @@ void ReportSandbox() {
 void LogReady(const AppContext& context) {
   const Api& api = context.runtime.api;
   const RuntimeConfig& config = context.runtime.config;
-  const std::string toolset = LeanToolset() ? "lean" : "full";
   const std::string run_mode =
       context.channel
           ? "channel"
@@ -245,7 +244,6 @@ void LogReady(const AppContext& context) {
   std::string overlay_digest;
   (void)PromptOverlay(&overlay_digest);
   json provenance = BuildProvenanceJson();
-  provenance["toolset"] = toolset;
   provenance["sandbox"] = SandboxDiagnosticJson();
   provenance["active_schema_digest"] =
       HashHex(JsonDump(ToolSchemas(context.tools)));
@@ -276,7 +274,6 @@ void LogReady(const AppContext& context) {
        api.capabilities.DiagnosticJson(api.wire_api, api.features)},
       {"configured_models", context.provider.routes.size()},
       {"tools", context.tools.size()},
-      {"toolset", toolset},
       {"output_mode", context.options.json_stream
                           ? "json-stream"
                           : (context.options.json ? "json" : "text")},

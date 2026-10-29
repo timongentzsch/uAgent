@@ -1,6 +1,6 @@
 {
   "schema": "uagent.eval.baseline.v2",
-  "generated_at": "2026-10-28T11:29:43Z",
+  "generated_at": "2026-10-29T09:06:31Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
     "active_schema_recovery/control": {
@@ -11,10 +11,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16784,
-      "cumulative_estimated_context_bytes": 49171,
-      "tool_result_chars": 101,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 15728,
+      "cumulative_estimated_context_bytes": 46003,
+      "tool_result_chars": 75,
+      "initial_schema_bytes": 11965
     },
     "background_activity/control": {
       "score": 7,
@@ -24,10 +24,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16933,
-      "cumulative_estimated_context_bytes": 49338,
-      "tool_result_chars": 384,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 15883,
+      "cumulative_estimated_context_bytes": 46179,
+      "tool_result_chars": 23,
+      "initial_schema_bytes": 11965
     },
     "cache_hit_diagnosis/compacted": {
       "score": 10,
@@ -37,10 +37,10 @@
       "max_batch": 2,
       "no_action_rounds": 1,
       "compactions": 1,
-      "max_estimated_context_bytes": 21783,
-      "cumulative_estimated_context_bytes": 72526,
-      "tool_result_chars": 5070,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 20727,
+      "cumulative_estimated_context_bytes": 68302,
+      "tool_result_chars": 4975,
+      "initial_schema_bytes": 11965
     },
     "cache_hit_diagnosis/control": {
       "score": 10,
@@ -50,10 +50,10 @@
       "max_batch": 2,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 22413,
-      "cumulative_estimated_context_bytes": 60293,
-      "tool_result_chars": 5070,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 21357,
+      "cumulative_estimated_context_bytes": 57125,
+      "tool_result_chars": 4975,
+      "initial_schema_bytes": 11965
     },
     "cumulative_context/control": {
       "score": 8,
@@ -63,10 +63,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 49587,
-      "cumulative_estimated_context_bytes": 164038,
-      "tool_result_chars": 32052,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 48531,
+      "cumulative_estimated_context_bytes": 158758,
+      "tool_result_chars": 31867,
+      "initial_schema_bytes": 11965
     },
     "edit_and_verify/control": {
       "score": 6,
@@ -76,10 +76,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16947,
-      "cumulative_estimated_context_bytes": 49378,
-      "tool_result_chars": 237,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 15891,
+      "cumulative_estimated_context_bytes": 46210,
+      "tool_result_chars": 211,
+      "initial_schema_bytes": 11965
     },
     "failed_call_recovery/control": {
       "score": 7,
@@ -89,23 +89,23 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16695,
-      "cumulative_estimated_context_bytes": 48870,
-      "tool_result_chars": 150,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 15639,
+      "cumulative_estimated_context_bytes": 45702,
+      "tool_result_chars": 116,
+      "initial_schema_bytes": 11965
     },
     "panel_fanout/control": {
       "score": 5,
       "checks_total": 5,
-      "model_requests": 3,
+      "model_requests": 2,
       "tool_calls": 2,
       "max_batch": 2,
-      "no_action_rounds": 1,
+      "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 22046,
-      "cumulative_estimated_context_bytes": 63511,
-      "tool_result_chars": 759,
-      "initial_schema_bytes": 16752
+      "max_estimated_context_bytes": 15472,
+      "cumulative_estimated_context_bytes": 29978,
+      "tool_result_chars": 313,
+      "initial_schema_bytes": 11510
     },
     "panel_status/control": {
       "score": 5,
@@ -115,10 +115,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 20498,
-      "cumulative_estimated_context_bytes": 40424,
-      "tool_result_chars": 291,
-      "initial_schema_bytes": 16752
+      "max_estimated_context_bytes": 15201,
+      "cumulative_estimated_context_bytes": 29825,
+      "tool_result_chars": 281,
+      "initial_schema_bytes": 11510
     },
     "parallel_batch/control": {
       "score": 7,
@@ -128,10 +128,10 @@
       "max_batch": 3,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16906,
-      "cumulative_estimated_context_bytes": 32901,
-      "tool_result_chars": 118,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 15850,
+      "cumulative_estimated_context_bytes": 30789,
+      "tool_result_chars": 38,
+      "initial_schema_bytes": 11965
     },
     "read_volume/1000": {
       "score": 5,
@@ -141,10 +141,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 36164,
-      "cumulative_estimated_context_bytes": 52154,
-      "tool_result_chars": 19833,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 35108,
+      "cumulative_estimated_context_bytes": 50042,
+      "tool_result_chars": 19800,
+      "initial_schema_bytes": 11965
     },
     "read_volume/250": {
       "score": 5,
@@ -154,10 +154,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 37382,
-      "cumulative_estimated_context_bytes": 136709,
-      "tool_result_chars": 19965,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 36326,
+      "cumulative_estimated_context_bytes": 131429,
+      "tool_result_chars": 19800,
+      "initial_schema_bytes": 11965
     },
     "read_volume/500": {
       "score": 5,
@@ -167,10 +167,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 36570,
-      "cumulative_estimated_context_bytes": 79933,
-      "tool_result_chars": 19877,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 35514,
+      "cumulative_estimated_context_bytes": 76765,
+      "tool_result_chars": 19800,
+      "initial_schema_bytes": 11965
     },
     "repeated_grep/control": {
       "score": 7,
@@ -180,10 +180,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 18088,
-      "cumulative_estimated_context_bytes": 51806,
-      "tool_result_chars": 3114,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 17032,
+      "cumulative_estimated_context_bytes": 48638,
+      "tool_result_chars": 3056,
+      "initial_schema_bytes": 11965
     },
     "repeated_read/control": {
       "score": 7,
@@ -193,10 +193,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 17544,
-      "cumulative_estimated_context_bytes": 50721,
-      "tool_result_chars": 1836,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 16488,
+      "cumulative_estimated_context_bytes": 47553,
+      "tool_result_chars": 1778,
+      "initial_schema_bytes": 11965
     },
     "shell_probe/control": {
       "score": 6,
@@ -206,10 +206,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16488,
-      "cumulative_estimated_context_bytes": 32437,
-      "tool_result_chars": 70,
-      "initial_schema_bytes": 12980
+      "max_estimated_context_bytes": 15432,
+      "cumulative_estimated_context_bytes": 30325,
+      "tool_result_chars": 56,
+      "initial_schema_bytes": 11965
     }
   }
 }

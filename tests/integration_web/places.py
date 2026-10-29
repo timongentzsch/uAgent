@@ -9,7 +9,6 @@ from integration_support import (
     assert_true,
     budget,
     event,
-    function_names,
     live_process_states,
     tool_call,
     wait_until,
@@ -317,7 +316,7 @@ def test_folder_panel_is_one_session_with_its_own_tools(root, home, *, binary):
             )
             _, body = provider.requests[-1]
             names = {tool["function"]["name"] for tool in body.get("tools", [])}
-            assert_true("history" in names and "write_file" not in names, names)
+            assert_true("agents" in names and "write_file" not in names, names)
             _, catalogue, _ = web.json("/api/sessions?refresh=1")
             listed = catalogue["sessions"]
             kinds = [item.get("kind") for item in listed if item["cwd"] == str(project.resolve())]
@@ -378,63 +377,6 @@ def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary)
             again = web.until(session, lambda value: "second-ok" in json.dumps(value))
             # The same session: its settings came back with it.
             assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])
-
-
-def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
-    project = root / "tools-project"
-    project.mkdir()
-    offered = {}
-
-    def route(_, body):
-        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
-        if "go" not in users:
-            offered["child"] = function_names(body)
-            return event({"content": "child-done"})
-        if any(m.get("role") == "tool" for m in body["messages"]):
-            return event({"content": "parent-done"})
-        offered["parent"] = function_names(body)
-        return tool_call("subagent", {"prompt": "child-task", "mode": "full", "background": True})
-
-    with Server([route] * 8) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            client.pair(code)
-            session = client.create(project)
-            client.command("permissions", session, mode="yolo")
-            client.command("tools", session, operation="set", name="write_file", active=False)
-            client.command("submit", session, text="go")
-
-            def ceiling_kept(answers):
-                done = client.until(
-                    session,
-                    # Idle again once the parent has answered the result: the
-                    # turn that takes it up has ended, not merely begun. Idle
-                    # alone may be the moment before that turn starts.
-                    lambda value: (
-                        "child" in offered
-                        and value["metadata"]["status"] == "idle"
-                        and all(
-                            row["status"] == "completed" for row in value["state"]["activities"]
-                        )
-                        and sum(
-                            node.get("role") == "assistant"
-                            and node.get("body", {}).get("text") == "parent-done"
-                            for node in value["state"].get("view", {}).get("nodes", [])
-                        )
-                        >= answers
-                    ),
-                )
-                assert_true("write_file" not in offered["parent"], offered["parent"])
-                # The child's full toolset, less what its parent may not call.
-                child = offered.pop("child")
-                assert_true("write_file" not in child and "read_path" in child, child)
-                return done["state"]["activities"][0]["agent_id"]
-
-            child = ceiling_kept(2)
-            # A person's follow-up to it is no decision about tools either.
-            client.command(
-                "activity", session, operation="followup", agent_id=child, text="child-task more"
-            )
-            ceiling_kept(3)
 
 
 def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, binary):

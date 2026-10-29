@@ -74,7 +74,7 @@ ModelSelection ParseModelSelection(const std::string& selection);
 // Where a side model runs: the parent's route unless the selection names one
 // that resolves. `unresolved` marks a named route that matched nothing, which
 // only the execution paths treat as an error. `none` says why no model serves
-// the route, when none does. Shared by the title, subagent, vision and
+// the route, when none does. Shared by the title, vision and
 // memory-extraction paths so one selection means one thing.
 struct RouteResolution {
   Route route;

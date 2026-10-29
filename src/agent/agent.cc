@@ -418,9 +418,7 @@ SessionRecord Agent::Snapshot() const {
                      .parent_session_id = parent_session_id_,
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
-                     .delegation = OwnDelegation().empty()
-                                       ? ThreadRole(session_role_)
-                                       : OwnDelegation(),
+                     .agent = AgentOf(session_role_),
                      .kind = JsonValue(session_role_, "kind", ""),
                      .memory = api_.config.memory_enabled};
   record.state = {.context_tokens = ContextUsed(),

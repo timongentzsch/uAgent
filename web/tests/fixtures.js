@@ -142,7 +142,7 @@ export async function headerAction(page, name) {
 export const SAMPLE_ASK = {
   id: "ask-sample",
   kind: "ask",
-  route: "panel",
+  route: "parent",
   prompt: "Which storage should the cache use?",
   questions: [
     {

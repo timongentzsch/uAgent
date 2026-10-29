@@ -25,9 +25,9 @@ for (const width of [1440, 900, 390]) {
     const commands = await servePending(page, request, session, SAMPLE_ASK);
     await page.goto(`/#session=${session.id}`);
     const ask = page.getByRole("region", { name: "Pending decision" });
-    // Routed to the panel, the form still answers: the first wins.
+    // Routed to the parent, the form still answers: the first wins.
     await expect(
-      ask.getByRole("heading", { name: "The lead agent is deciding" }),
+      ask.getByRole("heading", { name: "The parent agent is deciding" }),
     ).toBeVisible();
     // One question to a page: Next until the review, which holds Submit.
     const submit = ask.getByRole("button", { name: "Submit" });

@@ -27,7 +27,7 @@ import Instructions from "../features/settings/instructions.tsx";
 import Tools from "../features/settings/tools.tsx";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { isRunning, sessionById } from "../state/attention.ts";
+import { sessionById } from "../state/attention.ts";
 import type { Places } from "./use-places.tsx";
 
 // Only a host with a browser opens this dialog, so its code is fetched then.
@@ -98,9 +98,6 @@ export default function Modals({
   const activities = useSnapshots(store, (all) =>
     inspector ? all[selected]?.state?.activities : undefined,
   );
-  const agents = useSnapshots(store, (all) =>
-    inspector ? all[selected]?.state?.agents : undefined,
-  );
   // What the page holds of the conversation, older pages included: a turn
   // the person loaded is in it, and fetching again would drop those pages.
   const held = useSnapshots(store, (all) =>
@@ -114,7 +111,6 @@ export default function Modals({
   const mcp = useSnapshots(store, (all) =>
     modal?.type === "settings" ? all[selected]?.state?.mcp : undefined,
   );
-  const running = !!session && isRunning(session, online);
   const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
   const toolsMetadata = useSnapshots(
     store,
@@ -176,9 +172,7 @@ export default function Modals({
         <Inspector
           target={inspector}
           items={activities || []}
-          agents={agents || []}
           cwd={session.cwd || ""}
-          running={running}
           session={session}
           online={online}
           report={report}

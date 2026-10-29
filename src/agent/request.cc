@@ -757,20 +757,14 @@ std::string Agent::RuntimeContextText() const {
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +
       ModelVideoInputInstruction(api_.capabilities.video_input);
-  if (std::any_of(tools_.begin(), tools_.end(), [&](const Tool& tool) {
-        return tool.delegates && tool_selection_.Enabled(tool);
-      })) {
-    content += DelegationRuntimeContext(api_);
-  }
-  if (!DelegatedSessionFile().empty()) {
-    // A child is reachable while it runs, which is not something it can infer
-    // from its own prompt: guidance arrives mid-turn as an ordinary user
-    // message. The second line is the other half of the same channel -- a child
-    // that stops on a missing decision has somewhere to send the question.
-    content +=
-        "\n[collaborator: your parent's guidance may arrive between steps as "
-        "a user message; follow it.\nIf you are blocked on a decision only "
-        "your parent can make, end your answer with that one question.]";
+  if (const json agent = AgentOf(session_role_); !agent.empty()) {
+    // What it cannot infer from its prompt: who reads its answer, and that
+    // the parent's guidance may arrive mid-turn as a message.
+    content += "\n[agent: started by conversation " +
+               JsonValue(agent, "parent", "") +
+               ", which gets your final answer as your report and may send "
+               "guidance between steps; edits " +
+               JsonValue(agent, "edits", "") + "]";
   }
   if (std::string memory = MemoryText(); !memory.empty()) {
     content += "\n\n" + memory;

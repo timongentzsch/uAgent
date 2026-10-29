@@ -32,12 +32,11 @@ inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr const char* kSessionHeaderParent = "parent_session_id";
 inline constexpr const char* kSessionHeaderForkTurn = "forked_at_turn";
 inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
-// Present only on a delegated session: who started it and in what role
-// (DelegationOf in session_role.h). A subagent is addressed by its parent,
-// never listed as a session; a thread is.
-inline constexpr const char* kSessionHeaderDelegation = "delegation";
-// Present only on a folder's panel ("panel") or on a thread it launched
-// ("thread"); absent means an ordinary session.
+// Present only on an agent: who started it and how (AgentOf in
+// session_role.h).
+inline constexpr const char* kSessionHeaderAgent = "agent";
+// Present only on a folder's panel ("panel"); absent means an ordinary
+// session.
 inline constexpr const char* kSessionHeaderKind = "kind";
 // Optional lineage: empty/zero when this session was never forked. Unknown
 // to older readers, which ignore extra header fields.
@@ -45,9 +44,10 @@ inline constexpr int64_t kSessionFormat = 3;
 inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
 inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 
-// kChildren: this workspace's delegated children, which the other scopes skip.
-// No scope lists a panel; it is addressed by its folder instead.
-enum class SessionScope { kWorkspace, kAll, kChildren };
+// kWorkspace: this folder's own conversations, which `-c` and resume pick
+// from: no panel, which is addressed by its folder, and no agent, which is
+// opened from its parent.
+enum class SessionScope { kWorkspace, kAll };
 
 struct SessionInfo {
   std::string path, cwd, title, model;
@@ -59,13 +59,22 @@ struct SessionInfo {
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
-  json delegation = json::object();  // DelegationOf its header
+  std::string parent;  // the session id of whoever started it, for an agent
   std::string kind;
   bool memory = true;
 };
 
 // The one panel session file of a canonical folder.
 std::string PanelPath(const std::string& cwd);
+
+// Every valid conversation saved in the directory of `path`, it included,
+// newest first: a folder's own and the agents its conversations started,
+// which are saved beside their parent wherever they run. No panel.
+std::vector<SessionInfo> SessionsBeside(const std::string& path);
+
+// The session file, beside the agent at `path`, of its parent `parent` (a
+// session id), or empty when there is none (any more).
+std::string AgentParentPath(const std::string& path, const std::string& parent);
 
 // The first line of a session file when it is a valid header, else an empty
 // object. Bounded: it never reads the transcript.
@@ -112,7 +121,7 @@ struct SessionMetadata {
   std::string parent_session_id{};
   int64_t forked_at_turn = 0;
   std::string forked_at_time{};
-  json delegation = json::object();
+  json agent = json::object();
   std::string kind{};
   // False for a conversation run with memory off: nothing learns from it.
   bool memory = true;

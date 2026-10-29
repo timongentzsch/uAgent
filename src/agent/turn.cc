@@ -127,6 +127,7 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
     // Mail and chat observations use the same queue, but do not revise the
     // person's acceptance criteria merely by arriving.
     acceptance_changed |= message.origin.is_null();
+    if (message.origin.is_null()) CountStreak(message.origin);
     for (std::string& skill : ExplicitSkillContext(input)) {
       PushSkillContext(std::move(skill));
     }
@@ -239,7 +240,6 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   }
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
   bool steering_applied = ApplyQueuedSteering(loop);
-  if (cancelled) ActivityCancelSubagents(processes_);
   if (foreground_interrupted) {
     if (steering_applied) return StepFlow::kNextStep;
     return InterruptTurn(state);
@@ -265,6 +265,13 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   return StepFlow::kNextStep;
 }
 
+void Agent::CountStreak(const json& origin) {
+  if (!session_role_.contains("agent")) return;
+  json& role = session_role_["agent"];
+  role["streak"] =
+      origin.contains("mail") ? JsonValue(role, "streak", 0) + 1 : 0;
+}
+
 void Agent::Turn(const std::string& user_input, json user_content,
                  const json& images, const std::string& request_id,
                  const json& origin) {
@@ -274,6 +281,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   last_stop_ = nullptr;
   ++turn_id_;
   turn_hops_ = JsonValue(origin, "hops", 0);
+  CountStreak(origin);
   turn_side_statistics_ = json::object();
   failed_image_analyses_.clear();
   turn_root_.clear();

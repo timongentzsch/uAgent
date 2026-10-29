@@ -12,7 +12,7 @@ import tempfile
 import time
 import traceback
 
-import integration_delegation
+import integration_agents
 import integration_management
 import integration_mcp
 import integration_providers
@@ -44,7 +44,7 @@ TEST_MODULES = (
     ("ui", integration_ui),
     ("providers", integration_providers),
     ("mcp", integration_mcp),
-    ("delegation", integration_delegation),
+    ("agents", integration_agents),
     ("sandbox", integration_sandbox),
     ("web", integration_web),
     ("management", integration_management),

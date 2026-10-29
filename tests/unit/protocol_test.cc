@@ -21,7 +21,6 @@
 #include "include/providers/providers.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
-#include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "include/ui/markdown.h"
@@ -307,7 +306,7 @@ void TestRegistries() {
         std::string::npos);
   CHECK(activity_prompt.find("reuse a viable instance") != std::string::npos);
   capability_tools.push_back(MakeTool(
-      "subagent", "", json::object(),
+      "agent_start", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   CHECK(CapabilityPrompt(capability_tools).find("background research") ==
         std::string::npos);
@@ -369,79 +368,6 @@ void TestRegistries() {
   CHECK(
       CapabilityPrompt(capability_tools).starts_with("\n\n## Capabilities\n"));
   CHECK(CapabilityPrompt({}).empty());
-
-  Api delegation_api(RuntimeConfig{});
-  ActivitySupervisor delegation_processes;
-  // Named, not a temporary: SubagentTool's handlers capture routes and
-  // providers by reference and outlive this call, so a temporary here is a
-  // dangling read the moment the preview or the handler runs.
-  const std::vector<Route> delegation_routes;
-  const std::vector<Endpoint> delegation_providers = {
-      Endpoint{.name = "codex-local", .base_url = "", .api_key = ""}};
-  Tool subagent = SubagentTool(delegation_api, delegation_processes,
-                               delegation_routes, delegation_providers, false);
-  const json& subagent_properties = subagent.parameters["properties"];
-  CHECK(subagent_properties["background"]["type"] == "boolean");
-  CHECK(
-      subagent_properties["background"]["description"].get<std::string>().find(
-          "answer directly") != std::string::npos);
-  CHECK(!subagent_properties.contains("provider"));
-  // The grammar for naming a provider-scoped route, not the roster: the roster
-  // is what uagent topic=routes reports, and enumerating it here
-  // was charged to every request.
-  CHECK(subagent_properties["model"]["description"].get<std::string>().find(
-            "<provider>/MODEL") != std::string::npos);
-  CHECK(subagent_properties["model"]["description"].get<std::string>().find(
-            "codex-local") == std::string::npos);
-  // The per-child ceilings are one object, not five siblings.
-  CHECK(!subagent_properties.contains("max_steps"));
-  CHECK(subagent_properties["limits"]["type"] == "object");
-  const json& subagent_limits = subagent_properties["limits"]["properties"];
-  CHECK(subagent_limits["steps"]["maximum"] == 500);
-  CHECK(subagent_limits["tool_calls"]["maximum"] == 500);
-  CHECK(subagent_limits["seconds"]["maximum"] == 3600);
-  CHECK(subagent_limits["cost"]["type"] == "number");
-  CHECK(subagent_limits["memory"]["type"] == "boolean");
-  CHECK(static_cast<bool>(subagent.approval_preview));
-  const std::string spawn_preview = subagent.approval_preview(
-      json{{"operation", "spawn"}, {"prompt", "audit the parser"}});
-  CHECK(spawn_preview.find("approves its own tool calls") != std::string::npos);
-  CHECK(spawn_preview.find("lean: reading and running") != std::string::npos);
-  CHECK(
-      subagent.approval_preview(json{{"operation", "spawn"}, {"mode", "full"}})
-          .find("full: reading, editing and running") != std::string::npos);
-  // A follow-up that names no mode runs with the one the subagent was
-  // created with, and the approval says that one.
-  {
-    TestWorkspace followup("followup-preview");
-    SessionRecord child;
-    child.metadata.cwd = CanonicalCwd();
-    child.metadata.delegation = {{"mode", "full"}, {"memory", false}};
-    child.state.messages =
-        json::array({{{"role", "system"}, {"content", "sys"}}});
-    child.state.message_kinds = {MessageKind::kSystem};
-    CHECK(SessionStore::Save(UagentDir(kHistoryDir) + "/" +
-                                 WorkspaceId(CanonicalCwd()) + "/kept.json",
-                             child)
-              .Ok());
-    const std::string resumed = subagent.approval_preview(
-        json{{"operation", "followup"}, {"agent_id", "kept"}});
-    CHECK(resumed.find("full: reading, editing and running") !=
-          std::string::npos);
-    CHECK(resumed.find("memory off") != std::string::npos);
-    // A message to one that has finished runs it again, as it was made.
-    CHECK(subagent
-              .approval_preview(
-                  json{{"operation", "message"}, {"agent_id", "kept"}})
-              .find("full: reading, editing and running") != std::string::npos);
-    CHECK(subagent
-              .approval_preview(json{{"operation", "followup"},
-                                     {"agent_id", "kept"},
-                                     {"mode", "lean"}})
-              .find("lean: reading and running") != std::string::npos);
-  }
-  // Operations that hand over no authority say only what they do.
-  CHECK(subagent.approval_preview({{"operation", "list"}}) == "list agents");
 }
 
 void TestCommandAndDisplayRegistries() {

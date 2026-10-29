@@ -24,7 +24,6 @@
 #include "include/core/term.h"
 #include "include/mcp/register.h"
 #include "include/providers/providers.h"
-#include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "src/app/commands_internal.h"
 
@@ -528,28 +527,6 @@ void HandleTools(AppSession& session, const std::string& argument,
           TerminalSafe(JsonValue(tool, "description", "")).c_str(), RST());
     }
   }
-}
-
-// The child agents the subagent tool reports, joined with what the
-// supervisor knows about the ones still running. The id is the join key: it is
-// what the spawn stamped on the activity, and it is what the human types back.
-json AgentsJson(const AppSession& session) {
-  const ActivitySupervisor& processes = session.Runtime().processes;
-  std::vector<SubagentView> live = processes.SubagentViews();
-  json rows = json::array();
-  for (json& record : AgentSummaries(processes)) {
-    const std::string id = JsonValue(record, "id", std::string());
-    for (const SubagentView& view : live) {
-      if (view.source_id != id) continue;
-      record["elapsed_ms"] =
-          std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed)
-              .count();
-      if (!view.tail.empty()) record["progress"] = view.tail;
-      break;
-    }
-    rows.push_back(std::move(record));
-  }
-  return rows;
 }
 
 SelfDescriptionInputs DescriptionInputs(const AppSession& session) {

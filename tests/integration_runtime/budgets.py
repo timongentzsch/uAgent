@@ -99,18 +99,13 @@ def test_turn_cost_is_unlimited_by_default(root, home, *, binary):
 def test_tool_policy_scopes_schema_and_runtime(root, home, *, binary):
     def advertised(_, body):
         names = function_names(body)
-        if names != {"grep", "read_path"}:
+        if not {"grep", "read_path"} <= names or names & {"run", "write_file", "agent_start"}:
             return event({"content": f"bad-schema:{sorted(names)}"})
         return event({"content": "policy-ok"})
 
     with Server([advertised]) as server:
         env = base_env(home, server.url)
-        env.update(
-            {
-                "UAGENT_TOOL_CAPABILITIES": "inspect",
-                "UAGENT_INTERNAL_TOOL_ALLOWLIST": json.dumps(["grep", "read_path", "run"]),
-            }
-        )
+        env["UAGENT_TOOL_CAPABILITIES"] = "inspect"
         result = run(root, env, "--yolo", "-p", "inspect only", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "policy-ok", result.stdout)

@@ -187,33 +187,26 @@ void Agent::DeliverActivityCompletions(
     PresentationRecord record;
     record.status = succeeded ? PresentationStatus::kSucceeded
                               : PresentationStatus::kFailed;
-    record.title =
-        completion.kind == ActivityKind::kSubagent ? "Subagent" : "Activity";
+    record.title = "Activity";
     std::string label = completion.display_label.empty()
                             ? FirstLine(completion.command)
                             : completion.display_label;
     if (!label.empty()) {
       record.title += " · " + Utf8Trunc(label, kStatusLabelBytes);
     }
-    const bool agent = completion.kind == ActivityKind::kSubagent &&
-                       !completion.source_id.empty();
     ResultFacts facts;
     facts.exit = ExitFacts(completion.status);
     json node = Receipt(
-        {agent ? "Delegating" : "Running",
-         succeeded ? (agent ? "Delegated" : "Finished") : "Failed",
+        {"Running", succeeded ? "Finished" : "Failed",
          Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
         succeeded ? "ok" : "failed", facts, completion.output, "tail",
-        json::array({agent
-                         ? LinkPart("agent", completion.source_id, "Open agent")
-                         : LinkPart("activity", completion.activity_id,
-                                    "Open activity")}));
+        json::array(
+            {LinkPart("activity", completion.activity_id, "Open activity")}));
     node["activity_id"] = completion.activity_id;
     // The full command travels with the record (bounded): rows and titles
     // abbreviate, but the popup and history must not lose it when the
     // supervisor no longer retains the activity.
     node["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
-    node["agent_id"] = completion.source_id;
     node["turn_root"] = turn_root_;
     node = conversation_.RecordEntry(std::move(node));
     Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});

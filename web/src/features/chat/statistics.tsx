@@ -47,7 +47,7 @@ export default function Statistics({
   );
 }
 
-export function StatisticsContent({
+function StatisticsContent({
   state,
   nodeId,
 }: {

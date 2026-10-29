@@ -1,32 +1,32 @@
 ---
 name: fusion
-description: Use only when the user invokes $fusion. Coordinate one durable sidekick child for a scoped implementation while the current agent remains responsible for decisions, review, and the final answer.
+description: Use only when the user invokes $fusion. Coordinate one sidekick agent for a scoped implementation while the current agent remains responsible for decisions, review, and the final answer.
 argument-hint: TASK
-requires-tools: subagent, read_path, grep, run
+requires-tools: agent_start, read_path, grep, run
 ---
 
 # Fusion
 
 Optimize total resources for a verified result. Keep tiny tasks, unresolved
 architecture, consequential definitions, evaluation criteria, and final review
-with the lead. The sidekick runs on the lead's route unless the user named one
-for it; on the lead's route, disclose that and make no savings claim.
+with the lead. The sidekick runs on the lead's model unless the user named one
+for it; on the lead's model, disclose that and make no savings claim.
 
 ## Start or recover the sidekick
 
-List agents first (`operation=list`) after compaction or when the identity
-is uncertain. Reuse the one sidekick with `operation=followup`. Otherwise
-spawn it with `name=sidekick`, `mode=full`, and `background=false`. Give it
-this directive:
+After compaction or when its id is uncertain, find it with `agents`
+`action=list`. Start it only once, with `agent_start`, `edits=folder` and
+`wait=true`, passing `model` only when the user chose one for the sidekick.
+Open the first brief with:
 
 > Execute only the scoped brief. Surface decisions that change the plan. Return
-> concise changes, verification evidence, reusable runtime handles, and open
-> questions. Do not commit, publish, change permissions, or delegate further.
+> concise changes, verification evidence, and open questions. Do not commit,
+> publish, change permissions, or start agents.
 
-Pass `model` only when the user chose a route for the sidekick.
-Follow-ups keep the conversation, model, mode and directive; each one is a
-fresh process, so processes and shell state from an earlier handoff are gone.
-Pass `background=false` on every follow-up.
+Send every later handoff to its id with `agent_send`, which keeps its
+conversation and model, then end your turn: its report starts your next one.
+Its runtime may stop between handoffs, so processes and shell state from an
+earlier one are gone.
 
 ## Handoff loop
 
@@ -34,19 +34,18 @@ Pass `background=false` on every follow-up.
 2. Send a compact brief with the goal, decisions, constraints, relevant paths,
    success criteria, narrow checks, and conditions that return control. Relay
    relevant user requirements; do not copy the conversation.
-3. Let the sidekick inspect, edit, test, and fix one useful phase. Use `message`
-   only to guide a running handoff. A `message` to a sidekick that has
-   finished starts a new run, exactly like `followup`, so hold guidance for an
-   idle sidekick until the next brief.
-4. Review the actual diff, artifacts, and decisive execution evidence. Batch
-   corrections into one follow-up. Do not repeat unchanged successful checks.
+3. Let the sidekick inspect, edit, test, and fix one useful phase. Use
+   `agent_send` during a handoff only to guide it; a message to an idle
+   sidekick starts a new run, so hold that guidance for the next brief.
+4. Review the actual diff (`agents` `action=read`, `part=diff`), artifacts,
+   and decisive execution evidence. Batch corrections into one handoff. Do not
+   repeat unchanged successful checks.
 5. After two failed correction rounds without a new hypothesis, take over or
    report the blocker.
 6. The lead reports the changes, validation, limitations, and remaining work.
 
-Use blocking handoffs so lead and sidekick never edit concurrently. Worker
-completion is evidence, not acceptance. Preserve errors, truncation, partial
-results, and unknown cost as unknown.
+Never edit while the sidekick works. Its report is evidence, not acceptance.
+Preserve errors, truncation, partial results, and unknown cost as unknown.
 
 Ask the sidekick to finish with:
 
@@ -54,6 +53,5 @@ Ask the sidekick to finish with:
 Outcome: completed / blocked / partial
 Changes: files and material behavior
 Validation: commands and actual outcomes
-Runtime: activity handles it started and whether they remain live
 Open questions: unresolved decisions or failures
 ```

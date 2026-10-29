@@ -176,80 +176,33 @@ def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, bin
         )
 
 
-def delegating_server(outside, inside, loosen=None):
-    """A parent that delegates one task; its child writes inside the
-    workspace, then tries to write outside it. `loosen` runs once the parent
-    is up, before it delegates."""
-
-    def route(_, body):
-        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
-        results = [m for m in body["messages"] if m.get("role") == "tool"]
-        if any("child-task" in text for text in users):
-            if results:
-                return event({"content": "child-done"})
-            return tool_call("run", {"command": f"echo x > {inside}; echo x > {outside}"})
-        if "second" not in users and loosen:
-            loosen()
-            return event({"content": "first-done"})
-        if results:
-            return event({"content": "parent-done"})
-        return tool_call("subagent", {"prompt": "child-task", "mode": "full", "background": False})
-
-    return Server([route] * 6)
-
-
-def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
-    """A delegated child approves its own calls, and runs them under the
-    sandbox of the session that delegated to it."""
+def test_an_agent_runs_in_its_own_sandbox_whatever_its_parents(root, home, *, binary):
+    """An agent that may edit runs its commands in the default sandbox, one
+    that may not in the read-only one, even under a parent that runs
+    unconfined."""
     require_sandbox(root, home, binary=binary)
-    # The second folder's name reads, in a colon-separated list, as itself
-    # and its parent: a child handed its parent's roots that way gains one.
-    for sandbox, ws in (
-        ("default", workspace(root)),
-        ("off", workspace(root)),
-        ("default", root / "ws:.."),
-    ):
-        ws.mkdir(exist_ok=True)
-        outside, inside = root / f"{ws.name}-{sandbox}.txt", ws / f"child-{sandbox}.txt"
-        with delegating_server(outside, inside) as server:
-            env = sandbox_env(home, server.url, UAGENT_SANDBOX=sandbox)
+    ws = workspace(root)
+    for edits in ("folder", "none"):
+        outside, inside = root / f"outside-{edits}.txt", ws / f"inside-{edits}.txt"
+
+        def route(_, body, edits=edits, outside=outside, inside=inside):
+            users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
+            results = [m for m in body["messages"] if m.get("role") == "tool"]
+            if any(text.startswith("BRIEF ") for text in users):
+                if len(results) > 1:
+                    return event({"content": "agent-done"})
+                return tool_call("run", {"command": f"echo x > {inside}; echo x > {outside}"})
+            if results:
+                return event({"content": "parent-done"})
+            return tool_call("agent_start", {"brief": "BRIEF write", "edits": edits})
+
+        with Server([route]) as server:
+            env = sandbox_env(home, server.url, UAGENT_SANDBOX="off")
             result = run(ws, env, "--yolo", "-p", "go", timeout=60, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("parent-done" in result.stdout, result.stdout)
-        # The child ran: it wrote where it may. Unconfined only when its
-        # parent is.
-        assert_true(inside.exists(), f"the child never ran its command: {result.stdout}")
-        assert_true(
-            outside.exists() == (sandbox == "off"),
-            f"child of a parent with UAGENT_SANDBOX={sandbox}: {result.stdout}",
-        )
-
-
-def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binary):
-    """Not the one configured now, and no shell startup file has a say: the
-    parent's sandbox is fixed at its start, and so is its child's."""
-    require_sandbox(root, home, binary=binary)
-    ws = workspace(root)
-    save_settings(home, binary=binary, UAGENT_SANDBOX="default")
-    outside, inside, hooked = root / "later.txt", ws / "later.txt", root / "hooked.txt"
-    # A startup file a confined command could have written: the child starts
-    # outside the sandbox, so it is started through no shell.
-    hook = ws / "hook.sh"
-    hook.write_text(f"export UAGENT_SANDBOX=off\ntouch {hooked}\n")
-
-    def loosen():
-        save_settings(home, binary=binary, UAGENT_SANDBOX="off")
-
-    with delegating_server(outside, inside, loosen) as server:
-        env = base_env(home, server.url)
-        env.pop("UAGENT_SANDBOX", None)
-        env["BASH_ENV"] = str(hook)
-        result = run_dialog(ws, env, "first\nsecond\n/q\n", "--yolo", timeout=60, binary=binary)
-    assert_true(result.returncode == 0, (result.stdout, result.stderr))
-    assert_true("parent-done" in result.stdout, result.stdout)
-    assert_true(inside.exists(), f"the child never ran its command: {result.stdout}")
-    assert_true(not outside.exists(), "a reload loosened the child ahead of its parent")
-    assert_true(not hooked.exists(), "the child's launch ran a startup file unconfined")
+        assert_true(inside.exists() == (edits == "folder"), f"edits {edits}: {result.stdout}")
+        assert_true(not outside.exists(), f"edits {edits} wrote outside: {result.stdout}")
 
 
 def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):

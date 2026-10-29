@@ -21,7 +21,6 @@
 #include "include/api/retry.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
-#include "include/app/thread_link.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
 #include "include/core/config_registry.h"
@@ -661,41 +660,25 @@ void TestSharedPanelHelpers() {
   CHECK(InGitRepository(workspace.workspace));
 }
 
-// A panel restarts a thread at most three times in a row, however its
-// messages arrive: guidance into a running turn is free until it starts one.
-void TestThreadRestartsInARow() {
-  session::ThreadLink link(json::object(), "thread.json", "t1");
-  CHECK(link.Admit(true, true).empty());
-  CHECK(link.Admit(true, false).empty());  // steers the running turn
-  link.Restarted();                        // ... which it outlived
-  CHECK(link.Admit(true, true).empty());
-  CHECK(!link.Admit(true, true).empty());
-  CHECK(!link.Admit(true, false).empty());  // could start a fourth
-  CHECK(link.Admit(false, false).empty());  // someone else spoke
-  link.Restarted();                         // not the panel's turn
-  CHECK(link.Admit(true, true).empty());
-}
-
 void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
   const std::string path = PanelPath(folder);
   const std::string own = MailboxIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
-  // From the panel's thread, which its role names its child.
-  const std::filesystem::path thread =
-      std::filesystem::path(path).parent_path() / "thread-a.json";
-  std::filesystem::create_directories(thread.parent_path());
-  std::ofstream(thread) << json{{"format", kSessionFormat},
-                                {"cwd", folder},
-                                {"model", ""},
-                                {"session_id", ""},
-                                {"turns", 0},
-                                {"title", "a"},
-                                {"delegation", {{"parent_session", path}}}}
-                        << "\n";
+  // From the panel's agent, saved beside it, which names it its parent.
+  const std::filesystem::path agent =
+      std::filesystem::path(path).parent_path() / "agent-a.json";
+  std::filesystem::create_directories(agent.parent_path());
+  const json header = {
+      {"format", kSessionFormat}, {"cwd", folder}, {"model", ""},
+      {"session_id", ""},         {"turns", 0},    {"title", "a"}};
+  std::ofstream(path) << header << "\n";
+  json role = header;
+  role["agent"] = {{"parent", SessionIdFor(path)}};
+  std::ofstream(agent) << role << "\n";
   const Mail wake =
-      MailFrom(thread.string(), own, {{"text", "the thread finished\n"}});
+      MailFrom(agent.string(), own, {{"text", "the agent finished\n"}});
   CHECK(wake.from == MailboxIdFor(wake.sender_path));
   CHECK(SendMail(wake).empty());
 
@@ -721,7 +704,7 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
     RecoverMail(own);
     CHECK(restarted.DeliverMail());
     const auto next = SteeringState().TakeNextAutoStart();
-    CHECK(next && next->text == "the thread finished");
+    CHECK(next && next->text == "the agent finished");
     // Its turn has the text now, so this save holds the mail for good.
     restarted.Say(next->text, "", next->origin);
     CHECK(restarted.Save(path, error));
@@ -897,47 +880,6 @@ void TestChildEnvironmentPolicy() {
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
   CHECK(child.Contains("UAGENT_API_KEY"));
-
-  std::string diagnostics =
-      "diagnostic-head\n" + std::string(6000, 'x') + "\ndiagnostic-tail";
-  std::string report =
-      ChildAgentFailureReport("provider/child @ child.example",
-                              ChildAgentFailureStage::kExecution, diagnostics);
-  CHECK(report.size() < 3000);
-  CHECK(report.find("configured route: provider/child @ child.example") !=
-        std::string::npos);
-  CHECK(report.find("failure stage: child execution") != std::string::npos);
-  CHECK(report.find("diagnostic-head") != std::string::npos);
-  CHECK(report.find("diagnostic-tail") != std::string::npos);
-  std::string connection_report = ChildAgentFailureReport(
-      "provider/child @ child.example", ChildAgentFailureStage::kExecution,
-      "connection error: Couldn't connect to server\nBearer secret-value");
-  CHECK(FirstLine(connection_report) ==
-        "error: child execution: connection error: Couldn't connect to "
-        "server");
-  CHECK(FirstLine(connection_report).find("secret-value") == std::string::npos);
-  // A child that reported gives its own account: what it printed besides is
-  // left out, and a ceiling it named is not answered with endpoint advice.
-  const auto reported = [](const char* reason) {
-    return ChildAgentFailureReport(
-        "provider/child", ChildAgentFailureStage::kExecution,
-        "· Working\n" + JsonDump(json{{"schema", "uagent.headless.v1"},
-                                      {"answer", ""},
-                                      {"error", "it failed"},
-                                      {"stop", {{"reason", reason}}}}));
-  };
-  const std::string limited = reported("session_budget");
-  CHECK(limited.find("child reported: it failed") != std::string::npos);
-  CHECK(limited.find("rerun with that ceiling raised") != std::string::npos);
-  CHECK(limited.find("remedy:") == std::string::npos);
-  CHECK(limited.find("· Working") == std::string::npos);
-  // A stop that names no ceiling the caller could raise gets no such advice,
-  // and only a failure gets advice about the endpoint.
-  CHECK(reported("error").find("remedy:") != std::string::npos);
-  CHECK(reported("repeated_calls").find("remedy:") == std::string::npos);
-  for (const char* reason : {"error", "repeated_calls"}) {
-    CHECK(reported(reason).find("ceiling") == std::string::npos);
-  }
 }
 
 void TestKnownEndpoints() {
@@ -1163,10 +1105,6 @@ void TestNamedProviders() {
   openrouter_api.base_url = "https://openrouter.ai/api/v1";
   UseOpenRouterDialect(openrouter_api);
   openrouter_api.model = "parent-model";
-  // The runtime context names the parent in schema form, so the child can be
-  // asked for a route in the same spelling the user would type.
-  CHECK(DelegationRuntimeContext(openrouter_api) ==
-        "[delegation: parent=openrouter/parent-model; default=parent]");
   openrouter_api.reasoning_effort = "high";
   CHECK(RouteSelection(openrouter_api, {}) == "openrouter/parent-model:high");
   openrouter_api.reasoning_effort.clear();
@@ -1255,7 +1193,6 @@ void TestEffectiveConfigReload() {
   CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
   // A parent's handoff to its child is not a setting a file may carry.
   CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_TOOLSET"));
-  CHECK(!LeanToolset());
   CHECK(diagnostic["sources"]["UAGENT_MAX_TOOL_CALLS"] == "user");
   CHECK(!diagnostic["sources"].contains("UAGENT_REQUEST_TIMEOUT"));
   std::string shown = JsonDump(diagnostic);

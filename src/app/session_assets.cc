@@ -17,8 +17,7 @@ std::string SessionHost::Folder(const std::string& id) const {
   std::lock_guard lock(mutex_);
   auto found = sessions_.find(id);
   if (found == sessions_.end()) return {};
-  return found->second->folder.empty() ? found->second->cwd
-                                       : found->second->folder;
+  return found->second->cwd;
 }
 
 AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,

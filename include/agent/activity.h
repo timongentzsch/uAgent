@@ -46,7 +46,7 @@ struct DetachedActivity {
   std::string log;
 };
 
-void ActivityTrackSignal(pid_t pid, bool add, bool agent = false);
+void ActivityTrackSignal(pid_t pid, bool add);
 // TERM, then KILL if the group outlives the grace period, so a program that
 // cleans up on exit gets to. False only when the group is still alive after
 // the escalation.
@@ -104,7 +104,6 @@ std::string ActivityCompletionText(const ActivityCompletion& completion,
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind = {});
 void ActivityShutdownAll(ActivitySupervisor& supervisor);
-size_t ActivityCancelSubagents(ActivitySupervisor& supervisor);
 
 }  // namespace uagent
 

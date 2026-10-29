@@ -88,12 +88,8 @@
   flex: 1;
 }
 
-.activity-detail[hidden] {
-  display: none;
-}
-
-/* Pages (tool input/output, statistics) scroll as a whole and push in
-   from the right, like a native navigation stack. */
+/* A tool's input/output scrolls as a whole and pushes in from the right,
+   like a native navigation stack. */
 .activity-page {
   overflow: auto;
   transition: translate var(--motion-slow) var(--ease-out);
@@ -104,15 +100,9 @@
   }
 }
 
-.activity-back {
-  justify-self: start;
-}
-
 .activity-detail > p,
 .activity-detail > pre,
-.activity-detail > section,
-.activity-detail > details,
-.activity-detail > form {
+.activity-detail > section {
   margin-block: 0;
   min-width: 0;
 }
@@ -122,26 +112,8 @@
   gap: var(--space-2);
 }
 
-.activity-info {
-  flex: none;
-  max-height: min(calc(var(--viewport-height) * 0.32), var(--pane));
-  overflow: auto;
-  border-bottom: var(--border);
-  padding-bottom: var(--space-2);
-}
-
-.activity-info > summary {
-  color: var(--muted);
-  font-size: var(--font-small);
-}
-
-.activity-info > section {
-  margin: var(--gap) 0;
-}
-
 /* The growing sections take the remaining height as a column: content
    starts at the top (a grid would stretch its rows and float it mid-sheet). */
-.activity-detail > section[aria-label="Thread"],
 .activity-detail > section[aria-label="Output"],
 .activity-detail > section[aria-label="Memory"] {
   flex: 1;
@@ -169,16 +141,6 @@
   overflow-wrap: anywhere;
 }
 
-.detail-task {
-  color: var(--text);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  /* Pathological prompts stay reachable: short tasks render unchanged,
-     long ones scroll in place instead of burying the thread and form. */
-  max-height: min(var(--popover), calc(var(--viewport-height) * 0.4));
-  overflow: auto;
-}
-
 /* Full command, scrollable in place instead of abbreviated. */
 .detail-command {
   white-space: pre;
@@ -188,52 +150,6 @@
   max-height: var(--pane);
 }
 
-/* Plain output obeys the same bound so one huge dump cannot bury the
-   guidance form; the modal body remains the outer scroll. */
-.activity-detail > section > pre:not(.detail-command) {
-  max-height: min(var(--popover), calc(var(--viewport-height) * 0.4));
-}
-
 .activity-detail .markdown {
   overflow-wrap: anywhere;
-}
-
-/* The thread reads as the transcript: rows sit directly on the modal
-   surface (no inset frame) and follow the live edge with the same
-   stick; the cap keeps the guidance form reachable on long runs. */
-.child-thread {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overflow-anchor: none;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-}
-
-.thread-progress {
-  color: var(--muted);
-  font-size: var(--font-small);
-  padding: var(--gap) 0;
-}
-
-.activity-detail > details:not(.activity-info) {
-  flex: none;
-  max-height: calc(2 * var(--control-l));
-  overflow: auto;
-}
-
-.child-thread .history-button {
-  justify-self: center;
-}
-
-.guidance-form {
-  display: grid;
-  gap: var(--gap);
-  flex: none;
-  border-top: var(--border);
-  padding-top: var(--gap);
-}
-
-.guidance-form .message-input {
-  --input-min-height: calc(var(--control) * 2);
 }

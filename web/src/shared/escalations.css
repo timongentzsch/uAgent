@@ -1,8 +1,8 @@
 .escalation-where {
   color: var(--muted);
 }
-/* A panel's threads waiting on the user, above its composer; the
-   transcript keeps at least half the column. */
+/* A folder's conversations waiting on the user, above its panel's
+   composer; the transcript keeps at least half the column. */
 .escalations {
   flex-shrink: 0;
   margin: 0 var(--column-inset);

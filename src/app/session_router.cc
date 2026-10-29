@@ -168,12 +168,18 @@ std::string SessionHost::DeleteSpace(const std::string& path,
   const auto space = SpaceAt(path);
   if (!space) return "no such workspace";
   // Its conversations go the way one goes: closed when it runs, then
-  // removed. Threads that work elsewhere belong to it by their folder.
+  // removed. Agents that work elsewhere belong to it by where they are
+  // saved.
+  const fs::path history =
+      fs::path(UagentDir(kHistoryDir)) / WorkspaceId(space->string());
+  const auto belongs = [&](const HostSession& session) {
+    return session.cwd == space->string() ||
+           fs::path(session.path).parent_path() == history;
+  };
   const auto next = [&]() -> json {
     std::lock_guard lock(mutex_);
     for (const auto& [id, session] : sessions_) {
-      if (session->cwd == space->string() ||
-          session->folder == space->string()) {
+      if (belongs(*session)) {
         return {{"session_id", id},
                 {"generation", session->generation},
                 {"kind",
@@ -196,15 +202,12 @@ std::string SessionHost::DeleteSpace(const std::string& path,
   // Under the lock a conversation is created under: none starts in a
   // folder that is going.
   std::lock_guard lock(mutex_);
-  if (std::ranges::any_of(sessions_, [&](const auto& held) {
-        return held.second->cwd == space->string() ||
-               held.second->folder == space->string();
-      })) {
+  if (std::ranges::any_of(
+          sessions_, [&](const auto& held) { return belongs(*held.second); })) {
     return "a conversation started in the workspace meanwhile; try again";
   }
   std::error_code error;
-  fs::remove_all(UagentDir(kHistoryDir) + "/" + WorkspaceId(space->string()),
-                 error);
+  fs::remove_all(history, error);
   fs::remove_all(*space, error);
   return error
              ? "the workspace's folder could not be removed: " + error.message()

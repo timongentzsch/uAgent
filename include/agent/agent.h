@@ -122,7 +122,7 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
-  // Panel/thread role ({kind, thread}), saved in the session header.
+  // Panel or agent role ({kind} or {agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
   // Bills every response under this purpose instead of the conversation.
   void SetUsagePurpose(std::string purpose) {
@@ -177,10 +177,10 @@ class Agent {
   // from that summary — frees the context without losing the thread
   bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
 
-  // Fold in what this session's children (subagents, memory extraction,
-  // threads) reported to its ledger. They bill against the same key, so
+  // Fold in what this session's children (agents, memory extraction)
+  // reported to its ledger. They bill against the same key, so
   // without this their cost is missing from the footer and the status bar.
-  void DrainSubagentUsage();
+  void DrainChildUsage();
 
   // Account finished side work. What the current turn spawned merges into
   // `turn` when given; other tagged delegated work updates its originating
@@ -217,7 +217,7 @@ class Agent {
   }
 
   // The session's undo (EditJournal), kept in `directory`; unset, nothing is
-  // journaled, as for a subagent.
+  // journaled.
   void OpenEditJournal(std::string directory) {
     edits_.Open(std::move(directory));
   }
@@ -308,6 +308,9 @@ class Agent {
   void PushStepNote(StepState& loop, const std::string& note);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
+  // An agent counts the turns mail starts in a row (agent.streak, which
+  // agent_send reads); a person's message starts the count over.
+  void CountStreak(const json& origin);
   StepFlow PrepareStep(TurnExecution& state, StepState& loop);
   StepFlow HandleFailedResponse(ChatResult& response, TurnExecution& state,
                                 StepState& loop, const json& schemas,

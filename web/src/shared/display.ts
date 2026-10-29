@@ -4,9 +4,8 @@
 import { plural } from "./quantities.ts";
 import type { Session, Statistics } from "./types.ts";
 
-// The folder a session belongs to: a thread's panel folder, else its
-// own working directory.
-export const folderOf = (item: Session) => item.folder || item.cwd || "";
+// The folder a session belongs to: its working directory.
+export const folderOf = (item: Session) => item.cwd || "";
 
 // One name per approval mode, wherever a mode is shown or chosen.
 export const permissionLabels = {

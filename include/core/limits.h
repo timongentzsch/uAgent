@@ -188,13 +188,6 @@ inline constexpr int64_t kDefaultYieldMs = 10000;
 // enough for the child to echo, short enough not to feel like a wait.
 inline constexpr int64_t kActivityInputSettleMs = 250;
 
-// Activity slots held back from delegated children. Subagents, foreground
-// commands and background commands share the activities.maxConcurrent pool
-// (detached terminals are counted separately), so an unbounded fan-out of
-// children would leave the parent unable to build, test or search -- the very
-// work it needs in order to check what those children produced.
-inline constexpr int64_t kDelegatedActivityHeadroom = 2;
-
 // Resource ceilings. They bound runaway input and disk use; the ones a user
 // may tune are settings (include/core/config_registry.h), not constants here.
 // Model requests and the tool trace.

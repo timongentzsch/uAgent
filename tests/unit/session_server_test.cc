@@ -85,6 +85,31 @@ void TestCloseRuntimeWaitsForTheRuntime() {
   unlink(address.c_str());
 }
 
+// A command a client sends just before it closes is taken, also when it
+// closes with frames unread, which resets the socket.
+void TestACommandSentBeforeClosingIsTaken() {
+  TestWorkspace test("send-and-close");
+  const std::string path = (test.workspace / "s.json").string();
+  CreatePrivateDirectories(
+      std::filesystem::path(session::SocketPath(path)).parent_path());
+  std::atomic<bool> taken{false};
+  session::Server server;
+  CHECK(server.Start(path, RandomToken(16), [&](const json& frame) {
+    taken = taken || JsonValue(frame, "kind", "") == "interrupt";
+    return true;
+  }) == 0);
+  // What a joining client is sent and, here, never reads.
+  server.Publish(
+      {{"v", session::kProtocol}, {"kind", "state"}, {"busy", true}});
+  {
+    session::Connection connection = session::Connect(path);
+    CHECK(session::WriteFrame(
+        connection.socket.Get(),
+        {{"v", session::kProtocol}, {"kind", "interrupt"}}));
+  }
+  CHECK(WaitUntil([&] { return taken.load(); }, BudgetMs(5000)));
+}
+
 void TestSessionFramePartitions() {
   const json first = {{"v", session::kProtocol}, {"text", "a\nbλ"}};
   const json second = {{"v", session::kProtocol}, {"sequence", 2}};

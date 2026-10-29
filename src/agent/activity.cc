@@ -29,7 +29,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/file_services.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -83,15 +82,13 @@ struct WaitWindow {
 // How long a child agent told to stop is given before it is killed. It has
 // already stopped what it started; the time is for closing its MCP servers,
 // saving its session and reporting what it spent.
-inline constexpr auto kAgentStopGrace = std::chrono::seconds(3);
 
 inline constexpr std::string_view kNoNewActivityOutput = "(no new output)";
 
 }  // namespace
 
-void ActivityTrackSignal(pid_t pid, bool add, bool agent) {
-  if (agent || !add) TrackPid(g_agent_pids, kActivityMax, pid, add);
-  if (!agent || !add) TrackPid(g_activity_pids, kActivityMax, pid, add);
+void ActivityTrackSignal(pid_t pid, bool add) {
+  TrackPid(g_activity_pids, kActivityMax, pid, add);
 }
 
 void KillProcess(pid_t pid) {
@@ -911,10 +908,7 @@ ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t requested) {
   }
   supervisor.Wake();
   if (was_alive) {
-    const bool agent =
-        supervised && supervised->kind == ActivityKind::kSubagent;
-    if (!TerminateGroup(supervisor, pid,
-                        agent ? kAgentStopGrace : std::chrono::seconds(1),
+    if (!TerminateGroup(supervisor, pid, std::chrono::seconds(1),
                         reap_leader)) {
       return ToolFailure(ToolErrorCode::kProcessFailed,
                          "could not stop process group " + std::to_string(pid));
@@ -944,11 +938,8 @@ void ActivityShutdownAll(ActivitySupervisor& supervisor) {
   std::vector<Activity> jobs = supervisor.TakeAllForShutdown();
   std::erase_if(jobs, [](const Activity& job) { return job.Detached(); });
   for (const Activity& job : jobs) SignalProcessGroup(job.pid, SIGTERM);
-  const bool agents = std::ranges::any_of(jobs, [](const Activity& job) {
-    return job.kind == ActivityKind::kSubagent;
-  });
-  auto deadline = std::chrono::steady_clock::now() +
-                  (agents ? kAgentStopGrace : std::chrono::milliseconds(500));
+  auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
   while (!jobs.empty()) {
     uint64_t generation = supervisor.Generation();
     std::erase_if(jobs, [](const Activity& job) {
@@ -969,25 +960,6 @@ void ActivityShutdownAll(ActivitySupervisor& supervisor) {
   supervisor.Wake();
 }
 
-size_t ActivityCancelSubagents(ActivitySupervisor& supervisor) {
-  size_t cancelled = 0;
-  for (const Activity& candidate : supervisor.Snapshot()) {
-    if (candidate.Detached() || !candidate.session ||
-        candidate.kind != ActivityKind::kSubagent) {
-      continue;
-    }
-    std::optional<Activity> job = supervisor.Take(ActivityId(candidate));
-    if (!job) continue;
-    ++cancelled;
-    (void)TerminateGroup(supervisor, job->pid, kAgentStopGrace,
-                         /*reap_leader=*/false);
-    ActivityTrackSignal(job->pid, false);
-    RemoveLog(job->log);
-  }
-  supervisor.Wake();
-  return cancelled;
-}
-
 namespace {
 
 std::string ActivityCount(size_t count) {
@@ -1001,14 +973,11 @@ std::string ActivityCount(size_t count) {
 namespace {
 
 // An activity is identified by its kind and id, and by what it was asked to
-// run unless that is harness plumbing.
+// run.
 std::string ActivityName(ActivityKind kind, int64_t id,
                          const std::string& command) {
-  std::string name = ActivityKindName(kind) + " " + std::to_string(id);
-  // A subagent is named by its kind because its command line is harness
-  // plumbing.
-  if (kind != ActivityKind::kSubagent) name += " `" + FirstLine(command) + "`";
-  return name;
+  return ActivityKindName(kind) + " " + std::to_string(id) + " `" +
+         FirstLine(command) + "`";
 }
 
 }  // namespace
@@ -1123,25 +1092,8 @@ std::vector<ActivityCompletion> TakeCompleted(ActivitySupervisor& supervisor,
     // output can squeeze out.
     ToolResult notes;
     if (collected.artifact) AddHint(notes, ArtifactHint(*collected.artifact));
-    ActivityKind activity_kind = job.kind;
-    if (activity_kind == ActivityKind::kSubagent) {
-      output = ChildAgentRecoverEnvelope(
-          std::move(output),
-          collected.artifact ? collected.artifact->path : job.log);
-      if (failed) {
-        output =
-            ChildAgentFailureReport(JsonValue(job.metadata, "route", ""),
-                                    ChildAgentFailureStage::kExecution, output);
-        output += ChildAgentConstraintNotes(job.completion_notes);
-      } else {
-        output = ChildAgentAnswer(std::move(output), job.completion_notes);
-      }
-      if (!job.source_id.empty()) {
-        AddHint(notes, ChildAgentResumeNote(job.source_id));
-      }
-    }
     AddHint(notes, SandboxRestoreNote(job.watch.get(), CanonicalCwd()));
-    completions.push_back({ActivityId(job), activity_kind, status, job.cmd,
+    completions.push_back({ActivityId(job), job.kind, status, job.cmd,
                            std::move(output), std::move(notes.hint),
                            job.display_label, job.receipt_path, job.source_id});
   }

@@ -3,7 +3,6 @@ import { ConnectionStatus, StatusLed } from "./connection-status.tsx";
 import { plural } from "./quantities.ts";
 import type {
   Activity,
-  Agent,
   ConnectionPhase,
   InspectorTarget,
   Pending,
@@ -13,7 +12,6 @@ import type {
 import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
-  Bot,
   ChevronUp,
   Layers,
   Square,
@@ -31,39 +29,10 @@ import { command } from "../state/api.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 // The turn's status line above the composer and the controls for the
-// activities (background commands, subagents) the turn started.
+// background commands the turn started.
 
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
-// Supervised activities plus child agents not already listed as one.
-export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
-  return [
-    ...items,
-    ...agents
-      .filter((child) => !items.some((item) => item.agent_id === child.id))
-      .map(
-        (child): Activity => ({
-          ...child,
-          id: undefined,
-          agent_id: child.id,
-          kind: "subagent",
-          status: child.status || "idle",
-        }),
-      ),
-  ];
-}
-
-function activityLabel(items: Activity[] = []) {
-  const running = items.filter(active);
-  const agents = running.filter((item) => item.kind === "subagent").length;
-  const commands = running.length - agents;
-  return [
-    agents && plural(agents, "agent"),
-    commands && plural(commands, "command"),
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
 export function TurnStatus({
   phase = "Ready",
   running,
@@ -131,26 +100,23 @@ export function TurnStatus({
   );
 }
 
-// Always under the input: what is running, then idle agents -- the same set
-// as /agents -- since those stay resumable. Finished commands live only in the
-// conversation.
+// Always under the input: what is running. Finished commands live only in
+// the conversation.
 function ActivityButtonView({
   items,
-  agents,
   session,
   online,
   report,
   open,
 }: {
   items: Activity[];
-  agents: Agent[];
   session: SessionRef;
   online: boolean;
   report: Report;
   open: (target: InspectorTarget) => void;
 }) {
-  const rows = withAgents(items.filter(active), agents);
-  const counts = activityLabel(rows);
+  const rows = items.filter(active);
+  const counts = rows.length ? plural(rows.length, "command") : "";
   return (
     <SheetButton
       label="Activity"
@@ -182,7 +148,7 @@ function ActivityButtonView({
           <ul class="activity-list">
             {rows.map((item) => (
               <ActivityRow
-                key={String(item.id ?? item.agent_id ?? item.label)}
+                key={String(item.id ?? item.label)}
                 item={item}
                 session={session}
                 online={online}
@@ -196,7 +162,7 @@ function ActivityButtonView({
           </ul>
         ) : (
           <p class="muted small">
-            Nothing running. Background commands and agents appear here.
+            Nothing running. Background commands appear here.
           </p>
         )
       }
@@ -228,13 +194,11 @@ export function ActivityControls({
       command("activity", session, {
         operation,
         activity_id: item.id || 0,
-        agent_id: item.agent_id || "",
-        text: "",
       }).catch(report),
     );
   return (
     <>
-      {item.kind !== "subagent" && item.detached === false && (
+      {item.detached === false && (
         <IconButton
           label="Move to background"
           disabled={!online || busy}
@@ -267,10 +231,7 @@ function ActivityRow({
   report: Report;
   open: () => void;
 }) {
-  const name =
-    item.kind === "subagent"
-      ? item.name || item.label
-      : item.label || "Command";
+  const name = item.label || "Command";
   const elapsed = useElapsed(active(item), item.started_ms);
   return (
     <li class="activity-row">
@@ -280,9 +241,9 @@ function ActivityRow({
         disabled={!online}
         onClick={open}
       >
-        {item.kind === "subagent" ? <Bot /> : <Terminal />}
+        <Terminal />
         <span class="activity-text">
-          <strong>{cleanText(name || "")}</strong>
+          <strong>{cleanText(name)}</strong>
           <small>
             {item.status}
             {elapsed && ` · ${elapsed}`}
@@ -293,7 +254,7 @@ function ActivityRow({
       {active(item) && (
         <ActivityControls
           item={item}
-          name={name || ""}
+          name={name}
           session={session}
           online={online}
           report={report}

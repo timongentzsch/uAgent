@@ -277,7 +277,7 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
     const std::string route = configured.Get("UAGENT_MODEL");
     state["route"] = route.empty() ? record.metadata.model : route;
     state["permissions"] =
-        ApprovalState(configured, record.metadata.kind == kSessionKindThread);
+        ApprovalState(configured, !record.metadata.agent.empty());
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};
   }

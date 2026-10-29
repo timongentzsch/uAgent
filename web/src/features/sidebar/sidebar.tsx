@@ -62,28 +62,35 @@ const STATES: Partial<
 
 type Place = {
   panel?: Session;
-  threads: Session[];
+  agents: Session[];
   others: Session[];
 };
 
-// The list's places in its order, newest first: each one's panel, what
-// the panel started, then its conversations. A workspace is a place whether
-// or not anything is in it yet.
+// The list's places in its order, newest first: each one's panel, the
+// agents it started, then its conversations, each followed by its own
+// agents. An agent whose parent is not listed is an ordinary row. A
+// workspace is a place whether or not anything is in it yet.
 function groupSessions(sessions: Session[], spaces: Space[] = []) {
   const groups = new Map<string, Place>();
   const place = (path: string) => {
-    if (!groups.has(path)) groups.set(path, { threads: [], others: [] });
+    if (!groups.has(path)) groups.set(path, { agents: [], others: [] });
     return groups.get(path)!;
   };
-  for (const item of [...sessions].sort(
+  const sorted = [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
-  )) {
+  );
+  const listed = new Set(sorted.map((item) => item.id));
+  const agents = (item: Session): Session[] =>
+    sorted
+      .filter((agent) => agent.parent === item.id)
+      .flatMap((agent) => [agent, ...agents(agent)]);
+  for (const item of sorted) {
+    if (item.parent && listed.has(item.parent)) continue;
     const path = folderOf(item);
-    if (item.kind === "panel") place(path).panel = item;
-    else
-      (item.kind === "thread" ? place(path).threads : place(path).others).push(
-        item,
-      );
+    if (item.kind === "panel") {
+      place(path).panel = item;
+      place(path).agents = agents(item);
+    } else place(path).others.push(item, ...agents(item));
   }
   for (const space of spaces) place(space.path);
   return groups;
@@ -113,7 +120,7 @@ export const sessionOrder = (
         ? []
         : [
             ...(group.panel ? [group.panel] : []),
-            ...group.threads,
+            ...group.agents,
             ...group.others,
           ],
     ),
@@ -255,7 +262,7 @@ function SidebarView({
     const name = space?.name || folderName(cwd);
     const folded = collapsed.has(cwd);
     const { panel } = group;
-    const conversations = [...group.threads, ...group.others];
+    const conversations = [...group.agents, ...group.others];
     const holdsOpen = [panel, ...conversations].some(
       (item) => item?.id === selected,
     );
@@ -327,12 +334,12 @@ function SidebarView({
         </div>
         {!folded && (
           <div class="place-body">
-            {group.threads.length > 0 && (
-              <div role="group" aria-label={`Background agents of ${name}`}>
-                {group.threads.map(row)}
+            {group.agents.length > 0 && (
+              <div role="group" aria-label={`Agents of ${name}`}>
+                {group.agents.map(row)}
               </div>
             )}
-            {group.threads.length > 0 && group.others.length > 0 && (
+            {group.agents.length > 0 && group.others.length > 0 && (
               <hr class="place-rule" />
             )}
             {group.others.map(row)}

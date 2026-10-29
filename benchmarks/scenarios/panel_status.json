@@ -57,9 +57,10 @@
         "tool_calls": [
           {
             "id": "blocked",
-            "name": "history",
+            "name": "agents",
             "arguments": {
-              "action": "search",
+              "action": "read",
+              "part": "search",
               "query": "blocked"
             }
           }

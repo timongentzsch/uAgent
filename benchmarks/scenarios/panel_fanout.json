@@ -1,10 +1,10 @@
 {
   "name": "panel_fanout",
-  "description": "Two independent jobs become two threads started in one batch, each with a brief; the panel itself changes nothing.",
+  "description": "Two independent jobs become two agents started in one batch, each with a brief; the panel itself changes nothing.",
   "tier": "regression",
   "variants": ["control"],
   "panel": true,
-  "env": {"UAGENT_PANEL_ENVIRONMENT": "local", "UAGENT_PANEL_DAILY_SPEND_USD": "1"},
+  "env": {"UAGENT_PANEL_DAILY_SPEND_USD": "1"},
   "prompt": "Two independent jobs: add an 'Install' section to README.md, and add a 0.2.0 entry to CHANGELOG.md. Delegate them so they run in parallel, then tell me what you started.",
   "files": {
     "README.md": "# demo\n\nA small demo project.\n",
@@ -12,26 +12,26 @@
   },
   "script": [
     {
-      "when": {"contains": "Objective:"},
-      "respond": {"content": "thread done"}
+      "when": {"contains": "Done when:", "tool_results": 0, "absent": "Delegate them"},
+      "respond": {"content": "agent done"}
     },
     {
       "when": {"tool_results": 0},
       "respond": {
         "tool_calls": [
-          {"id": "readme", "name": "thread_spawn", "arguments": {"title": "README install section", "objective": "Add an Install section to README.md", "done_when": "README.md has an Install section"}},
-          {"id": "changelog", "name": "thread_spawn", "arguments": {"title": "CHANGELOG 0.2.0", "objective": "Add a 0.2.0 entry to CHANGELOG.md", "done_when": "CHANGELOG.md lists 0.2.0"}}
+          {"id": "readme", "name": "agent_start", "arguments": {"brief": "README install section\nAdd an Install section to README.md. Done when: README.md has an Install section.", "edits": "folder", "wait": false}},
+          {"id": "changelog", "name": "agent_start", "arguments": {"brief": "CHANGELOG 0.2.0\nAdd a 0.2.0 entry to CHANGELOG.md. Done when: CHANGELOG.md lists 0.2.0.", "edits": "folder", "wait": false}}
         ]
       }
     },
     {
-      "respond": {"content": "Started two threads: README install section and CHANGELOG 0.2.0."}
+      "respond": {"content": "Started two agents: README install section and CHANGELOG 0.2.0."}
     }
   ],
   "checks": {
     "min_batch": 2,
     "answer_contains": ["README", "CHANGELOG"],
-    "result_contains": ["session_id"],
+    "result_contains": ["\"state\":\"working\""],
     "max_requests": 6
   }
 }

@@ -333,7 +333,9 @@ def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
             )
             return event({"content": "SIDE-PANEL-DONE"})
         return tool_call(
-            "history", {"action": "search", "query": "state"}, call_id="side-panel-history"
+            "agents",
+            {"action": "read", "part": "search", "query": "state"},
+            call_id="side-panel-agents",
         )
 
     with Server([responder]) as provider:
@@ -342,7 +344,7 @@ def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
             panel = client.command("create", cwd=str(root), panel=True)["session"]
             panel = client.command("activate", panel)["session"]
             client.until(panel, lambda value: value["metadata"]["status"] == "idle")
-            client.command("tools", panel, operation="set", name="thread", active=False)
+            client.command("tools", panel, operation="set", name="agent_send", active=False)
             side_id = client.command("side", panel, operation="create")["result"]["id"]
             side = client.command("activate", {"id": side_id, "generation": ""})["session"]
             client.until(side, lambda value: value["metadata"]["status"] == "idle")
@@ -354,7 +356,7 @@ def test_web_side_conversation_keeps_orchestrator_tools(root, home, *, binary):
                 ),
             )
             assert_true(
-                {"decide", "history", "artifact"} <= offered[0] and "thread" not in offered[0],
+                {"decide", "agents", "artifact"} <= offered[0] and "agent_send" not in offered[0],
                 offered,
             )
             assert_true(not {"run", "write_file", "scratch"} & offered[0], offered)

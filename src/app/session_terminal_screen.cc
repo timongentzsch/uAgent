@@ -44,9 +44,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
          .model = route,
          .background = counts.background,
          .foreground = counts.foreground,
-         .subagents = counts.subagents,
-         .interrupting = interrupting,
-         .subagent = std::move(counts.subagent)});
+         .interrupting = interrupting});
   }
   const json permissions = JsonValue(state, "permissions", json::object());
   return StatusBar(
@@ -57,7 +55,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
        .model = route,
        .approval = JsonValue(permissions, "effective", "ask"),
        .detail = std::string(detail),
-       .background = counts.background + counts.subagents});
+       .background = counts.background});
 }
 
 // What a pending approval or question says above its prompt.

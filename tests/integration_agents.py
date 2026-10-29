@@ -16,6 +16,7 @@ from integration_support import (
     fnv1a64,
     function_names,
     run,
+    save_settings,
     tool_call,
     tool_calls,
     tool_results,
@@ -122,9 +123,7 @@ def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *,
         assert_true(header(agent)["turns"] == 2, header(agent))
 
 
-def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(
-    root, home, *, binary
-):
+def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(root, home, *, binary):
     def route(_, body):
         if brief_of(body):
             return event({"content": "counted 3"}, usage={"cost": 0.05})
@@ -410,7 +409,9 @@ def test_an_agent_that_may_not_edit_only_reads(root, home, *, binary):
         names = function_names(agent)
         assert_true("read_path" in names and "write_file" not in names, names)
         assert_true("edit_file" not in names, names)
-        refused = next(results_of(b)[0] for _, b in server.requests if brief_of(b) and results_of(b))
+        refused = next(
+            results_of(b)[0] for _, b in server.requests if brief_of(b) and results_of(b)
+        )
         assert_true("start them with edits none" in refused, refused)
         assert_true(len(agent_files(home)) == 1, agent_files(home))
 
@@ -513,3 +514,101 @@ def test_deleting_an_agent_needs_the_person(root, home, *, binary):
         assert_true("agent ok" in read, read)
         assert_true("needs a person's approval" in deleted, deleted)
         assert_true(agent.exists(), "the agent was deleted without the person")
+
+
+def test_a_worktree_agent_works_in_a_worktree_of_a_git_folder_only(root, home, *, binary):
+    def route(_, body):
+        if brief_of(body):
+            return event({"content": "agent ok"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF here", "edits": "worktree"})
+        return event({"content": "parent ok"})
+
+    with Server([route]) as server:
+        run(root, base_env(home, server.url), "-p", "outside git", binary=binary)
+        refused = results_of(server.requests[-1][1])[0]
+        assert_true("not in git" in refused and not agent_files(home), refused)
+    for command in (
+        ["git", "init", "-q"],
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "base",
+        ],
+    ):
+        subprocess.run(command, cwd=root, check=True)
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "-p", "in git", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        (agent,) = agent_files(home)
+        cwd = header(agent)["cwd"]
+        # Saved beside its parent, working in a worktree of its own.
+        assert_true(cwd.endswith("/worktrees/" + agent.stem), cwd)
+        assert_true(agent.parent.name == fnv1a64(str(root.resolve())), agent)
+
+
+def test_a_confined_agent_acts_inside_its_folder_without_review(root, home, *, binary):
+    """The sandbox holds an agent in Auto to its folder, so what it writes
+    and runs there is put to nobody: not to a reviewer, not to its parent."""
+    from integration_sandbox import sandbox_enforced
+
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+
+    def route(_, body):
+        assert not ASKS.search(text_of(body)), "a confined agent's action was put to review"
+        if brief_of(body):
+            results = results_of(body)
+            if not results:
+                return tool_call("write_file", {"path": "out.txt", "content": "x"})
+            if len(results) == 1:
+                return tool_call("run", {"command": "cp out.txt ran.txt"})
+            return event({"content": "agent done"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF write and run", "edits": "folder"})
+        return event({"content": "parent ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_APPROVAL"] = "auto"
+        result = run(root, env, "-p", "delegate", timeout=60, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true((root / "ran.txt").read_text() == "x", "the agent did not get to act")
+
+
+def test_an_agent_reaches_a_named_provider_with_its_key(root, home, *, binary):
+    """A parent on `provider/model` starts an agent on that selection, which
+    resolves it itself: its requests carry the provider's key."""
+    seen = {}
+
+    def route(handler, body):
+        if brief_of(body):
+            seen["agent"] = (handler.headers.get("Authorization"), body.get("model"))
+            return event({"content": "agent ok"})
+        if results_of(body):
+            return event({"content": "parent ok"})
+        return tool_call("agent_start", {"brief": "BRIEF count"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        for name in ("UAGENT_BASE_URL", "UAGENT_API_KEY", "UAGENT_MODEL"):
+            env.pop(name, None)
+        save_settings(
+            home,
+            binary=binary,
+            NAMED_KEY="named-provider-key",
+            UAGENT_PROVIDERS=json.dumps(
+                {"named": {"base_url": server.url, "api_key": "$NAMED_KEY"}}
+            ),
+            UAGENT_MODEL="named/some-model",
+        )
+        result = run(root, env, "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(seen.get("agent") == ("Bearer named-provider-key", "some-model"), seen)

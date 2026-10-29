@@ -3,17 +3,14 @@ import threading
 from pathlib import Path
 
 from integration_support import (
-    OPENROUTER_SUPPORTS,
     Server,
     assert_true,
     budget,
     event,
+    fnv1a64,
     save_settings,
     session_files,
     tool_call,
-    tool_calls,
-    tool_results,
-    user_texts,
     wait_until,
     write_session,
 )
@@ -181,20 +178,12 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
 
 
 def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
-    """Deleting a conversation removes what sits beside it and what it
-    delegated to a subagent, which is never listed alone. A background agent
-    it started is a conversation of its own and stays."""
+    """Deleting a conversation removes what sits beside it. An agent it
+    started is a conversation of its own, listed under it, and stays."""
     said = [{"role": "user", "content": "hi"}]
     lead = write_session(home, "lead", said, cwd=root)
-    owner = str(lead.resolve())
-    subagent = write_session(home, "sub", said, cwd=root, delegation={"parent_session": owner})
-    background = write_session(
-        home,
-        "background",
-        said,
-        cwd=root,
-        kind="thread",
-        delegation={"parent_session": owner, "lifetime": "thread"},
+    agent = write_session(
+        home, "agent-0a1b2c3d", said, cwd=root, agent={"parent": fnv1a64(str(lead))}
     )
     (lead.parent / "lead.json.pinned").write_text("{}")
     with Server([event({"content": "unused"})]) as provider:
@@ -202,11 +191,13 @@ def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
             client.pair(code)
             sessions = client.json("/api/sessions")[1]["sessions"]
             saved = next(item for item in sessions if item.get("title") == "lead")
+            listed = next(item for item in sessions if item.get("title") == "agent-0a1b2c3d")
+            assert_true(listed["parent"] == saved["id"], listed)
             client.command("delete", saved)
     left = sorted(path.name for path in lead.parent.iterdir())
-    assert_true(not lead.exists() and not subagent.exists(), left)
+    assert_true(not lead.exists(), left)
     assert_true(not any(name.startswith("lead.json.") for name in left), left)
-    assert_true(background.exists(), left)
+    assert_true(agent.exists(), left)
 
 
 def test_web_immediate_message_model_control_and_receipts(root, home, *, binary):
@@ -440,183 +431,6 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             count = len(provider.requests)
             client.command("activity", session, operation="list")
             assert_true(len(provider.requests) == count, "inspection invoked model")
-
-
-def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
-    project = root / "child-controls"
-    project.mkdir()
-    child_started = threading.Event()
-    release_child = threading.Event()
-
-    def answer(_, body):
-        users = user_texts(body["messages"])
-        if "WEB_CHILD_SEED" in users:
-            if "WEB_CHILD_FOLLOWUP" in users:
-                assert any(message.get("content") == "Child result" for message in body["messages"])
-                assert body["model"] == "mock/new", body
-                return event({"content": "Child follow-up result"})
-            child_started.set()
-            assert release_child.wait(timeout=budget(10))
-            return event({"content": "Child result"})
-        if any(message.get("role") == "tool" for message in body["messages"]):
-            return event({"content": "Parent ready"})
-        return tool_call(
-            "subagent", {"prompt": "WEB_CHILD_SEED", "background": True}, call_id="child-spawn"
-        )
-
-    with Server([answer]) as provider:
-        with web_host(
-            binary,
-            root,
-            home,
-            provider.url,
-            extra_env={
-                "UAGENT_MODEL": "mock/old",
-                "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
-            },
-        ) as (client, code, _, _):
-            client.pair(code)
-            session = client.create(project)
-            peer = client.create(project)
-            client.command("submit", session, text="/yolo")
-            client.until(session, lambda value: value["state"].get("yolo", False))
-            client.command("submit", session, text="Delegate a child")
-            try:
-                assert child_started.wait(timeout=budget(5))
-                snapshot = client.until(
-                    session, lambda value: bool(value["state"].get("activities"))
-                )
-                child = snapshot["state"]["activities"][0]
-                count = len(provider.requests)
-                live = client.command(
-                    "activity", session, operation="inspect", activity_id=child["id"]
-                )
-                nodes = live["result"]["conversation"]["nodes"]
-                assert_true(
-                    any("WEB_CHILD_SEED" in node.get("body", {}).get("text", "") for node in nodes),
-                    nodes,
-                )
-                assert_true(len(provider.requests) == count, "inspection called the model")
-                for operation in ("inspect", "message"):
-                    denied = client.json(
-                        "/api/command",
-                        {
-                            "v": 2,
-                            "request_id": ("e" if operation == "inspect" else "f") * 32,
-                            "kind": "activity",
-                            "operation": operation,
-                            "text": "must not reach another conversation",
-                            "session_id": peer["id"],
-                            "generation": peer["generation"],
-                            "agent_id": child["agent_id"],
-                        },
-                    )
-                    assert_true(
-                        denied[0] == 409 and "another conversation" in denied[1]["error"], denied[1]
-                    )
-            finally:
-                release_child.set()
-            # An idle parent takes up its finished child's result as a turn;
-            # controls wait until that turn has ended too.
-            snapshot = client.until(
-                session,
-                lambda value: (
-                    value["metadata"]["status"] == "idle"
-                    and any(
-                        row.get("status") == "completed"
-                        for row in value["state"].get("activities", [])
-                    )
-                    and any(
-                        "[activity finished" in json.dumps(body["messages"])
-                        for _, body in provider.requests
-                    )
-                ),
-            )
-            detail = client.command(
-                "activity", session, operation="inspect", activity_id=child["id"]
-            )["result"]
-            assert_true("Child result" in json.dumps(detail["conversation"]), detail)
-            assert_true(detail["context_tokens"] > 0, detail)
-            assert_true(detail["context_window"] == snapshot["state"]["context_window"], detail)
-            client.command(
-                "activity",
-                session,
-                operation="followup",
-                agent_id=child["agent_id"],
-                text="WEB_CHILD_FOLLOWUP",
-                model="mock/new",
-            )
-            client.until(
-                session,
-                lambda value: (
-                    len(value["state"].get("activities", [])) >= 2
-                    and all(row["status"] == "completed" for row in value["state"]["activities"])
-                ),
-            )
-            detail = client.command(
-                "activity", session, operation="inspect", agent_id=child["agent_id"]
-            )["result"]
-            assert_true("Child follow-up result" in json.dumps(detail["conversation"]), detail)
-
-
-def test_web_lists_the_children_a_turn_waits_on_and_stops_one(root, home, *, binary):
-    """Children of one batch the turn waits for run side by side, are listed
-    while they run, and one can be stopped alone."""
-    project = root / "waited-children"
-    project.mkdir()
-    started = {name: threading.Event() for name in ("A", "B")}
-    release = threading.Event()
-
-    def answer(_, body):
-        users = user_texts(body["messages"])
-        for name, seen in started.items():
-            if f"WAITED_CHILD_{name}" in users:
-                seen.set()
-                assert release.wait(timeout=budget(20))
-                return event({"content": f"Child {name} result"})
-        results = tool_results(body["messages"])
-        if results:
-            return event({"content": "Parent saw: " + " | ".join(results)})
-        return tool_calls(
-            [(f"waited-{name}", "subagent", {"prompt": f"WAITED_CHILD_{name}"}) for name in "AB"]
-        )
-
-    with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            client.pair(code)
-            session = client.create(project)
-            client.command("submit", session, text="/yolo")
-            client.until(session, lambda value: value["state"].get("yolo", False))
-            client.command("submit", session, text="Delegate two")
-            try:
-                # Both run before either answers: the batch is not taken in turn.
-                assert_true(all(seen.wait(timeout=budget(10)) for seen in started.values()), "")
-                snapshot = client.until(
-                    session,
-                    lambda value: (
-                        len(
-                            [
-                                r
-                                for r in value["state"].get("activities", [])
-                                if r["kind"] == "subagent"
-                            ]
-                        )
-                        == 2
-                    ),
-                )
-                rows = snapshot["state"]["activities"]
-                assert_true(all(row["status"] == "running" for row in rows), rows)
-                first = next(r for r in rows if "WAITED_CHILD_A" in r["label"])
-                stopped = client.command(
-                    "activity", session, operation="stop", activity_id=first["id"]
-                )
-                assert_true("error" not in stopped.get("result", {}), stopped)
-            finally:
-                release.set()
-            done = client.until(session, lambda value: value["metadata"]["status"] == "idle")
-            assert_true(not done["state"].get("activities"), done["state"])
-            final = json.dumps(provider.requests[-1][1]["messages"])
-            assert_true("Child B result" in final and "Child A result" not in final, final)
 
 
 def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):

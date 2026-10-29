@@ -33,17 +33,9 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
                 "facts": {"t-c1": {"name": "run", "call_id": "c1", "output": "QUOKKA spotted"}},
             },
         ),
-        "thread": write_session(
-            home,
-            "thread",
-            said("quokka work"),
-            cwd=project,
-            kind="thread",
-            delegation={"parent": "0" * 16, "lifetime": "thread", "folder": str(project)},
-        ),
-        # A subagent is read through its parent, never listed: not searched.
-        "child": write_session(
-            home, "child", said("quokka child"), cwd=project, delegation={"parent": "0" * 16}
+        # An agent is a conversation like any other.
+        "agent": write_session(
+            home, "agent", said("quokka work"), cwd=project, agent={"parent": "0" * 16}
         ),
         "many": write_session(home, "many", said(*[f"quokka {n}" for n in range(8)]), cwd=project),
         "none": write_session(home, "none", said("nothing here"), cwd=project),
@@ -64,7 +56,7 @@ def test_web_search_finds_rows_across_conversations(root, home, *, binary):
             for hit in value["hits"]:
                 found.setdefault(hit["session_id"], []).append(hit)
             assert_true(
-                set(found) == {ids[name] for name in ("alpha", "beta", "thread", "many", "quote")},
+                set(found) == {ids[name] for name in ("alpha", "beta", "agent", "many", "quote")},
                 found,
             )
             # A conversation lists its newest few rows.

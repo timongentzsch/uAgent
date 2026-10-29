@@ -147,14 +147,8 @@ struct TurnStatusView {
   std::string model{};
   size_t background = 0;
   size_t foreground = 0;
-  // Delegated children, counted apart from `background` so the row can say
-  // what the other processes are rather than lumping them into one number.
-  size_t subagents = 0;
   size_t queued = 0;
   bool interrupting = false;
-  // The newest child's progress, "<id>: <line>". Terminal output from another
-  // process: rendered through TerminalSafe, never raw.
-  std::string subagent{};
 };
 
 // The working row: spinner frame, status label, and the same "drop what does
@@ -168,27 +162,14 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
   auto ticks = g_motion ? view.elapsed / kSpinnerPeriod : 0;
   std::string prefix = SpinnerFrame(static_cast<size_t>(ticks));
   prefix += " ";
-  // What the turn is doing, in descending order of how directly the human
-  // asked for it. A model round is the one label that names no work, so a
-  // delegated child's progress takes those columns and yields again as soon
-  // as this process has something of its own to report.
-  const bool waiting = status.empty() || status.starts_with(kWaitingStatus);
   std::string state = status.empty() ? std::string(kWaitingStatus) : status;
-  if (view.interrupting) {
-    state = "Interrupting";
-  } else if (waiting && !view.subagent.empty()) {
-    // Terminal output from another process. It is not sanitized here because
-    // StatusLabel already does it for every label this row can carry --
-    // duplicating that would leave two places to keep honest instead of one.
-    state = view.subagent;
-  }
+  if (view.interrupting) state = "Interrupting";
   auto counted = [](const char* label, size_t count) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
   std::string suffix =
       " · " + JoinDot({view.model, seconds,
                        ContextSummary(view.context_used, view.context_window),
-                       counted("agents:", view.subagents),
                        counted("act:", view.background),
                        counted("steer:", view.queued)});
   // The keys that act on a running turn: the lowest priority, so the hint is

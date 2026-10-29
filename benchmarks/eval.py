@@ -40,7 +40,7 @@ MODEL = "eval"
 sys.path.insert(0, str(ROOT / "tests"))
 
 # isort: off
-from integration_support import Server, event, write_session  # noqa: E402
+from integration_support import Server, event, fnv1a64, write_session  # noqa: E402
 from session_support import remove_runtime, stop_sessions  # noqa: E402
 from run_trace import (  # noqa: E402
     measured_command,
@@ -258,10 +258,6 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
     )
     if arguments.prompt_overlay:
         env["UAGENT_INTERNAL_PROMPT_OVERLAY"] = str(Path(arguments.prompt_overlay).resolve())
-    if arguments.toolset != "full":
-        env["UAGENT_INTERNAL_TOOLSET"] = arguments.toolset
-    else:
-        env.pop("UAGENT_INTERNAL_TOOLSET", None)
     # Keep the loopback transport independent of runner-level proxy
     # configuration (notably macOS system libcurl behavior).
     for name in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY"):
@@ -305,10 +301,17 @@ def run_case(
 
         script = Script(scenario.get("script", []), scenario.get("capture", {}))
         mock = Server([script])
-        # Saved conversations the folder already has, for a panel to read.
+        # Saved conversations the folder already has, in its history, for a
+        # panel to read.
+        history = fnv1a64(str(workspace.resolve()))
+        (home / ".uagent" / "history" / history).mkdir(parents=True)
         for saved in scenario.get("sessions", []):
             write_session(
-                home, saved["name"], saved["messages"], cwd=workspace, title=saved["title"]
+                home,
+                f"{history}/{saved['name']}",
+                saved["messages"],
+                cwd=workspace,
+                title=saved["title"],
             )
         try:
             env = case_environment(scenario, variant, arguments, mock)
@@ -771,7 +774,6 @@ def parse_args():
     parser.add_argument("--report", type=Path, help="write the full JSON report")
     parser.add_argument("--prompt-overlay", type=Path, help="prompt overlay JSON for every run")
     parser.add_argument("--timeout", type=int, default=120, help="seconds per run")
-    parser.add_argument("--toolset", choices=("full", "lean"), default="full")
     parser.add_argument("--self-test", action="store_true", help="validate the harness helpers")
     arguments = parser.parse_args()
     if arguments.self_test:
@@ -824,7 +826,6 @@ def main() -> int:
             "bytes": arguments.binary.stat().st_size,
             "sha256": hashlib.sha256(arguments.binary.read_bytes()).hexdigest(),
         },
-        "toolset": arguments.toolset,
         "prompt_overlay": str(arguments.prompt_overlay) if arguments.prompt_overlay else None,
         "results": results,
         "comparisons": comparisons,

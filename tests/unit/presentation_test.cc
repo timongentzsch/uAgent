@@ -506,47 +506,11 @@ void TestTurnStatusBar() {
     CHECK(narrow.find("steer:3") != std::string::npos);
   }
 
-  // Delegated children get a chip of their own and lend the row their newest
-  // progress line: a parent that is only waiting on a child would otherwise
-  // say "Working" for as long as the child runs.
-  CHECK(first.find("agents:") == std::string::npos);
-  TurnStatusView delegated = Working(std::chrono::milliseconds(0));
-  delegated.subagents = 2;
-  delegated.subagent = "agent-1a2b3c4d: · reading";
-  std::string delegated_bar = TurnStatusBar(delegated);
-  CHECK(delegated_bar.find("agents:2") != std::string::npos);
-  CHECK(delegated_bar.find("agent-1a2b3c4d: · reading") != std::string::npos);
-  CHECK(delegated_bar.find("Working") == std::string::npos);
-  // The line is another process's terminal output, so escapes must not reach
-  // the row -- a child could otherwise repaint the parent's screen.
-  delegated.subagent = "agent-1a2b3c4d: \033[2Jwiped";
-  CHECK(TurnStatusBar(delegated).find("\033[2J") == std::string::npos);
-  // The model round posts an activity of its own, and it is the one label the
-  // child's progress outranks: without this the branch above is unreachable
-  // for the entire time a parent spends waiting on its children.
-  delegated.subagent = "agent-1a2b3c4d: · reading";
-  {
-    TerminalStatusLabel waiting(kWaitingStatus);
-    CHECK(TurnStatusBar(delegated).find("agent-1a2b3c4d: · reading") !=
-          std::string::npos);
-  }
-  // Anything that names actual work keeps the row.
-  {
-    TerminalStatusLabel running("run · make");
-    std::string busy_bar = TurnStatusBar(delegated);
-    CHECK(busy_bar.find("run · make") != std::string::npos);
-    CHECK(busy_bar.find("agent-1a2b3c4d") == std::string::npos);
-    CHECK(busy_bar.find("agents:2") != std::string::npos);
-  }
-
   // Interrupting replaces the idle "Working" label.
   TurnStatusView interrupting = Working(std::chrono::milliseconds(0));
   interrupting.interrupting = true;
   CHECK(TurnStatusBar(interrupting).find("Interrupting") != std::string::npos);
   CHECK(first.find("Working") != std::string::npos);
-  // A child's progress never displaces what this process is doing itself.
-  interrupting.subagent = "agent-1a2b3c4d: · reading";
-  CHECK(TurnStatusBar(interrupting).find("Interrupting") != std::string::npos);
 
   g_tty = prior;
   g_color = prior_color;

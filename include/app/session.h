@@ -31,11 +31,9 @@ inline bool ActivityRuns(const json& activity) {
           state == "finishing");
 }
 // What the status row counts among running activities: commands the turn
-// waits on, commands running behind it (backgrounded or detached), and
-// delegated children, with the newest child's progress.
+// waits on, and commands running behind it (backgrounded or detached).
 struct ActivityCounts {
-  size_t background = 0, foreground = 0, subagents = 0;
-  std::string subagent;
+  size_t background = 0, foreground = 0;
 };
 inline ActivityCounts CountActivities(const json& state) {
   ActivityCounts counts;
@@ -43,13 +41,7 @@ inline ActivityCounts CountActivities(const json& state) {
   if (!rows) return counts;
   for (const json& row : *rows) {
     if (JsonValue(row, "status", "") != "running") continue;
-    if (JsonValue(row, "kind", "") == "subagent") {
-      ++counts.subagents;
-      std::string progress = JsonValue(row, "progress", "");
-      if (!progress.empty()) {
-        counts.subagent = JsonValue(row, "id", "") + ": " + progress;
-      }
-    } else if (JsonValue(row, "foreground", false)) {
+    if (JsonValue(row, "foreground", false)) {
       ++counts.foreground;
     } else {
       ++counts.background;

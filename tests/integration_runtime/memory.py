@@ -455,9 +455,9 @@ def test_no_memory_hides_index_and_tool(root, home, *, binary):
 
 
 def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
-    """A lean child has no memory tool, so it gets no index telling it to call
-    one; and globals too large for the always-on slice stay in the index
-    without a truncation warning, since nothing is lost."""
+    """An agent that may not edit has no memory tool, so it gets no index
+    telling it to call one; and globals too large for the always-on slice
+    stay in the index without a truncation warning, since nothing is lost."""
     workspace = root / "index-workspace"
     workspace.mkdir()
     project_dir = project_memory_dir(home, workspace)
@@ -476,7 +476,7 @@ def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
             return event({"content": "child-done"})
         if "parent" not in seen:
             seen["parent"] = "project/deploy: Deploy with make ship" in text
-            return tool_call("subagent", {"prompt": "child-brief"})
+            return tool_call("agent_start", {"brief": "child-brief"})
         return event({"content": "parent-done"})
 
     with Server([route]) as server:

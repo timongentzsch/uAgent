@@ -281,7 +281,7 @@ ToolResult StartAgents(const Api& api,
         left / static_cast<double>(
                    std::max(free, static_cast<int64_t>(briefs.size())) *
                    context.delegations);
-    if (launch.budget < 0.01) {
+    if (left < 0.01) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
                          FmtCost(std::max(left, 0.0)) +
                              " of this conversation's budget is left, too "
@@ -303,9 +303,10 @@ ToolResult StartAgents(const Api& api,
       ++running;
     }
   }
+  ToolResult result;
   if (!items && !JsonValue(a, "wait", true)) {
     if (running == 0) return Unavailable(rows[0].answer);
-    return ToolSuccess(JsonDump(
+    result = ToolSuccess(JsonDump(
         {{"id", rows[0].id},
          {"state", "working"},
          // Said where it applies: waiting costs nothing, polling does.
@@ -313,19 +314,29 @@ ToolResult StartAgents(const Api& api,
           "It reports when its turn ends, and that report starts your next "
           "turn. Unless other work is waiting, end this turn with one line "
           "saying what you started."}}));
+  } else {
+    Wait(own, launch, briefs, rows, next, running, context);
+    json waited = json::array();
+    for (const Child& row : rows) {
+      json one = {
+          {"id", row.id},
+          {"state", row.path.empty() && row.state == "working" ? "not started"
+                                                               : row.state},
+          {"answer", Utf8Trunc(row.answer, kWaitChars / rows.size())}};
+      if (items) one["item"] = row.item;
+      waited.push_back(std::move(one));
+    }
+    result = ToolSuccess(JsonDump(waited, 1));
   }
-  Wait(own, launch, briefs, rows, next, running, context);
-  json result = json::array();
+  // Each agent opens as the conversation it is.
+  result.parts = json::array();
   for (const Child& row : rows) {
-    json one = {
-        {"id", row.id},
-        {"state", row.path.empty() && row.state == "working" ? "not started"
-                                                             : row.state},
-        {"answer", Utf8Trunc(row.answer, kWaitChars / rows.size())}};
-    if (items) one["item"] = row.item;
-    result.push_back(std::move(one));
+    if (!row.id.empty()) {
+      result.parts.push_back(LinkPart(
+          "agent", row.id, row.item.empty() ? "Open agent" : row.item));
+    }
   }
-  return ToolSuccess(JsonDump(result, 1));
+  return result;
 }
 
 // Mail into a conversation this one may message, which wakes it: a running

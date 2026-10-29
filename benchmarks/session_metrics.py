@@ -25,7 +25,7 @@ import pathlib
 import re
 import sys
 
-DELEGATION_TOOLS = {"subagent", "task"}
+DELEGATION_TOOLS = {"agent_start", "task"}
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "sessions"
 VARIABLE_PATH = re.compile(r"(?:/|\./)[^\s`'\";,]+")
@@ -42,7 +42,6 @@ PROVENANCE_FIELDS = (
     "prompt_digest",
     "surface_digest",
     "active_schema_digest",
-    "toolset",
 )
 BEHAVIOR_FIELDS = (
     "reasoning_effort",

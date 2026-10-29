@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "include/agent/activity.h"
-#include "include/agent/child_agent.h"
+#include "include/agent/session_links.h"
 #include "include/agent/transcript.h"
 #include "include/app/launch.h"
 #include "include/app/panel.h"
@@ -43,7 +43,6 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/tools/registry.h"
-#include "include/tools/session.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -368,43 +367,22 @@ void TestActivityBufferAndAdmission() {
   spilled.Push("first\nsecond\nthird");
   CHECK(spilled.TailLine() == "third");
 
-  // What the status row reads: delegated children only, each with its newest
-  // progress line, and a count that agrees with the list it came from.
+  // A row reads its activity's newest line. Looking is not draining: the
+  // tool that joins it still needs every byte the transcript holds.
   ActivitySupervisor delegating;
   auto delegated = std::make_shared<ActivitySession>();
   {
     std::lock_guard<std::mutex> lock(delegated->mutex);
     delegated->transcript.Push("· reading\n· writing\n");
   }
-  CHECK(delegating.TryAdd({.pid = 899980,
-                           .cmd = "child",
-                           .kind = ActivityKind::kSubagent,
-                           .session = delegated,
-                           .display_label = "haiku",
-                           .source_id = "agent-1a2b3c4d"},
+  CHECK(delegating.TryAdd({.pid = 899980, .cmd = "child", .session = delegated},
                           4));
-  CHECK(delegating.TryAdd({.pid = 899981, .cmd = "plain"}, 4));
-  std::vector<SubagentView> views = delegating.SubagentViews();
-  REQUIRE(views.size() == 1);
-  CHECK(views[0].source_id == "agent-1a2b3c4d");
-  CHECK(views[0].label == "haiku");
-  CHECK(views[0].tail == "writing");
-  CHECK(std::ranges::count(delegating.Snapshot(), ActivityKind::kSubagent,
-                           &Activity::kind) == 1);
-  CHECK(delegating.Count() == 2);
-  // Looking is not draining: the tool that joins the child still needs every
-  // byte the transcript holds.
-  CHECK(delegating.SubagentViews()[0].tail == "writing");
-  // The child's answer is not progress. Once it prints its JSON envelope the
-  // newest line on the stream is the result the parent will deliver whole, so
-  // the row says nothing rather than a fragment of it.
+  CHECK(delegating.ActivityViews()[0]["progress"] == "· writing");
   {
     std::lock_guard<std::mutex> lock(delegated->mutex);
-    delegated->transcript.Push("{\"format\":3,\"answer\":\"done\"}\n");
+    delegated->transcript.Push("done\n");
   }
-  CHECK(delegating.SubagentViews()[0].tail.empty());
-  CHECK(!delegating.ActivityViews()[0].contains("progress"));
-  const int64_t delegated_id = views[0].id;
+  const int64_t delegated_id = ActivityId(delegating.Snapshot()[0]);
   const json first_inspection = delegating.InspectActivity(delegated_id);
   CHECK(first_inspection == delegating.InspectActivity(delegated_id));
   CHECK(first_inspection["command"] == "child");
@@ -453,16 +431,6 @@ void TestActivityBufferAndAdmission() {
       early->Register({.pid = 899997, .cmd = "reserved", .id = promised});
   REQUIRE(committed.has_value());
   CHECK(*committed == promised);
-
-  // The subagent flag survives the same move, so a released reservation gives
-  // the child counter back; losing it would refuse delegation for the rest of
-  // the run.
-  ActivitySupervisor children;
-  for (int attempt = 0; attempt < 3; ++attempt) {
-    std::optional<ActivityReservation> child = children.ReserveActivity(4, 1);
-    CHECK(child.has_value());
-    CHECK(!children.ReserveActivity(4, 1).has_value());
-  }
 
   ActivitySupervisor retained;
   std::vector<int64_t> retained_ids;
@@ -1220,47 +1188,8 @@ void TestDetachedActivityOwnership() {
     RemoveLog(sentinel_log);
   }
 
-  // Subagents, ordinary commands and detached terminals share one pool, so an
-  // unbounded fan-out of children would leave the parent unable to run the
-  // build, test or search it needs to check their work. Children stop short of
-  // the ceiling; the parent's own command still gets a slot.
+  // Commands and detached terminals share one pool.
   {
-    // The parent's own busy jobs must never refuse delegation: a child
-    // competes against other children, not against its parent.
-    ActivitySupervisor parent_busy;
-    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"}, MaxActivities()));
-    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"}, MaxActivities()));
-    ShellCommandResult admitted =
-        RunShellCommand(parent_busy, context,
-                        {.command = "printf child-admitted",
-                         .activity_kind = ActivityKind::kSubagent});
-    CHECK(admitted.result.Ok());
-    CHECK(admitted.result.output.find("child-admitted") != std::string::npos);
-    (void)parent_busy.TakeAllForShutdown();
-
-    // Children stop short of the ceiling so the parent keeps slots of its own.
-    ActivitySupervisor children_busy;
-    for (pid_t pid = 999803; pid < 999803 + MaxDelegatedActivities(); ++pid) {
-      CHECK(children_busy.TryAdd(
-          {.pid = pid, .cmd = "child", .kind = ActivityKind::kSubagent},
-          MaxActivities()));
-    }
-    ShellCommandResult refused =
-        RunShellCommand(children_busy, context,
-                        {.command = "echo one-child-too-many",
-                         .immediate = true,
-                         .activity_kind = ActivityKind::kSubagent});
-    CHECK(!refused.result.Ok());
-    CHECK(!refused.launched);
-    CHECK(refused.result.output.find("at most 6 concurrent children") !=
-          std::string::npos);
-
-    ShellCommandResult own =
-        RunShellCommand(children_busy, context, {.command = "printf own-work"});
-    CHECK(own.result.Ok());
-    CHECK(own.result.output.find("own-work") != std::string::npos);
-    (void)children_busy.TakeAllForShutdown();
-
     // Detached terminals outlive the session, so the pool bounds them too.
     ActivitySupervisor detached_pool;
     for (pid_t pid = 999811; pid < 999811 + MaxActivities(); ++pid) {
@@ -1285,10 +1214,9 @@ void TestDetachedActivityOwnership() {
     (void)detached_pool.TakeAllForShutdown();
 
     // activities.maxConcurrent is read at every spawn: a lowered cap refuses
-    // the next command, and children keep their headroom below it.
+    // the next command.
     ScopedEnv cap("UAGENT_MAX_ACTIVITIES", "3");
     CHECK(MaxActivities() == 3);
-    CHECK(MaxDelegatedActivities() == 1);
     ActivitySupervisor lowered;
     for (pid_t pid = 999841; pid < 999844; ++pid) {
       CHECK(lowered.TryAdd({.pid = pid, .cmd = "held"}, MaxActivities()));
@@ -1300,20 +1228,6 @@ void TestDetachedActivityOwnership() {
     CHECK(over_cap.result.output.find("activity limit reached (3)") !=
           std::string::npos);
     (void)lowered.TakeAllForShutdown();
-
-    ActivitySupervisor one_child;
-    CHECK(one_child.TryAdd(
-        {.pid = 999851, .cmd = "child", .kind = ActivityKind::kSubagent},
-        MaxActivities()));
-    ShellCommandResult second_child =
-        RunShellCommand(one_child, context,
-                        {.command = "echo second-child",
-                         .immediate = true,
-                         .activity_kind = ActivityKind::kSubagent});
-    CHECK(!second_child.result.Ok());
-    CHECK(second_child.result.output.find(
-              "at most 1 concurrent children of 3") != std::string::npos);
-    (void)one_child.TakeAllForShutdown();
   }
 }
 
@@ -1442,7 +1356,8 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   };
   write("ordinary", json::object());
   write("agent-aaaa1111",
-        {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
+        {{kSessionHeaderAgent,
+          {{"parent", SessionIdFor((dir / "ordinary.json").string())}}}});
   // A folder lists its panel only in the host's whole view.
   write("panel", {{kSessionHeaderKind, kSessionKindPanel}});
   CHECK(PanelPath(CanonicalCwd()) == (dir / "panel.json").string());
@@ -1456,11 +1371,17 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   CHECK(ids(SessionScope::kWorkspace) == std::vector<std::string>{"ordinary"});
   auto all = ids(SessionScope::kAll);
   std::ranges::sort(all);
-  CHECK(all == (std::vector<std::string>{"ordinary", "panel"}));
-  const std::vector<SessionInfo> children =
-      ListSessions(SessionScope::kChildren);
-  CHECK(children.size() == 1);
-  CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
+  CHECK(all ==
+        (std::vector<std::string>{"agent-aaaa1111", "ordinary", "panel"}));
+  // An agent is found beside its parent, which it names by its id.
+  const std::string parent = (dir / "ordinary.json").string();
+  const std::vector<SessionInfo> beside = SessionsBeside(parent);
+  CHECK(beside.size() == 2);
+  for (const SessionInfo& info : beside) {
+    if (fs::path(info.path).stem() != "agent-aaaa1111") continue;
+    CHECK(info.parent == SessionIdFor(parent));
+    CHECK(AgentParentPath(info.path, info.parent) == parent);
+  }
 }
 
 void TestMailbox() {
@@ -1564,24 +1485,25 @@ void TestSessionMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("session-mail");
   const fs::path dir = workspace.workspace;
-  // A saved session: a header naming its folder and, for a delegate, its role.
-  auto save = [&](const fs::path& file, const json& delegation = nullptr) {
+  // A saved session: a header naming its folder and, for an agent, its
+  // parent.
+  auto save = [&](const fs::path& file, const std::string& parent = "") {
     json header = {{"format", kSessionFormat},
                    {"cwd", CanonicalCwd()},
                    {"model", ""},
                    {"session_id", ""},
                    {"turns", 0},
                    {"title", "T"}};
-    if (!delegation.is_null()) header["delegation"] = delegation;
+    if (!parent.empty()) {
+      header[kSessionHeaderAgent] = {{"parent", SessionIdFor(parent)}};
+    }
     std::ofstream(file) << header << "\n";
     return file.string();
   };
   const std::string parent = save(dir / "parent.json");
-  const json role = {{"parent_session", parent}, {"parent", "owner"}};
-  const std::string child = save(dir / "child.json", role);
-  const std::string sibling = save(dir / "sibling.json", role);
-  const std::string grandchild =
-      save(dir / "grandchild.json", {{"parent_session", child}});
+  const std::string child = save(dir / "child.json", parent);
+  const std::string sibling = save(dir / "sibling.json", parent);
+  const std::string grandchild = save(dir / "grandchild.json", child);
   const std::string stranger = save(dir / "stranger.json");
 
   // Parent, child and sibling, and nobody else: not a grandparent, nor
@@ -1601,9 +1523,6 @@ void TestSessionMail() {
     CHECK(MayMail(SessionParty(rule.from), SessionParty(rule.to)) == rule.may);
   }
   SetApprovalMode(before);
-  // A parent with no session file is known by its owner id.
-  CHECK(MayMail(OwnerParty("owner"), SessionParty(child)));
-  CHECK(!MayMail(OwnerParty("someone"), SessionParty(child)));
 
   // Sending: the same rule, and the label says who wrote, from how the
   // sender stands to the recipient. A runtime's report names itself.
@@ -1624,41 +1543,13 @@ void TestSessionMail() {
                   .text = "[event] done",
                   .report = true}) == "[event] done");
   CHECK(!SendSessionMail({.from_path = stranger, .to_path = child}).empty());
-
-  // The session tool reaches the sessions the rule allows, by the id lists
-  // show. A thread is in the catalogue the tool reads.
-  const fs::path history = UagentDir(kHistoryDir);
-  fs::create_directories(history);
-  const std::string tool_parent = save(history / "tool-parent.json");
-  const std::string tool_child =
-      save(history / "tool-child.json",
-           {{"parent_session", tool_parent}, {"lifetime", "thread"}});
-  const std::string tool_other = save(history / "tool-other.json");
-  ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", tool_parent);
-  CHECK(LinkedSessionPath(HashHex(tool_child)) == tool_child);
-  CHECK(LinkedSessionPath(HashHex(tool_other)).empty());
-  CHECK(MessageSession(HashHex(tool_child), "hello").Ok());
-  CHECK(MessageSession(HashHex(tool_other), "hello").error ==
-        ToolErrorCode::kPermissionDenied);
-  // Hops come from the mail that started the turn, not from the model.
-  ToolContext looping;
-  looping.hops = kMailMaxHops;
-  CHECK(!SessionMessageTool()
-             .run({{"session_id", HashHex(tool_child)}, {"prompt", "loop"}},
-                  looping)
-             .Ok());
-  // Listing takes nothing and marks the linked session; a message needs a
-  // prompt.
-  CHECK(!FindToolArgumentIssue(SessionTool(), json::object()));
-  CHECK(FindToolArgumentIssue(SessionMessageTool(),
-                              {{"session_id", HashHex(tool_child)}})
-            .has_value());
-  json linked = json::object();
-  for (const json& row : SessionSummaries()) {
-    linked[JsonValue(row, "id", "")] = JsonValue(row, "linked", false);
-  }
-  CHECK(JsonValue(linked, HashHex(tool_child).c_str(), false));
-  CHECK(!JsonValue(linked, HashHex(tool_other).c_str(), true));
+  // Hops come from the mail that started the turn: sessions answering each
+  // other stop at kMailMaxHops.
+  CHECK(!SendSessionMail({.from_path = parent,
+                          .to_path = child,
+                          .text = "loop",
+                          .hops = kMailMaxHops})
+             .empty());
 }
 
 }  // namespace uagent

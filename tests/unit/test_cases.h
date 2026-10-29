@@ -156,7 +156,6 @@ namespace uagent {
   X(TestPermissionReview)                         \
   X(TestAttributedUsageAccumulator)               \
   X(TestSharedPanelHelpers)                       \
-  X(TestThreadRestartsInARow)                     \
   X(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) \
   X(TestMailKeepsItsOriginBesideTheSameWords)     \
   X(TestAgentConfigAllowlist)                     \

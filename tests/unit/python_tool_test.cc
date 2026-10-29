@@ -16,7 +16,6 @@
 #include "include/core/fs.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
-#include "include/tools/session.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -176,8 +175,6 @@ void TestPythonTool() {
     return !schema.is_structured() || std::ranges::all_of(schema, plain);
   };
   for (const Tool& tool : python_tools) CHECK(plain(tool.parameters));
-  CHECK(plain(SessionTool().parameters));
-  CHECK(plain(SessionMessageTool().parameters));
 
   CHECK(
       ToolRunScratch(supervisor, root, "other.rb").output.find(".js or .mjs") !=

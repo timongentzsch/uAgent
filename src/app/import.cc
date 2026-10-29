@@ -93,8 +93,8 @@ constexpr ToolName kToolNames[] = {{"Bash", "run", false},
                                    {"Glob", "grep", false},
                                    {"WebFetch", "web_fetch", false},
                                    {"WebSearch", "web_search", false},
-                                   {"Task", "subagent", true},
-                                   {"Agent", "subagent", true}};
+                                   {"Task", "agent_start", true},
+                                   {"Agent", "agent_start", true}};
 
 const ToolName* ToolFor(std::string_view word) {
   for (const ToolName& tool : kToolNames) {

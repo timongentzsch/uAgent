@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/node.h"
 #include "include/agent/transcript.h"
 #include "include/cli/options.h"
@@ -115,17 +114,16 @@ std::string Drawn(const std::vector<json>& calls,
 // its state; opened, it adds its body's last lines. The terminal reads
 // nothing else of a call.
 void TestTreeRows() {
-  const std::string failure_report = ChildAgentFailureReport(
-      "provider/child @ child.example", ChildAgentFailureStage::kExecution,
-      "connection error: Couldn't connect to server\n"
-      "api_key=child-secret-must-not-enter-row");
-  json record = Record("c1", "subagent", "failed", failure_report);
-  record["view"] = {{"verb", {"Delegating", "Delegated"}}, {"target", "x"}};
-  // A failed delegation's row says so; what the child printed stays in its
-  // body, which only an open row shows.
+  json record = Record("c1", "agent_start", "failed",
+                       "connection error: Couldn't connect to server\n"
+                       "body-must-not-enter-row");
+  record["view"] = {{"verb", {"Starting agent", "Started agent"}},
+                    {"target", "x"}};
+  // A failed call's row says so; what it printed stays in its body, which
+  // only an open row shows.
   std::string drawn = Drawn({CallNode(record, "m-1")});
-  CHECK(drawn.find("    ✗ Delegated x · failed\n") != std::string::npos);
-  CHECK(drawn.find("child-secret-must-not-enter-row") == std::string::npos);
+  CHECK(drawn.find("    ✗ Started agent x · failed\n") != std::string::npos);
+  CHECK(drawn.find("body-must-not-enter-row") == std::string::npos);
   CHECK(Drawn({CallNode(record, "m-1")}, "full").find("      │ ") !=
         std::string::npos);
 

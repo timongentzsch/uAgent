@@ -11,6 +11,7 @@
 
 #include "include/agent/activity_supervisor.h"
 #include "include/api/client.h"
+#include "include/app/agent_tools.h"
 #include "include/app/import.h"
 #include "include/core/defaults.h"
 #include "include/core/env.h"
@@ -20,7 +21,6 @@
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
-#include "include/tools/subagent.h"
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "tests/unit/test_support.h"
@@ -324,7 +324,7 @@ void TestImportFromOtherAgents() {
   CHECK(RewriteToolReferences("The Python class `Task` and `Read` it.\n") ==
         "The Python class `Task` and `Read` it.\n");
   CHECK(RewriteToolReferences("Call `exec_command` or the Task tool.\n") ==
-        "Call `run` or the subagent tool.\n");
+        "Call `run` or the agent_start tool.\n");
   // Front matter lists come out as the plain comma list the loader reads,
   // whether written quoted, as an array or as a block.
   const std::string lists = RewriteToolReferences(
@@ -334,7 +334,7 @@ void TestImportFromOtherAgents() {
   CHECK(lists ==
         "---\ndescription: d\nallowed-tools: run, read_path\n"
         "tools: run, read_path, grep\n"
-        "requires-tools: run, subagent\n---\nBody\n");
+        "requires-tools: run, agent_start\n---\nBody\n");
   // The added requires-tools line shifts the body by one; every body line
   // stays, the last included (64 lines in all crosses a word of the mask).
   std::string body;
@@ -357,7 +357,7 @@ void TestImportFromOtherAgents() {
   UsageAccumulator tool_usage;
   registered.push_back(WebFetchTool(tool_api));
   registered.push_back(WebSearchTool(tool_api, tool_usage, {}));
-  registered.push_back(SubagentTool(tool_api, tool_processes, {}, {}, false));
+  AddAgentTools(registered, tool_api, [] { return std::string(); });
   for (const char* vendor : {"Bash", "exec_command", "shell", "Read", "Write",
                              "Edit", "MultiEdit", "apply_patch", "Grep", "Glob",
                              "WebFetch", "WebSearch", "Task", "Agent"}) {

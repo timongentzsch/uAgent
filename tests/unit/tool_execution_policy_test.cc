@@ -18,16 +18,14 @@
 #include "include/agent/agent.h"
 #include "include/agent/node.h"
 #include "include/agent/transcript.h"
-#include "include/app/panel.h"
+#include "include/app/agent_tools.h"
 #include "include/app/uagent_tool.h"
 #include "include/core/defaults.h"
 #include "include/core/runtime_config.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/registry.h"
-#include "include/tools/session.h"
 #include "include/tools/shell.h"
-#include "include/tools/subagent.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -172,13 +170,6 @@ void TestToolExecutionPolicy() {
   Tool unbounded =
       MakeTool("unbounded", "unbounded", json::object(),
                [](const json&, const ToolContext&) { return ToolSuccess(""); });
-  Tool implementation = unbounded;
-  implementation.name = "implementation";
-  implementation.available_in_lean = false;
-  std::vector<Tool> lean_tools{unbounded, implementation};
-  KeepLeanTools(lean_tools);
-  CHECK(lean_tools.size() == 1);
-  CHECK(lean_tools[0].name == "unbounded");
   std::vector<Tool> policies{bounded_tool, unbounded};
   json schemas = ToolSchemas(policies);
   ToolSchemaCache schema_cache;
@@ -352,32 +343,11 @@ void TestToolExecutionPolicy() {
   RemoveLog(fallback_log.string());
   fs::remove_all(log_root);
 
-  ActivitySupervisor task_processes;
   ActivityCompletion task_completion;
   task_completion.activity_id = 7;
-  task_completion.kind = ActivityKind::kSubagent;
-  task_completion.command = "uagent -p 'very long delegated prompt'";
+  task_completion.command = "make check\nmore";
   CHECK(ActivityResultHeader(task_completion) ==
-        "[Activity result: subagent 7]");
-  ToolResult launched =
-      RunShellCommand(task_processes, base,
-                      {.command = "sleep 10",
-                       .background = true,
-                       .immediate = true,
-                       .activity_kind = ActivityKind::kSubagent})
-          .result;
-  // The launch is a hint and a link: a person has nothing to read.
-  CHECK(launched.hint.starts_with(kStartedSubagentMarker));
-  CHECK(launched.output.empty() && launched.body_kind == "link");
-  CHECK(task_processes.JoinableCount() == 1);
-  std::vector<Activity> tasks = task_processes.Snapshot();
-  CHECK(tasks.size() == 1);
-  std::vector<pid_t> task_ids;
-  task_ids.reserve(tasks.size());
-  for (const Activity& job : tasks) task_ids.push_back(job.pid);
-  CHECK(ActivityCancelSubagents(task_processes) == 1);
-  CHECK(!task_processes.PendingCount());
-  if (!task_ids.empty()) CHECK(!ProcessGroupAlive(task_ids[0]));
+        "[Activity result: command 7 `make check`]");
 
   {
     TestWorkspace memory_workspace("automatic-memory-write-limit");
@@ -441,11 +411,8 @@ void TestBlockingWaitCalls() {
 void TestActionRequiresDeclarations() {
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor);
-  AddPanelTools(tools, "/nonexistent-folder", [] { return std::string(); });
   const Api api(RuntimeConfig{});
-  const std::vector<Route> routes;
-  const std::vector<Endpoint> providers;
-  tools.push_back(SubagentTool(api, supervisor, routes, providers, false));
+  AddAgentTools(tools, api, [] { return std::string(); });
 #ifdef UAGENT_BROWSER
   tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
                               [](const std::string&, const std::string&,
@@ -471,8 +438,8 @@ void TestActionRequiresDeclarations() {
                 std::string::npos);
     }
   }
-  std::vector<std::string> multi_action = {"activity", "history", "memory",
-                                           "subagent", "thread"};
+  std::vector<std::string> multi_action = {"activity", "agents", "decide",
+                                           "memory"};
 #ifdef UAGENT_BROWSER
   multi_action.emplace_back("browser");
 #endif
@@ -484,15 +451,9 @@ void TestActionRequiresDeclarations() {
 // An action with its own payload is a tool of its own, so the schema itself
 // requires that payload and a provider that enforces schemas sees it.
 void TestPayloadToolsRequireTheirPayload() {
-  ActivitySupervisor supervisor;
   std::vector<Tool> tools;
-  AddPanelTools(tools, "/nonexistent-folder", [] { return std::string(); });
-  tools.push_back(SessionMessageTool());
   const Api api(RuntimeConfig{});
-  const std::vector<Route> routes;
-  const std::vector<Endpoint> providers;
-  tools.push_back(
-      SubagentFanoutTool(api, supervisor, routes, providers, false));
+  AddAgentTools(tools, api, [] { return std::string(); });
   tools.push_back(UagentConfigureTool(
       [](ConfigProposalScope, const std::vector<ConfigChange>&) {
         return ConfigProposal{};
@@ -500,9 +461,8 @@ void TestPayloadToolsRequireTheirPayload() {
       std::make_shared<ConfigApprovals>()));
   tools.push_back(UagentInstructionsTool());
   const std::vector<std::pair<std::string, std::string>> expected = {
-      {"thread_spawn", R"(["title","objective"])"},
-      {"session_message", R"(["prompt"])"},
-      {"subagent_fanout", R"(["items","prompt","finding"])"},
+      {"agent_start", R"(["brief"])"},
+      {"agent_send", R"(["id","text"])"},
       {"uagent_configure", R"(["scope","changes"])"},
       {"uagent_instructions", R"(["audience","scope","text"])"}};
   for (const auto& [name, required] : expected) {
@@ -514,11 +474,13 @@ void TestPayloadToolsRequireTheirPayload() {
     CHECK(issue && issue->code == "schema.required" &&
           issue->message.ends_with("; this call carried nothing"));
   }
-  // An empty title is no title.
-  const Tool* spawn = FindTool(tools, "thread_spawn");
-  CHECK(spawn &&
-        FindToolArgumentIssue(*spawn, {{"title", ""}, {"objective", "o"}})
-            .has_value());
+  // An empty brief is no brief; deleting an agent is the person's call.
+  const Tool* start = FindTool(tools, "agent_start");
+  CHECK(start && FindToolArgumentIssue(*start, {{"brief", ""}}).has_value());
+  const Tool* agents = FindTool(tools, "agents");
+  CHECK(agents &&
+        RequiredApproval(*agents, {{"action", "delete"}, {"id", "x"}}) ==
+            ApprovalClass::kMandatoryHuman);
 }
 
 }  // namespace uagent

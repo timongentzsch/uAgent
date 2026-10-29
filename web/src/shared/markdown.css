@@ -150,10 +150,6 @@
   object-fit: contain;
   margin: auto;
 }
-.diagram summary {
-  color: var(--muted);
-  font-size: var(--font-small);
-}
 .diagram-expanded img {
   display: block;
   max-width: none;

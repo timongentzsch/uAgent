@@ -122,7 +122,7 @@ export default function ConversationHeader({
         </h1>
         {/* An agent leads back to the conversation that started it. */}
         {page === "chat" && parent && (
-          <p class="panel-subtitle">
+          <p class="panel-subtitle small">
             <Button variant="quiet" onClick={() => choose(parent.id)}>
               ‹ {titleOf(parent)}
             </Button>
@@ -187,7 +187,7 @@ export default function ConversationHeader({
 // change what it reads.
 function PanelHelp({ editInstructions }: { editInstructions: () => void }) {
   return (
-    <p class="panel-subtitle">
+    <p class="panel-subtitle small">
       <span>
         Plans this folder&rsquo;s work and starts agents (↳) for it; never edits
         files itself.

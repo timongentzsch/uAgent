@@ -149,8 +149,6 @@
 }
 .status-action kbd {
   margin-left: var(--space-2);
-  color: var(--muted);
-  font: inherit;
 }
 @media (pointer: coarse) {
   /* A 40px touch on a 24px line, mostly above it, clear of the input. */
@@ -247,9 +245,6 @@
 .queue-item {
   padding: var(--space-2) var(--space-3);
   min-width: 0;
-}
-.queue-item + .queue-item {
-  border-top: var(--border-field);
 }
 .queue-text {
   margin: 0;

@@ -200,7 +200,7 @@ export function ValueSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
 // The one caption over a group of rows or a section.
 export function SectionTitle({ children }: { children: ComponentChildren }) {
   return (
-    <h3 class="section-title">
+    <h3 class="section-title caption">
       <DataText>{children}</DataText>
     </h3>
   );
@@ -229,8 +229,8 @@ export function Group({
       ) : (
         title && <SectionTitle>{title}</SectionTitle>
       )}
-      <div class="group-rows">{children}</div>
-      {footer && <p class="group-footer">{footer}</p>}
+      <div class="group-rows divided">{children}</div>
+      {footer && <p class="group-footer small">{footer}</p>}
     </section>
   );
 }
@@ -280,7 +280,7 @@ export function Row({
   return onClick ? (
     <Button
       variant="quiet"
-      class={`row${destructive ? " destructive-row" : ""}`}
+      class={`row entry${destructive ? " destructive-row" : ""}`}
       aria-current={current ? "page" : undefined}
       aria-expanded={expanded}
       disabled={disabled}
@@ -335,7 +335,7 @@ export function EmptyState({
   action?: ComponentChildren;
 }) {
   return (
-    <div class="empty-state">
+    <div class="empty-state" role="status">
       <p>{children}</p>
       {action}
     </div>
@@ -429,7 +429,7 @@ export function Spinner({
   if (!useDelayed(delayMs)) return null;
   return (
     <div
-      class={`loading-indicator${surface ? " loading-surface" : ""}`}
+      class={`loading-indicator small${surface ? " loading-surface" : ""}`}
       role="status"
       aria-label={label}
       aria-busy="true"

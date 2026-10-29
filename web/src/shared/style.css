@@ -644,11 +644,83 @@ pre code {
   color: var(--muted);
 }
 .muted,
-.small {
+small,
+.small,
+.caption {
   color: var(--muted);
 }
-.small {
+/* Secondary text (a detail, a time, a count) is the one size below body
+   text; a caption also names a section in small capitals. */
+small,
+.small,
+.caption {
   font-size: var(--font-small);
+}
+.caption {
+  font-weight: var(--weight-regular);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+/* A tag: a file, a header, a state; outlined, what an action risks. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap);
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  background: var(--raised);
+  font-size: var(--font-small);
+}
+.chip-outline {
+  border: var(--border-field);
+  background: none;
+}
+/* A key, named in a hairline box. */
+kbd {
+  min-width: 1.6em;
+  padding: 0 var(--space-1);
+  border: var(--border);
+  font: inherit;
+  font-weight: var(--weight-regular);
+  text-align: center;
+}
+/* A box set apart on its surface: an option, a tool, a notice, a card. */
+.card {
+  padding: var(--space-4);
+  border: var(--border-field);
+  background: var(--raised);
+}
+/* A list over the page: a menu, suggestions, a picker's options. */
+.popover-list {
+  z-index: var(--z-popover);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--border-field);
+  background: var(--surface);
+  color: var(--text);
+}
+/* Controls floating over what they act on, such as zoom. */
+.float-toolbar {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: var(--border);
+  background: var(--raised);
+  color: var(--text);
+}
+/* Entries a hairline divides. */
+.divided > :not(:first-child) {
+  border-top: var(--border);
+}
+/* The current entry of a list (the open conversation, section or file) and
+   a list's chosen option: filled, with the accent stripe at its start. */
+.entry:is([aria-current], [aria-selected="true"], :has([aria-current])) {
+  background: var(--raised);
+  box-shadow: inset var(--stripe) 0 var(--accent);
 }
 .plain {
   white-space: pre-wrap;
@@ -740,9 +812,7 @@ pre code {
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
-  color: var(--muted);
   min-height: var(--control);
-  font-size: var(--font-small);
 }
 .loading-surface {
   flex: 1;
@@ -821,8 +891,6 @@ dialog.sidebar:not([open]) {
   align-items: baseline;
   gap: var(--space-2);
   margin: 0;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .panel-subtitle :is(span, button) {
   min-width: 0;
@@ -855,21 +923,15 @@ dialog.sidebar:not([open]) {
 /* The directory a folder is in gives way before the folder's own name. */
 .folder-parent {
   min-width: 0;
-  color: var(--muted);
   font-weight: var(--weight-regular);
 }
 .session-row {
   display: flex;
   align-items: center;
   min-width: 0;
-  border-left: var(--stripe) solid transparent;
 }
-.session-row:has(:focus-visible),
-.session-row:has([aria-current]) {
+.session-row:has(:focus-visible) {
   background: var(--raised);
-}
-.session-row:has([aria-current]) {
-  border-left-color: var(--accent);
 }
 .status-led {
   display: inline-block;
@@ -879,11 +941,17 @@ dialog.sidebar:not([open]) {
   border-radius: 50%;
   border: var(--stroke) solid currentColor;
   box-sizing: border-box;
+  vertical-align: middle;
 }
 .status-led.active,
 .status-led.running {
   background: var(--live);
   border-color: var(--live);
+}
+/* News: a filled light after an entry's name. */
+.status-led.unread {
+  margin-left: var(--space-4);
+  background: currentColor;
 }
 /* Failure is a square, not only a colour. */
 .status-led.failed {
@@ -916,8 +984,6 @@ dialog.sidebar:not([open]) {
 }
 .connection {
   flex: 1;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .connection .status-led {
   margin-right: var(--space-3);
@@ -1017,12 +1083,6 @@ dialog.sidebar:not([open]) {
   margin: 0;
   color: var(--muted);
 }
-.tips kbd {
-  padding: 0 var(--space-1);
-  border: var(--border);
-  font: inherit;
-  font-weight: var(--weight-regular);
-}
 .mark.cursor-mark {
   width: var(--logo);
   height: var(--logo);
@@ -1098,13 +1158,6 @@ dialog.sidebar:not([open]) {
   padding: 0 var(--space-1);
   font-size: var(--font-small);
 }
-/* Not connected: a tag, so the state reads apart from a turn's phase. */
-.connection-pill {
-  padding: 0 var(--space-4);
-  border: var(--border-field);
-  background: var(--raised);
-  color: var(--text);
-}
 .activity-button {
   display: flex;
   align-items: center;
@@ -1144,8 +1197,6 @@ dialog.sidebar:not([open]) {
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .metrics > button {
   font-size: inherit;
@@ -1172,8 +1223,8 @@ details > summary::before {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  border: 1px solid var(--accent);
-  padding: var(--space-4) var(--space-6);
+  border-color: var(--accent);
+  background: none;
   max-height: var(--scroll-l);
   transition: var(--enter);
 }
@@ -1203,10 +1254,6 @@ details > summary::before {
   margin: 0;
   min-width: var(--pane-s);
   padding: var(--space-2);
-  border: var(--border-field);
-  background: var(--surface);
-  color: var(--text);
-  overflow: auto;
   transition:
     var(--enter),
     display var(--motion-base) allow-discrete,
@@ -1434,7 +1481,6 @@ dialog section {
 }
 .loading-label {
   display: block;
-  color: var(--muted);
   margin-bottom: var(--gap);
 }
 .skeleton > div {
@@ -1565,7 +1611,6 @@ dialog section {
   }
   .decision {
     max-height: calc(var(--viewport-height) - 2 * var(--touch));
-    padding: var(--space-4);
   }
 }
 /* Surfaces arrive with a short, native motion and leave the way they
@@ -1685,7 +1730,7 @@ dialog.sidebar.drawer[open][data-leaving] {
     background: transparent;
     border-color: CanvasText;
   }
-  .status-led.active {
+  .status-led:is(.active, .unread) {
     background: CanvasText;
     border-color: CanvasText;
   }
@@ -1718,11 +1763,6 @@ dialog > header .icon-button {
 .section-title {
   margin: 0 0 var(--space-3);
   padding-inline: var(--inset-x);
-  color: var(--muted);
-  font-size: var(--font-small);
-  font-weight: var(--weight-regular);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
 }
 .group {
   margin: 0 0 var(--space-12);
@@ -1749,10 +1789,6 @@ dialog > header .icon-button {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
-/* More specific than a row's own `border: 0` below, so the line shows. */
-.group-rows > :not(:first-child) {
-  border-top: var(--border);
-}
 @media (hover: hover) and (pointer: fine) {
   button.row:enabled:hover {
     background: var(--raised);
@@ -1761,8 +1797,6 @@ dialog > header .icon-button {
 .group-footer {
   margin: var(--space-3) 0 0;
   padding: var(--space-2) var(--inset-x);
-  color: var(--muted);
-  font-size: var(--font-small);
   overflow-wrap: anywhere;
 }
 /* A row: an entry in any list (settings, conversations, menus,
@@ -1818,8 +1852,6 @@ details > summary::-webkit-details-marker {
   overflow-wrap: anywhere;
 }
 .row-detail {
-  color: var(--muted);
-  font-size: var(--font-small);
   overflow-wrap: anywhere;
 }
 .row-value {
@@ -1839,7 +1871,7 @@ details > summary::-webkit-details-marker {
 details > summary::before {
   transition: rotate var(--motion-fast) var(--ease-standard);
 }
-.row[aria-expanded="true"] .row-chevron,
+[aria-expanded="true"] > .row-chevron,
 details[open] > summary::before {
   rotate: 90deg;
 }

@@ -291,7 +291,7 @@ function TerminalView({
     <div class="terminal-tabpanel" id={`terminal-${id}`} hidden={!active}>
       <div class="terminal-view" ref={box} />
       {state !== "live" && (
-        <p class="terminal-note" role="status">
+        <p class="terminal-note small" role="status">
           {state === "connecting" ? (
             "Reconnecting…"
           ) : state === "ended" ? (
@@ -488,7 +488,9 @@ export default function TerminalPanel({
           ended={(id) => setEnded((list) => [...list, id])}
         />
       ))}
-      {!tabs.length && <p class="terminal-note">No terminal is running.</p>}
+      {!tabs.length && (
+        <p class="terminal-note small">No terminal is running.</p>
+      )}
       {coarsePointer() && (
         <div class="terminal-keys">
           <KeyBar press={press} ctrl={ctrl} setCtrl={setCtrl} />

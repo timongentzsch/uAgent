@@ -37,7 +37,7 @@ export default function GuidanceQueue({
       <div class="queue-heading" role="status">
         {plural(items.length, "message")} queued
       </div>
-      <div class="queue-items">
+      <div class="queue-items divided">
         {items.map((item) => (
           <article
             class="queue-item"

@@ -27,12 +27,6 @@
   margin: 0;
 }
 
-.tools-busy {
-  padding: var(--space-3);
-  background: var(--raised);
-  border: var(--border);
-}
-
 .tools-search {
   width: 100%;
 }
@@ -44,18 +38,11 @@
 
 .tool-group h3 {
   margin: 0;
-  font-size: var(--font-small);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
 }
 
 .tool-choice {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--raised);
-  border: var(--border);
 }
 
 .tool-toggle {
@@ -74,11 +61,6 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2);
-}
-
-.tool-choice-head code,
-.tool-choice-head small {
-  color: var(--muted);
 }
 
 .tool-choice-head small {

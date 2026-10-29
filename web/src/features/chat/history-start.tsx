@@ -29,7 +29,7 @@ export default function HistoryStart({
         </Button>
       )}
       {(view?.dropped_segments || 0) > 0 && (
-        <p class="retention">
+        <p class="retention small">
           {view?.dropped_segments} older segments are outside retention.
         </p>
       )}

@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "preact/hooks";
 import { ChevronDown } from "lucide-preact";
-import { Field, Input } from "./ui.tsx";
+import { EmptyState, Field, Input } from "./ui.tsx";
 import { SuggestionList } from "./suggestion-list.tsx";
 import "./search-select.css";
 import { matches } from "./fuzzy.ts";
@@ -100,7 +100,7 @@ export function SearchSelect({
       </Field>
       <ChevronDown class="search-select-chevron" aria-hidden="true" />
       {open && !disabled && (
-        <div class="search-select-options">
+        <div class="search-select-options popover-list">
           <SuggestionList
             id={id}
             label={`${label} options`}
@@ -118,7 +118,7 @@ export function SearchSelect({
               </span>
             )}
           </SuggestionList>
-          {!shown.length && <p role="status">No matching options.</p>}
+          {!shown.length && <EmptyState>No matching options.</EmptyState>}
         </div>
       )}
     </div>

@@ -23,8 +23,8 @@ export function ConnectionStatus({
   }[phase];
   return (
     <span
-      // Anything but connected stands out as a pill (style.css).
-      class={`turn-status${phase === "connected" ? "" : " connection-pill"} ${className}`}
+      // Anything but connected stands out as a chip.
+      class={`turn-status${phase === "connected" ? "" : " chip chip-outline"} ${className}`}
       role="status"
       aria-live="polite"
       aria-busy={busy || undefined}

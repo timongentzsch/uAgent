@@ -18,15 +18,11 @@
 }
 .escalation-paused {
   margin: 0;
-  padding: var(--space-3) var(--space-4);
   border-left: var(--stripe-callout) solid var(--mark);
-  background: var(--raised);
   font-size: var(--font-small);
 }
 .escalation-thread {
   justify-self: start;
   max-width: 100%;
   text-align: left;
-  font-size: var(--font-small);
-  color: var(--muted);
 }

@@ -18,16 +18,8 @@
   max-width: var(--pane);
 }
 .file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--gap);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid transparent;
-  background: var(--raised);
-  max-width: 100%;
-  min-width: 0;
+  padding-block: var(--space-2);
   text-decoration: none;
-  font-size: var(--font-small);
 }
 .file-chip > span {
   min-width: 0;
@@ -37,8 +29,6 @@
 }
 .file-chip small {
   display: block;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .file-chip .attachment-tile {
   width: var(--control-l);
@@ -48,9 +38,6 @@
 /* Rename control: reads as the file name until focused. */
 .chip-name {
   padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
   font: inherit;
   text-align: left;
   cursor: text;
@@ -94,9 +81,7 @@
   gap: var(--space-3);
   width: min(var(--pane), 100%);
   height: var(--thumb);
-  padding: 0 var(--space-4);
-  border: var(--border-field);
-  background: var(--raised);
+  padding-block: 0;
   color: inherit;
   text-decoration: none;
   font-size: var(--font-small);
@@ -113,9 +98,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: var(--weight-strong);
-}
-.attachment-card small {
-  color: var(--muted);
 }
 /* Inline @-mention images keep their shape at a readable size. */
 .mention-image {

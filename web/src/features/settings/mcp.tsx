@@ -94,8 +94,8 @@ export function McpServers({
             />,
             expanded && (
               <div key={`${server.name}:detail`} class="mcp-detail">
-                <code>{server.command}</code>
-                {server.log && <pre class="mcp-log">{server.log}</pre>}
+                <code class="small">{server.command}</code>
+                {server.log && <pre class="mcp-log small">{server.log}</pre>}
                 <Row
                   label="Enabled"
                   detail={`Edits ${scope === "global" ? "~/.mcp.json" : server.file}`}

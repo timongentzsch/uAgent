@@ -36,7 +36,6 @@
   text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
-  font-size: var(--font-small);
 }
 .instructions-also {
   overflow-wrap: anywhere;

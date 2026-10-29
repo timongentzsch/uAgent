@@ -27,9 +27,6 @@
 div.node-row > .row-chevron {
   visibility: hidden;
 }
-.node-row[aria-expanded="true"] > .row-chevron {
-  rotate: 90deg;
-}
 .node-headline {
   flex: 1;
   min-width: 0;
@@ -45,8 +42,6 @@ div.node-row > .row-chevron {
   max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 /* State shows only when it matters: a failed row reads in the error colour,
    a cancelled one is muted, a running one shimmers softly. */
@@ -157,10 +152,6 @@ pre.node-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.node-code figcaption {
-  font-size: var(--font-small);
-  color: var(--muted);
-}
 .node-fields {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -185,8 +176,6 @@ pre.node-text {
 .node-action {
   min-height: 0;
   padding: 0;
-  color: var(--muted);
-  font-size: var(--font-small);
   text-decoration: underline;
 }
 /* A file the agent shared: a preview where it is safe, then name, size,

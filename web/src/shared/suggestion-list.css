@@ -5,30 +5,14 @@
   position: absolute;
   bottom: calc(100% + var(--space-2));
   inset-inline: 0;
-  z-index: var(--z-popover);
   max-height: min(var(--pane), var(--scroll-m));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border: var(--border-field);
-  background: var(--surface);
 }
-.suggestions button {
-  border-left: var(--stripe) solid transparent;
-}
-.suggestions [aria-selected="true"] {
-  border-left-color: var(--accent);
-  background: var(--hover);
-}
-.command-suggestions span {
-  color: var(--muted);
+.command-suggestions small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-small);
 }
-/* A group's label: small and quiet, never an option. */
+/* A group's label, never an option. */
 .suggestion-group {
   padding: var(--space-3) var(--space-4) var(--space-1);
-  color: var(--muted);
-  font-size: var(--font-small);
 }

@@ -38,9 +38,6 @@
   min-width: 0;
   align-items: center;
 }
-.activity-row + .activity-row {
-  border-top: var(--border);
-}
 
 .activity-open {
   flex: 1;
@@ -62,12 +59,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.activity-text small,
-.activity-row time {
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 
 /* Inspector: one column, zero child margins, sections carry the labels. */
@@ -129,11 +120,6 @@
   min-height: 0;
   max-height: none;
   overflow: auto;
-}
-
-.detail-meta {
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 
 .detail-label {

@@ -760,14 +760,14 @@ export default function BrowserPanel({
       )}
       {card && (
         <form
-          class="browser-card"
+          class="card browser-card"
           onSubmit={(event) => {
             event.preventDefault();
             if (!card.copy) pasteIntoChrome(card.text);
             setCard(null);
           }}
         >
-          <label for="browser-card-text">
+          <label for="browser-card-text" class="small">
             {card.copy
               ? "Copied from Chrome. Use your device’s Copy."
               : "Paste here to send it to Chrome."}

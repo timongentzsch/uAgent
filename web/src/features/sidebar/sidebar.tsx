@@ -148,7 +148,7 @@ function SessionRow({
   const state = statusOf(item, online);
   const shown = STATES[state];
   return (
-    <div class="session-row">
+    <div class="session-row entry">
       <ListRow
         class="session"
         onClick={() => choose(item.id)}
@@ -271,7 +271,7 @@ function SidebarView({
     ).length;
     return (
       <section key={cwd}>
-        <div class="place-head">
+        <div class="place-head entry">
           <IconButton
             label={`Conversations of ${name}`}
             aria-expanded={!folded}
@@ -301,7 +301,7 @@ function SidebarView({
               </FolderLabel>
               {panel && unread.has(panel.id) && (
                 <span
-                  class="unread-dot"
+                  class="status-led unread"
                   role="img"
                   aria-label="Unread messages"
                 />
@@ -350,7 +350,7 @@ function SidebarView({
   };
   const list = places.map(([kind, shown]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
-      <p class="section-title">{kind}</p>
+      <p class="section-title caption">{kind}</p>
       {shown.map(place)}
     </div>
   ));
@@ -414,6 +414,7 @@ function SidebarView({
       <div class="sidebar-sections">
         <Button
           variant="quiet"
+          class="entry"
           aria-current={page === "library" ? "page" : undefined}
           onClick={() => navigate("library")}
         >
@@ -422,6 +423,7 @@ function SidebarView({
         </Button>
         <Button
           variant="quiet"
+          class="entry"
           aria-current={page === "scheduled" ? "page" : undefined}
           onClick={() => navigate("scheduled")}
         >
@@ -429,7 +431,7 @@ function SidebarView({
           Scheduled
           {scheduledUnread && (
             <span
-              class="unread-dot"
+              class="status-led unread"
               role="img"
               aria-label="Unread scheduled results"
             />
@@ -449,7 +451,7 @@ function SidebarView({
         </Placeholder>
       </nav>
       <footer>
-        <ConnectionStatus phase={connection} className="connection" />
+        <ConnectionStatus phase={connection} className="connection small" />
         <IconButton label="Refresh" onClick={refresh}>
           <RefreshCw />
         </IconButton>

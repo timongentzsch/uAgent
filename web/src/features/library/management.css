@@ -56,17 +56,12 @@
 .run-history h2 {
   font-size: var(--font-body);
 }
-.library-row[aria-current] {
-  background: var(--raised);
-}
 .library-group + .library-group {
   margin-top: var(--gap);
 }
 .library-group h2 {
   margin: 0;
-  font-size: var(--font-small);
   font-weight: var(--weight-regular);
-  color: var(--muted);
 }
 .library-group h2 > .folder-label {
   padding-inline: var(--inset-x);
@@ -75,23 +70,16 @@
   width: 100%;
   justify-content: flex-start;
   gap: var(--gap);
-  border: 0;
-  background: none;
-  color: inherit;
 }
 .library-group .folder-label {
   min-width: 0;
   flex: 1;
-}
-.library-group button[aria-expanded="false"] > svg {
-  transform: rotate(-90deg);
 }
 .editor-head > strong {
   flex: 1;
 }
 .document-toolbar small {
   margin-left: auto;
-  color: var(--muted);
 }
 .document-input {
   flex: 1;
@@ -134,7 +122,6 @@
 }
 .run-row {
   display: flex;
-  border-bottom: var(--border);
   align-items: center;
 }
 .run-row > button:first-child {

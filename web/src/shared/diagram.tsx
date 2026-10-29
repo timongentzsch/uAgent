@@ -136,7 +136,7 @@ export default function Diagram({ source }: { source: string }) {
           commit the image lands shrinks the box it just grew, another
           phantom-gesture pair. Source stays one click away either way. */}
       <details>
-        <summary>Show source</summary>
+        <summary class="small">Show source</summary>
         <div class="code-block">
           <pre>
             <code>{source}</code>

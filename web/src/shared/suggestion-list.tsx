@@ -15,7 +15,7 @@ export function SuggestionList<T>({
   pick,
   keyOf,
   groupOf,
-  class: className = "command-suggestions",
+  class: className = "command-suggestions popover-list",
   children,
 }: {
   id: string;
@@ -55,6 +55,7 @@ export function SuggestionList<T>({
           <Button
             key={keyOf?.(item)}
             variant="quiet"
+            class="entry"
             role="option"
             id={`${prefix}-${start + offset}`}
             aria-selected={start + offset === index}
@@ -69,7 +70,7 @@ export function SuggestionList<T>({
         const heading = `${groupId}-${start}`;
         return (
           <div role="group" aria-labelledby={heading} key={heading}>
-            <div class="suggestion-group" id={heading}>
+            <div class="suggestion-group caption" id={heading}>
               {label}
             </div>
             {options}

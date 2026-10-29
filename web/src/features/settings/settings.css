@@ -34,9 +34,6 @@
 .settings-nav .group {
   margin-bottom: var(--pad);
 }
-.settings-nav .row[aria-current="page"] {
-  background: var(--raised);
-}
 /* Beside the pane the list selects rather than drills in: no chevrons. */
 /* The section list is structured by its groups' gaps alone. */
 .settings-nav .group-rows > :not(:first-child) {
@@ -145,8 +142,6 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .mcp-log {
   margin: 0;

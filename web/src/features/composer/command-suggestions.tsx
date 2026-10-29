@@ -74,7 +74,7 @@ export function useCommandSuggestions(
         {(entry) => (
           <>
             <strong>{entry.command}</strong>
-            <span>{entry.description}</span>
+            <small>{entry.description}</small>
           </>
         )}
       </SuggestionList>

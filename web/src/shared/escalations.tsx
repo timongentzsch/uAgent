@@ -34,7 +34,7 @@ export default function WaitingList({
   return (
     <section class="escalations" aria-label="Decisions waiting on you">
       {paused && (
-        <p role="status" class="escalation-paused">
+        <p role="status" class="card escalation-paused">
           {paused}
         </p>
       )}
@@ -86,7 +86,7 @@ function Escalation({
     <div class="escalation">
       <Button
         variant="quiet"
-        class="escalation-thread"
+        class="escalation-thread small"
         onClick={() => choose(item.id)}
       >
         <SessionName item={item} />

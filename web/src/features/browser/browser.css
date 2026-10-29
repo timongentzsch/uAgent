@@ -79,15 +79,8 @@ dialog.browser-view[data-layout="sheet"] {
 }
 /* Zoom and scroll without gestures, in the screen's top corner. */
 .browser-view-controls {
-  position: absolute;
   top: var(--gap);
   right: var(--gap);
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: var(--border);
-  background: var(--surface);
-  color: var(--text);
 }
 .browser-card {
   position: absolute;
@@ -95,14 +88,7 @@ dialog.browser-view[data-layout="sheet"] {
   bottom: var(--gap);
   display: grid;
   gap: var(--gap);
-  padding: var(--pad);
-  border: var(--border);
-  background: var(--surface);
   color: var(--text);
-}
-.browser-card label {
-  font-size: var(--font-small);
-  color: var(--muted);
 }
 .browser-card .text-control {
   --input-min-height: calc(2 * var(--control-l));

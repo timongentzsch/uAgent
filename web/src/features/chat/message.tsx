@@ -47,7 +47,7 @@ function MentionFile({
       <ImageTile src={href} name={file.name} />
     </span>
   ) : (
-    <a class="file-chip mention-chip" href={href} download={file.name}>
+    <a class="chip file-chip mention-chip" href={href} download={file.name}>
       @{file.name}
     </a>
   );
@@ -191,7 +191,7 @@ function Message({
       ) : (
         <div class="message-line">
           <div class="message-text">{words}</div>
-          <span class="message-meta">
+          <span class="message-meta small">
             {node.status && <span>{node.status}</span>}
             <Time value={node.time} />
             {recall && recallable(node, online) && (

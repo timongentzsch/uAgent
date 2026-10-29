@@ -119,9 +119,6 @@
   padding: var(--space-1) var(--space-3);
   text-align: left;
 }
-.files-entries [aria-current] {
-  background: var(--raised);
-}
 .files-entries .lucide {
   color: var(--muted);
 }
@@ -142,8 +139,6 @@
 .files-note {
   margin: 0;
   padding: var(--space-3);
-  color: var(--muted);
-  font-size: var(--font-small);
 }
 .files-view {
   min-width: 0;
@@ -194,8 +189,6 @@
   place-items: center;
   flex: 1;
   padding: var(--space-12);
-  border: 0;
-  background: none;
   cursor: zoom-in;
 }
 .files-image img {

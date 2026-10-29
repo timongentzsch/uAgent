@@ -1,6 +1,4 @@
 .retention {
-  font-size: var(--font-small);
-  color: var(--muted);
   border: var(--border);
   padding: var(--space-4);
   overflow-anchor: none;
@@ -28,8 +26,6 @@
   min-width: 0;
 }
 .find-count {
-  color: var(--muted);
-  font-size: var(--font-small);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

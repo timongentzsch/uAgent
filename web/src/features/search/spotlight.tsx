@@ -6,7 +6,7 @@ import type {
   SlashCommand,
   Snapshot,
 } from "../../shared/types.ts";
-import { Input, useDialogClose } from "../../shared/ui.tsx";
+import { EmptyState, Input, useDialogClose } from "../../shared/ui.tsx";
 import { folderName } from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import { useCompact } from "../../shared/layout.ts";
@@ -61,7 +61,9 @@ export function Keys({ id }: { id: ShortcutId }) {
   return (
     <span class="keys">
       {keysOf(id).map((key) => (
-        <kbd key={key}>{key}</kbd>
+        <kbd class="small" key={key}>
+          {key}
+        </kbd>
       ))}
     </span>
   );
@@ -362,18 +364,18 @@ export default function Spotlight({
         >
           {(row) =>
             row.kind === "hit" ? (
-              <span class="spotlight-snippet">
+              <span class="spotlight-snippet small">
                 <Marked text={row.hit.snippet} words={words} />
               </span>
             ) : row.kind === "more" ? (
-              <span class="spotlight-more">{row.label}</span>
+              <span class="spotlight-more small">{row.label}</span>
             ) : (
               <>
                 <span class="spotlight-label">
                   {row.label}
                   {"about" in row && row.about && ` — ${row.about}`}
                 </span>
-                <span class="spotlight-detail">{row.detail}</span>
+                <span class="spotlight-detail small">{row.detail}</span>
                 {row.kind === "action" && row.shortcut && (
                   <Keys id={row.shortcut} />
                 )}
@@ -392,9 +394,9 @@ export default function Spotlight({
           ))}
       </div>
       {!shown.length && (
-        <p class="spotlight-empty">
+        <EmptyState>
           {commandsOnly ? "No command matches." : "Nothing matches."}
-        </p>
+        </EmptyState>
       )}
     </div>
   );
@@ -438,7 +440,7 @@ function Preview({ hit, words }: { hit: Hit; words: string }) {
   return (
     <aside class="spotlight-preview" aria-label="Preview">
       {rows === null ? (
-        <p class="spotlight-empty">Loading…</p>
+        <p class="small">Loading…</p>
       ) : (
         rows.map((node) => (
           <p key={node.id} class="spotlight-preview-row">

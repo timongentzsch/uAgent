@@ -32,15 +32,8 @@
 }
 /* − level + Fit, floating over the content like a document viewer's. */
 .zoom-controls {
-  position: absolute;
   right: var(--space-4);
   bottom: calc(var(--space-4) + var(--safe-bottom));
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: var(--border);
-  background: var(--raised);
   cursor: default;
 }
 .zoom-controls output {

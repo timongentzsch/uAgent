@@ -65,10 +65,10 @@ for (const width of [320, 1280]) {
         const snapshot = await (
           await request.get(`/api/sessions/${repeated[0].session_id}`)
         ).json();
-        return snapshot.state.view.blocks.filter(
-          (block) =>
-            (block.kind === "turn" || block.role === "user") &&
-            block.body?.text === "Side followup probe",
+        return snapshot.state.view.nodes.filter(
+          (node) =>
+            (node.kind === "turn" || node.role === "user") &&
+            node.body?.text === "Side followup probe",
         ).length;
       })
       .toBe(2);

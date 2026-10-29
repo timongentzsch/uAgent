@@ -741,10 +741,10 @@ void TestMailKeepsItsOriginBesideTheSameWords() {
   agent.Say(next->text, "", next->origin);
   const json view = agent.DisplaySnapshot();
   std::vector<json> rows;
-  for (const json& block : view.at("blocks")) {
-    if (JsonValue(block, "kind", "") == "turn" ||
-        JsonValue(block, "role", "") == "user") {
-      rows.push_back(block);
+  for (const json& node : view.at("nodes")) {
+    if (JsonValue(node, "kind", "") == "turn" ||
+        JsonValue(node, "role", "") == "user") {
+      rows.push_back(node);
     }
   }
   CHECK(rows.size() == 2);

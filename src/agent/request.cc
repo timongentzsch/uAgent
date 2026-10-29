@@ -124,10 +124,10 @@ void Agent::AnnounceDeliveries(const json& deliveries) {
   }
   if (!updated.empty()) {
     json snapshot = DisplaySnapshot();
-    for (const json& block : snapshot["blocks"]) {
+    for (const json& node : snapshot["nodes"]) {
       if (std::find(updated.begin(), updated.end(),
-                    JsonValue(block, "id", "")) != updated.end()) {
-        Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+                    JsonValue(node, "id", "")) != updated.end()) {
+        Emit(Event{EventId::kMessageChanged, {{"node", node}}});
       }
     }
   }

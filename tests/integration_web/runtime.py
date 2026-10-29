@@ -112,7 +112,7 @@ def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
 
     def answer(_, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
-            # Hold the turn open so the drained attachment block is observable
+            # Hold the turn open so the drained attachment node is observable
             # mid-turn; the turn-boundary strip reclassifies it afterwards.
             time.sleep(1.0)
             return event({"content": "seen"})
@@ -128,14 +128,14 @@ def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
             snapshot = client.until(
                 session,
                 lambda value: any(
-                    block.get("origin") == "tool" for block in value["state"]["view"]["blocks"]
+                    node.get("origin") == "tool" for node in value["state"]["view"]["nodes"]
                 ),
             )
-            blocks = snapshot["state"]["view"]["blocks"]
-            sourced = [block for block in blocks if block.get("origin") == "tool"]
-            assert_true(len(sourced) == 1, blocks)
+            nodes = snapshot["state"]["view"]["nodes"]
+            sourced = [node for node in nodes if node.get("origin") == "tool"]
+            assert_true(len(sourced) == 1, nodes)
             # The files a call read sit under that call.
-            call = next(block for block in blocks if block["kind"] == "call")
+            call = next(node for node in nodes if node["kind"] == "call")
             assert_true(sourced[0]["parent"] == call["id"], sourced)
             # The drained image still reaches the model once.
             client.until(
@@ -143,8 +143,8 @@ def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
                 lambda value: (
                     value["metadata"]["status"] == "idle"
                     and any(
-                        "seen" in str(block.get("body", {}).get("text", ""))
-                        for block in value["state"]["view"]["blocks"]
+                        "seen" in str(node.get("body", {}).get("text", ""))
+                        for node in value["state"]["view"]["nodes"]
                     )
                 ),
             )
@@ -287,15 +287,15 @@ def test_clients_share_one_runtime_and_reconnect(root, home, *, binary):
                     lambda value: (
                         value["metadata"]["status"] == "idle"
                         and any(
-                            block.get("body", {}).get("text") == "second client guidance"
-                            for block in value["state"]["view"]["blocks"]
+                            node.get("body", {}).get("text") == "second client guidance"
+                            for node in value["state"]["view"]["nodes"]
                         )
                     ),
                 )
                 users = [
-                    block["body"]["text"]
-                    for block in completed["state"]["view"]["blocks"]
-                    if block["kind"] == "turn" or block.get("role") == "user"
+                    node["body"]["text"]
+                    for node in completed["state"]["view"]["nodes"]
+                    if node["kind"] == "turn" or node.get("role") == "user"
                 ]
                 assert users == ["first client", "second client guidance"], users
                 assert completed["state"]["stop"]["reason"] == "completed", completed
@@ -448,10 +448,10 @@ def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *,
                         started = True
                     if frame.get("kind") == "event" and frame.get("type") == "turn.started":
                         started = True
-                    if frame.get("kind") == "block":
+                    if frame.get("kind") == "node":
                         # The reply's first text comes whole, the rest as
                         # appends.
-                        node = frame.get("block") or {}
+                        node = frame.get("node") or {}
                         if node.get("role") == "assistant" and "body" in node and not deltas:
                             deltas.append(node["body"]["text"])
                         elif frame.get("append", {}).get("text"):
@@ -476,9 +476,9 @@ def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *,
                 reader.join(timeout=budget(2))
                 snapshot = client.snapshot(session)
                 answer = next(
-                    block["body"]["text"]
-                    for block in reversed(snapshot["state"]["view"]["blocks"])
-                    if block.get("role") == "assistant"
+                    node["body"]["text"]
+                    for node in reversed(snapshot["state"]["view"]["nodes"])
+                    if node.get("role") == "assistant"
                 )
                 assert_true(answer == "AB" + "x" * burst + "Z", len(answer))
                 assert_true(len(deltas) < burst // 4, len(deltas))
@@ -542,20 +542,20 @@ def test_checkpoints_reach_browsers_as_changed_rows(root, home, *, binary):
             ]
             assert_true(len(checkpoints) >= 2, [frame["kind"] for frame in frames])
             assert_true(all("view" not in frame["state"] for frame in checkpoints), checkpoints)
-            blocks = loaded["state"]["view"]["blocks"]
+            nodes = loaded["state"]["view"]["nodes"]
             for frame in frames:
-                if frame["kind"] != "block" or frame["sequence"] > final["cursor"]:
+                if frame["kind"] != "node" or frame["sequence"] > final["cursor"]:
                     continue
-                row = frame.get("block")
+                row = frame.get("node")
                 key = row["id"] if row else frame["id"]
-                at = max((i for i, b in enumerate(blocks) if b.get("id") == key), default=-1)
+                at = max((i for i, b in enumerate(nodes) if b.get("id") == key), default=-1)
                 if row and at >= 0:
-                    blocks[at] = row
+                    nodes[at] = row
                 elif row:
                     # Before the first node under it, else in sequence position.
                     later = [
                         i
-                        for i, b in enumerate(blocks)
+                        for i, b in enumerate(nodes)
                         if b.get("parent") == row["id"]
                         or (
                             isinstance(b.get("sequence"), int)
@@ -563,14 +563,14 @@ def test_checkpoints_reach_browsers_as_changed_rows(root, home, *, binary):
                             and b["sequence"] > row["sequence"]
                         )
                     ]
-                    blocks.insert(later[0] if later else len(blocks), row)
+                    nodes.insert(later[0] if later else len(nodes), row)
                 elif at >= 0:
-                    blocks[at] = {**blocks[at], **frame.get("set", {})}
+                    nodes[at] = {**nodes[at], **frame.get("set", {})}
                     if "append" in frame:
-                        body = dict(blocks[at]["body"])
+                        body = dict(nodes[at]["body"])
                         body["text"] += frame["append"]["text"]
-                        blocks[at]["body"] = body
-            assert_true(blocks == final["state"]["view"]["blocks"], (blocks, final["state"]))
+                        nodes[at]["body"] = body
+            assert_true(nodes == final["state"]["view"]["nodes"], (nodes, final["state"]))
 
 
 def test_web_compact_renders_single_footer_without_duplicates(root, home, *, binary):
@@ -595,8 +595,8 @@ def test_web_compact_renders_single_footer_without_duplicates(root, home, *, bin
                 lambda value: (
                     value["metadata"]["status"] == "idle"
                     and any(
-                        "turn-ok" in str(block.get("body", {}).get("text", ""))
-                        for block in value["state"]["view"]["blocks"]
+                        "turn-ok" in str(node.get("body", {}).get("text", ""))
+                        for node in value["state"]["view"]["nodes"]
                     )
                 ),
             )
@@ -606,8 +606,8 @@ def test_web_compact_renders_single_footer_without_duplicates(root, home, *, bin
                 lambda value: (
                     value["metadata"]["status"] == "idle"
                     and sum(
-                        "COMPACT-MARKER" in str(block.get("body", {}).get("text", ""))
-                        for block in value["state"]["view"]["blocks"]
+                        "COMPACT-MARKER" in str(node.get("body", {}).get("text", ""))
+                        for node in value["state"]["view"]["nodes"]
                     )
                     == 2
                 ),
@@ -617,24 +617,24 @@ def test_web_compact_renders_single_footer_without_duplicates(root, home, *, bin
                 session,
                 lambda value: (
                     value["metadata"]["status"] == "idle"
-                    and any("compaction" in block for block in value["state"]["view"]["blocks"])
+                    and any("compaction" in node for node in value["state"]["view"]["nodes"])
                 ),
             )
-            blocks = snapshot["state"]["view"]["blocks"]
-            footers = [block for block in blocks if "compaction" in block]
-            assert_true(len(footers) == 1, blocks)
+            nodes = snapshot["state"]["view"]["nodes"]
+            footers = [node for node in nodes if "compaction" in node]
+            assert_true(len(footers) == 1, nodes)
             assert_true(
                 footers[0]["compaction"]["messages_after"]
                 < footers[0]["compaction"]["messages_before"],
                 footers,
             )
             markers = [
-                block
-                for block in blocks
-                if "COMPACT-MARKER" in str(block.get("body", {}).get("text", ""))
+                node
+                for node in nodes
+                if "COMPACT-MARKER" in str(node.get("body", {}).get("text", ""))
             ]
-            assert_true(len(markers) == 2, blocks)
-            assert_true(len({block["id"] for block in blocks}) == len(blocks), blocks)
+            assert_true(len(markers) == 2, nodes)
+            assert_true(len({node["id"] for node in nodes}) == len(nodes), nodes)
 
             preview = client.command("context", session)["result"]["exchanges"][0]
             assert_true(preview["preview"], preview)
@@ -649,4 +649,4 @@ def test_web_compact_renders_single_footer_without_duplicates(root, home, *, bin
                 ),
             )
             assert unchanged["state"]["context_tokens"] == before
-            assert len([b for b in unchanged["state"]["view"]["blocks"] if "compaction" in b]) == 1
+            assert len([b for b in unchanged["state"]["view"]["nodes"] if "compaction" in b]) == 1

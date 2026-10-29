@@ -105,7 +105,7 @@ std::string Drawn(const std::vector<json>& calls,
   return CaptureStdout([&] {
     TerminalPresenter presenter;
     presenter.SetDetail(DetailFor(level));
-    presenter.Draw({{"blocks", nodes}});
+    presenter.Draw({{"nodes", nodes}});
   });
 }
 
@@ -205,7 +205,7 @@ void TestTreeDrawsLiveAsResumed() {
   record["result"] = json::object();
   const json work = WorkNode("m-1", json::object());
   json view = {
-      {"blocks",
+      {"nodes",
        json::array({{{"id", "m-1"}, {"parent", nullptr}, {"kind", "turn"}},
                     work,
                     CallNode(record, "m-1")})}};
@@ -216,11 +216,10 @@ void TestTreeDrawsLiveAsResumed() {
   CHECK(CaptureStdout([&] { presenter.Update(view, work); }).empty());
   record["state"] = "ok";
   record["output"] = "alpha";
-  view["blocks"][2] = CallNode(record, "m-1");
+  view["nodes"][2] = CallNode(record, "m-1");
   // A call that settled waits for its step to end, then is drawn once.
-  CHECK(CaptureStdout([&] {
-          presenter.Update(view, view["blocks"][2]);
-        }).empty());
+  CHECK(
+      CaptureStdout([&] { presenter.Update(view, view["nodes"][2]); }).empty());
   const std::string settled = CaptureStdout([&] {
     presenter.Update(view, work);
     presenter.Update(view, work);
@@ -232,17 +231,17 @@ void TestTreeDrawsLiveAsResumed() {
                        {"parent", nullptr},
                        {"kind", "turn"},
                        {"body", {{"kind", "text"}, {"text", "next"}}}};
-  view["blocks"].push_back(echoed);
+  view["nodes"].push_back(echoed);
   presenter.Drawn("m-2");
   CHECK(CaptureStdout([&] { presenter.Update(view, echoed); }).empty());
 
   // A reply holding no text prints no bare mark line.
   CHECK(CaptureStdout([] {
           TerminalPresenter replies;
-          replies.Draw({{"blocks", json::array({{{"id", "r-1"},
-                                                 {"parent", nullptr},
-                                                 {"kind", "message"},
-                                                 {"role", "assistant"}}})}});
+          replies.Draw({{"nodes", json::array({{{"id", "r-1"},
+                                                {"parent", nullptr},
+                                                {"kind", "message"},
+                                                {"role", "assistant"}}})}});
         }).empty());
 }
 

@@ -19,7 +19,7 @@ import { HostContext } from "../../state/host-context.ts";
 import { bytes } from "../../shared/quantities.ts";
 import { coarsePointer } from "../../shared/layout.ts";
 import { routes } from "../../state/api.ts";
-import { useBlockReader } from "../../state/block-reader.ts";
+import { useNodeReader } from "../../state/node-reader.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { MessageActions } from "./message-actions.ts";
 
@@ -169,7 +169,7 @@ export function NodeBody({
   session: SessionRef;
 }) {
   const { read, inspect, activity } = useContext(MessageActions);
-  const load = useBlockReader(session, read);
+  const load = useNodeReader(session, read);
   const body = node.body;
   // A diff cut short loads whole as the row opens; other long bodies when
   // asked for.

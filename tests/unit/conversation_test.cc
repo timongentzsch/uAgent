@@ -437,12 +437,12 @@ void TestConversation() {
   CHECK(browser.Statistics()["model_ms"] == 133.5);
   CHECK(built.Statistics()["complete"] == false);
   json projection = ConversationView(browser);
-  CHECK(projection["blocks"][0].contains("time"));
-  CHECK(projection["blocks"][1].contains("time"));
+  CHECK(projection["nodes"][0].contains("time"));
+  CHECK(projection["nodes"][1].contains("time"));
   CHECK(!browser.Messages()[1].contains("time"));
   // The question, the answer's thinking and the answer.
-  REQUIRE(projection["blocks"].size() == 3);
-  CHECK(projection["blocks"][1]["kind"] == "thinking");
+  REQUIRE(projection["nodes"].size() == 3);
+  CHECK(projection["nodes"][1]["kind"] == "thinking");
   CHECK(JsonDump(projection).find("private system") == std::string::npos);
   CHECK(TranscriptView(browser).Detail(private_id)["text"] == "");
   CHECK(TranscriptView(browser).Detail(user_id)["text"] == "visible question");
@@ -458,13 +458,13 @@ void TestConversation() {
   CHECK(!persisted.Restore(browser.Messages(), browser.Kinds(),
                            browser.Archive(), 0, invalid_display));
   CHECK(ConversationView(persisted) == projection);
-  CHECK(LastNodes(browser).back() == projection["blocks"].back());
+  CHECK(LastNodes(browser).back() == projection["nodes"].back());
   const size_t model_messages = browser.Size();
   const json completed =
       browser.RecordEntry({{"text", "Command completed"}, {"activity_id", 42}});
   CHECK(browser.Size() == model_messages);
   CHECK(completed["incoming"] == 1);
-  CHECK(ConversationView(browser)["blocks"].back()["kind"] == "notice");
+  CHECK(ConversationView(browser)["nodes"].back()["kind"] == "notice");
   CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
                           browser.Archive(), 0, browser.DisplayMetadata()));
   CHECK(ConversationView(persisted) == ConversationView(browser));
@@ -474,8 +474,8 @@ void TestConversation() {
                         {"usage", {{"input", 42}}}};
   browser.RecordEntry({{"kind", "turn_summary"}, {"summary", summary}});
   CHECK(browser.Size() == model_messages);
-  CHECK(ConversationView(browser)["blocks"].back()["kind"] == "footer");
-  CHECK(ConversationView(browser)["blocks"].back()["summary"] == summary);
+  CHECK(ConversationView(browser)["nodes"].back()["kind"] == "footer");
+  CHECK(ConversationView(browser)["nodes"].back()["summary"] == summary);
   CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
                           browser.Archive(), 0, browser.DisplayMetadata()));
   CHECK(ConversationView(persisted) == ConversationView(browser));
@@ -485,14 +485,14 @@ void TestConversation() {
       json::array({{{"role", "system"}, {"content", "summary"}}}),
       {MessageKind::kSystem});
   CHECK(browser.Statistics() == before_compaction);
-  CHECK(ConversationView(browser)["blocks"][0]["time"] ==
-        projection["blocks"][0]["time"]);
+  CHECK(ConversationView(browser)["nodes"][0]["time"] ==
+        projection["nodes"][0]["time"]);
   for (int index = 0; index < 200; ++index) {
     browser.Push({{"role", "user"}, {"content", std::string(8192, 'x')}},
                  MessageKind::kUser);
   }
   projection = ConversationView(browser);
-  CHECK(projection["blocks"].size() == 64);
+  CHECK(projection["nodes"].size() == 64);
   CHECK(projection["more"] == true);
   CHECK(JsonDump(projection).size() < size_t{384} * 1024);
 }
@@ -549,7 +549,7 @@ void TestSavedTranscriptIndex() {
   std::array<std::future<bool>, 4> readers;
   for (auto& reader : readers) {
     reader = std::async(std::launch::async, [&] {
-      return view.Page()["blocks"].size() == 64 &&
+      return view.Page()["nodes"].size() == 64 &&
              view.Detail("m-141")["text"] == expected.at("m-141") &&
              view.Detail("t-call-1")["text"] == "retained output" &&
              view.Exchange("t-call-1")["text"] == JsonDump(exchange);
@@ -560,17 +560,17 @@ void TestSavedTranscriptIndex() {
   uint64_t before = 0;
   for (int i = 0; i < 4; ++i) {
     const json page = view.Page(before);
-    for (const auto& block : page["blocks"]) {
+    for (const auto& node : page["nodes"]) {
       CHECK(actual
-                .emplace(block["id"].get<std::string>(),
-                         block["body"]["text"].get<std::string>())
+                .emplace(node["id"].get<std::string>(),
+                         node["body"]["text"].get<std::string>())
                 .second);
     }
     if (!page["more"].get<bool>()) break;
     before = page["before"].get<uint64_t>();
   }
   CHECK(actual == expected);
-  CHECK(view.Page(2)["blocks"].empty());
+  CHECK(view.Page(2)["nodes"].empty());
   for (const char* id : {"m-1", "m-", "m-02", "m--2", "m-2x",
                          "m-18446744073709551616", "unknown"}) {
     CHECK(view.Detail(id)["text"] == "");
@@ -658,11 +658,11 @@ void TestCompactionKeepsDisplayIdentity() {
   // Fresh mints stay unique past the reused id.
   conversation.Push({{"role", "user"}, {"content", "new"}}, MessageKind::kUser);
   CHECK(conversation.DisplayIds().back() != retained);
-  // The archived original and the re-push collapse to one transcript block.
+  // The archived original and the re-push collapse to one transcript node.
   json view = ConversationView(conversation);
   size_t kept = 0;
-  for (const json& block : view["blocks"]) {
-    if (JsonValue(JsonValue(block, "body", json::object()), "text", "") ==
+  for (const json& node : view["nodes"]) {
+    if (JsonValue(JsonValue(node, "body", json::object()), "text", "") ==
         "keep me") {
       ++kept;
     }
@@ -676,8 +676,8 @@ void TestCompactionKeepsDisplayIdentity() {
   }
   CHECK(JsonEstimatedBytes(view) < size_t{512} * 1024);
   CHECK(view["more"] == true);
-  CHECK(view["blocks"].back()["id"] == "large-63");
-  // A checkpoint is bounded once, after all its blocks, to the same rows.
+  CHECK(view["nodes"].back()["id"] == "large-63");
+  // A checkpoint is bounded once, after all its nodes, to the same rows.
   json checkpoint = json::array();
   for (int i = 64; i < 128; ++i) {
     checkpoint.push_back({{"id", "large-" + std::to_string(i)},
@@ -685,14 +685,14 @@ void TestCompactionKeepsDisplayIdentity() {
                           {"text", std::string(16384, 'x')}});
   }
   json merged = view;
-  for (const json& block : checkpoint) Merge(view, block);
+  for (const json& node : checkpoint) Merge(view, node);
   MergeNodes(merged, checkpoint);
   CHECK(merged == view);
 
   // Live deltas and the saved preview are one node, keyed by the response
   // id. A bounded checkpoint may enrich it, but its preview never shortens a
   // body this client already received.
-  json state = {{"view", {{"blocks", json::array()}}}};
+  json state = {{"view", {{"nodes", json::array()}}}};
   const json response = {
       {"response_id", "r-7-3-1"}, {"turn", 7}, {"request", 3}, {"attempt", 1}};
   json patches = json::array();
@@ -707,14 +707,14 @@ void TestCompactionKeepsDisplayIdentity() {
       state, "response.answer.delta",
       {{"response_id", "r-7-3-1"}, {"text", "complete streamed"}}, &patches));
   REQUIRE(patches.size() == 1);
-  CHECK(patches[0]["block"]["streaming"] == true);
-  CHECK(patches[0]["block"]["body"]["text"] == "\ncomplete streamed");
+  CHECK(patches[0]["node"]["streaming"] == true);
+  CHECK(patches[0]["node"]["body"]["text"] == "\ncomplete streamed");
   // After that, a client holding the same view appends, never re-reads it.
   patches = json::array();
   CHECK(ApplySessionEvent(state, "response.answer.delta",
                           {{"response_id", "r-7-3-1"}, {"text", " body"}},
                           &patches));
-  CHECK((patches == json::array({{{"kind", "block"},
+  CHECK((patches == json::array({{{"kind", "node"},
                                   {"id", "r-7-3-1"},
                                   {"append", {{"text", " body"}}}}})));
   Merge(state["view"],
@@ -724,8 +724,8 @@ void TestCompactionKeepsDisplayIdentity() {
          {"body",
           {{"kind", "markdown"}, {"text", "preview"}, {"truncated", true}}},
          {"usage", {{"input", 1}}}});
-  REQUIRE(state["view"]["blocks"].size() == 1);
-  const json& reconciled = state["view"]["blocks"][0];
+  REQUIRE(state["view"]["nodes"].size() == 1);
+  const json& reconciled = state["view"]["nodes"][0];
   CHECK(reconciled["body"]["text"] == "\ncomplete streamed body");
   CHECK(!reconciled["body"].contains("truncated"));
   CHECK(reconciled["usage"]["input"] == 1);
@@ -747,8 +747,8 @@ void TestCompactionKeepsDisplayIdentity() {
            {"target", "a.txt"},
            {"input", {{{"kind", "command"}, {"text", "a.txt"}}}}}}},
         &patches));
-    CHECK(patches.back()["block"]["state"] == "running");
-    CHECK(patches.back()["block"]["headline"] ==
+    CHECK(patches.back()["node"]["state"] == "running");
+    CHECK(patches.back()["node"]["headline"] ==
           json({{"verb", "Reading"}, {"target", "a.txt"}}));
   }
   Merge(state["view"],
@@ -758,11 +758,11 @@ void TestCompactionKeepsDisplayIdentity() {
          {"state", "ok"},
          {"headline", {{"verb", "Read"}, {"target", "a.txt"}}},
          {"body", {{"kind", "text"}, {"text", "first result"}}}});
-  REQUIRE(state["view"]["blocks"].size() == 3);
-  CHECK(state["view"]["blocks"][1]["body"]["text"] == "first result");
-  CHECK(state["view"]["blocks"][1]["headline"]["verb"] == "Read");
-  CHECK(state["view"]["blocks"][1]["input"][0]["text"] == "a.txt");
-  CHECK(state["view"]["blocks"][2]["state"] == "running");
+  REQUIRE(state["view"]["nodes"].size() == 3);
+  CHECK(state["view"]["nodes"][1]["body"]["text"] == "first result");
+  CHECK(state["view"]["nodes"][1]["headline"]["verb"] == "Read");
+  CHECK(state["view"]["nodes"][1]["input"][0]["text"] == "a.txt");
+  CHECK(state["view"]["nodes"][2]["state"] == "running");
 
   Conversation long_answer;
   long_answer.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -789,7 +789,7 @@ void TestCompactionKeepsDisplayIdentity() {
   // omit response ids must not append one turn's streamed text onto an
   // earlier turn's completed node; the whole node still arrives via
   // message.changed.
-  json live = {{"view", {{"blocks", json::array()}}}};
+  json live = {{"view", {{"nodes", json::array()}}}};
   Merge(live["view"],
         {{"id", "m-1"},
          {"sequence", 1},
@@ -799,13 +799,13 @@ void TestCompactionKeepsDisplayIdentity() {
                           {{"text", "second answer"}}));
   CHECK(ApplySessionEvent(live, "response.reasoning.delta",
                           {{"text", "thinking"}}));
-  REQUIRE(live["view"]["blocks"].size() == 1);
-  CHECK(live["view"]["blocks"][0]["body"]["text"] == "first answer");
+  REQUIRE(live["view"]["nodes"].size() == 1);
+  CHECK(live["view"]["nodes"][0]["body"]["text"] == "first answer");
 
   // Replayed deltas can arrive after a checkpoint containing the same bytes.
   // Their offsets make the projection idempotent without suppressing a
   // legitimate repeated chunk at the next offset.
-  json replayed = {{"view", {{"blocks", json::array()}}}};
+  json replayed = {{"view", {{"nodes", json::array()}}}};
   CHECK(ApplySessionEvent(
       replayed, "response.answer.delta",
       {{"response_id", "r-replayed"}, {"offset", 0}, {"text", "ha"}}));
@@ -815,7 +815,7 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(ApplySessionEvent(
       replayed, "response.answer.delta",
       {{"response_id", "r-replayed"}, {"offset", 2}, {"text", "ha"}}));
-  CHECK(replayed["view"]["blocks"][0]["body"]["text"] == "haha");
+  CHECK(replayed["view"]["nodes"][0]["body"]["text"] == "haha");
   Merge(replayed["view"], {{"id", "r-replayed"},
                            {"sequence", 5},
                            {"kind", "message"},
@@ -823,33 +823,33 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(ApplySessionEvent(
       replayed, "response.answer.delta",
       {{"response_id", "r-replayed"}, {"offset", 4}, {"text", "stale"}}));
-  CHECK(replayed["view"]["blocks"][0]["body"]["text"] == "haha");
+  CHECK(replayed["view"]["nodes"][0]["body"]["text"] == "haha");
 }
 
 void TestLateRetainedBlockInsertsInSequenceOrder() {
   // A retained completion arriving after newer rows (replay, pre-facts
   // emit) lands in sequence position, never appended after them.
-  json view = {{"blocks", json::array()}};
+  json view = {{"nodes", json::array()}};
   Merge(view, {{"id", "m-9"}, {"sequence", 9}, {"kind", "message"}});
   Merge(view, {{"id", "t-a"}, {"sequence", 5}, {"kind", "call"}});
-  REQUIRE(view["blocks"].size() == 2);
-  CHECK(view["blocks"][0]["id"] == "t-a");
-  CHECK(view["blocks"][1]["id"] == "m-9");
+  REQUIRE(view["nodes"].size() == 2);
+  CHECK(view["nodes"][0]["id"] == "t-a");
+  CHECK(view["nodes"][1]["id"] == "m-9");
   Merge(view, {{"id", "m-7"}, {"sequence", 7}, {"kind", "message"}});
-  REQUIRE(view["blocks"].size() == 3);
-  CHECK(view["blocks"][1]["id"] == "m-7");
+  REQUIRE(view["nodes"].size() == 3);
+  CHECK(view["nodes"][1]["id"] == "m-7");
   // Sequence-less nodes keep their relative order around the insert.
   Merge(view, {{"id", "live-note"}, {"kind", "notice"}});
   Merge(view, {{"id", "m-6"}, {"sequence", 6}, {"kind", "message"}});
-  REQUIRE(view["blocks"].size() == 5);
-  CHECK(view["blocks"][1]["id"] == "m-6");
-  CHECK(view["blocks"].back()["id"] == "live-note");
+  REQUIRE(view["nodes"].size() == 5);
+  CHECK(view["nodes"][1]["id"] == "m-6");
+  CHECK(view["nodes"].back()["id"] == "live-note");
   // A node goes before the nodes under it, wherever it arrives.
   Merge(view, {{"id", "w-m-1"}, {"kind", "work"}});
   Merge(view, {{"id", "t-b"}, {"parent", "w-m-2"}, {"kind", "call"}});
   Merge(view, {{"id", "w-m-2"}, {"kind", "work"}});
-  CHECK(view["blocks"][view["blocks"].size() - 2]["id"] == "w-m-2");
-  CHECK(view["blocks"].back()["id"] == "t-b");
+  CHECK(view["nodes"][view["nodes"].size() - 2]["id"] == "w-m-2");
+  CHECK(view["nodes"].back()["id"] == "t-b");
 }
 
 void TestHistoryReplaySkipsBareHeader() {
@@ -922,7 +922,7 @@ void TestToolResultHealsMissingMetadata() {
       {{"role", "tool"}, {"tool_call_id", "call-1"}, {"content", "out"}},
       MessageKind::kToolResult);
   json view = ConversationView(conversation);
-  const json& result = view["blocks"].back();
+  const json& result = view["nodes"].back();
   CHECK(result["kind"] == "call");
   CHECK(result["id"] == "t-hash1");
   CHECK(result["state"] == "ok");
@@ -930,7 +930,7 @@ void TestToolResultHealsMissingMetadata() {
   CHECK(result["result"]["word"] == "12ms");
   // The call and its result are one node, drawn with the call's view; the
   // reply that made it and holds no text is no node.
-  CHECK(view["blocks"].size() == 1);
+  CHECK(view["nodes"].size() == 1);
   CHECK(result["headline"] == json({{"verb", "Ran"}, {"target", "ls"}}));
   // A message with neither metadata nor facts reads finished, never a
   // forever-"running" ghost, and shows none of the model's text.
@@ -938,7 +938,7 @@ void TestToolResultHealsMissingMetadata() {
       {{"role", "tool"}, {"tool_call_id", "call-2"}, {"content", "out"}},
       MessageKind::kToolResult);
   json orphan_view = ConversationView(conversation);
-  const json& orphan = orphan_view["blocks"].back();
+  const json& orphan = orphan_view["nodes"].back();
   CHECK(orphan["id"] == "t-call-2");
   CHECK(orphan["headline"]["target"] == "tool");
   CHECK(orphan["state"] == "ok");

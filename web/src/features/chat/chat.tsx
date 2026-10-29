@@ -88,7 +88,7 @@ function Chat({
   const { value: preparedKey } = useResource(
     () =>
       snapshot
-        ? prepareHistoryNodes(snapshot.state?.view?.blocks || [])
+        ? prepareHistoryNodes(snapshot.state?.view?.nodes || [])
             .catch(() => {}) // The message renderer shows its own retryable error.
             .then(() => selected)
         : undefined,

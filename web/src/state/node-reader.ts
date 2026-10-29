@@ -2,8 +2,8 @@ import { useCallback } from "preact/hooks";
 import { readPages, routes } from "./api.ts";
 import type { SessionRef } from "../shared/types.ts";
 
-// Single block reader: custom read wins, else session detail endpoint.
-export function useBlockReader(
+// Single node reader: custom read wins, else session detail endpoint.
+export function useNodeReader(
   session: SessionRef,
   read?: (
     id: string,

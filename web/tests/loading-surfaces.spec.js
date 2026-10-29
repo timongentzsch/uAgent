@@ -571,7 +571,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
   ).json();
-  snapshot.state.view.blocks = [
+  snapshot.state.view.nodes = [
     {
       id: "fixture-response",
       parent: null,

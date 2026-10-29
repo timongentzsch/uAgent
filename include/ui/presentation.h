@@ -37,7 +37,7 @@ class TerminalPresenter {
   // What streams live: replies, thinking, the spinner and notices.
   void Consume(const Event& event) noexcept;
   void Consume(const AppEvent& event) noexcept;
-  // The tree a view holds ({blocks}), all of it, as it stands.
+  // The tree a view holds ({nodes}), all of it, as it stands.
   void Draw(const json& view);
   // What settled in `view` since it was drawn, now that `changed` arrived: a
   // node is drawn once it has finished, so a step's calls follow its reply

@@ -1,7 +1,7 @@
 // The transcript as the host sends it: a list of nodes that name their
 // parent, drawn as one tree. A detail level is only how deep the tree starts
 // open; nothing here knows a tool, a provider or a model.
-import type { BlockPatch, Node } from "./types.ts";
+import type { NodePatch, Node } from "./types.ts";
 
 // A node and the nodes under it, oldest first.
 export interface Branch {
@@ -114,13 +114,13 @@ export function grow(nodes: Node[]): Branch[] {
 // node under it, else in sequence order (a late saved node never strands
 // older content after newer), else last: the host's own rule
 // (view_reducer.cc), so both hold the same order.
-export function placeNode(nodes: Node[], patch: BlockPatch): Node[] {
-  const id = patch.block?.id ?? patch.id;
+export function placeNode(nodes: Node[], patch: NodePatch): Node[] {
+  const id = patch.node?.id ?? patch.id;
   // Streaming patches the newest nodes: search from the end.
   const at = nodes.findLastIndex((node) => node.id === id);
   const next = [...nodes];
-  if (patch.block) {
-    const node = patch.block;
+  if (patch.node) {
+    const node = patch.node;
     if (at >= 0) next[at] = node;
     else {
       const sequence = node.sequence;

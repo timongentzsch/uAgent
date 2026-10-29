@@ -345,7 +345,7 @@ class Agent {
   // Retained recent user instructions for the post-compaction context.
   // Optionally fills retained_ids with the source display id per message
   // (same order), so the re-push can keep its identity instead of minting
-  // a duplicate block beside the archived original.
+  // a duplicate node beside the archived original.
   json CompactionUserMessages(
       std::vector<uint64_t>* retained_ids = nullptr) const;
 

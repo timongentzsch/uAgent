@@ -129,7 +129,7 @@ function findAnchor(
 export function useTranscriptHistory(
   onFollow: (following: boolean) => void,
   sessionKey: string,
-  blocks: readonly { id: string }[],
+  nodes: readonly { id: string }[],
 ) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -143,9 +143,9 @@ export function useTranscriptHistory(
   const key = useRef(sessionKey);
   const pending = useRef<string | null>(sessionKey);
   const lastTop = useRef(0);
-  // The newest block seen: unseen counts only blocks appended after it, so
+  // The newest node seen: unseen counts only nodes appended after it, so
   // an older history page prepended above never reads as new.
-  const lastBlock = useRef(blocks.at(-1)?.id);
+  const lastNode = useRef(nodes.at(-1)?.id);
   const [unseen, setUnseen] = useState(0);
   const onFollowRef = useLatest(onFollow);
   const observer = useRef<ResizeObserver | null>(null);
@@ -361,23 +361,23 @@ export function useTranscriptHistory(
     pending.current = sessionKey;
     jumped.current = false;
     anchor.current = null;
-    lastBlock.current = blocks.at(-1)?.id;
+    lastNode.current = nodes.at(-1)?.id;
     setUnseen(0);
-  }, [sessionKey, blocks, capture]);
+  }, [sessionKey, nodes, capture]);
 
   // React commits and late browser layout use the same reconciliation path.
   useLayoutEffect(() => {
     if (!box?.isConnected || box !== scroller.current || !column) return;
     if (!restore()) reconcile();
-    const last = blocks.at(-1)?.id;
-    if (last !== lastBlock.current) {
+    const last = nodes.at(-1)?.id;
+    if (last !== lastNode.current) {
       if (!following.current) {
-        const seen = blocks.findLastIndex(
-          (block) => block.id === lastBlock.current,
+        const seen = nodes.findLastIndex(
+          (node) => node.id === lastNode.current,
         );
-        if (seen >= 0) setUnseen((value) => value + blocks.length - 1 - seen);
+        if (seen >= 0) setUnseen((value) => value + nodes.length - 1 - seen);
       }
-      lastBlock.current = last;
+      lastNode.current = last;
     }
   });
 

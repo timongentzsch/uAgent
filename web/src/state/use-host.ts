@@ -256,7 +256,7 @@ export function useHost(
           if (signal.aborted) throw signal.reason;
           if (loads.current.get(id) !== request) return value;
           const accepted = new Set(
-            value.state?.view?.blocks?.map((node) => node.request_id),
+            value.state?.view?.nodes?.map((node) => node.request_id),
           );
           setOutgoing((items) =>
             items.filter(

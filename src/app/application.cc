@@ -50,7 +50,7 @@ Application::Application(AppContext& context)
           return;
         }
         // A message of yours is saved as it arrives.
-        const json& node = event.data["block"];
+        const json& node = event.data["node"];
         if ((!DelegatedSessionFile().empty() ||
              JsonValue(node, "kind", "") == "turn" ||
              JsonValue(node, "role", "") == "user") &&

@@ -246,7 +246,7 @@ export interface ActivityTarget {
 // A message of yours, held until the host confirms it.
 export type Outgoing = Node & { request_id: string; session_id: string };
 export interface View {
-  blocks: Node[];
+  nodes: Node[];
   before?: number;
   more?: boolean;
   dropped_segments?: number;
@@ -545,7 +545,7 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   output?: string;
   usage?: Usage;
   statistics?: Statistics;
-  block?: Node;
+  node?: Node;
   text?: string;
   reset?: boolean;
   id?: string;
@@ -575,9 +575,9 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
 }
 // A change to one row of the host's view: the whole row, or fields to set
 // and streamed text to append on a row the client already holds.
-export interface BlockPatch {
-  kind: "block";
-  block?: Node;
+export interface NodePatch {
+  kind: "node";
+  node?: Node;
   id?: string;
   set?: Pick<Node, "streaming">;
   append?: { text?: string };
@@ -608,7 +608,7 @@ export type HostEvent = HostEnvelope &
   (
     | ({ kind: "outcome" } & Outcome)
     | { kind: "state"; pending?: Pending | null }
-    | BlockPatch
+    | NodePatch
     | {
         kind:
           | "event"
@@ -905,7 +905,7 @@ export type StatisticsModal =
       type: "rename" | "delete";
       session: Session;
       space?: never;
-      block?: never;
+      node?: never;
       snapshot?: never;
     }
   // A workspace, by its name; deleting says how many conversations go with it.
@@ -914,14 +914,14 @@ export type StatisticsModal =
       space: Space;
       conversations?: number;
       session?: never;
-      block?: never;
+      node?: never;
       snapshot?: never;
     }
   | {
       type: "statistics";
       session_id: string;
-      block_id?: string;
-      // What block_id names: a turn (its footer) or one message.
+      node_id?: string;
+      // What node_id names: a turn (its footer) or one message.
       unit?: StatisticsUnit;
     };
 export type StatisticsUnit = "Turn" | "Message";
@@ -1050,7 +1050,7 @@ export type ConnectionPhase =
 // What the inspector is opened on: a transcript row, a live activity, or a
 // tool's retained input/output.
 export type InspectorTarget =
-  | { block: ActivityTarget }
+  | { node: ActivityTarget }
   | { item: Activity }
   | { raw: RawOptions; title: string };
 

@@ -19,7 +19,7 @@ import { Button, IconButton, Time } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { routes } from "../../state/api.ts";
-import { useBlockReader } from "../../state/block-reader.ts";
+import { useNodeReader } from "../../state/node-reader.ts";
 import { isRow } from "../../shared/tree.ts";
 import { TurnFooter } from "./turn-footer.tsx";
 import { SharedFile } from "./bodies.tsx";
@@ -133,7 +133,7 @@ function Message({
   // Mail from another conversation or the harness has your message's line,
   // not its bubble.
   const chrome = reply ? "response" : node.origin === "mail" ? "mail" : "user";
-  const load = useBlockReader(session, read);
+  const load = useNodeReader(session, read);
   const truncated = node.body?.truncated;
   const fullText = useResource(
     (signal) =>

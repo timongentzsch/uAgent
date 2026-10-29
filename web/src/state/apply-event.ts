@@ -133,11 +133,11 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     );
   };
   switch (event.kind) {
-    case "block":
-      if (event.block) {
-        const block = event.block;
-        setOutgoing((items) => confirmOutgoing(items, block.request_id));
-        const incoming = block.incoming;
+    case "node":
+      if (event.node) {
+        const node = event.node;
+        setOutgoing((items) => confirmOutgoing(items, node.request_id));
+        const incoming = node.incoming;
         if (incoming) patchSession(id, (item) => raiseIncoming(item, incoming));
       }
       if (current) live.current[id] = applySessionEvent(current, event);

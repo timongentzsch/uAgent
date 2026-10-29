@@ -41,7 +41,7 @@ export default function SideAnswer({
   const pending = snapshot?.pending;
   const running = !!session?.turn_active;
   const act: Act = (kind, fields) => command(kind, session, fields);
-  const all = snapshot?.state?.view?.blocks || [];
+  const all = snapshot?.state?.view?.nodes || [];
   const first = all.findIndex(
     (node) => node.kind === "turn" && node.request_id === side.firstRequest,
   );

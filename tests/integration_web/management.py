@@ -68,9 +68,9 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
                 ),
             )
             assert_true(value["metadata"]["title"] == "test", value["metadata"])
-            facts = value["state"]["view"]["blocks"]
-            assert_true(all(block.get("time") for block in facts), facts)
-            answer = next(block for block in facts if block.get("role") == "assistant")
+            facts = value["state"]["view"]["nodes"]
+            assert_true(all(node.get("time") for node in facts), facts)
+            answer = next(node for node in facts if node.get("role") == "assistant")
             assert_true(answer["route"] and answer["ttft_ms"] >= 0, answer)
             assert_true(
                 answer["usage_reported"]
@@ -97,9 +97,9 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
             )
             assert_true(
                 next(
-                    block
-                    for block in client.snapshot(session)["state"]["view"]["blocks"]
-                    if block.get("role") == "assistant"
+                    node
+                    for node in client.snapshot(session)["state"]["view"]["nodes"]
+                    if node.get("role") == "assistant"
                 )
                 == answer,
                 "historical model changed",
@@ -277,11 +277,11 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
                     session,
                     lambda value: (
                         value["metadata"]["turn_active"]
-                        and any(row["kind"] == "turn" for row in value["state"]["view"]["blocks"])
+                        and any(row["kind"] == "turn" for row in value["state"]["view"]["nodes"])
                     ),
                 )
                 assert_true(snapshot["state"]["efforts"] == ["default", *efforts], snapshot)
-                rows = snapshot["state"]["view"]["blocks"]
+                rows = snapshot["state"]["view"]["nodes"]
                 users = [row for row in rows if row["kind"] == "turn"]
                 assert_true(len(users) == 1 and users[0]["request_id"] == request_id, rows)
                 # The reply shows nothing until its first text.
@@ -399,13 +399,13 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             snapshot = client.until(
                 session,
                 lambda value: any(
-                    block["kind"] == "notice" for block in value["state"]["view"]["blocks"]
+                    node["kind"] == "notice" for node in value["state"]["view"]["nodes"]
                 ),
             )
-            blocks = snapshot["state"]["view"]["blocks"]
-            assert_true(len([block for block in blocks if block["kind"] == "notice"]) == 1, blocks)
+            nodes = snapshot["state"]["view"]["nodes"]
+            assert_true(len([node for node in nodes if node["kind"] == "notice"]) == 1, nodes)
             # The read is the turn's second call, a node by its own id.
-            detail_id = [block["id"] for block in blocks if block["kind"] == "call"][1]
+            detail_id = [node["id"] for node in nodes if node["kind"] == "call"][1]
             raw = ""
             offset = 0
             pages = 0
@@ -491,13 +491,10 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 live = client.command(
                     "activity", session, operation="inspect", activity_id=child["id"]
                 )
-                blocks = live["result"]["conversation"]["blocks"]
+                nodes = live["result"]["conversation"]["nodes"]
                 assert_true(
-                    any(
-                        "WEB_CHILD_SEED" in block.get("body", {}).get("text", "")
-                        for block in blocks
-                    ),
-                    blocks,
+                    any("WEB_CHILD_SEED" in node.get("body", {}).get("text", "") for node in nodes),
+                    nodes,
                 )
                 assert_true(len(provider.requests) == count, "inspection called the model")
                 for operation in ("inspect", "message"):
@@ -659,7 +656,5 @@ def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
             # A terminal saves to the same place: browsers follow.
             save_settings(home, binary=binary, UAGENT_DETAIL="full")
             wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
-            assert_true(
-                client.json("/api/sessions")[1]["detail"] == "full", "stale level"
-            )
+            assert_true(client.json("/api/sessions")[1]["detail"] == "full", "stale level")
             # The reader ends with the host; closing here would wait on it.

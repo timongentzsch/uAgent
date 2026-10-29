@@ -13,20 +13,20 @@ export const outgoingStatus = {
 };
 
 // A message of yours the host refused, or never confirmed receiving.
-export const unsent = (block: { status?: string }) =>
-  block.status === outgoingStatus.refused ||
-  block.status === outgoingStatus.unconfirmed;
+export const unsent = (node: { status?: string }) =>
+  node.status === outgoingStatus.refused ||
+  node.status === outgoingStatus.unconfirmed;
 
-export const queuedGuidance = (block: { status?: string }) =>
-  block.status === outgoingStatus.guidance ||
-  block.status === outgoingStatus.next;
+export const queuedGuidance = (node: { status?: string }) =>
+  node.status === outgoingStatus.guidance ||
+  node.status === outgoingStatus.next;
 
 // What returns to the composer: guidance still queued (withdrawn from the
 // host, so only while connected) or a message that never went out.
 export const recallable = (
-  block: Pick<Node, "status" | "request_id">,
+  node: Pick<Node, "status" | "request_id">,
   online: boolean,
-) => !!block.request_id && ((online && queuedGuidance(block)) || unsent(block));
+) => !!node.request_id && ((online && queuedGuidance(node)) || unsent(node));
 
 type TextPart = { text: string } | { mention: { id: string; alt: string } };
 

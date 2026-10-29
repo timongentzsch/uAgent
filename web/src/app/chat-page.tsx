@@ -43,18 +43,18 @@ export function transcriptNodes(
   selected: string,
 ): Node[] {
   return [
-    ...(view?.blocks || []),
+    ...(view?.nodes || []),
     ...outgoing.filter(
       (item) =>
         item.session_id === selected &&
-        !view?.blocks?.some((node) => node.request_id === item.request_id),
+        !view?.nodes?.some((node) => node.request_id === item.request_id),
     ),
   ];
 }
 
 // The conversation's agent is using the browser: a running call links to it.
 export const isBrowsing = (snapshot?: Snapshot) =>
-  !!snapshot?.state?.view?.blocks.some(
+  !!snapshot?.state?.view?.nodes.some(
     (node) =>
       node.state === "running" &&
       !!node.input?.some(
@@ -152,7 +152,7 @@ export default function ChatPage({
     reveal,
     unseen,
   } = useTranscriptHistory(setFollowing, historyKey, nodes);
-  // The shared transcript controller retains the visible block through
+  // The shared transcript controller retains the visible node through
   // this bounded page update; this loader only owns data and cursors.
   const more = view?.more;
   const before = view?.before;
@@ -160,7 +160,7 @@ export default function ChatPage({
     if (!more || !transcript.current) return;
     const id = selected;
     const value = await api<Snapshot>(routes.session(id, `before=${before}`));
-    await prepareHistoryNodes(value.state?.view?.blocks || []);
+    await prepareHistoryNodes(value.state?.view?.nodes || []);
     updateView(id, (current) => {
       if (
         !value.state?.view ||
@@ -176,8 +176,8 @@ export default function ChatPage({
           ...current.state,
           view: {
             ...value.state.view,
-            blocks: keepFirst(
-              mergeNodes(value.state.view.blocks, current.state.view.blocks),
+            nodes: keepFirst(
+              mergeNodes(value.state.view.nodes, current.state.view.nodes),
               maxHistoryNodes,
             ),
           },

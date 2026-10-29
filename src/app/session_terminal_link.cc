@@ -102,7 +102,7 @@ void Terminal::ReceiveState(const json& frame) {
       }
     }
     const json* view = JsonObject(state, "view");
-    if (view && JsonArray(*view, "blocks")) {
+    if (view && JsonArray(*view, "nodes")) {
       transcript_["view"] = *view;
       presenter_.Draw(*view);
       history_ = true;
@@ -146,7 +146,7 @@ bool Terminal::ReceiveEvent(const json& frame) {
     // The held tree takes the event and what settled in it is drawn. A
     // message this terminal echoed as it was typed is on screen already.
     ApplySessionEvent(transcript_, type, data);
-    if (const json* node = JsonObject(data, "block")) {
+    if (const json* node = JsonObject(data, "node")) {
       if (raw_ &&
           (JsonValue(*node, "kind", "") == "turn" ||
            JsonValue(*node, "role", "") == "user") &&

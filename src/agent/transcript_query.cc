@@ -142,7 +142,7 @@ json TranscriptView::Page(uint64_t before) const {
   const json oldest = first == page.end() ? json(0) : (*first)["sequence"];
   return {
       {"fork", JsonValue(facts, "fork-origin", json(nullptr))},
-      {"blocks", std::move(page)},
+      {"nodes", std::move(page)},
       {"before", oldest},
       {"more", more},
       {"dropped_segments", conversation_.DroppedSegments()},

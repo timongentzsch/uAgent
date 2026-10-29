@@ -134,8 +134,8 @@ test("saved-history browsing retains the selected view and four recent views", a
 });
 
 test("live context replaces the estimate without accumulating billing tokens", () => {
-  const blocks = [{ id: "stable", kind: "assistant", text: "unchanged" }];
-  const view = { blocks };
+  const nodes = [{ id: "stable", kind: "assistant", text: "unchanged" }];
+  const view = { nodes };
   const current = {
     state: { context_tokens: 1000, usage: { cost: 0.01 }, view },
   };
@@ -147,7 +147,7 @@ test("live context replaces the estimate without accumulating billing tokens", (
   assert.equal(growing.state.context_tokens, 2400);
   assert.equal(growing.state.usage.cost, 0.01);
   assert.equal(growing.state.view, view);
-  assert.equal(growing.state.view.blocks, blocks);
+  assert.equal(growing.state.view.nodes, nodes);
   const compacted = applySessionEvent(growing, {
     kind: "event",
     type: "usage.updated",
@@ -180,7 +180,7 @@ test("HTTP exchanges update in place by id and stay bounded", () => {
 });
 
 test("a retained arrival preserves older pages explicitly loaded by the user", () => {
-  const blocks = Array.from({ length: 400 }, (_, sequence) => ({
+  const nodes = Array.from({ length: 400 }, (_, sequence) => ({
     id: `m-${sequence}`,
     parent: null,
     sequence,
@@ -189,13 +189,13 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   }));
   const current = {
     metadata: { incoming: 0 },
-    state: { view: { blocks } },
+    state: { view: { nodes } },
     cursor: 400,
   };
   const next = applySessionEvent(current, {
-    kind: "block",
+    kind: "node",
     sequence: 401,
-    block: {
+    node: {
       id: "m-400",
       parent: null,
       sequence: 400,
@@ -204,9 +204,9 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
       body: { kind: "markdown", text: "new" },
     },
   });
-  assert.equal(next.state.view.blocks.length, 401);
-  assert.equal(next.state.view.blocks[0], blocks[0]);
-  assert.equal(next.state.view.blocks.at(-1).body.text, "new");
+  assert.equal(next.state.view.nodes.length, 401);
+  assert.equal(next.state.view.nodes[0], nodes[0]);
+  assert.equal(next.state.view.nodes.at(-1).body.text, "new");
   // A checkpoint replaces the host's window and keeps the loaded pages.
   const reply = (text) => ({
     id: "m-400",
@@ -218,37 +218,37 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   });
   const checkpoint = keepOlderPages(next, {
     ...next,
-    state: { view: { blocks: [reply("x")], before: 400 } },
+    state: { view: { nodes: [reply("x")], before: 400 } },
   });
-  assert.equal(checkpoint.state.view.blocks.length, 401);
-  assert.equal(checkpoint.state.view.blocks.at(-1).body.text, "x");
+  assert.equal(checkpoint.state.view.nodes.length, 401);
+  assert.equal(checkpoint.state.view.nodes.at(-1).body.text, "x");
   // An in-place rewind starts a new view epoch: older pages go with it.
   const rewound = keepOlderPages(next, {
     ...next,
     state: {
       view_epoch: 1,
       view: {
-        blocks: [{ id: "m-2", parent: null, sequence: 2, kind: "turn" }],
+        nodes: [{ id: "m-2", parent: null, sequence: 2, kind: "turn" }],
         before: 2,
       },
     },
   });
-  assert.equal(rewound.state.view.blocks.length, 1);
+  assert.equal(rewound.state.view.nodes.length, 1);
 });
 
 // The browser applies the host's nodes and never re-derives them: a whole
 // node, streamed appends, set fields, a parent placed before the nodes under
 // it and a late retained node in sequence position.
-test("block patches rebuild the host's view", () => {
-  const patch = (value) => ({ kind: "block", ...value });
+test("node patches rebuild the host's view", () => {
+  const patch = (value) => ({ kind: "node", ...value });
   const reply = { id: "r", parent: "m-1", kind: "message", role: "assistant" };
   const call = { id: "t-a", parent: "w-m-1", kind: "call" };
-  let snapshot = { cursor: 0, metadata: {}, state: { view: { blocks: [] } } };
+  let snapshot = { cursor: 0, metadata: {}, state: { view: { nodes: [] } } };
   for (const value of [
-    patch({ block: { ...reply, streaming: true } }),
+    patch({ node: { ...reply, streaming: true } }),
     // Thinking comes before the reply's first text.
     patch({
-      block: {
+      node: {
         id: "r:thinking",
         parent: "w-m-1",
         kind: "thinking",
@@ -257,7 +257,7 @@ test("block patches rebuild the host's view", () => {
     }),
     patch({ id: "r:thinking", append: { text: "y" } }),
     patch({
-      block: {
+      node: {
         ...reply,
         streaming: true,
         body: { kind: "markdown", text: "Hello" },
@@ -265,31 +265,31 @@ test("block patches rebuild the host's view", () => {
     }),
     patch({ id: "r", append: { text: " world" } }),
     patch({ id: "r", set: { streaming: false } }),
-    patch({ block: { id: "w-m-1", parent: "m-1", kind: "work" } }),
-    patch({ block: { ...call, state: "running" } }),
+    patch({ node: { id: "w-m-1", parent: "m-1", kind: "work" } }),
+    patch({ node: { ...call, state: "running" } }),
     patch({
-      block: { ...call, state: "ok", body: { kind: "text", text: "out" } },
+      node: { ...call, state: "ok", body: { kind: "text", text: "out" } },
     }),
-    patch({ block: { id: "t-b", parent: "w-m-1", kind: "call" } }),
-    patch({ block: { id: "m-1", parent: null, sequence: 1, kind: "turn" } }),
+    patch({ node: { id: "t-b", parent: "w-m-1", kind: "call" } }),
+    patch({ node: { id: "m-1", parent: null, sequence: 1, kind: "turn" } }),
     patch({ id: "missing", append: { text: "dropped" } }),
   ])
     snapshot = applySessionEvent(snapshot, value);
-  const blocks = snapshot.state.view.blocks;
+  const nodes = snapshot.state.view.nodes;
   assert.deepEqual(
-    blocks.map((block) => block.id),
+    nodes.map((node) => node.id),
     ["m-1", "r", "w-m-1", "r:thinking", "t-a", "t-b"],
   );
-  assert.equal(blocks[1].body.text, "Hello world");
-  assert.equal(blocks[1].streaming, false);
-  assert.equal(blocks[3].body.text, "why");
-  assert.equal(blocks[4].state, "ok");
-  assert.equal(blocks[4].body.text, "out");
+  assert.equal(nodes[1].body.text, "Hello world");
+  assert.equal(nodes[1].streaming, false);
+  assert.equal(nodes[3].body.text, "why");
+  assert.equal(nodes[4].state, "ok");
+  assert.equal(nodes[4].body.text, "out");
   const retained = applySessionEvent(snapshot, {
-    kind: "block",
-    block: { id: "m-0", parent: null, sequence: 0, kind: "turn" },
+    kind: "node",
+    node: { id: "m-0", parent: null, sequence: 0, kind: "turn" },
   });
-  assert.equal(retained.state.view.blocks[0].id, "m-0");
+  assert.equal(retained.state.view.nodes[0].id, "m-0");
 });
 
 // The shell re-renders on identity, so an update that changes nothing must
@@ -364,7 +364,7 @@ test("a turn-status event sets the phase and its caption", () => {
 });
 
 test("a state frame without the view keeps the last view, HTTP log and prompt", () => {
-  const view = { blocks: [{ id: "a", kind: "user", text: "hi" }] };
+  const view = { nodes: [{ id: "a", kind: "user", text: "hi" }] };
   const http = [{ id: "h", state: "done" }];
   const prior = { phase: "idle", view, http, system_prompt: "SYS", turns: 1 };
   assert.deepEqual(stateFrame(prior, { turns: 2 }, "model"), {
@@ -375,7 +375,7 @@ test("a state frame without the view keeps the last view, HTTP log and prompt", 
     phase: "model",
   });
   // A checkpoint frame still replaces all three.
-  const next = { blocks: [] };
+  const next = { nodes: [] };
   const checkpoint = stateFrame(
     prior,
     { view: next, http: [], system_prompt: "NEW" },

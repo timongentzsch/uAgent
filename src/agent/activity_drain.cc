@@ -147,15 +147,15 @@ void Agent::ReportMemoryCompletion(ActivityCompletion& completion) {
     ResultFacts facts;
     facts.no_change = event.action == "no_change";
     if (event.action == "receipt_unavailable") facts.outcome = event.action;
-    json block = Receipt(headline, warning ? "failed" : "ok", facts,
-                         event.preview, "markdown", std::move(parts));
-    block["memory"] = {{"action", event.action},
-                       {"key", event.key},
-                       {"automatic", event.automatic}};
-    if (minor) block["routine"] = true;
-    block["turn_root"] = turn_root_;
-    block = conversation_.RecordEntry(std::move(block));
-    Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
+    json node = Receipt(headline, warning ? "failed" : "ok", facts,
+                        event.preview, "markdown", std::move(parts));
+    node["memory"] = {{"action", event.action},
+                      {"key", event.key},
+                      {"automatic", event.automatic}};
+    if (minor) node["routine"] = true;
+    node["turn_root"] = turn_root_;
+    node = conversation_.RecordEntry(std::move(node));
+    Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
     // The preview continues the notice, indented under its dot.
     if (!event.preview.empty()) line += "\n  " + event.preview;
     Emit(NoticeEvent(
@@ -199,7 +199,7 @@ void Agent::DeliverActivityCompletions(
                        !completion.source_id.empty();
     ResultFacts facts;
     facts.exit = ExitFacts(completion.status);
-    json block = Receipt(
+    json node = Receipt(
         {agent ? "Delegating" : "Running",
          succeeded ? (agent ? "Delegated" : "Finished") : "Failed",
          Utf8Trunc(label.empty() ? record.title : label, kStatusLabelBytes)},
@@ -208,15 +208,15 @@ void Agent::DeliverActivityCompletions(
                          ? LinkPart("agent", completion.source_id, "Open agent")
                          : LinkPart("activity", completion.activity_id,
                                     "Open activity")}));
-    block["activity_id"] = completion.activity_id;
+    node["activity_id"] = completion.activity_id;
     // The full command travels with the record (bounded): rows and titles
     // abbreviate, but the popup and history must not lose it when the
     // supervisor no longer retains the activity.
-    block["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
-    block["agent_id"] = completion.source_id;
-    block["turn_root"] = turn_root_;
-    block = conversation_.RecordEntry(std::move(block));
-    Emit(Event{EventId::kMessageChanged, {{"block", EntryNode(block)}}});
+    node["command"] = Utf8Trunc(completion.command, kActivityCommandBytes);
+    node["agent_id"] = completion.source_id;
+    node["turn_root"] = turn_root_;
+    node = conversation_.RecordEntry(std::move(node));
+    Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
     Event display{
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},

@@ -210,7 +210,7 @@ void BenchmarkCheckpointMerge() {
   MergeNodes(view, checkpoint);
   Report("64-node checkpoint merge", kCheckpoints, Measure(kCheckpoints, [&] {
            MergeNodes(view, checkpoint);
-           return view["blocks"].size();
+           return view["nodes"].size();
          }));
 }
 
@@ -222,7 +222,7 @@ void BenchmarkReplayRead() {
   session::ReplayLog log(MiB(4), kHeld);
   for (size_t index = 0; index < kHeld; ++index) {
     log.Publish("e", "s", "g",
-                {{"kind", "block"}, {"append", {{"text", "token "}}}}, false);
+                {{"kind", "node"}, {"append", {{"text", "token "}}}}, false);
   }
   Report("replay read, 2048 held", kReads, Measure(kReads, [&] {
            return log.Read(log.Cursor() - 1, true, log.Cursor(), KiB(64))

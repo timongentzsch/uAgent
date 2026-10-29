@@ -80,7 +80,7 @@ async function open(page) {
         epoch: EPOCH,
         cursor: HISTORY.length,
         metadata: SESSIONS[0],
-        state: { phase: "idle", view: { blocks: HISTORY } },
+        state: { phase: "idle", view: { nodes: HISTORY } },
         pending: null,
       });
     return json({ error: "Not in this mock" }, 404);
@@ -175,8 +175,8 @@ const measured = (type, counts) =>
 const streamReply = (page) =>
   page.evaluate(async () => {
     testSend({
-      kind: "block",
-      block: {
+      kind: "node",
+      node: {
         id: "w-m-118",
         parent: "m-118",
         kind: "work",
@@ -185,8 +185,8 @@ const streamReply = (page) =>
       },
     });
     testSend({
-      kind: "block",
-      block: {
+      kind: "node",
+      node: {
         id: "reply",
         parent: "m-118",
         kind: "message",
@@ -199,7 +199,7 @@ const streamReply = (page) =>
     });
     for (let index = 0; index < 60; index++) {
       testSend({
-        kind: "block",
+        kind: "node",
         id: "reply",
         append: { text: `word${index} ` },
       });
@@ -207,8 +207,8 @@ const streamReply = (page) =>
       if (index % 10 === 9)
         for (const state of ["running", "ok"])
           testSend({
-            kind: "block",
-            block: {
+            kind: "node",
+            node: {
               id: `tool-${index}`,
               parent: "w-m-118",
               kind: "call",
@@ -223,7 +223,7 @@ const streamReply = (page) =>
           });
       await testFrame();
     }
-    testSend({ kind: "block", id: "reply", set: { streaming: false } });
+    testSend({ kind: "node", id: "reply", set: { streaming: false } });
     await testFrame();
   });
 
@@ -245,7 +245,7 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
   expect(counts.MessageView).toBeLessThanOrEqual(62);
   expect(counts.RowLine).toBeLessThanOrEqual(6 * 2 + 1);
-  // The composer and its controls show nothing a streamed block changes.
+  // The composer and its controls show nothing a streamed node changes.
   for (const name of ["Composer", "ModelControl", "ActivityButtonView"])
     expect(counts[name] || 0, name).toBe(0);
 
@@ -253,8 +253,8 @@ test("streaming renders only what changed", async ({ page }) => {
   // ticks: they change no node, so no node renders.
   await page.evaluate(async () => {
     testSend({
-      kind: "block",
-      block: {
+      kind: "node",
+      node: {
         id: "spawn",
         parent: "w-m-118",
         kind: "call",

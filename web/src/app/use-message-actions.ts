@@ -196,12 +196,12 @@ export function useMessageActions({
         }),
       http: (exchanges: Exchange[]) =>
         setModal({ type: "raw", session: selected, exchanges }),
-      activity: (block: ActivityTarget) => setInspector({ block }),
+      activity: (node: ActivityTarget) => setInspector({ node }),
       statistics: (node: Node) =>
         setModal({
           type: "statistics",
           session_id: selected,
-          block_id: node.id,
+          node_id: node.id,
           unit: node.kind === "footer" ? "Turn" : "Message",
         }),
     }),

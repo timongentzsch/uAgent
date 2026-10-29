@@ -39,7 +39,7 @@ export default function Statistics({
   useEffect(() => setValue(undefined), [modal.session_id]);
   const snapshot = held || fetched;
   return snapshot ? (
-    <StatisticsContent state={snapshot.state} blockId={modal.block_id} />
+    <StatisticsContent state={snapshot.state} nodeId={modal.node_id} />
   ) : error ? (
     <LoadError error={error} retry={retry} />
   ) : (
@@ -49,28 +49,28 @@ export default function Statistics({
 
 export function StatisticsContent({
   state,
-  blockId,
+  nodeId,
 }: {
   state?: State;
-  blockId?: string;
+  nodeId?: string;
 }) {
   const [scope, setScope] = useState<"turn" | "session">(
-    blockId ? "turn" : "session",
+    nodeId ? "turn" : "session",
   );
-  const target = blockId
-    ? state?.view?.blocks.find((node) => node.id === blockId)
+  const target = nodeId
+    ? state?.view?.nodes.find((node) => node.id === nodeId)
     : undefined;
   // A turn's footer carries its summary; any other node is one message.
-  const unit = !blockId
+  const unit = !nodeId
     ? undefined
     : target && target.kind !== "footer"
       ? "Message"
       : "Turn";
-  const block = scope === "turn" ? target : undefined;
-  const missingTurn = blockId && scope === "turn" && !block;
+  const node = scope === "turn" ? target : undefined;
+  const missingTurn = nodeId && scope === "turn" && !node;
   const stats = state?.statistics;
-  const summary = block?.summary;
-  const reply = block?.role === "assistant" ? block : undefined;
+  const summary = node?.summary;
+  const reply = node?.role === "assistant" ? node : undefined;
   const side = summary?.background_statistics;
   const fork = state?.view?.fork;
   const rows: Row[] = summary
@@ -86,11 +86,11 @@ export function StatisticsContent({
         ["TTFT", duration(summary.ttt_ms)],
         ["Throughput", rate(summary.tokens_per_second)],
       ]
-    : block
+    : node
       ? [
           [
             "Timestamp",
-            block.time ? <Time value={block.time} /> : "Not recorded",
+            node.time ? <Time value={node.time} /> : "Not recorded",
           ],
           [
             "Model",
@@ -98,8 +98,8 @@ export function StatisticsContent({
               .filter(Boolean)
               .join(" · "),
           ],
-          ["Status", block.state || "—"],
-          ["Duration", duration(block.duration_ms)],
+          ["Status", node.state || "—"],
+          ["Duration", duration(node.duration_ms)],
           ["TTFT", duration(reply?.ttft_ms)],
           ["Throughput", rate(reply?.tokens_per_second)],
         ]
@@ -165,7 +165,7 @@ export function StatisticsContent({
         </p>
       ) : (
         <>
-          {!block && fork && (
+          {!node && fork && (
             <p>Forked from “{fork.title}”. Totals count work in this fork.</p>
           )}
           <Rows rows={rows} />
@@ -175,7 +175,7 @@ export function StatisticsContent({
                 ? summary.usage_reported === false
                   ? undefined
                   : summary.usage
-                : block
+                : node
                   ? reply?.usage_reported
                     ? reply.usage
                     : undefined
@@ -183,7 +183,7 @@ export function StatisticsContent({
             }
           />
           <p class="muted small">
-            {!block && !stats?.complete
+            {!node && !stats?.complete
               ? "Older activity was not fully recorded. "
               : ""}
             Throughput uses total generation tokens divided by measured request

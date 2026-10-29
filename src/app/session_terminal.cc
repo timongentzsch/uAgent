@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <iostream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -14,6 +15,7 @@
 
 #include "include/app/launch.h"
 #include "include/app/session.h"
+#include "include/app/setup.h"
 #include "include/cli/cli.h"
 #include "include/core/detail.h"
 #include "include/core/effective_config.h"
@@ -324,6 +326,15 @@ void Welcome() {
 }  // namespace
 
 int TerminalMain(Options options) {
+  // A first start with nowhere to send a turn sets one up instead of failing.
+  if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO) && !ProviderConfigured()) {
+    printf("No API key is set up yet. Set one up now? [Y/n] ");
+    fflush(stdout);
+    std::string answer;
+    std::getline(std::cin, answer);
+    answer = Trim(answer);
+    if (answer.empty() || answer == "y" || answer == "Y") RunSetup();
+  }
   Welcome();
   std::string path;
   if (options.resume_pick) {

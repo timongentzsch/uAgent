@@ -258,6 +258,7 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
+  src/app/setup.cc
   src/app/transient_batcher.cc
   src/app/session_terminal.cc
   src/app/session_terminal_commands.cc
@@ -405,6 +406,7 @@ if(BUILD_TESTING)
     tests/unit/session_command_test.cc
     tests/unit/session_server_test.cc
     tests/unit/settings_store_test.cc
+    tests/unit/setup_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc
     tests/unit/test_main.cc

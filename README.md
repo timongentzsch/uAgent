@@ -67,18 +67,39 @@ every metric.
 
 ## Install
 
-Linux and macOS. From a checkout, `./install.sh` asks where µAgent should run:
+Linux and macOS, in one line:
 
-- **In a container** (recommended where Docker runs): the web interface, the
-  agent's browser and the terminal, isolated from this machine's files and
-  logins.
-- **Here:** a Release build installed under `~/.local` with its skills; put
-  `~/.local/bin` on your `PATH`. On Linux it can include the agent's browser;
-  on macOS that runs only in the container.
+```sh
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
+```
 
-Tagged releases ship archives for Linux x86_64 and arm64 and macOS arm64
-(`bin/uagent`; keep `bin` and `share` together) with Sigstore-signed
-checksums.
+It asks where µAgent should run, then for your OpenRouter, OpenAI and
+Anthropic keys (any of them) and a default model:
+
+- **In a container** (recommended where Docker runs): the published image
+  with the web interface, the agent's browser and the terminal, isolated from
+  this machine's files and logins. It sees only the folder you give it
+  (`~/uagent-workspaces`), keeps its keys on its own volume and starts with
+  Docker.
+- **Here:** the release for Linux x86_64 or arm64 or macOS arm64, checked
+  against its checksum and installed under `~/.local` with its skills; it
+  offers to put `~/.local/bin` on your `PATH` and to keep the web interface
+  running as a service that starts when you log in (systemd or launchd). On
+  Linux it can include the agent's browser; on macOS that runs only in the
+  container. Other machines build from source.
+
+Run the same line again to update. `UAGENT_INSTALL=container|here` chooses
+without asking, `UAGENT_VERSION=1.6.0` installs that release,
+`UAGENT_PREFIX` installs elsewhere than `~/.local`, and without a terminal (or
+with `UAGENT_NONINTERACTIVE=1`) it asks nothing. To remove the service:
+`systemctl --user disable --now uagent-web` (Linux) or `launchctl bootout
+gui/$(id -u)/com.github.timongentzsch.uagent.web` (macOS), then delete its
+unit or plist.
+
+From a checkout, `./install.sh` does the same with that checkout: it builds
+the image or the binary itself. Releases ship archives (`bin/uagent`; keep
+`bin` and `share` together) with Sigstore-signed checksums, and the image as
+`ghcr.io/timongentzsch/uagent`.
 
 Building needs CMake 3.21+, a C++20 compiler, libcurl 7.66+ and zlib, plus
 Node.js for the web interface. `-DUAGENT_WEB=OFF` builds a terminal-only
@@ -88,10 +109,13 @@ binary, `-DUAGENT_BROWSER=OFF` leaves out the agent's browser and
 ## Quick start
 
 ```sh
-export OPENROUTER_API_KEY=replace-me   # or UAGENT_BASE_URL + UAGENT_MODEL
+uagent setup    # API keys and a default model; the installer runs it once
 cd my-project
-uagent                                 # Enter sends, Esc stops, / lists commands
+uagent          # Enter sends, Esc stops, / lists commands
 ```
+
+A start with no key asks to run setup. `OPENROUTER_API_KEY`, or
+`UAGENT_BASE_URL` and `UAGENT_MODEL`, work without saving anything.
 
 - **Approvals:** answer `y` (once), `s` (this conversation), `a` (always in
   this repository) or `n`.

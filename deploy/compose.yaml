@@ -1,5 +1,7 @@
 services:
   uagent:
+    # A release publishes this image; a checkout builds it (up --build).
+    image: ghcr.io/timongentzsch/uagent:${UAGENT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

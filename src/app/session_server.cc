@@ -187,6 +187,17 @@ Connection Open(const std::string& executable, const std::string& cwd,
     if (connected.socket) return connected;
     unlink(launch.c_str());
     const int exit = ended->load();
+    if (exit == kWorkerBootFailed) {
+      std::string reason;
+      const std::string reason_path = WorkerErrorPath(launch);
+      if (ReadRegularFile(reason_path, kCommandBytes, reason, error)) {
+        error = reason;
+      } else {
+        error = "session runtime could not start";
+      }
+      unlink(reason_path.c_str());
+      return {};
+    }
     if (exit < 0) {
       // Alive and silent for the whole wait: nothing is left half-started.
       kill(pid, SIGKILL);

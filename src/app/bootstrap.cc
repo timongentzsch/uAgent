@@ -408,7 +408,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (api.base_url.empty() && !context->options.show_system_prompt) {
     DebugLog("startup_error", {{"error", "UAGENT_BASE_URL is not set"}});
     return Failure(
-        "no provider configured — set OPENROUTER_API_KEY or point "
+        "no provider configured — run uagent setup to save an OpenRouter, "
+        "OpenAI or Anthropic key, set OPENROUTER_API_KEY, or point "
         "UAGENT_BASE_URL at a supported API endpoint, e.g.\n"
         "  export UAGENT_BASE_URL=http://localhost:8080/v1");
   }

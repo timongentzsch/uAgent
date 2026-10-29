@@ -66,6 +66,8 @@ namespace uagent {
   X(TestChatCompletionAnnotationDeduplication)    \
   X(TestChatCompletionServedBy)                   \
   X(TestSettingsStore)                            \
+  X(TestSetupSavesKeys)                           \
+  X(TestSetupSuggestsModel)                       \
   X(TestConfigProposalAndCommit)                  \
   X(TestProjectSettingsAreSavedByFolder)          \
   X(TestConfigurationResetKeepsSecrets)           \

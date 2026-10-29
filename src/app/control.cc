@@ -27,6 +27,12 @@ json ManagementControl(const json& request) {
     auto provider = ConfigureProvider(api);
     return ModelCatalogue(api, provider.routes, provider.providers);
   }
+  if (kind == "provider") {
+    // Whether a start would find an endpoint, without starting one.
+    Api api(RuntimeConfig::FromEnvironment());
+    ConfigureProvider(api);
+    return {{"configured", !api.base_url.empty()}};
+  }
   if (kind == "schedule") return ScheduleControl(request);
   if (kind == "permission_rules") return PermissionRulesControl(request);
   if (kind == "instructions") {

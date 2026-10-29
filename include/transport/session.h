@@ -43,7 +43,14 @@ enum WorkerExit : int {
   kWorkerNoWorkspace = 66,
   // It holds the session and cannot open its socket; waiting changes nothing.
   kWorkerCannotListen = 67,
+  // It could not start (no provider, unreadable settings): it left why in
+  // WorkerErrorPath(launch) for the one who started it.
+  kWorkerBootFailed = 68,
 };
+// Where a runtime that cannot start leaves its reason, beside its launch file.
+inline std::string WorkerErrorPath(const std::string& launch) {
+  return launch + ".error";
+}
 // A session's socket, by its id (the hash of its file's path), in `dir`.
 inline std::string SocketPathForId(const std::string& id,
                                    const std::string& dir = RuntimeDir()) {

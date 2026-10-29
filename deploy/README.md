@@ -9,6 +9,14 @@ docker compose -f deploy/compose.yaml logs uagent
 deploy/footprint.sh                # image size, memory and processes of the running stack
 ```
 
+A release publishes the image as `ghcr.io/timongentzsch/uagent:<version>`
+(and `latest`, for amd64 and arm64) and attaches this `compose.yaml` and
+`seccomp-chrome.json`. The one-line installer runs those from
+`~/.local/share/uagent/container/deploy`, with a `.env` naming the version and
+the workspaces folder, and `docker compose up -d --no-build --pull always`;
+API keys go in with `docker compose exec uagent uagent setup` and stay on the
+data volume.
+
 Setup, the Compose variables and the isolation model are in
 [Browser](../docs/BROWSER.md); [Web](../docs/WEB.md) covers pairing and origins.
 

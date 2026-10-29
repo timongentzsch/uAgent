@@ -361,8 +361,8 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
     // blocks before it are held to the end. A reference counts as its label.
     window.__answerLength = (settled = false) => {
       const blocks = [
-        ...(document.querySelector(".message.response > .markdown")
-          ?.children || []),
+        ...(document.querySelector(".message.response > .markdown")?.children ||
+          []),
       ];
       return (settled ? blocks.slice(0, -1) : blocks)
         .map((block) => block.textContent || "")

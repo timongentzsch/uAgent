@@ -140,6 +140,7 @@ namespace uagent {
   X(TestVectorAndHeicAttachments)                 \
   X(TestAudioVideoAttachments)                    \
   X(TestCloseRuntimeWaitsForTheRuntime)           \
+  X(TestACommandSentBeforeClosingIsTaken)         \
   X(TestWorkerBinaryIdentity)                     \
   X(TestGrepTool)                                 \
   X(TestPythonTool)                               \

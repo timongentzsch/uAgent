@@ -195,8 +195,14 @@ void Wait(Batch& batch, const ToolContext& context) {
     if (AbortRequested()) {
       for (Child& row : rows) {
         if (row.state != "working" || row.path.empty()) continue;
-        SendToRunning(row.path, {{"kind", "interrupt"}});
-        row.state = "stopped";
+        // One whose runtime refused or did not take the interrupt still
+        // works, and says why.
+        const auto error = SendToRunning(row.path, {{"kind", "interrupt"}});
+        if (error && !error->empty()) {
+          row.answer = "it could not be stopped: " + *error;
+        } else {
+          row.state = "stopped";
+        }
       }
       return;
     }

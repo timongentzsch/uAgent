@@ -98,7 +98,6 @@ ToolResult Spawn(const std::string& folder, const json& a,
                  {"parent_session", PanelPath(folder)},
                  {"lifetime", kSessionKindThread},
                  {"folder", folder},
-                 {"day", Today()},
                  {"ceiling", {{"budget_usd", budget}}}};
   thread["brief"] = {{"objective", objective},
                      {"output", JsonValue(a, "output", "")},

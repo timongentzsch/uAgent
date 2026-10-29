@@ -330,6 +330,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   }
   ToolContext context{deadline};
   context.turn_id = turn_id_;
+  context.hops = turn_hops_;
   context.enabled_tools = EnabledTools();
   context.delegations =
       std::max<int64_t>(1, std::ranges::count_if(runnable, [&](size_t index) {

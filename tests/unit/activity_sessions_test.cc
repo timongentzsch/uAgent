@@ -1564,12 +1564,10 @@ void TestSessionMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("session-mail");
   const fs::path dir = workspace.workspace;
-  const std::string folder = dir.string();
   // A saved session: a header naming its folder and, for a delegate, its role.
-  auto save = [&](const fs::path& file, const json& delegation = nullptr,
-                  const std::string& cwd = "") {
+  auto save = [&](const fs::path& file, const json& delegation = nullptr) {
     json header = {{"format", kSessionFormat},
-                   {"cwd", cwd.empty() ? folder : cwd},
+                   {"cwd", CanonicalCwd()},
                    {"model", ""},
                    {"session_id", ""},
                    {"turns", 0},
@@ -1582,113 +1580,85 @@ void TestSessionMail() {
   const json role = {{"parent_session", parent}, {"parent", "owner"}};
   const std::string child = save(dir / "child.json", role);
   const std::string sibling = save(dir / "sibling.json", role);
-  const std::string stranger = save(dir / "stranger.json", {{"name", "x"}});
+  const std::string grandchild =
+      save(dir / "grandchild.json", {{"parent_session", child}});
+  const std::string stranger = save(dir / "stranger.json");
 
-  // Parent, child and sibling, and nobody else.
-  CHECK(MayMail(SessionParty(parent), SessionParty(child)));
-  CHECK(MayMail(SessionParty(child), SessionParty(parent)));
-  CHECK(MayMail(SessionParty(child), SessionParty(sibling)));
-  CHECK(!MayMail(SessionParty(stranger), SessionParty(child)));
-  CHECK(!MayMail(SessionParty(child), SessionParty(stranger)));
+  // Parent, child and sibling, and nobody else: not a grandparent, nor
+  // another session of the folder, whatever the approval mode.
+  const ApprovalMode before = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kYolo);
+  const struct {
+    std::string from, to;
+    bool may;
+  } rules[] = {
+      {parent, child, true},       {child, parent, true},
+      {child, sibling, true},      {grandchild, child, true},
+      {parent, grandchild, false}, {grandchild, sibling, false},
+      {parent, stranger, false},   {stranger, child, false},
+  };
+  for (const auto& rule : rules) {
+    CHECK(MayMail(SessionParty(rule.from), SessionParty(rule.to)) == rule.may);
+  }
+  SetApprovalMode(before);
   // A parent with no session file is known by its owner id.
   CHECK(MayMail(OwnerParty("owner"), SessionParty(child)));
   CHECK(!MayMail(OwnerParty("someone"), SessionParty(child)));
 
-  // A panel and its threads are linked by one history folder, saved or not.
-  const fs::path society = dir / "society";
-  const fs::path elsewhere = dir / "elsewhere";
-  fs::create_directories(society);
-  fs::create_directories(elsewhere);
-  const MailParty panel{.id = "p", .path = (society / "panel.json").string()};
-  const MailParty thread_a{.id = "a",
-                           .path = (society / "thread-a.json").string()};
-  const MailParty thread_b{.id = "b",
-                           .path = (society / "thread-b.json").string()};
-  const MailParty other{.id = "o",
-                        .path = (elsewhere / "thread-a.json").string()};
-  CHECK(MayMail(panel, thread_a) && MayMail(thread_a, panel));
-  CHECK(MayMail(thread_a, thread_b));
-  CHECK(!MayMail(thread_a, other));
-
-  // Yolo peers: undelegated sessions of one folder, while this process is in
-  // yolo at depth 0.
-  const std::string peer_a = save(dir / "peer-a.json");
-  const std::string peer_b = save(dir / "peer-b.json");
-  const std::string peer_far =
-      save(dir / "peer-far.json", nullptr, "/elsewhere");
-  const ApprovalMode before = CurrentApprovalMode();
-  SetApprovalMode(ApprovalMode::kAsk);
-  CHECK(!MayMail(SessionParty(peer_a), SessionParty(peer_b)));
-  SetApprovalMode(ApprovalMode::kYolo);
-  CHECK(MayMail(SessionParty(peer_a), SessionParty(peer_b)));
-  CHECK(!MayMail(SessionParty(peer_a), SessionParty(peer_far)));
-  CHECK(!MayMail(SessionParty(peer_a), SessionParty(stranger)));
-  CHECK(!MayMail(SessionParty(peer_a), SessionParty(child)));
-  {
-    ScopedEnv delegated("UAGENT_INTERNAL_DEPTH", "1");
-    CHECK(!MayMail(SessionParty(peer_a), SessionParty(peer_b)));
-  }
-
-  // Sending: the same rule, and the label says who wrote.
-  ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", peer_a);
-  auto send = [&](const std::string& to, MailKind kind) {
-    return SendSessionMail(
-        {.from_path = peer_a, .to_path = to, .text = "hello", .kind = kind});
+  // Sending: the same rule, and the label says who wrote, from how the
+  // sender stands to the recipient. A runtime's report names itself.
+  auto received = [](const SessionMail& mail) {
+    CHECK(SendSessionMail(mail).empty());
+    const std::vector<Mail> taken =
+        TakeMail(MailboxIdFor(mail.to_path), [](const Mail&) { return true; });
+    return taken.size() == 1 && taken[0].sender_path == mail.from_path
+               ? JsonValue(taken[0].body, "text", "")
+               : std::string();
   };
-  CHECK(send(peer_b, MailKind::kPeer).empty());
-  CHECK(!send(stranger, MailKind::kPeer).empty());
-  SetApprovalMode(ApprovalMode::kAsk);
-  CHECK(!send(peer_b, MailKind::kPeer).empty());
-  SetApprovalMode(ApprovalMode::kYolo);
-  std::vector<Mail> taken =
-      TakeMail(MailboxIdFor(peer_b), [](const Mail&) { return true; });
-  CHECK(taken.size() == 1);
-  CHECK(JsonValue(taken[0].body, "text", "") ==
-        "[session T (" + HashHex(peer_a) + ")]\nhello");
-  CHECK(taken[0].sender_path == peer_a);
-  CHECK(SendSessionMail({.from_path = parent,
-                         .to_path = child,
-                         .text = "go on",
-                         .kind = MailKind::kGuidance})
-            .empty());
-  taken = TakeMail(MailboxIdFor(child), [](const Mail&) { return true; });
-  CHECK(taken.size() == 1);
-  CHECK(JsonValue(taken[0].body, "text", "") == "[parent guidance]\ngo on");
+  CHECK(received({.from_path = parent, .to_path = child, .text = "go on"}) ==
+        "[parent guidance]\ngo on");
+  CHECK(received({.from_path = sibling, .to_path = child, .text = "hello"}) ==
+        "[session T (" + HashHex(sibling) + ")]\nhello");
+  CHECK(received({.from_path = child,
+                  .to_path = parent,
+                  .text = "[event] done",
+                  .report = true}) == "[event] done");
+  CHECK(!SendSessionMail({.from_path = stranger, .to_path = child}).empty());
 
-  // The session tool reaches a peer only while a runtime serves it. Both
-  // sessions are this workspace's, so the catalogue lists them.
+  // The session tool reaches the sessions the rule allows, by the id lists
+  // show. A thread is in the catalogue the tool reads.
   const fs::path history = UagentDir(kHistoryDir);
   fs::create_directories(history);
-  const std::string tool_a =
-      save(history / "tool-a.json", nullptr, CanonicalCwd());
-  const std::string tool_b =
-      save(history / "tool-b.json", nullptr, CanonicalCwd());
-  ScopedEnv tool_self("UAGENT_INTERNAL_SESSION_PATH", tool_a);
-  CHECK(LinkedSessionPath(HashHex(tool_b)).empty());
-  CreatePrivateDirectories(RuntimeDir());
-  std::ofstream(session::SocketPathForId(SessionIdFor(tool_b))) << "";
-  CHECK(LinkedSessionPath(HashHex(tool_b)) == tool_b);
-  CHECK(MessageSession(HashHex(tool_b), "hello b").Ok());
-  CHECK(MessageSession("zzz", "hello z").error ==
+  const std::string tool_parent = save(history / "tool-parent.json");
+  const std::string tool_child =
+      save(history / "tool-child.json",
+           {{"parent_session", tool_parent}, {"lifetime", "thread"}});
+  const std::string tool_other = save(history / "tool-other.json");
+  ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", tool_parent);
+  CHECK(LinkedSessionPath(HashHex(tool_child)) == tool_child);
+  CHECK(LinkedSessionPath(HashHex(tool_other)).empty());
+  CHECK(MessageSession(HashHex(tool_child), "hello").Ok());
+  CHECK(MessageSession(HashHex(tool_other), "hello").error ==
         ToolErrorCode::kPermissionDenied);
-  CHECK(!MessageSession(HashHex(tool_b), "loop", kMailMaxHops).Ok());
-  SetApprovalMode(ApprovalMode::kAsk);
-  CHECK(LinkedSessionPath(HashHex(tool_b)).empty());
-  SetApprovalMode(ApprovalMode::kYolo);
-  // Listing takes nothing and shows the linked peer; a message needs a
+  // Hops come from the mail that started the turn, not from the model.
+  ToolContext looping;
+  looping.hops = kMailMaxHops;
+  CHECK(!SessionMessageTool()
+             .run({{"session_id", HashHex(tool_child)}, {"prompt", "loop"}},
+                  looping)
+             .Ok());
+  // Listing takes nothing and marks the linked session; a message needs a
   // prompt.
   CHECK(!FindToolArgumentIssue(SessionTool(), json::object()));
   CHECK(FindToolArgumentIssue(SessionMessageTool(),
-                              {{"session_id", HashHex(tool_b)}})
+                              {{"session_id", HashHex(tool_child)}})
             .has_value());
-  bool saw_peer = false;
+  json linked = json::object();
   for (const json& row : SessionSummaries()) {
-    if (JsonValue(row, "id", "") == HashHex(tool_b)) {
-      saw_peer = JsonValue(row, "linked", false);
-    }
+    linked[JsonValue(row, "id", "")] = JsonValue(row, "linked", false);
   }
-  CHECK(saw_peer);
-  SetApprovalMode(before);
+  CHECK(JsonValue(linked, HashHex(tool_child).c_str(), false));
+  CHECK(!JsonValue(linked, HashHex(tool_other).c_str(), true));
 }
 
 }  // namespace uagent

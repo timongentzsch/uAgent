@@ -342,7 +342,7 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
             return event({"content": "noted-event"})
         if "Objective: count the files" in text:
             reported.setdefault("finished", time.monotonic())
-            return event({"content": "thread-report: 3 files"})
+            return event({"content": "thread-report: 3 files"}, usage={"cost": 0.25})
         if not tool_results(body["messages"]):
             return tool_call(
                 "thread_spawn",
@@ -370,6 +370,11 @@ def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true(heard.wait(budget(10)), [json.dumps(b)[-300:] for _, b in server.requests])
         latency = reported["heard"] - reported["finished"]
         assert_true(latency < budget(5), f"panel heard back after {latency:.1f}s")
+        # What the thread spent counts in its panel's session too.
+        wait_until(
+            lambda: json.loads(_panel_session(home).read_text().splitlines()[0])["cost"] == 0.25,
+            "the panel did not count its thread's spend",
+        )
         header = json.loads(_thread_session(home).read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["kind"] == "thread", header)
         # One delegation role, as a subagent's, that outlives the panel's turn.
@@ -594,64 +599,22 @@ def society(root, home, binary, *, stopped):
         assert_true('"origin":"mail"' in saved.replace(" ", ""), saved[-600:])
 
 
-def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
-
-    write_session(
-        home,
-        "thread-spent",
-        [{"role": "system", "content": "sys"}],
-        cwd=root,
-        usage={"cost": 1.5, "cost_reported": True},
-        kind="thread",
-        delegation=_thread_role(_panel_path(home, root), root, day=time.strftime("%Y-%m-%d")),
-    )
-    with Server(
-        [
-            tool_call(
-                "thread_spawn",
-                _spawn("More", "more"),
-            ),
-            event({"content": "refused-ok"}),
-        ]
-    ) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"
-        result = run(root, env, "panel", "-p", "more", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        refusal = tool_results(server.requests[-1][1]["messages"])[0]
-        assert_true("spend limit" in refusal, refusal)
-
-
-def test_panel_counts_what_older_threads_spend_today(root, home, *, binary):
-    """A thread spawned yesterday counts today for what it spent since the
-    day began, not for nothing: its spawn day alone would leave it out."""
+def _threads_reported(home, root, cost):
+    """The panel of `root` has run today, and its threads have since reported
+    `cost` to its ledger."""
     panel_path = _panel_path(home, root)
-    yesterday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
-    thread = write_session(
-        home,
-        "thread-yesterday",
-        [{"role": "system", "content": "sys"}],
-        cwd=root,
-        usage={"cost": 1.5, "cost_reported": True},
-        kind="thread",
-        delegation=_thread_role(_panel_path(home, root), root, day=yesterday),
-    )
     panel_path.parent.mkdir(parents=True, exist_ok=True)
-    # The day's baseline: the thread had spent $0.50 when today began.
-    pathlib.Path(f"{panel_path}.pinned").write_text(
-        json.dumps(
-            {
-                "spend": {
-                    "day": time.strftime("%Y-%m-%d"),
-                    "baseline": 0,
-                    "cost": 0,
-                    "threads": {str(thread): 0.5},
-                }
-            }
-        )
-    )
+    today = {"day": time.strftime("%Y-%m-%d"), "baseline": 0, "cost": 0}
+    pathlib.Path(f"{panel_path}.pinned").write_text(json.dumps({"spend": today}))
+    ledger = home / ".uagent" / "activity" / f"usage-{fnv1a64(str(panel_path))}.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(json.dumps({"usage": {"cost": cost, "cost_reported": True}}) + "\n")
+
+
+def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
+    _threads_reported(home, root, 1.5)
     with Server(
-        [tool_call("thread_spawn", _spawn("More", "more")), event({"content": "ok"})]
+        [tool_call("thread_spawn", _spawn("More", "more")), event({"content": "refused-ok"})]
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"
@@ -966,15 +929,7 @@ def test_a_thread_outside_git_runs_in_place_unless_a_worktree_is_asked_for(root,
 def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
 
     path = _panel_path(home, root)
-    write_session(
-        home,
-        "thread-spent",
-        [{"role": "system", "content": "sys"}],
-        cwd=root,
-        usage={"cost": 1.5, "cost_reported": True},
-        kind="thread",
-        delegation=_thread_role(path, root, day=time.strftime("%Y-%m-%d")),
-    )
+    _threads_reported(home, root, 1.5)
     with Server([event({"content": "asked-ok"}), event({"content": "event-ran"})]) as server:
         env = base_env(home, server.url)
         env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"

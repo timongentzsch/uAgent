@@ -35,9 +35,11 @@ std::string ChildAgentFailureReport(std::string_view route,
                                     ChildAgentFailureStage stage,
                                     std::string_view diagnostics = {});
 
-// Route, depth and usage ledger. Overrides are applied in order with the last
-// occurrence winning, so callers append their own policy after this.
-EnvironmentOverrides ChildAgentEnvironment(Route route);
+// Route, depth and the usage ledger of `session`, the parent's id. Overrides
+// are applied in order with the last occurrence winning, so callers append
+// their own policy after this.
+EnvironmentOverrides ChildAgentEnvironment(Route route,
+                                           const std::string& session);
 
 // The child is always headless and self-approving; it has only the tools its
 // toolset grants it. It reports in the headless JSON envelope, so the parent

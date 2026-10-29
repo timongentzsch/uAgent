@@ -188,7 +188,6 @@ void Application::Teardown(const char* reason) {
   agent_.AccountSideUsage();
   SaveSession(true);
   LogSessionEnd(reason);
-  std::remove(UsageLedger().c_str());
   if (!session_file_.empty()) {
     std::string error;
     if (!context_.observability.Journal().Flush(

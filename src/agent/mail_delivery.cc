@@ -58,8 +58,9 @@ bool Agent::DeliverMail(bool hold) {
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    // Mail wakes its recipient: an idle one starts a turn on it.
-    Arrive(text, mail.id);
+    // Mail wakes its recipient: an idle one starts a turn on it, and what
+    // that turn sends is one hop further along.
+    Arrive(text, mail.id, mail.hops + 1);
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"from", mail.from},
                                 {"latency_ms", NowMillis() - mail.created_ms}});

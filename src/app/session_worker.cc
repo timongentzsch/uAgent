@@ -415,7 +415,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   // At today's spend limit a panel keeps its mail pending and says so
-  // in its state. Checked outside the lock: it reads the threads' files.
+  // in its state. Checked outside the lock: it reads the panel's file.
   bool HoldMail() override {
     const std::string pause = panel_ ? PanelPause(CanonicalCwd()) : "";
     std::lock_guard lock(mutex_);

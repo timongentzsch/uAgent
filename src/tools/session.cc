@@ -42,22 +42,17 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   const std::string error = SendSessionMail({.from_path = OwnSessionFile(),
                                              .to_path = peer,
                                              .text = text,
-                                             .kind = MailKind::kPeer,
                                              .hops = hops});
   if (!error.empty()) return ToolFailure(ToolErrorCode::kUnavailable, error);
-  // A yolo peer takes mail only while it is in yolo itself, and only it knows.
-  return ToolSuccess("sent to session " + id +
-                     (SocietySession(peer) ? ""
-                                           : "; it arrives while that session "
-                                             "is in yolo mode"));
+  return ToolSuccess("sent to session " + id);
 }
 
 Tool SessionTool() {
   Tool tool = MakeTool(
       "session",
-      "List the uagent sessions linked with this one (a panel's threads, and "
-      "live yolo sessions in the same folder), then the linkable ones; "
-      "session_message reaches them.",
+      "List the uagent sessions linked with this one (its parent, children "
+      "and siblings), then the folder's others; session_message reaches the "
+      "linked ones.",
       {{"type", "object"}, {"properties", json::object()}},
       [](const json&, const ToolContext&) {
         std::vector<json> peers = SessionSummaries();
@@ -83,19 +78,14 @@ Tool SessionMessageTool(
              {"broadcast",
               {{"type", "boolean"},
                {"description", "fan out to every linked session"}}},
-             {"prompt", {{"type", "string"}, {"minLength", 1}}},
-             {"hops",
-              {{"type", "integer"},
-               {"minimum", 0},
-               {"maximum", 8},
-               {"description", "peer-forward count for loop clamping"}}}}},
+             {"prompt", {{"type", "string"}, {"minLength", 1}}}}},
            {"required", json::array({"prompt"})}};
   Tool tool = MakeTool(
       "session_message",
       "Message a session linked with this one, by session_id, or every "
       "linked one with broadcast: it reads the prompt at its next step, or "
       "starts a turn on it when idle. Unlinked sessions are refused.",
-      parameters, [start](const json& arguments, const ToolContext&) {
+      parameters, [start](const json& arguments, const ToolContext& context) {
         std::vector<std::string> targets;
         std::string single = JsonValue(arguments, "session_id", "");
         if (!single.empty()) targets.push_back(single);
@@ -111,17 +101,18 @@ Tool SessionMessageTool(
                              "name a session_id, or broadcast");
         }
         const std::string prompt = JsonValue(arguments, "prompt", "");
-        const int hops =
-            static_cast<int>(JsonValue(arguments, "hops", int64_t{0}));
         std::string combined;
         for (const std::string& target : targets) {
-          ToolResult one = MessageSession(target, prompt, hops);
+          ToolResult one = MessageSession(target, prompt, context.hops);
           if (!combined.empty()) combined += "\n";
           combined +=
               one.Ok() ? one.output : ("error " + target + ": " + one.output);
           if (!one.Ok()) return ToolFailure(one.error, combined);
+          // A panel or thread found stopped is started; any other session
+          // reads its mail when it is next opened.
           if (const std::string path = LinkedSessionPath(target);
-              start && SocietySession(path)) {
+              start &&
+              !JsonValue(SessionHeader(path), kSessionHeaderKind, "").empty()) {
             start(path);
           }
         }

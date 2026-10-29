@@ -250,8 +250,8 @@ yourself, the rest of that turn's come to you directly.
   such as a workspace, background agents work in the folder itself.
 - **Limits.** Five background agents at once (`panel.maxThreads`) and $20 of
   reported cost a day for a lead agent and its background agents
-  (`panel.dailySpendUsd`), counting what those from earlier days spend
-  today; at the limit, their reports wait. A route that reports no cost
+  (`panel.dailySpendUsd`), a background agent's turn counted once it ends;
+  at the limit, their reports wait. A route that reports no cost
   cannot reach it, and the lead agent says so.
 - **Instructions.** Every lead agent reads `PANEL.md` at start
   ([Instructions](INSTRUCTIONS.md)).

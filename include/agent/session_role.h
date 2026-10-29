@@ -22,8 +22,8 @@ inline bool IsThread(const json& session) {
 
 // The role a delegating session gave this one, from its options or header:
 // {parent, parent_session, ...}. A subagent's lives for its parent's turn;
-// a thread's has lifetime "thread" and adds its folder, day, ceiling, brief
-// and step. Empty for any other session.
+// a thread's has lifetime "thread" and adds its folder, ceiling, brief and
+// step. Empty for any other session.
 inline json DelegationOf(const json& session) {
   return JsonValue(session, "delegation", json::object());
 }

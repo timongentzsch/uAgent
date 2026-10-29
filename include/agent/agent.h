@@ -177,7 +177,8 @@ class Agent {
   // from that summary — frees the context without losing the thread
   bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
 
-  // Fold in what subagent processes spent. They bill against the same key, so
+  // Fold in what this session's children (subagents, memory extraction,
+  // threads) reported to its ledger. They bill against the same key, so
   // without this their cost is missing from the footer and the status bar.
   void DrainSubagentUsage();
 
@@ -205,8 +206,9 @@ class Agent {
   // pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
   // The same, taken as a turn: an idle session starts one on it, a working
-  // one reads it at its next step.
-  void Arrive(const std::string& text, const std::string& mail = "");
+  // one reads it at its next step. A turn it starts sends mail with `hops`.
+  void Arrive(const std::string& text, const std::string& mail = "",
+              int hops = 0);
   // The person's message, or with an `origin` another's (Arrive), written
   // into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id,
@@ -500,6 +502,7 @@ class Agent {
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot
   int64_t turn_id_ = 0;
+  int turn_hops_ = 0;  // what mail sent in this turn carries (Arrive)
   int64_t request_id_ = 0;
   uint64_t revision_ = 0;
   bool cost_warning_shown_ = false;

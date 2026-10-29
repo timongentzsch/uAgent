@@ -182,6 +182,10 @@ struct ToolContext {
   int64_t timeout_s = 0;
   std::string call_id;
   int64_t turn_id = 0;
+  // Mail this call sends is one hop further along than the mail that started
+  // the turn, 0 when the person did: sessions answering each other stop at
+  // kMailMaxHops.
+  int hops = 0;
   // The tools the calling session has enabled, by name: what it may hand on
   // to a child.
   std::vector<std::string> enabled_tools;

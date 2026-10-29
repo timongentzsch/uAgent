@@ -1129,7 +1129,7 @@ def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, 
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"Allow for this conversation: run git status *"),
+                (b"go\n", b"Always allow here: run git status *"),
                 (
                     b"s\n",
                     b"rm -rf /tmp/uagent-nothing",

@@ -57,7 +57,8 @@ enum class ApprovalAnswer { kOnce, kSession, kRepository, kDeny, kGuidance };
 struct ApprovalChoice {
   ApprovalAnswer answer;
   std::string_view value;
-  // Before the rule's words for the two that keep one.
+  // Always names the rule it keeps, and the conversation's the same one; the
+  // short answers fit one row of buttons.
   std::string_view label;
   std::array<std::string_view, 3> aliases;
 };
@@ -66,7 +67,7 @@ constexpr ApprovalChoice kApprovalChoices[] = {
     {ApprovalAnswer::kOnce, "y", "Allow once", {"y", "yes"}},
     {ApprovalAnswer::kSession,
      "s",
-     "Allow for this conversation: ",
+     "Allow for this conversation",
      {"s", "session"}},
     {ApprovalAnswer::kRepository,
      "a",

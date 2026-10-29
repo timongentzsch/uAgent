@@ -51,7 +51,7 @@ test("always allowing an action remembers it in Settings", async ({
     expect(Math.abs(answer.width - answers[0].width)).toBeLessThanOrEqual(1);
   }
   await expect(
-    card.getByRole("checkbox", { name: "Always allow this exact action here" }),
+    card.getByRole("checkbox", { name: /^Always allow here: / }),
   ).toBeHidden();
   await card.getByText("More options").click();
   // Guidance stays folded until asked for.

@@ -105,7 +105,7 @@ struct ResultFacts {
 struct EndedCommand {
   int64_t activity_id = 0;
   int status = 0;  // its wait status
-  std::string output;
+  std::string output = {};
   double duration_ms = 0;
   bool stopped = false;  // a stop ended it, not the command itself
 };
@@ -113,7 +113,7 @@ struct EndedCommand {
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   // What the call returned: the model reads it and a person sees it.
-  std::string output;
+  std::string output = {};
   // Text for the model only, which the tool loop appends to `output`: how
   // to read the result and what to do next. A person never sees it.
   std::string hint;

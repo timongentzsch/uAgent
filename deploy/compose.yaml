@@ -1,3 +1,7 @@
+# One project wherever this file sits: a checkout's deploy/ and the
+# installer's copy run the same µAgent, with the same volume.
+name: uagent
+
 services:
   uagent:
     # A release publishes this image; a checkout builds it (up --build).

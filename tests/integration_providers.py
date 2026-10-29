@@ -76,7 +76,7 @@ def test_streamed_search_citations(root, home, *, binary):
             root,
             base_env(home, server.url),
             "probe\nagain\n/q\n",
-            "--verbosity",
+            "--detail",
             "full",
             binary=binary,
         )

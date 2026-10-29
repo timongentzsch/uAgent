@@ -413,7 +413,7 @@ async function eventHost(snapshot) {
     localRequests: { current: new Set() },
     flush: { current: () => {} },
     setManagementVersion: () => {},
-    setVerbosityLevel: () => {},
+    setDetail: () => {},
     setCatalogue: update("catalogue"),
     patchSession: (id, change) =>
       update("catalogue")((prior) => patchCatalogue(prior, id, change)),

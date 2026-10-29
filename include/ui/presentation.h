@@ -10,8 +10,8 @@
 #include <set>
 #include <string>
 
+#include "include/core/detail.h"
 #include "include/core/events.h"
-#include "include/core/verbosity.h"
 
 namespace uagent {
 
@@ -47,14 +47,14 @@ class TerminalPresenter {
   // `id` is on screen already, e.g. a message this terminal echoed.
   void Drawn(const std::string& id) { drawn_.insert(id); }
   void Finish() noexcept;
-  // What the UAGENT_VERBOSITY level shows; see include/core/verbosity.h.
-  void SetDetail(const DetailPolicy& detail) { detail_ = &detail; }
-  const DetailPolicy& Detail() const { return *detail_; }
+  // What the UAGENT_DETAIL level shows; see include/core/detail.h.
+  void SetDetail(const DetailLevel& detail) { detail_ = &detail; }
+  const DetailLevel& Detail() const { return *detail_; }
 
  private:
   struct State;
   void DrawTree(const json& view, bool live);
-  const DetailPolicy* detail_ = &DetailFor("default");
+  const DetailLevel* detail_ = &DetailFor("default");
   // The settled nodes on screen, by id.
   std::set<std::string, std::less<>> drawn_;
   // A streamed reply left its last line open.

@@ -20,9 +20,9 @@
 
 #include "include/app/session.h"
 #include "include/cli/cli.h"
+#include "include/core/detail.h"
 #include "include/core/json.h"
 #include "include/core/runtime_config.h"
-#include "include/core/verbosity.h"
 #include "include/ui/input_decoder.h"
 #include "include/ui/interactive.h"
 #include "include/ui/live_region.h"
@@ -30,16 +30,16 @@
 
 namespace uagent::session {
 
-// The level this terminal shows: its --verbosity when given, else the
+// The level this terminal shows: its --detail when given, else the
 // configured one.
-const DetailPolicy& ConfiguredDetail(const RuntimeConfig::Values& overrides);
+const DetailLevel& ConfiguredDetail(const RuntimeConfig::Values& overrides);
 
 class Terminal {
  public:
   // `draft` starts the composer, e.g. the message a rewind forked before.
-  // `pinned`: --verbosity set this terminal's level, so it follows no other.
+  // `pinned`: --detail set this terminal's level, so it follows no other.
   // `keys`: what was typed and not yet read, kept from one attach to the next.
-  Terminal(Connection connection, std::string path, const DetailPolicy& detail,
+  Terminal(Connection connection, std::string path, const DetailLevel& detail,
            bool pinned, TerminalInputDecoder& keys, std::string draft = "")
       : connection_(std::move(connection)),
         path_(std::move(path)),
@@ -50,7 +50,7 @@ class Terminal {
         pinned_(pinned) {
     presenter_.SetDetail(detail);
   }
-  const DetailPolicy& Detail() const { return *detail_; }
+  const DetailLevel& Detail() const { return *detail_; }
 
   int Run(const std::vector<std::string>& attachments);
   const std::string& Next() const { return next_; }
@@ -98,7 +98,7 @@ class Terminal {
   std::optional<Command> SessionCommand(const ParsedSlashCommand& slash);
   Command ConversationCommand(const ParsedSlashCommand& slash,
                               std::vector<std::string>& files);
-  Command SetVerbosity(const std::string& argument);
+  Command SetDetail(const std::string& argument);
   // The folder whose panel this session answers to: a thread's
   // folder, else the session's own folder.
   std::string Folder() const;
@@ -110,7 +110,7 @@ class Terminal {
   Command Leave(const std::string& target, const std::string& before);
   // Shows the conversation again at another level: the reader draws the
   // tree it holds anew once the runtime answers a refresh.
-  void Restyle(const DetailPolicy& detail);
+  void Restyle(const DetailLevel& detail);
 
   // Frames to and from the runtime (session_terminal_link.cc).
   // Answers the decision `id`; `extra` adds fields such as "cancelled".
@@ -154,7 +154,7 @@ class Terminal {
   std::atomic<bool> navigate_{false};
   std::atomic<bool> rewinding_{false};
   std::string carry_, side_question_;
-  std::atomic<const DetailPolicy*> detail_;
+  std::atomic<const DetailLevel*> detail_;
   const bool pinned_;
   std::atomic<bool> input_blocked_{true}, interaction_{false};
   std::set<std::string> own_requests_;

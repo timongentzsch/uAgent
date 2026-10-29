@@ -27,7 +27,7 @@ namespace {
 // The pinned row from the worker's state frame: the working row while a turn
 // runs, the session row otherwise -- the same renderers presentation_test pins.
 std::string StatusRow(const json& state, bool running, bool interrupting,
-                      std::string_view verbosity) {
+                      std::string_view detail) {
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
   const int64_t window = JsonValue(state, "context_window", int64_t{0});
   const std::string route = JsonValue(state, "route", "");
@@ -56,7 +56,7 @@ std::string StatusRow(const json& state, bool running, bool interrupting,
        .context_window = window,
        .model = route,
        .approval = JsonValue(permissions, "effective", "ask"),
-       .verbosity = std::string(verbosity),
+       .detail = std::string(detail),
        .background = counts.background + counts.subagents});
 }
 
@@ -176,7 +176,7 @@ void Terminal::Paint() {
   }
   if (!running) interrupting_ = false;
   region_.SetStatus(
-      StatusBarLine(StatusRow(state, running, interrupting_, Detail().level)));
+      StatusBarLine(StatusRow(state, running, interrupting_, Detail().name)));
   const RawComposer::Layout draft = composer_.View();
   region_.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
   region_.Flush();

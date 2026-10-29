@@ -368,12 +368,6 @@ button,
   cursor: pointer;
   line-height: var(--leading-snug);
 }
-/* A secondary action inside a row or toolbar: shorter and quieter. */
-.compact-button {
-  min-height: var(--control-s);
-  padding-inline: var(--space-3);
-  font-size: var(--font-small);
-}
 button:disabled,
 select:disabled {
   opacity: 0.45;

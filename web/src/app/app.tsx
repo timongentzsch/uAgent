@@ -174,7 +174,7 @@ function App() {
   // conversation: its own level once chosen, else the host's. Choosing one
   // forgets the rows opened or closed here, so each starts at the new depth.
   const [chosen, setChosen] = useStored(devicePrefs.detail);
-  const detail = chosen || catalogue.verbosity?.level || "default";
+  const detail = chosen || catalogue.detail || "default";
   const levels = detailLevels as readonly string[];
   const changeDetail = useCallback(
     (level: string) => {

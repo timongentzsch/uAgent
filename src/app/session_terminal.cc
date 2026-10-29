@@ -16,6 +16,7 @@
 #include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/cli/cli.h"
+#include "include/core/detail.h"
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/runtime_config.h"
@@ -24,7 +25,6 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/core/verbosity.h"
 #include "include/ui/ask_picker.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
@@ -37,9 +37,9 @@ namespace {
 constexpr auto kPaintInterval = std::chrono::milliseconds(16);
 }  // namespace
 
-const DetailPolicy& ConfiguredDetail(const RuntimeConfig::Values& overrides) {
+const DetailLevel& ConfiguredDetail(const RuntimeConfig::Values& overrides) {
   return DetailFor(ConfigManager::Capture(overrides).Read().Get(
-      std::string(kVerbositySetting)));
+      std::string(kDetailSetting)));
 }
 
 int Terminal::Run(const std::vector<std::string>& attachments) {
@@ -338,9 +338,8 @@ int TerminalMain(Options options) {
     if (!sessions.empty()) path = sessions.front().path;
   }
   std::string draft, side_question, folder = CanonicalCwd();
-  const bool pinned =
-      options.overrides.contains(std::string(kVerbositySetting));
-  const DetailPolicy* detail = &ConfiguredDetail(options.overrides);
+  const bool pinned = options.overrides.contains(std::string(kDetailSetting));
+  const DetailLevel* detail = &ConfiguredDetail(options.overrides);
   TerminalInputDecoder keys;
   for (;;) {
     // A saved session reopens in its own folder; so does a panel

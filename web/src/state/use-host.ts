@@ -191,12 +191,10 @@ export function useHost(
   const patchSession = (id: string, change: (item: Session) => Session) =>
     setCatalogue((prior) => patchCatalogue(prior, id, change));
   // The level a device starts at, as the host last stated it.
-  const setVerbosityLevel = useCallback(
+  const setDetail = useCallback(
     (level: string) =>
       setCatalogue((prior) =>
-        prior.verbosity && prior.verbosity.level !== level
-          ? { ...prior, verbosity: { ...prior.verbosity, level } }
-          : prior,
+        prior.detail === level ? prior : { ...prior, detail: level },
       ),
     [],
   );
@@ -392,7 +390,7 @@ export function useHost(
       localRequests,
       flush,
       setManagementVersion,
-      setVerbosityLevel,
+      setDetail,
       setCatalogue,
       patchSession,
       upsertSession,

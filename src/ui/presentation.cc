@@ -191,7 +191,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       break;
     case EventId::kToolResult:
       if (spinner_) spinner_->Stop();
-      break;  // The grouped result presentation follows result bookkeeping.
+      break;
     case EventId::kResponseSources:
       Finish();
       if (JsonValue(event.data, "citations", false)) {

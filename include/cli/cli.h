@@ -47,7 +47,7 @@ enum class SlashCommandId {
   kMcp,
   kRename,
   kRestart,
-  kVerbosity,
+  kDetail,
   kBtw,
   kYolo,
   kPanel,

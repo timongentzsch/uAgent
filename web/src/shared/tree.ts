@@ -13,7 +13,6 @@ export interface Branch {
 // minimal shows each turn's work as one line, default opens it one level,
 // full opens everything.
 export const detailLevels = ["minimal", "default", "full"] as const;
-export type DetailLevel = (typeof detailLevels)[number];
 export const depthOf = (level: string) =>
   level === "minimal" ? 0 : level === "full" ? Infinity : 1;
 

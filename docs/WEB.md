@@ -273,7 +273,7 @@ before Submit.
   typed. `/restart` does the same as the menu; `/quit` closes nothing here;
   `/panel` opens the lead agent. A terminal command the page has no equivalent
   for (`/clear`, `/board`, `/open`) says so instead of running.
-- Typed without an argument, `/config`, `/verbosity`, `/permissions`,
+- Typed without an argument, `/config`, `/detail`, `/permissions`,
   `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`, `/schedule`, `/context`
   and `/sessions` open their screen. With an argument they run on the host,
   as in the terminal.
@@ -284,15 +284,20 @@ before Submit.
   It opens the changed files, each with **Undo**, and **Undo all**; a file
   changed since is kept and says why. Changes made by shell commands are not
   tracked.
-- Tool calls that read as one step fold into one row ("Explored · 4 calls")
-  that expands to the calls. **Detail** in the conversation menu sets how
-  much work is shown, for every conversation and the terminal;
-  [Tools](TOOLS.md#presentation) lists the levels.
-- Message menus expose retained tool input and output and HTTP request and
-  response captures. Credential headers are redacted; bodies can contain
-  sensitive folder content.
-- Background completions, memory updates and compaction appear as expandable
-  event rows. Subagent views work like the main conversation. Ordinary
+- A turn's work is one tree drawn from the host's nodes
+  ([Tools](TOOLS.md#presentation)): a "Worked" row holding the steps, calls
+  that read as one step folded into one row ("Explored 4 calls"). Each row is
+  one line with its result on the right and opens to its body; Enter or Space
+  toggles it and ←/→ close or open it. **Detail** in the conversation menu
+  sets how deep the tree starts open on this device; a turn of more than 30
+  steps shows the latest ones under "… N earlier steps".
+- An opened call offers **Input and output** and, for cut output, **Full
+  output**. Each message has one time and one ⋯ menu: on your message's
+  first line, and at the end of an answer's footer, with statistics and HTTP
+  request and response captures. Credential headers are redacted; bodies can
+  contain sensitive folder content.
+- Background completions, memory updates and compaction appear as notice
+  rows. Subagent views work like the main conversation. Ordinary
   subagent follow-ups can select another model; persistent agents keep their
   runtime model. Process children show statistics from their latest saved
   checkpoint, labelled as such.

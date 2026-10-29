@@ -73,8 +73,8 @@ struct StatusView {
   std::string model{};
   // The effective approval mode, as ApprovalModeName spells it.
   std::string approval = "ask";
-  // The verbosity level, named in the row when it is not the default.
-  std::string verbosity = "default";
+  // The detail level, named in the row when it is not the default.
+  std::string detail = "default";
   size_t background = 0;
 };
 
@@ -108,7 +108,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
     add(4, TokenSummary(usage));
   }
   add(5, CacheSummary(usage));
-  if (view.verbosity != "default") add(6, view.verbosity);
+  if (view.detail != "default") add(6, view.detail);
   add(7, "/help for shortcuts");
 
   auto join = [&segments] {

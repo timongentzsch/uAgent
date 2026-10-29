@@ -203,19 +203,30 @@ self-contained `.html` or `.svg` file the agent wrote, without a server.
 
 ## Presentation
 
-Adjacent successful calls of one kind fold into one row: Explored,
-Researched, Verified or Edited. A failure or an approval prompt keeps its
-own row.
+The host turns each conversation into one tree of nodes
+([`node.h`](../include/agent/node.h)): a turn holds your message, a work
+node, the answer and its footer; the work node holds the interim replies,
+thinking, groups and calls. Every row has the same shape: a headline (verb
+and target, e.g. "Ran npm test"), a result word from the call's facts
+(exit code, lines added and removed, a count, or why it stopped), a state
+(running, ok, failed, cancelled) and a body to open. Nothing in it names a
+tool, provider or model; an MCP or unknown tool reads "Called NAME".
 
-How much of this is shown is one display setting, `UAGENT_VERBOSITY`, read
-by the terminal and the web alike and never by the model:
+Adjacent successful calls of one kind fold into one group (Explored,
+Researched, Verified or Edited). A failure or an approval prompt keeps its
+own row. The work line counts what it holds: "Worked 6 steps · edited 1
+file · 1 error".
 
-| Level | Tool work | Arguments and output | Thinking | Routine notices |
-| --- | --- | --- | --- | --- |
-| `minimal` | one "Worked · N steps" row per turn | inside that row | hidden | hidden |
-| `default` | the groups above, other calls a row each | on request | closed (web), hidden (terminal) | hidden |
-| `full` | every call its own row | shown | shown | shown |
+The terminal and the web draw the same tree. The detail level,
+`UAGENT_DETAIL`, only sets how deep it starts open, and the model never
+reads it:
 
-`/verbosity LEVEL` changes it for every terminal, across all conversations,
-and a browser starts at it; Detail in a web conversation's menu sets that
-browser's own level. `--verbosity LEVEL` pins one terminal for one run.
+| Level | Depth | Shows |
+| --- | --- | --- |
+| `minimal` | 0 | each turn's work as one line (the current step while it runs) |
+| `default` | 1 | the work's steps, each one closed line |
+| `full` | all | every row open, routine notices included |
+
+`/detail LEVEL` changes it for every terminal, and a browser starts at it;
+Detail in a web conversation's menu sets that browser's own level.
+`--detail LEVEL` pins one terminal for one run.

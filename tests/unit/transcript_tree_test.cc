@@ -8,7 +8,7 @@
 #include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/transcript.h"
-#include "include/core/verbosity.h"
+#include "include/core/detail.h"
 #include "include/tools/tool.h"
 #include "include/ui/presentation.h"
 #include "tests/unit/terminal_test_support.h"

@@ -170,7 +170,6 @@ export interface MemoryNote {
   action: string;
   key: string;
   automatic: boolean;
-  minor?: boolean;
 }
 // One node of the transcript tree as the host sends it (include/agent/
 // node.h): `parent` links it into the tree. A node with a headline is a row
@@ -503,10 +502,6 @@ export interface SlashCommand {
   // Navigation a client performs itself; a runtime refuses it.
   client_only?: boolean;
 }
-// The detail level a device starts at until it chooses its own.
-export interface Verbosity {
-  level: string;
-}
 // A workspace: a folder the host keeps for conversations that belong to no
 // folder, under the name its user gave it.
 export interface Space {
@@ -517,7 +512,8 @@ export interface Space {
 export interface Catalogue {
   spaces?: Space[];
   commands?: SlashCommand[];
-  verbosity?: Verbosity;
+  // The detail level a device starts at until it chooses its own.
+  detail?: string;
   scheduled?: ScheduledState;
   // Whether paired devices may open terminals (web.terminal).
   terminal?: boolean;

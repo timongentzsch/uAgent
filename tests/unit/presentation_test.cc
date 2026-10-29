@@ -565,7 +565,7 @@ void TestStatusBarDropsByPriority() {
   view.model = "anthropic/claude-sonnet-4-5";
   view.context_used = 12000;
   view.context_window = 1300000;
-  view.verbosity = "full";
+  view.detail = "full";
   view.background = 1;
 
   // Wide enough for everything: the full row is the baseline the narrower

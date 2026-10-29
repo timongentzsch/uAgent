@@ -212,7 +212,7 @@ that nodes cannot express. The runtime also publishes its execution phase and
 pending decision; connection health stays with the client.
 
 How much of the view a client shows is one display setting,
-`UAGENT_VERBOSITY` (`include/core/verbosity.h`), which a browser starts at
+`UAGENT_DETAIL` (`include/core/detail.h`), which a browser starts at
 and then keeps its own (`devicePrefs.detail`): a level is only how deep the
 tree starts open. The model never sees it.
 

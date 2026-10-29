@@ -622,28 +622,15 @@ def test_web_lists_the_children_a_turn_waits_on_and_stops_one(root, home, *, bin
             assert_true("Child B result" in final and "Child A result" not in final, final)
 
 
-def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binary):
+def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
     import http.client
 
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             listing = client.json("/api/sessions")[1]
-            # The level and what each level shows come from the host: the
-            # browser holds no rule of its own.
-            assert_true(listing["verbosity"]["level"] == "default", listing["verbosity"])
-            assert_true(
-                listing["verbosity"]["order"] == ["minimal", "default", "full"],
-                listing["verbosity"],
-            )
-            levels = listing["verbosity"]["levels"]
-            assert_true(
-                [levels[name]["work"] for name in ("minimal", "default", "full")]
-                == ["turn", "groups", "calls"]
-                and levels["full"]["open"]
-                and not levels["default"]["open"],
-                levels,
-            )
+            # The level a browser starts at comes from the host.
+            assert_true(listing["detail"] == "default", listing["detail"])
             connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
             connection.request(
                 "GET",
@@ -666,13 +653,13 @@ def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binar
                 "config",
                 operation="apply",
                 scope="user",
-                changes=[{"key": "UAGENT_VERBOSITY", "value": "minimal"}],
+                changes=[{"key": "UAGENT_DETAIL", "value": "minimal"}],
             )
             wait_until(lambda: pushed == ["minimal"], f"change was not pushed: {pushed}")
             # A terminal saves to the same place: browsers follow.
-            save_settings(home, binary=binary, UAGENT_VERBOSITY="full")
+            save_settings(home, binary=binary, UAGENT_DETAIL="full")
             wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
             assert_true(
-                client.json("/api/sessions")[1]["verbosity"]["level"] == "full", "stale level"
+                client.json("/api/sessions")[1]["detail"] == "full", "stale level"
             )
             # The reader ends with the host; closing here would wait on it.

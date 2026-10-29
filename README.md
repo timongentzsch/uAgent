@@ -81,12 +81,16 @@ Anthropic keys (any of them) and a default model:
   this machine's files and logins. It sees only the folder you give it
   (`~/uagent-workspaces`), keeps its keys on its own volume and starts with
   Docker.
-- **Here:** the release for Linux x86_64 or arm64 or macOS arm64, checked
-  against its checksum and installed under `~/.local` with its skills; it
+- **Here:** the release for Linux x86_64 or arm64 with glibc 2.38 or newer
+  (Ubuntu 24.04, Debian 13, Fedora 39, Arch and later) or macOS 15 or newer on
+  Apple silicon, checked against its checksum and that it starts, and
+  installed under `~/.local` with its skills; it
   offers to put `~/.local/bin` on your `PATH` and to keep the web interface
   running as a service that starts when you log in (systemd or launchd). On
   Linux it can include the agent's browser; on macOS that runs only in the
-  container. Other machines build from source.
+  container. Older systems (Ubuntu 22.04, Debian 12, RHEL 9), musl
+  distributions, Intel Macs and other machines build from source instead, or
+  run the container.
 
 Run the same line again to update. `UAGENT_INSTALL=container|here` chooses
 without asking, `UAGENT_VERSION=1.6.0` installs that release,

@@ -60,10 +60,34 @@ case $os-$(uname -m) in
   Darwin-arm64) target=macos-arm64 ;;
   *) target= ;;
 esac
-# No archive for this machine: build the source instead, kept so the next
-# update reuses its build.
-if [ "$mode" = release ] && [ -z "$target" ]; then
-  echo "No prebuilt µAgent for $os $(uname -m); building it from source."
+# What the release archives are built against (the CI runners): an older
+# system installs a binary that cannot start, so it is not offered one.
+min_glibc=2.38
+min_macos=15
+at_least() {
+  # Whether version $1 is $2 or newer, comparing major.minor.
+  [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n | head -n 1)" = "$2" ]
+}
+unsupported=
+if [ -z "$target" ]; then
+  unsupported="no prebuilt µAgent for $os $(uname -m)"
+elif [ "$os" = Linux ]; then
+  glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed -n 's/^glibc //p')
+  if [ -z "$glibc" ]; then
+    unsupported="the prebuilt µAgent needs glibc, and this system has another C library"
+  elif ! at_least "$glibc" "$min_glibc"; then
+    unsupported="the prebuilt µAgent needs glibc $min_glibc or newer; this system has $glibc"
+  fi
+else
+  mac_version=$(sw_vers -productVersion 2>/dev/null || echo 0)
+  if ! at_least "$mac_version" "$min_macos"; then
+    unsupported="the prebuilt µAgent needs macOS $min_macos or newer; this Mac has $mac_version"
+  fi
+fi
+# Without a binary that runs here, build the source instead, kept so the
+# next update reuses its build.
+build_from_source() {
+  echo "Building µAgent from source: $1."
   echo "That needs git, CMake 3.21+, a C++20 compiler, libcurl and zlib (Node.js adds the web interface)."
   has git || { echo "git is missing" >&2; exit 1; }
   if [ -d "$data/src/.git" ]; then
@@ -72,8 +96,9 @@ if [ "$mode" = release ] && [ -z "$target" ]; then
     mkdir -p "$data"
     git clone --depth 1 --quiet "https://github.com/$repo.git" "$data/src"
   fi
-  exec sh "$data/src/install.sh"
-fi
+  # The container question is behind us: what follows installs here.
+  UAGENT_INSTALL=here exec sh "$data/src/install.sh"
+}
 
 docker=no
 if has docker && docker info >/dev/null 2>&1; then docker=yes; fi
@@ -119,8 +144,10 @@ release_version() {
 # machine's files and logins, so it comes first where Docker runs.
 choice=${UAGENT_INSTALL:-here}
 if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes ]; then
+  here=
+  [ "$mode" = release ] && [ -n "$unsupported" ] && here=", built from source ($unsupported)"
   echo "1) In a container (recommended): web interface, browser and terminal, isolated from this machine"
-  echo "2) Here: the terminal$([ "$web" = yes ] && echo ", the web interface")$([ "$web$browser" = yesyes ] && echo " and the browser")"
+  echo "2) Here: the terminal$([ "$web" = yes ] && echo ", the web interface")$([ "$web$browser" = yesyes ] && echo " and the browser")$here"
   reply 'Install [1]:' || true
   [ "$answer" = 2 ] || choice=container
 fi
@@ -198,6 +225,8 @@ if [ "$choice" = container ]; then
   exit 0
 fi
 
+if [ "$mode" = release ] && [ -n "$unsupported" ]; then build_from_source "$unsupported"; fi
+
 # The agent's browser needs Chrome and TigerVNC on Linux; offer the packages
 # the container image installs.
 if [ "$os" = Linux ] && [ "$web" = yes ] && [ "$browser" = no ] && has apt-get &&
@@ -254,6 +283,10 @@ else
   fi
   tar -xzf "$tmp/$archive" -C "$tmp"
   unpacked=$tmp/uagent-$version
+  # A binary this system cannot load (a library it lacks) replaces nothing.
+  if ! problem=$("$unpacked/bin/uagent" --version 2>&1 >/dev/null); then
+    build_from_source "the prebuilt µAgent does not start here: $(echo "$problem" | head -n 1)"
+  fi
   mkdir -p "$prefix/bin" "$prefix/share/doc"
   # What a release ships replaces what an earlier one did; a binary that is
   # running keeps its old file until it restarts.

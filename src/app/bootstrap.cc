@@ -446,11 +446,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     context->tool_policy.tool_allowlist.assign(std::begin(kPanelTools),
                                                std::end(kPanelTools));
   }
-  // An agent that may not edit has no tool that does, whatever its
-  // conversation's settings allow; its commands only read (session_worker.cc).
-  if (JsonValue(context->options.AgentRole(), "edits", "") == "none") {
-    context->tool_policy.allowed &= ~Capability(ToolCapability::kMutate);
-  }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
   context->tools =

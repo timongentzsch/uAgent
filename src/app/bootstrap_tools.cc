@@ -166,6 +166,14 @@ std::vector<Tool> BuildTools(AppContext& context,
     }
   }
   ApplyToolPolicy(tools, context.tool_policy);
+  // An agent that may not edit has no tool that edits, whatever its
+  // conversation's settings allow; its commands only read (session_worker.cc).
+  if (JsonValue(context.options.AgentRole(), "edits", "") == "none") {
+    std::erase_if(tools, [](const Tool& tool) {
+      return (tool.capabilities & Capability(ToolCapability::kMutate)) &&
+             !(tool.capabilities & Capability(ToolCapability::kExecute));
+    });
+  }
   // A command in the readonly sandbox changes nothing, so it needs no
   // approval.
   const SandboxStatus& sandbox = SandboxRuntime();

@@ -94,14 +94,14 @@ ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
   return ApprovalAnswer::kGuidance;
 }
 
-// An agent that may edit acts inside its folder without review while the
-// sandbox holds it there: the commands the sandbox wraps (run and
+// An agent in Auto that may edit acts inside its folder without review
+// while the sandbox holds it there: the commands the sandbox wraps (run and
 // scratch, which may also write the sandbox's other roots: temporary
 // files and tool caches), and file changes at a path its own check
 // finds inside the folder. Stopping a process is not one of them: a
 // detached one may belong to another folder.
 // Without an enforced sandbox, or for anything else, it is reviewed like
-// any Auto session.
+// any Auto session; one that asks, asks.
 bool WrapsCommands(const Tool& tool) {
   return tool.name == "run" || tool.name == "scratch";
 }
@@ -110,6 +110,7 @@ bool ReviewedByPolicy(const AppContext* app, const Tool& tool,
                       const json& arguments) {
   const json agent = app->options.AgentRole();
   return !agent.empty() && JsonValue(agent, "edits", "") != "none" &&
+         CurrentApprovalMode() == ApprovalMode::kAuto &&
          SandboxRuntime().mode == SandboxMode::kEnforced &&
          (WrapsCommands(tool) ||
           (tool.needs_approval && !tool.needs_approval(arguments)));

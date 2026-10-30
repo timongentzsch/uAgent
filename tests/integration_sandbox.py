@@ -242,10 +242,12 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
                 env["PATH"] = str(executables) + ":" + env["PATH"]
                 flags = ("--yolo",) if mode == "yolo" else ()
                 if mode == "approved":
+                    # A person is there, so its own sudo is refused for root=true
+                    # before anyone is asked.
                     code, transcript = run_pty(
                         ws,
                         env,
-                        [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"policy-ok"), b"", b"/q\n"],
+                        [(b"go\n", b"policy-ok"), b"", b"/q\n"],
                         timeout=30,
                         binary=binary,
                     )
@@ -264,9 +266,11 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
                     assert_true(result.returncode == 0, (tool, mode, result.stdout, result.stderr))
             output = "\n".join(seen)
             assert_true("privileged commands are unavailable" not in output, output)
-            assert_true(("SUDO_FIXTURE" in output) == (mode != "denied"), (tool, mode, output))
+            ran = mode not in ("denied", "approved")
+            assert_true(("SUDO_FIXTURE" in output) == ran, (tool, mode, output))
+            assert_true(("use root=true" in output) == (mode == "approved"), (tool, mode, output))
             # Yolo spares the question, not the confinement.
-            assert_true(outside.exists() == (mode == "approved"), (tool, mode, output))
+            assert_true(not outside.exists(), (tool, mode, output))
 
 
 def test_yolo_toggle_raises_the_level_from_the_next_command(root, home, *, binary):

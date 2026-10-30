@@ -1,8 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -16,6 +18,41 @@
 #include "src/tools/registry_internal.h"
 
 namespace uagent {
+
+namespace {
+
+// Whether a command calls sudo itself: as a command's first word (at the
+// start, or after ; & | ( or a newline, quoted or not), or anywhere in an ssh
+// command's remote part.
+bool CallsSudo(const std::string& command) {
+  std::string spaced;
+  for (char c : command) {
+    if (std::string_view(";&|()\n").find(c) != std::string_view::npos) {
+      spaced += " ; ";
+    } else {
+      spaced +=
+          std::string_view("'\"`").find(c) != std::string_view::npos ? ' ' : c;
+    }
+  }
+  bool leads = true, ssh = false;
+  for (size_t at = spaced.find_first_not_of(' '); at != std::string::npos;
+       at = spaced.find_first_not_of(" \t", at)) {
+    const size_t end = std::min(spaced.find_first_of(" \t", at), spaced.size());
+    const std::string_view word(spaced.data() + at, end - at);
+    at = end;
+    if (word == ";") {
+      leads = true;
+      ssh = false;
+      continue;
+    }
+    if (word == "sudo" && (leads || ssh)) return true;
+    if (leads && word == "ssh") ssh = true;
+    leads = false;
+  }
+  return false;
+}
+
+}  // namespace
 
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace,
@@ -125,9 +162,19 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   run.mutating = true;
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
-  run.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
+  run.validate = [offered = static_cast<bool>(root_password)](
+                     const json& a) -> std::optional<ToolArgumentIssue> {
     const bool root = JsonValue(a, "root", false);
     const std::string host = JsonValue(a, "host", "");
+    // A sudo of its own would wait on a password prompt nobody answers.
+    if (offered && CallsSudo(JsonValue(a, "command", ""))) {
+      return ArgumentIssue(
+          "run.sudo",
+          root ? "the command already runs as root; drop sudo"
+               : "use root=true (and host=user@machine for another machine) "
+                 "instead of sudo; the person types the password",
+          "command");
+    }
     if (a.contains("host") && (!root || host.empty() || host[0] == '-' ||
                                host.find_first_of(" \t\n") != host.npos)) {
       return ArgumentIssue(

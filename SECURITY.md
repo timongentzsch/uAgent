@@ -371,7 +371,9 @@ Besides `off`, a session can run unconfined in two ways, both reported:
   events, logs or the session, and it is wiped from memory at the turn's
   end. A second token means a wrong password: the command is stopped and the
   password wiped. The password is written once; the command printing the
-  token after that only stops itself.
+  token after that only stops itself. Should the command print the password
+  itself, it is shown as `***` (one of 4 or more characters, within one
+  read). Where `root` is offered, a command calling sudo itself is refused.
 - On a Linux kernel without Landlock (before 5.13), the sandbox degrades: a
   startup warning, a `capability.changed` event, `sandbox.mode=degraded`, and
   commands run unconfined. A session that requested the sandbox explicitly,

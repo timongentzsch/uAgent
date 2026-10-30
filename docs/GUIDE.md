@@ -205,7 +205,9 @@ password field in the web). µAgent types it into sudo's own prompt, never
 into the conversation, a log or a request to the model, and forgets it when
 the turn ends; a wrong one ends the command and is asked again next time. A
 root command here runs outside the sandbox, since sudo cannot gain anything
-inside it. Headless runs and agents have nobody to ask and get no `root`.
+inside it. A command that calls sudo itself is refused with a pointer to
+`root=true`, so it never waits on a prompt nobody answers. Headless runs and
+agents have nobody to ask and get no `root`.
 
 `/changes` lists the files the last turn changed and `/undo` puts them back
 (in the web, Undo under the turn). Changes a shell command made are not

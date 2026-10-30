@@ -33,6 +33,7 @@ namespace uagent {
 namespace {
 
 constexpr size_t kRetainedActivities = 16;
+constexpr size_t kRedactedSecretMin = 4;
 constexpr auto kTrailingOutputGrace = std::chrono::milliseconds(100);
 
 // Release the descriptors when the activity goes terminal, not when the
@@ -66,6 +67,14 @@ std::string AnswerRootPrompt(ActivitySession& session, std::string_view chunk) {
     if (session.secret) WipeString(*session.secret);
     if (session.tty) (void)WriteAll(session.input_fd.Get(), "\x03");
     session.secret_rejected = true;
+  }
+  // Nor is a password the command prints itself shown. A short one would
+  // blank ordinary words, so it is left; one split across reads gets past.
+  if (session.secret && session.secret->size() >= kRedactedSecretMin) {
+    for (size_t at = text.find(*session.secret); at != std::string::npos;
+         at = text.find(*session.secret, at)) {
+      text.replace(at, session.secret->size(), "***");
+    }
   }
   // A first prompt split across reads: hold back a tail that begins one.
   // Once answered nothing is held, so a terminal's output never lags; sudo

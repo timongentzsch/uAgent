@@ -1191,8 +1191,10 @@ def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, bina
                 (b"go\n", b"runs as root on this machine"),
                 (b"y\n", b"sudo password for this machine"),
                 (password.encode() + b"\n", b"runs as root on this machine"),
-                # The second command of the turn asks for approval only.
-                (b"y\n", b"root-done-1"),
+                # The second command of the turn asks for approval only. The
+                # next message waits for the turn to end: sent earlier, it is
+                # guidance for this turn, which keeps the password.
+                (b"y\n", b"root-done-1", b"Ready", None),
                 (b"again\n", b"runs as root on this machine"),
                 (b"y\n", b"sudo password for this machine"),
                 (password.encode() + b"\n", b"root-done-2"),

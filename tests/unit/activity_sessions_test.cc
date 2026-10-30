@@ -458,6 +458,123 @@ void TestActivityBufferAndAdmission() {
   CHECK(retained.Find(retained_ids.back()).has_value());
 }
 
+void TestRootCommands() {
+  CHECK(RootCommand("echo 'a b'", "", true, "N1") ==
+        "sudo -k -S -p N1 -- bash -o pipefail -c 'echo '\\''a b'\\'''");
+  CHECK(RootCommand("ls", "me@box", true, "N1") ==
+        "ssh -o BatchMode=yes -t -- 'me@box' 'sudo -k -S -p N1 -- bash -o "
+        "pipefail -c '\\''ls'\\'''");
+  CHECK(RootCommand("ls", "me@box", false, "N1").find(" -t ") ==
+        std::string::npos);
+  CHECK(RootCommand("cat", "", false, "N1") ==
+        "sudo -k -S -p N1 -- bash -o pipefail -c 'exec </dev/null; cat'");
+
+  // The prompt is cut out wherever reads split it, answered once, and a
+  // second one wipes the secret.
+  int fds[2] = {-1, -1};
+  REQUIRE(pipe(fds) == 0);
+  Fd read_end(fds[0]);
+  ActivitySession session;
+  session.input_fd.Reset(fds[1]);
+  session.nonce = "abcd1234";
+  session.secret = std::make_shared<std::string>("pw");
+  CHECK(AnswerRootPrompt(session, "hello ab") == "hello ");
+  CHECK(AnswerRootPrompt(session, "cd1234world") == "world");
+  std::array<char, 16> answer{};
+  CHECK(read(read_end.Get(), answer.data(), answer.size()) == 3);
+  CHECK(std::string(answer.data(), 3) == "pw\n");
+  CHECK(!session.input_fd);  // without a terminal, stdin ends after it
+  CHECK(AnswerRootPrompt(session, "a") == "a");  // nothing held once answered
+  CHECK(AnswerRootPrompt(session, "abcd1234").empty());
+  CHECK(session.secret->empty());
+  {
+    std::lock_guard lock(session.mutex);
+    CHECK(session.secret_rejected);
+  }
+
+  // The whole way through, against a sudo that reads as the real one does.
+  char bin[] = "/tmp/uagent-sudo-XXXXXX";
+  REQUIRE(mkdtemp(bin) != nullptr);
+  {
+    std::ofstream sudo(std::string(bin) + "/sudo");
+    sudo << "#!/bin/sh\n"
+            "while [ \"$1\" != -- ]; do\n"
+            "  [ \"$1\" = -p ] && { shift; prompt=$1; }; shift\n"
+            "done; shift\n"
+            "[ -n \"$SUDO_OPEN\" ] && exec \"$@\"\n"
+            "for try in 1 2 3; do\n"
+            "  [ -t 0 ] && stty -echo; printf %s \"$prompt\" >&2\n"
+            "  IFS= read -r line || exit 1; [ -t 0 ] && stty echo\n"
+            "  [ \"$line\" = right ] && exec \"$@\"\n"
+            "done; exit 1\n";
+  }
+  std::filesystem::permissions(std::string(bin) + "/sudo",
+                               std::filesystem::perms::owner_all);
+  ScopedEnv path("PATH", std::string(bin) + ":" + EnvStr("PATH"));
+  std::string typed = "right";
+  int asked = 0;
+  ActivitySupervisor processes;
+  std::vector<Tool> tools =
+      BuiltinTools(processes, CanonicalAccessPath("."),
+                   [&](const std::string&) -> std::shared_ptr<std::string> {
+                     ++asked;
+                     if (typed.empty()) return nullptr;
+                     return std::make_shared<std::string>(typed);
+                   });
+  const Tool* run = FindTool(tools, "run");
+  REQUIRE(run != nullptr);
+  ToolContext context{std::chrono::steady_clock::now() +
+                      std::chrono::seconds(20)};
+  // Without a terminal stdin ends after the password; with one the command
+  // has the terminal.
+  for (bool tty : {false, true}) {
+    ToolResult ran =
+        run->run({{"command", tty ? "[ -t 0 ] && echo ran" : "echo ran; cat"},
+                  {"root", true},
+                  {"tty", tty},
+                  {"yield_ms", 0}},
+                 context);
+    CHECK(ran.Ok());
+    CHECK(ran.output.find("ran") != std::string::npos);
+    CHECK(ran.output.find("right") == std::string::npos);
+  }
+  // A sudo that asks for nothing leaves the command no stdin to wait on.
+  {
+    ScopedEnv open("SUDO_OPEN", "1");
+    ToolResult ran = run->run(
+        {{"command", "cat; echo ran"}, {"root", true}, {"yield_ms", 0}},
+        context);
+    CHECK(ran.Ok() && ran.output.find("ran") != std::string::npos);
+  }
+  // A wrong password ends the command, at its terminal too.
+  typed = "wrong";
+  for (bool tty : {false, true}) {
+    ToolResult refused = run->run({{"command", "echo ran"},
+                                   {"root", true},
+                                   {"tty", tty},
+                                   {"yield_ms", 0}},
+                                  context);
+    CHECK(!refused.Ok());
+    CHECK(refused.output.find("ran") == std::string::npos);
+    CHECK(refused.output.find("wrong") == std::string::npos);
+    CHECK(refused.hint.find("sudo rejected the password") != std::string::npos);
+  }
+  typed.clear();
+  CHECK(run->run({{"command", "true"}, {"root", true}}, context)
+            .output.find("declined") != std::string::npos);
+  CHECK(asked == 6);
+  CHECK(RequiredApproval(*run, {{"command", "ls"}, {"root", true}}) ==
+        ApprovalClass::kMandatoryHuman);
+  CHECK(run->validate({{"command", "ls"}, {"host", "a@b"}}).has_value());
+  CHECK(
+      run->validate({{"command", "ls"}, {"root", true}, {"host", "-oProxy=x"}})
+          .has_value());
+  CHECK(run->validate({{"command", "ls"}, {"root", true}, {"detach", true}})
+            .has_value());
+  CHECK(!run->validate({{"command", "ls"}, {"root", true}, {"host", "a@b"}}));
+  std::filesystem::remove_all(bin);
+}
+
 void TestActivityStateGraph() {
   ActivitySession session;
   {

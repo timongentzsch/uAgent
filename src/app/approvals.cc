@@ -228,10 +228,13 @@ Verdict AskPerson(AppContext* app, const Tool& tool, const json& arguments,
   // one of the person's folders; a tool that escalates for its own reason
   // names it.
   std::string reason =
-      !tool.mandatory_reason.empty() ? tool.mandatory_reason
-      : UnreadablePath(JsonValue(arguments, "path", std::string()))
-          ? "reads your folders outside this folder; sandbox.read opens one"
-          : "changes \u00b5Agent's own configuration";
+      tool.mandatory_reason ? tool.mandatory_reason(arguments) : "";
+  if (reason.empty()) {
+    reason = UnreadablePath(JsonValue(arguments, "path", std::string()))
+                 ? "reads your folders outside this folder; sandbox.read "
+                   "opens one"
+                 : "changes \u00b5Agent's own configuration";
+  }
   // What the automatic review made of it, when it was asked: its reasons
   // join the risks, and in words which bar it fell on, or why it could not
   // decide.

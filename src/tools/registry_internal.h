@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "include/agent/activity_supervisor.h"
+#include "include/tools/registry.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -18,7 +19,8 @@ namespace uagent {
 void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace);
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
-                       const std::filesystem::path& workspace);
+                       const std::filesystem::path& workspace,
+                       RootPassword root_password);
 void RegisterActivityTool(std::vector<Tool>& tools,
                           ActivitySupervisor& supervisor);
 void RegisterMemoryTool(std::vector<Tool>& tools);

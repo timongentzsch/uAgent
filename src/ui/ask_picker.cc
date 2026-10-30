@@ -62,17 +62,21 @@ bool Enter(const TerminalInputToken& token) {
          (token.text == "\r" || token.text == "\n");
 }
 
-// One line of the person's own words under `lead`; empty when escaped.
+// One line of the person's own words under `lead`; empty when escaped. A
+// masked line shows a star per byte and is returned as typed.
 std::optional<std::string> ReadLine(Keys& keys, LiveRegion& region,
-                                    const std::string& lead, const Live& live) {
+                                    const std::string& lead, const Live& live,
+                                    bool masked = false) {
   std::string line;
   for (;;) {
-    Draw(region, lead + TerminalSafe(line));
+    Draw(region,
+         lead + (masked ? std::string(line.size(), '*') : TerminalSafe(line)));
     auto token = keys.Next(live);
     if (!token || token->kind == TerminalInputTokenKind::kEscape) {
+      WipeString(line);
       return std::nullopt;
     }
-    if (Enter(*token)) return Trim(line);
+    if (Enter(*token)) return masked ? line : Trim(line);
     if (token->kind == TerminalInputTokenKind::kSequence) continue;
     for (char ch : token->text) {
       if (Byte(ch) == kBackspaceKey || Byte(ch) == Ctrl('H')) {
@@ -194,6 +198,21 @@ std::string AskAnswersFromLine(const json& questions, const std::string& line) {
                           : json{{"choices", json::array()}, {"other", part}});
   }
   return JsonDump(answers);
+}
+
+std::optional<std::string> PickSecret(const std::string& prompt,
+                                      LiveRegion& region, int wake,
+                                      const Live& live) {
+  Keys keys(wake);
+  std::optional<std::string> secret = ReadLine(
+      keys, region, prompt + ": ",
+      [&] {
+        region.Flush();
+        return live();
+      },
+      /*masked=*/true);
+  region.SetOverlay("");
+  return secret;
 }
 
 json PickAskAnswers(const json& questions, LiveRegion& region, int wake,

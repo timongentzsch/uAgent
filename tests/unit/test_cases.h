@@ -122,6 +122,7 @@ namespace uagent {
   X(TestSignalAndFileWatch)                       \
   X(TestActivityBufferAndAdmission)               \
   X(TestActivityStateGraph)                       \
+  X(TestRootCommands)                             \
   X(TestDetachedActivityOwnership)                \
   X(TestAGroupOfOnlyZombiesIsFinished)            \
   X(TestActivitySessions)                         \

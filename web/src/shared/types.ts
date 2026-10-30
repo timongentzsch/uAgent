@@ -302,9 +302,15 @@ export interface ApprovalPending extends PendingBase {
     review?: string;
   };
 }
-// A line of text, a file to edit, or a step done in the browser.
+// A line of text, a password, a file to edit, or a step done in the browser.
 export interface InputPending extends PendingBase {
-  kind: "text" | "editor" | "browser" | "project.trust" | "model.select";
+  kind:
+    | "text"
+    | "secret"
+    | "editor"
+    | "browser"
+    | "project.trust"
+    | "model.select";
 }
 export type Pending = AskPending | ApprovalPending | InputPending;
 // Each question also takes a free-text "Other" answer.

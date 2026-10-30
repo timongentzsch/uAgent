@@ -649,7 +649,7 @@ Tool AgentsTool() {
                ? ApprovalClass::kMandatoryHuman
                : ApprovalClass::kNone;
   };
-  tool.mandatory_reason = "deleting an agent";
+  tool.mandatory_reason = [](const json&) { return "deleting an agent"; };
   // A list observes agents whose own rows show them.
   tool.routine = [](const json& a) {
     return JsonValue(a, "action", "") == "list";

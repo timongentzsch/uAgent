@@ -6,9 +6,11 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "include/app/setup.h"
 #include "include/cli/cli.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -116,6 +118,24 @@ bool Terminal::PresentDecision(const json& pending,
               {{"attachments", answered["attachments"]}});
       }
     }
+    return true;
+  }
+  // A password is read here, hidden, and goes nowhere but the reply.
+  if (!decision.empty() && JsonValue(pending, "kind", "") == "secret") {
+    const std::string prompt = TerminalSafe(JsonValue(pending, "prompt", ""));
+    std::optional<std::string> secret;
+    if (raw_) {
+      secret = PickSecret(prompt, region_, wake_.read.Get(), [this, decision] {
+        std::lock_guard lock(mutex_);
+        return JsonValue(pending_, "id", "") == decision;
+      });
+    } else {
+      fputs((prompt + ": ").c_str(), stdout);
+      fflush(stdout);
+      secret = ReadHidden();
+    }
+    Reply(decision, secret.value_or(""), {{"cancelled", !secret}});
+    if (secret) WipeString(*secret);
     return true;
   }
   if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {

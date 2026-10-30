@@ -308,7 +308,7 @@ struct Tool {
   Subject approval_subject;  // what a remembered approval covers
   // Why this call needs a person, when the reason is not the default one of
   // reaching µAgent's own configuration. Shown in the approval headline.
-  std::string mandatory_reason;
+  Preview mandatory_reason;
   std::string provider;             // owner for live registry refresh
   json output_schema;               // optional MCP output contract
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit

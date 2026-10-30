@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,7 +47,17 @@ struct ShellCommand {
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;
+  // A command from RootCommand: the activity answers `nonce`, sudo's prompt,
+  // with `secret` (see ActivitySession).
+  std::string nonce = {};
+  std::shared_ptr<std::string> secret = nullptr;
 };
+
+// `command` as root through `sudo -S -p nonce`, on `host` over ssh when one
+// is named. -k makes sudo prompt even with cached credentials, so the prompt
+// always comes and the password line never reaches the command.
+std::string RootCommand(const std::string& command, const std::string& host,
+                        bool tty, const std::string& nonce);
 
 ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,

@@ -238,8 +238,9 @@ retry one or switch it.
   asks a person. A session started in your home directory has no writable
   folder: see [Sandboxing](../SECURITY.md#sandboxing).
 - **`sudo` or `ping` fails on Linux.** The sandbox sets `no_new_privs`, so
-  setuid binaries fail inside it. Privileged work needs `UAGENT_SANDBOX=off`
-  or an approved `run(sandbox=false)`. `--yolo` stops the questions and
+  setuid binaries fail inside it. Privileged work is `run(root=true)`, which
+  asks for the sudo password ([Root commands](GUIDE.md#approvals-and-the-sandbox));
+  `ping` needs `UAGENT_SANDBOX=off` or an approved `run(sandbox=false)`. `--yolo` stops the questions and
   raises the `default` level to `relaxed`; it never turns the sandbox off.
 - **Every command is refused, or startup reports `degraded`.** The Linux
   kernel has no Landlock (it needs 5.13 or newer). With `UAGENT_SANDBOX` set

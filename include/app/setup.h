@@ -34,6 +34,9 @@ bool ProviderConfigured();
 // The interactive flow; 0 when something was saved or kept. Needs a
 // terminal.
 int RunSetup();
+
+// One line from stdin with echo off where it is a terminal, as typed.
+std::string ReadHidden();
 int SetupMain();
 
 }  // namespace uagent

@@ -173,6 +173,13 @@ void Application::RunTurns(const std::string& input, json content,
     agent_.Turn(next);
     SteeringState().Take();
   }
+  {
+    std::lock_guard lock(context_.root_passwords_mutex);
+    for (auto& [host, password] : context_.root_passwords) {
+      if (password) WipeString(*password);
+    }
+    context_.root_passwords.clear();
+  }
 #ifdef UAGENT_BROWSER
   // The turn is over: the shared browser is free for the next conversation.
   if (!context_.browser_lease.empty()) {

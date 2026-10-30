@@ -20,7 +20,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace);
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace,
-                       RootPassword root_password);
+                       const RootPassword& root_password);
 void RegisterActivityTool(std::vector<Tool>& tools,
                           ActivitySupervisor& supervisor);
 void RegisterMemoryTool(std::vector<Tool>& tools);

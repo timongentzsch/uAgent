@@ -19,7 +19,7 @@ namespace uagent {
 
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace,
-                       RootPassword root_password) {
+                       const RootPassword& root_password) {
   // The limits in the schemas are filled in from their constants.
   json run_schema = json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},

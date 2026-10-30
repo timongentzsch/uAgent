@@ -82,7 +82,7 @@ std::vector<Tool> BuildTools(AppContext& context,
     };
   }
   std::vector<Tool> tools =
-      BuiltinTools(runtime.processes, workspace, std::move(root_password));
+      BuiltinTools(runtime.processes, workspace, root_password);
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }

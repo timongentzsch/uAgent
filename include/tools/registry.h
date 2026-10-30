@@ -27,7 +27,7 @@ using RootPassword =
 std::vector<Tool> BuiltinTools(
     ActivitySupervisor& supervisor,
     const std::filesystem::path& workspace = CanonicalAccessPath("."),
-    RootPassword root_password = nullptr);
+    const RootPassword& root_password = nullptr);
 
 }  // namespace uagent
 

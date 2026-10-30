@@ -12,7 +12,7 @@ import { useResource } from "../../../shared/use-resource.ts";
 import { manage } from "../../../state/api.ts";
 import { useSettings } from "../context.ts";
 
-// The exact actions remembered for the open conversation's repository.
+// The rules kept for the open conversation's repository.
 export function PermissionsPane() {
   const { session, online } = useSettings();
   const cwd = session?.cwd;
@@ -40,7 +40,7 @@ export function PermissionsPane() {
   return (
     <Group
       title={`Allowed actions${rules?.rules.length ? ` · ${rules.rules.length}` : ""}`}
-      footer="Exact actions allowed for this repository. Tool definitions and arguments must still match."
+      footer="Calls allowed without asking in this repository."
     >
       {failure != null && (
         <div class="group-block">
@@ -51,19 +51,29 @@ export function PermissionsPane() {
         </div>
       )}
       {rules?.rules.map((rule) => (
-        <Row key={rule.key} label={rule.tool} detail={rule.preview}>
+        <Row
+          key={`${rule.tool} ${rule.match}`}
+          label={rule.tool}
+          detail={rule.match === "*" ? "every call" : rule.match}
+        >
           <Button
             variant="quiet"
             size="compact"
             disabled={!online || edit.busy}
-            onClick={() => void forget({ action: "delete", key: rule.key })}
+            onClick={() =>
+              void forget({
+                action: "delete",
+                tool: rule.tool,
+                match: rule.match,
+              })
+            }
           >
             Forget
           </Button>
         </Row>
       ))}
       {rules && !rules.rules.length && (
-        <Row label="No remembered actions. “Always allow this exact action here” on an approval adds one." />
+        <Row label="No rules. “Always allow here” on an approval adds one." />
       )}
       {!!rules?.rules.length && (
         <Row
@@ -83,8 +93,8 @@ export function PermissionsPane() {
             if (await forget({ action: "clear" })) setConfirm(false);
           }}
         >
-          Every remembered action for this repository is forgotten. The agent
-          asks again the next time.
+          Every rule for this repository is forgotten. The agent asks again the
+          next time.
         </ConfirmModal>
       )}
     </Group>

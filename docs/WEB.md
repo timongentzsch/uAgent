@@ -282,7 +282,7 @@ is answered; the **Approval** control stays usable. The card shows what the
 call would do (the command, or the change as a diff that scrolls past about
 six lines), the folder and its risks, with **Deny**, **Allow for this
 conversation** and **Allow once** in one row. Under **More options**,
-**Always allow this exact action here** makes Allow once a rule for the
+**Always allow here** makes Allow once keep the rule it names for the
 repository, listed under Settings → This folder → *Allowed actions*, and
 **+ guidance** answers in words instead. Numbered choices are cards.
 

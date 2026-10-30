@@ -156,7 +156,11 @@ Two separate mechanisms keep a turn in bounds.
 - **Approval** decides who is asked. In `ask`, the default, you approve each
   file change, command, network use and read outside the folder: `y` once,
   `s` for this conversation, `a` always in this repository, `n` no. Any other
-  answer denies the call and reaches the model as guidance.
+  answer denies the call and reaches the model as guidance. `s` and `a` keep
+  the rule the prompt names: a command and its subcommand (`run npm test *`,
+  for one simple command; a chain, substitution, redirect, shell or
+  interpreter stays exact), a file's folder (`write_file ./src/`), a fetch's
+  host, or every call of an MCP tool. `/permissions rules` lists them.
   `/permissions auto` lets a decision model decide the calls the sandbox
   contains and asks you about the rest; `/permissions yolo` (or `--yolo`)
   asks nobody, and lets commands read anywhere and write your home folder

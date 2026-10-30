@@ -336,10 +336,11 @@ export interface Permissions {
   default: string;
   effective?: string;
 }
+// A rule allows the calls of `tool` that `match` covers: "*" every call,
+// "PREFIX *" a command, "DIR/" a path under it, else that exact subject.
 interface PermissionRule {
-  key: string;
   tool: string;
-  preview: string;
+  match: string;
   created: number;
 }
 export interface PermissionRules {
@@ -834,7 +835,12 @@ export interface CommandInputs {
   };
   interrupt: None;
   permissions: { mode: string };
-  permission_rules: { action: string; key?: string; cwd?: string };
+  permission_rules: {
+    action: string;
+    tool?: string;
+    match?: string;
+    cwd?: string;
+  };
   revoke_device: { device_id: string };
   test_notification: None;
   // A shell in a folder, the home folder without one; or the end of one.

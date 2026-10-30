@@ -100,7 +100,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   if (session.session_file.empty() || session.session_file == previous_path) {
     return;
   }
-  session.context.session_approvals.clear();
+  session.context.session_rules.clear();
   std::string error;
   if (!session.context.observability.Journal().Load(
           session.session_file + kSessionJournalSuffix, error)) {

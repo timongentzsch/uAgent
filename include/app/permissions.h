@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "include/api/client.h"
 #include "include/core/env.h"
@@ -19,8 +20,25 @@ namespace uagent {
 
 struct RuntimeConfig;
 
-std::string PermissionKey(const Tool& tool, const json& arguments,
-                          ApprovalClass required);
+// A remembered approval: the calls of `tool` whose subject `match` covers.
+// A match is "*" (every call), "PREFIX *" (one simple command starting with
+// PREFIX), "DIR/" (a path under DIR) or the subject itself.
+struct PermissionRule {
+  std::string tool, match;
+};
+
+// What a rule is matched against: a command, ./path inside the folder `root`
+// (else its absolute path), a URL's host, or the call's arguments.
+std::string RuleSubject(const Tool& tool, const json& arguments,
+                        const std::string& root);
+// The broadest rule a person is offered for this call: a command and its
+// subcommand, the file's folder, the host, an MCP tool, or the call itself.
+PermissionRule SuggestRule(const Tool& tool, const json& arguments,
+                           const std::string& root);
+bool RuleCovers(const PermissionRule& rule, const Tool& tool,
+                const json& arguments, const std::string& root);
+// The rule in words: "run npm test *", "every mcp_x call".
+std::string RuleLabel(const PermissionRule& rule);
 
 // Whether the call names a path outside the folder `root`.
 bool PathOutsideFolder(const json& arguments, const std::string& root);
@@ -31,13 +49,12 @@ bool PathOutsideFolder(const json& arguments, const std::string& root);
 json ApprovalRisks(const Tool& tool, const json& arguments,
                    const std::string& root);
 
-bool RepositoryPermissionAllows(const std::string& root,
-                                const std::string& key);
-bool RememberRepositoryPermission(const std::string& root,
-                                  const std::string& key,
-                                  const std::string& tool,
-                                  const std::string& preview,
-                                  std::string& error);
+// Whether a rule kept for `root` covers the call; `matched` takes it.
+bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
+                          const json& arguments,
+                          PermissionRule* matched = nullptr);
+bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
+                            std::string& error);
 json PermissionRulesControl(const json& request);
 
 enum class AutoPermissionDecision { kAllow, kAsk, kDeny };

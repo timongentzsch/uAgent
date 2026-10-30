@@ -1,10 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -18,41 +16,6 @@
 #include "src/tools/registry_internal.h"
 
 namespace uagent {
-
-namespace {
-
-// Whether a command calls sudo itself: as a command's first word (at the
-// start, or after ; & | ( or a newline, quoted or not), or anywhere in an ssh
-// command's remote part.
-bool CallsSudo(const std::string& command) {
-  std::string spaced;
-  for (char c : command) {
-    if (std::string_view(";&|()\n").find(c) != std::string_view::npos) {
-      spaced += " ; ";
-    } else {
-      spaced +=
-          std::string_view("'\"`").find(c) != std::string_view::npos ? ' ' : c;
-    }
-  }
-  bool leads = true, ssh = false;
-  for (size_t at = spaced.find_first_not_of(' '); at != std::string::npos;
-       at = spaced.find_first_not_of(" \t", at)) {
-    const size_t end = std::min(spaced.find_first_of(" \t", at), spaced.size());
-    const std::string_view word(spaced.data() + at, end - at);
-    at = end;
-    if (word == ";") {
-      leads = true;
-      ssh = false;
-      continue;
-    }
-    if (word == "sudo" && (leads || ssh)) return true;
-    if (leads && word == "ssh") ssh = true;
-    leads = false;
-  }
-  return false;
-}
-
-}  // namespace
 
 void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                        const std::filesystem::path& workspace,
@@ -113,6 +76,14 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
               // sudo cannot gain privileges inside the sandbox; over ssh
               // only the remote end is root.
               if (host.empty()) spec.sandbox = false;
+            } else if (root_password) {
+              // Its own sudo, wherever bash meets it (a pipe, $(…), a bash
+              // script), says what to use instead of waiting on a prompt
+              // nobody answers: no reading of the command text.
+              spec.environment.emplace_back(
+                  "BASH_FUNC_sudo%%",
+                  "() { echo 'use run root=true (host=user@machine for "
+                  "another machine) instead of sudo' >&2; return 1; }");
             }
             return RunShellCommand(supervisor, context, std::move(spec)).result;
           }));
@@ -162,19 +133,9 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   run.mutating = true;
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
-  run.validate = [offered = static_cast<bool>(root_password)](
-                     const json& a) -> std::optional<ToolArgumentIssue> {
+  run.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     const bool root = JsonValue(a, "root", false);
     const std::string host = JsonValue(a, "host", "");
-    // A sudo of its own would wait on a password prompt nobody answers.
-    if (offered && CallsSudo(JsonValue(a, "command", ""))) {
-      return ArgumentIssue(
-          "run.sudo",
-          root ? "the command already runs as root; drop sudo"
-               : "use root=true (and host=user@machine for another machine) "
-                 "instead of sudo; the person types the password",
-          "command");
-    }
     if (a.contains("host") && (!root || host.empty() || host[0] == '-' ||
                                host.find_first_of(" \t\n") != host.npos)) {
       return ArgumentIssue(

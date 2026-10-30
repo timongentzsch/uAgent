@@ -564,17 +564,20 @@ void TestRootCommands() {
   CHECK(run->run({{"command", "true"}, {"root", true}}, context)
             .output.find("declined") != std::string::npos);
   CHECK(asked == 6);
-  // Its own sudo is refused where root is offered, and pointed at root.
-  for (const char* command :
-       {"sudo apt update", "cd x && sudo make install", "ssh box sudo ls",
-        "ssh box 'sudo ls'", "ls;sudo id"}) {
-    CHECK(run->validate({{"command", command}}).has_value());
+  // Its own sudo, wherever bash meets it, points at root where root is
+  // offered, and is left alone where it is not.
+  for (const char* command : {"sudo apt update", "cd . && sudo make install",
+                              "echo \"$(sudo id)\"", "bash -c 'sudo id'"}) {
+    ToolResult refused =
+        run->run({{"command", command}, {"yield_ms", 0}}, context);
+    CHECK(refused.output.find("use run root=true") != std::string::npos);
   }
-  CHECK(run->validate({{"command", "sudo ls"}, {"root", true}})
-            ->message.find("drop sudo") != std::string::npos);
-  CHECK(!run->validate({{"command", "echo sudo; man sudo"}}));
   std::vector<Tool> headless = BuiltinTools(processes);
-  CHECK(!FindTool(headless, "run")->validate({{"command", "sudo ls"}}));
+  CHECK(FindTool(headless, "run")
+            ->run({{"command", "SUDO_OPEN=1 sudo -- echo plain"},
+                   {"yield_ms", 0}},
+                  context)
+            .output.find("plain") != std::string::npos);
   CHECK(RequiredApproval(*run, {{"command", "ls"}, {"root", true}}) ==
         ApprovalClass::kMandatoryHuman);
   CHECK(run->validate({{"command", "ls"}, {"host", "a@b"}}).has_value());

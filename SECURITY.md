@@ -373,7 +373,8 @@ Besides `off`, a session can run unconfined in two ways, both reported:
   password wiped. The password is written once; the command printing the
   token after that only stops itself. Should the command print the password
   itself, it is shown as `***` (one of 4 or more characters, within one
-  read). Where `root` is offered, a command calling sudo itself is refused.
+  read). Where `root` is offered, a command's own `sudo` is a bash function
+  that fails pointing at `root=true`; no command text is read for it.
 - On a Linux kernel without Landlock (before 5.13), the sandbox degrades: a
   startup warning, a `capability.changed` event, `sandbox.mode=degraded`, and
   commands run unconfined. A session that requested the sandbox explicitly,

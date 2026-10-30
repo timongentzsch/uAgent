@@ -71,6 +71,8 @@ std::string ReadLine() {
   return Trim(line);
 }
 
+}  // namespace
+
 std::string ReadHidden() {
   termios hidden{};
   const bool terminal = tcgetattr(STDIN_FILENO, &g_saved_termios) == 0;
@@ -82,13 +84,16 @@ std::string ReadHidden() {
     hidden.c_iflag |= ICRNL;
     g_hidden = tcsetattr(STDIN_FILENO, TCSANOW, &hidden) == 0;
   }
-  std::string line = ReadLine();
+  std::string line;
+  if (!std::getline(std::cin, line)) line.clear();
   if (g_hidden) tcsetattr(STDIN_FILENO, TCSANOW, &g_saved_termios);
   g_hidden = 0;
   std::signal(SIGINT, previous);
   fputc('\n', stdout);
   return line;
 }
+
+namespace {
 
 bool Confirm(const std::string& question, bool fallback) {
   printf("%s %s ", question.c_str(), fallback ? "[Y/n]" : "[y/N]");
@@ -307,7 +312,7 @@ int RunSetup() {
     }
     printf("%s API key%s: ", known.label, hint.c_str());
     fflush(stdout);
-    std::string key = ReadHidden();
+    std::string key = Trim(ReadHidden());
     if (key.empty() && existing.empty() && exported) key = exported;
     const std::string effective = key.empty() ? existing : key;
     if (effective.empty()) continue;

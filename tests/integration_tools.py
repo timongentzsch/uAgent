@@ -1153,6 +1153,66 @@ def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, 
         assert_true(b"approval-done" in output, output)
 
 
+def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, binary):
+    """A root command asks for sudo's password once per turn; it is typed into
+    sudo and appears nowhere else: not on screen, in requests or in files."""
+    password = "pw-7f3c9e"
+    bin_dir = root / "fake-sudo"
+    bin_dir.mkdir()
+    sudo = bin_dir / "sudo"
+    sudo.write_text(
+        "#!/bin/sh\n"
+        'while [ "$1" != -- ]; do [ "$1" = -p ] && { shift; prompt=$1; }; shift; done; shift\n'
+        '[ -t 0 ] && stty -echo; printf %s "$prompt" >&2\n'
+        "IFS= read -r line || exit 1; [ -t 0 ] && stty echo\n"
+        f'[ "$line" = {password} ] && exec "$@"; exit 1\n'
+    )
+    sudo.chmod(0o755)
+    bodies = []
+
+    def route(_, body):
+        bodies.append(json.dumps(body))
+        messages = body["messages"]
+        results = tool_results(messages)
+        turn = 2 if has_message(messages, "user", "again") else 1
+        if turn == 1 and len(results) < 2:
+            return tool_call("run", {"command": f"echo root-ran-{len(results)}", "root": True})
+        if turn == 2 and len(results) < 3:
+            return tool_call("run", {"command": "echo root-again", "root": True})
+        return event({"content": f"root-done-{turn}"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["PATH"] = f"{bin_dir}:{env['PATH']}"
+        status, output = run_pty(
+            root,
+            env,
+            [
+                (b"go\n", b"runs as root on this machine"),
+                (b"y\n", b"sudo password for this machine"),
+                (password.encode() + b"\n", b"runs as root on this machine"),
+                # The second command of the turn asks for approval only.
+                (b"y\n", b"root-done-1"),
+                (b"again\n", b"runs as root on this machine"),
+                (b"y\n", b"sudo password for this machine"),
+                (password.encode() + b"\n", b"root-done-2"),
+                b"/quit\n",
+            ],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(status == 0, output)
+    # Asked once per turn, and shown only as stars while typed.
+    typed = b"sudo password for this machine: " + b"*" * len(password)
+    assert_true(output.count(typed) == 2, output)
+    assert_true(b"root-ran-1" in output and b"root-again" in output, output)
+    assert_true(password.encode() not in output, output)
+    assert_true(not any(password in body for body in bodies), bodies)
+    for path in home.rglob("*"):
+        if path.is_file():
+            assert_true(password.encode() not in path.read_bytes(), path)
+
+
 def test_edit_recovery_survives_reads_and_tracks_revision(root, home, *, binary):
     workspace = root / "edit-recovery"
     workspace.mkdir()

@@ -45,6 +45,8 @@ std::string Unquote(std::string s);
 // wrap for /bin/sh: single-quote everything, closing and re-opening around a
 // literal quote ('it'\''s'), so no byte of the payload can reach the shell.
 std::string ShellQuote(const std::string& s);
+// Zeroes a secret's bytes before clearing it.
+void WipeString(std::string& s);
 
 // Entries are returned as written, empties included: PATH reads an empty entry
 // as the working directory, while a search path skips it.

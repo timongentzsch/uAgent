@@ -62,7 +62,27 @@ std::vector<Tool> BuildTools(AppContext& context,
   const std::string toolset = EnvStr("UAGENT_INTERNAL_TOOLSET");
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
-  std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
+  // Root needs someone to type the password: never a headless run or an
+  // agent, which have nobody to ask.
+  RootPassword root_password;
+  if (context.channel && InteractiveApprovalAvailable() && AgentDepth() == 0) {
+    root_password = [app = &context](const std::string& host) {
+      // Held while asking, so calls in parallel ask once.
+      std::lock_guard lock(app->root_passwords_mutex);
+      std::shared_ptr<std::string>& held = app->root_passwords[host];
+      if (held && !held->empty()) return held;
+      bool eof = false;
+      held = std::make_shared<std::string>(ReadInteraction(
+          {.kind = "secret",
+           .prompt = "sudo password for " +
+                     (host.empty() ? std::string("this machine") : host)},
+          &eof));
+      if (eof || held->empty()) held.reset();
+      return held;
+    };
+  }
+  std::vector<Tool> tools =
+      BuiltinTools(runtime.processes, workspace, root_password);
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }

@@ -79,6 +79,25 @@ test("always allowing an action remembers it in Settings", async ({
   );
 });
 
+test("a root command asks for the sudo password in a password field", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await send(page, "Root probe");
+  const card = page.getByRole("region", { name: "Pending decision" });
+  await expect(card).toContainText("runs as root on this machine");
+  await card.getByRole("button", { name: "Allow", exact: true }).click();
+  await expect(card).toContainText("sudo password for this machine");
+  const password = card.getByLabel("Response");
+  await expect(password).toHaveAttribute("type", "password");
+  await password.fill("probe-secret");
+  await card.getByRole("button", { name: "Send response" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByText("Ran echo ROOT_RAN")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("probe-secret");
+});
+
 test.describe("Auto approval", () => {
   test.use({ autoReview: true });
 

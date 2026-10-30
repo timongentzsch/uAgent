@@ -5,6 +5,7 @@
 // fallback. Used by the terminal client when a decision asks questions.
 
 #include <functional>
+#include <optional>
 #include <string>
 
 #include "include/core/json.h"
@@ -22,6 +23,12 @@ class LiveRegion;
 // terminal was resized; between keys and wakes the picker sleeps.
 json PickAskAnswers(const json& questions, LiveRegion& region, int wake,
                     const std::function<bool()>& live);
+
+// A password typed in a raw-mode terminal under `prompt`, shown as stars;
+// nullopt when escaped or answered elsewhere (as PickAskAnswers).
+std::optional<std::string> PickSecret(const std::string& prompt,
+                                      LiveRegion& region, int wake,
+                                      const std::function<bool()>& live);
 
 // The same answers from one typed line, for a terminal without raw input:
 // one part per question, split by ";", where option numbers ("1" or "1,3")

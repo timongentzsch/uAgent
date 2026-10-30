@@ -15,6 +15,7 @@
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -52,6 +53,13 @@ struct ActivitySession {
   Fd log_fd;
   int64_t log_limit = 0;
   int64_t logged_bytes = 0;
+  // A root command's sudo prompt (RootCommand), answered once from `secret`
+  // by the I/O thread and cut from the output. A second prompt means the
+  // password was wrong: the secret is wiped, so its next use asks again.
+  std::string nonce;
+  std::shared_ptr<std::string> secret;
+  std::string nonce_carry;
+  int prompts = 0;
 
   // `mutex` covers the mutable state below. `interaction` is coarser, taken
   // first when both are needed, and serialises whole tool interactions
@@ -69,7 +77,13 @@ struct ActivitySession {
   std::chrono::steady_clock::time_point last_used UAGENT_GUARDED_BY(mutex) =
       std::chrono::steady_clock::now();
   std::chrono::steady_clock::time_point exited_at UAGENT_GUARDED_BY(mutex){};
+  bool secret_rejected UAGENT_GUARDED_BY(mutex) = false;
 };
+
+// Cuts `session.nonce` out of a chunk of its output and answers it: the first
+// prompt with the secret, a second (a wrong password) by wiping the secret.
+// Returns what the output shows; the I/O thread is its only caller.
+std::string AnswerRootPrompt(ActivitySession& session, std::string_view chunk);
 
 // Call while holding ActivitySession::mutex. Rejects illegal regressions and
 // makes the process lifecycle's state graph explicit in one place.

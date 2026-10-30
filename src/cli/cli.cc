@@ -339,7 +339,7 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
              {{"id", request.id},
               {"kind", request.kind},
               {"eof", *eof},
-              {"answer", answer}}});
+              {"answer", request.kind == "secret" ? "" : answer}}});
   return answer;
 }
 

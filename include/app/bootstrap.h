@@ -7,7 +7,9 @@
 
 #include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -99,6 +101,10 @@ struct AppContext {
   std::string browser_lease;
   // What "allow for this conversation" granted; it dies with the session.
   std::vector<PermissionRule> session_rules;
+  // The sudo passwords run(root=true) was given this turn, by host ("" for
+  // this machine); wiped when the turn ends.
+  std::mutex root_passwords_mutex;
+  std::map<std::string, std::shared_ptr<std::string>> root_passwords;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

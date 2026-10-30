@@ -45,7 +45,7 @@ In every mode:
   - reading, through the file tools, one of your folders that the sandbox
     closes to commands (see **Reads** below);
   - the `uagent_configure` and `uagent_instructions` tools;
-  - `run(sandbox=false)`.
+  - `run(sandbox=false)`, and `run(root=true)`.
 
 An **agent**, a conversation another one started, acts for you unattended.
 It takes its parent's approval mode, auto at most, unless a mode is chosen
@@ -363,6 +363,18 @@ Besides `off`, a session can run unconfined in two ways, both reported:
 - `run(sandbox=false)` always asks a person. Yolo and a remembered grant
   cannot give that approval, and headless or delegated runs have nobody to
   ask, so a delegated child cannot unconfine itself.
+- `run(root=true)` runs through `sudo -S` outside the sandbox (over ssh with
+  `host`, only the remote end is root) and asks a person every time. The
+  sudo password is asked once a turn per machine; sudo prints a random token
+  as its prompt (`-p`, with echo already off), and only on that token is the
+  password written to it, so it is never echoed, never in model context,
+  events, logs or the session, and it is wiped from memory at the turn's
+  end. A second token means a wrong password: the command is stopped and the
+  password wiped. The password is written once; the command printing the
+  token after that only stops itself. Should the command print the password
+  itself, it is shown as `***` (one of 4 or more characters, within one
+  read). Where `root` is offered, a command's own `sudo` is a bash function
+  that fails pointing at `root=true`; no command text is read for it.
 - On a Linux kernel without Landlock (before 5.13), the sandbox degrades: a
   startup warning, a `capability.changed` event, `sandbox.mode=degraded`, and
   commands run unconfined. A session that requested the sandbox explicitly,

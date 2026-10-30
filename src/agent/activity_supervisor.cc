@@ -17,6 +17,7 @@
 #include <memory>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -25,12 +26,14 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/core/time.h"
 
 namespace uagent {
 namespace {
 
 constexpr size_t kRetainedActivities = 16;
+constexpr size_t kRedactedSecretMin = 4;
 constexpr auto kTrailingOutputGrace = std::chrono::milliseconds(100);
 
 // Release the descriptors when the activity goes terminal, not when the
@@ -43,6 +46,49 @@ void CloseSessionIo(const std::shared_ptr<ActivitySession>& session) {
 }
 
 }  // namespace
+
+std::string AnswerRootPrompt(ActivitySession& session, std::string_view chunk) {
+  const std::string& nonce = session.nonce;
+  std::string text;
+  text.swap(session.nonce_carry);
+  text.append(chunk);
+  for (size_t at = text.find(nonce); at != std::string::npos;
+       at = text.find(nonce, at)) {
+    text.erase(at, nonce.size());
+    std::lock_guard<std::mutex> lock(session.mutex);
+    if (++session.prompts == 1 && session.secret) {
+      // Two writes: a joined copy would leave the password in a temporary.
+      (void)(WriteAll(session.input_fd.Get(), *session.secret) &&
+             WriteAll(session.input_fd.Get(), "\n"));
+      // Without a terminal the command's stdin ends here, as /dev/null would.
+      if (!session.tty) session.input_fd.Reset();
+      continue;
+    }
+    if (session.secret) WipeString(*session.secret);
+    if (session.tty) (void)WriteAll(session.input_fd.Get(), "\x03");
+    session.secret_rejected = true;
+  }
+  // Nor is a password the command prints itself shown. A short one would
+  // blank ordinary words, so it is left; one split across reads gets past.
+  if (session.secret && session.secret->size() >= kRedactedSecretMin) {
+    for (size_t at = text.find(*session.secret); at != std::string::npos;
+         at = text.find(*session.secret, at)) {
+      text.replace(at, session.secret->size(), "***");
+    }
+  }
+  // A first prompt split across reads: hold back a tail that begins one.
+  // Once answered nothing is held, so a terminal's output never lags; sudo
+  // writes a prompt whole, so a second one still arrives in one read.
+  const size_t longest = session.prompts == 0 ? nonce.size() - 1 : 0;
+  for (size_t n = std::min(text.size(), longest); n > 0; --n) {
+    if (text.compare(text.size() - n, n, nonce, 0, n) == 0) {
+      session.nonce_carry = text.substr(text.size() - n);
+      text.resize(text.size() - n);
+      break;
+    }
+  }
+  return text;
+}
 
 std::string ActivityKindName(ActivityKind kind) {
   switch (kind) {
@@ -621,13 +667,22 @@ void ActivitySupervisor::IoLoop(const std::stop_token& stop) {
           ssize_t count = read(poll_fds[i + 1].fd, bytes.data(), bytes.size());
           if (count < 0 && errno == EINTR) continue;
           if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
-          if (count <= 0) {
+          // At the end, a held-back tail that looked like the start of a
+          // prompt was output after all.
+          std::string shown;
+          if (count <= 0) shown.swap(session->nonce_carry);
+          if (count <= 0 && shown.empty()) {
             std::lock_guard<std::mutex> lock(session->mutex);
             session->output_eof = true;
             notify = true;
             break;
           }
-          std::string_view chunk(bytes.data(), static_cast<size_t>(count));
+          std::string_view chunk(
+              bytes.data(), static_cast<size_t>(std::max<ssize_t>(count, 0)));
+          if (count > 0 && !session->nonce.empty()) {
+            shown = AnswerRootPrompt(*session, chunk);
+          }
+          if (count <= 0 || !session->nonce.empty()) chunk = shown;
           int log_fd = -1;
           size_t keep = 0;
           {

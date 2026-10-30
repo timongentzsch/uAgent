@@ -143,6 +143,10 @@ def answer(handler, body):
             {"path": "long.txt", "content": "\n".join([*lines, "LAST_DIFF_LINE", ""])},
             call_id="long-write",
         )
+    if "Root probe" in prompt and not any(
+        message.get("role") == "tool" for message in body["messages"]
+    ):
+        return tool_call("run", {"command": "echo ROOT_RAN", "root": True}, call_id="root-run")
     if "request approval" in prompt and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):
@@ -245,6 +249,16 @@ with (
             "DwADhgGAWjR9awAAAABJRU5ErkJggg=="
         )
     )
+    # A sudo that reads its password as the real one does, for "Root probe".
+    fake_bin = root / "fake-bin"
+    fake_bin.mkdir()
+    (fake_bin / "sudo").write_text(
+        "#!/bin/sh\n"
+        'while [ "$1" != -- ]; do [ "$1" = -p ] && { shift; prompt=$1; }; shift; done; shift\n'
+        'printf %s "$prompt" >&2; IFS= read -r line || exit 1\n'
+        '[ "$line" = probe-secret ] && exec "$@"; exit 1\n'
+    )
+    (fake_bin / "sudo").chmod(0o755)
     providers = {
         "mock": {
             "base_url": provider.url,
@@ -273,6 +287,7 @@ with (
             "UAGENT_MODEL": None if args.no_model else "mock/main:high",
             # The terminal's shell, the same on every machine.
             "SHELL": "/bin/sh",
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
             **({"UAGENT_APPROVAL": "auto"} if args.auto_review else {}),
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.

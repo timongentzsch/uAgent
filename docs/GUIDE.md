@@ -196,6 +196,20 @@ else that always asks: those go to you.
   `approval.reviewerModel` (`[endpoint/]model`) chooses another decision
   model.
 
+**Root commands.** The agent never types sudo itself: it runs a command with
+`run(root=true)`, here or, with `host="user@machine"`, on another machine
+over ssh (a key login; it never waits on an ssh password). Each one asks
+for your approval, as every unsandboxed command does, and the first in a
+turn asks for that machine's sudo password, hidden as you type it (a
+password field in the web). µAgent types it into sudo's own prompt, never
+into the conversation, a log or a request to the model, and forgets it when
+the turn ends; a wrong one ends the command and is asked again next time. A
+root command here runs outside the sandbox, since sudo cannot gain anything
+inside it. A command's own `sudo` fails at once with a pointer to
+`root=true` (bash meets a `sudo` function instead), so it never waits on a
+prompt nobody answers. Headless runs and
+agents have nobody to ask and get no `root`.
+
 `/changes` lists the files the last turn changed and `/undo` puts them back
 (in the web, Undo under the turn). Changes a shell command made are not
 tracked. [Security](../SECURITY.md) has the full rules.

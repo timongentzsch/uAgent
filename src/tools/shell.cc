@@ -2,6 +2,7 @@
 
 #include "include/tools/shell.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -81,15 +82,17 @@ int SpawnShellWithFallback(const std::vector<std::string>& program,
   return error;
 }
 
-// Spawn `program` with stdin at /dev/null and both output streams on the log,
-// in a session of its own when `detach`.
+// Spawn `program` with stdin at `stdin_fd` (/dev/null when -1) and both
+// output streams on the log, in a session of its own when `detach`.
 int SpawnLoggedShell(const std::vector<std::string>& program,
                      const std::vector<std::string>& wrapper, int log_fd,
-                     bool detach, char* const* environment, pid_t& pid) {
-  return SpawnShellWithFallback(
-      program, wrapper,
-      {{STDIN_FILENO}, {STDOUT_FILENO, log_fd}, {STDERR_FILENO, log_fd}},
-      detach, environment, pid);
+                     bool detach, char* const* environment, pid_t& pid,
+                     int stdin_fd = -1) {
+  return SpawnShellWithFallback(program, wrapper,
+                                {{STDIN_FILENO, stdin_fd},
+                                 {STDOUT_FILENO, log_fd},
+                                 {STDERR_FILENO, log_fd}},
+                                detach, environment, pid);
 }
 
 // master_fd is set only on success; the caller owns it from then on.
@@ -286,6 +289,19 @@ ShellCommandResult StartDetachedShell(
 
 }  // namespace
 
+std::string RootCommand(const std::string& command, const std::string& host,
+                        bool tty, const std::string& nonce) {
+  // Without a terminal only sudo reads the password pipe; the command's stdin
+  // is /dev/null, as any command's is, also when sudo asks for nothing.
+  std::string sudo = "sudo -k -S -p " + nonce + " -- bash -o pipefail -c " +
+                     ShellQuote(tty ? command : "exec </dev/null; " + command);
+  if (host.empty()) return sudo;
+  // BatchMode: a login that wants a password fails instead of waiting on a
+  // prompt nobody answers.
+  return std::string("ssh -o BatchMode=yes ") + (tty ? "-t " : "") + "-- " +
+         ShellQuote(host) + " " + ShellQuote(sudo);
+}
+
 ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,
                                    ShellCommand spec) {
@@ -339,8 +355,20 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   // Owned from here: every early return closes them, and only the hand-off to
   // the supervisor releases them.
   Fd pipe_read(pipe_fds[0]), pipe_write(pipe_fds[1]);
+  // A root command without a terminal reads sudo's password from a pipe the
+  // activity answers on, as a terminal's input is answered.
+  int stdin_fds[2] = {-1, -1};
+  if (!tty && spec.secret && pipe(stdin_fds) != 0) {
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "cannot create process input pipe")};
+  }
+  Fd stdin_read(stdin_fds[0]), stdin_write(stdin_fds[1]);
+  // Its own end must not reach the command, or its stdin would never end.
+  if (stdin_write) (void)fcntl(stdin_write.Get(), F_SETFD, FD_CLOEXEC);
   auto session = std::make_shared<ActivitySession>();
   session->tty = tty;
+  session->nonce = spec.nonce;
+  session->secret = spec.secret;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   const std::vector<std::string> program =
       spec.argv.empty()
@@ -353,8 +381,9 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
       tty ? SpawnPtyShell(program, wrapper, child_environment.Data(), pid,
                           master_fd)
           : SpawnLoggedShell(program, wrapper, pipe_fds[1], /*detach=*/false,
-                             child_environment.Data(), pid);
+                             child_environment.Data(), pid, stdin_read.Get());
   pipe_write.Reset();
+  stdin_read.Reset();
   Fd master(master_fd);
   if (spawn_error != 0) {
     return {ToolFailure(
@@ -375,7 +404,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   // Release would close it while the supervisor still needs to tail it.
   int log_fd = pending.ReleaseFd();
 
-  Fd input(tty ? dup(master.Get()) : -1);
+  Fd input(tty ? dup(master.Get()) : stdin_write.Release());
   if (tty && !input) {
     KillProcess(pid);
     RemoveLog(log);
@@ -449,10 +478,12 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   auto finish = [&](auto build) {
     int status = 0;
     std::string output;
+    bool rejected = false;
     {
       std::lock_guard<std::mutex> lock(session->mutex);
       status = session->wait_status.value_or(0);
       output = LimitOutput(session->transcript.Snapshot(), interaction_cap);
+      rejected = session->secret_rejected;
     }
     // The transcript above is what the caller reads; the log is only kept.
     std::optional<ToolArtifact> artifact =
@@ -464,6 +495,10 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
       AddHint(result, SandboxHint(sandbox, result.output));
     }
     AddHint(result, SandboxRestoreNote(watch.get(), CanonicalCwd()));
+    if (rejected) {
+      AddHint(result,
+              "[sudo rejected the password; the next root command asks again]");
+    }
     result.artifact = std::move(artifact);
     return ShellCommandResult{std::move(result), status, /*launched=*/true};
   };

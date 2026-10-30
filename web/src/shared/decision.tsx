@@ -376,6 +376,7 @@ export default function Decision({
               <Input
                 aria-label="Response"
                 name="reply"
+                type={pending.kind === "secret" ? "password" : undefined}
                 autoComplete="off"
                 value={reply}
                 onInput={(event) => setReply(event.currentTarget.value)}

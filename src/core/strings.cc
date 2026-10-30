@@ -122,6 +122,13 @@ std::string Unquote(std::string s) {
   return s;
 }
 
+void WipeString(std::string& s) {
+  // Through a volatile pointer, so the stores are not dropped as dead.
+  volatile char* bytes = s.data();
+  for (size_t i = 0; i < s.size(); ++i) bytes[i] = 0;
+  s.clear();
+}
+
 std::string ShellQuote(const std::string& s) {
   std::string q = "'";
   for (char c : s) c == '\'' ? q += "'\\''" : q += c;

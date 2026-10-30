@@ -8,6 +8,9 @@
 // consumers do not compile every tool body.
 
 #include <filesystem>
+#include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "include/agent/activity_supervisor.h"
@@ -16,9 +19,15 @@
 
 namespace uagent {
 
+// The sudo password for a host ("" for this machine), asked of the person at
+// most once per turn; null when they decline. Without it, run offers no root.
+using RootPassword =
+    std::function<std::shared_ptr<std::string>(const std::string& host)>;
+
 std::vector<Tool> BuiltinTools(
     ActivitySupervisor& supervisor,
-    const std::filesystem::path& workspace = CanonicalAccessPath("."));
+    const std::filesystem::path& workspace = CanonicalAccessPath("."),
+    const RootPassword& root_password = nullptr);
 
 }  // namespace uagent
 

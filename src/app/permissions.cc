@@ -126,17 +126,6 @@ bool PlainWord(const std::string& word) {
          });
 }
 
-// Programs that run whatever their arguments say: only their exact call is
-// remembered.
-bool RunsAnything(const std::string& program) {
-  static constexpr std::string_view kPrograms[] = {
-      "sh",   "bash",   "zsh",     "dash", "fish",  "env",      "sudo",
-      "doas", "su",     "eval",    "exec", "xargs", "find",     "rm",
-      "dd",   "python", "python3", "node", "perl",  "ruby",     "php",
-      "npx",  "bunx",   "uvx",     "deno", "bun",   "osascript"};
-  return std::ranges::find(kPrograms, program) != std::end(kPrograms);
-}
-
 std::string Percent(double probability) {
   return std::to_string(std::lround(probability * 100)) + "%";
 }
@@ -195,7 +184,7 @@ std::string RuleSubject(const Tool& tool, const json& arguments,
 }
 
 PermissionRule SuggestRule(const Tool& tool, const json& arguments,
-                           const std::string& root) {
+                           const std::string& root, bool confined) {
   const std::string subject = RuleSubject(tool, arguments, root);
   PermissionRule rule{tool.name, Utf8Prefix(subject, kMatchBytes)};
   if (tool.provider.starts_with("mcp:")) {
@@ -203,8 +192,8 @@ PermissionRule SuggestRule(const Tool& tool, const json& arguments,
   } else if (tool.name == "run") {
     // The program and its subcommand: `npm test -- auth` is `npm test *`.
     const std::vector<std::string> words = Words(subject);
-    if (SimpleCommand(subject) && !words.empty() && PlainWord(words[0]) &&
-        !RunsAnything(words[0])) {
+    if (confined && SimpleCommand(subject) && !words.empty() &&
+        PlainWord(words[0])) {
       std::string prefix = words[0];
       if (words.size() > 1 && PlainWord(words[1])) prefix += " " + words[1];
       // A lone program takes any flags; a program and its subcommand any
@@ -221,13 +210,13 @@ PermissionRule SuggestRule(const Tool& tool, const json& arguments,
 }
 
 bool RuleCovers(const PermissionRule& rule, const Tool& tool,
-                const json& arguments, const std::string& root) {
+                const json& arguments, const std::string& root, bool confined) {
   if (rule.tool != tool.name) return false;
   if (rule.match == "*") return true;
   const std::string subject = RuleSubject(tool, arguments, root);
   if (rule.match.ends_with(" *")) {
     const std::string prefix = rule.match.substr(0, rule.match.size() - 2);
-    return SimpleCommand(subject) &&
+    return confined && SimpleCommand(subject) &&
            (subject == prefix || subject.starts_with(prefix + " "));
   }
   if (rule.match.ends_with("/")) return subject.starts_with(rule.match);
@@ -264,7 +253,8 @@ json ApprovalRisks(const Tool& tool, const json& arguments,
 }
 
 bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
-                          const json& arguments, PermissionRule* matched) {
+                          const json& arguments, bool confined,
+                          PermissionRule* matched) {
   std::string error;
   RulesFile file(error);
   if (!file.Usable()) {
@@ -275,7 +265,7 @@ bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
     PermissionRule rule{JsonValue(held, "tool", ""),
                         JsonValue(held, "match", "")};
     if (JsonValue(held, "root", "") == root &&
-        RuleCovers(rule, tool, arguments, root)) {
+        RuleCovers(rule, tool, arguments, root, confined)) {
       if (matched) *matched = std::move(rule);
       return true;
     }

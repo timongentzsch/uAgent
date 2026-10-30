@@ -803,7 +803,7 @@ def test_sandbox_network_toggle(root, home, *, binary):
 
 def test_sandbox_names_itself_when_a_lookup_fails_offline(root, home, *, binary):
     """Without network a refused connection reads as a failed name lookup; the
-    sandbox says it was the cause only when it denies the network."""
+    sandbox note beside a failure says the network is off only when it is."""
     require_sandbox(root, home, binary=binary)
     failed = "echo 'curl: (6) Could not resolve host: example.invalid' >&2; exit 6"
     offline = tool_output(
@@ -811,7 +811,9 @@ def test_sandbox_names_itself_when_a_lookup_fails_offline(root, home, *, binary)
     )
     assert_true("reach no network]" in offline, f"the sandbox did not name itself: {offline}")
     online = tool_output(root, sandbox_env(home, ""), failed, binary=binary)
-    assert_true("[sandbox:" not in online, f"an allowed network blamed the sandbox: {online}")
+    assert_true(
+        "reach no network" not in online, f"an allowed network blamed the sandbox: {online}"
+    )
 
 
 def test_sandbox_refuses_when_it_cannot_enforce(root, home, *, binary):

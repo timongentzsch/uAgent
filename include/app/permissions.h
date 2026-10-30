@@ -33,10 +33,12 @@ std::string RuleSubject(const Tool& tool, const json& arguments,
                         const std::string& root);
 // The broadest rule a person is offered for this call: a command and its
 // subcommand, the file's folder, the host, an MCP tool, or the call itself.
+// A command's prefix is offered, and covers, only where it runs `confined` in
+// the enforced sandbox, which holds whatever the prefix lets through.
 PermissionRule SuggestRule(const Tool& tool, const json& arguments,
-                           const std::string& root);
+                           const std::string& root, bool confined);
 bool RuleCovers(const PermissionRule& rule, const Tool& tool,
-                const json& arguments, const std::string& root);
+                const json& arguments, const std::string& root, bool confined);
 // The rule in words: "run npm test *", "every mcp_x call".
 std::string RuleLabel(const PermissionRule& rule);
 
@@ -51,7 +53,7 @@ json ApprovalRisks(const Tool& tool, const json& arguments,
 
 // Whether a rule kept for `root` covers the call; `matched` takes it.
 bool RepositoryRuleAllows(const std::string& root, const Tool& tool,
-                          const json& arguments,
+                          const json& arguments, bool confined,
                           PermissionRule* matched = nullptr);
 bool RememberRepositoryRule(const std::string& root, const PermissionRule& rule,
                             std::string& error);

@@ -196,7 +196,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
             "scratch",
             "Run a one-off script under .uagent/scratch, never code the "
             "user asked for: a .py with a PEP 723 `# /// script` header runs "
-            "under isolated uv, a .sh under sh, .js/.mjs under installed node. "
+            "under isolated uv (its packages go in that header, never pip), a "
+            ".sh under sh, .js/.mjs under installed node. "
             "Give code to write the script and run it in this call; without "
             "code the file at path runs "
             "again, with new args, instead of a long pipeline resent through "

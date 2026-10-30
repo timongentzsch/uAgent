@@ -313,18 +313,21 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
     const std::string root = CanonicalCwd();
     // The rule that allows it, if one does; else the one a person is
-    // offered.
+    // offered. A command's prefix holds only where the sandbox holds it.
+    const bool confined = !(WrapsCommands(tool) &&
+                            SandboxRuntime().mode != SandboxMode::kEnforced);
     PermissionRule rule;
     const auto covered = [&](const PermissionRule& held) {
-      return RuleCovers(held, tool, arguments, root);
+      return RuleCovers(held, tool, arguments, root, confined);
     };
     auto held = std::ranges::find_if(app->session_rules, covered);
     bool session_rule = !mandatory && held != app->session_rules.end();
     if (session_rule) rule = *held;
-    bool repository_rule = !mandatory && !session_rule &&
-                           RepositoryRuleAllows(root, tool, arguments, &rule);
+    bool repository_rule =
+        !mandatory && !session_rule &&
+        RepositoryRuleAllows(root, tool, arguments, confined, &rule);
     const bool by_rule = session_rule || repository_rule;
-    if (!by_rule) rule = SuggestRule(tool, arguments, root);
+    if (!by_rule) rule = SuggestRule(tool, arguments, root, confined);
     const bool planning = CurrentApprovalMode() == ApprovalMode::kPlan;
     const bool planned = planning && PlanModeAllows(tool, arguments, mandatory);
     bool automatic =
@@ -352,9 +355,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     // The model judges only what the sandbox contains: a call that names a
     // path outside the folder, or a command with no enforced sandbox around
     // it, goes to the person, as a mandatory one does.
-    const bool contained = !PathOutsideFolder(arguments, root) &&
-                           !(WrapsCommands(tool) &&
-                             SandboxRuntime().mode != SandboxMode::kEnforced);
+    const bool contained = !PathOutsideFolder(arguments, root) && confined;
     if (!automatic && !mandatory &&
         CurrentApprovalMode() == ApprovalMode::kAuto && contained) {
       if (auto decided = ReviewAutomatically(app, *memo, tool, raw_payload,

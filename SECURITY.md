@@ -31,8 +31,10 @@ In every mode:
 - A call a rule you kept covers is not asked again: a rule for the session
   or for the repository names a tool and what it covers (a simple command's
   prefix, a folder, a host, or the exact call). A command that chains,
-  substitutes or redirects matches no prefix, and shells, interpreters,
-  `sudo` and `rm` are only ever allowed exactly. `/permissions rules` lists
+  substitutes or redirects matches no prefix, and a prefix covers only
+  commands the enforced sandbox holds, which bounds whatever it lets through
+  (`run python *` writes only where any confined command may); without the
+  sandbox every command is allowed only exactly. `/permissions rules` lists
   the rules and `/permissions forget N` removes one.
 - Some operations always require a person, even under yolo, auto or a
   remembered rule, and are denied when no interactive client can answer, as

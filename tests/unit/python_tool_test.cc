@@ -130,7 +130,6 @@ void TestPythonTool() {
   CHECK(result.error == ToolErrorCode::kProcessFailed);
   CHECK(result.output.find("error: Python execution failed.") !=
         std::string::npos);
-  CHECK(result.output.find("PEP 723 header") != std::string::npos);
 
   // Use a harmless executable named sudo: scripts follow the shared spawn
   // policy, without a separate keyword ban.

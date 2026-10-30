@@ -179,31 +179,6 @@ std::shared_ptr<const SandboxWatch> WatchUnenforced(
                        : std::make_shared<const SandboxWatch>(std::move(paths));
 }
 
-// A refused write arrives as the kernel's errno, which names a permission and
-// not the policy that withheld it, and a refused connection as a failed name
-// lookup -- so a command that failed for the one reason this session
-// introduced is the one that explains itself worst. Added only to a wrapped
-// command that actually failed, and it names the roots: the model cannot run
-// /context, and probing for them costs it a round per guess.
-std::string SandboxHint(const SandboxStatus& status,
-                        const std::string& output) {
-  static constexpr std::string_view kDenied[] = {"Operation not permitted",
-                                                 "Permission denied"};
-  static constexpr std::string_view kOffline[] = {
-      "Could not resolve host",    "nodename nor servname",
-      "Name or service not known", "Temporary failure in name resolution",
-      "Network is unreachable",    "ENOTFOUND"};
-  const auto says = [&](const auto& phrases) {
-    return std::ranges::any_of(phrases, [&](std::string_view phrase) {
-      return output.find(phrase) != std::string::npos;
-    });
-  };
-  if (says(kDenied) || (!status.policy.allow_network && says(kOffline))) {
-    return "[sandbox: " + SandboxNote(status) + "]";
-  }
-  return {};
-}
-
 // A receipt with nothing to show but where the work went: its hint tells the
 // model, and its link takes a person there.
 ToolResult LinkResult(std::string hint, json link) {
@@ -491,8 +466,10 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                          /*failed=*/!ExitedOk(status));
     ToolResult result = build(std::move(output), status);
     result.body_kind = "tail";
+    // What the sandbox allowed, beside any failure it may have caused: its
+    // refusals read as ordinary errors, in every wording and language.
     if (!result.Ok() && !wrapper.empty()) {
-      AddHint(result, SandboxHint(sandbox, result.output));
+      AddHint(result, "[sandbox: " + SandboxNote(sandbox) + "]");
     }
     AddHint(result, SandboxRestoreNote(watch.get(), CanonicalCwd()));
     if (rejected) {
@@ -514,17 +491,8 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   if (exited) {
     ActivityTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
-    return finish([&cmd](std::string output, int status) {
-      ToolResult result = ExitResult(std::move(output), status);
-      // pkill -f and its kin match on the whole command line, and this
-      // command's own shell carries the pattern in its.
-      if (WIFSIGNALED(status) && (cmd.find("pkill -f") != std::string::npos ||
-                                  cmd.find("pgrep -f") != std::string::npos)) {
-        AddHint(result,
-                "[the pattern matched this command's own shell; match the "
-                "process name instead, e.g. pkill -x NAME]");
-      }
-      return result;
+    return finish([](std::string output, int status) {
+      return ExitResult(std::move(output), status);
     });
   }
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
@@ -766,13 +734,8 @@ ToolResult ToolRunScratch(ActivitySupervisor& supervisor,
     }
   }
   if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {
-    std::string hint =
-        result.result.output.find("No module named") != std::string::npos
-            ? " Add every third-party dependency to the script's PEP 723 "
-              "header (# /// script); do not install it with pip or run."
-            : "";
     result.result.output =
-        "error: Python execution failed." + hint + "\n" + result.result.output;
+        "error: Python execution failed.\n" + result.result.output;
   }
   if (!result.result.Ok()) {
     AddHint(result.result,

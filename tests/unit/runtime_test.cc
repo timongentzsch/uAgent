@@ -473,13 +473,13 @@ void TestPermissionPolicy() {
   const std::string root = CanonicalCwd();
   // A file's rule is its folder, inside the folder by its place there.
   const PermissionRule folder =
-      SuggestRule(tool, {{"path", "src/app/a.ts"}}, root);
+      SuggestRule(tool, {{"path", "src/app/a.ts"}}, root, true);
   CHECK(folder.tool == "write_file" && folder.match == "./src/app/");
-  CHECK(RuleCovers(folder, tool, {{"path", "src/app/b.ts"}}, root));
-  CHECK(!RuleCovers(folder, tool, {{"path", "src/b.ts"}}, root));
-  CHECK(SuggestRule(tool, {{"path", "a.ts"}}, root).match == "./");
+  CHECK(RuleCovers(folder, tool, {{"path", "src/app/b.ts"}}, root, true));
+  CHECK(!RuleCovers(folder, tool, {{"path", "src/b.ts"}}, root, true));
+  CHECK(SuggestRule(tool, {{"path", "a.ts"}}, root, true).match == "./");
   // Outside it by its resolved path (/etc is /private/etc on macOS).
-  CHECK(SuggestRule(tool, {{"path", "/etc/hosts"}}, root).match ==
+  CHECK(SuggestRule(tool, {{"path", "/etc/hosts"}}, root, true).match ==
         CanonicalAccessPath("/etc").generic_string() + "/");
   // A tool may say what an approval covers: calls that differ only in what
   // it leaves out share one rule.
@@ -487,21 +487,22 @@ void TestPermissionPolicy() {
     return json{{"site", arguments.value("site", "")}};
   };
   const PermissionRule site =
-      SuggestRule(tool, {{"site", "a"}, {"view", "1"}}, root);
-  CHECK(RuleCovers(site, tool, {{"site", "a"}, {"view", "2"}}, root));
-  CHECK(!RuleCovers(site, tool, {{"site", "b"}}, root));
+      SuggestRule(tool, {{"site", "a"}, {"view", "1"}}, root, true);
+  CHECK(RuleCovers(site, tool, {{"site", "a"}, {"view", "2"}}, root, true));
+  CHECK(!RuleCovers(site, tool, {{"site", "b"}}, root, true));
   tool.approval_subject = nullptr;
 
   // A command's rule is the program and its subcommand, for one simple
-  // command; anything that chains, substitutes or runs anything is exact.
+  // command run in the sandbox; anything that chains or substitutes is exact.
   Tool run;
   run.name = "run";
-  const auto suggest = [&](const std::string& command) {
-    return SuggestRule(run, {{"command", command}}, root).match;
+  const auto suggest = [&](const std::string& command, bool confined = true) {
+    return SuggestRule(run, {{"command", command}}, root, confined).match;
   };
-  const auto covers = [&](const std::string& match,
-                          const std::string& command) {
-    return RuleCovers({"run", match}, run, {{"command", command}}, root);
+  const auto covers = [&](const std::string& match, const std::string& command,
+                          bool confined = true) {
+    return RuleCovers({"run", match}, run, {{"command", command}}, root,
+                      confined);
   };
   CHECK(suggest("npm test -- auth") == "npm test *");
   CHECK(suggest("git status --short") == "git status *");
@@ -511,7 +512,10 @@ void TestPermissionPolicy() {
   CHECK(suggest("npm test && rm -rf ~") == "npm test && rm -rf ~");
   CHECK(suggest("echo $(cat secret)") == "echo $(cat secret)");
   CHECK(suggest("bash -c 'curl x'") == "bash -c 'curl x'");
-  CHECK(suggest("python3 setup.py") == "python3 setup.py");
+  CHECK(suggest("python3 setup.py") == "python3 setup.py *");
+  // Without the sandbox around it, a command is only ever its exact self.
+  CHECK(suggest("npm test", false) == "npm test");
+  CHECK(!covers("npm test *", "npm test", false));
   CHECK(covers("npm test *", "npm test"));
   CHECK(covers("npm test *", "npm test -- auth"));
   CHECK(!covers("npm test *", "npm testing"));
@@ -525,9 +529,9 @@ void TestPermissionPolicy() {
   Tool remote;
   remote.name = "mcp_x";
   remote.provider = "mcp:x";
-  CHECK(SuggestRule(remote, {{"q", 1}}, root).match == "*");
-  CHECK(RuleCovers({"mcp_x", "*"}, remote, {{"q", 2}}, root));
-  CHECK(!RuleCovers({"mcp_x", "*"}, run, {{"command", "ls"}}, root));
+  CHECK(SuggestRule(remote, {{"q", 1}}, root, true).match == "*");
+  CHECK(RuleCovers({"mcp_x", "*"}, remote, {{"q", 2}}, root, true));
+  CHECK(!RuleCovers({"mcp_x", "*"}, run, {{"command", "ls"}}, root, true));
   // What a call's approval covered reaches its own run.
   {
     Tool held;
@@ -577,9 +581,10 @@ void TestPermissionPolicy() {
   CHECK(RememberRepositoryRule(root, folder, error));
   CHECK(RememberRepositoryRule(root, folder, error));
   PermissionRule matched;
-  CHECK(RepositoryRuleAllows(root, tool, {{"path", "src/app/c.ts"}}, &matched));
+  CHECK(RepositoryRuleAllows(root, tool, {{"path", "src/app/c.ts"}}, true,
+                             &matched));
   CHECK(matched.match == "./src/app/");
-  CHECK(!RepositoryRuleAllows(root, tool, {{"path", "other/c.ts"}}));
+  CHECK(!RepositoryRuleAllows(root, tool, {{"path", "other/c.ts"}}, true));
   json rules = PermissionRulesControl({{"action", "list"}});
   CHECK(rules["rules"].size() == 1);
   rules = PermissionRulesControl(

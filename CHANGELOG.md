@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **A conversation can start without choosing a folder.** New → Conversation opens one in a workspace named Scratch, which the host creates on first use.
 - **The composer is shorter on phones and its totals sit in one field.** An idle composer no longer reserves an empty row under the input; the status row appears only while a turn works. Context left, turns, cost and queued guidance read together in one button that opens the statistics, which now start with the context and the way to the raw context. The word "Working" and the current to-do shimmer like the running row.
 - **A change the host notices by itself reaches the web at once.** A scheduled task you saved or paused, a new workspace or a session deleted elsewhere could wait for the event stream's next heartbeat, up to 15 seconds, so the Scheduled page kept showing the old state and Run now stayed disabled.
 

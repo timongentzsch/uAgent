@@ -215,6 +215,8 @@ type SidebarProps = {
   create: (place: "workspace" | "folder") => void;
   // A new conversation in a place, and the place's overview.
   start: (cwd: string) => void;
+  // A new conversation in the Scratch workspace, with no folder chosen.
+  startScratch: () => void;
   overview: (cwd: string) => void;
   // The place whose overview is open.
   shownPlace: string;
@@ -241,6 +243,7 @@ function SidebarView({
   settings,
   create,
   start,
+  startScratch,
   overview,
   shownPlace,
   terminals,
@@ -452,6 +455,9 @@ function SidebarView({
             </>
           }
         >
+          <MenuItem disabled={!online} onClick={startScratch}>
+            Conversation
+          </MenuItem>
           <MenuItem disabled={!online} onClick={() => create("workspace")}>
             Workspace…
           </MenuItem>

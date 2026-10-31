@@ -1,7 +1,7 @@
 // A workspace is µAgent's own place for conversations: listed apart from the
 // folders, under a name that can be changed, and removable with what is in it.
 // A place is a header over its rows, which fold away and are remembered.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 test("a workspace is listed apart from folders, renamed and deleted", async ({
   page,
@@ -86,4 +86,25 @@ test("a place folds to its header with a count, remembered, and + starts a conve
   await page.getByRole("menuitem", { name: "Conversation" }).click();
   await expect(folders.locator(".session")).toHaveCount(2);
   await expect(folders.locator(".place-count")).toHaveCount(0);
+});
+
+test("New conversation starts in the Scratch workspace, and a second joins it", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const workspaces = page.getByRole("group", { name: "Workspaces" });
+  for (const count of [1, 2]) {
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Conversation" }).click();
+    await expect(workspaces.locator(".session")).toHaveCount(count);
+    await expect(workspaces.getByRole("heading")).toHaveCount(1);
+    await expect(workspaces.getByRole("heading")).toContainText("Scratch");
+    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+  }
+  await online(page);
+  await page.locator(".composer textarea").fill("hello");
+  await expect(page.locator(".composer textarea")).toHaveValue("hello");
 });

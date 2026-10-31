@@ -271,7 +271,8 @@ function App() {
     setModal,
     setBusy,
   });
-  const { startConversation, newPlace, startIn, projects } = places;
+  const { startConversation, newPlace, startIn, startScratch, projects } =
+    places;
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
       host,
@@ -514,6 +515,7 @@ function App() {
       settings={settings}
       create={newPlace}
       start={startIn}
+      startScratch={startScratch}
       overview={overview}
       shownPlace={page === "folder" ? place : ""}
       terminals={catalogue.terminals}

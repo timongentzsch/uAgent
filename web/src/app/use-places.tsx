@@ -10,6 +10,7 @@ import type {
 } from "../shared/types.ts";
 import { command } from "../state/api.ts";
 import { folderOf } from "../shared/display.ts";
+import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
 import { collapsed } from "../features/sidebar/folding.ts";
 
@@ -104,6 +105,10 @@ export function usePlaces({
     (cwd: string) => startConversation(cwd).catch(report),
     [startConversation, report],
   );
+  const startScratch = useCallback(
+    () => startConversation("", scratchSpace).catch(report),
+    [startConversation, report],
+  );
   const projects = useMemo(
     () => [
       ...new Set(
@@ -129,6 +134,7 @@ export function usePlaces({
     startConversation,
     newPlace,
     startIn,
+    startScratch,
     projects,
     spaceMenu,
   };

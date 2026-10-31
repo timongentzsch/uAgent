@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import "./key-bar.css";
 import { Button } from "./ui.tsx";
 
@@ -22,10 +23,13 @@ export function KeyBar({
   press,
   ctrl,
   setCtrl,
+  children,
 }: {
   press: (key: BarKey) => void;
   ctrl: boolean;
   setCtrl: (ctrl: boolean) => void;
+  // More keys at the end, which share the width.
+  children?: ComponentChildren;
 }) {
   return (
     <div class="key-bar" aria-label="Special keys">
@@ -46,6 +50,7 @@ export function KeyBar({
       >
         Ctrl
       </Button>
+      {children}
     </div>
   );
 }

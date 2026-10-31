@@ -4,7 +4,7 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ChevronDown, Plus, X } from "lucide-preact";
+import { ChevronDown, Keyboard, Plus, X } from "lucide-preact";
 import type {
   Report,
   TerminalControl,
@@ -12,8 +12,10 @@ import type {
   TerminalNotice,
 } from "../../shared/types.ts";
 import { manage, routes } from "../../state/api.ts";
+import { folderName } from "../../shared/folder-label.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { Button, IconButton, Spinner } from "../../shared/ui.tsx";
-import { KeyBar, type BarKey } from "../../shared/key-bar.tsx";
+import { KeyBar, keepFocus, type BarKey } from "../../shared/key-bar.tsx";
 import { coarsePointer } from "../../shared/layout.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import {
@@ -105,7 +107,8 @@ function fenced(text: string) {
   return `${fence}console\n${kept}\n${fence}`;
 }
 
-const folderName = (cwd: string) => cwd.slice(cwd.lastIndexOf("/") + 1) || cwd;
+// Where a shell runs: the home folder ("") is ~.
+const where = (cwd: string) => (cwd ? folderName(cwd) : "~");
 
 // One shell: its screen, the touch key bar under it, and a socket that
 // reattaches until the shell ends or another device takes it.
@@ -130,6 +133,8 @@ function TerminalView({
   const [attempt, setAttempt] = useState(0);
   // The key bar's Ctrl, held for the next key.
   const [ctrl, setCtrl] = useState(false);
+  // Whether the shell has the keyboard, for the bar's keyboard key.
+  const [typing, setTyping] = useState(false);
   const send = (data: string | Uint8Array<ArrayBuffer>) => {
     if (socket.current?.readyState === WebSocket.OPEN)
       socket.current.send(data);
@@ -170,6 +175,8 @@ function TerminalView({
         ),
     );
     term.open(element);
+    term.textarea?.addEventListener("focus", () => setTyping(true));
+    term.textarea?.addEventListener("blur", () => setTyping(false));
     terminal.current = term;
     fit.current = fitting;
     const encoder = new TextEncoder();
@@ -328,15 +335,48 @@ function TerminalView({
             }}
             ctrl={ctrl}
             setCtrl={setCtrl}
-          />
+          >
+            <Button
+              aria-label={typing ? "Hide the keyboard" : "Show the keyboard"}
+              onPointerDown={keepFocus}
+              onClick={() =>
+                typing
+                  ? terminal.current?.textarea?.blur()
+                  : terminal.current?.focus()
+              }
+            >
+              <Keyboard />
+            </Button>
+          </KeyBar>
         </div>
       )}
     </div>
   );
 }
 
-// One of the page's own shells, which has no name or start time.
-type PageTerminal = Omit<TerminalInfo, "title" | "started">;
+// A terminal's name, and the folder it runs in or how it stands, dimmed.
+function Place({
+  name,
+  cwd,
+  ended = false,
+}: {
+  name: string;
+  cwd: string;
+  ended?: boolean;
+}) {
+  return (
+    <span class="terminal-place" title={cwd}>
+      {name}
+      <span class="muted"> · {ended ? "ended" : where(cwd)}</span>
+    </span>
+  );
+}
+
+// One of the page's own shells, which has no start time. Its number is the
+// lowest free one when it opened and stays for its life.
+type PageTerminal = Omit<TerminalInfo, "title" | "started"> & {
+  number: number;
+};
 
 // A folder's terminal, in the conversation's place: its folder, Close, and
 // the shell, which runs on when this page leaves it.
@@ -350,12 +390,10 @@ export function FolderTerminal({
   return (
     <section
       class="terminal-panel"
-      aria-label={`Terminal in ${folderName(terminal.cwd)}`}
+      aria-label={`Terminal in ${where(terminal.cwd)}`}
     >
       <div class="terminal-bar">
-        <span class="terminal-place small" title={terminal.cwd}>
-          {terminal.cwd}
-        </span>
+        <Place name={terminal.title} cwd={terminal.cwd} />
         <Button onClick={() => close(terminal)}>Close terminal</Button>
       </div>
       <TerminalView key={terminal.id} id={terminal.id} />
@@ -394,7 +432,11 @@ export default function TerminalPanel({
     try {
       const { id } = await manage("terminal", { action: "open", cwd: folder });
       if (!id) return;
-      setTabs((current) => [...current, { id, cwd: folder, folder: "" }]);
+      setTabs((current) => {
+        let number = 1;
+        while (current.some((tab) => tab.number === number)) number++;
+        return [...current, { id, cwd: folder, folder: "", number }];
+      });
       setActive(id);
     } catch (error) {
       report(error);
@@ -429,37 +471,20 @@ export default function TerminalPanel({
     }
   }, [request]);
 
+  const current = tabs.find((tab) => tab.id === active);
   if (!tabs.length && busy) return <Spinner label="Opening the terminal…" />;
   return (
     <div class="terminal-panel">
       <div class="terminal-bar">
-        <div class="terminal-tabs" role="group" aria-label="Terminals">
-          {tabs.map((tab, index) => {
-            const name = `${folderName(tab.cwd)}${ended.includes(tab.id) ? " (ended)" : ""}`;
-            return (
-              <div class="terminal-tab" key={tab.id}>
-                <Button
-                  variant="quiet"
-                  aria-pressed={tab.id === active}
-                  aria-controls={`terminal-${tab.id}`}
-                  title={tab.cwd}
-                  onClick={() => {
-                    setActive(tab.id);
-                    views.current.get(tab.id)?.focus();
-                  }}
-                >
-                  {name}
-                </Button>
-                <IconButton
-                  label={`Close terminal ${index + 1}, ${name}`}
-                  onClick={() => void remove(tab.id)}
-                >
-                  <X />
-                </IconButton>
-              </div>
-            );
-          })}
-        </div>
+        {current ? (
+          <Place
+            name={`Terminal ${current.number}`}
+            cwd={current.cwd}
+            ended={ended.includes(current.id)}
+          />
+        ) : (
+          <span class="terminal-place" />
+        )}
         <IconButton
           label="New terminal"
           disabled={busy || tabs.length >= maxTerminals}
@@ -467,20 +492,53 @@ export default function TerminalPanel({
         >
           <Plus />
         </IconButton>
-        <Button
-          disabled={!addToChat || !active}
-          title="Put the selection, or what the terminal shows, into the message"
-          onClick={() => {
-            const text = views.current.get(active)?.text();
-            if (text) addToChat?.(fenced(text));
-          }}
-        >
-          Add to chat
-        </Button>
+        <Menu label="Terminal menu">
+          {addToChat && (
+            <MenuItem
+              disabled={!current}
+              title="Put the selection, or what the terminal shows, into the message"
+              onClick={() => {
+                const text = views.current.get(active)?.text();
+                if (text) addToChat(fenced(text));
+              }}
+            >
+              Add to chat
+            </MenuItem>
+          )}
+          <MenuItem disabled={!current} onClick={() => void remove(active)}>
+            Close terminal
+          </MenuItem>
+        </Menu>
         <IconButton label="Hide the terminal" onClick={close}>
           <ChevronDown />
         </IconButton>
       </div>
+      {tabs.length > 1 && (
+        <div class="terminal-tabs" role="group" aria-label="Terminals">
+          {tabs.map((tab) => (
+            <div class="terminal-tab" key={tab.id}>
+              <Button
+                variant="quiet"
+                aria-pressed={tab.id === active}
+                aria-controls={`terminal-${tab.id}`}
+                title={tab.cwd}
+                onClick={() => {
+                  setActive(tab.id);
+                  views.current.get(tab.id)?.focus();
+                }}
+              >
+                Terminal {tab.number}
+              </Button>
+              <IconButton
+                label={`Close Terminal ${tab.number}`}
+                onClick={() => void remove(tab.id)}
+              >
+                <X />
+              </IconButton>
+            </div>
+          ))}
+        </div>
+      )}
       {tabs.map((tab) => (
         <TerminalView
           key={tab.id}

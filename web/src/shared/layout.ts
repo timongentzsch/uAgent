@@ -174,6 +174,8 @@ function revealFocusedField() {
 
 export function trackViewport() {
   const standalone = matchMedia("(display-mode: standalone)");
+  // The visual height reported while the keyboard was up.
+  let keyboardHeight = 0;
   const stop = observeViewport(() => {
     const root = document.documentElement;
     const viewport = globalThis.visualViewport;
@@ -192,8 +194,17 @@ export function trackViewport() {
       bounds.height < root.clientHeight - VIEWPORT_ROUNDING_PX;
     // WebKit may retain landscape visual-viewport dimensions/offsets in a
     // standalone app. At rest the CSS layout viewport is authoritative; keep
-    // visual geometry for keyboards and actual browser pinch zoom.
-    if (standalone.matches && !keyboard && (viewport?.scale || 1) === 1) {
+    // visual geometry for keyboards and actual browser pinch zoom. In a tab,
+    // the keyboard's height reported again with no keyboard, unpanned, is
+    // that same leftover; any other change (a collapsing toolbar, a pan) is
+    // real.
+    const stale =
+      !keyboard &&
+      (viewport?.scale || 1) === 1 &&
+      (standalone.matches || (bounds.height === keyboardHeight && !bounds.top));
+    if (keyboard) keyboardHeight = bounds.height;
+    else if (!stale) keyboardHeight = 0;
+    if (stale) {
       Object.assign(bounds, {
         left: 0,
         top: 0,

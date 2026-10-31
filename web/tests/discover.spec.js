@@ -1,7 +1,7 @@
 // Finding your way without knowing where things are: search,
 // the shortcuts sheet, conversations by keyboard, the home screen, and pairing
 // by link.
-import { test, expect, selectProbeModel } from "./fixtures.js";
+import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -145,6 +145,7 @@ test("the tips of an empty conversation go with its first message", async ({
   const tips = page.locator(".transcript .tips dd");
   await expect(tips).toHaveCount(3);
   await expect(tips.first()).toContainText("Lists the commands");
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Hello");
   await prompt.press("Enter");

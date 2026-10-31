@@ -1,4 +1,4 @@
-import { test, expect, selectProbeModel } from "./fixtures.js";
+import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 // Composer autogrow: wraps bigger on input and returns to one row on
 // send or delete. Regression: the measure-then-guard read scrollHeight
@@ -11,6 +11,7 @@ test("composer grows on wrap and shrinks back on send or delete", async ({
   await selectProbeModel(command, session, { yolo: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const composer = page.getByLabel("Message or guidance");
   await expect(composer).toBeVisible();
   const height = () =>
@@ -35,6 +36,7 @@ test("composer controls join a one-line draft's row on wide screens", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const composer = page.getByLabel("Message or guidance");
   await expect(composer).toBeVisible();
   const layout = () =>

@@ -1,7 +1,7 @@
 // Session return restores the saved position unfollowed: switching away
 // and back must neither pin to the bottom nor strand the reader. Seeded
 // histories keep this deterministic (no streaming or backend timing).
-import { test, expect, saveHistory } from "./fixtures.js";
+import { test, expect, leaveEnd, saveHistory } from "./fixtures.js";
 
 function seed(host, file, id, title) {
   const messages = Array.from({ length: 60 }, (_, index) => ({
@@ -22,12 +22,7 @@ test("returning to a session restores its position unfollowed", async ({
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: /Restore A/ }).click();
   const box = page.locator(".transcript");
-  await expect
-    .poll(() => box.evaluate((el) => el.scrollHeight - el.clientHeight))
-    .toBeGreaterThan(500);
-  await box.evaluate((element) => {
-    element.scrollTop = 24;
-  });
+  await leaveEnd(box);
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
@@ -79,12 +74,7 @@ test.describe("phone jump to latest", () => {
       name: "Jump to latest",
       exact: true,
     });
-    await expect
-      .poll(() => box.evaluate((node) => node.scrollHeight - node.clientHeight))
-      .toBeGreaterThan(500);
-    await box.evaluate((node) => {
-      node.scrollTop = 400;
-    });
+    await leaveEnd(box);
     await expect(jump).toBeVisible();
     await jump.tap();
     // Momentum delivers scroll offsets without a new wheel/touch/key gesture.

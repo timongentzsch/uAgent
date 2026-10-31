@@ -1,4 +1,4 @@
-import { test, expect, newFolder } from "./fixtures.js";
+import { test, expect, leaveEnd, newFolder } from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
   test.use({
@@ -92,17 +92,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(
       code.getByRole("button", { name: "Copied!", exact: true }),
     ).toBeVisible();
-    await expect
-      .poll(() =>
-        page
-          .locator(".transcript")
-          .evaluate((element) => element.scrollHeight - element.clientHeight),
-      )
-      .toBeGreaterThan(80);
-    await page.locator(".transcript").evaluate((element) => {
-      element.scrollTop = 24;
-      element.dispatchEvent(new Event("scroll"));
-    });
+    await leaveEnd(page.locator(".transcript"));
     await expect(
       page.getByRole("button", { name: "Jump to latest" }),
     ).toBeVisible();

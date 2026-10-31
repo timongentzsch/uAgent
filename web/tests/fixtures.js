@@ -19,6 +19,22 @@ export const withoutServiceWorker = (page) =>
 export const online = (page) =>
   expect(page.locator('.composer input[type="file"]')).toBeEnabled();
 
+// Scrolls a transcript up from its end. It has to be there first: until the
+// app has pinned it, this is no move up, and the next pin undoes it.
+export async function leaveEnd(box) {
+  await expect
+    .poll(() =>
+      box.evaluate((node) => {
+        const room = node.scrollHeight - node.clientHeight;
+        return room > 80 && room - node.scrollTop <= 2;
+      }),
+    )
+    .toBe(true);
+  await box.evaluate((node) => {
+    node.scrollTop = 24;
+  });
+}
+
 // New ▾ Folder…: asks for a path on the host, ready to start a conversation.
 export async function newFolder(page, path) {
   await page.getByRole("button", { name: "New", exact: true }).click();

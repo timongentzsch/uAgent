@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **A change the host notices by itself reaches the web at once.** A scheduled task you saved or paused, a new workspace or a session deleted elsewhere could wait for the event stream's next heartbeat, up to 15 seconds, so the Scheduled page kept showing the old state and Run now stayed disabled.
+
 ## v1.6.1 - 2026-10-31
 
 ### Changes

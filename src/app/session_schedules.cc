@@ -207,10 +207,9 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     // refresh before the tick so their runs are claimed this iteration,
     // and announce the change like the invalidation path does.
     if (RefreshScheduleCacheLocked()) {
-      replay_.Publish(
-          epoch_, "", "",
-          json{{"kind", "scheduled.changed"}, {"scheduled", scheduled_view_}},
-          false);
+      Record("", "",
+             {{"kind", "scheduled.changed"}, {"scheduled", scheduled_view_}},
+             false);
     }
     if (recovered) tick = TickSchedules();
     // Claims reserve at most two execution slots. The scheduler prepares one
@@ -258,7 +257,6 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
                                            "Inspect this run before retrying."
                                          : error);
       } else if (PublishMetadata(session->id, *session)) {
-        changed_.notify_all();
         wait.wake = true;
       }
     };
@@ -278,7 +276,6 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
       std::string error;
       if (ActivateLocked(session, error, lock, false) &&
           PublishMetadata(session->id, *session)) {
-        changed_.notify_all();
         wait.wake = true;
       }
     }
@@ -305,7 +302,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
         wait.deadline =
             std::min(wait.deadline, std::chrono::steady_clock::now());
       }
-      replay_.Publish(epoch_, "", "", std::move(event), false);
+      Record("", "", std::move(event), false);
     }
     // The CLI may queue a run after this tick, before the file watcher opens.
     // Compare against the store version actually processed by this host.

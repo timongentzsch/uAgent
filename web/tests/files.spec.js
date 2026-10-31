@@ -1,6 +1,7 @@
 // The header's Files button shows the conversation's folder beside the
 // chat (a sheet on a small screen): a list with search, and the open file as
 // highlighted lines, rendered markdown or an image.
+import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect, headerAction } from "./fixtures.js";
@@ -16,6 +17,25 @@ async function folder(project) {
     "# Demo\n\n![The shot](shot.png) See [the app](src/app.ts).\n",
   );
   await writeFile(join(project, "blob.bin"), Buffer.from([0, 1, 2, 0, 255]));
+}
+
+// A repository whose app.ts and README.md differ from the last commit.
+async function repository(project) {
+  await folder(project);
+  const git = (...args) =>
+    execFileSync(
+      "git",
+      ["-c", "user.name=T", "-c", "user.email=t@example.com", ...args],
+      { cwd: project },
+    );
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-q", "-m", "first");
+  await writeFile(
+    join(project, "src", "app.ts"),
+    "// One.\nexport const two = 3;\n",
+  );
+  await writeFile(join(project, "added.txt"), "new\n");
 }
 
 // Opening or closing the pane narrows the chat in place: the transcript
@@ -162,4 +182,62 @@ test("docked panes resize by drag and keys, and keep their width", async ({
   const chat = await width(page.locator(".side-chat"));
   expect(chat).toBeGreaterThanOrEqual(355);
   expect(chat).toBeLessThan(365);
+});
+
+test("changes list what differs from the last commit and open as a diff", async ({
+  page,
+  session,
+  host,
+}) => {
+  await repository(host.project);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const pane = page.getByRole("region", { name: "Files" });
+  const list = pane.getByRole("navigation", { name: "Folder" });
+  const toggle = list.getByRole("button", { name: "Changes 2" });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(list.locator(".files-entries button")).toHaveText([
+    "Msrc/app.ts",
+    "Aadded.txt",
+  ]);
+  await list.getByRole("button", { name: "src/app.ts" }).click();
+  await expect(pane.locator(".diff-add")).toHaveText("+export const two = 3;");
+  await expect(pane.locator(".files-head")).toContainText("+1 −3");
+  await list.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(list.getByRole("button", { name: "src" })).toBeVisible();
+});
+
+test("on a phone a change opens as a diff with Back to the list", async ({
+  page,
+  session,
+  host,
+}) => {
+  await repository(host.project);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const sheet = page.getByRole("dialog", { name: "Files" });
+  const list = sheet.getByRole("navigation", { name: "Folder" });
+  await list.getByRole("button", { name: "Changes 2" }).click();
+  await list.getByRole("button", { name: "added.txt" }).click();
+  await expect(sheet.locator(".diff-add")).toHaveText("+new");
+  await expect(list).toBeHidden();
+  await sheet.getByRole("button", { name: "Back to the list" }).click();
+  await expect(list).toBeVisible();
+});
+
+test("a folder that is not a repository has no changes toggle", async ({
+  page,
+  session,
+  host,
+}) => {
+  await folder(host.project);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Files");
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(pane.getByRole("button", { name: "README.md" })).toBeVisible();
+  await expect(pane.getByRole("button", { name: /^Changes/ })).toHaveCount(0);
 });

@@ -68,7 +68,9 @@ conversation's folder beside the chat, or as a sheet on a small screen. It
 never writes. Search finds a file by name anywhere in the folder. Code opens
 with line numbers and highlighting, Markdown rendered with its images
 (**Source** shows the text), and an image at full size on a click; any other
-file offers a download. What is open is read again when a turn ends.
+file offers a download. In a git repository, **Changes** lists what differs
+from the last commit, with its count, and opens each as a diff; it is read
+only too. What is open is read again when a turn ends.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 

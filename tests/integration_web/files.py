@@ -1,4 +1,5 @@
 import json
+import subprocess
 from urllib.parse import urlencode
 
 from integration_support import Server, assert_true, event
@@ -141,3 +142,119 @@ def test_web_files_stay_inside_the_folder(root, home, *, binary):
                 anonymous.request(endpoint + urlencode({"read": "notes.txt"}))[0] == 401,
                 "private file was public",
             )
+
+
+def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
+    plain = root / "plain"
+    plain.mkdir()
+    fresh = root / "fresh"
+    fresh.mkdir()
+    (fresh / "first.txt").write_text("first\n")
+    project = root / "repo"
+    project.mkdir()
+    marker = root / "marker"
+
+    def git(folder, *args):
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=T",
+                "-c",
+                "user.email=t@example.com",
+                "-C",
+                str(folder),
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+    git(fresh, "init", "-q")
+    git(project, "init", "-q")
+    for name in ("edited.txt", "staged.txt", "gone.txt", "old name.txt", "same.txt"):
+        (project / name).write_text(f"{name} one\n")
+    (project / "blob.bin").write_bytes(b"\x00\x01")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "first")
+    # A repository must not run a program through its own configuration.
+    git(project, "config", "diff.external", f"touch {marker}; true")
+    git(project, "config", "diff.evil.textconv", f"touch {marker}; cat")
+    (project / ".gitattributes").write_text("*.txt diff=evil\n")
+    (project / "edited.txt").write_text("edited.txt two\n")
+    (project / "staged.txt").write_text("staged.txt two\n")
+    git(project, "add", "staged.txt")
+    (project / "gone.txt").unlink()
+    git(project, "mv", "old name.txt", "new name.txt")
+    (project / "added.txt").write_text("added\n")
+    (project / "blob.bin").write_bytes(b"\x00\x02")
+    # A folder inside a larger repository shows only itself.
+    outer = root / "outer"
+    inner = outer / "inner"
+    inner.mkdir(parents=True)
+    git(outer, "init", "-q")
+    (outer / "beside.txt").write_text("beside one\n")
+    (inner / "within.txt").write_text("within one\n")
+    git(outer, "add", ".")
+    git(outer, "commit", "-q", "-m", "first")
+    (outer / "beside.txt").write_text("beside two\n")
+    (inner / "within.txt").write_text("within two\n")
+    (project / "huge.txt").write_text("a line of text\n" * 150_000)
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+
+            def answer(folder, **query):
+                session = client.create(folder, activate=False)
+                status, value, _ = client.json(
+                    f"/api/sessions/{session['id']}/files?{urlencode(query)}"
+                )
+                return status, value
+
+            status, value = answer(project, changes="")
+            states = {change["path"]: change["state"] for change in value["changes"]}
+            assert_true(
+                status == 200
+                and value["repository"]
+                and not value["more"]
+                and states
+                == {
+                    ".gitattributes": "A",
+                    "added.txt": "A",
+                    "blob.bin": "M",
+                    "edited.txt": "M",
+                    "gone.txt": "D",
+                    "huge.txt": "A",
+                    "new name.txt": "R",
+                    "staged.txt": "M",
+                },
+                value,
+            )
+            diffs = {path: answer(project, diff=path)[1] for path in states}
+            assert_true("+edited.txt two" in diffs["edited.txt"]["text"], diffs)
+            assert_true("+staged.txt two" in diffs["staged.txt"]["text"], diffs)
+            assert_true("-gone.txt one" in diffs["gone.txt"]["text"], diffs)
+            assert_true("+added" in diffs["added.txt"]["text"], diffs)
+            assert_true("+old name.txt one" in diffs["new name.txt"]["text"], diffs)
+            assert_true("Binary files" in diffs["blob.bin"]["text"], diffs)
+            assert_true(not diffs["edited.txt"]["more"], diffs)
+            assert_true(not marker.exists(), "a configured program ran")
+            for path in ("../secret", "same.txt", "missing", ""):
+                assert_true(answer(project, diff=path)[0] == 404, path)
+
+            # Too long to carry whole, it is cut rather than refused.
+            assert_true(diffs["huge.txt"]["more"] and "+a line" in diffs["huge.txt"]["text"], "cut")
+
+            status, value = answer(inner, changes="")
+            assert_true(value["changes"] == [{"path": "within.txt", "state": "M"}], value)
+            status, value = answer(inner, diff="within.txt")
+            assert_true(status == 200 and "+within two" in value["text"], value)
+            for path in ("../beside.txt", "beside.txt", "inner/within.txt"):
+                assert_true(answer(inner, diff=path)[0] == 404, path)
+
+            status, value = answer(plain, changes="")
+            assert_true(status == 200 and value["changes"] == [] and not value["repository"], value)
+            status, value = answer(fresh, changes="")
+            assert_true(value["changes"] == [{"path": "first.txt", "state": "A"}], value)
+            status, value = answer(fresh, diff="first.txt")
+            assert_true(status == 200 and "+first" in value["text"], value)

@@ -6,6 +6,7 @@ import {
   selectProbeModel,
   startInFolder,
   openRow,
+  openRawContext,
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -100,7 +101,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   // The request view links back to the instructions.
   await dialog.getByRole("button", { name: "Close instructions" }).click();
-  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  await openRawContext(page);
   await page
     .getByRole("dialog", { name: "Raw context" })
     .getByRole("button", { name: "Instructions", exact: true })
@@ -124,20 +125,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     exact: true,
   });
   await expect(model).toBeVisible();
-  const metricButtons = page.locator(".metrics > button");
-  await expect(metricButtons).toHaveCount(2);
-  const metricBoxes = await metricButtons.evaluateAll((buttons) =>
-    buttons.map((button) => {
-      const box = button.getBoundingClientRect();
-      const style = getComputedStyle(button);
-      return {
-        height: box.height,
-        paddingLeft: style.paddingLeft,
-        paddingRight: style.paddingRight,
-      };
-    }),
-  );
-  expect(metricBoxes[0]).toEqual(metricBoxes[1]);
+  await expect(page.locator(".metrics > button")).toHaveCount(1);
   const metrics = {};
   const measure = async (name) => {
     await expect
@@ -288,8 +276,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBeVisible();
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Raw context", exact: true }),
-  ).toContainText("/1.3M · 99% left");
+    page.getByRole("button", { name: "Conversation statistics", exact: true }),
+  ).toContainText("99% left");
   await page.setViewportSize({ width: 390, height: 844 });
   await measure("mobile-compact");
   expect(metrics["mobile-compact"].transcript.height).toBeGreaterThanOrEqual(

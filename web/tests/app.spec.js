@@ -1,4 +1,10 @@
-import { test, expect, startInFolder, openRow } from "./fixtures.js";
+import {
+  test,
+  expect,
+  startInFolder,
+  openRow,
+  openRawContext,
+} from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 test.use({ paired: false });
@@ -64,7 +70,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(page.getByLabel("Message or guidance")).toHaveValue(
     "Keep this unsent draft",
   );
-  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  await openRawContext(page);
   await expect(page.getByRole("dialog", { name: "Raw context" })).toContainText(
     "not sent yet",
   );

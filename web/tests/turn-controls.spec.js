@@ -238,7 +238,7 @@ test("a refused send stays at its message with Retry", async ({
 
 // The input frame is one shape whatever the turn is doing: idle, running,
 // stopped and waiting on a decision draw the textarea, the frame and the
-// permission chip in the same place, so nothing under a thumb moves.
+// permission chip alike. Only a phone's status row moves them, by that row.
 for (const [name, viewport] of [
   ["phone", { width: 390, height: 844 }],
   ["desktop", { width: 1280, height: 800 }],
@@ -281,10 +281,18 @@ for (const [name, viewport] of [
       body: JSON.stringify(states, null, 2),
       contentType: "application/json",
     });
+    // A phone stacks the status row under the input, so the input rises by
+    // that row while there is a status, and to one place whichever it is.
+    const rise = states.idle.frame.y - states.running.frame.y;
+    if (name === "phone") expect(rise).toBeGreaterThan(0);
+    else expect(rise).toBe(0);
     for (const state of ["running", "stopped", "approval"])
       for (const part of ["textarea", "frame", "permission"]) {
         const actual = states[state][part];
-        const expected = states.idle[part];
+        const expected = {
+          ...states.idle[part],
+          y: states.idle[part].y - rise,
+        };
         expect(actual, `${state}: ${part}`).not.toBeNull();
         for (const key of ["x", "y", "width", "height"])
           expect(

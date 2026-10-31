@@ -25,7 +25,7 @@ import type {
   Outgoing,
 } from "../../shared/types.ts";
 import type { TargetedKeyboardEvent } from "preact";
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command, routes } from "../../state/api.ts";
 import { useConversation, useHostContext } from "../../state/host-context.ts";
@@ -41,10 +41,7 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import { ActivityButton } from "../../shared/turn-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
-import {
-  ContextSummary,
-  SessionSummary,
-} from "../../shared/session-summary.tsx";
+import { SessionSummary } from "../../shared/session-summary.tsx";
 import Decision from "../../shared/decision.tsx";
 import {
   maxRecalledPrompts,
@@ -106,7 +103,7 @@ function Composer({
   agents: Session[];
   choose: (id: string) => void;
 }) {
-  const { online, connection, report, showContext } = useHostContext();
+  const { online, connection, report } = useHostContext();
   const { upload, uploading, busy, act, following } = useConversation();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
@@ -256,7 +253,6 @@ function Composer({
     decided.current = !!pending;
   }, [pending]);
   const running = isRunning(session, online);
-  const openContext = useCallback(() => showContext(), [showContext]);
   const empty = !draft.text.trim() && !draft.files.length;
   // The one primary control: Stop while a turn runs and there is nothing
   // to send, Send otherwise. Its icons cross-fade in place.
@@ -601,13 +597,11 @@ function Composer({
           )}
         </div>
         <div class="metrics small">
-          <ContextSummary state={state} open={openContext} online={online} />
-          <SessionSummary state={state} open={showStatistics} />
-          {!!session.guidance && !queued.length && (
-            <span class="muted" role="status">
-              {session.guidance} guidance queued
-            </span>
-          )}
+          <SessionSummary
+            state={state}
+            queued={queued.length ? 0 : session.guidance}
+            open={showStatistics}
+          />
         </div>
       </div>
     </section>

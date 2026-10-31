@@ -110,7 +110,8 @@ function ActivityButtonView({
         {announce}
       </span>
     );
-  const summary = [running ? "Working" : "", elapsed, ...counts]
+  const details = [elapsed, ...counts].filter(Boolean).join(" · ");
+  const summary = [running ? "Working" : "", details]
     .filter(Boolean)
     .join(" · ");
   if (!summary) return announce;
@@ -125,7 +126,11 @@ function ActivityButtonView({
           <>
             <StatusLed state="running" />
             <span>
-              <DataText>{summary}</DataText>
+              <DataText>
+                {running && <span class="shimmer-text">Working</span>}
+                {running && details && " · "}
+                {details}
+              </DataText>
             </span>
             <ChevronUp />
           </>

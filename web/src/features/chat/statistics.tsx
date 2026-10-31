@@ -3,7 +3,8 @@ import { count } from "../../shared/quantities.ts";
 import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { useResource } from "../../shared/use-resource.ts";
-import { LoadError, Time } from "../../shared/ui.tsx";
+import { Actions, Button, LoadError, Time } from "../../shared/ui.tsx";
+import { contextSummary } from "../../state/context-summary.ts";
 import {
   Rows,
   StatisticsLayout,
@@ -21,10 +22,15 @@ export default function Statistics({
   modal,
   held,
   loadSnapshot,
+  online,
+  showContext,
 }: {
   modal: Extract<StatisticsModal, { type: "statistics" }>;
   held?: Snapshot;
   loadSnapshot: (id: string) => Promise<Snapshot>;
+  online: boolean;
+  // Opens the raw context, for the conversation open on the page.
+  showContext?: () => void;
 }) {
   const {
     value: fetched,
@@ -39,7 +45,12 @@ export default function Statistics({
   useEffect(() => setValue(undefined), [modal.session_id]);
   const snapshot = held || fetched;
   return snapshot ? (
-    <StatisticsContent state={snapshot.state} nodeId={modal.node_id} />
+    <StatisticsContent
+      state={snapshot.state}
+      nodeId={modal.node_id}
+      online={online}
+      showContext={showContext}
+    />
   ) : error ? (
     <LoadError error={error} retry={retry} />
   ) : (
@@ -50,9 +61,13 @@ export default function Statistics({
 function StatisticsContent({
   state,
   nodeId,
+  online,
+  showContext,
 }: {
   state?: State;
   nodeId?: string;
+  online: boolean;
+  showContext?: () => void;
 }) {
   const [scope, setScope] = useState<"turn" | "session">(
     nodeId ? "turn" : "session",
@@ -167,6 +182,32 @@ function StatisticsContent({
         <>
           {!node && fork && (
             <p>Forked from “{fork.title}”. Totals count work in this fork.</p>
+          )}
+          {!node && (
+            <>
+              <Rows
+                rows={[
+                  [
+                    "Context",
+                    contextSummary(
+                      state?.context_tokens,
+                      state?.context_window,
+                    ),
+                  ],
+                ]}
+              />
+              {showContext && (
+                <Actions>
+                  <Button
+                    variant="secondary"
+                    disabled={!online}
+                    onClick={showContext}
+                  >
+                    Raw context
+                  </Button>
+                </Actions>
+              )}
+            </>
           )}
           <Rows rows={rows} />
           <UsageRows

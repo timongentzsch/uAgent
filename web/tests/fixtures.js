@@ -19,6 +19,18 @@ export const withoutServiceWorker = (page) =>
 export const online = (page) =>
   expect(page.locator('.composer input[type="file"]')).toBeEnabled();
 
+// The composer's totals open the statistics, which hold the way to the raw
+// context.
+export async function openRawContext(page) {
+  await page
+    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Conversation statistics" })
+    .getByRole("button", { name: "Raw context", exact: true })
+    .click();
+}
+
 // Scrolls a transcript up from its end. It has to be there first: until the
 // app has pinned it, this is no move up, and the next pin undoes it.
 export async function leaveEnd(box) {

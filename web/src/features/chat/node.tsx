@@ -318,7 +318,14 @@ function RowLine({
   const content = (
     <>
       <ChevronRight class="row-chevron" aria-hidden="true" />
-      <span class="node-headline" title={headline}>
+      <span
+        class={
+          node.state === "running"
+            ? "node-headline shimmer-text"
+            : "node-headline"
+        }
+        title={headline}
+      >
         {node.state === "failed" && <span class="sr-only">Failed: </span>}
         {headline}
       </span>

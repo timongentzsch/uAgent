@@ -44,36 +44,12 @@ div.node-row > .row-chevron {
   text-overflow: ellipsis;
 }
 /* State shows only when it matters: a failed row reads in the error colour,
-   a cancelled one is muted, a running one shimmers softly. */
+   a cancelled one is muted. */
 .node.failed > .node-row :is(.node-headline, .node-word) {
   color: var(--removed);
 }
 .node.cancelled > .node-row .node-headline {
   color: var(--muted);
-}
-.node.running > .node-row .node-headline {
-  background:
-    linear-gradient(90deg, var(--muted) 30%, var(--text) 50%, var(--muted) 70%)
-    0 0 / 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: node-shimmer var(--motion-shimmer) linear infinite;
-}
-@keyframes node-shimmer {
-  to {
-    background-position: -150% 0;
-  }
-}
-/* A forced palette cannot draw text through a gradient: plain text. */
-@media (forced-colors: active) {
-  .node.running > .node-row .node-headline {
-    background: none;
-    -webkit-background-clip: border-box;
-    background-clip: border-box;
-    color: CanvasText;
-    animation: none;
-  }
 }
 /* What an open row holds sits under its headline, past the chevron, with
    the same gap between its parts as between rows. */

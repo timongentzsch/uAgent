@@ -146,7 +146,15 @@ export default function Modals({
           close={close}
         >
           {modal.type === "statistics" ? (
-            <Statistics modal={modal} held={held} loadSnapshot={load} />
+            <Statistics
+              modal={modal}
+              held={held}
+              loadSnapshot={load}
+              online={online}
+              showContext={
+                modal.session_id === selected ? () => showContext() : undefined
+              }
+            />
           ) : (
             <ConversationActions
               key={`${modal.type}-${modal.session?.id || modal.space?.path}`}

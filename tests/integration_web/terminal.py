@@ -5,8 +5,10 @@ import socket
 import struct
 import time
 
-from integration_support import Server, assert_true, budget, event
+from integration_support import Server, assert_true, budget, event, wait_until
 from web_support import web_host
+
+from integration_web.moves import watch
 
 TEXT, BINARY, CLOSE = 1, 2, 8
 
@@ -158,6 +160,50 @@ def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
             terminal = open_terminal(client, folder=str(project))
             assert_true(client.command("terminal", action="close", id=terminal)["accepted"], "")
             assert_true(listed(client) == [], "a closed shell is still listed")
+
+            # A folder's shells are named by the lowest free number, and keep
+            # the name when an earlier one closes. A name can be changed.
+            frames = watch(client)
+            first = open_terminal(client, folder=str(project))
+            second = open_terminal(client, folder=str(project))
+            assert_true(
+                [(entry["title"], entry["started"] > 0) for entry in listed(client)]
+                == [("Terminal 1", True), ("Terminal 2", True)],
+                listed(client),
+            )
+            assert_true(client.command("terminal", action="close", id=first)["accepted"], "")
+            third = open_terminal(client, folder=str(project))
+            titles = {entry["id"]: entry["title"] for entry in listed(client)}
+            assert_true(titles == {second: "Terminal 2", third: "Terminal 1"}, titles)
+            renamed = client.command("terminal", action="rename", id=second, title="  Build  ")
+            assert_true(renamed["accepted"], renamed)
+            assert_true(
+                {entry["id"]: entry["title"] for entry in listed(client)}[second] == "Build",
+                listed(client),
+            )
+            wait_until(
+                lambda: any(
+                    f.get("kind") == "terminals.changed"
+                    and {t["title"] for t in f["terminals"]} == {"Build", "Terminal 1"}
+                    for f in frames
+                ),
+                "the rename was not announced",
+            )
+            for number, bad in enumerate(("", "   ", "x" * 257, "a\nb")):
+                status, refused, _ = client.json(
+                    "/api/command",
+                    {
+                        "v": 2,
+                        "kind": "terminal",
+                        "request_id": f"d{number:031x}",
+                        "action": "rename",
+                        "id": second,
+                        "title": bad,
+                    },
+                )
+                assert_true(status == 409 and "title must be" in refused["error"], refused)
+            for shell in (second, third):
+                client.command("terminal", action="close", id=shell)
 
             # The page's own shell, of no folder, is never listed and ends
             # with its one viewer: no other device takes it up.

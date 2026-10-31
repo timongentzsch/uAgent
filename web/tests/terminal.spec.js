@@ -82,6 +82,59 @@ test("a folder's terminal opens in the page, keeps running and closes", async ({
   await expect(row).toHaveCount(0);
 });
 
+test("a folder's terminal has a name and a menu to rename, pin and close it", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  const nav = page.getByRole("navigation", { name: "Conversations" });
+  const pinned = nav.getByRole("group", { name: "Pinned" });
+  await page
+    .locator(".place-head")
+    .first()
+    .getByRole("button", { name: /^New in / })
+    .click();
+  await page.getByRole("menuitem", { name: "Terminal" }).click();
+  const shell = page.getByRole("region", { name: /^Terminal in / });
+  await expect(shell.locator(".xterm-rows")).toContainText(/\S/);
+  const row = nav.locator(".place-body .session-row", {
+    hasText: "Terminal 1",
+  });
+  await expect(row.locator(".session-time")).toHaveCount(1);
+
+  // The name is the person's to change.
+  await row
+    .getByRole("button", { name: "Terminal menu for Terminal 1" })
+    .click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByLabel("Terminal name").fill("Build");
+  await page.getByRole("button", { name: "Save name" }).click();
+  const renamed = nav.locator(".session-row", { hasText: "Build" });
+  await expect(renamed).toHaveCount(1);
+
+  // Pinned, it leaves its folder for the top; closing it removes the pin.
+  await renamed
+    .getByRole("button", { name: "Terminal menu for Build" })
+    .click();
+  await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
+  await expect(
+    pinned.locator(".session-row", { hasText: "Build" }),
+  ).toHaveCount(1);
+  await expect(
+    nav.locator(".place-body .session-row", { hasText: "Build" }),
+  ).toHaveCount(0);
+  await pinned.getByRole("button", { name: "Terminal menu for Build" }).click();
+  await page.getByRole("menuitem", { name: "Close", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: /^Overview of / }),
+  ).toBeVisible();
+  await expect(nav.locator(".session-row", { hasText: "Build" })).toHaveCount(
+    0,
+  );
+  await expect(pinned).toHaveCount(0);
+});
+
 test("on a phone the terminal takes the whole screen", async ({
   page,
   session,

@@ -73,7 +73,8 @@ bool ValidPins(const json& pins) {
              return false;
            }
            const std::string kind = JsonValue(pin, "kind", "");
-           return (kind == "session" || kind == "folder") &&
+           return (kind == "session" || kind == "folder" ||
+                   kind == "terminal") &&
                   !JsonValue(pin, "id", "").empty();
          });
 }
@@ -146,8 +147,9 @@ json SessionHost::SpaceControl(const json& command, const std::string& device,
 json SessionHost::SetPins(const json& command, std::string& error) {
   const json pins = command.value("pins", json());
   if (!ValidPins(pins)) {
-    error = "pins is a list of at most " + std::to_string(kMaxPins) +
-            " entries, each with a kind (session or folder) and an id";
+    error =
+        "pins is a list of at most " + std::to_string(kMaxPins) +
+        " entries, each with a kind (session, folder or terminal) and an id";
     return json::object();
   }
   std::lock_guard lock(mutex_);

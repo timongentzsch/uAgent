@@ -21,7 +21,7 @@ import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
 import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
 import { livePins } from "../features/sidebar/pins.tsx";
-import { ConversationMenu } from "./menus.tsx";
+import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
@@ -385,7 +385,10 @@ function App() {
   const newTerminal = useCallback(
     (folder: string) =>
       void manage("terminal", { action: "open", cwd: folder, folder }).then(
-        ({ id }) => id && showTerminal({ id, cwd: folder, folder }),
+        ({ id, terminals }) => {
+          const opened = terminals.find((item) => item.id === id);
+          if (opened) showTerminal(opened);
+        },
         report,
       ),
     [showTerminal, report],
@@ -458,10 +461,31 @@ function App() {
     setPage("folder");
     setDrawer(false);
   }, []);
+  // Ends a folder's terminal; the one shown gives way to its folder.
+  const closeTerminal = useCallback(
+    (terminal: TerminalInfo) =>
+      void manage("terminal", { action: "close", id: terminal.id }).then(() => {
+        if (page === "terminal" && shell?.id === terminal.id)
+          overview(terminal.folder);
+      }, report),
+    [page, shell, overview, report],
+  );
+  const terminalMenu = useCallback(
+    (terminal: TerminalInfo) => (
+      <TerminalMenu terminal={terminal} open={open} close={closeTerminal} />
+    ),
+    [open, closeTerminal],
+  );
   const settings = useCallback(() => open({ type: "settings" }), [open]);
   const pins = useMemo(
-    () => livePins(catalogue.pins, listed, catalogue.spaces),
-    [catalogue.pins, listed, catalogue.spaces],
+    () =>
+      livePins(
+        catalogue.pins,
+        listed,
+        catalogue.spaces,
+        catalogue.terminals || [],
+      ),
+    [catalogue.pins, listed, catalogue.spaces, catalogue.terminals],
   );
   const hostContext = useMemo(
     () => ({
@@ -526,6 +550,7 @@ function App() {
       overview={overview}
       shownPlace={page === "folder" ? place : ""}
       terminals={catalogue.terminals}
+      terminalMenu={terminalMenu}
       showTerminal={showTerminal}
       newTerminal={terminalAvailable ? newTerminal : undefined}
       shownTerminal={page === "terminal" ? shell?.id : ""}
@@ -660,8 +685,7 @@ function App() {
                         load={folderTerminal}
                         fallback={<Spinner label="Opening the terminal…" />}
                         terminal={shell}
-                        closed={() => overview(shell.folder)}
-                        report={report}
+                        close={closeTerminal}
                       />
                     )}
                     {page === "scheduled" && (

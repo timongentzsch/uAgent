@@ -476,9 +476,10 @@ export interface Space {
   name: string;
 }
 
-// A conversation (by id) or a folder (by path) kept at the top of the list.
+// A conversation (by id), a folder (by path) or a folder's terminal (by id)
+// kept at the top of the list.
 export interface Pin {
-  kind: "session" | "folder";
+  kind: "session" | "folder" | "terminal";
   id: string;
 }
 
@@ -864,9 +865,11 @@ export interface CommandInputs {
   };
   revoke_device: { device_id: string };
   test_notification: None;
-  // A shell in a folder, the home folder without one; or the end of one.
+  // A shell in a folder, the home folder without one; or the end of one, or
+  // a new name for it.
   terminal:
     | { action: "open"; cwd?: string; folder?: string }
+    | { action: "rename"; id: string; title: string }
     | { action: "close"; id: string };
 }
 export type CommandFields<K extends CommandKind> = CommandInputs[K] & {
@@ -885,6 +888,7 @@ export type StatisticsModal =
       type: "rename" | "delete";
       session: Session;
       space?: never;
+      terminal?: never;
       node?: never;
       snapshot?: never;
     }
@@ -894,6 +898,16 @@ export type StatisticsModal =
       space: Space;
       conversations?: number;
       session?: never;
+      terminal?: never;
+      node?: never;
+      snapshot?: never;
+    }
+  // A folder's terminal, which can be renamed.
+  | {
+      type: "rename";
+      terminal: TerminalInfo;
+      session?: never;
+      space?: never;
       node?: never;
       snapshot?: never;
     }
@@ -1037,11 +1051,14 @@ export type InspectorTarget =
 
 // A shell the web host runs for paired devices: where it started, and the
 // folder or workspace it belongs to ("" for the page's own, which ends with
-// its view).
+// its view). A folder's shell has a name and a start time; the page's own
+// has neither.
 export interface TerminalInfo {
   id: string;
   cwd: string;
   folder: string;
+  title: string;
+  started: number;
 }
 // The folders' shells, and the one just opened.
 export interface TerminalList {

@@ -335,16 +335,17 @@ function TerminalView({
   );
 }
 
+// One of the page's own shells, which has no name or start time.
+type PageTerminal = Omit<TerminalInfo, "title" | "started">;
+
 // A folder's terminal, in the conversation's place: its folder, Close, and
 // the shell, which runs on when this page leaves it.
 export function FolderTerminal({
   terminal,
-  closed,
-  report,
+  close,
 }: {
   terminal: TerminalInfo;
-  closed: () => void;
-  report: Report;
+  close: (terminal: TerminalInfo) => void;
 }) {
   return (
     <section
@@ -355,16 +356,7 @@ export function FolderTerminal({
         <span class="terminal-place small" title={terminal.cwd}>
           {terminal.cwd}
         </span>
-        <Button
-          onClick={() =>
-            void manage("terminal", { action: "close", id: terminal.id }).then(
-              closed,
-              report,
-            )
-          }
-        >
-          Close terminal
-        </Button>
+        <Button onClick={() => close(terminal)}>Close terminal</Button>
       </div>
       <TerminalView key={terminal.id} id={terminal.id} />
     </section>
@@ -390,7 +382,7 @@ export default function TerminalPanel({
   close: () => void;
   report: Report;
 }) {
-  const [tabs, setTabs] = useState<TerminalInfo[]>([]);
+  const [tabs, setTabs] = useState<PageTerminal[]>([]);
   const [active, setActive] = useState("");
   const [ended, setEnded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);

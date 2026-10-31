@@ -110,18 +110,19 @@ const rowsOf = ({ item, working, finished }: Entry): Session[] => [
   ...(unfolded.has(item.id) ? finished.flatMap(rowsOf) : []),
 ];
 
-// The pinned conversations and folders in pin order, then the other places
-// under the word for their kind, workspaces first: one is µAgent's to keep
-// and remove, the other a directory of yours. A pinned conversation or
-// folder is listed once, among the pinned.
+// The pinned conversations, folders and terminals in pin order, then the
+// other places under the word for their kind, workspaces first: one is
+// µAgent's to keep and remove, the other a directory of yours. A pinned
+// conversation or folder is listed once, among the pinned.
 type Place = [string, Entry[]];
-type Pinned = { entry: Entry } | { place: Place };
+type Pinned = { entry: Entry } | { place: Place } | { terminal: TerminalInfo };
 
 function arrange(
   sessions: Session[],
   spaces: Space[] = [],
   online = true,
   pins: Pin[] = [],
+  terminals: TerminalInfo[] = [],
 ) {
   const groups = [...groupSessions(sessions, spaces, online)];
   const space = (path: string) => spaces.some((item) => item.path === path);
@@ -139,6 +140,10 @@ function arrange(
   const top = pins.flatMap((pin): Pinned[] => {
     const entry = entries.find((entry) => entry.item.id === pin.id);
     const place = places.find(([path]) => path === pin.id);
+    if (pin.kind === "terminal") {
+      const terminal = terminals.find((item) => item.id === pin.id);
+      return terminal ? [{ terminal }] : [];
+    }
     if (pin.kind === "session") return entry ? [{ entry }] : [];
     return place ? [{ place }] : [];
   });
@@ -166,7 +171,11 @@ export const sessionOrder = (
     collapsed.has(path) ? [] : entries.flatMap(rowsOf);
   return [
     ...top.flatMap((pinned) =>
-      "entry" in pinned ? rowsOf(pinned.entry) : rows(pinned.place),
+      "entry" in pinned
+        ? rowsOf(pinned.entry)
+        : "place" in pinned
+          ? rows(pinned.place)
+          : [],
     ),
     ...kinds.flatMap(([, places]) => places.flatMap(rows)),
   ];
@@ -226,6 +235,41 @@ function SessionRow({
   );
 }
 
+// One folder terminal in the list, as a conversation is: its name and start
+// time, and the same menu on hover or focus.
+function TerminalRow({
+  terminal,
+  selected,
+  choose,
+  menu,
+}: {
+  terminal: TerminalInfo;
+  selected: boolean;
+  choose: (terminal: TerminalInfo) => void;
+  menu: (terminal: TerminalInfo) => ComponentChildren;
+}) {
+  return (
+    <div class="session-row entry">
+      <ListRow
+        class="session"
+        aria-current={selected ? "page" : undefined}
+        onClick={() => choose(terminal)}
+        title={
+          <>
+            <Terminal class="row-icon" aria-hidden="true" />
+            {terminal.title}
+          </>
+        }
+      >
+        <span class="session-time">
+          <Time value={terminal.started} />
+        </span>
+      </ListRow>
+      {menu(terminal)}
+    </div>
+  );
+}
+
 // A patch to one session keeps the others' objects, so only its row renders.
 const SessionEntry = updateChecked(SessionRow);
 
@@ -238,7 +282,7 @@ type SidebarProps = {
   // How many of them wait on a decision.
   needsYou: number;
   spaces: Space[];
-  // The pinned conversations and folders, in order.
+  // The pinned conversations, folders and terminals, in order.
   pins: Pin[];
   // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
@@ -260,6 +304,7 @@ type SidebarProps = {
   // while the host offers them.
   terminals?: TerminalInfo[] | null;
   shownTerminal?: string;
+  terminalMenu: (terminal: TerminalInfo) => ComponentChildren;
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
   // Search over every conversation, command and setting.
@@ -285,6 +330,7 @@ function SidebarView({
   shownPlace,
   terminals,
   shownTerminal,
+  terminalMenu,
   showTerminal,
   newTerminal,
   page,
@@ -300,8 +346,8 @@ function SidebarView({
   // Grouped again only when the list, the places or the search change, not
   // for a selection, an unread mark or a fold.
   const { top, kinds } = useMemo(
-    () => arrange(all, drawing ? [] : spaces, online, pins),
-    [all, drawing, spaces, online, pins],
+    () => arrange(all, drawing ? [] : spaces, online, pins, terminals || []),
+    [all, drawing, spaces, online, pins, terminals],
   );
   // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
@@ -352,6 +398,15 @@ function SidebarView({
       </Fragment>
     );
   };
+  const terminalRow = (terminal: TerminalInfo) => (
+    <TerminalRow
+      key={terminal.id}
+      terminal={terminal}
+      selected={terminal.id === shownTerminal}
+      choose={showTerminal}
+      menu={terminalMenu}
+    />
+  );
   const kept = new Map(spaces.map((space) => [space.path, space]));
   const place = ([cwd, entries]: Place) => {
     const space = kept.get(cwd);
@@ -364,7 +419,11 @@ function SidebarView({
         ...entry.finished.flatMap(all),
       ];
     });
-    const shells = (terminals || []).filter((item) => item.folder === cwd);
+    const shells = (terminals || []).filter(
+      (item) =>
+        item.folder === cwd &&
+        !pins.some((pin) => pin.kind === "terminal" && pin.id === item.id),
+    );
     const holdsOpen = conversations.some((item) => item.id === selected);
     const attention = conversations.filter((item) =>
       ["waiting", "failed"].includes(statusOf(item, online)),
@@ -443,23 +502,7 @@ function SidebarView({
         </div>
         {!folded && (
           <div class="place-body">
-            {shells.map((terminal, index) => (
-              <div class="session-row entry" key={terminal.id}>
-                <ListRow
-                  class="session"
-                  aria-current={
-                    terminal.id === shownTerminal ? "page" : undefined
-                  }
-                  onClick={() => showTerminal(terminal)}
-                  title={
-                    <>
-                      <Terminal class="row-icon" aria-hidden="true" />
-                      Terminal{shells.length > 1 ? ` ${index + 1}` : ""}
-                    </>
-                  }
-                />
-              </div>
-            ))}
+            {shells.map(terminalRow)}
             {entries.map(conversation)}
           </div>
         )}
@@ -480,7 +523,9 @@ function SidebarView({
             top.map((pinned) =>
               "entry" in pinned
                 ? conversation(pinned.entry)
-                : place(pinned.place),
+                : "place" in pinned
+                  ? place(pinned.place)
+                  : terminalRow(pinned.terminal),
             ),
           ),
         ]

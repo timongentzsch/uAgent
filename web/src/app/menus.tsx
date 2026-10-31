@@ -1,6 +1,11 @@
 import type { ComponentChildren } from "preact";
 import { Check } from "lucide-preact";
-import type { AppModal, Session, Space } from "../shared/types.ts";
+import type {
+  AppModal,
+  Session,
+  Space,
+  TerminalInfo,
+} from "../shared/types.ts";
 import { command, manage } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { Menu, MenuItem, MenuSub } from "../shared/menu.tsx";
@@ -49,6 +54,33 @@ export function SpaceMenu({
         onClick={() => open({ type: "delete", space, conversations })}
       >
         Delete
+      </MenuItem>
+    </Menu>
+  );
+}
+
+// What can be done to a folder's terminal.
+export function TerminalMenu({
+  terminal,
+  open,
+  close,
+}: {
+  terminal: TerminalInfo;
+  open: (modal: AppModal) => void;
+  close: (terminal: TerminalInfo) => void;
+}) {
+  const { online } = useHostContext();
+  return (
+    <Menu label={`Terminal menu for ${terminal.title}`}>
+      <PinItem pin={{ kind: "terminal", id: terminal.id }} />
+      <MenuItem
+        disabled={!online}
+        onClick={() => open({ type: "rename", terminal })}
+      >
+        Rename
+      </MenuItem>
+      <MenuItem disabled={!online} onClick={() => close(terminal)}>
+        Close
       </MenuItem>
     </Menu>
   );

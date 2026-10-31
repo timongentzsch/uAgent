@@ -134,7 +134,9 @@ export default function Modals({
             modal.type === "rename"
               ? modal.space
                 ? "Rename workspace"
-                : "Rename conversation"
+                : modal.terminal
+                  ? "Rename terminal"
+                  : "Rename conversation"
               : modal.type === "delete"
                 ? modal.space
                   ? "Delete workspace?"
@@ -158,7 +160,7 @@ export default function Modals({
             />
           ) : (
             <ConversationActions
-              key={`${modal.type}-${modal.session?.id || modal.space?.path}`}
+              key={`${modal.type}-${modal.session?.id || modal.space?.path || modal.terminal?.id}`}
               modal={modal}
               close={close}
               online={online}

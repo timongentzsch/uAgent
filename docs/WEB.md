@@ -171,7 +171,10 @@ shells at once:
   workspace in the list, or **New terminal** on its overview. It is listed
   under that place, beside its conversations, and on the overview, on every
   paired device, and opens in the conversation's place (the whole screen on
-  a phone).
+  a phone). Its row is a conversation's: a name, the time it started, and a
+  ⋯ menu to pin, rename or close it. It is called "Terminal 1", "Terminal 2"
+  and so on, the lowest number free in the folder, and keeps its name when
+  another closes; a name lasts as long as the shell.
 - **The page's own terminal** (the button in the header, Ctrl+`, also ⌘+`
   on a Mac) opens a panel under the chat and Files, in tabs like VS Code's
   terminal. **+** starts another, in the open conversation's folder, or in

@@ -14,6 +14,15 @@ def classify(paths):
     return {"native": native, "web": native or any(path.startswith("web/") for path in paths)}
 
 
+def image(paths):
+    """Whether a pull request builds the container image, which master always
+    does: only when what defines it or publishes it changed."""
+    return any(
+        path.startswith(("deploy/", ".github/workflows/")) or path == ".dockerignore"
+        for path in paths
+    )
+
+
 SWITCHES = ("UAGENT_WEB", "UAGENT_BROWSER")  # also matches UAGENT_WEB_PUSH
 HEAVY_DIRS = (
     "src/web/",
@@ -118,10 +127,15 @@ elif __name__ == "__main__":
                 return ""
 
         is_heavy = heavy(paths, old, new)
-        result = {**classify(paths), "tidy": tidy(paths), "heavy": is_heavy}
+        result = {
+            **classify(paths),
+            "tidy": tidy(paths),
+            "heavy": is_heavy,
+            "image": image(paths),
+        }
     else:
         is_heavy = True
-        result = {"native": True, "web": True, "tidy": "all", "heavy": True}
+        result = {"native": True, "web": True, "tidy": "all", "heavy": True, "image": True}
     result["matrix"] = build_matrix(is_heavy)
     output = "".join(
         f"{name}={value if isinstance(value, str) else str(value).lower()}\n"

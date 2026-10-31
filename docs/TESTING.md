@@ -262,6 +262,7 @@ Master, scheduled and manual runs always run them.
 | `clang-tidy` | clang-tidy, translation units split across three runners |
 | `web` | Biome format check and lint, Node tests, bundle, notices and size checks, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
+| `image` | On master and when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 and starts it under compose's seccomp profile |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a

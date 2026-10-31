@@ -28,7 +28,8 @@ import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { ImageViewer } from "../../shared/attachments.tsx";
 import { ResizeHandle } from "../../shared/side-pane.tsx";
 import { MarkdownFile } from "../../shared/markdown-view.tsx";
-import { folderOf } from "../../shared/display.ts";
+import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
+import DiffView from "../../shared/diff-view.tsx";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -40,6 +41,11 @@ interface Listing {
 interface Found {
   paths: string[];
   more: boolean;
+}
+interface Changed {
+  changes: { path: string; state: "M" | "A" | "D" | "R" }[];
+  more: boolean;
+  repository: boolean;
 }
 interface FileText {
   text: string;
@@ -90,6 +96,8 @@ export default function Files({
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [source, setSource] = useState(false);
+  // The folder's files, or what differs in it from the last commit.
+  const [changing, setChanging] = useState(false);
   // In a narrow pane only one side shows: the list, or the open file.
   const [showing, setShowing] = useState<"list" | "file">("list");
   const url = (path: string) => routes.files(id, "raw", path);
@@ -109,18 +117,41 @@ export default function Files({
         : undefined,
     [id, search],
   );
-  const image = IMAGE.test(file);
+  const changed = useResource(
+    () => api<Changed>(routes.files(id, "changes", "")),
+    [id, turn],
+  );
+  const changes = changed.value?.changes ?? [];
+  const deleted =
+    changing && changes.some((c) => c.path === file && c.state === "D");
+  const image = IMAGE.test(file) && !changing;
   const content = useResource(
     () =>
-      file && !image
+      file && !image && !changing
         ? api<FileText>(routes.files(id, "read", file)).then((value) => ({
             ...value,
             path: file,
           }))
         : undefined,
-    [id, file, turn],
+    [id, file, turn, changing],
+  );
+  const diff = useResource(
+    () =>
+      file && changing
+        ? api<FileText>(routes.files(id, "diff", file)).then((value) => ({
+            ...value,
+            path: file,
+          }))
+        : undefined,
+    [id, file, turn, changing],
   );
   const text = content.value?.path === file ? content.value : undefined;
+  const diffText = diff.value?.path === file ? diff.value : undefined;
+  const diffLines = diffText?.text.split("\n") ?? [];
+  const counts: [number, number] = [
+    diffLines.filter((line) => diffLineClass(line) === "diff-add").length,
+    diffLines.filter((line) => diffLineClass(line) === "diff-del").length,
+  ];
   const markdown = MARKDOWN.test(file) && !source;
   const lines = useResource(
     () =>
@@ -148,6 +179,11 @@ export default function Files({
     setSource(false);
     setQuery("");
     setShowing("file");
+  };
+  const pick = (next: boolean) => {
+    setChanging(next);
+    setFile("");
+    setShowing("list");
   };
   const browse = (path: string) => {
     setDir(path);
@@ -180,7 +216,10 @@ export default function Files({
             folderName
           )}
         </h2>
-        {file && MARKDOWN.test(file) && (
+        {diffText && formatStat(counts) && (
+          <span class="files-dir small">{formatStat(counts)}</span>
+        )}
+        {file && !changing && MARKDOWN.test(file) && (
           <Button
             variant="secondary"
             aria-pressed={source}
@@ -189,7 +228,7 @@ export default function Files({
             Source
           </Button>
         )}
-        {file && (
+        {file && !deleted && (
           <a
             class="icon-button files-download"
             href={`${url(file)}&download=1`}
@@ -200,7 +239,7 @@ export default function Files({
             <Download />
           </a>
         )}
-        {openTerminal && !file && (
+        {openTerminal && !file && !changing && (
           <IconButton
             label="Open terminal here"
             onClick={() => openTerminal(dir)}
@@ -221,6 +260,24 @@ export default function Files({
             label="Resize the file list"
             edge="end"
           />
+          {changed.value?.repository && (
+            <div class="files-modes">
+              <Button
+                variant="secondary"
+                aria-pressed={!changing}
+                onClick={() => pick(false)}
+              >
+                Files
+              </Button>
+              <Button
+                variant="secondary"
+                aria-pressed={changing}
+                onClick={() => pick(true)}
+              >
+                {`Changes ${changes.length}`}
+              </Button>
+            </div>
+          )}
           <Input
             type="search"
             class="files-search"
@@ -283,6 +340,33 @@ export default function Files({
                     Some entries may not be listed. Keep typing to narrow.
                   </p>
                 )
+              )}
+            </>
+          ) : changing ? (
+            <>
+              {changes.length ? (
+                <ul class="files-entries">
+                  {changes.map((change) => (
+                    <li key={change.path}>
+                      <Button
+                        variant="quiet"
+                        class="entry"
+                        aria-current={change.path === file ? "true" : undefined}
+                        onClick={() => open(change.path)}
+                      >
+                        <span class="files-state" data-state={change.state}>
+                          {change.state}
+                        </span>
+                        <span class="files-name">{change.path}</span>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState>No uncommitted changes</EmptyState>
+              )}
+              {changed.value?.more && (
+                <p class="files-note small">Some changes may not be listed.</p>
               )}
             </>
           ) : (
@@ -363,6 +447,21 @@ export default function Files({
         >
           {!file ? (
             <EmptyState>Choose a file to read it here.</EmptyState>
+          ) : changing ? (
+            diff.error ? (
+              <LoadError error={diff.error} retry={diff.retry} />
+            ) : !diffText ? (
+              <Spinner label="Reading the changes…" />
+            ) : (
+              <>
+                <DiffView text={diffText.text} counts={counts} />
+                {diffText.more && (
+                  <p class="files-note files-cut">
+                    Showing the first part of this change.
+                  </p>
+                )}
+              </>
+            )
           ) : image ? (
             <Button
               variant="quiet"

@@ -38,8 +38,11 @@ first, then **Folders**. A place's name opens its overview, the chevron
 before it folds the place away (remembered per browser) and **+** starts a
 conversation there. Each conversation is followed by its agents: those at
 work or waiting with their state, the finished ones folded into one "N
-agents" line that opens in place (remembered per browser). Browsing saved
-history starts no model and runs no command.
+agents" line that opens in place (remembered per browser). **Pin** in the
+menu of a conversation, workspace or folder moves it to a **Pinned** section
+at the top, in the order pinned; **Unpin** returns it. The pins belong to
+the host, so every paired device shows the same. Browsing saved history
+starts no model and runs no command.
 
 A place's **overview** shows its name, path and, in a git repository, the
 branch and how many files are uncommitted; a field that starts a
@@ -68,7 +71,9 @@ conversation's folder beside the chat, or as a sheet on a small screen. It
 never writes. Search finds a file by name anywhere in the folder. Code opens
 with line numbers and highlighting, Markdown rendered with its images
 (**Source** shows the text), and an image at full size on a click; any other
-file offers a download. What is open is read again when a turn ends.
+file offers a download. In a git repository, **Changes** lists what differs
+from the last commit, with its count, and opens each as a diff; it is read
+only too. What is open is read again when a turn ends.
 
 ![The web interface with Files open beside a conversation: the README renders with its images, a search opens a C++ source file with line numbers, and the pane is resized](images/files.gif)
 
@@ -166,7 +171,10 @@ shells at once:
   workspace in the list, or **New terminal** on its overview. It is listed
   under that place, beside its conversations, and on the overview, on every
   paired device, and opens in the conversation's place (the whole screen on
-  a phone).
+  a phone). Its row is a conversation's: a name, the time it started, and a
+  ⋯ menu to pin, rename or close it. It is called "Terminal 1", "Terminal 2"
+  and so on, the lowest number free in the folder, and keeps its name when
+  another closes; a name lasts as long as the shell.
 - **The page's own terminal** (the button in the header, Ctrl+`, also ⌘+`
   on a Mac) opens a panel under the chat and Files, in tabs like VS Code's
   terminal. **+** starts another, in the open conversation's folder, or in
@@ -364,8 +372,19 @@ before Submit.
   messages and opening a folded tool row to reach it; Esc closes it.
 - `?` outside a text field lists every shortcut. Alt+↑ and Alt+↓ step through
   the conversations in sidebar order.
+- **Move to…** in a conversation's menu (not an agent's, and not before the
+  first message) moves it, with the agents it started, to another folder or
+  workspace: pick a place from the list or type a folder's path, and Move.
+  Its files stay in the old folder, an agent working in a worktree of its
+  own keeps it, and memories stay with the old folder; the conversation says
+  so in a note the model reads in its next request. The dialog names what
+  runs and keeps Move off until it has stopped; an idle runtime is closed
+  for the move. Moving changes the conversation's address, and every open
+  page, on every device, follows it there with its draft. A move is refused
+  while mail waits for the conversation or an agent of it, or another
+  program holds one of them (a terminal that has it open).
 - The conversation menu has **Find in conversation**, **Fork conversation**,
-  **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
+  **Move to…**, **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
   **Compact**, **Restart**, **Close conversation** and **Delete**. Tools
   controls the active schema. Close a live runtime before deleting its
   history; files in the folder are unaffected.

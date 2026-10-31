@@ -830,6 +830,21 @@ kbd {
     transform: rotate(360deg);
   }
 }
+/* Work under way shimmers softly through its text. */
+.shimmer-text {
+  background:
+    linear-gradient(90deg, var(--muted) 30%, var(--text) 50%, var(--muted) 70%)
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer var(--motion-shimmer) linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
 .mark {
   width: var(--space-12);
   height: var(--space-12);
@@ -1549,6 +1564,14 @@ dialog.sidebar.drawer[open][data-leaving] {
    backgrounds, so anything that says something through a fill keeps its
    own system colours. */
 @media (forced-colors: active) {
+  /* A forced palette cannot draw text through a gradient: plain text. */
+  .shimmer-text {
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: CanvasText;
+    animation: none;
+  }
   .switch input[role="switch"]::before {
     forced-color-adjust: none;
     background: ButtonText;

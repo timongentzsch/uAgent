@@ -56,6 +56,8 @@ export const schedulePreviewDebounceMs = 200;
 // units, never fewer, so the form is never laxer than the host.
 export const maxTitleChars = 256;
 export const maxSpaceNameChars = 64;
+// The workspace a conversation starts in when no folder is chosen.
+export const scratchSpace = "Scratch";
 
 // Zoom shown and stored when the device has not chosen one.
 export const defaultZoom = 100;

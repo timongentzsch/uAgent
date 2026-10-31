@@ -24,12 +24,15 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
 #include "include/core/child_env.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
+#include "include/core/time.h"
 
 namespace uagent::web {
 namespace {
@@ -59,6 +62,9 @@ int ExitCode(int status) {
 struct TerminalShell {
   // No folder: the page's own shell, which ends with its viewer.
   std::string id, cwd, folder;
+  // Set under Terminals::mutex_, as the shell is listed.
+  std::string title;
+  int64_t started = 0;
   pid_t pid = -1;
   int wake = -1;  // the loop's, for a viewer that leaves
   // Read and closed only by the loop; written and resized under
@@ -260,6 +266,7 @@ std::string Terminals::Open(const std::string& directory,
   shell->id = RandomToken(16);
   shell->cwd = paths[0];
   shell->folder = paths[1];
+  shell->started = NowMillis();
   shell->wake = wake_write_.Get();
   UniqueLock lock(mutex_);
   if (stopping_ || shell->id.empty()) {
@@ -305,11 +312,38 @@ std::string Terminals::Open(const std::string& directory,
     error = std::string("cannot start a shell: ") + strerror(failed);
     return {};
   }
+  if (!shell->folder.empty()) {
+    size_t number = 1;
+    while (std::ranges::any_of(shells_, [&](const auto& other) {
+      return other->folder == shell->folder &&
+             other->title == "Terminal " + std::to_string(number);
+    })) {
+      ++number;
+    }
+    shell->title = "Terminal " + std::to_string(number);
+  }
   shells_.push_back(shell);
   WakeDescriptor(wake_write_.Get());
   lock.unlock();
   if (changed_) changed_();
   return shell->id;
+}
+
+std::string Terminals::Rename(const std::string& id, const std::string& title) {
+  const std::string trimmed = Trim(title);
+  if (!ValidSessionTitle(trimmed)) {
+    return InvalidSessionTitleMessage();
+  }
+  {
+    std::lock_guard lock(mutex_);
+    const auto found = std::ranges::find(shells_, id, &TerminalShell::id);
+    if (found == shells_.end() || (*found)->folder.empty()) {
+      return "no such terminal";
+    }
+    (*found)->title = trimmed;
+  }
+  if (changed_) changed_();
+  return {};
 }
 
 bool Terminals::Close(const std::string& id) {
@@ -330,7 +364,8 @@ std::vector<TerminalInfo> Terminals::List() const {
   std::vector<TerminalInfo> list;
   for (const auto& shell : shells_) {
     if (!shell->folder.empty()) {
-      list.push_back({shell->id, shell->cwd, shell->folder});
+      list.push_back(
+          {shell->id, shell->cwd, shell->folder, shell->title, shell->started});
     }
   }
   std::ranges::stable_sort(list, {}, &TerminalInfo::folder);

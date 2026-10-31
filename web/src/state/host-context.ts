@@ -5,6 +5,7 @@ import type {
   AppModal,
   ConnectionPhase,
   Draft,
+  Pin,
   Report,
   Session,
   Snapshot,
@@ -17,10 +18,12 @@ export interface Host {
   online: boolean;
   connection: ConnectionPhase;
   report: Report;
+  // The pinned conversations and folders the list still has, in order.
+  pins: Pin[];
   store: SnapshotStore;
   load: (id: string) => Promise<Snapshot>;
   refresh: () => Promise<void>;
-  forget: (id: string) => void;
+  forget: (id: string, movedTo?: string) => void;
   setModal: (modal: AppModal | null) => void;
   // Opens the context a conversation was last sent: the open one's, or the
   // given one's.

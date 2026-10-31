@@ -29,7 +29,7 @@ Paths are under `~/.uagent` unless shown otherwise.
 | scheduled tasks | `scheduled/state.json` |
 | worktrees of scheduled runs and agents | `worktrees/<id>` |
 | session links | `links/*` |
-| web host discovery, devices and push keys | `web/*` |
+| web host discovery, devices and push keys, pinned conversations and folders | `web/*` (`web/pins.json`) |
 | settings, for all conversations and per folder | `config/settings.json` (and its `.lock`) |
 | folder trust, permission rules, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/welcomed` |
 | your instructions | `AGENTS.md` |
@@ -85,6 +85,25 @@ chose the title.
 - A successful, untruncated file read stores `_uagent_read_range`
   (`[path, first_line, last_line]`) in its tool message; wire requests omit
   it.
+
+A conversation moves to another folder by renaming its file, and every file
+beside it (`<name>.json.*` and `<name>.share.md`), into the history of that
+folder, together with the agents saved beside it, which are found by their
+`agent.parent`. A session's id is the hash of its path, so each moved
+session has a new id: the files' `agent.parent`, the conversation's own
+asset and edit paths and the ids it names agents by are rewritten, an
+agent that worked in the old folder works in the new one (one in a worktree
+of its own keeps it), and its usage ledger, the web's pins and the scheduled
+runs that name it follow. The conversation's header `session_id` stays and
+a note is added to its transcript. Nothing else changes: files in the folder
+and memories stay.
+
+Before anything moves the web host writes `web/move-<id>.json` (the folders,
+every `{from, to}` and the note); the host deletes it when the move is
+complete. Each step does nothing for what an earlier run did, so a host that
+stopped partway finishes the move as it starts, before it lists anything. A
+journal that is not a valid move is left as it is and reported on stderr,
+and the host starts without it.
 
 The event journal (`uagent.session.event.v1`) keeps at most 512 records or
 256 KiB of turn, tool, capability, configuration, presentation and artifact

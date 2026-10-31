@@ -1,10 +1,16 @@
 import type { ComponentChildren } from "preact";
 import { Check } from "lucide-preact";
-import type { AppModal, Session, Space } from "../shared/types.ts";
+import type {
+  AppModal,
+  Session,
+  Space,
+  TerminalInfo,
+} from "../shared/types.ts";
 import { command, manage } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { Menu, MenuItem, MenuSub } from "../shared/menu.tsx";
 import { capitalize } from "../shared/display.ts";
+import { PinItem } from "../features/sidebar/pins.tsx";
 
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
@@ -36,6 +42,7 @@ export function SpaceMenu({
   const { online } = useHostContext();
   return (
     <Menu label={`Menu for the workspace ${space.name}`}>
+      <PinItem pin={{ kind: "folder", id: space.path }} />
       <MenuItem
         disabled={!online}
         onClick={() => open({ type: "rename", space })}
@@ -47,6 +54,33 @@ export function SpaceMenu({
         onClick={() => open({ type: "delete", space, conversations })}
       >
         Delete
+      </MenuItem>
+    </Menu>
+  );
+}
+
+// What can be done to a folder's terminal.
+export function TerminalMenu({
+  terminal,
+  open,
+  close,
+}: {
+  terminal: TerminalInfo;
+  open: (modal: AppModal) => void;
+  close: (terminal: TerminalInfo) => void;
+}) {
+  const { online } = useHostContext();
+  return (
+    <Menu label={`Terminal menu for ${terminal.title}`}>
+      <PinItem pin={{ kind: "terminal", id: terminal.id }} />
+      <MenuItem
+        disabled={!online}
+        onClick={() => open({ type: "rename", terminal })}
+      >
+        Rename
+      </MenuItem>
+      <MenuItem disabled={!online} onClick={() => close(terminal)}>
+        Close
       </MenuItem>
     </Menu>
   );
@@ -82,6 +116,15 @@ export function ConversationMenu({
   return (
     <Menu label="Conversation menu">
       {children}
+      {!item.parent && <PinItem pin={{ kind: "session", id: item.id }} />}
+      {!item.parent && item.status !== "draft" && (
+        <MenuItem
+          disabled={!online}
+          onClick={() => open({ type: "move", session: item })}
+        >
+          Move to…
+        </MenuItem>
+      )}
       {find && <MenuItem onClick={find}>Find in conversation</MenuItem>}
       <MenuItem
         disabled={

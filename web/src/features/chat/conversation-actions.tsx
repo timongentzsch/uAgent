@@ -9,7 +9,8 @@ import {
 } from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
-// The dialog body that renames or deletes a conversation or a workspace.
+// The dialog body that renames or deletes a conversation or a workspace, or
+// renames a terminal.
 
 export default function ConversationActions({
   modal,
@@ -23,7 +24,7 @@ export default function ConversationActions({
   close: () => void;
 }) {
   const [title, setTitle] = useState(
-    modal.space?.name || modal.session?.title || "",
+    modal.space?.name || modal.session?.title || modal.terminal?.title || "",
   );
   const { run, busy, error } = useAction();
   return (
@@ -31,6 +32,15 @@ export default function ConversationActions({
       onSubmit={(event) => {
         event.preventDefault();
         void run(async () => {
+          if (modal.terminal) {
+            await manage("terminal", {
+              action: "rename",
+              id: modal.terminal.id,
+              title: title.trim(),
+            });
+            close();
+            return;
+          }
           if (modal.space) {
             // The host does the whole of it: a workspace's conversations close
             // and go with it.
@@ -87,7 +97,11 @@ export default function ConversationActions({
     >
       {modal.type === "rename" ? (
         <label>
-          {modal.space ? "Workspace name" : "Conversation name"}
+          {modal.space
+            ? "Workspace name"
+            : modal.terminal
+              ? "Terminal name"
+              : "Conversation name"}
           <Input
             autoFocus
             value={title}

@@ -83,9 +83,9 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(item("Find in conversation")).toBeFocused();
+  await expect(item("Pin")).toBeFocused();
   // Items leave the tab order; a first letter moves to its item.
-  await expect(item("Find in conversation")).toHaveAttribute("tabindex", "-1");
+  await expect(item("Pin")).toHaveAttribute("tabindex", "-1");
   await page.keyboard.press("r");
   await expect(item("Rename")).toBeFocused();
   await page.keyboard.press("d");
@@ -108,7 +108,7 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await expect(trigger).toBeFocused();
   // Tab leaves from the open menu, on to what follows it.
   await page.keyboard.press("ArrowDown");
-  await expect(item("Find in conversation")).toBeFocused();
+  await expect(item("Pin")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(menu).toHaveCount(0);
 });

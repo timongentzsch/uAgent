@@ -5,7 +5,9 @@ import {
   withoutServiceWorker,
   selectProbeModel,
   chooseDetail,
+  leaveEnd,
   openRow,
+  openRawContext,
 } from "./fixtures.js";
 
 test("late snapshots and retired streams cannot replace current session state", async ({
@@ -143,10 +145,10 @@ test("late snapshots and retired streams cannot replace current session state", 
   );
   await send(0, sessions[1], 9000, 12);
   const context = page.getByRole("button", {
-    name: "Raw context",
+    name: "Conversation statistics",
     exact: true,
   });
-  await expect(context).toContainText("ctx 9k/");
+  await expect(context).toHaveAttribute("title", /Estimated context: 9,000 /);
   holdB = false;
   const staleResponse = page.waitForResponse(
     (response) =>
@@ -160,22 +162,22 @@ test("late snapshots and retired streams cannot replace current session state", 
         requestAnimationFrame(() => requestAnimationFrame(resolve)),
       ),
   );
-  await expect(context).toContainText("ctx 9k/");
+  await expect(context).toHaveAttribute("title", /Estimated context: 9,000 /);
   // A repeated/out-of-order event must not roll back the same generation.
   await send(0, sessions[1], 3000, 11);
-  await expect(context).toContainText("ctx 9k/");
+  await expect(context).toHaveAttribute("title", /Estimated context: 9,000 /);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => globalThis.testStreams.length))
     .toBe(2);
   await ready(1, 12);
   await send(1, sessions[1], 12000, 13);
-  await expect(context).toContainText("ctx 12k/");
+  await expect(context).toHaveAttribute("title", /Estimated context: 12,000 /);
   await send(0, sessions[1], 800000, 99);
   await page.evaluate(() =>
     globalThis.testStreams[0].onerror(new Event("error")),
   );
-  await expect(context).toContainText("ctx 12k/");
+  await expect(context).toHaveAttribute("title", /Estimated context: 12,000 /);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.locator(".error-banner")).toHaveCount(0);
 });
@@ -257,9 +259,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await page.keyboard.press("Escape");
   await expect(memory).toHaveCount(0);
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
-  await page.locator(".transcript").evaluate((element) => {
-    element.scrollTop = 0;
-  });
+  await leaveEnd(page.locator(".transcript"));
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
@@ -277,7 +277,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   ).toHaveAttribute("aria-expanded", "true");
   await expect
     .poll(() =>
-      page.locator(".transcript").evaluate((element) => element.scrollTop),
+      page
+        .locator(".transcript")
+        .evaluate((element) => Math.abs(element.scrollTop - 24)),
     )
     .toBeLessThan(2);
   await expect(
@@ -510,7 +512,7 @@ test("compaction never opens an unsolicited viewer", async ({
     page.locator(".node-row").filter({ hasText: "Compacted" }),
   ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  await openRawContext(page);
   const context = page.getByRole("dialog", {
     name: "Raw context",
     exact: true,

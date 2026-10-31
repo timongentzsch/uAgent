@@ -21,6 +21,7 @@ import { BrowserLoading } from "../features/browser/frame.tsx";
 import Settings from "../features/settings/settings.tsx";
 import Statistics from "../features/chat/statistics.tsx";
 import ConversationActions from "../features/chat/conversation-actions.tsx";
+import MoveConversation from "../features/chat/move-conversation.tsx";
 import Inspector from "../features/chat/inspector.tsx";
 import Raw from "../features/chat/raw.tsx";
 import Instructions from "../features/settings/instructions.tsx";
@@ -133,7 +134,9 @@ export default function Modals({
             modal.type === "rename"
               ? modal.space
                 ? "Rename workspace"
-                : "Rename conversation"
+                : modal.terminal
+                  ? "Rename terminal"
+                  : "Rename conversation"
               : modal.type === "delete"
                 ? modal.space
                   ? "Delete workspace?"
@@ -146,10 +149,18 @@ export default function Modals({
           close={close}
         >
           {modal.type === "statistics" ? (
-            <Statistics modal={modal} held={held} loadSnapshot={load} />
+            <Statistics
+              modal={modal}
+              held={held}
+              loadSnapshot={load}
+              online={online}
+              showContext={
+                modal.session_id === selected ? () => showContext() : undefined
+              }
+            />
           ) : (
             <ConversationActions
-              key={`${modal.type}-${modal.session?.id || modal.space?.path}`}
+              key={`${modal.type}-${modal.session?.id || modal.space?.path || modal.terminal?.id}`}
               modal={modal}
               close={close}
               online={online}
@@ -166,6 +177,19 @@ export default function Modals({
               }}
             />
           )}
+        </Modal>
+      )}
+      {modal?.type === "move" && (
+        <Modal title={`Move “${modal.session.title}”`} close={close}>
+          <MoveConversation
+            session={
+              sessionById(catalogue.sessions, modal.session.id) || modal.session
+            }
+            sessions={catalogue.sessions}
+            spaces={catalogue.spaces || []}
+            online={online}
+            close={close}
+          />
         </Modal>
       )}
       {inspector && session && (

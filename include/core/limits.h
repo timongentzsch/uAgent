@@ -32,6 +32,9 @@ inline constexpr size_t kAttachmentCacheBytes = MiB(16);
 // Maximum entries held in a session/asset catalogue scan. Distinct from the
 // byte budgets above: raising retention must not raise preview windows.
 inline constexpr size_t kMaxCatalogueEntries = 4096;
+// Pinned conversations and folders, and the bytes the list may take on disk.
+inline constexpr size_t kMaxPins = 64;
+inline constexpr size_t kPinsFileBytes = KiB(64);
 
 // Bounded collections retained in session metadata or exposed through UI
 // catalogues. These are memory and payload policies, not inferred capacities.

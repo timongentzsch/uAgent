@@ -172,11 +172,11 @@ export default function FolderOverview({
         <div class="overview-section">
           <SectionTitle>Terminals</SectionTitle>
           <div class="divided">
-            {shells.map((terminal, index) => (
+            {shells.map((terminal) => (
               <Row
                 key={terminal.id}
                 icon={<SquareTerminal />}
-                label={`Terminal${shells.length > 1 ? ` ${index + 1}` : ""}`}
+                label={terminal.title}
                 detail={terminal.cwd}
                 onClick={() => showTerminal(terminal)}
               />

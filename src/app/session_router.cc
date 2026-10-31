@@ -66,6 +66,19 @@ std::optional<fs::path> SpaceAt(const std::string& path) {
 }
 }  // namespace
 
+bool ValidPins(const json& pins) {
+  return pins.is_array() && pins.size() <= kMaxPins &&
+         std::ranges::all_of(pins, [](const json& pin) {
+           if (!pin.is_object()) {
+             return false;
+           }
+           const std::string kind = JsonValue(pin, "kind", "");
+           return (kind == "session" || kind == "folder" ||
+                   kind == "terminal") &&
+                  !JsonValue(pin, "id", "").empty();
+         });
+}
+
 json Spaces() {
   json spaces = json::array();
   std::error_code error;
@@ -129,6 +142,23 @@ json SessionHost::SpaceControl(const json& command, const std::string& device,
     Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
   }
   return {{"spaces", spaces}};
+}
+
+json SessionHost::SetPins(const json& command, std::string& error) {
+  const json pins = command.value("pins", json());
+  if (!ValidPins(pins)) {
+    error =
+        "pins is a list of at most " + std::to_string(kMaxPins) +
+        " entries, each with a kind (session, folder or terminal) and an id";
+    return json::object();
+  }
+  std::lock_guard lock(mutex_);
+  if (!WritePrivateFile(directory_ + "/" + kPinsFile, JsonDump(pins), error)) {
+    return json::object();
+  }
+  pins_ = pins;
+  Record("", "", {{"kind", "pins.changed"}, {"pins", pins_}}, false);
+  return {{"pins", pins_}};
 }
 
 // The host belongs to no folder: a request names the folder it is about,
@@ -213,6 +243,24 @@ std::string SessionHost::DeleteSpace(const std::string& path,
              ? "the workspace's folder could not be removed: " + error.message()
              : "";
 }
+std::optional<std::filesystem::path> SessionHost::NamedFolder(
+    const json& command, std::string& error) {
+  std::string folder = JsonValue(command, "cwd", "");
+  if (const std::string space = Trim(JsonValue(command, "space", ""));
+      !space.empty()) {
+    const size_t before = Spaces().size();
+    folder = SpaceFolder(space, error);
+    if (folder.empty()) return std::nullopt;
+    // A new one is listed wherever the workspaces are.
+    if (const json spaces = Spaces(); spaces.size() != before) {
+      Record("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}}, false);
+    }
+  }
+  const auto resolved = CanonicalDirectory(folder);
+  if (!resolved) error = "choose an accessible directory on the host";
+  return resolved;
+}
+
 SessionCommandResult SessionHost::ExecuteCommand(
     json command, const std::string& device, const std::string& request_id) {
   UniqueLock lock(mutex_);
@@ -224,22 +272,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     // A workspace is a folder of µAgent's own, made by naming it: a
     // conversation that belongs to no folder still gets a workspace commands
     // can write.
-    std::string folder = JsonValue(command, "cwd", "");
-    if (const std::string space = Trim(JsonValue(command, "space", ""));
-        !space.empty()) {
-      const size_t before = Spaces().size();
-      folder = SpaceFolder(space, result.error);
-      if (folder.empty()) return result;
-      // A new one is listed wherever the workspaces are.
-      if (const json spaces = Spaces(); spaces.size() != before) {
-        Record("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}}, false);
-      }
-    }
-    const auto resolved = CanonicalDirectory(folder);
-    if (!resolved) {
-      result.error = "choose an accessible directory on the host";
-      return result;
-    }
+    const auto resolved = NamedFolder(command, result.error);
+    if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
     auto session = CreateSession(
         cwd.string(), HistoryPath(cwd.string(), "web-" + RandomToken(16)), "",
@@ -266,6 +300,20 @@ SessionCommandResult SessionHost::ExecuteCommand(
   if (session->closing || session->status == SessionStatus::kUpdating ||
       session->status == SessionStatus::kDeleting) {
     result.error = "conversation update in progress";
+    return result;
+  }
+  if (kind == SessionCommandKind::kMove) {
+    if (JsonValue(command, "generation", "") != session->generation) {
+      result.error = "stale session; refresh before acting";
+      return result;
+    }
+    const auto folder = NamedFolder(command, result.error);
+    if (!folder) return result;
+    lock.unlock();
+    json moved;
+    result.error = MoveConversation(session, *folder, device, moved);
+    lock.lock();
+    if (result.error.empty()) result.outcome["result"] = moved;
     return result;
   }
   if (kind == SessionCommandKind::kFork && command.contains("argument")) {

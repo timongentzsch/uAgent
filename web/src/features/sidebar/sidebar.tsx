@@ -1,7 +1,7 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Fragment, type ComponentChildren } from "preact";
 import { useMemo } from "preact/hooks";
-import type { Session, Space, TerminalInfo } from "../../shared/types.ts";
+import type { Pin, Session, Space, TerminalInfo } from "../../shared/types.ts";
 import {
   ChevronDown,
   ChevronRight,
@@ -37,6 +37,7 @@ import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
 import { collapsed, unfolded, useFolding } from "./folding.ts";
+import { PinItem } from "./pins.tsx";
 import "./sidebar.css";
 
 // Before the catalogue arrives, the list draws these (see <Placeholder>).
@@ -109,21 +110,53 @@ const rowsOf = ({ item, working, finished }: Entry): Session[] => [
   ...(unfolded.has(item.id) ? finished.flatMap(rowsOf) : []),
 ];
 
-// The places under the word for their kind, workspaces first: one is
-// µAgent's to keep and remove, the other a directory of yours.
-function placesByKind(
+// The pinned conversations, folders and terminals in pin order, then the
+// other places under the word for their kind, workspaces first: one is
+// µAgent's to keep and remove, the other a directory of yours. A pinned
+// conversation or folder is listed once, among the pinned.
+type Place = [string, Entry[]];
+type Pinned = { entry: Entry } | { place: Place } | { terminal: TerminalInfo };
+
+function arrange(
   sessions: Session[],
   spaces: Space[] = [],
   online = true,
+  pins: Pin[] = [],
+  terminals: TerminalInfo[] = [],
 ) {
-  const places = [...groupSessions(sessions, spaces, online)];
+  const groups = [...groupSessions(sessions, spaces, online)];
   const space = (path: string) => spaces.some((item) => item.path === path);
-  return (
-    [
-      ["Workspaces", places.filter(([path]) => space(path))],
-      ["Folders", places.filter(([path]) => !space(path))],
-    ] as const
-  ).filter(([, shown]) => shown.length);
+  const pinned = (kind: Pin["kind"], id: string) =>
+    pins.some((pin) => pin.kind === kind && pin.id === id);
+  const entries = groups.flatMap(([, entries]) => entries);
+  const places = groups
+    .map(
+      ([path, entries]): Place => [
+        path,
+        entries.filter((entry) => !pinned("session", entry.item.id)),
+      ],
+    )
+    .filter(([path, entries]) => entries.length || space(path));
+  const top = pins.flatMap((pin): Pinned[] => {
+    const entry = entries.find((entry) => entry.item.id === pin.id);
+    const place = places.find(([path]) => path === pin.id);
+    if (pin.kind === "terminal") {
+      const terminal = terminals.find((item) => item.id === pin.id);
+      return terminal ? [{ terminal }] : [];
+    }
+    if (pin.kind === "session") return entry ? [{ entry }] : [];
+    return place ? [{ place }] : [];
+  });
+  const rest = places.filter(([path]) => !pinned("folder", path));
+  return {
+    top,
+    kinds: (
+      [
+        ["Workspaces", rest.filter(([path]) => space(path))],
+        ["Folders", rest.filter(([path]) => !space(path))],
+      ] as const
+    ).filter(([, shown]) => shown.length),
+  };
 }
 
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
@@ -131,12 +164,22 @@ export const sessionOrder = (
   sessions: Session[],
   spaces: Space[] | undefined,
   online = true,
-) =>
-  placesByKind(sessions, spaces, online).flatMap(([, places]) =>
-    places.flatMap(([path, entries]) =>
-      collapsed.has(path) ? [] : entries.flatMap(rowsOf),
+  pins: Pin[] = [],
+) => {
+  const { top, kinds } = arrange(sessions, spaces, online, pins);
+  const rows = ([path, entries]: Place) =>
+    collapsed.has(path) ? [] : entries.flatMap(rowsOf);
+  return [
+    ...top.flatMap((pinned) =>
+      "entry" in pinned
+        ? rowsOf(pinned.entry)
+        : "place" in pinned
+          ? rows(pinned.place)
+          : [],
     ),
-  );
+    ...kinds.flatMap(([, places]) => places.flatMap(rows)),
+  ];
+};
 
 type SessionRowProps = {
   item: Session;
@@ -192,6 +235,41 @@ function SessionRow({
   );
 }
 
+// One folder terminal in the list, as a conversation is: its name and start
+// time, and the same menu on hover or focus.
+function TerminalRow({
+  terminal,
+  selected,
+  choose,
+  menu,
+}: {
+  terminal: TerminalInfo;
+  selected: boolean;
+  choose: (terminal: TerminalInfo) => void;
+  menu: (terminal: TerminalInfo) => ComponentChildren;
+}) {
+  return (
+    <div class="session-row entry">
+      <ListRow
+        class="session"
+        aria-current={selected ? "page" : undefined}
+        onClick={() => choose(terminal)}
+        title={
+          <>
+            <Terminal class="row-icon" aria-hidden="true" />
+            {terminal.title}
+          </>
+        }
+      >
+        <span class="session-time">
+          <Time value={terminal.started} />
+        </span>
+      </ListRow>
+      {menu(terminal)}
+    </div>
+  );
+}
+
 // A patch to one session keeps the others' objects, so only its row renders.
 const SessionEntry = updateChecked(SessionRow);
 
@@ -204,6 +282,8 @@ type SidebarProps = {
   // How many of them wait on a decision.
   needsYou: number;
   spaces: Space[];
+  // The pinned conversations, folders and terminals, in order.
+  pins: Pin[];
   // What can be done to a workspace: rename it, delete it.
   spaceMenu: (space: Space, conversations: number) => ComponentChildren;
   selected: string;
@@ -215,6 +295,8 @@ type SidebarProps = {
   create: (place: "workspace" | "folder") => void;
   // A new conversation in a place, and the place's overview.
   start: (cwd: string) => void;
+  // A new conversation in the Scratch workspace, with no folder chosen.
+  startScratch: () => void;
   overview: (cwd: string) => void;
   // The place whose overview is open.
   shownPlace: string;
@@ -222,6 +304,7 @@ type SidebarProps = {
   // while the host offers them.
   terminals?: TerminalInfo[] | null;
   shownTerminal?: string;
+  terminalMenu: (terminal: TerminalInfo) => ComponentChildren;
   showTerminal: (terminal: TerminalInfo) => void;
   newTerminal?: (folder: string) => void;
   // Search over every conversation, command and setting.
@@ -233,6 +316,7 @@ function SidebarView({
   sessions,
   needsYou,
   spaces,
+  pins,
   spaceMenu,
   selected,
   unread,
@@ -241,10 +325,12 @@ function SidebarView({
   settings,
   create,
   start,
+  startScratch,
   overview,
   shownPlace,
   terminals,
   shownTerminal,
+  terminalMenu,
   showTerminal,
   newTerminal,
   page,
@@ -259,9 +345,9 @@ function SidebarView({
   const all = drawing ? SAMPLE : sessions;
   // Grouped again only when the list, the places or the search change, not
   // for a selection, an unread mark or a fold.
-  const places = useMemo(
-    () => placesByKind(all, drawing ? [] : spaces, online),
-    [all, drawing, spaces, online],
+  const { top, kinds } = useMemo(
+    () => arrange(all, drawing ? [] : spaces, online, pins, terminals || []),
+    [all, drawing, spaces, online, pins, terminals],
   );
   // How many conversations each place holds, whatever the search shows.
   const counts = useMemo(() => {
@@ -312,8 +398,17 @@ function SidebarView({
       </Fragment>
     );
   };
+  const terminalRow = (terminal: TerminalInfo) => (
+    <TerminalRow
+      key={terminal.id}
+      terminal={terminal}
+      selected={terminal.id === shownTerminal}
+      choose={showTerminal}
+      menu={terminalMenu}
+    />
+  );
   const kept = new Map(spaces.map((space) => [space.path, space]));
-  const place = ([cwd, entries]: [string, Entry[]]) => {
+  const place = ([cwd, entries]: Place) => {
     const space = kept.get(cwd);
     const name = space?.name || folderName(cwd);
     const folded = collapsed.has(cwd);
@@ -324,7 +419,11 @@ function SidebarView({
         ...entry.finished.flatMap(all),
       ];
     });
-    const shells = (terminals || []).filter((item) => item.folder === cwd);
+    const shells = (terminals || []).filter(
+      (item) =>
+        item.folder === cwd &&
+        !pins.some((pin) => pin.kind === "terminal" && pin.id === item.id),
+    );
     const holdsOpen = conversations.some((item) => item.id === selected);
     const attention = conversations.filter((item) =>
       ["waiting", "failed"].includes(statusOf(item, online)),
@@ -393,39 +492,46 @@ function SidebarView({
               </MenuItem>
             )}
           </Menu>
-          {space && spaceMenu(space, counts.get(cwd) || 0)}
+          {space ? (
+            spaceMenu(space, counts.get(cwd) || 0)
+          ) : (
+            <Menu label={`Folder menu for ${name}`}>
+              <PinItem pin={{ kind: "folder", id: cwd }} />
+            </Menu>
+          )}
         </div>
         {!folded && (
           <div class="place-body">
-            {shells.map((terminal, index) => (
-              <div class="session-row entry" key={terminal.id}>
-                <ListRow
-                  class="session"
-                  aria-current={
-                    terminal.id === shownTerminal ? "page" : undefined
-                  }
-                  onClick={() => showTerminal(terminal)}
-                  title={
-                    <>
-                      <Terminal class="row-icon" aria-hidden="true" />
-                      Terminal{shells.length > 1 ? ` ${index + 1}` : ""}
-                    </>
-                  }
-                />
-              </div>
-            ))}
+            {shells.map(terminalRow)}
             {entries.map(conversation)}
           </div>
         )}
       </section>
     );
   };
-  const list = places.map(([kind, shown]) => (
+  const group = (kind: string, rows: ComponentChildren[]) => (
     <div key={kind} class="list-group" role="group" aria-label={kind}>
       <p class="section-title caption">{kind}</p>
-      {shown.map(place)}
+      {rows}
     </div>
-  ));
+  );
+  const list = [
+    ...(top.length
+      ? [
+          group(
+            "Pinned",
+            top.map((pinned) =>
+              "entry" in pinned
+                ? conversation(pinned.entry)
+                : "place" in pinned
+                  ? place(pinned.place)
+                  : terminalRow(pinned.terminal),
+            ),
+          ),
+        ]
+      : []),
+    ...kinds.map(([kind, shown]) => group(kind, shown.map(place))),
+  ];
   return (
     <>
       <div class="sidebar-head">
@@ -452,6 +558,9 @@ function SidebarView({
             </>
           }
         >
+          <MenuItem disabled={!online} onClick={startScratch}>
+            Conversation
+          </MenuItem>
           <MenuItem disabled={!online} onClick={() => create("workspace")}>
             Workspace…
           </MenuItem>

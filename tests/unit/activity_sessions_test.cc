@@ -1447,12 +1447,12 @@ void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
   {
     std::ofstream(tree + "/work.txt") << "x";
   }
-  CHECK(RemoveWorktree(project, tree).find("uncommitted") != std::string::npos);
+  CHECK(RemoveWorktree(tree).find("uncommitted") != std::string::npos);
   REQUIRE(git(tree, {"add", "work.txt"}));
   REQUIRE(git(tree, {"commit", "-q", "-m", "work"}));
-  CHECK(RemoveWorktree(project, tree).find("no branch") != std::string::npos);
+  CHECK(RemoveWorktree(tree).find("no branch") != std::string::npos);
   REQUIRE(git(tree, {"branch", "keep"}));
-  CHECK(RemoveWorktree(project, tree).empty());
+  CHECK(RemoveWorktree(tree).empty());
   CHECK(!std::filesystem::exists(tree));
 }
 

@@ -3,6 +3,8 @@ import {
   expect,
   withoutServiceWorker,
   headerAction,
+  online,
+  selectProbeModel,
 } from "./fixtures.js";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -459,19 +461,12 @@ test.describe("composer footer", () => {
       });
       await page.goto(`/#session=${session.id}`);
       const footer = page.locator(".composer-metrics");
-      const context = footer.getByRole("button", {
-        name: "Raw context",
+      const totals = footer.getByRole("button", {
+        name: "Conversation statistics",
         exact: true,
       });
-      await expect(context).toBeEnabled();
       await expect(footer.locator(".activity-button")).toHaveText("2 commands");
-      await expect(
-        context.locator(width < 600 ? ".context-compact" : ".context-full"),
-      ).toBeVisible();
-      if (width < 600)
-        await expect(context.locator(".context-compact")).toHaveText(
-          "Context 99% left",
-        );
+      await expect(totals).toHaveText("99% left · 12.3k turns · $1234.56");
       const geometry = await footer.evaluate((node) => {
         const rect = (target) => {
           const { x, y, width, height, bottom, right } =
@@ -505,4 +500,55 @@ test.describe("composer footer", () => {
       ).toBeVisible();
     });
   }
+});
+
+test.describe("composer rows", () => {
+  test.beforeEach(({ command, session }) => selectProbeModel(command, session));
+
+  test("an idle composer holds no empty row; the input rises by one row while working", async ({
+    page,
+    session,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    const prompt = page.getByLabel("Message or guidance");
+    const rows = () =>
+      page.evaluate(() => {
+        const top = (selector) =>
+          document.querySelector(selector).getBoundingClientRect();
+        const transcript = document.querySelector(".transcript");
+        return {
+          input: top(".composer > form").bottom,
+          status: top(".status-line").height,
+          totals: top(".composer-metrics > .metrics").y,
+          statusTop: top(".status-line").y,
+          off:
+            transcript.scrollHeight -
+            transcript.scrollTop -
+            transcript.clientHeight,
+        };
+      });
+    const idle = await rows();
+    // Nothing but the totals under the input.
+    expect(idle.status).toBe(0);
+    await prompt.fill("Queue controls probe");
+    await prompt.press("Enter");
+    await expect(page.locator(".composer .status-led.running")).toBeVisible();
+    await expect(page.locator(".message.response")).toContainText(
+      "Waiting for guidance",
+    );
+    const working = await rows();
+    const row = working.totals - working.statusTop;
+    expect(row).toBeGreaterThan(0);
+    expect(idle.input - working.input).toBe(row);
+    await expect.poll(async () => (await rows()).off).toBeLessThanOrEqual(2);
+    await prompt.fill("Carry on");
+    await page.getByRole("button", { name: "Queue next" }).click();
+    await page.getByRole("button", { name: "Insert now" }).click();
+    await expect(page.locator(".turn-footer")).toHaveCount(1);
+    await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
+    await expect.poll(async () => (await rows()).input).toBe(idle.input);
+    await expect.poll(async () => (await rows()).off).toBeLessThanOrEqual(2);
+  });
 });

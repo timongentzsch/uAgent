@@ -300,10 +300,17 @@ export function useHost(
     },
     [snapshots],
   );
+  // With `movedTo`, the conversation lives on under that id: what this device
+  // holds of it (its draft, its unread mark, messages not yet sent) goes
+  // with it, and an open page follows.
   const forget = useCallback(
-    (id: string) => {
+    (id: string, movedTo?: string) => {
       loads.current.delete(id);
       delete live.current[id];
+      if (movedTo && readCounts.current[id] !== undefined) {
+        readCounts.current[movedTo] = readCounts.current[id];
+        kept.read.write(readCounts.current);
+      }
       delete readCounts.current[id];
       setLoadErrors((prior) => {
         const next = { ...prior };
@@ -313,16 +320,23 @@ export function useHost(
       snapshots.set({ ...live.current });
       setDrafts((prior) => {
         const next = { ...prior };
+        if (movedTo && next[id]) next[movedTo] = next[id];
         delete next[id];
         return next;
       });
       // A queued message for a deleted session can never send (load() has
       // no session to reconcile it against): drop it with the session
       // instead of orphaning it in storage.
-      setOutgoing((prior) => prior.filter((item) => item.session_id !== id));
+      setOutgoing((prior) =>
+        movedTo
+          ? prior.map((item) =>
+              item.session_id === id ? { ...item, session_id: movedTo } : item,
+            )
+          : prior.filter((item) => item.session_id !== id),
+      );
       setUnread((prior) => {
         const next = new Set(prior);
-        next.delete(id);
+        if (next.delete(id) && movedTo) next.add(movedTo);
         return next;
       });
       setCatalogue((prior) => ({
@@ -330,9 +344,9 @@ export function useHost(
         sessions: prior.sessions.filter((item) => item.id !== id),
       }));
       if (selection.current === id) {
-        selection.current = "";
-        writeSelection("", true);
-        setSelected("");
+        selection.current = movedTo || "";
+        writeSelection(movedTo || "", true);
+        setSelected(movedTo || "");
       }
     },
     [snapshots],

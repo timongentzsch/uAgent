@@ -119,6 +119,10 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+}
+/* The row exists while there is something in it; an idle one holds only
+   its live region and no room. */
+.status-line:has(button) {
   min-height: var(--control-slim);
 }
 /* Its actions keep the row's height. */
@@ -284,7 +288,10 @@
   .composer-metrics {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-1);
+    gap: 0;
+  }
+  .status-line:has(button) {
+    margin-bottom: var(--space-1);
   }
   .composer-metrics .activity-button {
     max-width: 100%;

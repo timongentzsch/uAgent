@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -206,6 +207,14 @@ class SessionStore {
   static json Share(const std::string& path);
   static SessionStoreStatus Rename(const std::string& path,
                                    const std::string& title);
+  // Calls `visit` on every string of the transcript: messages, archive and
+  // display.
+  static void VisitStrings(SessionState& state,
+                           const std::function<void(json&)>& visit);
+  // Changes the saved session at `path` under its lease. `edit` returns
+  // whether it changed the record; one that did not is not saved.
+  static SessionStoreStatus Edit(
+      const std::string& path, const std::function<bool(SessionRecord&)>& edit);
   static SessionStoreStatus Remove(const std::string& path,
                                    const std::string& draft_path = "");
 };

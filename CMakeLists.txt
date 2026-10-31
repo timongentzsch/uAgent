@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.6.1 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.7.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -250,6 +250,7 @@ add_library(
   src/app/asset_store.cc
   src/app/session_assets.cc
   src/app/session_host.cc
+  src/app/session_move.cc
   src/app/session_router.cc
   src/app/replay_log.cc
   src/app/session_schedules.cc

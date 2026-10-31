@@ -476,8 +476,16 @@ export interface Space {
   name: string;
 }
 
+// A conversation (by id), a folder (by path) or a folder's terminal (by id)
+// kept at the top of the list.
+export interface Pin {
+  kind: "session" | "folder" | "terminal";
+  id: string;
+}
+
 export interface Catalogue {
   spaces?: Space[];
+  pins?: Pin[];
   commands?: SlashCommand[];
   // The detail level a device starts at until it chooses its own.
   detail?: string;
@@ -584,13 +592,15 @@ export type HostEvent = HostEnvelope &
           | "activated"
           | "deactivated"
           | "closed"
-          | "deleted"
           | "error"
           | "gap"
           | "management.changed"
           | "scheduled.changed";
       }
+    // moved_to: the id it has now, when it was moved rather than removed.
+    | { kind: "deleted"; moved_to?: string }
     | { kind: "settings.changed"; level: string }
+    | { kind: "pins.changed"; pins: Pin[] }
     | { kind: "spaces.changed"; spaces: Space[] }
     | { kind: "terminals.changed"; terminals: TerminalInfo[] | null }
   );
@@ -714,6 +724,7 @@ export interface CommandResults {
   config: Configuration;
   restart_conversations: { restarting: number; deferred: number };
   space: { spaces: Space[] };
+  pins: { pins: Pin[] };
   restart_host: { restarting: boolean };
   tools: ToolCatalogue;
   activity: ActivityDetail;
@@ -723,6 +734,8 @@ export interface CommandResults {
   fork: { id: string; prompt?: string };
   share: { path: string };
   side: { id: string };
+  // The conversation's new id: moving changes it.
+  move: { id: string };
   create: never;
   activate: never;
   close: never;
@@ -802,6 +815,7 @@ export interface CommandInputs {
   };
   restart_conversations: { target_id?: string; cwd?: string };
   space: { action: string; cwd: string; name: string };
+  pins: { pins: Pin[] };
   restart_host: None;
   tools: {
     operation: string;
@@ -822,6 +836,8 @@ export interface CommandInputs {
   fork: { argument?: string; message_id?: string };
   share: None;
   side: { operation: string; text: string };
+  // The folder or workspace to move to, by its path on the host.
+  move: { cwd: string };
   // A workspace by its name (`space`), in place of `cwd`.
   create: { cwd?: string; space?: string };
   activate: None;
@@ -849,9 +865,11 @@ export interface CommandInputs {
   };
   revoke_device: { device_id: string };
   test_notification: None;
-  // A shell in a folder, the home folder without one; or the end of one.
+  // A shell in a folder, the home folder without one; or the end of one, or
+  // a new name for it.
   terminal:
     | { action: "open"; cwd?: string; folder?: string }
+    | { action: "rename"; id: string; title: string }
     | { action: "close"; id: string };
 }
 export type CommandFields<K extends CommandKind> = CommandInputs[K] & {
@@ -870,6 +888,7 @@ export type StatisticsModal =
       type: "rename" | "delete";
       session: Session;
       space?: never;
+      terminal?: never;
       node?: never;
       snapshot?: never;
     }
@@ -879,6 +898,16 @@ export type StatisticsModal =
       space: Space;
       conversations?: number;
       session?: never;
+      terminal?: never;
+      node?: never;
+      snapshot?: never;
+    }
+  // A folder's terminal, which can be renamed.
+  | {
+      type: "rename";
+      terminal: TerminalInfo;
+      session?: never;
+      space?: never;
       node?: never;
       snapshot?: never;
     }
@@ -906,6 +935,7 @@ export type AppModal =
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
   | { type: "new"; place: "workspace" | "folder" }
+  | { type: "move"; session: Session }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };
@@ -1021,11 +1051,14 @@ export type InspectorTarget =
 
 // A shell the web host runs for paired devices: where it started, and the
 // folder or workspace it belongs to ("" for the page's own, which ends with
-// its view).
+// its view). A folder's shell has a name and a start time; the page's own
+// has neither.
 export interface TerminalInfo {
   id: string;
   cwd: string;
   folder: string;
+  title: string;
+  started: number;
 }
 // The folders' shells, and the one just opened.
 export interface TerminalList {

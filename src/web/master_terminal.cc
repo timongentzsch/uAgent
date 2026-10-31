@@ -24,7 +24,9 @@ json Master::TerminalList() const {
   for (const TerminalInfo& terminal : terminals_->List()) {
     list.push_back({{"id", terminal.id},
                     {"cwd", terminal.cwd},
-                    {"folder", terminal.folder}});
+                    {"folder", terminal.folder},
+                    {"title", terminal.title},
+                    {"started", terminal.started}});
   }
   return list;
 }
@@ -119,7 +121,7 @@ void Master::TerminalSocket(const Request& request,
 }
 
 // Opens a shell in a directory (the home folder without one), of a folder or
-// the page's own, or closes one.
+// the page's own, renames one or closes one.
 void Master::TerminalCommand(CommandCall& call) {
   if (!terminals_) {
     call.error = "the terminal is turned off (web.terminal)";
@@ -138,6 +140,10 @@ void Master::TerminalCommand(CommandCall& call) {
       call.error = "no such terminal";
       return;
     }
+  } else if (action == "rename") {
+    call.error = terminals_->Rename(JsonValue(call.command, "id", ""),
+                                    JsonValue(call.command, "title", ""));
+    if (!call.error.empty()) return;
   } else {
     call.error = "unsupported terminal action";
     return;

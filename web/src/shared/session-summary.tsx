@@ -1,77 +1,48 @@
 import type { State } from "./types.ts";
-import "./session-summary.css";
 import { cost, count } from "./quantities.ts";
-import { contextSummary } from "../state/context-summary.ts";
+import { contextLeft } from "../state/context-summary.ts";
 import { Button, DataText, updateChecked } from "./ui.tsx";
 
-// The context meter and cost summary of a conversation, shared by the
-// composer and the inspector.
-
-function ContextSummaryView({
-  state,
-  open,
-  online = true,
-}: {
-  state?: Pick<State, "context_tokens" | "context_window">;
-  open?: () => void;
-  online?: boolean;
-}) {
-  const title = `Estimated context: ${state?.context_tokens?.toLocaleString() ?? "—"}${state?.context_window ? ` / ${state.context_window.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate`;
-  const summary = contextSummary(state?.context_tokens, state?.context_window);
-  const label = (
-    <>
-      <span class="context-full">
-        <DataText>{summary}</DataText>
-      </span>
-      <span class="context-compact">
-        <DataText>
-          {contextSummary(state?.context_tokens, state?.context_window, true)}
-        </DataText>
-      </span>
-    </>
-  );
-  return open ? (
-    <Button
-      variant="quiet"
-      class="context-summary"
-      aria-label="Raw context"
-      title={`${title} · View raw context`}
-      disabled={!online}
-      onClick={open}
-    >
-      {label}
-    </Button>
-  ) : (
-    <span class="context-summary" title={title} aria-label="Estimated context">
-      {label}
-    </span>
-  );
-}
-
+// What the composer's one field says of a conversation: context left, turns,
+// cost and guidance waiting. It opens the statistics.
 function SessionSummaryView({
   state,
+  queued,
   open,
 }: {
-  state?: Pick<State, "statistics" | "turns" | "usage">;
+  state?: Pick<
+    State,
+    "context_tokens" | "context_window" | "statistics" | "turns" | "usage"
+  >;
+  // Guidance the host holds that this device lists nowhere else.
+  queued?: number;
   open: () => void;
 }) {
+  const { context_tokens: used, context_window: limit } = state ?? {};
+  const title = `Estimated context: ${used?.toLocaleString() ?? "—"}${limit ? ` / ${limit.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate`;
+  const parts = [
+    contextLeft(used, limit),
+    `${count(state?.statistics?.recorded_turns ?? state?.turns)} turns`,
+    state?.usage?.cost_reported ? cost(state.usage.cost) : "",
+    queued ? `${queued} queued` : "",
+  ];
   return (
-    <Button variant="quiet" onClick={open} aria-label="Conversation statistics">
-      <DataText>
-        {count(state?.statistics?.recorded_turns ?? state?.turns)} turns
-        {state?.usage?.cost_reported ? ` · ${cost(state.usage.cost)}` : ""}
-      </DataText>
+    <Button
+      variant="quiet"
+      onClick={open}
+      aria-label="Conversation statistics"
+      title={title}
+    >
+      <DataText>{parts.filter(Boolean).join(" · ")}</DataText>
     </Button>
   );
 }
 
-// The composer renders with every key pressed; these only when what they
-// count changes.
-export const ContextSummary = updateChecked(ContextSummaryView, [
+// The composer renders with every key pressed; this only when what it
+// counts changes.
+export const SessionSummary = updateChecked(SessionSummaryView, [
   "context_tokens",
   "context_window",
-]);
-export const SessionSummary = updateChecked(SessionSummaryView, [
   "statistics",
   "turns",
   "usage",

@@ -45,7 +45,7 @@ export interface EventHost {
   setOutgoing: Dispatch<StateUpdater<Outgoing[]>>;
   setUnread: Dispatch<StateUpdater<Set<string>>>;
   settleOutgoing: (outcome: Outcome) => boolean;
-  forget: (id: string) => void;
+  forget: (id: string, movedTo?: string) => void;
   refresh: () => void;
   report: (error: unknown) => void;
   onResult: (value: JSONValue, inspect: boolean) => void;
@@ -87,6 +87,10 @@ export function applyEvent(event: HostEvent, host: EventHost) {
   if (event.kind === "settings.changed") {
     setDetail(event.level);
     setManagementVersion((version) => version + 1);
+    return;
+  }
+  if (event.kind === "pins.changed") {
+    setCatalogue((prior) => ({ ...prior, pins: event.pins }));
     return;
   }
   if (event.kind === "spaces.changed") {
@@ -161,7 +165,7 @@ export function applyEvent(event: HostEvent, host: EventHost) {
         };
       break;
     case "deleted":
-      forget(id);
+      forget(id, event.moved_to);
       break;
     case "state": {
       const phase = event.phase || event.state?.phase || "idle";

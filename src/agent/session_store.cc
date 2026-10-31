@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <span>
@@ -582,9 +583,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
       value = std::move(text);
     }
   };
-  ForEachString(record.state.messages, rewrite);
-  ForEachString(record.state.archive, rewrite);
-  ForEachString(record.state.display, rewrite);
+  VisitStrings(record.state, rewrite);
   record.state.display["facts"]["fork-origin"] = {
       {"source", HashHex(source)},
       {"title", record.metadata.title},
@@ -713,6 +712,26 @@ json SessionStore::Share(const std::string& path) {
     return {{"error", error}};
   }
   return {{"shared", true}, {"path", sibling}};
+}
+
+void SessionStore::VisitStrings(SessionState& state,
+                                const std::function<void(json&)>& visit) {
+  ForEachString(state.messages, visit);
+  ForEachString(state.archive, visit);
+  ForEachString(state.display, visit);
+}
+
+SessionStoreStatus SessionStore::Edit(
+    const std::string& path, const std::function<bool(SessionRecord&)>& edit) {
+  FileLease writer;
+  std::string error;
+  if (!writer.Acquire(SessionLockPath(path), error)) {
+    return Error(SessionStoreError::kIo, std::move(error));
+  }
+  auto loaded = Inspect(path);
+  if (!loaded.record) return loaded.status;
+  return edit(*loaded.record) ? Save(path, *loaded.record)
+                              : SessionStoreStatus{};
 }
 
 SessionStoreStatus SessionStore::Rename(const std::string& path,

@@ -351,7 +351,6 @@ test("typing renders the composer, not the transcript or the list", async ({
     "SidebarView",
     "Chat",
     "ModelControl",
-    "ContextSummaryView",
     "SessionSummaryView",
     "ActivityButtonView",
   ])

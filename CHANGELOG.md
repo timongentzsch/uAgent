@@ -1,9 +1,16 @@
 # Changelog
 
-## Unreleased
+## v1.7.0 - 2026-10-31
 
 ### Changes
 
+- **A folder's terminal has a name, a time and a menu, as a conversation does.** Its row shows "Terminal 1", "Terminal 2" and so on, which stay with it when another closes, and the time it started. Its ⋯ menu pins it to the top of the list, renames it or closes it.
+- **A conversation and its agents can move to another folder.** Move to… in a conversation's menu picks a folder or workspace, or takes a path, and moves the saved conversation with the agents it started; the page and any other open device follow it to its new address. Files stay in the old folder and memories stay with the old folder, and an agent that works in a worktree of its own keeps it. The conversation is told in a note, and a move is refused while a turn runs, mail waits or another program holds the conversation. Moving changes a conversation's id.
+- **Conversations and folders can be pinned.** Pin in the menu of a conversation, workspace or folder moves it to a Pinned section at the top of the sidebar, the same on every paired device; plain folders gained a ⋯ menu for it.
+- **Files shows what changed in a repository.** A Changes button beside Files lists the folder's uncommitted changes against the last commit, with their count, and opens each as a diff. It is read only, and runs no program the repository's own configuration names.
+- **A conversation can start without choosing a folder.** New → Conversation opens one in a workspace named Scratch, which the host creates on first use.
+- **The composer is shorter on phones and its totals sit in one field.** An idle composer no longer reserves an empty row under the input; the status row appears only while a turn works. Context left, turns, cost and queued guidance read together in one button that opens the statistics, which now start with the context and the way to the raw context. The word "Working" and the current to-do shimmer like the running row.
+- **A wheel's scroll survives a page changing height on a busy machine.** Keeping your place while content above you changed could cancel the rest of a scroll in WebKit, because it waited a fixed time rather than for scrolling to stop.
 - **A change the host notices by itself reaches the web at once.** A scheduled task you saved or paused, a new workspace or a session deleted elsewhere could wait for the event stream's next heartbeat, up to 15 seconds, so the Scheduled page kept showing the old state and Run now stayed disabled.
 
 ## v1.6.1 - 2026-10-31

@@ -30,6 +30,8 @@ struct TerminalInfo {
   std::string id{};
   std::string cwd{};
   std::string folder{};
+  std::string title{};
+  int64_t started = 0;  // wall-clock milliseconds
 };
 
 // What a viewer receives: the output past what it has read; then, once, that
@@ -80,9 +82,13 @@ class Terminals {
 
   // A shell in `directory`, an absolute path to a folder (empty: the home
   // folder), that belongs to `folder`; with none, it ends with its viewer and
-  // is never listed or attached again. Its id, or empty with `error`.
+  // is never listed or attached again. A folder's shell is titled "Terminal
+  // N", the lowest N no running shell of the folder has. Its id, or empty with
+  // `error`.
   std::string Open(const std::string& directory, const std::string& folder,
                    std::string& error);
+  // Renames the shell `id`; empty on success, else why not.
+  std::string Rename(const std::string& id, const std::string& title);
   // Ends the shell; false when there is no such shell.
   bool Close(const std::string& id);
   // The running folder shells, by folder, oldest first.

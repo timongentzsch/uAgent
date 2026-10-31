@@ -20,7 +20,8 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
 import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
-import { ConversationMenu } from "./menus.tsx";
+import { livePins } from "../features/sidebar/pins.tsx";
+import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
@@ -271,7 +272,8 @@ function App() {
     setModal,
     setBusy,
   });
-  const { startConversation, newPlace, startIn, projects } = places;
+  const { startConversation, newPlace, startIn, startScratch, projects } =
+    places;
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
       host,
@@ -368,7 +370,7 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces, online);
+    const order = sessionOrder(listed, catalogue.spaces, online, pins);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -383,7 +385,10 @@ function App() {
   const newTerminal = useCallback(
     (folder: string) =>
       void manage("terminal", { action: "open", cwd: folder, folder }).then(
-        ({ id }) => id && showTerminal({ id, cwd: folder, folder }),
+        ({ id, terminals }) => {
+          const opened = terminals.find((item) => item.id === id);
+          if (opened) showTerminal(opened);
+        },
         report,
       ),
     [showTerminal, report],
@@ -456,12 +461,38 @@ function App() {
     setPage("folder");
     setDrawer(false);
   }, []);
+  // Ends a folder's terminal; the one shown gives way to its folder.
+  const closeTerminal = useCallback(
+    (terminal: TerminalInfo) =>
+      void manage("terminal", { action: "close", id: terminal.id }).then(() => {
+        if (page === "terminal" && shell?.id === terminal.id)
+          overview(terminal.folder);
+      }, report),
+    [page, shell, overview, report],
+  );
+  const terminalMenu = useCallback(
+    (terminal: TerminalInfo) => (
+      <TerminalMenu terminal={terminal} open={open} close={closeTerminal} />
+    ),
+    [open, closeTerminal],
+  );
   const settings = useCallback(() => open({ type: "settings" }), [open]);
+  const pins = useMemo(
+    () =>
+      livePins(
+        catalogue.pins,
+        listed,
+        catalogue.spaces,
+        catalogue.terminals || [],
+      ),
+    [catalogue.pins, listed, catalogue.spaces, catalogue.terminals],
+  );
   const hostContext = useMemo(
     () => ({
       online,
       connection,
       report,
+      pins,
       store: snapshots,
       load,
       refresh,
@@ -469,7 +500,7 @@ function App() {
       setModal,
       showContext: (item?: Session) => latest.current.showContext(item),
     }),
-    [online, connection, report, snapshots, load, refresh, forget],
+    [online, connection, report, pins, snapshots, load, refresh, forget],
   );
   const conversation = useMemo(
     () => ({
@@ -506,6 +537,7 @@ function App() {
       sessions={listed}
       needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
+      pins={pins}
       spaceMenu={places.spaceMenu}
       selected={page === "chat" ? selected : ""}
       unread={unread}
@@ -514,9 +546,11 @@ function App() {
       settings={settings}
       create={newPlace}
       start={startIn}
+      startScratch={startScratch}
       overview={overview}
       shownPlace={page === "folder" ? place : ""}
       terminals={catalogue.terminals}
+      terminalMenu={terminalMenu}
       showTerminal={showTerminal}
       newTerminal={terminalAvailable ? newTerminal : undefined}
       shownTerminal={page === "terminal" ? shell?.id : ""}
@@ -651,8 +685,7 @@ function App() {
                         load={folderTerminal}
                         fallback={<Spinner label="Opening the terminal…" />}
                         terminal={shell}
-                        closed={() => overview(shell.folder)}
-                        report={report}
+                        close={closeTerminal}
                       />
                     )}
                     {page === "scheduled" && (

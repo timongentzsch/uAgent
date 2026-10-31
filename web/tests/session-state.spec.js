@@ -5,6 +5,7 @@ import {
   withoutServiceWorker,
   selectProbeModel,
   chooseDetail,
+  leaveEnd,
   openRow,
   openRawContext,
 } from "./fixtures.js";
@@ -258,9 +259,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await page.keyboard.press("Escape");
   await expect(memory).toHaveCount(0);
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
-  await page.locator(".transcript").evaluate((element) => {
-    element.scrollTop = 0;
-  });
+  await leaveEnd(page.locator(".transcript"));
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
@@ -278,7 +277,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   ).toHaveAttribute("aria-expanded", "true");
   await expect
     .poll(() =>
-      page.locator(".transcript").evaluate((element) => element.scrollTop),
+      page
+        .locator(".transcript")
+        .evaluate((element) => Math.abs(element.scrollTop - 24)),
     )
     .toBeLessThan(2);
   await expect(

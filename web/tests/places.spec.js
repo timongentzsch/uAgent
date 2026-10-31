@@ -97,9 +97,15 @@ test("New conversation starts in the Scratch workspace, and a second joins it", 
   await online(page);
   const workspaces = page.getByRole("group", { name: "Workspaces" });
   for (const count of [1, 2]) {
+    const before = page.url();
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "Conversation" }).click();
     await expect(workspaces.locator(".session")).toHaveCount(count);
+    // The page has gone to it: typing before this reaches the one it left.
+    await expect(page).not.toHaveURL(before);
+    await expect(
+      workspaces.locator('.session[aria-current="page"]'),
+    ).toHaveCount(1);
     await expect(workspaces.getByRole("heading")).toHaveCount(1);
     await expect(workspaces.getByRole("heading")).toContainText("Scratch");
     await expect(page.locator(".composer .activity-button")).toHaveCount(0);

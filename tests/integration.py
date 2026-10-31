@@ -219,19 +219,8 @@ def main():
         os.environ["TMPDIR"] = str(tmpdir)
         failed = []
         skipped = 0
-        # CI runs a failed case once more (UAGENT_TEST_RETRIES=1): a pass then
-        # is reported as flaky, never as clean, and a second failure fails.
-        retries = int(os.environ.get("UAGENT_TEST_RETRIES", "0"))
         for name in names:
             outcome = run_case(root, name, arguments.binary.resolve())
-            for attempt in range(1, retries + 1):
-                if outcome != "failed":
-                    break
-                outcome = run_case(root, name, arguments.binary.resolve(), attempt)
-                if outcome == "passed":
-                    print(f"FLAKY {name}: passed on attempt {attempt + 1}", flush=True)
-                    if os.environ.get("GITHUB_ACTIONS"):
-                        print(f"::warning title=Flaky test::{name} failed, then passed")
             if outcome == "skipped":
                 skipped += 1
             elif outcome == "failed":
@@ -246,19 +235,18 @@ def main():
         remove_suite(pathlib.Path(temp))
 
 
-def run_case(root, name, binary, attempt=0):
+def run_case(root, name, binary):
     """One case in fresh folders: "passed", "skipped" or "failed"."""
     from session_support import stop_sessions
 
     print(f"running {name}", flush=True)
-    suffix = f".retry{attempt}" if attempt else ""
-    case_root = root / (name + suffix)
+    case_root = root / name
     # HOME is a sibling of the case workspace, not a child of it. A
     # workspace containing ~/.uagent is an ancestor of the agent's own
     # state, which the sandbox refuses to grant as a writable root --
     # so nesting them would leave every case running with nothing it
     # could write, which is not how a real session is laid out.
-    home = root / (name + suffix + ".home")
+    home = root / (name + ".home")
     case_root.mkdir(parents=True)
     home.mkdir(parents=True)
     started = time.monotonic()

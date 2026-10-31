@@ -58,6 +58,12 @@ void SessionHost::Publish(const std::string& session,
   auto owner = sessions_.find(session);
   const bool run_owned =
       owner != sessions_.end() && !owner->second->run_id.empty();
+  Record(session, generation, std::move(value), run_owned);
+}
+
+void SessionHost::Record(const std::string& session,
+                         const std::string& generation, json value,
+                         bool run_owned) {
   replay_.Publish(epoch_, session, generation, std::move(value), run_owned);
   changed_.notify_all();
 }
@@ -132,9 +138,9 @@ bool SessionHost::PublishMetadata(const std::string& id, HostSession& session) {
   json after = Metadata(session);
   if (session.published == after) return false;
   session.published = after;
-  replay_.Publish(epoch_, id, session.generation,
-                  {{"kind", "metadata"}, {"metadata", std::move(after)}},
-                  !session.run_id.empty());
+  Record(id, session.generation,
+         {{"kind", "metadata"}, {"metadata", std::move(after)}},
+         !session.run_id.empty());
   return true;
 }
 
@@ -199,13 +205,10 @@ bool SessionHost::RefreshCatalogue(bool force) {
       ++it;
       continue;
     }
-    replay_.Publish(epoch_, it->first, "", {{"kind", "deleted"}},
-                    !session.run_id.empty());
+    Record(it->first, "", {{"kind", "deleted"}}, !session.run_id.empty());
     it = sessions_.erase(it);
     changed = true;
   }
-  // Waiting event streams send what was published at once.
-  if (changed) changed_.notify_all();
   return changed;
 }
 

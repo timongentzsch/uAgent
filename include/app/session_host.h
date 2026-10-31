@@ -268,6 +268,11 @@ class SessionHost {
   };
   std::vector<RunUpdate> run_updates_ UAGENT_GUARDED_BY(mutex_);
   void RecordRun(const RunUpdate& update) UAGENT_REQUIRES(mutex_);
+  // Every event goes through here, with mutex_ held: appended to the log, and
+  // whatever waits on the log wakes. A stream left asleep sends it only at
+  // its next heartbeat.
+  void Record(const std::string& session, const std::string& generation,
+              json value, bool run_owned);
   bool PublishMetadata(const std::string& id, HostSession& session);
   std::shared_ptr<HostSession> CreateSession(const std::string& cwd,
                                              const std::string& path,

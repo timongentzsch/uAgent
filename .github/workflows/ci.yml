@@ -21,12 +21,6 @@ concurrency:
 permissions:
   contents: read
 
-# An integration case that fails runs once more; one that then passes is
-# reported as flaky (a warning on the run), never as clean. Playwright's own
-# retry does the same for the browser suite (web/playwright.config.js).
-env:
-  UAGENT_TEST_RETRIES: "1"
-
 jobs:
   changes:
     runs-on: ubuntu-24.04
@@ -382,8 +376,6 @@ jobs:
         run: npx playwright test --shard=${{ matrix.shard }}/3
         env:
           UAGENT_TEST_BINARY: ../build/uagent
-      # Also when a retry passed: what the failed attempt left is the only
-      # trace of a flaky test.
       - name: Retain browser failure evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

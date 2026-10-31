@@ -78,10 +78,8 @@ The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
 - Each case has its own deadline; `UAGENT_TEST_TIMEOUT_SCALE` multiplies the
   deadlines on slow or instrumented builds.
 - A failing case does not stop the run; the failures are listed at the end.
-- `UAGENT_TEST_RETRIES=N` runs a failed case up to N more times in a fresh
-  home. A case that passes on a retry prints `FLAKY` and still passes; CI sets
-  1 and turns each into a warning on the run, so a flake shows without failing
-  the merge.
+- A failed case is not run again, here or in the browser suite: one that
+  passes only sometimes has found a race, in the test or in the app.
 - `-j N` runs the selection in N processes. Every case has its own home and
   ports, so the whole suite takes about 20 s at `-j 8` and two minutes in one
   process.

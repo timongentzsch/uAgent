@@ -1,11 +1,13 @@
 """Management controls use native storage and ordinary session workers."""
 
 import datetime
+import http.client
 import json
 import re
 import signal
 import subprocess
 import threading
+import time
 
 from integration_support import (
     Server,
@@ -207,6 +209,46 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
     )
     call(action="forget", key=item["id"], revision=paused["revision"])
     assert_true(call()["tasks"] == [], "task not deleted")
+
+
+def test_a_schedule_change_reaches_a_waiting_event_stream_at_once(root, home, *, binary):
+    """The scheduler publishes outside any request: a stream with nothing to
+    send sends it then, not at its next heartbeat 15 seconds on."""
+    with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, env):
+        client.pair(code)
+        listing = client.json("/api/sessions")[1]
+        stream = http.client.HTTPConnection("127.0.0.1", client.port, timeout=budget(30))
+        stream.request(
+            "GET",
+            f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+            headers={"Cookie": client.cookie},
+        )
+        response = stream.getresponse()
+        assert_true(response.status == 200, response.status)
+        ready, pushed = threading.Event(), threading.Event()
+
+        def read_events():
+            while line := response.readline():
+                if line == b"event: ready\n":
+                    ready.set()
+                if line.startswith(b"data: ") and b'"scheduled.changed"' in line:
+                    pushed.set()
+
+        threading.Thread(target=read_events, daemon=True).start()
+        assert_true(ready.wait(budget(10)), "the stream never caught up")
+        # Long enough for the host to be waiting; a shorter wait only makes
+        # this test pass where it should have failed, never the reverse.
+        time.sleep(0.2)
+        task = dict(
+            name="Review",
+            prompt="Review the repository.",
+            cwd=str(root),
+            permissions="ask",
+            environment="local",
+            schedule=dict(type="interval", seconds=3600),
+        )
+        control(binary, root, env, "schedule", action="save", revision="", task=task)
+        assert_true(pushed.wait(budget(4)), "the change waited for the heartbeat")
 
 
 def test_scheduled_run_native_session_and_restart(root, home, *, binary):

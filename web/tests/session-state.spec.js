@@ -236,6 +236,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await prompt.fill("Memory receipt probe: please save this test memory");
   await prompt.press("Enter");
+  // The turn ends first: a reply arriving moves the row under a click on it.
+  await expect(page.locator(".turn-footer")).toHaveCount(2);
+  await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
   // The receipt opens to a link to the memory.
   await openRow(page, "Saved memory project/browser-proof");
   // Its detail reads top-down: key, one caption, then the memory itself
@@ -335,7 +338,9 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   await expect(thinkingRow).toBeVisible();
   const thinking = thinkingRow.locator("..");
   await expect(thinking.locator(".node-body")).toHaveCount(0);
-  await thinkingRow.click();
+  // Dispatched: the reply streaming moves the page under a real click, and
+  // whether a click lands is not what this holds to.
+  await thinkingRow.dispatchEvent("click");
   await expect(thinking.locator(".node-text")).toBeVisible();
 
   const opening = page
@@ -407,7 +412,7 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
   const selected = await page.evaluate(() => getSelection().toString());
 
   const answer = page.locator(".message.response > .markdown");
-  await copy.click();
+  await copy.dispatchEvent("click");
   await expect
     .poll(() =>
       page.evaluate(() => ({

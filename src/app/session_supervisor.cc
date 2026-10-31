@@ -144,8 +144,8 @@ bool SessionHost::IsCurrentLocked(const HostSession* session) const {
 
 void SessionHost::PublishLifecycle(const HostSession& session, json frame) {
   frame["metadata"] = Metadata(session);
-  replay_.Publish(epoch_, session.id, session.generation, std::move(frame),
-                  !session.run_id.empty());
+  Record(session.id, session.generation, std::move(frame),
+         !session.run_id.empty());
 }
 
 Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
@@ -225,13 +225,12 @@ void SessionHost::Received(HostSession* session, json frame) {
   }
   // A scheduled run or a pending restart wakes the scheduler, which acts
   // once the turn has ended.
-  replay_.Publish(epoch_, session->id, session->generation, std::move(frame),
-                  !session->run_id.empty() || session->restart);
+  Record(session->id, session->generation, std::move(frame),
+         !session->run_id.empty() || session->restart);
   if (kind == "gap") {
     lock.unlock();
     session->Send(ControlFrame("refresh"));
   }
-  changed_.notify_all();
 }
 
 bool SessionHost::RecycleStaleWorkerLocked(
@@ -396,8 +395,8 @@ void SessionHost::ApplyStateFrame(HostSession& session, json& frame) {
       frame["state"][field] = session.state[field];
     }
     for (json& patch : rows) {
-      replay_.Publish(epoch_, session.id, session.generation, std::move(patch),
-                      !session.run_id.empty() || session.restart);
+      Record(session.id, session.generation, std::move(patch),
+             !session.run_id.empty() || session.restart);
     }
   }
   session.pending = JsonValue(frame, "pending", json(nullptr));
@@ -504,9 +503,8 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     const json time = frame["time"];
     for (json& patch : patches) patch["time"] = time;
     for (size_t index = 0; index + 1 < patches.size(); ++index) {
-      replay_.Publish(epoch_, session.id, session.generation,
-                      std::move(patches[index]),
-                      !session.run_id.empty() || session.restart);
+      Record(session.id, session.generation, std::move(patches[index]),
+             !session.run_id.empty() || session.restart);
     }
     frame = std::move(patches.back());
   }

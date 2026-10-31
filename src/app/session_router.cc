@@ -232,9 +232,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       if (folder.empty()) return result;
       // A new one is listed wherever the workspaces are.
       if (const json spaces = Spaces(); spaces.size() != before) {
-        replay_.Publish(epoch_, "", "",
-                        {{"kind", "spaces.changed"}, {"spaces", spaces}},
-                        false);
+        Record("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}}, false);
       }
     }
     const auto resolved = CanonicalDirectory(folder);
@@ -336,8 +334,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     session->status = prior_status;
     if (result.error.empty() && kind == SessionCommandKind::kDelete) {
       sessions_.erase(session->id);
-      replay_.Publish(epoch_, session->id, "", {{"kind", "deleted"}},
-                      !session->run_id.empty());
+      Record(session->id, "", {{"kind", "deleted"}}, !session->run_id.empty());
     } else if (result.error.empty()) {
       session->title = title;
       session->draft_title = title;
@@ -375,7 +372,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     } else {
       session->closing = true;
       session->status = SessionStatus::kClosing;
-      if (PublishMetadata(session->id, *session)) changed_.notify_all();
+      PublishMetadata(session->id, *session);
       result.wake = true;
       lock.unlock();
       session->Send({{"kind", "close"}, {"request_id", request_id}});

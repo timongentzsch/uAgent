@@ -237,6 +237,7 @@ bool Master::Initialize(std::string& error) {
   push_ =
       std::make_unique<PushSender>(directory_, options_.push_contact, capture);
   host_.LoadDrafts();
+  host_.LoadPins();
   host_.RefreshCatalogue();
   host_.RefreshInvalidations({});
   server_.new_task_queue = [] {
@@ -464,6 +465,7 @@ void Master::RegisterApiRoutes() {
                            {"cursor", std::move(catalogue["cursor"])},
                            {"sessions", std::move(catalogue["sessions"])},
                            {"spaces", std::move(catalogue["spaces"])},
+                           {"pins", std::move(catalogue["pins"])},
                            {"commands", CommandSchemaJson()},
                            {"detail", ConfiguredDetail()},
                            {"capabilities", push_->Capabilities(device)},

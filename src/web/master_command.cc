@@ -116,6 +116,7 @@ void Master::Command(const Request& request, Response& response) {
       {"instructions", false, &Master::ManagementCommand},
       {"import", false, &Master::ManagementCommand},
       {"space", false, &Master::SpaceCommand},
+      {"pins", false, &Master::PinsCommand},
       {"restart_conversations", false, &Master::RestartConversations},
       {"restart_host", false, &Master::RestartHost},
       {"config", false, &Master::ConfigCommand},
@@ -206,6 +207,10 @@ void Master::ManagementCommand(CommandCall& call) {
 void Master::SpaceCommand(CommandCall& call) {
   call.outcome["result"] =
       host_.SpaceControl(call.command, call.device, call.error);
+}
+
+void Master::PinsCommand(CommandCall& call) {
+  call.outcome["result"] = host_.SetPins(call.command, call.error);
 }
 
 // Settings that need a restart reach running conversations only through a

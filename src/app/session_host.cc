@@ -103,6 +103,13 @@ void SessionHost::Stop() {
   changed_.notify_all();
 }
 
+// A file that is not a list of pins reads as none.
+void SessionHost::LoadPins() {
+  const json saved = ReadJsonFile(directory_ + "/" + kPinsFile, kPinsFileBytes);
+  std::lock_guard lock(mutex_);
+  pins_ = ValidPins(saved) ? saved : json::array();
+}
+
 void SessionHost::LoadDrafts() {
   std::error_code ec;
   const std::string folder = directory_ + "/" + kDraftsDir;
@@ -349,6 +356,7 @@ json SessionHost::Catalogue() const {
   return {{"cursor", replay_.Cursor()},
           {"sessions", std::move(sessions)},
           {"spaces", std::move(spaces)},
+          {"pins", pins_},
           {"scheduled", scheduled_view_}};
 }
 

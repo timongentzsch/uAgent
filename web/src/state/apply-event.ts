@@ -89,6 +89,10 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     setManagementVersion((version) => version + 1);
     return;
   }
+  if (event.kind === "pins.changed") {
+    setCatalogue((prior) => ({ ...prior, pins: event.pins }));
+    return;
+  }
   if (event.kind === "spaces.changed") {
     setCatalogue((prior) => ({ ...prior, spaces: event.spaces }));
     return;

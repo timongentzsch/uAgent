@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **Conversations and folders can be pinned.** Pin in the menu of a conversation, workspace or folder moves it to a Pinned section at the top of the sidebar, the same on every paired device; plain folders gained a ⋯ menu for it.
 - **Files shows what changed in a repository.** A Changes button beside Files lists the folder's uncommitted changes against the last commit, with their count, and opens each as a diff. It is read only, and runs no program the repository's own configuration names.
 - **A conversation can start without choosing a folder.** New → Conversation opens one in a workspace named Scratch, which the host creates on first use.
 - **The composer is shorter on phones and its totals sit in one field.** An idle composer no longer reserves an empty row under the input; the status row appears only while a turn works. Context left, turns, cost and queued guidance read together in one button that opens the statistics, which now start with the context and the way to the raw context. The word "Working" and the current to-do shimmer like the running row.

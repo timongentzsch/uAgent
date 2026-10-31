@@ -20,6 +20,7 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
 import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
+import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
@@ -369,7 +370,7 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces, online);
+    const order = sessionOrder(listed, catalogue.spaces, online, pins);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -458,11 +459,16 @@ function App() {
     setDrawer(false);
   }, []);
   const settings = useCallback(() => open({ type: "settings" }), [open]);
+  const pins = useMemo(
+    () => livePins(catalogue.pins, listed, catalogue.spaces),
+    [catalogue.pins, listed, catalogue.spaces],
+  );
   const hostContext = useMemo(
     () => ({
       online,
       connection,
       report,
+      pins,
       store: snapshots,
       load,
       refresh,
@@ -470,7 +476,7 @@ function App() {
       setModal,
       showContext: (item?: Session) => latest.current.showContext(item),
     }),
-    [online, connection, report, snapshots, load, refresh, forget],
+    [online, connection, report, pins, snapshots, load, refresh, forget],
   );
   const conversation = useMemo(
     () => ({
@@ -507,6 +513,7 @@ function App() {
       sessions={listed}
       needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
+      pins={pins}
       spaceMenu={places.spaceMenu}
       selected={page === "chat" ? selected : ""}
       unread={unread}

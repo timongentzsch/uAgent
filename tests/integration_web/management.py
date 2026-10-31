@@ -1,4 +1,5 @@
 import json
+import signal
 import threading
 from pathlib import Path
 
@@ -554,3 +555,57 @@ def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
             wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
             assert_true(client.json("/api/sessions")[1]["detail"] == "full", "stale level")
             # The reader ends with the host; closing here would wait on it.
+
+
+def test_web_pins_are_one_list_for_every_browser_and_survive_a_restart(root, home, *, binary):
+    import http.client
+
+    pins = [{"kind": "folder", "id": str(root)}, {"kind": "session", "id": "a" * 16}]
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, host, _):
+            client.pair(code)
+            listing = client.json("/api/sessions")[1]
+            assert_true(listing["pins"] == [], listing["pins"])
+            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+            connection.request(
+                "GET",
+                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+                headers={"Cookie": client.cookie},
+            )
+            response = connection.getresponse()
+            assert_true(response.status == 200, response.status)
+            pushed = []
+
+            def read_events():
+                while line := response.readline():
+                    if line.startswith(b"data: "):
+                        frame = json.loads(line[6:])
+                        if frame.get("kind") == "pins.changed":
+                            pushed.append(frame["pins"])
+
+            threading.Thread(target=read_events, daemon=True).start()
+            result = client.command("pins", pins=pins)["result"]
+            assert_true(result["pins"] == pins, result)
+            wait_until(lambda: pushed == [pins], f"pins were not pushed: {pushed}")
+            assert_true(client.json("/api/sessions")[1]["pins"] == pins, "pins not listed")
+            for number, bad in enumerate(
+                (
+                    [{"kind": "folder", "id": str(root)}] * 65,
+                    [{"kind": "file", "id": "x"}],
+                    [{"kind": "session"}],
+                    ["x"],
+                    {"kind": "folder", "id": "x"},
+                )
+            ):
+                status, refused, _ = client.json(
+                    "/api/command",
+                    {"v": 2, "kind": "pins", "request_id": f"{0xE0 + number:032x}", "pins": bad},
+                )
+                assert_true(status == 409, (bad, refused))
+            assert_true(client.json("/api/sessions")[1]["pins"] == pins, "a refusal changed pins")
+            host.send_signal(signal.SIGTERM)
+            host.wait(timeout=10)
+            with web_host(binary, root, home, provider.url) as (again, code, _, _):
+                again.pair(code)
+                kept = again.json("/api/sessions")[1]["pins"]
+                assert_true(kept == pins, kept)

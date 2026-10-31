@@ -66,6 +66,18 @@ std::optional<fs::path> SpaceAt(const std::string& path) {
 }
 }  // namespace
 
+bool ValidPins(const json& pins) {
+  return pins.is_array() && pins.size() <= kMaxPins &&
+         std::ranges::all_of(pins, [](const json& pin) {
+           if (!pin.is_object()) {
+             return false;
+           }
+           const std::string kind = JsonValue(pin, "kind", "");
+           return (kind == "session" || kind == "folder") &&
+                  !JsonValue(pin, "id", "").empty();
+         });
+}
+
 json Spaces() {
   json spaces = json::array();
   std::error_code error;
@@ -129,6 +141,22 @@ json SessionHost::SpaceControl(const json& command, const std::string& device,
     Publish("", "", {{"kind", "spaces.changed"}, {"spaces", spaces}});
   }
   return {{"spaces", spaces}};
+}
+
+json SessionHost::SetPins(const json& command, std::string& error) {
+  const json pins = command.value("pins", json());
+  if (!ValidPins(pins)) {
+    error = "pins is a list of at most " + std::to_string(kMaxPins) +
+            " entries, each with a kind (session or folder) and an id";
+    return json::object();
+  }
+  std::lock_guard lock(mutex_);
+  if (!WritePrivateFile(directory_ + "/" + kPinsFile, JsonDump(pins), error)) {
+    return json::object();
+  }
+  pins_ = pins;
+  Record("", "", {{"kind", "pins.changed"}, {"pins", pins_}}, false);
+  return {{"pins", pins_}};
 }
 
 // The host belongs to no folder: a request names the folder it is about,

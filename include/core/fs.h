@@ -89,6 +89,7 @@ inline constexpr const char* kWebDir = "web";
 inline constexpr const char* kStagingDir = "staging";
 // Session drafts sit in the sessions folder of a host, beside its records.
 inline constexpr const char* kDraftsDir = "drafts";
+inline constexpr const char* kPinsFile = "pins.json";
 // What a workspace keeps for itself, under its root; the home folder's own
 // directory carries the same name. The agent's scripts live in kScratchDir.
 inline constexpr const char* kWorkspaceDir = ".uagent";

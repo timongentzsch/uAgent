@@ -38,8 +38,11 @@ first, then **Folders**. A place's name opens its overview, the chevron
 before it folds the place away (remembered per browser) and **+** starts a
 conversation there. Each conversation is followed by its agents: those at
 work or waiting with their state, the finished ones folded into one "N
-agents" line that opens in place (remembered per browser). Browsing saved
-history starts no model and runs no command.
+agents" line that opens in place (remembered per browser). **Pin** in the
+menu of a conversation, workspace or folder moves it to a **Pinned** section
+at the top, in the order pinned; **Unpin** returns it. The pins belong to
+the host, so every paired device shows the same. Browsing saved history
+starts no model and runs no command.
 
 A place's **overview** shows its name, path and, in a git repository, the
 branch and how many files are uncommitted; a field that starts a

@@ -5,6 +5,7 @@ import { command, manage } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { Menu, MenuItem, MenuSub } from "../shared/menu.tsx";
 import { capitalize } from "../shared/display.ts";
+import { PinItem } from "../features/sidebar/pins.tsx";
 
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
@@ -36,6 +37,7 @@ export function SpaceMenu({
   const { online } = useHostContext();
   return (
     <Menu label={`Menu for the workspace ${space.name}`}>
+      <PinItem pin={{ kind: "folder", id: space.path }} />
       <MenuItem
         disabled={!online}
         onClick={() => open({ type: "rename", space })}
@@ -82,6 +84,7 @@ export function ConversationMenu({
   return (
     <Menu label="Conversation menu">
       {children}
+      {!item.parent && <PinItem pin={{ kind: "session", id: item.id }} />}
       {find && <MenuItem onClick={find}>Find in conversation</MenuItem>}
       <MenuItem
         disabled={

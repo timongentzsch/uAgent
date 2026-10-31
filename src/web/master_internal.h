@@ -145,6 +145,7 @@ class Master {
   void BrowserCommand(CommandCall& call);
   void ManagementCommand(CommandCall& call);
   void SpaceCommand(CommandCall& call);
+  void PinsCommand(CommandCall& call);
   void RestartConversations(CommandCall& call);
   void RestartHost(CommandCall& call);
   void ConfigCommand(CommandCall& call);

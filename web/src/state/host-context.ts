@@ -5,6 +5,7 @@ import type {
   AppModal,
   ConnectionPhase,
   Draft,
+  Pin,
   Report,
   Session,
   Snapshot,
@@ -17,6 +18,8 @@ export interface Host {
   online: boolean;
   connection: ConnectionPhase;
   report: Report;
+  // The pinned conversations and folders the list still has, in order.
+  pins: Pin[];
   store: SnapshotStore;
   load: (id: string) => Promise<Snapshot>;
   refresh: () => Promise<void>;

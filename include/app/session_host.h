@@ -144,6 +144,8 @@ struct SnapshotResult {
 // belong to none of the user's folders, each under the name its user gave it.
 // [{path, name}], by name.
 json Spaces();
+// Whether `pins` is a list of at most kMaxPins {kind: session|folder, id}.
+bool ValidPins(const json& pins);
 // The folder of the space called `name`, made when there is none. Empty
 // with `error` when the name cannot be one or the folder cannot be made.
 std::string SpaceFolder(const std::string& name, std::string& error);
@@ -175,6 +177,7 @@ class SessionHost {
   std::vector<HostNotice> WaitForNotices();
   void Stop();
   void LoadDrafts();
+  void LoadPins();
   // Follows the history on disk: sessions created elsewhere (agents)
   // appear, and those deleted elsewhere go, each published. A scan
   // within a second of the last is deferred to RescanDue(), never dropped.
@@ -204,6 +207,8 @@ class SessionHost {
   json SpaceControl(const json& command, const std::string& device,
                     std::string& error);
   json Configure(const json& command);
+  // Replaces the pinned conversations and folders, announced as pins.changed.
+  json SetPins(const json& command, std::string& error);
   std::string AssetPath(const std::string& id) const;
   // The folder a conversation works in.
   std::string Folder(const std::string& id) const;
@@ -261,6 +266,7 @@ class SessionHost {
   FileStamp schedule_stamp_ UAGENT_GUARDED_BY(mutex_);
   std::map<std::string, FileStamp> prompt_stamps_ UAGENT_GUARDED_BY(mutex_);
   json schedule_state_ UAGENT_GUARDED_BY(mutex_) = json::object();
+  json pins_ UAGENT_GUARDED_BY(mutex_) = json::array();
   json scheduled_view_ UAGENT_GUARDED_BY(mutex_) = {{"tasks", json::array()},
                                                     {"runs", json::array()}};
   struct RunUpdate {

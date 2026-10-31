@@ -476,8 +476,15 @@ export interface Space {
   name: string;
 }
 
+// A conversation (by id) or a folder (by path) kept at the top of the list.
+export interface Pin {
+  kind: "session" | "folder";
+  id: string;
+}
+
 export interface Catalogue {
   spaces?: Space[];
+  pins?: Pin[];
   commands?: SlashCommand[];
   // The detail level a device starts at until it chooses its own.
   detail?: string;
@@ -591,6 +598,7 @@ export type HostEvent = HostEnvelope &
           | "scheduled.changed";
       }
     | { kind: "settings.changed"; level: string }
+    | { kind: "pins.changed"; pins: Pin[] }
     | { kind: "spaces.changed"; spaces: Space[] }
     | { kind: "terminals.changed"; terminals: TerminalInfo[] | null }
   );
@@ -714,6 +722,7 @@ export interface CommandResults {
   config: Configuration;
   restart_conversations: { restarting: number; deferred: number };
   space: { spaces: Space[] };
+  pins: { pins: Pin[] };
   restart_host: { restarting: boolean };
   tools: ToolCatalogue;
   activity: ActivityDetail;
@@ -802,6 +811,7 @@ export interface CommandInputs {
   };
   restart_conversations: { target_id?: string; cwd?: string };
   space: { action: string; cwd: string; name: string };
+  pins: { pins: Pin[] };
   restart_host: None;
   tools: {
     operation: string;

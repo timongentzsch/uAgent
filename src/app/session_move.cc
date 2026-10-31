@@ -236,7 +236,9 @@ std::string HoldMove(const SessionMove& move, MoveLeases& held) {
 
 std::string CarryOutMove(const SessionMove& move, MoveLeases& held) {
   for (const MovedFile& file : move.files) {
-    if (std::string error = MoveFiles(file); !error.empty()) return error;
+    if (std::string error = MoveFiles(file); !error.empty()) {
+      return error;
+    }
   }
   held.clear();
   const auto ids = MovedIds(move);
@@ -478,7 +480,9 @@ std::string SessionHost::MoveConversation(
   }
   if (error.empty()) {
     error = FinishMove(move, held);
-    if (std::error_code ignored; error.empty()) fs::remove(journal, ignored);
+    if (std::error_code ignored; error.empty()) {
+      fs::remove(journal, ignored);
+    }
   }
 
   lock.lock();

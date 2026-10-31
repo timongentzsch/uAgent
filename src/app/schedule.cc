@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <chrono>
 #include <ctime>
+#include <map>
 #include <set>
 #include <string>
 #include <thread>

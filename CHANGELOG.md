@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **A conversation and its agents can move to another folder.** Move to… in a conversation's menu picks a folder or workspace, or takes a path, and moves the saved conversation with the agents it started; the page and any other open device follow it to its new address. Files stay in the old folder and memories stay with the old folder, and an agent that works in a worktree of its own keeps it. The conversation is told in a note, and a move is refused while a turn runs, mail waits or another program holds the conversation. Moving changes a conversation's id.
 - **Conversations and folders can be pinned.** Pin in the menu of a conversation, workspace or folder moves it to a Pinned section at the top of the sidebar, the same on every paired device; plain folders gained a ⋯ menu for it.
 - **Files shows what changed in a repository.** A Changes button beside Files lists the folder's uncommitted changes against the last commit, with their count, and opens each as a diff. It is read only, and runs no program the repository's own configuration names.
 - **A conversation can start without choosing a folder.** New → Conversation opens one in a workspace named Scratch, which the host creates on first use.

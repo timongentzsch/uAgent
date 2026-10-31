@@ -250,6 +250,7 @@ add_library(
   src/app/asset_store.cc
   src/app/session_assets.cc
   src/app/session_host.cc
+  src/app/session_move.cc
   src/app/session_router.cc
   src/app/replay_log.cc
   src/app/session_schedules.cc

@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SESSION_UNITS = (
     "src/app/session_host.cc",
+    "src/app/session_move.cc",
     "src/app/session_router.cc",
     "src/app/session_server.cc",
     "src/app/session_snapshot.cc",

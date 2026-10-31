@@ -469,4 +469,15 @@ json UpdateScheduledRun(const std::string& id, const std::string& status,
     return json::object();
   });
 }
+json MoveScheduledSessions(const std::map<std::string, std::string>& moved) {
+  return Mutate([&](json& store) -> json {
+    for (auto& run : store["runs"]) {
+      const auto found = moved.find(JsonValue(run, "session_path", ""));
+      if (found == moved.end()) continue;
+      run["session_path"] = found->second;
+      run["session_id"] = SessionIdFor(found->second);
+    }
+    return json::object();
+  });
+}
 }  // namespace uagent

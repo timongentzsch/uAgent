@@ -632,6 +632,7 @@ class WorkerChannel final : public ApplicationChannel {
         break;
       case SessionCommandKind::kCreate:
       case SessionCommandKind::kDelete:
+      case SessionCommandKind::kMove:
       case SessionCommandKind::kActivate:
       case SessionCommandKind::kUnknown:
         error = "unsupported command";

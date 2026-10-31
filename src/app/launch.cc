@@ -49,7 +49,7 @@ bool LaunchWorktree(const std::string& cwd) {
   return cwd.starts_with(UagentDir(kWorktreesDir) + "/");
 }
 
-std::string RemoveWorktree(const std::string& project, const std::string& cwd) {
+std::string RemoveWorktree(const std::string& cwd) {
   if (!PathExists(cwd)) return "";
   auto changes = HostGit(cwd, {"status", "--porcelain"});
   auto loose =
@@ -66,7 +66,16 @@ std::string RemoveWorktree(const std::string& project, const std::string& cwd) {
            " are on no branch; merge or branch them "
            "first";
   }
-  auto removed = HostGit(project, {"worktree", "remove", cwd});
+  // The repository is found from the worktree, which stays valid when the
+  // conversation that started it has moved.
+  auto common = HostGit(cwd, {"rev-parse", "--git-common-dir"});
+  if (!common.Ok()) {
+    return "cannot find the repository of " + cwd + ": " +
+           Utf8Prefix(common.error, 512);
+  }
+  auto removed =
+      HostGit((std::filesystem::path(cwd) / Trim(common.output)).string(),
+              {"worktree", "remove", cwd});
   return removed.Ok() ? ""
                       : "Cannot remove worktree: " +
                             Utf8Prefix(removed.output + removed.error, 512);

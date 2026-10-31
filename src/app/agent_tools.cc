@@ -457,9 +457,7 @@ ToolResult Delete(const SessionInfo& info) {
     return Unavailable(error);
   }
   if (LaunchWorktree(info.cwd)) {
-    const std::string parent = AgentParentPath(info.path, info.parent);
-    const std::string kept = RemoveWorktree(
-        JsonValue(SessionHeader(parent), kSessionHeaderCwd, ""), info.cwd);
+    const std::string kept = RemoveWorktree(info.cwd);
     if (!kept.empty()) {
       return ToolFailure(ToolErrorCode::kInvalidArguments, kept);
     }

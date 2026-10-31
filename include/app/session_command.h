@@ -21,7 +21,7 @@
 namespace uagent::session {
 
 // Every command kind a client can send. The host runs close and the
-// saved-session kinds (create, delete, activate) itself; the rest are
+// saved-session kinds (create, delete, move, activate) itself; the rest are
 // forwarded to the worker, which answers anything it does not run as
 // "unsupported command".
 enum class SessionCommandKind {
@@ -48,6 +48,7 @@ enum class SessionCommandKind {
   kEscalate,
   kCreate,
   kDelete,
+  kMove,
   kActivate,
   kUnknown,
 };

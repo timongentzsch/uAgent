@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -26,6 +27,7 @@
 #include "include/app/outcome_store.h"
 #include "include/app/replay_log.h"
 #include "include/app/session.h"
+#include "include/app/session_move.h"
 #include "include/cli/options.h"
 #include "include/core/events.h"
 #include "include/core/file_watch.h"
@@ -178,6 +180,9 @@ class SessionHost {
   void Stop();
   void LoadDrafts();
   void LoadPins();
+  // Finishes the moves a stopped host left unfinished, before anything reads
+  // the catalogue. Returns why any could not be finished.
+  std::vector<std::string> RecoverMoves();
   // Follows the history on disk: sessions created elsewhere (agents)
   // appear, and those deleted elsewhere go, each published. A scan
   // within a second of the last is deferred to RescanDue(), never dropped.
@@ -225,6 +230,21 @@ class SessionHost {
   // conversations, then the folder with everything in it. Each returns why
   // it could not, or nothing.
   std::string RenameSpace(const std::string& path, const std::string& name);
+  // The folder a command names, by `cwd` or by the `space` it is called (made
+  // when there is none); `error` says why not.
+  std::optional<std::filesystem::path> NamedFolder(const json& command,
+                                                   std::string& error)
+      UAGENT_REQUIRES(mutex_);
+  // Moves a conversation and the agents saved beside it to the history of
+  // `folder`, then answers `moved`. Returns why it could not, or nothing.
+  std::string MoveConversation(const std::shared_ptr<HostSession>& top,
+                               const std::filesystem::path& folder,
+                               const std::string& device, json& moved);
+  std::string FinishMove(const SessionMove& move, MoveLeases& held);
+  // Pinned conversations follow their move; a pinned folder stays.
+  std::string FollowPins(const std::map<std::string, std::string>& ids);
+  std::vector<SessionInfo> FamilyOf(const std::string& path)
+      UAGENT_REQUIRES(scan_mutex_);
   std::string DeleteSpace(const std::string& path, const std::string& device);
   std::string epoch_;
   std::string executable_, directory_;

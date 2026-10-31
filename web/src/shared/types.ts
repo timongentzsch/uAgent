@@ -591,12 +591,13 @@ export type HostEvent = HostEnvelope &
           | "activated"
           | "deactivated"
           | "closed"
-          | "deleted"
           | "error"
           | "gap"
           | "management.changed"
           | "scheduled.changed";
       }
+    // moved_to: the id it has now, when it was moved rather than removed.
+    | { kind: "deleted"; moved_to?: string }
     | { kind: "settings.changed"; level: string }
     | { kind: "pins.changed"; pins: Pin[] }
     | { kind: "spaces.changed"; spaces: Space[] }
@@ -732,6 +733,8 @@ export interface CommandResults {
   fork: { id: string; prompt?: string };
   share: { path: string };
   side: { id: string };
+  // The conversation's new id: moving changes it.
+  move: { id: string };
   create: never;
   activate: never;
   close: never;
@@ -832,6 +835,8 @@ export interface CommandInputs {
   fork: { argument?: string; message_id?: string };
   share: None;
   side: { operation: string; text: string };
+  // The folder or workspace to move to, by its path on the host.
+  move: { cwd: string };
   // A workspace by its name (`space`), in place of `cwd`.
   create: { cwd?: string; space?: string };
   activate: None;
@@ -916,6 +921,7 @@ export type AppModal =
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
   | { type: "new"; place: "workspace" | "folder" }
+  | { type: "move"; session: Session }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };

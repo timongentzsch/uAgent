@@ -85,6 +85,14 @@ export function ConversationMenu({
     <Menu label="Conversation menu">
       {children}
       {!item.parent && <PinItem pin={{ kind: "session", id: item.id }} />}
+      {!item.parent && item.status !== "draft" && (
+        <MenuItem
+          disabled={!online}
+          onClick={() => open({ type: "move", session: item })}
+        >
+          Move to…
+        </MenuItem>
+      )}
       {find && <MenuItem onClick={find}>Find in conversation</MenuItem>}
       <MenuItem
         disabled={

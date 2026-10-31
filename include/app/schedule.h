@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 
 #include "include/core/json.h"
@@ -21,5 +22,7 @@ json ClaimScheduledRuns(int64_t now, size_t slots);
 json UpdateScheduledRun(const std::string& id, const std::string& status,
                         const std::string& error = "");
 bool ScheduledRunActive(const std::string& status);
+// Points the runs saved at a path of `moved` at the path it maps to.
+json MoveScheduledSessions(const std::map<std::string, std::string>& moved);
 }  // namespace uagent
 #endif

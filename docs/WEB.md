@@ -369,8 +369,19 @@ before Submit.
   messages and opening a folded tool row to reach it; Esc closes it.
 - `?` outside a text field lists every shortcut. Alt+↑ and Alt+↓ step through
   the conversations in sidebar order.
+- **Move to…** in a conversation's menu (not an agent's, and not before the
+  first message) moves it, with the agents it started, to another folder or
+  workspace: pick a place from the list or type a folder's path, and Move.
+  Its files stay in the old folder, an agent working in a worktree of its
+  own keeps it, and memories stay with the old folder; the conversation says
+  so in a note the model reads in its next request. The dialog names what
+  runs and keeps Move off until it has stopped; an idle runtime is closed
+  for the move. Moving changes the conversation's address, and every open
+  page, on every device, follows it there with its draft. A move is refused
+  while mail waits for the conversation or an agent of it, or another
+  program holds one of them (a terminal that has it open).
 - The conversation menu has **Find in conversation**, **Fork conversation**,
-  **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
+  **Move to…**, **Rename**, **Statistics**, **Tools**, **Export transcript**, **Detail**,
   **Compact**, **Restart**, **Close conversation** and **Delete**. Tools
   controls the active schema. Close a live runtime before deleting its
   history; files in the folder are unaffected.

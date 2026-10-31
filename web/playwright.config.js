@@ -17,11 +17,8 @@ export default defineConfig({
   // so the defaults leave room for one and the specs name no shorter ones.
   timeout: 60000,
   expect: { timeout: 15000 },
-  // Sub-frame browser timing (restore vs. paint vs. async row hydration)
-  // can strand one attempt of a scroll assertion a few pixels off; the
-  // app code serializes everything serializable, and a single retry
-  // covers the residual race without hiding systematic failures.
-  retries: 1,
+  // No retries: a test that passes only sometimes has found a race.
+  retries: 0,
   // Geometry assertions must not sample a surface mid-transition.
   use: {
     trace: "retain-on-failure",

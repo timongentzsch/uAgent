@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.1 - 2026-10-31
+
+### Changes
+
+- **The container image is published.** v1.6.0 shipped without it or its compose files, because the release workflow skipped those jobs, so choosing the container installed µAgent here instead. This release is otherwise v1.6.0.
+
 ## v1.6.0 - 2026-10-31
 
 ### Upgrade notes

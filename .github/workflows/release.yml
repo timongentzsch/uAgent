@@ -131,6 +131,8 @@ jobs:
   # manifest under the version and latest.
   image:
     needs: release
+    # Without this, promoting (build skipped) skips every job after release.
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     strategy:
       matrix:
         include:
@@ -162,6 +164,7 @@ jobs:
 
   image-manifest:
     needs: image
+    if: ${{ !cancelled() && needs.image.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

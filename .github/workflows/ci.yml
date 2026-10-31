@@ -36,6 +36,7 @@ jobs:
       web: ${{ steps.select.outputs.web }}
       tidy: ${{ steps.select.outputs.tidy }}
       heavy: ${{ steps.select.outputs.heavy }}
+      image: ${{ steps.select.outputs.image }}
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -429,10 +430,26 @@ jobs:
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py -p build/tidy \
             -header-filter='.*/(include|src|tests|benchmarks)/.*' $files
 
+  # The image a release publishes is otherwise first built after its tag.
+  # Started under compose's seccomp profile, which can stop it starting.
+  image:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Build the container image
+        run: docker buildx build -f deploy/Dockerfile --load -t uagent-image .
+      - name: Start it
+        run: docker run --rm --security-opt seccomp=deploy/seccomp-chrome.json uagent-image uagent --version
+
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser]
+    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

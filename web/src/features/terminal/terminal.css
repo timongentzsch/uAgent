@@ -4,8 +4,10 @@
   min-height: 0;
   background: var(--bg);
 }
-/* A folder's terminal takes the conversation's place. */
-.conversation > .terminal-panel {
+/* A folder's terminal takes the conversation's place; the page's own takes
+   the phone's sheet. */
+.conversation > .terminal-panel,
+.terminal-sheet > .terminal-panel {
   flex: 1;
 }
 .terminal-place {
@@ -24,11 +26,12 @@
   padding-inline: var(--inset-x);
   border-bottom: var(--border);
 }
+/* Under the bar once there are two, scrolling sideways. */
 .terminal-tabs {
   display: flex;
-  flex: 1;
   gap: var(--space-2);
-  min-width: 0;
+  padding-inline: var(--inset-x);
+  border-bottom: var(--border);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -36,6 +39,13 @@
   display: flex;
   flex: none;
   align-items: center;
+}
+/* The selected tab is marked by the accent stripe, not filled. */
+.terminal-tab > button[aria-pressed="true"] {
+  background: transparent;
+  color: var(--text);
+  font-weight: var(--weight-strong);
+  box-shadow: inset 0 calc(-1 * var(--stripe)) var(--accent);
 }
 
 .terminal-tabpanel {
@@ -49,12 +59,19 @@
   display: none;
 }
 /* The app's monospace face at the size of small text, which xterm.js reads
-   from here. */
+   from here. The padding is on the screen, which the fit subtracts; on the
+   view it would be counted as room and the screen would overflow. */
 .terminal-view {
   flex: 1;
   min-height: 0;
-  padding: var(--space-2) var(--inset-x);
   font-size: var(--font-small);
+}
+.terminal-view .xterm {
+  padding: var(--space-2) var(--inset-x);
+}
+/* The scroll area spans the padding; xterm.css paints it black. */
+.terminal-view .xterm .xterm-viewport {
+  background: transparent;
 }
 .terminal-note {
   margin: 0;

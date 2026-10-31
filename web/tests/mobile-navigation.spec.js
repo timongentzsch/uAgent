@@ -138,6 +138,11 @@ test.describe("mobile navigation and commands", () => {
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(second));
     await expect(prompt).toHaveValue("Draft B");
+    // Back landed on the closed drawer's entry, which the app steps past on
+    // the next frame; a forward before that collides with the step.
+    await expect
+      .poll(() => page.evaluate(() => history.state?.layer ?? 0))
+      .toBe(0);
     await page.goForward();
     await expect(page).toHaveURL(new RegExp(first));
     await expect(prompt).toHaveValue("Draft A");

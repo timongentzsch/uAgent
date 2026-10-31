@@ -182,10 +182,19 @@ export async function servePending(page, request, session, pending) {
 // the native host.
 export { devServerUrl as DEV_SERVER_URL } from "./dev-server.js";
 
+// WebKit logs a failed fetch as a console error even when the page handles it,
+// and Playwright reports those as page errors: a reload cancelling a request
+// is not one. Chromium still catches a rejection nothing handles.
+const handledFetch =
+  /^Fetch API cannot load \S+ due to access control checks\./;
+
 // No test may end with an uncaught page error.
 const failOnPageErrors = async ({ page }, use) => {
   const errors = [];
-  page.on("pageerror", (error) => errors.push(error.stack || error.message));
+  page.on("pageerror", (error) => {
+    if (!handledFetch.test(error.stack))
+      errors.push(error.stack || error.message);
+  });
   await use(page);
   expect(errors, "uncaught page errors").toEqual([]);
 };

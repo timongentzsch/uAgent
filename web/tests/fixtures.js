@@ -30,8 +30,10 @@ export async function leaveEnd(box) {
       }),
     )
     .toBe(true);
+  // Told at once: a pin landing before the browser's own event would undo it.
   await box.evaluate((node) => {
     node.scrollTop = 24;
+    node.dispatchEvent(new Event("scroll"));
   });
 }
 
@@ -198,17 +200,16 @@ export async function servePending(page, request, session, pending) {
 // the native host.
 export { devServerUrl as DEV_SERVER_URL } from "./dev-server.js";
 
-// WebKit logs a failed fetch as a console error even when the page handles it,
-// and Playwright reports those as page errors: a reload cancelling a request
-// is not one. Chromium still catches a rejection nothing handles.
-const handledFetch =
-  /^Fetch API cannot load \S+ due to access control checks\./;
+// WebKit logs a request a reload cancels as a console error, fetch or event
+// stream, even when the page handles it, and Playwright reports those as page
+// errors. Chromium still catches a rejection nothing handles.
+const cancelled = / due to access control checks\.$/;
 
 // No test may end with an uncaught page error.
 const failOnPageErrors = async ({ page }, use) => {
   const errors = [];
   page.on("pageerror", (error) => {
-    if (!handledFetch.test(error.stack))
+    if (!cancelled.test(error.message))
       errors.push(error.stack || error.message);
   });
   await use(page);

@@ -24,9 +24,21 @@ const MOVE = 1;
 // A wheel event's scroll lands after it, over one scroll event or an animated
 // run of them (Linux WebKit). WebKit cancels that scroll when scrollTop is
 // written meanwhile, so compensation waits for the wheel's first scroll and
-// then for the scrolling to go quiet.
+// then for the scrolling to go quiet. Quiet is counted in painted frames: a
+// busy machine stretches the scroll and this wait alike, where a fixed time
+// ends mid-scroll.
 const WHEEL_SETTLE_MS = 250;
-const WHEEL_QUIET_MS = 80;
+const WHEEL_SETTLE_FRAMES = 15;
+const WHEEL_QUIET_FRAMES = 5;
+
+// Runs `then` after `count` painted frames; the result cancels it.
+function afterFrames(count: number, then: () => void) {
+  let frame = requestAnimationFrame(function tick() {
+    if (--count > 0) frame = requestAnimationFrame(tick);
+    else then();
+  });
+  return () => cancelAnimationFrame(frame);
+}
 function contentY(node: HTMLElement, box: HTMLElement) {
   return (
     node.getBoundingClientRect().top -
@@ -154,7 +166,7 @@ export function useTranscriptHistory(
   const watched = useRef(new Set<Element>());
   const wheelAt = useRef(-Infinity);
   // A compensation waiting for the wheel's scroll to land.
-  const deferred = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferred = useRef<(() => void) | null>(null);
 
   const attachScroller = useCallback((node: HTMLDivElement | null) => {
     scroller.current = node;
@@ -232,10 +244,8 @@ export function useTranscriptHistory(
   const resumeAtEnd = useCallback(() => {
     const element = scroller.current;
     if (following.current || !element || !atEnd(element)) return false;
-    if (deferred.current !== null) {
-      clearTimeout(deferred.current);
-      deferred.current = null;
-    }
+    deferred.current?.();
+    deferred.current = null;
     setFollow(true);
     pin();
     return true;
@@ -245,7 +255,7 @@ export function useTranscriptHistory(
   // or never started.
   const settleWheel = useCallback(() => {
     if (deferred.current === null) return;
-    clearTimeout(deferred.current);
+    deferred.current();
     deferred.current = null;
     wheelAt.current = -Infinity;
     reconcileRef.current();
@@ -267,7 +277,7 @@ export function useTranscriptHistory(
     }
     const waited = performance.now() - wheelAt.current;
     if (waited < WHEEL_SETTLE_MS) {
-      deferred.current ??= setTimeout(settleWheel, WHEEL_SETTLE_MS - waited);
+      deferred.current ??= afterFrames(WHEEL_SETTLE_FRAMES, settleWheel);
       return;
     }
     let replaced = false;
@@ -469,8 +479,8 @@ export function useTranscriptHistory(
       // The wheel's scroll is still landing: wait until it goes quiet, and
       // keep the anchor the layout change moved so its shift is compensated.
       if (deferred.current !== null) {
-        clearTimeout(deferred.current);
-        deferred.current = setTimeout(settleWheel, WHEEL_QUIET_MS);
+        deferred.current();
+        deferred.current = afterFrames(WHEEL_QUIET_FRAMES, settleWheel);
         lastTop.current = box.scrollTop;
         return;
       }
@@ -529,10 +539,8 @@ export function useTranscriptHistory(
   const jumpToLatest = useCallback(() => {
     pending.current = null;
     jumped.current ||= !following.current;
-    if (deferred.current !== null) {
-      clearTimeout(deferred.current);
-      deferred.current = null;
-    }
+    deferred.current?.();
+    deferred.current = null;
     wheelAt.current = -Infinity;
     // Reset the native scroll container to cancel touch inertia before pinning.
     const element = scroller.current;

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.7.0 - 2026-10-31
 
 ### Changes
 
@@ -10,6 +10,7 @@
 - **Files shows what changed in a repository.** A Changes button beside Files lists the folder's uncommitted changes against the last commit, with their count, and opens each as a diff. It is read only, and runs no program the repository's own configuration names.
 - **A conversation can start without choosing a folder.** New → Conversation opens one in a workspace named Scratch, which the host creates on first use.
 - **The composer is shorter on phones and its totals sit in one field.** An idle composer no longer reserves an empty row under the input; the status row appears only while a turn works. Context left, turns, cost and queued guidance read together in one button that opens the statistics, which now start with the context and the way to the raw context. The word "Working" and the current to-do shimmer like the running row.
+- **A wheel's scroll survives a page changing height on a busy machine.** Keeping your place while content above you changed could cancel the rest of a scroll in WebKit, because it waited a fixed time rather than for scrolling to stop.
 - **A change the host notices by itself reaches the web at once.** A scheduled task you saved or paused, a new workspace or a session deleted elsewhere could wait for the event stream's next heartbeat, up to 15 seconds, so the Scheduled page kept showing the old state and Run now stayed disabled.
 
 ## v1.6.1 - 2026-10-31

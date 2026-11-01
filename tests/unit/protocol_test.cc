@@ -312,6 +312,15 @@ TEST_CASE(TestRegistries) {
   CHECK(research_prompt.find("Use web_search directly") != std::string::npos);
   CHECK(research_prompt.find("do not scrape") != std::string::npos);
   CHECK(research_prompt.find("single search") != std::string::npos);
+  // Where the browser tool is offered the prompt names it, not a skill.
+  CHECK(research_prompt.find("browser skill") != std::string::npos);
+  std::vector<Tool> with_browser = capability_tools;
+  with_browser.push_back(MakeTool(
+      "browser", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  const std::string browser_prompt = CapabilityPrompt(with_browser);
+  CHECK(browser_prompt.find("Use the browser") != std::string::npos);
+  CHECK(browser_prompt.find("browser skill") == std::string::npos);
   CHECK(research_prompt.find("source-cited findings") == std::string::npos);
   capability_tools.push_back(MakeTool(
       "web_fetch", "", json::object(),

@@ -4,6 +4,7 @@ import {
   headerAction,
   selectProbeModel,
   openMore,
+  showList,
 } from "./fixtures.js";
 
 // Sets this browser's zoom in Settings, and leaves Settings open.
@@ -321,8 +322,7 @@ test.describe("touch interaction", () => {
       await scaledFields(tools, zoom);
       await tools.getByRole("button", { name: "Close tools" }).click();
       // At 50% the list fits beside the chat; otherwise it is the drawer.
-      const drawer = page.getByRole("button", { name: "Open conversations" });
-      if (await drawer.count()) await drawer.click();
+      await showList(page);
       await page
         .locator("dialog.sidebar, aside.sidebar")
         .getByRole("button", { name: "Search", exact: true })

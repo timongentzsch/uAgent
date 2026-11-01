@@ -318,12 +318,10 @@ jobs:
       - run: npm run format:check --prefix web
       - run: npm run lint --prefix web
       - run: npm run test --prefix web
-      - name: Build bundle and verify notices
+      - name: Build bundle and check its size
         run: |
           npm run build --prefix web
-          npm run notices --prefix web
           npm run size --prefix web
-          git diff --exit-code -- web/THIRD_PARTY_NOTICES.md
       # Only the host the browser tests drive; build-and-test already runs
       # the native suites against the same Web Push build. Configured exactly
       # as there, in the same directory, so the objects that job cached are

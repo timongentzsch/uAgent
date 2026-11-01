@@ -55,7 +55,8 @@ for (const path of await readdir(root, {
   if (
     name.startsWith(".vite/") ||
     name.endsWith(".gz") ||
-    name === ".gzip-manifest.json"
+    name === ".gzip-manifest.json" ||
+    name === "THIRD_PARTY_NOTICES.md"
   )
     continue;
   const diagram =

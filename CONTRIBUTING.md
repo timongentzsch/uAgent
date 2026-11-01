@@ -37,16 +37,14 @@ npm ci
 npm run format:check
 npm run lint
 npm test
-npm run build      # type-checks first
-npm run notices
+npm run build      # type-checks first, and writes the licence notices
 npm run size
 ```
 
 `web/dist` is build output and not committed; CI builds it once and embeds it
 in every native build. A build tree first configured without `web/dist` is
 terminal-only: after the first `npm run build`, configure it again with
-`-DUAGENT_WEB=ON`. Commit `web/THIRD_PARTY_NOTICES.md` when dependencies
-change; CI fails when it differs from a fresh `npm run notices`.
+`-DUAGENT_WEB=ON`.
 `npm run test:browser` runs the Playwright suite against a native host; see
 [Testing](docs/TESTING.md#web-tests).
 

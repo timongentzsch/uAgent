@@ -17,6 +17,8 @@ if (inputs.source !== (await buildState(root)).source)
 async function files(directory) {
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
+    // Installed as a document (CMakeLists.txt), not served.
+    if (entry.name === "THIRD_PARTY_NOTICES.md") continue;
     if (entry.name === ".vite" || entry.name === ".assets") continue;
     const path = resolve(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await files(path)));

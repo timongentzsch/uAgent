@@ -319,7 +319,7 @@ def test_input_steering_moves_a_foreground_run_to_the_background(root, home, *, 
             root,
             base_env(home, server.url),
             [
-                (b"start\n", b"sleep 30"),
+                (b"start\n", b"test command"),
                 (b"change course\n", b"steering-run-ok"),
                 b"/q\n",
             ],
@@ -539,7 +539,7 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home, *, bin
         assert_true(len(envelope["trace"]) == 1, envelope)
         call = envelope["trace"][0]
         assert_true(call["name"] == "run", call)
-        assert_true(call["arguments"] == {"command": "printf tool-json"}, call)
+        assert_true(call["arguments"]["command"] == "printf tool-json", call)
         assert_true("tool-json" in call["result"], call)
 
 

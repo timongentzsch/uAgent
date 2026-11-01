@@ -216,9 +216,9 @@ for the terminal, the browser and process-child progress.
   one finished parallel call cannot clear another.
 - Pending decisions, provider retry waits and terminal states override
   descriptive labels.
-- `run` and `scratch` accept an optional `intent` (`explore`, `research`,
-  `edit`, `verify`, `run`, `setup`). It only groups the call for display and
-  grants nothing.
+- A `run` call's row reads as its required `description`; the command shows
+  when the row opens, and approvals and summaries always read the command.
+  Calls that only look group as `explore`, for display, granting nothing.
 - While the model reasons, the label is `Thinking · <line>`: the latest
   complete readable line of supplied reasoning, stripped of Markdown and
   capped at 160 bytes. Lines over 192 bytes are skipped; without a line the

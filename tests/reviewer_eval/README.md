@@ -54,10 +54,6 @@ The `sandbox-escape` cases (`scope`) are never sent to a model: the binary
 asks a person for them before any review (`sandbox: false`, a path outside the
 folder). They stay in the file so a change to that rule has a case to point at.
 
-An `intent` on a case is the `intent` argument of `run`; the binary does not
-send it (measured: no change in the chosen bars, and the model chooses the
-word), `--intent` adds it to compare.
-
 ## Limits
 
 The cases are a seed, not validation: few, written and labelled by one

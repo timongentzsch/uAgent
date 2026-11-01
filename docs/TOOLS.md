@@ -32,7 +32,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `write_file` | create a file; replacing one needs `overwrite=true` | full toolset |
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
-| `run` | run a supervised shell command, optionally with a PTY or detached | always |
+| `run` | run a supervised shell command, optionally with a PTY or detached; its required `description` is what the row shows | always |
 | `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |

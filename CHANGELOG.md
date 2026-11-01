@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changes
+
+- **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone; calls that only look still group as "Explored", and "edited N files" no longer counts commands.
+
 ### Fixes
 
 - **`web_search` is always a tool call.** A search hosted inside the conversation's own response could leave no record of itself for the next request, so a model took its real results for figures it had made up and withdrew them. A search now runs as a side request on a route that can search; its cited answer is a tool result that stays in the conversation and shows as a row in the history. `search_plugin` and `search_sources` are gone from `supports`: `hosted_search` now says an endpoint can search on any wire API. Set `webSearch.model` to answer searches with a cheaper model than the conversation's.

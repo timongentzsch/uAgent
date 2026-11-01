@@ -29,8 +29,8 @@ DENIES = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
 VETO_BARS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 
-def state(case, intent):
-    state = {
+def state(case):
+    return {
         "tool": case["tool"],
         "provider": "builtin",
         "working_directory": case["workspace"],
@@ -38,13 +38,10 @@ def state(case, intent):
         "action": case["action"],
         "action_truncated": False,
     }
-    if intent and case.get("intent"):
-        state["agent_intent"] = case["intent"]
-    return state
 
 
-def ask(url, key, model, case, intent, questions):
-    body = {"model": model, "state": state(case, intent), "questions": questions}
+def ask(url, key, model, case, questions):
+    body = {"model": model, "state": state(case), "questions": questions}
     request = urllib.request.Request(
         url,
         json.dumps(body, sort_keys=True).encode(),
@@ -145,11 +142,6 @@ def main():
     parser.add_argument("--model", default="~typesafe/jev-latest")
     parser.add_argument("--url", default=URL)
     parser.add_argument("--runs", type=int, default=2)
-    parser.add_argument(
-        "--intent",
-        action="store_true",
-        help="add the case's intent to the state (the binary sends none)",
-    )
     parser.add_argument("--questions", default=str(HERE / "questions.json"))
     parser.add_argument("--raw", help="also write the raw answers to this file")
     options = parser.parse_args()
@@ -163,13 +155,13 @@ def main():
     with futures.ThreadPoolExecutor(6) as pool:
         rows = list(
             pool.map(
-                lambda job: ask(options.url, key, options.model, job[0], options.intent, questions),
+                lambda job: ask(options.url, key, options.model, job[0], questions),
                 jobs,
             )
         )
     if options.raw:
         Path(options.raw).write_text("".join(json.dumps(row) + "\n" for row in rows))
-    report(rows, labels, options.model + (" with intent" if options.intent else ""))
+    report(rows, labels, options.model)
     failed = [row for row in rows if row["status"] != 200]
     if failed:
         print(f"{len(failed)} requests failed, first status {failed[0]['status']}")

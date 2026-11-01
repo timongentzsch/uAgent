@@ -526,13 +526,17 @@ class Concurrency:
 
 
 def tool_calls(calls, usage=None):
+    # `run` requires a description; a test that is about one passes its own.
+    def sent(name, arguments):
+        return {"description": "test command", **arguments} if name == "run" else arguments
+
     return event(
         {
             "tool_calls": [
                 {
                     "index": index,
                     "id": call_id,
-                    "function": {"name": name, "arguments": json.dumps(arguments)},
+                    "function": {"name": name, "arguments": json.dumps(sent(name, arguments))},
                 }
                 for index, (call_id, name, arguments) in enumerate(calls)
             ]

@@ -468,7 +468,7 @@ def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, h
                 seen.extend(results)
                 return event({"content": "done"})
             calls = (
-                ("link", "run", {"command": f"ln -s {target} {link}"}),
+                ("link", "run", {"command": f"ln -s {target} {link}", "description": "Link"}),
                 ("write", "write_file", {"path": path, "content": "{}"}),
             )
             return event(

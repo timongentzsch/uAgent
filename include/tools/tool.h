@@ -257,6 +257,8 @@ struct Headline {
   std::string present;
   std::string past;
   std::string target = {};
+  // Replaces all of the above on the row, where a target would read poorly.
+  std::string label = {};
 };
 
 struct Tool {
@@ -285,9 +287,8 @@ struct Tool {
   std::string name;
   std::string category;  // workspace, execute, web, collaborate, memory, mcp
   std::string description;
-  json parameters;               // JSON-schema for the args
-  bool mutating = false;         // gated behind user approval
-  bool declared_intent = false;  // presentation only, never authority
+  json parameters;        // JSON-schema for the args
+  bool mutating = false;  // gated behind user approval
   // What a call is for, when capabilities do not already say it (see
   // ToolActivityCategory); presentation and grouping only, never authority.
   std::string intent;
@@ -375,7 +376,6 @@ bool ToolCallBlocks(const Tool& tool, const json& arguments);
 // explore. Neither this label nor a successful exit proves absence of effects.
 std::string ToolActivityCategory(const Tool& tool, const json& args);
 // Intents the command tools accept from the model.
-const json& CommandIntents();
 
 // The authority a call needs. A tool may escalate specific arguments; nothing
 // can de-escalate below what the tool itself declares.
@@ -416,7 +416,7 @@ json LinkPart(std::string to, json id, std::string label);
 // A headline with a fixed verb pair and the default target.
 Tool::Headlines Verbs(std::string present, std::string past);
 // Generic parts for `args`, leaving out `skip` (arguments another part or the
-// result already shows). Labels (`intent`, `description`) are never repeated.
+// result already shows).
 json GenericInputParts(const json& args,
                        std::initializer_list<std::string_view> skip = {});
 

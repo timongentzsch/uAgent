@@ -293,7 +293,7 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
         b"Welcome to uAgent. Try",
         b"you: go",
         b"Risk: runs commands\r\n",
-        b"result: Ran ",
+        b"result: test command",
         b"uagent:\r\nplain-ok",
     ):
         assert_true(label in text, (label, output[-2000:]))
@@ -652,12 +652,13 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
 
 
 def test_multiline_run_reads_as_its_first_line(root, home, *, binary):
-    # Large enough to cross stdio write boundaries: a closed call is one
-    # line, its command's first.
+    # Large enough to cross stdio write boundaries: a closed call with no
+    # description is one line, its command's first.
     lines = [f"# color-segment-{index:03d}-" + "x" * 24 for index in range(90)]
     lines.append("printf 'done\\n'")
     command = "\n".join(lines)
-    with Server([tool_call("run", {"command": command}), event({"content": "color-ok"})]) as server:
+    call = tool_call("run", {"command": command, "description": ""})
+    with Server([call, event({"content": "color-ok"})]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -675,9 +676,8 @@ def test_multiline_run_reads_as_its_first_line(root, home, *, binary):
 def test_tool_output_drops_its_own_colours(root, home, *, binary):
     # A command's colouring is dropped, not spelled out as \x1b[31m text.
     command = "printf '\\033[31mred-first\\033[0m\\nplain\\n\\033[1;32mgreen-last\\033[m\\n'"
-    with Server(
-        [tool_call("run", {"command": command}), event({"content": "colour-ok"})] * 2
-    ) as server:
+    call = tool_call("run", {"command": command, "description": ""})
+    with Server([call, event({"content": "colour-ok"})] * 2) as server:
         for verbose in (False, True):
             code, output = run_pty(
                 root,

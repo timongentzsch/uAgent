@@ -451,14 +451,6 @@ bool ToolCallBlocks(const Tool& tool, const json& arguments) {
   return JsonValue(arguments, "yield_ms", int64_t{0}) > 0;
 }
 
-// Contract-defined for native operations; arbitrary execution may declare its
-// purpose. Neither this label nor a successful exit proves absence of effects.
-const json& CommandIntents() {
-  static const json kIntents = {"explore", "research", "edit",
-                                "verify",  "run",      "setup"};
-  return kIntents;
-}
-
 namespace {
 // A shell line that only looks: every segment of a pipeline or command list
 // starts with a read-only program. Anything else, or anything unsure, runs.
@@ -494,18 +486,13 @@ bool ReadOnlyCommand(const std::string& command) {
 }  // namespace
 
 std::string ToolActivityCategory(const Tool& tool, const json& args) {
-  if (tool.declared_intent) {
-    std::string intent = JsonValue(args, "intent", "");
-    for (const json& known : CommandIntents()) {
-      if (known == intent) return intent;
-    }
-    return ReadOnlyCommand(JsonValue(args, "command", "")) ? "explore" : "run";
-  }
   if (!tool.intent.empty()) return tool.intent;
   if (tool.capabilities & Capability(ToolCapability::kDelegate)) {
     return "delegate";
   }
-  if (tool.capabilities & Capability(ToolCapability::kExecute)) return "run";
+  if (tool.capabilities & Capability(ToolCapability::kExecute)) {
+    return ReadOnlyCommand(JsonValue(args, "command", "")) ? "explore" : "run";
+  }
   return ToolMutates(tool, args) ? "edit" : "explore";
 }
 
@@ -558,7 +545,7 @@ std::string DefaultTarget(const json& args) {
   constexpr size_t kTargetChars = 160;
   if (!args.is_object()) return {};
   for (const auto& [key, value] : args.items()) {
-    if (key == "intent" || !value.is_string()) continue;
+    if (!value.is_string()) continue;
     const std::string& text = value.get_ref<const std::string&>();
     if (!text.empty() && text.size() <= kTargetChars &&
         text.find('\n') == std::string::npos) {
@@ -607,7 +594,7 @@ json GenericInputParts(const json& args,
   constexpr size_t kFieldChars = 160;
   json rows = json::array();
   for (const auto& [key, value] : args.items()) {
-    if (key == "intent" || value.is_null() ||
+    if (value.is_null() ||
         std::find(skip.begin(), skip.end(), key) != skip.end()) {
       continue;
     }
@@ -652,6 +639,10 @@ Tool::Headlines Verbs(std::string present, std::string past) {
 
 json ToolView(const Tool* tool, const json& args) {
   Headline headline = ToolHeadline(tool, args);
+  if (!headline.label.empty()) {
+    headline.present = headline.past = std::move(headline.label);
+    headline.target.clear();
+  }
   json view = {
       {"verb", {std::move(headline.present), std::move(headline.past)}},
       {"input",

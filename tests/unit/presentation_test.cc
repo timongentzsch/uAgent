@@ -245,10 +245,9 @@ TEST_CASE(TestTreeDrawsLiveAsResumed) {
 
 TEST_CASE(TestToolViews) {
   // The generic view: short scalars are fields, long text is code, nested
-  // values are indented JSON, and display labels are never repeated.
+  // values are indented JSON.
   json view = ToolView(nullptr, {{"path", "a.txt"},
                                  {"limit", 20},
-                                 {"intent", "read"},
                                  {"body", "one\ntwo"},
                                  {"edits", json::array({{{"old", "x"}}})}});
   // A call without a headline of its own is "Called <tool>", and an
@@ -259,7 +258,6 @@ TEST_CASE(TestToolViews) {
   const json& input = view["input"];
   CHECK(input[0]["kind"] == "fields");
   CHECK(input[0]["rows"].size() == 2);
-  CHECK(input.dump().find("intent") == std::string::npos);
   CHECK(input[1]["kind"] == "code" && input[1]["label"] == "body" &&
         input[1]["text"] == "one\ntwo");
   CHECK(input[2]["language"] == "json");

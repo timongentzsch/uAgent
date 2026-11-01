@@ -75,6 +75,19 @@
   /* The line of small controls under the input (status, activity, totals):
      short for a mouse; on touch taller, and a hit area reaches --touch. */
   --control-slim: var(--control-s);
+  /* The header of a narrow column holds its title and the small line of
+     totals under it, with room to spare, so the page does not move when the
+     totals arrive or on a page that has none. */
+  --head-narrow: calc(
+    2 *
+    var(--space-2) +
+    var(--stripe) +
+    var(--font-body) *
+    var(--leading-snug) +
+    var(--font-small) *
+    var(--leading) +
+    var(--space-1)
+  );
   /* The inline padding of every control and row, and a surface's inset
      from the edge of the screen. */
   --inset-x: var(--space-4);
@@ -1461,6 +1474,7 @@ dialog.sidebar.drawer[open] {
 @container column (max-width: 600px) {
   .conversation-head {
     --narrow: 1;
+    min-height: var(--head-narrow);
   }
   .conversation-head h1 {
     font-size: var(--font-body);

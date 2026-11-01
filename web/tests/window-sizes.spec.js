@@ -342,3 +342,28 @@ test("side insets keep the list and the header off a side status bar", async ({
     await expect(drawer).toHaveCount(0);
   }
 });
+
+test("a narrow column's header is as tall with the totals as without", async ({
+  page,
+  host,
+}) => {
+  await openLong(page, host);
+  const head = page.locator(".conversation-head");
+  const height = async () => (await head.boundingBox()).height;
+  for (const [width, height_] of [
+    [466, 678],
+    [700, 800],
+  ]) {
+    await resize(page, width, height_);
+    await expect(page.locator(".head-totals")).toHaveCount(1);
+    const top = async () => (await page.locator(".transcript").boundingBox()).y;
+    const [withTotals, below] = [await height(), await top()];
+    // Back leaves the conversation: no totals, the same header.
+    await page.goBack();
+    await expect(page.locator(".head-totals")).toHaveCount(0);
+    expect(await height()).toBe(withTotals);
+    await page.goForward();
+    await expect(page.locator(".head-totals")).toHaveCount(1);
+    expect(await top()).toBe(below);
+  }
+});

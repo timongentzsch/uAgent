@@ -1,4 +1,9 @@
-import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
+import {
+  devServerTest as test,
+  expect,
+  DEV_SERVER_URL,
+  openMore,
+} from "./fixtures.js";
 import { agents, conversation } from "./golden-turns.js";
 
 // The transcript tree on the Vite-served app with a mocked host: a saved
@@ -178,6 +183,7 @@ test("rows open and close from the keyboard, and stay as left", async ({
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })
     .click();
+  await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Full" }).click();
   await expect(rows(page)).toHaveCount(15);
@@ -185,6 +191,7 @@ test("rows open and close from the keyboard, and stay as left", async ({
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })
     .click();
+  await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Minimal" }).click();
   await expect(work).toHaveAttribute("aria-expanded", "false");

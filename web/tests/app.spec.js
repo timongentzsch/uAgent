@@ -4,6 +4,7 @@ import {
   startInFolder,
   openRow,
   openRawContext,
+  openMore,
 } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
@@ -166,6 +167,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     "UI refactor proof",
   );
   await conversationMenu.click();
+  await openMore(page);
   await page
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Statistics", exact: true })

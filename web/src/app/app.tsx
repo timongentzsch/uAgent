@@ -342,7 +342,11 @@ function App() {
   );
   // The open conversation's menu also holds the level its transcript shows.
   const conversationMenu = useCallback(
-    (item: Session, withDetail = false, extra?: ComponentChildren) => (
+    (
+      item: Session,
+      withDetail = false,
+      extra?: { top?: ComponentChildren; more?: ComponentChildren },
+    ) => (
       <ConversationMenu
         item={item}
         fork={fork}
@@ -362,8 +366,9 @@ function App() {
               }
             : undefined
         }
+        more={extra?.more}
       >
-        {extra}
+        {extra?.top}
       </ConversationMenu>
     ),
     [online, fork, load, report, open, detail, levels, changeDetail],
@@ -630,6 +635,7 @@ function App() {
                       }
                       filesOpen={filesOpen}
                       setFilesOpen={setFilesOpen}
+                      outgoing={outgoing}
                       parent={sessionById(catalogue.sessions, session?.parent)}
                       openDrawer={() => setDrawer(true)}
                       choose={choose}

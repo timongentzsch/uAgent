@@ -117,7 +117,8 @@
   }
 }
 /* One line to a row: the title and its state. The time and the menu show
-   while the row is pointed at or focused, and always on a touch screen. */
+   while the row is pointed at or focused; a touch screen draws the menu
+   on the open row only. */
 .sidebar .session {
   flex: 1;
   font-size: var(--font-small);
@@ -128,20 +129,48 @@
   color: var(--muted);
   white-space: nowrap;
 }
-.session-row:hover .session-time,
 .session-row:focus-within .session-time {
   display: inline;
 }
 .session-row .action-menu {
   opacity: 0;
 }
-.session-row:hover .action-menu,
 .session-row:focus-within .action-menu {
   opacity: 1;
 }
+@media (hover: hover) {
+  .session-row:hover .session-time {
+    display: inline;
+  }
+  .session-row:hover .action-menu {
+    opacity: 1;
+  }
+}
+/* On a touch screen only the open row draws its ⋯; a long press opens any
+   row's menu. The others stay for a screen reader and a keyboard, out of the
+   flow and the touch's way, at the row's end where the menu opens. */
 @media (pointer: coarse) {
+  .session-row,
+  .place-head {
+    position: relative;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  /* Held long enough: lifting now opens its menu. */
+  .session-row[data-held],
+  .place-head[data-held] {
+    background: var(--hover);
+  }
   .session-row .action-menu {
     opacity: 1;
+  }
+  .session-row:not(:has([aria-current], :focus-visible)) .action-menu,
+  .place-head:not(:has([aria-current], :focus-visible))
+    > .action-menu:last-child {
+    position: absolute;
+    right: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 }
 /* A folder's terminal, marked by its icon. */

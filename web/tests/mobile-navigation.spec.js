@@ -1,4 +1,4 @@
-import { test, expect, leaveEnd, newFolder } from "./fixtures.js";
+import { test, expect, leaveEnd, newFolder, openMore } from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
   test.use({
@@ -233,6 +233,7 @@ test.describe("mobile navigation and commands", () => {
       .locator(".conversation-head")
       .getByLabel("Conversation menu", { exact: true })
       .tap();
+    await page.getByRole("menuitem", { name: "More", exact: true }).tap();
     await page.getByRole("menuitem", { name: "Close conversation" }).tap();
     // A closed session keeps its composer: the next message starts it again.
     await expect(prompt).toBeVisible();

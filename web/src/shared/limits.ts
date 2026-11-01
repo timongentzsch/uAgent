@@ -88,3 +88,7 @@ export const focusFontFloor = 16;
 export const maxTerminals = 8;
 export const maxTerminalChatChars = 16_000;
 export const terminalScrollbackLines = 5_000;
+// A touch that holds still this long on a list row opens its menu; one that
+// moves farther than the slop is a scroll.
+export const longPressMs = 450;
+export const longPressSlopPx = 10;

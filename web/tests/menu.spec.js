@@ -1,6 +1,6 @@
 // The conversation menu is the app's one nested menu: how focus and the
 // open state behave around it, by pointer, touch and keyboard.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online, openMore } from "./fixtures.js";
 
 for (const touch of [false, true]) {
   test.describe(`with ${touch ? "touch" : "mouse"}`, () => {
@@ -16,10 +16,9 @@ for (const touch of [false, true]) {
         .locator(".conversation-head")
         .getByRole("button", { name: "Conversation menu", exact: true });
       await activate(trigger);
+      await activate(page.getByRole("menuitem", { name: "More", exact: true }));
       await activate(page.getByRole("menuitem", { name: /^Detail/ }));
-      await activate(
-        page.getByRole("menuitem", { name: "Back to Conversation menu" }),
-      );
+      await activate(page.getByRole("menuitem", { name: "Back to More" }));
       await activate(page.getByRole("menuitem", { name: /^Detail/ }));
       await activate(
         page.getByRole("menuitemradio", { name: "Default", exact: true }),
@@ -40,12 +39,18 @@ for (const touch of [false, true]) {
 
       await trigger.focus();
       await trigger.press("Enter");
+      await page.getByRole("menuitem", { name: "More", exact: true }).focus();
+      await page.keyboard.press("ArrowRight");
       await page.getByRole("menuitem", { name: /^Detail/ }).focus();
       await page.keyboard.press("ArrowRight");
       await expect(page.getByRole("menuitemradio").first()).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(
         page.getByRole("menuitem", { name: /^Detail/ }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(
+        page.getByRole("menuitem", { name: "More", exact: true }),
       ).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(trigger).toBeFocused();
@@ -87,3 +92,66 @@ for (const touch of [false, true]) {
     });
   });
 }
+
+test("the conversation menu is short and More holds the rest", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const menu = page.getByRole("menu", { name: "Conversation menu" });
+  await page
+    .locator(".conversation-head")
+    .getByRole("button", { name: "Conversation menu" })
+    .click();
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Find in conversation",
+    "Pin",
+    "Rename",
+    "Move to…",
+    "More",
+  ]);
+  await openMore(page);
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "More",
+    "Fork conversation",
+    "Statistics",
+    "Tools",
+    "Export transcript",
+    /^Detail/,
+    "Compact",
+    "Restart",
+    "Close conversation",
+    "Delete",
+  ]);
+  await menu.getByRole("menuitem", { name: "Statistics" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Conversation statistics" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page
+    .locator(".conversation-head")
+    .getByRole("button", { name: "Conversation menu" })
+    .click();
+  await openMore(page);
+  await menu.getByRole("menuitem", { name: "Delete" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Delete conversation?" }),
+  ).toBeVisible();
+});
+
+test("a conversation's row menu has the same top level", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const row = page.locator(".sidebar .session-row", {
+    has: page.locator("[aria-current]"),
+  });
+  await row.hover();
+  await row.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(
+    page.getByRole("menu", { name: "Conversation menu" }).getByRole("menuitem"),
+  ).toHaveText(["Pin", "Rename", "Move to…", "More"]);
+});

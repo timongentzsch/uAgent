@@ -1,6 +1,6 @@
 import { ConnectionStatus } from "../../shared/connection-status.tsx";
 import { Fragment, type ComponentChildren } from "preact";
-import { useMemo } from "preact/hooks";
+import { useMemo, useRef } from "preact/hooks";
 import type { Pin, Session, Space, TerminalInfo } from "../../shared/types.ts";
 import {
   ChevronDown,
@@ -29,7 +29,7 @@ import {
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import { folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
-import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
@@ -340,6 +340,8 @@ function SidebarView({
 }: SidebarProps) {
   const { online, connection, refresh } = useHostContext();
   useFolding();
+  const rows = useRef<HTMLElement>(null);
+  useLongPress(rows, ".session-row, .place-head");
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
@@ -619,7 +621,7 @@ function SidebarView({
           )}
         </Button>
       </div>
-      <nav aria-label="Conversations">
+      <nav ref={rows} aria-label="Conversations">
         <Placeholder label="Loading conversations…" when={drawing}>
           {list.length ? (
             list

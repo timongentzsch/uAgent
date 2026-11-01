@@ -117,10 +117,15 @@ export async function saveHistory(
   return path;
 }
 
+// Opens the conversation menu's More view, with the menu already open.
+export const openMore = (page) =>
+  page.getByRole("menuitem", { name: "More", exact: true }).click();
+
 // What a wider header shows as a button beside the title (Settings, Files,
 // Open browser, Edit instructions) and a phone keeps in the conversation's
-// menu. A button's name may say more after it ("Open browser, agent
-// working"). Without a conversation a phone has no menu and keeps Settings.
+// menu (Settings, in the drawer's footer). A button's name may say more
+// after it ("Open browser, agent working"). Without a conversation a phone
+// has no menu and keeps Settings.
 export async function headerAction(page, name) {
   const head = page.locator(".conversation-head");
   const menu = head.getByRole("button", { name: "Conversation menu" });
@@ -128,7 +133,15 @@ export async function headerAction(page, name) {
     () => matchMedia("(max-width: 600px)").matches,
   );
   if (phone && (await menu.count())) {
+    if (name === "Settings") {
+      await page.getByRole("button", { name: "Open conversations" }).click();
+      return page
+        .getByRole("dialog", { name: "Conversations" })
+        .getByRole("button", { name: "Settings", exact: true })
+        .click();
+    }
     await menu.click();
+    if (name === "Open browser") await openMore(page);
     return page.getByRole("menuitem", { name, exact: true }).click();
   }
   await page
@@ -367,6 +380,7 @@ export async function chooseDetail(page, level) {
     .getByLabel("Conversation menu", { exact: true })
     .click();
   // One row opens the levels in place, with a way back.
+  await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await expect(page.getByText("On this device.")).toBeVisible();
   await page.getByRole("menuitemradio", { name: level, exact: true }).click();

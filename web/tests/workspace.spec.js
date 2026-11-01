@@ -5,6 +5,7 @@ import {
   headerAction,
   saveHistory,
   startInFolder,
+  openMore,
 } from "./fixtures.js";
 import { writeFile } from "node:fs/promises";
 
@@ -276,6 +277,7 @@ test("unread completions, background activity and conversation lifecycle", async
   // The activity sheet is modal: close it before reaching the page again.
   await page.keyboard.press("Escape");
   await conversationMenu.click();
+  await openMore(page);
   await page
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Fork conversation", exact: true })
@@ -311,6 +313,7 @@ test("unread completions, background activity and conversation lifecycle", async
     "UI refactor proof",
   );
   await conversationMenu.click();
+  await openMore(page);
   // Live sessions delete directly now: the dialog closes the worker first.
   await expect(
     page
@@ -673,10 +676,12 @@ test("the conversation menu exports and restarts; /quit closes nothing", async (
   const menu = head.getByLabel("Conversation menu", { exact: true });
   const item = (name) => head.getByRole("menuitem", { name, exact: true });
   await menu.click();
+  await openMore(page);
   await expect(item("Compact")).toBeVisible();
   await item("Export transcript").click();
   await expect(page.getByText(/^Transcript saved to .+\.md$/)).toBeVisible();
   await menu.click();
+  await openMore(page);
   await item("Restart").click();
   await expect(page.getByText("Conversation restarted.")).toBeVisible();
   await expect.poll(generation).not.toBe(session.generation);

@@ -94,6 +94,7 @@ export function ConversationMenu({
   open,
   detail,
   children,
+  more,
 }: {
   item: Session;
   fork: (item: Session) => void;
@@ -109,38 +110,17 @@ export function ConversationMenu({
     level: string;
     change: (level: string) => void;
   };
-  // What the conversation's header would hold on a wider screen, first.
+  // What the conversation's header holds on a phone: first in the menu, and
+  // first under More.
   children?: ComponentChildren;
+  more?: ComponentChildren;
 }) {
   const { online, load: loadSnapshot, report } = useHostContext();
   return (
     <Menu label="Conversation menu">
       {children}
-      {!item.parent && <PinItem pin={{ kind: "session", id: item.id }} />}
-      {!item.parent && item.status !== "draft" && (
-        <MenuItem
-          disabled={!online}
-          onClick={() => open({ type: "move", session: item })}
-        >
-          Move to…
-        </MenuItem>
-      )}
       {find && <MenuItem onClick={find}>Find in conversation</MenuItem>}
-      <MenuItem
-        disabled={
-          !online ||
-          item.turn_active ||
-          ["starting", "draft"].includes(item.status || "")
-        }
-        title={
-          item.turn_active || ["starting", "draft"].includes(item.status || "")
-            ? "Wait for the running turn to finish before forking"
-            : undefined
-        }
-        onClick={() => fork(item)}
-      >
-        Fork conversation
-      </MenuItem>
+      {!item.parent && <PinItem pin={{ kind: "session", id: item.id }} />}
       <MenuItem
         disabled={!online}
         onClick={() => {
@@ -149,77 +129,104 @@ export function ConversationMenu({
       >
         Rename
       </MenuItem>
-      <MenuItem
-        onClick={() => open({ type: "statistics", session_id: item.id })}
-      >
-        Statistics
-      </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => open({ type: "tools", session_id: item.id })}
-      >
-        Tools
-      </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => void shareTranscript(item).then(notify, report)}
-      >
-        Export transcript
-      </MenuItem>
-      {detail && detail.levels.length > 0 && (
-        <MenuSub label="Detail" value={capitalize(detail.level)}>
-          {detail.levels.map((level) => (
-            <MenuItem
-              key={level}
-              role="menuitemradio"
-              aria-checked={level === detail.level}
-              onClick={() => detail.change(level)}
-            >
-              {capitalize(level)}
-              {level === detail.level && <Check />}
-            </MenuItem>
-          ))}
-          <p class="menu-note small">On this device.</p>
-        </MenuSub>
-      )}
-      {item.generation && (
-        <MenuItem
-          disabled={!online || item.turn_active}
-          onClick={() =>
-            void command("submit", item, { text: "/compact" }).catch(report)
-          }
-        >
-          Compact
-        </MenuItem>
-      )}
-      {item.generation && (
+      {!item.parent && item.status !== "draft" && (
         <MenuItem
           disabled={!online}
-          onClick={() => void restartConversation(item).then(notify, report)}
+          onClick={() => open({ type: "move", session: item })}
         >
-          Restart
+          Move to…
         </MenuItem>
       )}
-      {item.generation && (
+      <MenuSub label="More">
+        {more}
+        <MenuItem
+          disabled={
+            !online ||
+            item.turn_active ||
+            ["starting", "draft"].includes(item.status || "")
+          }
+          title={
+            item.turn_active ||
+            ["starting", "draft"].includes(item.status || "")
+              ? "Wait for the running turn to finish before forking"
+              : undefined
+          }
+          onClick={() => fork(item)}
+        >
+          Fork conversation
+        </MenuItem>
+        <MenuItem
+          onClick={() => open({ type: "statistics", session_id: item.id })}
+        >
+          Statistics
+        </MenuItem>
         <MenuItem
           disabled={!online}
-          onClick={() =>
-            command("close", item)
-              .then(() => loadSnapshot(item.id))
-              .catch(report)
-          }
+          onClick={() => open({ type: "tools", session_id: item.id })}
         >
-          Close conversation
+          Tools
         </MenuItem>
-      )}
-      <MenuItem
-        disabled={!online}
-        onClick={() => {
-          open({ type: "delete", session: item });
-        }}
-      >
-        Delete
-      </MenuItem>
+        <MenuItem
+          disabled={!online}
+          onClick={() => void shareTranscript(item).then(notify, report)}
+        >
+          Export transcript
+        </MenuItem>
+        {detail && detail.levels.length > 0 && (
+          <MenuSub label="Detail" value={capitalize(detail.level)}>
+            {detail.levels.map((level) => (
+              <MenuItem
+                key={level}
+                role="menuitemradio"
+                aria-checked={level === detail.level}
+                onClick={() => detail.change(level)}
+              >
+                {capitalize(level)}
+                {level === detail.level && <Check />}
+              </MenuItem>
+            ))}
+            <p class="menu-note small">On this device.</p>
+          </MenuSub>
+        )}
+        {item.generation && (
+          <MenuItem
+            disabled={!online || item.turn_active}
+            onClick={() =>
+              void command("submit", item, { text: "/compact" }).catch(report)
+            }
+          >
+            Compact
+          </MenuItem>
+        )}
+        {item.generation && (
+          <MenuItem
+            disabled={!online}
+            onClick={() => void restartConversation(item).then(notify, report)}
+          >
+            Restart
+          </MenuItem>
+        )}
+        {item.generation && (
+          <MenuItem
+            disabled={!online}
+            onClick={() =>
+              command("close", item)
+                .then(() => loadSnapshot(item.id))
+                .catch(report)
+            }
+          >
+            Close conversation
+          </MenuItem>
+        )}
+        <MenuItem
+          disabled={!online}
+          onClick={() => {
+            open({ type: "delete", session: item });
+          }}
+        >
+          Delete
+        </MenuItem>
+      </MenuSub>
     </Menu>
   );
 }

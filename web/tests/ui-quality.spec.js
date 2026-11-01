@@ -1,4 +1,10 @@
-import { test, expect, headerAction, selectProbeModel } from "./fixtures.js";
+import {
+  test,
+  expect,
+  headerAction,
+  selectProbeModel,
+  openMore,
+} from "./fixtures.js";
 
 // Sets this browser's zoom in Settings, and leaves Settings open.
 const zoomTo = async (page, zoom) => {
@@ -303,6 +309,7 @@ test.describe("touch interaction", () => {
         .getByRole("button", { name: "Conversation menu" })
         .last()
         .click();
+      await openMore(page);
       await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
       const tools = page.getByRole("dialog", { name: "Tools", exact: true });
       await expect(

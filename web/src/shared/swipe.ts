@@ -120,7 +120,10 @@ export function useEdgeSwipe(enabled: boolean, open: () => void) {
       from = { x: touch.clientX, y: touch.clientY };
       // Safari starts its back swipe from here unless the touch is cancelled;
       // a control's touch has to stay a tap.
-      if (event.cancelable && !target.closest("a, button, input, label, select"))
+      if (
+        event.cancelable &&
+        !target.closest("a, button, input, label, select")
+      )
         event.preventDefault();
     };
     const move = (event: TouchEvent) => {

@@ -44,6 +44,12 @@ at the top, in the order pinned; **Unpin** returns it. The pins belong to
 the host, so every paired device shows the same. Browsing saved history
 starts no model and runs no command.
 
+On a touch screen only the open row draws its ⋯; a long press on any row opens
+its menu when you lift, once the row has marked itself held. A screen reader
+and a keyboard reach every row's menu as usual. On a phone, opening a
+conversation slides it in, and pulling a sheet down closes it. In the installed
+app, a swipe from the left edge opens the list.
+
 A place's **overview** shows its name, path and, in a git repository, the
 branch and how many files are uncommitted; a field that starts a
 conversation there; what is working, what needs you, today's spend (and 7

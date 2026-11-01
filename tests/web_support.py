@@ -3,12 +3,37 @@
 import contextlib
 import http.client
 import json
+import os
 import signal
 import socket
 import subprocess
+import time
 
-from integration_support import base_env, budget, wait_until
-from session_support import remove_runtime, stop_sessions
+from integration_support import base_env, budget, live_process_states, wait_until
+from session_support import close_sessions, remove_runtime, stop_sessions
+
+
+def session_workers(host_pid):
+    """The session workers a web host has started."""
+    rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,args="], text=True)
+    fields = (row.split(maxsplit=2) for row in rows.splitlines())
+    return [
+        int(pid)
+        for pid, parent, args in fields
+        if parent == str(host_pid) and "--session-worker" in args
+    ]
+
+
+def stop_workers(pids, home):
+    """Close workers until they are gone. One started as the host stopped has
+    no socket yet for the first pass to find, and goes on writing under `home`
+    while the test's folder is removed."""
+    deadline = time.monotonic() + budget(5)
+    while live_process_states(pids) and time.monotonic() < deadline:
+        close_sessions(home)
+        time.sleep(0.02)
+    for pid in live_process_states(pids):
+        os.kill(pid, signal.SIGKILL)
 
 
 def available_port():
@@ -136,6 +161,7 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
                 + log.read_text()[-30000:]
             ) from error
         finally:
+            workers = session_workers(process.pid) if process and process.poll() is None else []
             stop_sessions(home)
             if process is not None:
                 if process.poll() is None:
@@ -148,4 +174,5 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
                     raise AssertionError(
                         "web master failed bounded shutdown: " + log.read_text()
                     ) from None
+            stop_workers(workers, home)
             remove_runtime(home)

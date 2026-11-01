@@ -518,6 +518,39 @@ test.describe("composer footer", () => {
 test.describe("composer rows", () => {
   test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
+  test("a column that narrows has the narrow layout in that same frame", async ({
+    page,
+    session,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    const below = () =>
+      page.evaluate(
+        () =>
+          document.querySelector(".composer-metrics").getBoundingClientRect()
+            .height,
+      );
+    await expect.poll(below).toBeGreaterThan(0);
+    const narrowed = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            document.querySelector("#app").style.width = "390px";
+            // The next task runs once this frame has painted.
+            setTimeout(() =>
+              resolve(
+                document
+                  .querySelector(".composer-metrics")
+                  .getBoundingClientRect().height,
+              ),
+            );
+          });
+        }),
+    );
+    expect(narrowed).toBe(0);
+  });
+
   test("an idle composer holds no empty row; the input rises by one row while working", async ({
     page,
     session,

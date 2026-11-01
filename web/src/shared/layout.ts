@@ -271,14 +271,15 @@ function useStyled(selector: string, property: string, ready = true) {
       frame = requestAnimationFrame(update);
     };
     addEventListener(zoomChanged, zoomed);
-    const stop = observeResize(
-      update,
-      ...document.querySelectorAll("#app, .conversation"),
-    );
+    // The script can run before the stylesheet arrives. An observer answers
+    // before a frame paints, so no frame shows the layout that read gave.
+    const observer = new ResizeObserver(update);
+    for (const element of document.querySelectorAll("#app, .conversation"))
+      observer.observe(element);
     return () => {
       removeEventListener(zoomChanged, zoomed);
       cancelAnimationFrame(frame);
-      stop();
+      observer.disconnect();
     };
   }, [ready]);
   return on;

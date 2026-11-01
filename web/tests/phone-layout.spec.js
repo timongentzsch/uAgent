@@ -34,10 +34,9 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       "rgb(255, 255, 255)",
     );
     await expect(page.locator("#app")).toBeEmpty();
-    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
-      "content",
-      "#fff",
-    );
+    await expect(
+      page.locator('meta[name="theme-color"][media*="light"]'),
+    ).toHaveAttribute("content", "#fff");
     await page.evaluate(() => {
       localStorage.setItem("uagent-zoom", "100");
       document.documentElement.style.setProperty("--zoom", "1");
@@ -461,7 +460,11 @@ test.describe("composer footer", () => {
       });
       await page.goto(`/#session=${session.id}`);
       const footer = page.locator(".composer-metrics");
-      const totals = footer.getByRole("button", {
+      // A phone has the totals under the title, which they must fit.
+      const phone = width < 600;
+      const totals = (
+        phone ? page.locator(".conversation-head") : footer
+      ).getByRole("button", {
         name: "Conversation statistics",
         exact: true,
       });
@@ -476,17 +479,27 @@ test.describe("composer footer", () => {
         return {
           frame: rect(node),
           activity: rect(node.querySelector(".sheet-control")),
-          metrics: rect(node.querySelector(".metrics")),
+          metrics: node.querySelector(".metrics")
+            ? rect(node.querySelector(".metrics"))
+            : null,
           buttons: [...node.querySelectorAll("button")].map((button) => ({
             ...rect(button),
             clipped: button.scrollWidth > button.clientWidth + 1,
           })),
         };
       });
-      if (width < 600)
-        expect(geometry.metrics.y).toBeGreaterThanOrEqual(
-          geometry.activity.bottom,
-        );
+      if (phone) {
+        expect(geometry.metrics).toBeNull();
+        const head = await totals.evaluate((button) => ({
+          clipped: button.scrollWidth > button.clientWidth + 1,
+          inside:
+            button.getBoundingClientRect().right <=
+            button.closest(".conversation-head").getBoundingClientRect().right,
+        }));
+        // The worst totals ellipsize on the narrowest screen, never overflow.
+        expect(head.inside).toBe(true);
+        if (width > 320) expect(head.clipped).toBe(false);
+      }
       for (const button of geometry.buttons) {
         expect(button.x).toBeGreaterThanOrEqual(geometry.frame.x - 1);
         expect(button.right).toBeLessThanOrEqual(geometry.frame.right + 1);
@@ -505,6 +518,39 @@ test.describe("composer footer", () => {
 test.describe("composer rows", () => {
   test.beforeEach(({ command, session }) => selectProbeModel(command, session));
 
+  test("a column that narrows has the narrow layout in that same frame", async ({
+    page,
+    session,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    const below = () =>
+      page.evaluate(
+        () =>
+          document.querySelector(".composer-metrics").getBoundingClientRect()
+            .height,
+      );
+    await expect.poll(below).toBeGreaterThan(0);
+    const narrowed = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            document.querySelector("#app").style.width = "390px";
+            // The next task runs once this frame has painted.
+            setTimeout(() =>
+              resolve(
+                document
+                  .querySelector(".composer-metrics")
+                  .getBoundingClientRect().height,
+              ),
+            );
+          });
+        }),
+    );
+    expect(narrowed).toBe(0);
+  });
+
   test("an idle composer holds no empty row; the input rises by one row while working", async ({
     page,
     session,
@@ -521,8 +567,7 @@ test.describe("composer rows", () => {
         return {
           input: top(".composer > form").bottom,
           status: top(".status-line").height,
-          totals: top(".composer-metrics > .metrics").y,
-          statusTop: top(".status-line").y,
+          below: top(".composer-metrics").height,
           off:
             transcript.scrollHeight -
             transcript.scrollTop -
@@ -530,8 +575,9 @@ test.describe("composer rows", () => {
         };
       });
     const idle = await rows();
-    // Nothing but the totals under the input.
+    // Nothing under the input.
     expect(idle.status).toBe(0);
+    expect(idle.below).toBe(0);
     await prompt.fill("Queue controls probe");
     await prompt.press("Enter");
     await expect(page.locator(".composer .status-led.running")).toBeVisible();
@@ -539,9 +585,8 @@ test.describe("composer rows", () => {
       "Waiting for guidance",
     );
     const working = await rows();
-    const row = working.totals - working.statusTop;
-    expect(row).toBeGreaterThan(0);
-    expect(idle.input - working.input).toBe(row);
+    expect(working.below).toBeGreaterThan(0);
+    expect(idle.input - working.input).toBe(working.below);
     await expect.poll(async () => (await rows()).off).toBeLessThanOrEqual(2);
     await prompt.fill("Carry on");
     await page.getByRole("button", { name: "Queue next" }).click();
@@ -550,5 +595,69 @@ test.describe("composer rows", () => {
     await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
     await expect.poll(async () => (await rows()).input).toBe(idle.input);
     await expect.poll(async () => (await rows()).off).toBeLessThanOrEqual(2);
+  });
+});
+
+test.describe("phone header", () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test("the totals sit under the title, the menu is short and Settings is in the drawer", async ({
+    page,
+    session,
+    command,
+  }) => {
+    await command("rename", {
+      session_id: session.id,
+      generation: session.generation || "",
+      title:
+        "A title long enough that it cannot fit the width of a phone header",
+    });
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    const head = page.locator(".conversation-head");
+    const totals = head.getByRole("button", {
+      name: "Conversation statistics",
+      exact: true,
+    });
+    await expect(totals).toHaveText(/^\d+% left · \d+ turns?$/);
+    const geometry = await head.evaluate((node) => {
+      const box = (selector) =>
+        node.querySelector(selector).getBoundingClientRect();
+      const title = node.querySelector("h1");
+      return {
+        head: node.getBoundingClientRect(),
+        title: box("h1"),
+        totals: box(".head-totals"),
+        ellipsized: title.scrollWidth > title.clientWidth,
+      };
+    });
+    expect(geometry.ellipsized).toBe(true);
+    // One line of title, one of totals, inside the header.
+    expect(geometry.totals.top).toBeGreaterThanOrEqual(geometry.title.bottom);
+    expect(geometry.totals.bottom).toBeLessThanOrEqual(geometry.head.bottom);
+    // Nothing under the composer's controls while idle.
+    await expect(page.locator(".composer .metrics")).toHaveCount(0);
+    expect(
+      await page
+        .locator(".composer-metrics")
+        .evaluate((node) => node.getBoundingClientRect().height),
+    ).toBe(0);
+    await totals.tap();
+    await expect(
+      page.getByRole("dialog", { name: "Conversation statistics" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await head.getByRole("button", { name: "Conversation menu" }).tap();
+    const items = page
+      .getByRole("menu", { name: "Conversation menu" })
+      .getByRole("menuitem");
+    await expect(items.filter({ hasText: "Settings" })).toHaveCount(0);
+    await expect(items.last()).toHaveText("More");
+    await page.keyboard.press("Escape");
+    await headerAction(page, "Settings");
+    await expect(
+      page.getByRole("dialog", { name: "Settings", exact: true }),
+    ).toBeVisible();
   });
 });

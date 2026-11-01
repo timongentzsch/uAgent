@@ -43,7 +43,8 @@ bool PushSender::Revoke(const std::string& device) {
   return true;
 }
 bool PushSender::Notify(const std::string& event, const std::string& session,
-                        const std::string& device) {
+                        const std::string& device, const json& detail) {
+  (void)detail;
   (void)event;
   (void)session;
   (void)device;

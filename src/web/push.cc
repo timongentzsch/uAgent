@@ -126,6 +126,7 @@ struct PushSender::Impl {
   };
   struct Attention {
     std::string id, session, device;
+    json detail;
     std::chrono::steady_clock::time_point created;
   };
   std::string directory, contact;
@@ -218,6 +219,13 @@ struct PushSender::Impl {
     curl_easy_getinfo(request.get(), CURLINFO_RESPONSE_CODE, &status);
     return status;
   }
+  static json Payload(const Attention& attention) {
+    json payload =
+        attention.detail.is_object() ? attention.detail : json::object();
+    payload["id"] = attention.id;
+    payload["session_id"] = attention.session;
+    return payload;
+  }
   void Run() {
     for (;;) {
       Attention attention;
@@ -262,11 +270,9 @@ struct PushSender::Impl {
                        static_cast<int>(salt.size())) != 1) {
           continue;
         }
-        std::string body =
-            EncryptPush(ephemeral.get(), Unbase64Url(subscription.public_key),
-                        Unbase64Url(subscription.auth), salt,
-                        JsonDump({{"id", attention.id},
-                                  {"session_id", attention.session}}));
+        std::string body = EncryptPush(
+            ephemeral.get(), Unbase64Url(subscription.public_key),
+            Unbase64Url(subscription.auth), salt, JsonDump(Payload(attention)));
         std::string authorization = VapidAuthorization(
             key.get(), PushServiceOrigin(subscription.endpoint), contact,
             NowSeconds() +
@@ -402,7 +408,7 @@ bool PushSender::Revoke(const std::string& device) {
   return true;
 }
 bool PushSender::Notify(const std::string& event, const std::string& session,
-                        const std::string& device) {
+                        const std::string& device, const json& detail) {
   if (!impl_->reason.empty() || event.size() > kPushEventChars ||
       !OpaqueId(session)) {
     return false;
@@ -418,7 +424,7 @@ bool PushSender::Notify(const std::string& event, const std::string& session,
     impl_->seen.pop_front();
   }
   impl_->queue.push_back(
-      {event, session, device, std::chrono::steady_clock::now()});
+      {event, session, device, detail, std::chrono::steady_clock::now()});
   impl_->changed.notify_one();
   return true;
 }

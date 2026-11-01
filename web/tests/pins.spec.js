@@ -1,6 +1,12 @@
 // A pinned conversation or folder moves to the top of the sidebar. The pins
 // belong to the host: every paired device lists the same.
-import { test, expect, online, withoutServiceWorker } from "./fixtures.js";
+import {
+  test,
+  expect,
+  online,
+  withoutServiceWorker,
+  openMore,
+} from "./fixtures.js";
 
 const lists = (page) => {
   const nav = page.getByRole("navigation", { name: "Conversations" });
@@ -92,6 +98,7 @@ test("deleting a pinned conversation removes it from Pinned", async ({
   await expect(pinned.locator(".session")).toHaveCount(1);
 
   await pinned.getByRole("button", { name: "Conversation menu" }).click();
+  await openMore(page);
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete permanently" }).click();
   await expect(pinned).toHaveCount(0);

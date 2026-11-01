@@ -117,18 +117,44 @@ export async function saveHistory(
   return path;
 }
 
+// Opens the conversation menu's More view, with the menu already open.
+export const openMore = (page) =>
+  page.getByRole("menuitem", { name: "More", exact: true }).click();
+
+// Brings the list into view: it is beside the conversation, or in a drawer.
+// Which one can change as this runs, after a zoom or a resize, so it looks
+// again until the list is there rather than acting on one look.
+export const showList = (page) =>
+  expect(async () => {
+    const drawer = page.getByRole("button", { name: "Open conversations" });
+    if (await drawer.isVisible()) await drawer.click({ timeout: 1000 });
+    await expect(
+      page.locator("dialog.sidebar, aside.sidebar").filter({ visible: true }),
+    ).toHaveCount(1, { timeout: 1000 });
+  }).toPass();
+
 // What a wider header shows as a button beside the title (Settings, Files,
-// Open browser, Edit instructions) and a phone keeps in the conversation's
-// menu. A button's name may say more after it ("Open browser, agent
-// working"). Without a conversation a phone has no menu and keeps Settings.
+// Open browser, Edit instructions) and a narrow column keeps in the
+// conversation's menu (Settings, in the list's footer). A button's name may
+// say more after it ("Open browser, agent working"). Without a conversation
+// there is no menu and the header keeps Settings.
 export async function headerAction(page, name) {
   const head = page.locator(".conversation-head");
   const menu = head.getByRole("button", { name: "Conversation menu" });
-  const phone = await page.evaluate(
-    () => matchMedia("(max-width: 600px)").matches,
+  const narrow = await head.evaluate(
+    (node) =>
+      getComputedStyle(node).getPropertyValue("--narrow").trim() === "1",
   );
-  if (phone && (await menu.count())) {
+  if (narrow && (await menu.count())) {
+    if (name === "Settings") {
+      await showList(page);
+      return page
+        .locator("dialog.sidebar, aside.sidebar")
+        .getByRole("button", { name: "Settings", exact: true })
+        .click();
+    }
     await menu.click();
+    if (name === "Open browser") await openMore(page);
     return page.getByRole("menuitem", { name, exact: true }).click();
   }
   await page
@@ -367,6 +393,7 @@ export async function chooseDetail(page, level) {
     .getByLabel("Conversation menu", { exact: true })
     .click();
   // One row opens the levels in place, with a way back.
+  await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await expect(page.getByText("On this device.")).toBeVisible();
   await page.getByRole("menuitemradio", { name: level, exact: true }).click();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { defaultZoom } from "./limits.ts";
 // The interface zoom in steps, as a browser offers it: choosing one rescales
 // once, where a slider rescaled the page under the finger dragging it.
@@ -246,9 +246,54 @@ export function useMedia(query: string) {
 
 // The width under which the phone layout applies, as the stylesheets have it.
 export const usePhone = () => useMedia("(max-width: 600px)");
-// The width under which the conversations list moves into a drawer, as the
-// stylesheets have it.
-export const useCompact = () => useMedia("(max-width: 900px)");
+
+// Layout the stylesheet decides in a container query, which script cannot
+// ask: the query sets a custom property, read back as the room changes.
+function styled(selector: string, property: string) {
+  const element = document.querySelector(selector);
+  return (
+    !!element &&
+    getComputedStyle(element).getPropertyValue(property).trim() === "1"
+  );
+}
+function useStyled(selector: string, property: string, ready = true) {
+  const read = () => styled(selector, property);
+  const [on, setOn] = useState(read);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read only looks the element up again
+  useLayoutEffect(() => {
+    const update = () => setOn(read());
+    update();
+    // Zoom rescales the tokens the query compares with, not the boxes; the
+    // query is evaluated again by the next frame.
+    let frame = 0;
+    const zoomed = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    addEventListener(zoomChanged, zoomed);
+    // The script can run before the stylesheet arrives. An observer answers
+    // before a frame paints, so no frame shows the layout that read gave.
+    const observer = new ResizeObserver(update);
+    for (const element of document.querySelectorAll("#app, .conversation"))
+      observer.observe(element);
+    return () => {
+      removeEventListener(zoomChanged, zoomed);
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [ready]);
+  return on;
+}
+
+// The conversations list moves into a drawer when it does not fit beside the
+// conversation (style.css has the rule).
+export const useCompact = (ready?: boolean) =>
+  !useStyled(".shell", "--docked", ready);
+export const compactNow = () => !styled(".shell", "--docked");
+
+// The conversation's column is as narrow as a phone, whatever the window.
+export const useNarrowColumn = (ready?: boolean) =>
+  useStyled(".conversation-head", "--narrow", ready);
 
 // Animations play unless this device asks for less motion or Settings
 // turns them off.
@@ -270,10 +315,13 @@ export function applyTheme(theme: string) {
       theme === "system" ? (media.matches ? "dark" : "light") : theme;
     const root = document.documentElement;
     root.dataset.theme = resolved;
-    // The browser's own bars take the palette's background.
-    document.querySelector<HTMLMetaElement>(
+    // The browser's own bars take the palette's background; on the system
+    // theme each scheme's meta keeps its own.
+    const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+    for (const meta of document.querySelectorAll<HTMLMetaElement>(
       'meta[name="theme-color"]',
-    )!.content = getComputedStyle(root).getPropertyValue("--bg").trim();
+    ))
+      meta.content = theme === "system" ? meta.dataset.bg! : bg;
   };
   apply();
   media.addEventListener("change", apply);
@@ -286,4 +334,6 @@ export function lockPageZoom() {
   const block = (event: Event) => event.preventDefault();
   for (const kind of ["gesturestart", "gesturechange"])
     document.addEventListener(kind, block, { passive: false });
+  // iOS applies :active (the press fill) only where a touch listener exists.
+  document.addEventListener("touchstart", () => {}, { passive: true });
 }

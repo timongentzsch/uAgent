@@ -30,6 +30,7 @@ import { ResizeHandle } from "../../shared/side-pane.tsx";
 import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
+import { shareOrDownload } from "../../shared/share.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -233,6 +234,7 @@ export default function Files({
             class="icon-button files-download"
             href={`${url(file)}&download=1`}
             download={nameOf(file)}
+            onClick={shareOrDownload}
             aria-label={`Download ${nameOf(file)}`}
             title="Download"
           >
@@ -476,7 +478,11 @@ export default function Files({
               <div class="files-binary">
                 <File />
                 <p>{nameOf(file)} is not text, so it can't be shown here.</p>
-                <a href={`${url(file)}&download=1`} download={nameOf(file)}>
+                <a
+                  href={`${url(file)}&download=1`}
+                  download={nameOf(file)}
+                  onClick={shareOrDownload}
+                >
                   Download
                 </a>
               </div>
@@ -501,7 +507,11 @@ export default function Files({
               {text.more && (
                 <p class="files-note files-cut">
                   Showing the first part of this file.{" "}
-                  <a href={`${url(file)}&download=1`} download={nameOf(file)}>
+                  <a
+                    href={`${url(file)}&download=1`}
+                    download={nameOf(file)}
+                    onClick={shareOrDownload}
+                  >
                     Download it
                   </a>{" "}
                   for the rest.

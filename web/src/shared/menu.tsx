@@ -1,16 +1,24 @@
-import { observeResize, observeViewport, placePopover } from "./layout.ts";
+import {
+  coarsePointer,
+  observeResize,
+  observeViewport,
+  placePopover,
+} from "./layout.ts";
+import { longPressMs, longPressSlopPx } from "./limits.ts";
 import { settled } from "./motion.ts";
 import {
   createContext,
   type ComponentChildren,
   type ButtonHTMLAttributes,
   type Ref,
+  type RefObject,
   type TargetedKeyboardEvent,
   type TargetedMouseEvent,
 } from "preact";
 import {
   useCallback,
   useContext,
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -25,16 +33,91 @@ import { Button, IconButton } from "./ui.tsx";
 
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
 // Which nested view the panel shows (a MenuSub's id, "" for the items
-// themselves), and how to change it. A view's own items see "".
+// themselves), and how to change it. A view inside a view has its parent's
+// id and a "/" before its own. A view's own items see "".
 const View = createContext({
   view: "",
   show: (_view: string) => {},
-  // The menu's name, for the row that leads back to it.
+  // The menu's or view's name, for the row that leads back to it.
   menu: "",
+  // What the ids of the views opened from here start with.
+  path: "",
 });
+const outOf = (view: string) =>
+  view.slice(0, Math.max(0, view.lastIndexOf("/")));
 const enabledItems = (panel: Element) => [
   ...panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
 ];
+
+// A touch screen has no hover, so a list's rows (those matching `rows`) open
+// their menus on a long press: the touch must hold still for a while, which
+// marks the row `data-held`, and the menu opens when it lifts, since a popover
+// opened under a finger would be light-dismissed by that finger's release. The
+// lift is the touch's last event: the click that would follow it never comes,
+// so the row is not also activated. One listener set serves every row.
+export function useLongPress(
+  list: RefObject<HTMLElement | null>,
+  rows: string,
+) {
+  useEffect(() => {
+    const root = list.current;
+    if (!root) return;
+    let timer = 0;
+    let from = { x: 0, y: 0 };
+    // The ⋯ of the row held long enough.
+    let held: HTMLButtonElement | undefined;
+    let row: Element | null = null;
+    const rowOf = (event: Event) =>
+      event.target instanceof Element ? event.target.closest(rows) : null;
+    const cancel = () => {
+      clearTimeout(timer);
+      held = undefined;
+      row?.removeAttribute("data-held");
+    };
+    const start = (event: TouchEvent) => {
+      cancel();
+      // A place's last menu is its ⋯, after the one that starts something.
+      row = rowOf(event);
+      const button = [...(row?.querySelectorAll("button") ?? [])]
+        .filter((item) => item.closest(".action-menu"))
+        .at(-1);
+      if (!button || button.disabled) return;
+      from = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      timer = window.setTimeout(() => {
+        held = button;
+        row?.setAttribute("data-held", "");
+      }, longPressMs);
+    };
+    const move = (event: TouchEvent) => {
+      const { clientX, clientY } = event.touches[0];
+      if (Math.hypot(clientX - from.x, clientY - from.y) > longPressSlopPx)
+        cancel();
+    };
+    const end = (event: TouchEvent) => {
+      const button = held;
+      cancel();
+      if (!button) return;
+      event.preventDefault();
+      button.click();
+    };
+    const contextmenu = (event: Event) => {
+      if (coarsePointer() && rowOf(event)) event.preventDefault();
+    };
+    root.addEventListener("touchstart", start, { passive: true });
+    root.addEventListener("touchmove", move, { passive: true });
+    root.addEventListener("touchend", end);
+    root.addEventListener("touchcancel", cancel);
+    root.addEventListener("contextmenu", contextmenu);
+    return () => {
+      cancel();
+      root.removeEventListener("touchstart", start);
+      root.removeEventListener("touchmove", move);
+      root.removeEventListener("touchend", end);
+      root.removeEventListener("touchcancel", cancel);
+      root.removeEventListener("contextmenu", contextmenu);
+    };
+  }, [list, rows]);
+}
 
 // A row's actions, in a dropdown under its ⋯ button: a native top-layer
 // popover placed against the button, which follows it while open. Every
@@ -159,7 +242,7 @@ export function Menu({
             if (view && (event.key === "Escape" || event.key === "ArrowLeft")) {
               event.preventDefault();
               event.stopPropagation();
-              show("");
+              show(outOf(view));
               return;
             }
             if (event.key === "ArrowRight" && row) {
@@ -213,7 +296,7 @@ export function Menu({
             if (pressed && !pressed.hasAttribute("data-menu-stay")) close();
           }}
         >
-          <View.Provider value={{ view, show, menu: label }}>
+          <View.Provider value={{ view, show, menu: label, path: "" }}>
             {children}
           </View.Provider>
         </div>
@@ -235,16 +318,17 @@ export function MenuSub({
   value?: string;
   children: ComponentChildren;
 }) {
-  const { view, show, menu } = useContext(View);
-  const id = useId();
-  const open = view === id;
+  const { view, show, menu, path } = useContext(View);
+  const id = path + useId();
+  const here = view === id;
+  const open = here || view.startsWith(`${id}/`);
   // Focus follows into the view, to its first choice (the row that leads
   // back when none can be taken), and back to this row when it closes.
   const row = useRef<HTMLButtonElement>(null);
   const opened = useRef(false);
   useLayoutEffect(() => {
     const first = row.current?.parentElement?.querySelector<HTMLElement>(
-      "[role=group] button:not(:disabled)",
+      ":scope > [role=group] button:not(:disabled)",
     );
     if (open) (first ?? row.current)?.focus({ preventScroll: true });
     else if (opened.current) row.current?.focus({ preventScroll: true });
@@ -265,12 +349,14 @@ export function MenuSub({
       </MenuItem>
     );
   return (
-    <View.Provider value={{ view: "", show, menu }}>
+    <View.Provider
+      value={{ view: here ? "" : view, show, menu: label, path: `${id}/` }}
+    >
       <MenuItem
         buttonRef={row}
         data-menu-stay
         aria-label={`Back to ${menu}`}
-        onClick={() => show("")}
+        onClick={() => show(outOf(id))}
       >
         <ChevronLeft />
         {label}

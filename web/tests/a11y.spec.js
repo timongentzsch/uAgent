@@ -69,7 +69,7 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   session,
 }) => {
   await page.goto(`/#session=${session.id}`);
-  // Delete waits for the connection; a key press does not.
+  // Rename waits for the connection; a key press does not.
   await online(page);
   const trigger = page
     .locator(".conversation-head")
@@ -79,19 +79,26 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   const item = (name) => menu.getByRole("menuitem", { name });
   // Up opens at the last available item, Down at the first.
   await page.keyboard.press("ArrowUp");
-  await expect(item("Delete")).toBeFocused();
+  await expect(item("More")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(item("Find in conversation")).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(item("Pin")).toBeFocused();
   // Items leave the tab order; a first letter moves to its item.
   await expect(item("Pin")).toHaveAttribute("tabindex", "-1");
   await page.keyboard.press("r");
   await expect(item("Rename")).toBeFocused();
+  // Right opens the row's view in place and moves into it; Left and Escape
+  // lead back to the row, and only then does Escape close the menu. A view
+  // inside a view works the same.
+  await page.keyboard.press("End");
+  await expect(item("More")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(item("Fork conversation")).toBeFocused();
   await page.keyboard.press("d");
   await expect(item(/^Detail/)).toBeFocused();
-  // Right opens the row's view in place and moves into it; Left and Escape
-  // lead back to the row, and only then does Escape close the menu.
   await page.keyboard.press("ArrowRight");
   await expect(menu.getByRole("group", { name: "Detail" })).toBeVisible();
   await expect(item("Find in conversation")).toHaveCount(0);
@@ -104,11 +111,13 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await page.keyboard.press("Escape");
   await expect(item(/^Detail/)).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(item("More")).toBeFocused();
+  await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(trigger).toBeFocused();
   // Tab leaves from the open menu, on to what follows it.
   await page.keyboard.press("ArrowDown");
-  await expect(item("Pin")).toBeFocused();
+  await expect(item("Find in conversation")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(menu).toHaveCount(0);
 });

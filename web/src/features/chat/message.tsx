@@ -3,6 +3,7 @@ import "./message.css";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import { count } from "../../shared/quantities.ts";
 import {
+  queuedGuidance,
   recallable,
   splitMentionTokens,
   unsent,
@@ -201,9 +202,9 @@ function Message({
             {recall && recallable(node, online) && (
               <IconButton
                 label={
-                  unsent(node)
-                    ? "Return message to composer"
-                    : "Recall guidance to composer"
+                  queuedGuidance(node)
+                    ? "Recall guidance to composer"
+                    : "Return message to composer"
                 }
                 title="Return to composer"
                 onClick={() => recall(node)}

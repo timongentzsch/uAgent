@@ -92,7 +92,14 @@ std::vector<HostNotice> SessionHost::WaitForNotices() {
   changed_.wait(lock, [&]() UAGENT_REQUIRES(mutex_) {
     return stopping_ || replay_.HasNotices();
   });
-  return replay_.TakeNotices();
+  std::vector<HostNotice> notices = replay_.TakeNotices();
+  for (HostNotice& notice : notices) {
+    if (const auto found = sessions_.find(notice.session);
+        found != sessions_.end()) {
+      notice.title = found->second->title;
+    }
+  }
+  return notices;
 }
 
 void SessionHost::Stop() {

@@ -203,14 +203,21 @@ test("breakpoints in the stylesheets match the scripts'", () => {
     ))
       found.add(`${kind}-width: ${width}px`);
   // 601 is the first width the 600px phone layout does not cover.
-  assert.deepEqual([...found].sort(), [
-    "max-width: 600px",
-    "max-width: 900px",
-    "min-width: 601px",
-  ]);
+  assert.deepEqual([...found].sort(), ["max-width: 600px", "min-width: 601px"]);
   const layout = readFileSync("src/shared/layout.ts", "utf8");
   assert.match(layout, /useMedia\("\(max-width: 600px\)"\)/);
-  assert.match(layout, /useMedia\("\(max-width: 900px\)"\)/);
+});
+
+// The conversations list sits beside the chat where --sidebar and --chat-min
+// fit: a container query cannot read the tokens, so it states their sum.
+test("the list's container query is the sum of its tokens", () => {
+  const style = readFileSync("src/shared/style.css", "utf8");
+  const token = (name) =>
+    Number(style.match(new RegExp(`--${name}: calc\\((\\d+)rem / 14\\)`))[1]);
+  const [, rem] = style.match(/@container app \(min-width: ([\d.]+)rem\) and/);
+  assert.ok(
+    Math.abs(Number(rem) - (token("sidebar") + token("chat-min")) / 14) < 0.01,
+  );
 });
 
 // Control and row heights and the spacing between and inside boxes are set

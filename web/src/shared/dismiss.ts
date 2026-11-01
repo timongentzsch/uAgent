@@ -31,6 +31,8 @@ const depthOf = (state: unknown) => (state as Entry)?.layer ?? 0;
 const seqOf = (state: unknown) => (state as Entry)?.seq;
 let seq = Date.now();
 let at = seqOf(history.state);
+// Whether the latest move through history went to an older entry.
+export let wentBack = false;
 // The state for any new entry the app pushes (a session, a layer).
 export const entry = (layer?: number) => ({ layer, seq: (at = ++seq) });
 
@@ -57,6 +59,7 @@ addEventListener("popstate", (event) => {
   // press always reaches something visible.
   const from = at;
   at = seqOf(event.state);
+  wentBack = from !== undefined && at !== undefined && at < from;
   const dead = depth > (stack[stack.length - 1]?.depth ?? 0);
   if (!dead || from === undefined || at === undefined) return;
   if (at < from) sync();

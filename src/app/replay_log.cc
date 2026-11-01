@@ -37,6 +37,11 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
       kind == "error") {
     notice.attention_id = epoch + ":" + std::to_string(sequence_ + 1);
     value["attention_id"] = notice.attention_id;
+    notice.reason = type == AppType(EventId::kTurnCompleted) ? "finished"
+                    : type == "ask.requested"                ? "question"
+                    : (type == AppType(EventId::kError) || kind == "error")
+                        ? "error"
+                        : "approval";
   }
   // A run's own frames wake the scheduler, except the ones a turn streams by
   // the hundred: they change nothing it reads.
@@ -69,6 +74,7 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
     pending.wake |= notice.wake;
     if (!notice.attention_id.empty()) {
       pending.attention_id = std::move(notice.attention_id);
+      pending.reason = std::move(notice.reason);
     }
   }
 }

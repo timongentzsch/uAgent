@@ -5,6 +5,7 @@ import {
   headerAction,
   saveHistory,
   startInFolder,
+  openMore,
 } from "./fixtures.js";
 import { writeFile } from "node:fs/promises";
 
@@ -26,10 +27,19 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
-    "content",
-    "#fff",
-  );
+  await expect(
+    page.locator('meta[name="theme-color"][media*="light"]'),
+  ).toHaveAttribute("content", "#fff");
+  // The system theme leaves each scheme its own colour; a chosen theme
+  // sets both.
+  const darkBar = page.locator('meta[name="theme-color"][media*="dark"]');
+  await expect(darkBar).toHaveAttribute("content", "#000");
+  await page.getByLabel("Appearance").selectOption("light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(darkBar).toHaveAttribute("content", "#fff");
+  await page.getByLabel("Appearance").selectOption("system");
+  await expect(darkBar).toHaveAttribute("content", "#000");
+  await page.emulateMedia({ colorScheme: "light" });
   const composer = page.getByLabel("Message or guidance");
   const originalText = await composer.evaluate(
     (element) => getComputedStyle(element).fontSize,
@@ -276,6 +286,7 @@ test("unread completions, background activity and conversation lifecycle", async
   // The activity sheet is modal: close it before reaching the page again.
   await page.keyboard.press("Escape");
   await conversationMenu.click();
+  await openMore(page);
   await page
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Fork conversation", exact: true })
@@ -311,6 +322,7 @@ test("unread completions, background activity and conversation lifecycle", async
     "UI refactor proof",
   );
   await conversationMenu.click();
+  await openMore(page);
   // Live sessions delete directly now: the dialog closes the worker first.
   await expect(
     page
@@ -673,10 +685,12 @@ test("the conversation menu exports and restarts; /quit closes nothing", async (
   const menu = head.getByLabel("Conversation menu", { exact: true });
   const item = (name) => head.getByRole("menuitem", { name, exact: true });
   await menu.click();
+  await openMore(page);
   await expect(item("Compact")).toBeVisible();
   await item("Export transcript").click();
   await expect(page.getByText(/^Transcript saved to .+\.md$/)).toBeVisible();
   await menu.click();
+  await openMore(page);
   await item("Restart").click();
   await expect(page.getByText("Conversation restarted.")).toBeVisible();
   await expect.poll(generation).not.toBe(session.generation);

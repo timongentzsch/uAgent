@@ -27,6 +27,8 @@ import { ChevronRight, X, Check, Copy } from "lucide-preact";
 import { markPath } from "./mark.ts";
 import { animateOut, motionMs } from "./motion.ts";
 import { useDismiss } from "./dismiss.ts";
+import { usePhone } from "./layout.ts";
+import { useSheetSwipe } from "./swipe.ts";
 import { DataText } from "./placeholder.tsx";
 export { Placeholder, DataText, usePlaceholder } from "./placeholder.tsx";
 
@@ -182,6 +184,7 @@ export function Switch({
       <Input
         type="checkbox"
         role="switch"
+        switch
         aria-label={label}
         checked={checked}
         disabled={disabled}
@@ -578,6 +581,7 @@ export function Modal({
   layout = "content",
   actions,
   header = true,
+  swipeable = true,
 }: {
   title: string;
   children: ComponentChildren;
@@ -594,8 +598,12 @@ export function Modal({
   actions?: ComponentChildren;
   // False when the content renders its own DialogHeader and .dialog-body.
   header?: boolean;
+  // False for a sheet whose content takes the touches itself (terminal,
+  // browser); otherwise a sheet on a phone is pulled down to close.
+  swipeable?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const phone = usePhone();
   // A tap on the scrim closes every dialog, as it does a native sheet. The
   // scrim targets the dialog element, as does its own padding, so the point
   // decides; a press that began inside (a text selection dragged out) does
@@ -626,6 +634,7 @@ export function Modal({
     void animateOut(ref.current).then(() => mounted.current && close());
   };
   useDismiss(true, requestClose);
+  useSheetSwipe(ref, requestClose, layout === "sheet" && swipeable && phone);
   useLayoutEffect(() => {
     const prior = document.activeElement;
     const dialog = ref.current;

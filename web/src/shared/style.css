@@ -75,6 +75,19 @@
   /* The line of small controls under the input (status, activity, totals):
      short for a mouse; on touch taller, and a hit area reaches --touch. */
   --control-slim: var(--control-s);
+  /* The header of a narrow column holds its title and the small line of
+     totals under it, with room to spare, so the page does not move when the
+     totals arrive or on a page that has none. */
+  --head-narrow: calc(
+    2 *
+    var(--space-2) +
+    var(--stripe) +
+    var(--font-body) *
+    var(--leading-snug) +
+    var(--font-small) *
+    var(--leading) +
+    var(--space-1)
+  );
   /* The inline padding of every control and row, and a surface's inset
      from the edge of the screen. */
   --inset-x: var(--space-4);
@@ -370,7 +383,7 @@ input[type="radio"] {
 .switch input[type="checkbox"] {
   width: auto;
 }
-.switch input[role="switch"] {
+.switch input[switch] {
   appearance: none;
   position: relative;
   width: var(--control-l);
@@ -383,7 +396,7 @@ input[type="radio"] {
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard);
 }
-.switch input[role="switch"]::before {
+.switch input[switch]::before {
   content: "";
   position: absolute;
   top: 1px;
@@ -393,11 +406,11 @@ input[type="radio"] {
   background: var(--knob);
   transition: translate var(--motion-fast) var(--ease-standard);
 }
-.switch input[role="switch"]:checked {
+.switch input[switch]:checked {
   background: var(--accent);
   border-color: var(--accent);
 }
-.switch input[role="switch"]:checked::before {
+.switch input[switch]:checked::before {
   translate: calc(var(--control-l) - var(--icon-l)) 0;
   background: var(--on-accent);
 }
@@ -405,6 +418,7 @@ input[type="radio"] {
    at the sides, so a label never sits off-centre in its fill. */
 button,
 .file-button {
+  transition: background var(--motion-fast) var(--ease-standard);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -441,9 +455,14 @@ select:disabled {
     background: var(--raised);
   }
 }
+/* A press fills at once and fades out on release (the fade is the base
+   transition; a press itself has none). The selectors outrank hover's. */
 button:enabled:active,
-.file-button:active {
+.file-button:active,
+.quiet:enabled:active,
+button.row:enabled:active {
   background: var(--hover);
+  transition: none;
 }
 .primary:enabled:active {
   background: var(--accent-active);
@@ -858,10 +877,19 @@ kbd {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, auto) minmax(var(--chat-min), 1fr);
+  grid-template-columns: minmax(0, auto) minmax(min(var(--chat-min), 100%), 1fr);
   overflow: clip;
 }
+.shell > .conversation {
+  grid-column: 2;
+}
+/* The conversations list sits beside the conversation where --sidebar and
+   --chat-min both fit and the window is not short (the height below which
+   the app trims its chrome); elsewhere a drawer holds it. A query cannot
+   read a token, so 44.28rem is their sum, and it follows zoom as they do.
+   The query also sets --docked, which useCompact reads. */
 aside.sidebar {
+  display: none;
   position: relative;
   width: var(--sidebar-width, min(30vw, var(--sidebar)));
   min-width: var(--pane-s);
@@ -881,6 +909,14 @@ aside.sidebar {
    from its starting style instead of appearing in place. */
 dialog.sidebar:not([open]) {
   display: none;
+}
+@container app (min-width: 44.28rem) and (not (max-height: 500px)) {
+  .shell {
+    --docked: 1;
+  }
+  aside.sidebar {
+    display: flex;
+  }
 }
 .folder-label {
   display: flex;
@@ -949,6 +985,7 @@ dialog.sidebar:not([open]) {
   }
 }
 .conversation {
+  container: column / inline-size;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -1098,15 +1135,6 @@ dialog.sidebar:not([open]) {
   transition:
     opacity var(--motion-fast) var(--ease-out),
     scale var(--motion-fast) var(--ease-out);
-}
-/* A touch press sinks slightly, like a native control. */
-@media (pointer: coarse) {
-  button:enabled {
-    transition: scale var(--motion-fast) var(--ease-standard);
-  }
-  button:enabled:active {
-    scale: 0.97;
-  }
 }
 /* Every disclosure reads like a row that opens: a chevron that turns as it
    opens. */
@@ -1418,39 +1446,33 @@ dialog section {
     inset: calc((var(--control-slim) - var(--touch)) / 2) 0;
   }
 }
-@media (max-width: 900px) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* The app draws no sidebar here; the frame it replaces draws none either. */
-  .boot-frame > .sidebar {
-    display: none;
-  }
-  .conversation-head {
-    padding-inline: var(--inset-x);
-  }
-  /* Full height like the phone sheet: its surface runs under the home
-     indicator while its content stays above it. */
-  dialog.sidebar.drawer[open] {
-    top: calc(var(--viewport-top) + var(--safe-top));
-    left: calc(var(--viewport-left) + var(--safe-left));
-    transform: none;
-    margin: 0;
-    height: calc(var(--content-height) + var(--safe-bottom));
-    max-height: none;
-    padding-bottom: var(--safe-bottom);
-    width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
-    gap: 0;
-  }
-  .drawer > .dialog-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    gap: var(--gap);
-    padding: var(--space-4);
-  }
+/* Full height like the phone sheet: its surface runs under the home
+   indicator while its content stays above it. */
+dialog.sidebar.drawer[open] {
+  top: calc(var(--viewport-top) + var(--safe-top));
+  left: calc(var(--viewport-left) + var(--safe-left));
+  transform: none;
+  margin: 0;
+  height: calc(var(--content-height) + var(--safe-bottom));
+  max-height: none;
+  padding-bottom: var(--safe-bottom);
+  width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
+  gap: 0;
 }
-@media (max-width: 600px) {
+.drawer > .dialog-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--gap);
+  padding: var(--space-4);
+}
+/* What the conversation's column is narrow for: the width of a phone,
+   wherever the list sits. The header carries --narrow for useNarrowColumn. */
+@container column (max-width: 600px) {
+  .conversation-head {
+    --narrow: 1;
+    min-height: var(--head-narrow);
+  }
   .conversation-head h1 {
     font-size: var(--font-body);
   }
@@ -1526,6 +1548,46 @@ dialog.sidebar.drawer[open][data-leaving] {
     }
   }
 }
+/* A sheet pulled down by a finger (useSheetSwipe) follows it as it moves;
+   let go, it returns to its place by the transition above, or leaves. */
+dialog[data-layout="sheet"][data-dragging] {
+  translate: 0 var(--swipe, 0);
+  transition: none;
+}
+/* The header has nothing to scroll: a pull on it is the sheet's, so the
+   browser does not take it for a pan first. */
+dialog[data-layout="sheet"] > header {
+  touch-action: none;
+}
+/* A conversation opened from the drawer slides in from the right, going back
+   from the left (slide() in shared/motion.ts). Only the transcript moves; the
+   rest of the page changes at once, and the old transcript waits under the
+   new one. */
+:root[data-slide] .transcript {
+  view-transition-name: screen;
+  background: var(--bg);
+}
+:root[data-slide]::view-transition-old(root),
+:root[data-slide]::view-transition-new(root),
+:root[data-slide]::view-transition-old(screen) {
+  animation: none;
+}
+:root[data-slide="forward"]::view-transition-new(screen) {
+  animation: screen-in-from-right var(--motion-base) var(--ease-standard);
+}
+:root[data-slide="back"]::view-transition-new(screen) {
+  animation: screen-in-from-left var(--motion-base) var(--ease-standard);
+}
+@keyframes screen-in-from-right {
+  from {
+    translate: 100% 0;
+  }
+}
+@keyframes screen-in-from-left {
+  from {
+    translate: -100% 0;
+  }
+}
 /* Animations off: the device asks for less motion, or Settings does
    (applyMotion sets the attribute for both). */
 :root[data-motion="off"] {
@@ -1572,11 +1634,11 @@ dialog.sidebar.drawer[open][data-leaving] {
     color: CanvasText;
     animation: none;
   }
-  .switch input[role="switch"]::before {
+  .switch input[switch]::before {
     forced-color-adjust: none;
     background: ButtonText;
   }
-  .switch input[role="switch"]:checked::before {
+  .switch input[switch]:checked::before {
     background: Highlight;
   }
   .primary,

@@ -14,7 +14,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-@media (max-width: 600px) {
+@container column (max-width: 600px) {
   .model-selector > .lucide:first-child {
     display: none;
   }

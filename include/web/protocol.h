@@ -23,6 +23,7 @@ using session::Pipe;
 using session::ReadFrames;
 using session::WriteFrame;
 inline constexpr size_t kWebDeviceLimit = 16;
+// Beyond this many open event streams, a new one ends the oldest.
 inline constexpr size_t kWebSseConnections = 4;
 inline constexpr size_t kWebRequestReceipts = 256;
 inline constexpr size_t kWebEventBatchBytes = KiB(64);
@@ -30,6 +31,8 @@ struct WebOptions {
   int port = 8080;
   std::string origin;
   std::string push_contact;
+  // Background notifications carry the conversation's title and reason.
+  bool notification_detail = true;
   std::string bind = "127.0.0.1";
   // Resolved from config like the rest, so a restart applies saved values.
   std::string browser_data;

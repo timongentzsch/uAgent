@@ -1,8 +1,10 @@
+import { useEffect } from "preact/hooks";
 import type {
   Act,
   AppModal,
   CommandFields,
   Draft,
+  Outgoing,
   Session,
   SlashCommand,
 } from "../shared/types.ts";
@@ -10,10 +12,15 @@ import { failure } from "../shared/types.ts";
 import { emptyDraft } from "../state/store.ts";
 import { command, requestId } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
-import { outgoingStatus } from "../shared/message-view.ts";
+import {
+  holdable,
+  outgoingStatus,
+  waitingToSend,
+} from "../shared/message-view.ts";
 import { restartConversation, shareTranscript } from "./menus.tsx";
 import { parseSlash } from "../features/composer/slash.ts";
 import { focusComposer } from "../shared/navigation.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 // Runs what the composer and the command palette send: the shell calls this
 // with its state and gets back submit, guidance and slash-command handlers.
@@ -82,6 +89,7 @@ export function useCommands({
     snapshots,
     selected,
     online,
+    outgoing,
     setDrafts,
     setOutgoing,
     patchOutgoing,
@@ -189,7 +197,7 @@ export function useCommands({
     const pending = snapshots.get()[selected]?.pending;
     setNotice("");
     if (
-      !online ||
+      (!online && !holdable(draft)) ||
       pending ||
       (!draft.text.trim() && !draft.files.length) ||
       uploading ||
@@ -237,7 +245,9 @@ export function useCommands({
   }
   // A message goes out as a row of its own until the host confirms it; a
   // failed one stays there, with Retry and Return to composer. Guidance
-  // joins the running turn, or with `queue` waits for it to end.
+  // joins the running turn, or with `queue` waits for it to end. Offline,
+  // plain text waits as it is, and goes out through here once reconnected,
+  // under the request it was given.
   async function deliver(
     id: string,
     sent: Draft,
@@ -250,24 +260,33 @@ export function useCommands({
       kind === "steer" &&
       (queue ? outgoingStatus.next : outgoingStatus.guidance);
     const visible = !sent.text.startsWith("/") || sent.files.length;
-    if (visible)
-      setOutgoing((items) => [
-        ...items,
-        {
-          id: `outgoing-${request_id}`,
-          parent: null,
-          request_id,
-          session_id: id,
-          kind: "turn",
-          body: { kind: "text", text: sent.text },
-          files: sent.files,
-          time: new Date().toISOString(),
-          status: queued || outgoingStatus.sending,
-        },
-      ]);
+    if (visible) {
+      const row: Outgoing = {
+        id: `outgoing-${request_id}`,
+        parent: null,
+        request_id,
+        session_id: id,
+        kind: "turn",
+        body: { kind: "text", text: sent.text },
+        files: sent.files,
+        time: new Date().toISOString(),
+        status: !online
+          ? outgoingStatus.waiting
+          : queued || outgoingStatus.sending,
+      };
+      setOutgoing((items) =>
+        items.some((item) => item.request_id === request_id)
+          ? items.map((item) => (item.request_id === request_id ? row : item))
+          : [...items, row],
+      );
+    }
     setDrafts((current) =>
       current[id] === sent ? { ...current, [id]: emptyDraft() } : current,
     );
+    if (!online) {
+      setBusy(false);
+      return;
+    }
     try {
       const result = await act(kind, {
         request_id,
@@ -297,6 +316,23 @@ export function useCommands({
       setBusy(false);
     }
   }
+  // Messages typed while reconnecting go out one at a time, in order, each
+  // deciding steer or submit once the turn is known.
+  const waiting = outgoing.find(
+    (item) => item.session_id === selected && waitingToSend(item),
+  )?.request_id;
+  const latest = useLatest({ deliver, selected, outgoing });
+  useEffect(() => {
+    const { deliver, selected, outgoing } = latest.current;
+    const item = outgoing.find((item) => item.request_id === waiting);
+    if (online && !busy && item)
+      void deliver(
+        selected,
+        { text: item.body?.text || "", files: [] },
+        false,
+        waiting,
+      );
+  }, [online, busy, waiting, latest]);
   // The context a session was last sent, its system prompt first: the open
   // conversation's, or that of the one given.
   function showContext(item?: Session) {

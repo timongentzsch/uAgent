@@ -151,6 +151,11 @@
 .queue-next kbd {
   margin-left: var(--space-2);
 }
+@media (pointer: coarse) {
+  .queue-next kbd {
+    display: none;
+  }
+}
 .metrics {
   display: flex;
   align-items: center;
@@ -166,8 +171,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Under the input: background work left and context/totals right.
-   Phones give activity its own row so neither competes for space. */
+/* Under the input: background work left and context/totals right. A phone
+   has the totals under the title, so this row holds only the status, and
+   no room while it is empty. */
 .composer-metrics {
   display: flex;
   justify-content: space-between;
@@ -184,10 +190,7 @@
 .composer > .decision {
   margin-bottom: var(--space-2);
 }
-@media (max-width: 600px) {
-  .metrics {
-    margin-left: auto;
-  }
+@container column (max-width: 600px) {
   .composer {
     margin: 0 var(--space-4);
     padding-top: var(--space-2);
@@ -280,7 +283,7 @@
   gap: var(--space-2);
   margin-left: auto;
 }
-@media (max-width: 600px) {
+@container column (max-width: 600px) {
   .queue-controls button {
     min-height: var(--touch);
     padding-inline: var(--space-3);
@@ -289,23 +292,12 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+    padding-top: 0;
   }
   .status-line:has(button) {
-    margin-bottom: var(--space-1);
+    margin-top: var(--space-1);
   }
   .composer-metrics .activity-button {
     max-width: 100%;
-  }
-  .composer-metrics > .metrics {
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: var(--space-1) var(--space-3);
-  }
-  .composer-metrics > .metrics > button {
-    flex: none;
-    max-width: 100%;
-    overflow: visible;
-    white-space: normal;
-    text-align: left;
   }
 }

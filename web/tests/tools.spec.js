@@ -5,6 +5,7 @@ import {
   selectProbeModel,
   chooseDetail,
   openRow,
+  openMore,
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -15,6 +16,7 @@ test("tool catalogue shows its schema size and persists selection", async ({
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Conversation menu" }).last().click();
+  await openMore(page);
   await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Tools", exact: true });

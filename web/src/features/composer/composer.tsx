@@ -14,6 +14,7 @@ import {
   updateChecked,
 } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
+import { holdable } from "../../shared/message-view.ts";
 import type {
   InspectorTarget,
   SlashCommand,
@@ -41,6 +42,7 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import { ActivityButton } from "../../shared/turn-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
+import { useNarrowColumn } from "../../shared/layout.ts";
 import { SessionSummary } from "../../shared/session-summary.tsx";
 import Decision from "../../shared/decision.tsx";
 import {
@@ -104,6 +106,7 @@ function Composer({
   choose: (id: string) => void;
 }) {
   const { online, connection, report } = useHostContext();
+  const narrow = useNarrowColumn();
   const { upload, uploading, busy, act, following } = useConversation();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
@@ -257,7 +260,8 @@ function Composer({
   // The one primary control: Stop while a turn runs and there is nothing
   // to send, Send otherwise. Its icons cross-fade in place.
   const stopping = running && empty;
-  const unsendable = !online || busy || uploading || empty || !!pending;
+  const unsendable =
+    (!online && !holdable(draft)) || busy || uploading || empty || !!pending;
   const stopLabel = !stopped
     ? ""
     : stopped === "cancelled"
@@ -596,13 +600,15 @@ function Composer({
             </Button>
           )}
         </div>
-        <div class="metrics small">
-          <SessionSummary
-            state={state}
-            queued={queued.length ? 0 : session.guidance}
-            open={showStatistics}
-          />
-        </div>
+        {!narrow && (
+          <div class="metrics small">
+            <SessionSummary
+              state={state}
+              queued={queued.length ? 0 : session.guidance}
+              open={showStatistics}
+            />
+          </div>
+        )}
       </div>
     </section>
   );

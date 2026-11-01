@@ -1,6 +1,8 @@
+import contextlib
 import gzip
 import http.client
 import json
+import socket
 import threading
 import time
 from pathlib import Path
@@ -553,3 +555,80 @@ def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
                 ),
             )
             assert_true(served == ["beta"], served)
+
+
+def open_event_stream(client):
+    listing = client.json("/api/sessions")[1]
+    connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=budget(15))
+    connection.request(
+        "GET",
+        f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+        headers={"Cookie": client.cookie},
+    )
+    return connection, connection.getresponse()
+
+
+def drop_event_stream(connection):
+    """Closes the client's end at once, though a reader is waiting on it."""
+    with contextlib.suppress(OSError, AttributeError):
+        connection.sock.shutdown(socket.SHUT_RDWR)
+    connection.close()
+
+
+def watch_event_stream(response):
+    """Lines read from a stream until it ends: (ready, ended) events."""
+    ready, ended = threading.Event(), threading.Event()
+
+    def read():
+        try:
+            while line := response.readline():
+                if line == b"event: ready\n":
+                    ready.set()
+        except (OSError, ValueError, AttributeError, http.client.HTTPException):
+            pass
+        ended.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    return ready, ended
+
+
+def test_a_page_that_reloads_again_and_again_still_gets_its_event_stream(root, home, *, binary):
+    """A closed page is noticed within a second, not at the stream's next
+    heartbeat, and a slot nobody has noticed yet never keeps a new page out."""
+    with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
+        client.pair(code)
+        for _ in range(4):
+            connection, response = open_event_stream(client)
+            assert_true(response.status == 200, response.status)
+            connection.close()
+        started = time.monotonic()
+        connection, response = open_event_stream(client)
+        assert_true(response.status == 200, response.status)
+        ready, _ = watch_event_stream(response)
+        assert_true(ready.wait(budget(5)), "the fifth stream never caught up")
+        assert_true(time.monotonic() - started < budget(5), "the fifth stream was slow")
+        drop_event_stream(connection)
+
+
+def test_a_new_event_stream_replaces_the_oldest_one_when_the_limit_is_reached(
+    root, home, *, binary
+):
+    """A phone that vanished sends no close: its stream must not outlast the
+    pages that are actually there."""
+    with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
+        client.pair(code)
+        open_streams = []
+        for _ in range(4):
+            open_streams.append(open_event_stream(client))
+            assert_true(open_streams[-1][1].status == 200, open_streams[-1][1].status)
+        watched = [watch_event_stream(response) for _, response in open_streams]
+        for ready, _ in watched:
+            assert_true(ready.wait(budget(5)), "a stream never caught up")
+        connection, response = open_event_stream(client)
+        assert_true(response.status == 200, response.status)
+        newest_ready, _ = watch_event_stream(response)
+        assert_true(newest_ready.wait(budget(5)), "the fifth stream never caught up")
+        assert_true(watched[0][1].wait(budget(5)), "the oldest stream stayed open")
+        assert_true(not any(ended.is_set() for _, ended in watched[1:]), "a newer stream ended")
+        for open_connection, _ in [*open_streams, (connection, response)]:
+            drop_event_stream(open_connection)

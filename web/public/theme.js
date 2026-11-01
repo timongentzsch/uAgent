@@ -12,7 +12,8 @@
     if (typeof stored === "number" && Number.isFinite(stored))
       z = Math.min(200, Math.max(50, stored || 100));
   } catch {}
-  if (t !== "light" && t !== "dark")
+  const chosen = t === "light" || t === "dark";
+  if (!chosen)
     t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   // The panes someone resized keep their size from the first frame.
   try {
@@ -38,8 +39,13 @@
     `${(1040 * 100) / z}px`,
   );
   // Each palette's --bg, before the stylesheet that holds them has loaded.
-  document.querySelector('meta[name="theme-color"]').content =
-    t === "dark" ? "#000" : "#fff";
+  // dataset.bg keeps each scheme's own for the system theme (applyTheme).
+  const bars = { light: "#fff", dark: "#000" };
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+    const scheme = meta.media.includes("dark") ? "dark" : "light";
+    meta.dataset.bg = bars[scheme];
+    meta.content = chosen ? bars[t] : bars[scheme];
+  }
   // iOS reads this once at launch; translucent draws under the status bar
   // (safe areas apply) but always with white text, so light keeps the default.
   document.querySelector(

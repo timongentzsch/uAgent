@@ -1,7 +1,9 @@
 import "./conversation-header.css";
 import type { ComponentChildren } from "preact";
-import type { Session } from "../shared/types.ts";
+import type { Outgoing, Session } from "../shared/types.ts";
 import { Button, IconButton } from "../shared/ui.tsx";
+import { SessionSummary } from "../shared/session-summary.tsx";
+import { queuedGuidance } from "../shared/message-view.ts";
 import { MenuItem } from "../shared/menu.tsx";
 import {
   Ellipsis,
@@ -12,16 +14,41 @@ import {
   Terminal,
 } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
-import { useCompact, usePhone } from "../shared/layout.ts";
+import { useCompact, useNarrowColumn } from "../shared/layout.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
 
+// What a narrow column's header says under the title: the composer's totals,
+// which it leaves out.
+function Totals({
+  session,
+  outgoing,
+}: {
+  session: Session;
+  outgoing: Outgoing[];
+}) {
+  const { store, setModal } = useHostContext();
+  const state = useSnapshots(store, (all) => all[session.id]?.state);
+  const queued = outgoing.some(
+    (item) => item.session_id === session.id && queuedGuidance(item),
+  );
+  return (
+    <p class="head-subtitle head-totals small">
+      <SessionSummary
+        state={state}
+        queued={queued ? 0 : session.guidance}
+        open={() => setModal({ type: "statistics", session_id: session.id })}
+      />
+    </p>
+  );
+}
+
 // The page's title and what acts on the open conversation: the browser, its
-// files, Settings on a small screen and the conversation's menu. A phone
-// keeps the title and the menu, which takes the rest; the browser stays
-// while the agent uses it.
+// files, Settings on a small screen and the conversation's menu. A narrow
+// column keeps the title with the totals and the menu, which takes the rest; the
+// browser stays while the agent uses it.
 export default function ConversationHeader({
   page,
   selected,
@@ -33,6 +60,7 @@ export default function ConversationHeader({
   terminal,
   filesOpen,
   setFilesOpen,
+  outgoing,
   openDrawer,
   choose,
   settings,
@@ -50,43 +78,45 @@ export default function ConversationHeader({
   terminal?: { open: boolean; toggle: () => void };
   filesOpen: boolean;
   setFilesOpen: (open: boolean) => void;
+  outgoing: Outgoing[];
   openDrawer: () => void;
   choose: (id: string) => void;
   settings: () => void;
   menu: (
     item: Session,
     withDetail?: boolean,
-    extra?: ComponentChildren,
+    extra?: { top?: ComponentChildren; more?: ComponentChildren },
   ) => ComponentChildren;
 }) {
   const { store, setModal } = useHostContext();
   const compact = useCompact();
-  const phone = usePhone();
+  const narrow = useNarrowColumn();
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
   const openBrowser = () => setModal({ type: "browser" });
-  // On a phone the conversation's menu holds the header's other actions;
+  // In a narrow column the conversation's menu holds the header's other actions;
   // without a conversation there is no menu, and Settings keeps its button.
-  const inMenu = phone && page === "chat" && !!(session || opening);
+  const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
-  const phoneItems = inMenu && (
-    <>
-      <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
-        Files
+  const phoneItems = inMenu && {
+    top: (
+      <>
+        <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
+          Files
+        </MenuItem>
+        {terminal && (
+          <MenuItem onClick={terminal.toggle}>
+            {terminal.open ? "Hide terminal" : "Terminal"}
+          </MenuItem>
+        )}
+      </>
+    ),
+    more: browserAvailable && (
+      <MenuItem disabled={booting} onClick={openBrowser}>
+        Open browser
       </MenuItem>
-      {browserAvailable && (
-        <MenuItem disabled={booting} onClick={openBrowser}>
-          Open browser
-        </MenuItem>
-      )}
-      {terminal && (
-        <MenuItem onClick={terminal.toggle}>
-          {terminal.open ? "Hide terminal" : "Terminal"}
-        </MenuItem>
-      )}
-      <MenuItem onClick={settings}>Settings</MenuItem>
-    </>
-  );
+    ),
+  };
   return (
     <header class="conversation-head">
       {compact && (
@@ -122,6 +152,7 @@ export default function ConversationHeader({
             </Button>
           </p>
         )}
+        {inMenu && session && <Totals session={session} outgoing={outgoing} />}
       </div>
       {browserAvailable && (!inMenu || browsing) && (
         <IconButton
@@ -163,7 +194,7 @@ export default function ConversationHeader({
       )}
       {page === "chat" &&
         (session ? (
-          menu(session, true, phoneItems)
+          menu(session, true, phoneItems || undefined)
         ) : opening ? (
           // Inert until the session is known.
           <IconButton label="Conversation menu" disabled>

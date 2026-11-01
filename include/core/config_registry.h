@@ -275,6 +275,16 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       kScopeUser),
         "Push contact"),
     registry::Named(
+        registry::Bul("web.notificationDetail",
+                      "UAGENT_WEB_NOTIFICATION_DETAIL", {}, true,
+                      ReloadPolicy::kRestartRequired, "web",
+                      "background notifications name the conversation and why "
+                      "it needs you; off sends a generic notice",
+                      kScopeUser),
+        "Notification detail",
+        "A notification on the lock screen shows the conversation's title and "
+        "why it needs you; it is sent through the browser's push service"),
+    registry::Named(
         registry::Bul("web.terminal", "UAGENT_WEB_TERMINAL", {}, true,
                       ReloadPolicy::kRestartRequired, "web",
                       "a shell of yours, unsandboxed, for paired devices in "

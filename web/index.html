@@ -6,7 +6,9 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" />
+    <!-- The status bar follows the system palette; theme.js fills these in. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"

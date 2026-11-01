@@ -23,7 +23,13 @@ import { retainedViews, hasContent, patchCatalogue } from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
 import { api, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
-import { outgoingStatus, queuedGuidance } from "../shared/message-view.ts";
+import {
+  outgoingStatus,
+  queuedGuidance,
+  waitingToSend,
+} from "../shared/message-view.ts";
+import { wentBack } from "../shared/dismiss.ts";
+import { slide } from "../shared/motion.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   catalogueSaveDelayMs,
@@ -240,6 +246,7 @@ export function useHost(
     kept.catalogue.write([]);
     kept.spaces.write([]);
     setDrafts({});
+    setOutgoing([]);
     setAuthenticated(false);
     live.current = {};
     snapshots.set({});
@@ -558,14 +565,17 @@ export function useHost(
           ]),
       );
       await Promise.all(
-        outgoingRef.current.map(async (item) => {
-          const receipt = await api<Outcome>(
-            routes.receipt(item.request_id),
-            undefined,
-            { signal },
-          );
-          settleOutgoing({ ...receipt, request_id: item.request_id });
-        }),
+        // A message waiting for the connection was never sent: no receipt.
+        outgoingRef.current
+          .filter((item) => !waitingToSend(item))
+          .map(async (item) => {
+            const receipt = await api<Outcome>(
+              routes.receipt(item.request_id),
+              undefined,
+              { signal },
+            );
+            settleOutgoing({ ...receipt, request_id: item.request_id });
+          }),
       );
       // Catalogue access establishes authentication. Conversation data can
       // fail or stall independently; expose the shell so another session and
@@ -616,11 +626,21 @@ export function useHost(
       dropStream();
     };
     let navigation: ReturnType<typeof setTimeout> | undefined;
-    const hash = () => {
+    // A system back swipe has drawn its own transition by the time popstate
+    // fires, and hashchange follows popstate.
+    let drawn = false;
+    const hash = (event: Event) => {
+      drawn ||= !!(event as PopStateEvent & { hasUAVisualTransition?: boolean })
+        .hasUAVisualTransition;
       clearTimeout(navigation);
       // History traversal restores browser state after popstate. Mount the
       // selected transcript only once that traversal has finished.
-      navigation = setTimeout(() => setSelected(selectedFromURL()), 0);
+      navigation = setTimeout(() => {
+        const next = selectedFromURL();
+        if (drawn || next === selection.current) setSelected(next);
+        else slide(wentBack, next, () => setSelected(next));
+        drawn = false;
+      }, 0);
     };
     addEventListener("online", reconnect);
     addEventListener("offline", disconnected);
@@ -752,7 +772,6 @@ export function useHost(
     loads.current.clear();
     setLoadErrors({});
     stream.current?.close();
-    setOutgoing([]);
     signedOut();
     setOnline(false);
     setConnecting(false);

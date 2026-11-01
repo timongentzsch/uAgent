@@ -19,14 +19,17 @@ import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
+import { slide } from "../shared/motion.ts";
+import { useEdgeSwipe } from "../shared/swipe.ts";
 import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
 import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
-import { lockPageZoom, useCompact } from "../shared/layout.ts";
+import { lockPageZoom, useCompact, useNarrowColumn } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
+import { useWakeLock } from "../shared/wake-lock.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import { stored, tabStorage } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
@@ -98,7 +101,6 @@ function App() {
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  const compact = useCompact();
   // What opens over the page: the conversations drawer, the app's dialogs,
   // the palette or shortcuts sheet, the image viewer, the inspector and the
   // /btw card.
@@ -121,8 +123,6 @@ function App() {
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
-  // The drawer belongs to the compact layout; a wider window drops it.
-  useEffect(() => setDrawer(false), [compact]);
   const open = useCallback((value: AppModal) => {
     setDrawer(false);
     setModal(value);
@@ -173,6 +173,15 @@ function App() {
     correlate,
     reset,
   } = host;
+  // The shell is absent while the device pairs; its layout is read again
+  // when it appears.
+  const shown = authenticated !== false;
+  const compact = useCompact(shown);
+  // The drawer belongs to the compact layout; a wider window drops it.
+  useEffect(() => setDrawer(false), [compact]);
+  useEdgeSwipe(compact, () => setDrawer(true));
+  // The files sit beside the chat while its column has room, else in a sheet.
+  const filesSheet = useNarrowColumn(shown) || compact;
   const { side, closeSide, ask, clearSides } = useSideConversations({
     selected,
     load,
@@ -211,6 +220,7 @@ function App() {
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
   const running = !!session && isRunning(session, online);
+  useWakeLock(running);
   const { updateDraft, attachAnnotated, upload } = useDraftUploads({
     session,
     online,
@@ -237,10 +247,14 @@ function App() {
     async (id: string) => {
       setNotice("");
       setPage("chat");
-      setSelected(id);
-      setDrawer(false);
+      const change = () => {
+        setSelected(id);
+        setDrawer(false);
+      };
+      if (id === selected) change();
+      else slide(false, id, change);
     },
-    [setSelected],
+    [selected, setSelected],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     upload,
@@ -342,7 +356,11 @@ function App() {
   );
   // The open conversation's menu also holds the level its transcript shows.
   const conversationMenu = useCallback(
-    (item: Session, withDetail = false, extra?: ComponentChildren) => (
+    (
+      item: Session,
+      withDetail = false,
+      extra?: { top?: ComponentChildren; more?: ComponentChildren },
+    ) => (
       <ConversationMenu
         item={item}
         fork={fork}
@@ -362,8 +380,9 @@ function App() {
               }
             : undefined
         }
+        more={extra?.more}
       >
-        {extra}
+        {extra?.top}
       </ConversationMenu>
     ),
     [online, fork, load, report, open, detail, levels, changeDetail],
@@ -394,15 +413,14 @@ function App() {
     [showTerminal, report],
   );
   const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
-  // A tab in a folder of the conversation's; on a phone the files sheet
-  // makes way for it.
+  // A tab in a folder of the conversation's; the files sheet makes way for it.
   const openTerminal = useCallback(
     (cwd: string) => {
-      if (compact) setFilesOpen(false);
+      if (filesSheet) setFilesOpen(false);
       setTerminalRequest({ cwd, at: Date.now() });
       setTerminalOpen(true);
     },
-    [compact],
+    [filesSheet],
   );
   const filesTerminal =
     terminalAvailable && session
@@ -630,13 +648,14 @@ function App() {
                       }
                       filesOpen={filesOpen}
                       setFilesOpen={setFilesOpen}
+                      outgoing={outgoing}
                       parent={sessionById(catalogue.sessions, session?.parent)}
                       openDrawer={() => setDrawer(true)}
                       choose={choose}
                       settings={settings}
                       menu={conversationMenu}
                     />
-                    {filesOpen && compact && page === "chat" && session && (
+                    {filesOpen && filesSheet && page === "chat" && session && (
                       <Modal
                         title="Files"
                         layout="sheet"
@@ -719,7 +738,7 @@ function App() {
                       setInspector={setInspector}
                       files={
                         filesOpen &&
-                        !compact &&
+                        !filesSheet &&
                         session && (
                           <Files
                             key={session.id}
@@ -751,6 +770,7 @@ function App() {
                         layout="sheet"
                         className="terminal-sheet"
                         header={false}
+                        swipeable={false}
                         close={() => setTerminalOpen(false)}
                       >
                         {terminal}

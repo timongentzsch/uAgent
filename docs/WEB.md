@@ -44,6 +44,12 @@ at the top, in the order pinned; **Unpin** returns it. The pins belong to
 the host, so every paired device shows the same. Browsing saved history
 starts no model and runs no command.
 
+On a touch screen only the open row draws its ⋯; a long press on any row opens
+its menu when you lift, once the row has marked itself held. A screen reader
+and a keyboard reach every row's menu as usual. On a phone, opening a
+conversation slides it in, pulling a sheet down closes it, and a swipe from the
+left edge opens the list.
+
 A place's **overview** shows its name, path and, in a git repository, the
 branch and how many files are uncommitted; a field that starts a
 conversation there; what is working, what needs you, today's spend (and 7
@@ -93,6 +99,7 @@ settings saved for all conversations and the environment, never a folder's.
 | | `UAGENT_WEB_BIND` | `127.0.0.1`; `0.0.0.0` listens on all interfaces |
 | | `UAGENT_WEB_PUSH_CONTACT` | empty (no background push) |
 | | `UAGENT_BROWSER_DATA` | empty (no shared browser) |
+| | `UAGENT_WEB_NOTIFICATION_DETAIL` | on (background notifications name the conversation) |
 | | `UAGENT_WEB_TERMINAL` | on ([the terminal](#terminal)) |
 | | `UAGENT_WEB_TERMINAL_IDLE_MINUTES` | `60` (1–10080) |
 
@@ -146,8 +153,12 @@ draft or a pending decision.
 
 Turn them on per device under Settings → Host → Notifications. A
 notification is sent when a turn completes, a decision waits on you or a
-conversation fails. It says only that µAgent needs your attention, never a
-prompt or an answer, and opens the conversation at its decision.
+conversation fails. It names the conversation and why (needs your approval,
+has a question, ran into an error, finished), never a prompt, command or
+answer, and opens the conversation at its decision. That text shows on the
+lock screen and goes through the browser's push service, encrypted; with
+`UAGENT_WEB_NOTIFICATION_DETAIL=off` the notice says only that µAgent needs
+your attention.
 
 | Mode | When | Needs |
 | --- | --- | --- |

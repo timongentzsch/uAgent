@@ -17,8 +17,17 @@ from web_support import web_host
 
 from integration_web._common import p256_public_key
 
+# A push record is the 86-byte aes128gcm header, the payload, one padding
+# byte and a 16-byte tag: the capture file shows the payload's size, not its
+# text, which only the device's key opens.
+PUSH_RECORD_OVERHEAD = 86 + 1 + 16
+TITLE = "Fix the parser"
 
-def test_web_push_announces_pending_approval(root, home, *, binary):
+
+def pending_approval_push(root, home, binary, extra_env=None):
+    """The one push a conversation named TITLE sends when it waits on an approval."""
+    root.mkdir()
+    home.mkdir()
     capture = root / "push.jsonl"
 
     def responder(_, body):
@@ -29,13 +38,14 @@ def test_web_push_announces_pending_approval(root, home, *, binary):
     env = {
         "UAGENT_WEB_PUSH_CONTACT": "mailto:test@example.invalid",
         "UAGENT_INTERNAL_PUSH_CAPTURE": str(capture),
+        **(extra_env or {}),
     }
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
             client.pair(code)
             _, catalogue, _ = client.json("/api/sessions")
             if not catalogue["capabilities"]["push"]:
-                return  # built without UAGENT_WEB_PUSH
+                return None  # built without UAGENT_WEB_PUSH
             status, subscribed, _ = client.json(
                 "/api/push/subscriptions",
                 {
@@ -48,6 +58,7 @@ def test_web_push_announces_pending_approval(root, home, *, binary):
             )
             assert_true(status == 200 and subscribed["subscribed"], subscribed)
             session = client.create(root)
+            client.command("rename", session, title=TITLE)
             client.command("submit", session, text="Run PUSH_PRIVATE_TEXT")
             client.until(session, lambda value: bool(value.get("pending")))
             wait_until(
@@ -57,11 +68,32 @@ def test_web_push_announces_pending_approval(root, home, *, binary):
             )
             deliveries = [json.loads(line) for line in capture.read_text().splitlines()]
             assert_true(len(deliveries) == 1, deliveries)
-            delivery = deliveries[0]
-            # Only the encrypted, content-free wake-up leaves the host; the
-            # payload's plaintext is pinned by the web_push unit test.
-            assert_true(delivery["endpoint"].startswith("https://fcm.googleapis.com/"), delivery)
-            assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
+            return deliveries[0]
+
+
+def test_web_push_announces_pending_approval(root, home, *, binary):
+    delivery = pending_approval_push(root / "push", home / "push", binary)
+    if delivery is None:
+        return
+    assert_true(delivery["endpoint"].startswith("https://fcm.googleapis.com/"), delivery)
+    assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
+
+
+def test_web_push_names_the_conversation_unless_turned_off(root, home, *, binary):
+    on = pending_approval_push(root / "on", home / "on", binary)
+    if on is None:
+        return
+    off = pending_approval_push(
+        root / "off",
+        home / "off",
+        binary,
+        {"UAGENT_WEB_NOTIFICATION_DETAIL": "off"},
+    )
+    named = f',"reason":"approval","title":"{TITLE}"'
+    # Off sends the bare id and session; on adds exactly the reason and title.
+    # The sequence in the notice's id may differ by a digit between hosts.
+    grown = on["bytes"] - off["bytes"]
+    assert_true(abs(grown - len(named)) <= 2, (grown, len(named), on, off))
 
 
 def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):

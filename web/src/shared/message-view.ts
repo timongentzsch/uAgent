@@ -1,8 +1,10 @@
 import { nextFence } from "./markdown-split.ts";
-import type { Node } from "./types.ts";
+import type { Draft, Node } from "./types.ts";
 
 // What a message of yours shows until the host's own row replaces it.
 export const outgoingStatus = {
+  // Typed while reconnecting; it goes out once the host is reached.
+  waiting: "Waiting for connection",
   sending: "Sending…",
   // Guidance for the running turn, or a message held for after it.
   guidance: "Guidance queued",
@@ -13,21 +15,32 @@ export const outgoingStatus = {
   unconfirmed: "Not confirmed",
 };
 
+// Plain text can wait for the connection; attachments and slash commands
+// need it.
+export const holdable = (draft: Draft) =>
+  !!draft.text.trim() && !draft.files.length && !draft.text.startsWith("/");
+
 // A message of yours the host refused, or never confirmed receiving.
 export const unsent = (node: { status?: string }) =>
   node.status === outgoingStatus.refused ||
   node.status === outgoingStatus.unconfirmed;
+
+export const waitingToSend = (node: { status?: string }) =>
+  node.status === outgoingStatus.waiting;
 
 export const queuedGuidance = (node: { status?: string }) =>
   node.status === outgoingStatus.guidance ||
   node.status === outgoingStatus.next;
 
 // What returns to the composer: guidance still queued (withdrawn from the
-// host, so only while connected) or a message that never went out.
+// host, so only while connected) or a message that never went out, or is
+// still waiting to.
 export const recallable = (
   node: Pick<Node, "status" | "request_id">,
   online: boolean,
-) => !!node.request_id && ((online && queuedGuidance(node)) || unsent(node));
+) =>
+  !!node.request_id &&
+  ((online && queuedGuidance(node)) || unsent(node) || waitingToSend(node));
 
 type TextPart = { text: string } | { mention: { id: string; alt: string } };
 

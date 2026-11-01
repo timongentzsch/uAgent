@@ -340,9 +340,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     await navigator.serviceWorker.ready;
   });
   await context.setOffline(true);
+  // Plain text waits for the connection, so Send stays available.
   await expect(
     page.getByRole("button", { name: "Send", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(page.getByLabel("Message or guidance")).toHaveValue(
     "Unsent private draft",
   );

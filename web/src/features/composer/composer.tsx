@@ -14,6 +14,7 @@ import {
   updateChecked,
 } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
+import { holdable } from "../../shared/message-view.ts";
 import type {
   InspectorTarget,
   SlashCommand,
@@ -257,7 +258,8 @@ function Composer({
   // The one primary control: Stop while a turn runs and there is nothing
   // to send, Send otherwise. Its icons cross-fade in place.
   const stopping = running && empty;
-  const unsendable = !online || busy || uploading || empty || !!pending;
+  const unsendable =
+    (!online && !holdable(draft)) || busy || uploading || empty || !!pending;
   const stopLabel = !stopped
     ? ""
     : stopped === "cancelled"

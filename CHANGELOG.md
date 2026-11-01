@@ -4,6 +4,7 @@
 
 ### Changes
 
+- **A message sent while reconnecting waits and goes out once.** Plain text typed in the moment after reopening the app shows as "Waiting for connection", clears the draft, and is sent in order once the host is reached, as guidance if a turn is running by then. Return to composer takes it back before it goes. Attachments and slash commands still need the connection.
 - **The terminal fills the phone, names its tabs and keeps its lines whole.** The page's terminal shows "Terminal 1 · ~" in one bar, with the tabs in a row of their own once there are two, and the number stays with a terminal when another closes. Add to chat moved into its ⋯ menu and is absent when no conversation is open. The terminal reaches the keys at the bottom of the sheet, which gained a keyboard key; its lines no longer clip under the keys, and a browser tab's terminal regrows when the keyboard closes.
 
 ## v1.7.0 - 2026-10-31

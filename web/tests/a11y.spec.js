@@ -137,7 +137,7 @@ test("a forced palette still draws the switch knob apart from its track", async 
   await settings
     .getByRole("searchbox", { name: "Find a setting" })
     .fill("memory");
-  const switches = settings.locator(".switch input[switch]");
+  const switches = settings.locator('.switch input[role="switch"]');
   await expect(switches.first()).toBeVisible();
   for (const index of [0, (await switches.count()) - 1]) {
     const { knob, track } = await switches.nth(index).evaluate((input) => ({

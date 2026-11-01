@@ -287,12 +287,12 @@ test("MCP servers show their state and switch on and off", async ({
   );
 
   await probe.click();
-  await global.getByRole("checkbox", { name: "Enable probe" }).uncheck();
+  await global.getByRole("switch", { name: "Enable probe" }).uncheck();
   await expect(probe).toContainText("Disabled");
   expect(
     JSON.parse(await readFile(config, "utf8")).mcpServers.probe.disabled,
   ).toBe(true);
-  await global.getByRole("checkbox", { name: "Enable probe" }).check();
+  await global.getByRole("switch", { name: "Enable probe" }).check();
   await expect(probe).toContainText("1 tool");
 
   await global.getByRole("button", { name: /broken/ }).click();

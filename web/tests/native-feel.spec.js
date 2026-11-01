@@ -90,7 +90,7 @@ test("a switch is a native switch with a name, a click and a key", async ({
   await settings
     .getByRole("searchbox", { name: "Find a setting" })
     .fill("memory");
-  const memory = settings.getByRole("checkbox", {
+  const memory = settings.getByRole("switch", {
     name: "Memory",
     exact: true,
   });

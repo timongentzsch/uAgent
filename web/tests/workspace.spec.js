@@ -607,7 +607,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
     "Overridden in this folder",
   );
   // A switch applies as it flips; putting it back is the reset beside it.
-  const memory = form.getByRole("checkbox", { name: "Memory", exact: true });
+  const memory = form.getByRole("switch", { name: "Memory", exact: true });
   await expect(memory).toBeChecked();
   await memory.uncheck();
   const restore = form.getByRole("button", { name: "Reset Memory" });

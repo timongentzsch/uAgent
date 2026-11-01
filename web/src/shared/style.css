@@ -410,8 +410,9 @@ input[type="radio"] {
   background: var(--accent);
   border-color: var(--accent);
 }
+/* Its travel leaves out the track's two borders and the 1px gap at each end. */
 .switch input[switch]:checked::before {
-  translate: calc(var(--control-l) - var(--icon-l)) 0;
+  translate: calc(var(--control-l) - var(--icon-l) - 4 * 1px) 0;
   background: var(--on-accent);
 }
 /* Every button: its content centred in a --control-tall box, padded only

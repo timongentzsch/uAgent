@@ -99,6 +99,22 @@ test("a switch is a native switch with a name, a click and a key", async ({
   const before = await memory.isChecked();
   await memory.click();
   await expect(memory).toBeChecked({ checked: !before });
+  // Either way the knob sits inside the track, the same gap from each end.
+  for (const checked of [true, false]) {
+    await memory.setChecked(checked);
+    await expect
+      .poll(() =>
+        memory.evaluate((input, on) => {
+          const knob = getComputedStyle(input, "::before");
+          const left = parseFloat(knob.left);
+          const moved = parseFloat(knob.translate) || 0;
+          const end = input.clientWidth - left - parseFloat(knob.width);
+          return Math.abs(moved - (on ? end - left : 0));
+        }, checked),
+      )
+      .toBeLessThan(0.5);
+  }
+  await memory.setChecked(!before);
   await memory.focus();
   await page.keyboard.press("Space");
   await expect(memory).toBeChecked({ checked: before });

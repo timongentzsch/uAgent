@@ -9,6 +9,7 @@
 
 ### Fixes
 
+- **A switch that is on keeps its right edge.** Its knob slid past the end of the track and covered the border.
 - **`web_search` is always a tool call.** A search hosted inside the conversation's own response could leave no record of itself for the next request, so a model took its real results for figures it had made up and withdrew them. A search now runs as a side request on a route that can search; its cited answer is a tool result that stays in the conversation and shows as a row in the history. `search_plugin` and `search_sources` are gone from `supports`: `hosted_search` now says an endpoint can search on any wire API. Set `webSearch.model` to answer searches with a cheaper model than the conversation's.
 - **A signal no longer fails a browser action.** A signal arriving while a browser request, a Chrome control read, an RFB read or a timed write waited, such as a child process exiting, counted as a lost connection. The action then failed with "browser service timed out or disconnected". These waits now carry on.
 

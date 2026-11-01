@@ -282,6 +282,17 @@ TEST_CASE(TestOpenRouterServerSearch) {
   auto legacy_query = FindToolArgumentIssue(
       search_tool, {{"query", "legacy"}, {"queries", {"current"}}});
   CHECK(legacy_query && legacy_query->code == "schema.additional_property");
+  // One query sent bare is that query, not a round lost to a refusal.
+  json bare_query = {{"queries", "only one"}};
+  CanonicalizeToolArguments(search_tool, bare_query);
+  CHECK(bare_query["queries"] == json::array({"only one"}));
+  CHECK(!FindToolArgumentIssue(search_tool, bare_query));
+  // A list of something else is still refused.
+  Tool objects = search_tool;
+  objects.parameters["properties"]["queries"]["items"] = {{"type", "object"}};
+  json bare_object = {{"queries", "only one"}};
+  CanonicalizeToolArguments(objects, bare_object);
+  CHECK(bare_object["queries"].is_string());
   CHECK(ToolSummary(search_tool, {{"queries", {"one", "two"}}}) ==
         "Searched the web for one | two");
   CHECK(!search_tool.mutating);

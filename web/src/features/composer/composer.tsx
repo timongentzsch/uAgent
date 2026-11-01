@@ -42,7 +42,7 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import { ActivityButton } from "../../shared/turn-status.tsx";
 import MessageInput from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
-import { usePhone } from "../../shared/layout.ts";
+import { useNarrowColumn } from "../../shared/layout.ts";
 import { SessionSummary } from "../../shared/session-summary.tsx";
 import Decision from "../../shared/decision.tsx";
 import {
@@ -106,7 +106,7 @@ function Composer({
   choose: (id: string) => void;
 }) {
   const { online, connection, report } = useHostContext();
-  const phone = usePhone();
+  const narrow = useNarrowColumn();
   const { upload, uploading, busy, act, following } = useConversation();
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
@@ -600,7 +600,7 @@ function Composer({
             </Button>
           )}
         </div>
-        {!phone && (
+        {!narrow && (
           <div class="metrics small">
             <SessionSummary
               state={state}

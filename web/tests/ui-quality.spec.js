@@ -320,9 +320,11 @@ test.describe("touch interaction", () => {
         .fill("read_path");
       await scaledFields(tools, zoom);
       await tools.getByRole("button", { name: "Close tools" }).click();
-      await page.getByRole("button", { name: "Open conversations" }).click();
+      // At 50% the list fits beside the chat; otherwise it is the drawer.
+      const drawer = page.getByRole("button", { name: "Open conversations" });
+      if (await drawer.count()) await drawer.click();
       await page
-        .getByRole("dialog", { name: "Conversations", exact: true })
+        .locator("dialog.sidebar, aside.sidebar")
         .getByRole("button", { name: "Search", exact: true })
         .tap();
       const spotlight = page.getByRole("dialog", { name: "Search" });

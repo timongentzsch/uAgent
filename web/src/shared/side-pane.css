@@ -28,7 +28,7 @@
   min-height: 0;
 }
 .side-pane[data-pane="files"] {
-  width: var(--files-width, clamp(var(--popover), 45cqi, var(--sheet) * 1.5));
+  width: var(--files-width, clamp(var(--popover), 45vw, var(--sheet) * 1.5));
 }
 
 /* A wide grip over the pane's 1px edge; the edge itself turns to the

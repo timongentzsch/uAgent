@@ -224,8 +224,6 @@
   margin-right: var(--space-3);
 }
 /* The drawer opens on the list; the mark stays in the header. */
-@media (max-width: 900px) {
-  .drawer .sidebar-head .brand {
-    display: none;
-  }
+.drawer .sidebar-head .brand {
+  display: none;
 }

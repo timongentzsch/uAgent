@@ -25,7 +25,7 @@ import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
-import { lockPageZoom, useCompact } from "../shared/layout.ts";
+import { lockPageZoom, useCompact, useNarrowColumn } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import { stored, tabStorage } from "../shared/storage.ts";
@@ -98,7 +98,6 @@ function App() {
   const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
-  const compact = useCompact();
   // What opens over the page: the conversations drawer, the app's dialogs,
   // the palette or shortcuts sheet, the image viewer, the inspector and the
   // /btw card.
@@ -121,8 +120,6 @@ function App() {
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
-  // The drawer belongs to the compact layout; a wider window drops it.
-  useEffect(() => setDrawer(false), [compact]);
   const open = useCallback((value: AppModal) => {
     setDrawer(false);
     setModal(value);
@@ -173,6 +170,14 @@ function App() {
     correlate,
     reset,
   } = host;
+  // The shell is absent while the device pairs; its layout is read again
+  // when it appears.
+  const shown = authenticated !== false;
+  const compact = useCompact(shown);
+  // The drawer belongs to the compact layout; a wider window drops it.
+  useEffect(() => setDrawer(false), [compact]);
+  // The files sit beside the chat while its column has room, else in a sheet.
+  const filesSheet = useNarrowColumn(shown) || compact;
   const { side, closeSide, ask, clearSides } = useSideConversations({
     selected,
     load,
@@ -399,15 +404,14 @@ function App() {
     [showTerminal, report],
   );
   const toggleTerminal = useCallback(() => setTerminalOpen((on) => !on), []);
-  // A tab in a folder of the conversation's; on a phone the files sheet
-  // makes way for it.
+  // A tab in a folder of the conversation's; the files sheet makes way for it.
   const openTerminal = useCallback(
     (cwd: string) => {
-      if (compact) setFilesOpen(false);
+      if (filesSheet) setFilesOpen(false);
       setTerminalRequest({ cwd, at: Date.now() });
       setTerminalOpen(true);
     },
-    [compact],
+    [filesSheet],
   );
   const filesTerminal =
     terminalAvailable && session
@@ -642,7 +646,7 @@ function App() {
                       settings={settings}
                       menu={conversationMenu}
                     />
-                    {filesOpen && compact && page === "chat" && session && (
+                    {filesOpen && filesSheet && page === "chat" && session && (
                       <Modal
                         title="Files"
                         layout="sheet"
@@ -725,7 +729,7 @@ function App() {
                       setInspector={setInspector}
                       files={
                         filesOpen &&
-                        !compact &&
+                        !filesSheet &&
                         session && (
                           <Files
                             key={session.id}

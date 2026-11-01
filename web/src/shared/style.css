@@ -858,10 +858,19 @@ kbd {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, auto) minmax(var(--chat-min), 1fr);
+  grid-template-columns: minmax(0, auto) minmax(min(var(--chat-min), 100%), 1fr);
   overflow: clip;
 }
+.shell > .conversation {
+  grid-column: 2;
+}
+/* The conversations list sits beside the conversation where --sidebar and
+   --chat-min both fit and the window is not short (the height below which
+   the app trims its chrome); elsewhere a drawer holds it. A query cannot
+   read a token, so 44.28rem is their sum, and it follows zoom as they do.
+   The query also sets --docked, which useCompact reads. */
 aside.sidebar {
+  display: none;
   position: relative;
   width: var(--sidebar-width, min(30vw, var(--sidebar)));
   min-width: var(--pane-s);
@@ -881,6 +890,14 @@ aside.sidebar {
    from its starting style instead of appearing in place. */
 dialog.sidebar:not([open]) {
   display: none;
+}
+@container app (min-width: 44.28rem) and (not (max-height: 500px)) {
+  .shell {
+    --docked: 1;
+  }
+  aside.sidebar {
+    display: flex;
+  }
 }
 .folder-label {
   display: flex;
@@ -949,6 +966,7 @@ dialog.sidebar:not([open]) {
   }
 }
 .conversation {
+  container: column / inline-size;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -1418,39 +1436,32 @@ dialog section {
     inset: calc((var(--control-slim) - var(--touch)) / 2) 0;
   }
 }
-@media (max-width: 900px) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* The app draws no sidebar here; the frame it replaces draws none either. */
-  .boot-frame > .sidebar {
-    display: none;
-  }
-  .conversation-head {
-    padding-inline: var(--inset-x);
-  }
-  /* Full height like the phone sheet: its surface runs under the home
-     indicator while its content stays above it. */
-  dialog.sidebar.drawer[open] {
-    top: calc(var(--viewport-top) + var(--safe-top));
-    left: calc(var(--viewport-left) + var(--safe-left));
-    transform: none;
-    margin: 0;
-    height: calc(var(--content-height) + var(--safe-bottom));
-    max-height: none;
-    padding-bottom: var(--safe-bottom);
-    width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
-    gap: 0;
-  }
-  .drawer > .dialog-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    gap: var(--gap);
-    padding: var(--space-4);
-  }
+/* Full height like the phone sheet: its surface runs under the home
+   indicator while its content stays above it. */
+dialog.sidebar.drawer[open] {
+  top: calc(var(--viewport-top) + var(--safe-top));
+  left: calc(var(--viewport-left) + var(--safe-left));
+  transform: none;
+  margin: 0;
+  height: calc(var(--content-height) + var(--safe-bottom));
+  max-height: none;
+  padding-bottom: var(--safe-bottom);
+  width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
+  gap: 0;
 }
-@media (max-width: 600px) {
+.drawer > .dialog-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--gap);
+  padding: var(--space-4);
+}
+/* What the conversation's column is narrow for: the width of a phone,
+   wherever the list sits. The header carries --narrow for useNarrowColumn. */
+@container column (max-width: 600px) {
+  .conversation-head {
+    --narrow: 1;
+  }
   .conversation-head h1 {
     font-size: var(--font-body);
   }

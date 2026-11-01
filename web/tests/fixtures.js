@@ -122,21 +122,23 @@ export const openMore = (page) =>
   page.getByRole("menuitem", { name: "More", exact: true }).click();
 
 // What a wider header shows as a button beside the title (Settings, Files,
-// Open browser, Edit instructions) and a phone keeps in the conversation's
-// menu (Settings, in the drawer's footer). A button's name may say more
-// after it ("Open browser, agent working"). Without a conversation a phone
-// has no menu and keeps Settings.
+// Open browser, Edit instructions) and a narrow column keeps in the
+// conversation's menu (Settings, in the list's footer). A button's name may
+// say more after it ("Open browser, agent working"). Without a conversation
+// there is no menu and the header keeps Settings.
 export async function headerAction(page, name) {
   const head = page.locator(".conversation-head");
   const menu = head.getByRole("button", { name: "Conversation menu" });
-  const phone = await page.evaluate(
-    () => matchMedia("(max-width: 600px)").matches,
+  const narrow = await head.evaluate(
+    (node) =>
+      getComputedStyle(node).getPropertyValue("--narrow").trim() === "1",
   );
-  if (phone && (await menu.count())) {
+  if (narrow && (await menu.count())) {
     if (name === "Settings") {
-      await page.getByRole("button", { name: "Open conversations" }).click();
+      const drawer = page.getByRole("button", { name: "Open conversations" });
+      if (await drawer.count()) await drawer.click();
       return page
-        .getByRole("dialog", { name: "Conversations" })
+        .locator("dialog.sidebar, aside.sidebar")
         .getByRole("button", { name: "Settings", exact: true })
         .click();
     }

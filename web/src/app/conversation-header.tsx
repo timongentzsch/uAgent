@@ -14,14 +14,14 @@ import {
   Terminal,
 } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
-import { useCompact, usePhone } from "../shared/layout.ts";
+import { useCompact, useNarrowColumn } from "../shared/layout.ts";
 import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
 
-// What a phone's header says under the title: the composer's totals, which a
-// phone leaves out.
+// What a narrow column's header says under the title: the composer's totals,
+// which it leaves out.
 function Totals({
   session,
   outgoing,
@@ -46,8 +46,8 @@ function Totals({
 }
 
 // The page's title and what acts on the open conversation: the browser, its
-// files, Settings on a small screen and the conversation's menu. A phone
-// keeps the title with the totals and the menu, which takes the rest; the
+// files, Settings on a small screen and the conversation's menu. A narrow
+// column keeps the title with the totals and the menu, which takes the rest; the
 // browser stays while the agent uses it.
 export default function ConversationHeader({
   page,
@@ -90,13 +90,13 @@ export default function ConversationHeader({
 }) {
   const { store, setModal } = useHostContext();
   const compact = useCompact();
-  const phone = usePhone();
+  const narrow = useNarrowColumn();
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
   const openBrowser = () => setModal({ type: "browser" });
-  // On a phone the conversation's menu holds the header's other actions;
+  // In a narrow column the conversation's menu holds the header's other actions;
   // without a conversation there is no menu, and Settings keeps its button.
-  const inMenu = phone && page === "chat" && !!(session || opening);
+  const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
   const phoneItems = inMenu && {
     top: (

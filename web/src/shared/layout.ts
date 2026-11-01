@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { defaultZoom } from "./limits.ts";
 // The interface zoom in steps, as a browser offers it: choosing one rescales
 // once, where a slider rescaled the page under the finger dragging it.
@@ -246,9 +246,51 @@ export function useMedia(query: string) {
 
 // The width under which the phone layout applies, as the stylesheets have it.
 export const usePhone = () => useMedia("(max-width: 600px)");
-// The width under which the conversations list moves into a drawer, as the
-// stylesheets have it.
-export const useCompact = () => useMedia("(max-width: 900px)");
+
+// Layout the stylesheet decides in a container query, which script cannot
+// ask: the query sets a custom property, read back as the room changes.
+function useStyled(selector: string, property: string, ready = true) {
+  const read = () => {
+    const element = document.querySelector(selector);
+    return (
+      !!element &&
+      getComputedStyle(element).getPropertyValue(property).trim() === "1"
+    );
+  };
+  const [on, setOn] = useState(read);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read only looks the element up again
+  useLayoutEffect(() => {
+    const update = () => setOn(read());
+    update();
+    // Zoom rescales the tokens the query compares with, not the boxes; the
+    // query is evaluated again by the next frame.
+    let frame = 0;
+    const zoomed = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    addEventListener(zoomChanged, zoomed);
+    const stop = observeResize(
+      update,
+      ...document.querySelectorAll("#app, .conversation"),
+    );
+    return () => {
+      removeEventListener(zoomChanged, zoomed);
+      cancelAnimationFrame(frame);
+      stop();
+    };
+  }, [ready]);
+  return on;
+}
+
+// The conversations list moves into a drawer when it does not fit beside the
+// conversation (style.css has the rule).
+export const useCompact = (ready?: boolean) =>
+  !useStyled(".shell", "--docked", ready);
+
+// The conversation's column is as narrow as a phone, whatever the window.
+export const useNarrowColumn = (ready?: boolean) =>
+  useStyled(".conversation-head", "--narrow", ready);
 
 // Animations play unless this device asks for less motion or Settings
 // turns them off.

@@ -11,12 +11,19 @@
 namespace uagent {
 
 namespace {
-constexpr const char* kFeatureNames[] = {
-    "hosted_search",       "search_plugin",         "provider_routing",
-    "session_passthrough", "raw_vendor_ids",        "model_variants",
-    "reasoning_object",    "reasoning_replay_text", "prompt_cache_control",
-    "pdf_parser",          "max_completion_tokens", "search_sources",
-    "reasoning_summary",   "inline_usage",          "decisions"};
+constexpr const char* kFeatureNames[] = {"hosted_search",
+                                         "provider_routing",
+                                         "session_passthrough",
+                                         "raw_vendor_ids",
+                                         "model_variants",
+                                         "reasoning_object",
+                                         "reasoning_replay_text",
+                                         "prompt_cache_control",
+                                         "pdf_parser",
+                                         "max_completion_tokens",
+                                         "reasoning_summary",
+                                         "inline_usage",
+                                         "decisions"};
 static_assert(std::size(kFeatureNames) == static_cast<size_t>(Feature::kCount));
 }  // namespace
 

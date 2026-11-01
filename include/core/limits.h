@@ -215,8 +215,9 @@ inline constexpr size_t kWebTerminals = 8;
 inline constexpr size_t kWebTerminalSockets = 16;
 inline constexpr size_t kWebTerminalScrollbackBytes = KiB(256);
 inline constexpr size_t kWebTerminalMessageBytes = KiB(64);
-// Hosted search.
-inline constexpr int64_t kWebSearchMaxTokens = 2000;
+// Hosted search. A search's own work counts against this as well as its answer:
+// at 2000, one in four came back cut off, some with a few lines.
+inline constexpr int64_t kWebSearchMaxTokens = 6000;
 // Memory and skills.
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
 inline constexpr size_t kSkillBodyBytes = KiB(512);

@@ -389,17 +389,16 @@ TEST_CASE(TestHostedSearchStatusRow) {
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "started"}});
   send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "searching"}});
   send(EventId::kReasoningDelta, {{"text", "**Checking release notes**\n"}});
-  CHECK(CurrentTerminalStatus() == "Searching the web");
+  CHECK(CurrentTerminalStatus() == "Using web_search");
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "completed"}});
-  CHECK(CurrentTerminalStatus() == "Searching the web");
-  // Any other tool the provider runs is named while it runs.
+  CHECK(CurrentTerminalStatus() == "Using web_search");
+  // A tool the provider runs is named while it runs.
+  send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "started"}});
   CHECK(CurrentTerminalStatus() == "Using code_execution");
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "completed"}});
-  CHECK(CurrentTerminalStatus() == "Searching the web");
-  send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
   CHECK(CurrentTerminalStatus() == "Thinking · Checking release notes");
   send(EventId::kAnswerDelta);
   CHECK(CurrentTerminalStatus().empty());

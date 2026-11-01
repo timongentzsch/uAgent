@@ -613,9 +613,8 @@ void Agent::ArchiveTurnTrace(size_t turn_start) {
       break;
     }
   }
-  if (!has_tools && turn_search_trace_.Empty()) return;
-  conversation_.ArchiveTurn(turn_start, turn_id_, kSessionArchiveBytes,
-                            turn_search_trace_.ArchiveMetadata());
+  if (!has_tools) return;
+  conversation_.ArchiveTurn(turn_start, turn_id_, kSessionArchiveBytes);
   DebugLog("trace_archived",
            {{"turn", turn_id_}, {"messages", conversation_.Size()}});
 }

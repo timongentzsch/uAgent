@@ -628,17 +628,14 @@ size_t Conversation::PruneAttachments(size_t begin, const std::string& route) {
 }
 
 void Conversation::ArchiveTurn(size_t turn_start, int64_t turn,
-                               int64_t archive_cap, json metadata) {
-  if (messages_.size() <= turn_start + 1) return;
-  if (messages_.size() <= turn_start + 2 && metadata.empty()) return;
+                               int64_t archive_cap) {
+  if (messages_.size() <= turn_start + 2) return;
   ArchiveRange("tool_trace", turn_start + 1, messages_.size() - 1, turn,
-               archive_cap, std::move(metadata));
+               archive_cap);
 }
 
 bool Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
-                                int64_t turn, int64_t archive_cap,
-                                json metadata) {
-  if (!metadata.is_object()) metadata = json::object();
+                                int64_t turn, int64_t archive_cap) {
   end = std::min(end, messages_.size());
   json saved = json::array();
   json saved_kinds = json::array();
@@ -648,15 +645,12 @@ bool Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
     saved_kinds.push_back(MessageKindName(kinds_[index]));
     saved_ids.push_back(display_ids_[index]);
   }
-  if (saved.empty() && metadata.empty()) return false;
+  if (saved.empty()) return false;
   json segment = {{"turn", turn},
                   {"reason", reason},
                   {"messages", std::move(saved)},
                   {"message_kinds", std::move(saved_kinds)},
                   {"display_ids", std::move(saved_ids)}};
-  for (auto& [key, value] : metadata.items()) {
-    if (!segment.contains(key)) segment[key] = std::move(value);
-  }
   return AddArchiveSegment(std::move(segment), archive_cap);
 }
 

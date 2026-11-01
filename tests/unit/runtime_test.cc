@@ -941,7 +941,7 @@ TEST_CASE(TestKnownEndpoints) {
   openrouter.base_url = "https://openrouter.ai/api/v1";
   CHECK(DeclareEndpoint(openrouter, {}));
   CHECK(openrouter.features.Has(Feature::kPromptCacheControl));
-  CHECK(openrouter.features.Has(Feature::kSearchPlugin));
+  CHECK(openrouter.features.Has(Feature::kHostedSearch));
   CHECK(openrouter.Option("pdf_engine") == "cloudflare-ai");
   Endpoint edge;
   edge.base_url = "https://edge.openrouter.ai/v1";
@@ -950,7 +950,7 @@ TEST_CASE(TestKnownEndpoints) {
   openai.base_url = "https://api.openai.com/v1";
   CHECK(DeclareEndpoint(openai, {}));
   CHECK(openai.features.Has(Feature::kMaxCompletionTokens));
-  CHECK(!openai.features.Has(Feature::kSearchPlugin));
+  CHECK(!openai.features.Has(Feature::kHostedSearch));
   Endpoint unknown;
   unknown.base_url = "https://provider.test/v1";
   CHECK(!DeclareEndpoint(unknown, {}));

@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "include/agent/prompt.h"
-#include "include/agent/trace.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"
@@ -34,18 +33,9 @@ TEST_CASE(TestOpenRouterServerSearch) {
         {"function",
          {{"name", "read_file"}, {"parameters", json::object()}}}}});
 
-  bool web_available = false;
-  json body = api.BuildRequestBody(json::array(), schemas, "", &web_available);
+  json body = api.BuildRequestBody(json::array(), schemas);
   CHECK(body["tools"].size() == 2);
   CHECK(body["tools"][0]["function"]["name"] == "web_search");
-  CHECK(web_available);
-
-  web_available = true;
-  body = api.BuildRequestBody(json::array(), json::array({schemas[1]}), "",
-                              &web_available);
-  CHECK(body["tools"].size() == 1);
-  CHECK(body["tools"][0]["function"]["name"] == "read_file");
-  CHECK(!web_available);
 
   auto check_native_search = [&] {
     body = api.BuildRequestBody(json::array(), schemas);
@@ -185,7 +175,7 @@ TEST_CASE(TestOpenRouterServerSearch) {
   setenv("UAGENT_PROVIDERS",
          R"json({"seeker":{"base_url":"https://seek.example/v1",
                             "api_key":"seek-key",
-                            "supports":["search_plugin"]},
+                            "supports":["hosted_search"]},
                  "plain":{"base_url":"https://plain.example/v1",
                            "api_key":"plain-key"}})json",
          1);
@@ -200,7 +190,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CHECK(scoped->api_key == "seek-key");
   CHECK(scoped->model == "finder-model");
   CHECK(scoped->reasoning_effort == "high");
-  CHECK(WebSearchRequest(*scoped, "q")["reasoning"]["effort"] == "high");
   // A selection scoped to a provider that does not speak the OpenRouter
   // protocol disables search rather than searching somewhere else.
   RuntimeConfig foreign_config = scoped_config;
@@ -219,7 +208,7 @@ TEST_CASE(TestOpenRouterServerSearch) {
   const Endpoint seeker{.name = "seeker",
                         .base_url = "https://seek.example/v1",
                         .api_key = "seek-key",
-                        .features = FeaturesOf({Feature::kSearchPlugin})};
+                        .features = FeaturesOf({Feature::kHostedSearch})};
   std::optional<Route> bare = SelectWebSearchRoute(bare_api, {seeker});
   REQUIRE(bare.has_value());
   CHECK(bare->base_url == "https://seek.example/v1");
@@ -241,7 +230,7 @@ TEST_CASE(TestOpenRouterServerSearch) {
   const json unnamed_schemas = ToolSchemas(unnamed_tools);
   CHECK(offered.Get(unnamed_tools, unnamed_schemas).empty());
   CHECK(CapabilityPrompt(unnamed_tools).empty());
-  unnamed_api.features = FeaturesOf({Feature::kSearchPlugin});
+  unnamed_api.features = FeaturesOf({Feature::kHostedSearch});
   CHECK(offered.Get(unnamed_tools, unnamed_schemas).size() == 1);
   CHECK(!CapabilityPrompt(unnamed_tools).empty());
   unsetenv("UAGENT_PROVIDERS");
@@ -262,11 +251,13 @@ TEST_CASE(TestOpenRouterServerSearch) {
   Api disabled_api(disabled_config);
   CHECK(!SelectWebSearchRoute(disabled_api, {}).has_value());
 
-  Route openrouter_route;
-  openrouter_route.base_url = "https://openrouter.ai/api/v1";
-  openrouter_route.api_key = "key";
-  openrouter_route.model = "vendor/search-model";
-  json openrouter_body = WebSearchRequest(openrouter_route, "current facts");
+  Api openrouter_search{RuntimeConfig{}};
+  openrouter_search.base_url = "https://openrouter.ai/api/v1";
+  UseOpenRouterDialect(openrouter_search);
+  openrouter_search.model = "vendor/search-model";
+  openrouter_search.native_web_search = true;
+  json openrouter_body =
+      openrouter_search.BuildRequestBody(json::array(), json::array());
   CHECK(openrouter_body["model"] == "vendor/search-model");
   CHECK(openrouter_body["tools"].size() == 1);
   CHECK(openrouter_body["tools"][0]["type"] == "openrouter:web_search");
@@ -281,7 +272,7 @@ TEST_CASE(TestOpenRouterServerSearch) {
   Tool search_tool = WebSearchTool(api, side_usage, {});
   // The request budget bounds one attempt; the tool deadline covers all of
   // them, or a retry would be cancelled before it ran.
-  CHECK(search_tool.timeout_s == WebSearchTimeoutSeconds() * kSideAttempts);
+  CHECK(search_tool.timeout_s == WebSearchTimeoutSeconds() * kChatAttempts);
   CHECK(search_tool.parameters["properties"]["queries"]["maxItems"] == 3);
   CHECK(search_tool.parameters["required"] == json::array({"queries"}));
   CHECK(!search_tool.parameters["properties"].contains("query"));
@@ -296,23 +287,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CHECK(!search_tool.mutating);
   CHECK(search_tool.needs_approval &&
         search_tool.needs_approval(json::object()));
-
-  WebSearchResult normalized = ParseWebSearch(
-      {{"choices",
-        json::array({{{"finish_reason", "length"},
-                      {"message",
-                       {{"content", "grounded answer"},
-                        {"annotations",
-                         json::array({{{"type", "url_citation"},
-                                       {"url_citation",
-                                        {{"url", "https://example.com/source"},
-                                         {"title", "Source"}}}}})}}}}})}});
-  CHECK(normalized.text == "grounded answer");
-  CHECK(normalized.searches == 1);
-  CHECK(normalized.truncated);
-  CHECK(CitationEntries(normalized.annotations).size() == 1);
-  // A body without choices is a failed search, not an empty answer.
-  CHECK(ParseWebSearch({{"error", {{"message", "nope"}}}}).searches == 0);
 
   Tool fetch_tool = WebFetchTool(api);
   CHECK(!fetch_tool.mutating);
@@ -439,26 +413,6 @@ TEST_CASE(TestOpenRouterServerSearch) {
   CHECK(citations.find("<https://example.com/b>") != std::string::npos);
   auto entries = CitationEntries(result.annotations);
   CHECK(entries.size() == 2);
-  SearchTrace trace;
-  trace.Add(1, result.annotations);
-  CHECK(trace.ArchiveMetadata().value("web_searches", int64_t{0}) == 1);
-  CHECK(trace.ArchiveMetadata()["annotations"].size() == 2);
-  trace.Reset();
-  CHECK(trace.Empty());
-  trace.Add(0, result.annotations);
-  CHECK(!trace.Empty());
-  json many = json::array();
-  for (int i = 0; i < 25; ++i) {
-    many.push_back({{"url", "https://example.com/" + std::to_string(i)},
-                    {"content", std::string(5000, 'x')}});
-  }
-  trace.Reset();
-  trace.Add(1, many);
-  CHECK(trace.ArchiveMetadata()["annotations"].size() ==
-        SearchTrace::kMaxSources);
-  CHECK(trace.ArchiveMetadata()["annotations"][0]["content"]
-            .get<std::string>()
-            .size() <= SearchTrace::kMaxContentChars + 3);
   CHECK(CitationMarkdown(
             json::array({{{"url_citation", {{"url", "javascript:alert(1)"}}}}}))
             .empty());

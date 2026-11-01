@@ -76,9 +76,7 @@ TEST_CASE(TestWireAdapters) {
                                 .messages = messages,
                                 .tool_schemas = schemas,
                                 .reasoning_effort = "high",
-                                .max_output_tokens = 4096,
-                                .native_web_search = true,
-                                .include_web_search_sources = true};
+                                .max_output_tokens = 4096};
   CHECK(!EncodeWireRequest(WireApi::kResponses, responses_request)["reasoning"]
              .contains("summary"));
   responses_request.reasoning_summary = true;
@@ -91,13 +89,11 @@ TEST_CASE(TestWireAdapters) {
   CHECK(ItemsOfType(responses["input"], "reasoning") == 1);
   CHECK(ItemsOfType(responses["input"], "function_call") == 1);
   CHECK(ItemsOfType(responses["input"], "function_call_output") == 1);
-  CHECK(ItemsOfType(responses["tools"], "web_search") == 1);
-  CHECK(ItemsOfType(responses["tools"], "function") == 1);
-  CHECK(responses["tools"][0]["name"] == "read_path");
+  CHECK(ItemsOfType(responses["tools"], "web_search") == 0);
+  CHECK(ItemsOfType(responses["tools"], "function") == 2);
+  CHECK(responses["tools"][0]["name"] == "web_search");
   CHECK(responses["parallel_tool_calls"] == true);
-  CHECK(responses["include"] ==
-        json::array(
-            {"reasoning.encrypted_content", "web_search_call.action.sources"}));
+  CHECK(responses["include"] == json::array({"reasoning.encrypted_content"}));
   CHECK(responses["input"][1]["content"][1]["type"] == "input_image");
   CHECK(responses["input"][1]["content"][2]["type"] == "input_file");
   CHECK(WireEndpoint(WireApi::kResponses) == "/responses");
@@ -116,8 +112,7 @@ TEST_CASE(TestWireAdapters) {
                                 .messages = anthropic_messages,
                                 .tool_schemas = schemas,
                                 .reasoning_effort = "high",
-                                .max_output_tokens = 2048,
-                                .native_web_search = true};
+                                .max_output_tokens = 2048};
   anthropic_request.adaptive_thinking = true;
   anthropic_request.reasoning_summary = true;
   json anthropic =
@@ -137,7 +132,7 @@ TEST_CASE(TestWireAdapters) {
   CHECK(anthropic["messages"][1]["content"].size() == 2);
   CHECK(anthropic["messages"][1]["content"][0]["signature"] == "signed");
   CHECK(anthropic["messages"][2]["content"][0]["type"] == "tool_result");
-  CHECK(ItemsOfType(anthropic["tools"], "web_search_20250305") == 1);
+  CHECK(ItemsOfType(anthropic["tools"], "web_search_20250305") == 0);
   CHECK(anthropic["tools"].size() == 2);
   CHECK(WireEndpoint(WireApi::kAnthropicMessages) == "/messages");
 
@@ -145,8 +140,7 @@ TEST_CASE(TestWireAdapters) {
                            .messages = messages,
                            .tool_schemas = schemas,
                            .reasoning_effort = "",
-                           .stream_usage = true,
-                           .native_web_search = true};
+                           .stream_usage = true};
   json chat = EncodeWireRequest(WireApi::kChatCompletions, chat_request);
   CHECK(chat.contains("messages"));
   CHECK(!chat["messages"][2].contains(kWireReplayField));
@@ -161,47 +155,19 @@ TEST_CASE(TestWireAdapters) {
   CHECK(switched_payload.is_object());
   CHECK(!switched_payload["messages"][2].contains(kWireReplayField));
 
-  RuntimeConfig config;
-  config.web_search_backend = "auto";
-  Api api(config);
-  api.model = "gpt-name-does-not-imply-search";
-  UseEndpoint(api, "https://provider.test/v1", WireApi::kResponses, false);
-  CHECK(!api.NativeHostedTool(HostedTool::kWebSearch));
-  json fallback = api.BuildRequestBody(json::array(), schemas);
-  CHECK(ItemsOfType(fallback["tools"], "web_search") == 0);
-  CHECK(ItemsOfType(fallback["tools"], "function") == 2);
-
+  // Declaring search changes no conversation request: the model gets the
+  // function, and only a search's own side request carries the endpoint's tool.
+  Api api{RuntimeConfig{}};
+  api.model = "m";
   UseEndpoint(api, "https://provider.test/v1", WireApi::kResponses, true);
-  CHECK(api.NativeHostedTool(HostedTool::kWebSearch));
-  bool web_available = false;
-  json native =
-      api.BuildRequestBody(json::array(), schemas, "", &web_available);
-  CHECK(web_available);
-  CHECK(ItemsOfType(native["tools"], "web_search") == 1);
-  CHECK(ItemsOfType(native["tools"], "function") == 1);
-  CHECK(native["include"] == json::array({"reasoning.encrypted_content"}));
+  json conversation = api.BuildRequestBody(json::array(), schemas);
+  CHECK(ItemsOfType(conversation["tools"], "web_search") == 0);
+  CHECK(ItemsOfType(conversation["tools"], "function") == 2);
   // A request that offers no tools (a title) gets no hosted search either.
   CHECK(!api.BuildRequestBody(json::array(), json::array()).contains("tools"));
-
-  UseEndpoint(api, "https://api.openai.com/v1", WireApi::kResponses, true);
-  json official = api.BuildRequestBody(json::array(), schemas);
-  CHECK(official["include"] == json::array({"reasoning.encrypted_content",
-                                            "web_search_call.action.sources"}));
-
-  api.config.web_search_backend = "off";
-  web_available = true;
-  json disabled =
-      api.BuildRequestBody(json::array(), schemas, "", &web_available);
-  CHECK(!web_available);
-  CHECK(ItemsOfType(disabled["tools"], "web_search") == 0);
-  CHECK(ItemsOfType(disabled["tools"], "function") == 1);
-  CHECK(disabled["tools"][0]["name"] == "read_path");
-
-  CHECK(WireSupportsHostedTool(WireApi::kResponses, HostedTool::kWebSearch));
-  CHECK(WireSupportsHostedTool(WireApi::kAnthropicMessages,
-                               HostedTool::kWebSearch));
-  CHECK(!WireSupportsHostedTool(WireApi::kChatCompletions,
-                                HostedTool::kWebSearch));
+  api.native_web_search = true;
+  CHECK(api.BuildRequestBody(json::array(), json::array())["tools"] ==
+        json::array({{{"type", "web_search"}}}));
 }
 
 TEST_CASE(TestWireStreams) {
@@ -995,14 +961,20 @@ TEST_CASE(TestWireSideRequestKnobs) {
   CHECK(!encode(WireApi::kAnthropicMessages, true).contains("tool_choice"));
   CHECK(encode(WireApi::kAnthropicMessages, true)["tools"].size() == 1);
 
+  const json no_tools = json::array();
   WireRequest searching{.model = "m",
                         .messages = messages,
-                        .tool_schemas = schemas,
+                        .tool_schemas = no_tools,
                         .native_web_search = true};
   json tools =
       EncodeWireRequest(WireApi::kAnthropicMessages, searching)["tools"];
+  CHECK(tools.size() == 1);
   CHECK(tools.back()["type"] == "web_search_20250305");
   CHECK(tools.back()["max_uses"] == WebSearchMaxUses());
+  // A defined tool does not ride along on a search.
+  searching.hosted_tools = json::array({{{"type", "code_execution"}}});
+  CHECK(EncodeWireRequest(WireApi::kResponses, searching)["tools"] ==
+        json::array({{{"type", "web_search"}}}));
 
   Api api(RuntimeConfig{});
   api.model = "m";

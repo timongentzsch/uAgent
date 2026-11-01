@@ -57,24 +57,26 @@ class Api : public ApiSettings {
 
   bool capture_http = false;
   // Per-client overrides for side requests: a positive output cap replaces
-  // UAGENT_MAX_TOKENS, and `forbid_tool_calls` keeps the offered tools in the
-  // request (the cached prefix) while the model is told not to call them.
+  // UAGENT_MAX_TOKENS, `forbid_tool_calls` keeps the offered tools in the
+  // request (the cached prefix) while the model is told not to call them, and
+  // `native_web_search` makes this a search: the endpoint's own and no other.
+  // A request inside a tool sets `keep_abort`: the turn's tool loop reads and
+  // clears the abort it stops on, so a cancelled request leaves it set.
   int64_t max_output_tokens = 0;
   bool forbid_tool_calls = false;
+  bool native_web_search = false;
+  bool keep_abort = false;
   std::function<void(const json&, size_t)> observe_progress;
   json exchange_context = json::object();
   json http_exchanges = json::array();
 
   void PreserveAssistantReasoning(json& message,
                                   const ChatResult& result) const;
-  bool NativeHostedTool(HostedTool tool) const;
   json BuildRequestBody(const json& messages, const json& tool_schemas,
                         const std::string& session_id = "",
-                        bool* web_available = nullptr,
                         WireRequestCache* cache = nullptr) const;
   std::string ChatPayload(const json& messages, const json& tool_schemas,
-                          const std::string& session_id = "",
-                          bool* web_available = nullptr);
+                          const std::string& session_id = "");
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
                   size_t estimated_bytes = 0);
@@ -94,9 +96,9 @@ class Api : public ApiSettings {
   WebResponse GetUrl(const std::string& url, int64_t timeout_s, size_t cap);
 
  private:
-  ChatResult PerformChat(const std::string& payload, bool web_available,
-                         int64_t timeout_s, const std::string& session_id,
-                         HttpExchange* exchange, json response_context);
+  ChatResult PerformChat(const std::string& payload, int64_t timeout_s,
+                         const std::string& session_id, HttpExchange* exchange,
+                         json response_context);
   bool WaitForRetry(std::chrono::milliseconds delay) const;
   JsonResponse Fetch(const std::string& path, const std::string* payload,
                      int64_t timeout_s, bool abortable,

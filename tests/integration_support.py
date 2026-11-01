@@ -28,7 +28,7 @@ SMALL_PNG = base64.b64decode(
 # What an OpenRouter endpoint declares of itself, for a mock server standing in
 # for one.
 OPENROUTER_SUPPORTS = [
-    "search_plugin",
+    "hosted_search",
     "provider_routing",
     "session_passthrough",
     "raw_vendor_ids",

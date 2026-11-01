@@ -51,7 +51,7 @@ constexpr char kOpenRouterOptions[] = R"({
 constexpr KnownEndpoint kKnownEndpoints[] = {
     {"openrouter", "https://openrouter.ai/api/v1", "openrouter.ai",
      "OPENROUTER_API_KEY",
-     FeaturesOf({Feature::kSearchPlugin, Feature::kProviderRouting,
+     FeaturesOf({Feature::kHostedSearch, Feature::kProviderRouting,
                  Feature::kSessionPassthrough, Feature::kRawVendorIds,
                  Feature::kModelVariants, Feature::kReasoningObject,
                  Feature::kReasoningReplayText, Feature::kPromptCacheControl,
@@ -59,8 +59,7 @@ constexpr KnownEndpoint kKnownEndpoints[] = {
                  Feature::kDecisions}),
      kOpenRouterOptions},
     {"openai", "https://api.openai.com/v1", "api.openai.com", "",
-     FeaturesOf({Feature::kMaxCompletionTokens, Feature::kSearchSources,
-                 Feature::kReasoningSummary}),
+     FeaturesOf({Feature::kMaxCompletionTokens, Feature::kReasoningSummary}),
      ""},
 };
 

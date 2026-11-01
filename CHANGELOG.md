@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **A signal no longer fails a browser action.** A signal arriving while a browser request, a Chrome control read, an RFB read or a timed write waited, such as a child process exiting, counted as a lost connection. The action then failed with "browser service timed out or disconnected". These waits now carry on.
+
 ## v1.8.0 - 2026-11-01
 
 ### Changes

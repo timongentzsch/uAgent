@@ -548,7 +548,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       return {{"error", "Chrome response exceeded limit"}};
     }
     pollfd ready{cdp_out_.Get(), POLLIN, 0};
-    if (poll(&ready, 1, kCdpIoMs) <= 0) {
+    if (PollRetry(&ready, 1, kCdpIoMs) <= 0) {
       return {{"error", "Chrome read timed out"}};
     }
     char bytes[16384];

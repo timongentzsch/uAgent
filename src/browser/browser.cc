@@ -40,7 +40,7 @@ bool Transfer(int fd, char* bytes, size_t count, bool write, int timeout_ms) {
   while (count) {
     pollfd wait{fd, 0, 0};
     wait.events = static_cast<decltype(wait.events)>(write ? POLLOUT : POLLIN);
-    if (poll(&wait, 1, timeout_ms) <= 0) return false;
+    if (PollRetry(&wait, 1, timeout_ms) <= 0) return false;
     ssize_t n = write ? ::write(fd, bytes, count) : ::read(fd, bytes, count);
     if (n < 0 && errno == EINTR) continue;
     if (n <= 0) return false;

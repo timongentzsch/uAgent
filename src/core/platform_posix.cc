@@ -129,7 +129,7 @@ bool WriteAll(int fd, std::string_view data) {
 bool WriteAllWithin(int fd, std::string_view data, int timeout_ms) {
   while (!data.empty()) {
     pollfd ready{fd, POLLOUT, 0};
-    if (poll(&ready, 1, timeout_ms) <= 0) return false;
+    if (PollRetry(&ready, 1, timeout_ms) <= 0) return false;
     const ssize_t written = write(fd, data.data(), data.size());
     if (written < 0 && errno == EINTR) continue;
     if (written <= 0) return false;

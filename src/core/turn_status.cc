@@ -98,13 +98,8 @@ json TurnStatus::Project() const {
     label = (call.running ? "Running · " : "Preparing · ") + call.label;
     if (running > 1) label += " · +" + std::to_string(running - 1) + " tools";
   } else if (!hosted_.empty()) {
-    // A search reads as one; any other tool the provider runs is named.
-    auto other = std::ranges::find_if(hosted_, [](const auto& entry) {
-      return entry.second != "web_search";
-    });
-    phase = other == hosted_.end() ? "searching" : "tool";
-    label =
-        other == hosted_.end() ? "Searching the web" : "Using " + other->second;
+    phase = "tool";
+    label = "Using " + hosted_.begin()->second;
   } else if (phase == "thinking") {
     label = "Thinking";
     if (!excerpt_.empty()) label += " · " + excerpt_;

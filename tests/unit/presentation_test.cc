@@ -245,10 +245,9 @@ TEST_CASE(TestTreeDrawsLiveAsResumed) {
 
 TEST_CASE(TestToolViews) {
   // The generic view: short scalars are fields, long text is code, nested
-  // values are indented JSON, and display labels are never repeated.
+  // values are indented JSON.
   json view = ToolView(nullptr, {{"path", "a.txt"},
                                  {"limit", 20},
-                                 {"intent", "read"},
                                  {"body", "one\ntwo"},
                                  {"edits", json::array({{{"old", "x"}}})}});
   // A call without a headline of its own is "Called <tool>", and an
@@ -259,7 +258,6 @@ TEST_CASE(TestToolViews) {
   const json& input = view["input"];
   CHECK(input[0]["kind"] == "fields");
   CHECK(input[0]["rows"].size() == 2);
-  CHECK(input.dump().find("intent") == std::string::npos);
   CHECK(input[1]["kind"] == "code" && input[1]["label"] == "body" &&
         input[1]["text"] == "one\ntwo");
   CHECK(input[2]["language"] == "json");
@@ -389,17 +387,16 @@ TEST_CASE(TestHostedSearchStatusRow) {
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "started"}});
   send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "searching"}});
   send(EventId::kReasoningDelta, {{"text", "**Checking release notes**\n"}});
-  CHECK(CurrentTerminalStatus() == "Searching the web");
+  CHECK(CurrentTerminalStatus() == "Using web_search");
   send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "completed"}});
-  CHECK(CurrentTerminalStatus() == "Searching the web");
-  // Any other tool the provider runs is named while it runs.
+  CHECK(CurrentTerminalStatus() == "Using web_search");
+  // A tool the provider runs is named while it runs.
+  send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "started"}});
   CHECK(CurrentTerminalStatus() == "Using code_execution");
   send(EventId::kHostedToolActivity,
        {{"id", "c"}, {"tool", "code_execution"}, {"phase", "completed"}});
-  CHECK(CurrentTerminalStatus() == "Searching the web");
-  send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
   CHECK(CurrentTerminalStatus() == "Thinking · Checking release notes");
   send(EventId::kAnswerDelta);
   CHECK(CurrentTerminalStatus().empty());

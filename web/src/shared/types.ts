@@ -446,7 +446,6 @@ export type ExecutionPhase =
   | "thinking"
   | "responding"
   | "tool"
-  | "searching"
   | "finishing"
   | "decision";
 export interface Snapshot {

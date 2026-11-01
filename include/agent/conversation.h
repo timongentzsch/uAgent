@@ -108,11 +108,10 @@ class Conversation {
       const std::vector<std::string>& retained_tools);
 
   size_t PruneAttachments(size_t begin, const std::string& route = "");
-  void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
-                   json metadata);
+  void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap);
 
   bool ArchiveRange(const char* reason, size_t begin, size_t end, int64_t turn,
-                    int64_t archive_cap, json metadata = json::object());
+                    int64_t archive_cap);
   void ArchiveAll(const char* reason, size_t baseline_size, int64_t turn,
                   int64_t archive_cap);
 

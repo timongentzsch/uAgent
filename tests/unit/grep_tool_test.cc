@@ -163,6 +163,25 @@ TEST_CASE(TestGrepTool) {
     CHECK(!run->validate({{"command", "cmake --build build"}}));
     CHECK(!run->validate({{"command", "python3 -m unittest"}}));
     CHECK(!run->validate({{"command", "sudo -n true"}}));
+    // The row reads as what the call does; the command shows when it opens,
+    // and whoever approves or summarizes a call reads the command.
+    const json described = {{"command", "make test"},
+                            {"description", "Run the unit tests\nand more"}};
+    const json row = ToolView(run, described);
+    CHECK(row["verb"] ==
+          json::array({"Run the unit tests", "Run the unit tests"}));
+    CHECK(!row.contains("target"));
+    CHECK(row["input"].size() == 1);
+    CHECK(row["input"][0]["kind"] == "command");
+    CHECK(row["input"][0]["text"] == "make test");
+    CHECK(ToolHeadline(run, described).target == "make test");
+    CHECK(ToolSummary(*run, described) == "Ran make test");
+    // A blank description costs no round: the row shows the command.
+    CHECK(ToolView(run, {{"command", "make"},
+                         {"description", " "}})["target"] == "make");
+    auto undescribed = FindToolArgumentIssue(*run, {{"command", "make"}});
+    CHECK(undescribed && undescribed->code == "schema.required");
+    CHECK(undescribed && undescribed->field == "description");
   }
   const Tool* grep = FindTool(lean_tools, "grep");
   json file_search = {

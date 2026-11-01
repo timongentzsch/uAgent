@@ -624,7 +624,10 @@ ToolResult Act(const BrowserAccess& access, const json& args,
 }
 
 constexpr char kBrowserDescription[] =
-    "Use the shared persistent Google Chrome that the web host runs; the "
+    "Read and use any page as a person would: pages web_fetch leaves short "
+    "(built by scripts, behind a login, cut off), forms, sign-ins and "
+    "downloads. This is the shared persistent Google Chrome that the web host "
+    "runs; the "
     "user sees and can drive the same browser. Access queues automatically "
     "until the previous conversation releases it or ends its turn. release "
     "when finished browsing so other threads can continue. Parallel research "

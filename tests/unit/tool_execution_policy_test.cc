@@ -33,13 +33,14 @@ namespace uagent {
 TEST_CASE(TestToolExecutionPolicy) {
   Tool shell;
   shell.mutating = true;
-  shell.declared_intent = true;
+  shell.capabilities = Capability(ToolCapability::kExecute);
   CHECK(ToolActivityCategory(shell, json::object()) == "run");
-  CHECK(ToolActivityCategory(shell, {{"intent", "verify"}}) == "verify");
-  CHECK(RequiredApproval(shell, {{"intent", "explore"}}) ==
+  // A command is never a file edit: "edited N files" counts files.
+  CHECK(ToolActivityCategory(shell, {{"command", "sed -i s/a/b/ f"}}) == "run");
+  // Only a command that just looks reads as explore, for grouping and never
+  // for authority.
+  CHECK(RequiredApproval(shell, {{"command", "ls"}}) ==
         ApprovalClass::kYoloEligibleMutation);
-  CHECK(ToolActivityCategory(shell, {{"intent", "invalid"}}) == "run");
-  // Without an intent, only a command that just looks reads as explore.
   CHECK(ToolActivityCategory(
             shell, {{"command", "ls -la | head && git log"}}) == "explore");
   for (const char* command :

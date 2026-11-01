@@ -67,7 +67,6 @@ void Agent::RecordModelResponse(
   state.metrics.usage.Merge(response_usage);
   tool_counts["web_search"] = SaturatingNonnegativeAdd(
       tool_counts["web_search"], response_usage.web_searches);
-  turn_search_trace_.Add(response_usage.web_searches, response.annotations);
   std::string citations = CitationMarkdown(response.annotations);
   if (response_usage.web_searches > 0 || !citations.empty()) {
     Event sources{EventId::kResponseSources,

@@ -277,7 +277,10 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
   ToolResult result = ToolSuccess(std::move(text));
   result.body_kind = "markdown";
   result.hint = "[" + TerminalSafe(url) +
-                (page.truncated ? "; truncated at the byte cap]" : "]");
+                (page.truncated ? "; truncated at the byte cap]"
+                 : html ? "; what the server sent, scripts not run: may be "
+                          "partial]"
+                        : "]");
   return result;
 }
 
@@ -285,8 +288,7 @@ Tool WebFetchTool(Api& api) {
   Tool t = MakeTool(
       "web_fetch",
       "Read one http(s) URL as text when a specific page is the answer; "
-      "do not crawl. Pages needing a login or scripts need the browser "
-      "skill.",
+      "do not crawl. Pages needing a login or scripts need the browser.",
       json::parse(R"json({"type":"object","properties":{
           "url":{"type":"string","description":"absolute http or https URL"}},
           "required":["url"]})json"),

@@ -106,7 +106,6 @@ bool IsFile(const json& part) { return JsonValue(part, "kind", "") == "file"; }
 std::string GroupVerb(const std::string& intent) {
   return intent == "explore"    ? "Explored"
          : intent == "research" ? "Researched"
-         : intent == "verify"   ? "Verified"
          : intent == "edit"     ? "Edited"
                                 : "";
 }

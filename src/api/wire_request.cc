@@ -53,16 +53,12 @@ json ChatMessages(const json& messages, bool cache_control) {
   return encoded;
 }
 
-json FunctionTools(WireApi wire_api, const json& schemas,
-                   bool skip_web_search = false) {
+json FunctionTools(WireApi wire_api, const json& schemas) {
   json tools = json::array();
   if (!schemas.is_array()) return tools;
   for (const json& schema : schemas) {
     const json* function = JsonObject(schema, "function");
-    if (!function ||
-        (skip_web_search && JsonValue(*function, "name", "") == "web_search")) {
-      continue;
-    }
+    if (!function) continue;
     if (wire_api == WireApi::kChatCompletions) {
       tools.push_back(schema);
       continue;
@@ -351,16 +347,7 @@ json AnthropicMessages(const json& canonical, std::string& system,
 }
 
 json RequestTools(WireApi wire_api, const WireRequest& request) {
-  json tools = FunctionTools(
-      wire_api, request.tool_schemas,
-      (wire_api != WireApi::kChatCompletions && request.native_web_search) ||
-          !request.function_web_search);
-  // Tools the endpoint runs itself join only a request that offers the
-  // agent's own; one that offers none (a title, a summary) leaves them out,
-  // or a model with an effort may search instead of answering.
-  if (!request.tool_schemas.is_array() || request.tool_schemas.empty()) {
-    return tools;
-  }
+  json tools = FunctionTools(wire_api, request.tool_schemas);
   if (request.native_web_search) {
     if (wire_api == WireApi::kResponses) {
       tools.push_back({{"type", "web_search"}});
@@ -368,7 +355,22 @@ json RequestTools(WireApi wire_api, const WireRequest& request) {
       tools.push_back({{"type", "web_search_20250305"},
                        {"name", "web_search"},
                        {"max_uses", WebSearchMaxUses()}});
+    } else {
+      tools.push_back(
+          {{"type", "openrouter:web_search"},
+           {"parameters",
+            {{"engine", "auto"},
+             {"max_results", WebSearchMaxResults()},
+             {"max_total_results", WebSearchMaxResults() * WebSearchMaxUses()},
+             {"max_uses", WebSearchMaxUses()}}}});
     }
+    return tools;
+  }
+  // Tools the endpoint runs itself join only a request that offers the
+  // agent's own; one that offers none (a title, a summary) leaves them out,
+  // or a model with an effort may search instead of answering.
+  if (!request.tool_schemas.is_array() || request.tool_schemas.empty()) {
+    return tools;
   }
   // Hosted definitions replace the agent's tool of their name (web_fetch).
   const auto name = [](const json& tool) {
@@ -405,11 +407,7 @@ json RequestEnvelope(WireApi wire_api, const WireRequest& request, json tools) {
     }
   } else if (wire_api == WireApi::kResponses) {
     body["store"] = false;
-    json include = json::array({"reasoning.encrypted_content"});
-    if (request.native_web_search && request.include_web_search_sources) {
-      include.push_back("web_search_call.action.sources");
-    }
-    body["include"] = std::move(include);
+    body["include"] = json::array({"reasoning.encrypted_content"});
     if (request.max_output_tokens > 0) {
       body["max_output_tokens"] = request.max_output_tokens;
     }
@@ -472,12 +470,6 @@ bool ReplayHoldsHostedTool(const json& replay) {
     }
   }
   return false;
-}
-
-bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool) {
-  return tool == HostedTool::kWebSearch &&
-         (wire_api == WireApi::kResponses ||
-          wire_api == WireApi::kAnthropicMessages);
 }
 
 json EncodeWireRequest(WireApi wire_api, const WireRequest& request) {
@@ -556,8 +548,7 @@ json WireRequestCache::Encode(WireApi wire_api, const WireRequest& request) {
   if (!role.empty()) encoded_messages_ += "],\"role\":" + JsonDump(role) + "}";
   encoded_messages_ += ']';
 
-  json key = json::array({request.native_web_search,
-                          request.function_web_search, request.hosted_tools});
+  json key = json::array({request.native_web_search, request.hosted_tools});
   if (key != tool_key_ || schemas_ != request.tool_schemas) {
     encoded_tools_ = JsonDump(RequestTools(wire_api, request));
     tool_key_ = std::move(key);
@@ -603,28 +594,9 @@ bool HasContentPart(const json& messages, std::string_view type) {
   return false;
 }
 
-bool Api::NativeHostedTool(HostedTool tool) const {
-  return config.web_search_backend != "off" && tool == HostedTool::kWebSearch &&
-         features.Has(Feature::kHostedSearch) &&
-         WireSupportsHostedTool(wire_api, tool);
-}
-
 json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
-                           const std::string& session_id, bool* web_available,
+                           const std::string& session_id,
                            WireRequestCache* cache) const {
-  bool native_web = NativeHostedTool(HostedTool::kWebSearch);
-  bool allow_function_web = config.web_search_backend != "off";
-  bool function_web = false;
-  if (allow_function_web && tool_schemas.is_array()) {
-    for (const json& tool : tool_schemas) {
-      const json* function = JsonObject(tool, "function");
-      function_web =
-          function_web ||
-          (function && JsonValue(*function, "name", "") == "web_search");
-    }
-  }
-  if (web_available) *web_available = native_web || function_web;
-
   const int64_t output_cap =
       max_output_tokens > 0 ? max_output_tokens : MaxOutputTokens();
   WireRequest request{
@@ -635,9 +607,7 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
       .max_output_tokens = output_cap,
       .parallel_tools = capabilities.parallel_tools,
       .stream_usage = capabilities.stream_usage_option,
-      .native_web_search = native_web,
-      .function_web_search = allow_function_web,
-      .include_web_search_sources = features.Has(Feature::kSearchSources),
+      .native_web_search = native_web_search,
       .hosted_tools = hosted_tools,
       .reasoning_summary = capabilities.reasoning_summary,
       .adaptive_thinking = capabilities.adaptive_thinking,
@@ -679,6 +649,8 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
       body["reasoning_effort"] = reasoning_effort;
     }
   }
+  // Chat Completions has no per-tool cap on how often the plugin runs.
+  if (native_web_search) body["max_tool_calls"] = WebSearchMaxUses();
   if (features.Has(Feature::kSessionPassthrough) && !session_id.empty()) {
     body["session_id"] = session_id;
   }
@@ -691,10 +663,9 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
 }
 
 std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
-                             const std::string& session_id,
-                             bool* web_available) {
-  return wire_cache_.Serialize(BuildRequestBody(
-      messages, tool_schemas, session_id, web_available, &wire_cache_));
+                             const std::string& session_id) {
+  return wire_cache_.Serialize(
+      BuildRequestBody(messages, tool_schemas, session_id, &wire_cache_));
 }
 
 }  // namespace uagent

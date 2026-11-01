@@ -32,7 +32,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `write_file` | create a file; replacing one needs `overwrite=true` | full toolset |
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
-| `run` | run a supervised shell command, optionally with a PTY or detached | always |
+| `run` | run a supervised shell command, optionally with a PTY or detached; its required `description` is what the row shows | always |
 | `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
@@ -40,7 +40,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `uagent_configure`, `uagent_instructions` | change settings, or replace an instructions file, by an exact diff a person approves | only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
-| `web_search` | cited web search through a search plugin an endpoint runs (OpenRouter's) | a search can run on the conversation's route (see below) |
+| `web_search` | cited web search through a search an endpoint runs | a search can run on the conversation's route (see below) |
 | `todo` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |
 | `agent_start` | start agents, each a conversation of its own on a brief; see [Agents](#agents) | unless this agent is `agents.depth` levels deep |
 | `agent_send`, `agents`, `decide` | message the parent, an agent or its siblings; list, read, stop, close or delete agents; answer what an agent asks | always |
@@ -201,13 +201,14 @@ login or built by scripts need the browser. Only public Internet addresses
 are accepted, on redirects too; loopback, private and link-local addresses
 are refused and proxy variables are ignored.
 
-`web_search` calls the search plugin of an endpoint that declares one
-(OpenRouter does) on a route of its own: the conversation's when it declares
-one, else the first configured endpoint that does, with the model
-`UAGENT_WEB_SEARCH_MODEL` names. A route with hosted search of its own uses
-that instead. The tool is offered only while one of these can run on the
-route in use, so switching models can add or withdraw it; when an endpoint
-offers search but no model is named for it, you are told once what to set.
+`web_search` runs as a side request on an endpoint that declares a search
+(OpenRouter's plugin, or a Responses or Anthropic endpoint's own): the
+conversation's route when it declares one, else the first configured endpoint
+that does, with the model `UAGENT_WEB_SEARCH_MODEL` names. Its cited answer
+comes back as an ordinary tool result, so it stays in the conversation and in
+the history. The tool is offered only while one of these can run on the route
+in use, so switching models can add or withdraw it; when an endpoint offers
+search but no model is named for it, you are told once what to set.
 `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
 `browser` drives the web host's shared Chrome; [BROWSER.md](BROWSER.md)

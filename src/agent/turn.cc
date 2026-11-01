@@ -343,7 +343,6 @@ void Agent::Turn(const std::string& user_input, json user_content,
   for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
   PushUserInput(attachment ? std::move(user_content) : json(user_input),
                 attachment, images, request_id, origin);
-  turn_search_trace_.Reset();
   // Slices the budget block out of the config: a turn-boundary reload may
   // replace api_.config mid-session, and the limits this turn is judged
   // against are the ones it started with.

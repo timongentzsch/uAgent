@@ -379,9 +379,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     res.end_to_end_ms = res.request_preparation_ms;
     return res;
   }
-  bool web_available = false;
-  std::string payload =
-      ChatPayload(messages, tool_schemas, session_id, &web_available);
+  std::string payload = ChatPayload(messages, tool_schemas, session_id);
   if (payload.size() > kRequestBytes) {
     res.error = "serialized request exceeds " + std::to_string(kRequestBytes) +
                 " bytes";
@@ -441,8 +439,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
         JsonValue(exchange_context, "response_base", "r") + "-" +
         std::to_string(attempt);
     response_context.erase("response_base");
-    res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      &exchange, std::move(response_context));
+    res = PerformChat(payload, attempt_timeout, session_id, &exchange,
+                      std::move(response_context));
     json recorded = exchange.Finish(res);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
     stamp();
@@ -576,8 +574,8 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   return result;
 }
 
-ChatResult Api::PerformChat(const std::string& payload, bool web_available,
-                            int64_t timeout_s, const std::string& session_id,
+ChatResult Api::PerformChat(const std::string& payload, int64_t timeout_s,
+                            const std::string& session_id,
                             HttpExchange* exchange, json response_context) {
   ChatResult res;
   res.response_id = JsonValue(response_context, "response_id", "");
@@ -646,10 +644,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
   }
 
-  const std::string activity =
-      web_available ? std::string(kWaitingStatus) + " · web available"
-                    : std::string(kWaitingStatus);
-  ResponseObservation observation(activity, std::move(response_context));
+  ResponseObservation observation(kWaitingStatus, std::move(response_context));
 
   CURLcode rc = CURLE_OK;
   bool cancelled =
@@ -660,7 +655,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &res.http_status);
   res.retry_after_s = CurlRetryAfterSeconds(h);
   CollectCurlTimings(h, res);
-  if (cancelled) ClearAbort();
+  if (cancelled && !keep_abort) ClearAbort();
   ctx.Finish();
   capabilities.Observe(res);
   if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
@@ -724,7 +719,7 @@ bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
       wake.revents = 0;
     }
   });
-  if (cancelled) ClearAbort();
+  if (cancelled && !keep_abort) ClearAbort();
   return !cancelled;
 }
 

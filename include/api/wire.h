@@ -33,9 +33,8 @@ struct WireRequest {
   int64_t max_output_tokens = -1;
   bool parallel_tools = true;
   bool stream_usage = false;
+  // A search's side request: the endpoint's own search and no other tool.
   bool native_web_search = false;
-  bool function_web_search = true;
-  bool include_web_search_sources = false;
   // Tools the endpoint runs itself, as written in `hosted_tools`.
   json hosted_tools = json::array();
   bool reasoning_summary = false;
@@ -47,7 +46,6 @@ struct WireRequest {
   bool forbid_tool_calls = false;
 };
 
-bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);
 // Whether a response's replay holds the call or result of a tool the
 // provider ran other than its web search, whose findings the answer carries.
 bool ReplayHoldsHostedTool(const json& replay);

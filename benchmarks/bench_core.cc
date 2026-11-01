@@ -534,15 +534,6 @@ int RunBenchmarks(const std::string& session) {
   size_t grep_schema = ToolSchemas(no_scratch_tools).dump().size();
   size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
-  auto without_descriptions = lean_tools;
-  for (Tool& tool : without_descriptions) {
-    if (tool.declared_intent) {
-      tool.parameters["properties"].erase("description");
-    }
-  }
-  std::cout << "optional action descriptions "
-            << lean_schema - ToolSchemas(without_descriptions).dump().size()
-            << " schema bytes\n";
   std::cout << "built-in schema              " << lean_schema
             << " bytes; grep adds " << grep_schema - base_schema
             << " bytes; scratch adds " << lean_schema - grep_schema

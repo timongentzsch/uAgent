@@ -459,7 +459,6 @@ class Agent {
   mutable std::string prompt_error_;
   std::string last_sent_prompt_;
   Conversation conversation_;
-  SearchTrace turn_search_trace_;
   Usage session_usage_;
   RouteUsage route_usage_;
   std::string session_id_;

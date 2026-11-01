@@ -94,7 +94,7 @@ test("a root command asks for the sudo password in a password field", async ({
   await password.fill("probe-secret");
   await card.getByRole("button", { name: "Send response" }).click();
   await expect(card).toHaveCount(0);
-  await expect(page.getByText("Ran echo ROOT_RAN")).toBeVisible();
+  await expect(page.getByText("Echo as root")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("probe-secret");
 });
 

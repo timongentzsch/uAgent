@@ -17,7 +17,7 @@
           {
             "id": "start",
             "name": "run",
-            "arguments": {"command": "sh slow.sh", "detach": true}
+            "arguments": {"command": "sh slow.sh", "description": "Run the slow job", "detach": true}
           }
         ]
       }

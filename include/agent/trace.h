@@ -14,50 +14,12 @@
 
 #include "include/agent/conversation.h"
 #include "include/agent/protocol.h"
-#include "include/api/citations.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
-
-struct SearchTrace {
-  static constexpr size_t kMaxSources = 20;
-  static constexpr size_t kMaxTitleChars = 512;
-  static constexpr size_t kMaxContentChars = 4096;
-
-  int64_t requests = 0;
-  json annotations = json::array();
-
-  void Reset() {
-    requests = 0;
-    annotations = json::array();
-  }
-
-  void Add(int64_t count, const json& added) {
-    requests += count;
-    for (CitationEntry& source : CitationEntries(added)) {
-      bool duplicate = std::any_of(
-          annotations.begin(), annotations.end(), [&](const json& annotation) {
-            return JsonValue(annotation, "url", "") == source.url;
-          });
-      if (duplicate || annotations.size() >= kMaxSources) continue;
-      annotations.push_back(
-          {{"url", std::move(source.url)},
-           {"title", Utf8Trunc(std::move(source.title), kMaxTitleChars)},
-           {"content",
-            Utf8Trunc(std::move(source.content), kMaxContentChars)}});
-    }
-  }
-
-  bool Empty() const { return requests == 0 && annotations.empty(); }
-
-  json ArchiveMetadata() const {
-    if (Empty()) return json::object();
-    return {{"web_searches", requests}, {"annotations", annotations}};
-  }
-};
 
 inline json ParsedToolCallArguments(const json& function) {
   if (!function.is_object() || !function.contains("arguments")) {
@@ -84,18 +46,8 @@ inline const json* LatestTraceSegment(const json& archive) {
 inline json LatestToolTraceJson(const json& archive) {
   const json* segment = LatestTraceSegment(archive);
   if (!segment) return json::array();
-  json trace =
-      ToolTraceMessages(JsonValue(*segment, "messages", json::array()),
-                        JsonValue(*segment, "message_kinds", json::array()));
-  int64_t searches = JsonValue(*segment, "web_searches", int64_t{0});
-  if (searches > 0) {
-    trace.push_back(
-        {{"type", "server"},
-         {"name", "web_search"},
-         {"count", searches},
-         {"sources", JsonValue(*segment, "annotations", json::array())}});
-  }
-  return trace;
+  return ToolTraceMessages(JsonValue(*segment, "messages", json::array()),
+                           JsonValue(*segment, "message_kinds", json::array()));
 }
 
 }  // namespace uagent

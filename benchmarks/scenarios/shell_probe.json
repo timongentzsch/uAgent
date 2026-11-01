@@ -12,7 +12,7 @@
     {
       "when": {"tool_results": 0},
       "respond": {
-        "tool_calls": [{"id": "probe", "name": "run", "arguments": {"command": "sh check.sh"}}]
+        "tool_calls": [{"id": "probe", "name": "run", "arguments": {"command": "sh check.sh", "description": "Run the check"}}]
       }
     },
     {

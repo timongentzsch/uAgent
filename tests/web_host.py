@@ -97,7 +97,11 @@ def answer(handler, body):
     ):
         return tool_call(
             "run",
-            {"command": "printf BROWSER_ACTIVITY; sleep 10", "yield_ms": 250},
+            {
+                "command": "printf BROWSER_ACTIVITY; sleep 10",
+                "description": "Print BROWSER_ACTIVITY",
+                "yield_ms": 250,
+            },
             call_id="browser-activity",
         )
     if "Todo probe" in prompt:
@@ -146,7 +150,11 @@ def answer(handler, body):
     if "Root probe" in prompt and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):
-        return tool_call("run", {"command": "echo ROOT_RAN", "root": True}, call_id="root-run")
+        return tool_call(
+            "run",
+            {"command": "echo ROOT_RAN", "description": "Echo as root", "root": True},
+            call_id="root-run",
+        )
     if "request approval" in prompt and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):

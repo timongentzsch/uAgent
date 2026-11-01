@@ -355,7 +355,8 @@ json PromptSurfaceJson() {
         [](const json&, const ToolContext&) { return ToolSuccess(""); });
   };
   json fragments = json::array();
-  for (const char* trigger : {"activity", "web_search", "web_fetch"}) {
+  for (const char* trigger :
+       {"activity", "web_search", "web_fetch", "browser"}) {
     std::vector<Tool> probes = {probe(trigger)};
     fragments.push_back(
         {{"trigger", trigger}, {"text", CapabilityPrompt(probes)}});

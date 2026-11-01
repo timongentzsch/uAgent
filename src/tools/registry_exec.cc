@@ -23,6 +23,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   // The limits in the schemas are filled in from their constants.
   json run_schema = json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
+                    "description":{"type":"string",
+                      "description":"what it does in a few words, imperative: Run the unit tests"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
                     "yield_ms":{"type":"integer","minimum":0},
@@ -30,7 +32,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                       "description":"returned-output cap; prefer this over piping through tail/head"},
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
-                    "required":["command"]})json");
+                    "required":["command","description"]})json");
   json& run_properties = run_schema["properties"];
   run_properties["yield_ms"]["maximum"] = kMaxYieldMs;
   run_properties["yield_ms"]["description"] =
@@ -154,22 +156,20 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     }
     return std::nullopt;
   };
+  // The command stays the target: approvals and summaries read that one.
   run.headline = [](const json& a) {
-    return Headline{"Running", "Ran", JsonValue(a, "command", "")};
+    constexpr size_t kDescriptionChars = 120;
+    return Headline{"Running", "Ran", JsonValue(a, "command", ""),
+                    Utf8Prefix(FirstLine(Trim(JsonValue(a, "description", ""))),
+                               kDescriptionChars)};
   };
   run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
   // Each call owns its process group and log, so independent commands
   // (network fetches especially) overlap instead of queueing.
   run.parallel_safe = true;
-  run.declared_intent = true;
-  const json intent_schema = {
-      {"type", "string"},
-      {"enum", CommandIntents()},
-      {"description", "what it is for; display grouping only"}};
-  run.parameters["properties"]["intent"] = intent_schema;
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
-    for (json& part : GenericInputParts(a, {"command"})) {
+    for (json& part : GenericInputParts(a, {"command", "description"})) {
       parts.push_back(std::move(part));
     }
     return parts;
@@ -220,8 +220,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                   supervisor, workspace, JsonValue(a, "path", ""),
                   JsonValue(a, "args", json(nullptr)), context);
             }));
-    python.declared_intent = true;
-    python.parameters["properties"]["intent"] = intent_schema;
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);

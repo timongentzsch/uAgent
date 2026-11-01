@@ -135,13 +135,20 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
   }
   if (offered("web_search")) {
     add("Use web_search directly for current or external facts; do not scrape "
-        "result pages with run. When it cannot confirm a specific page, "
-        "escalate to an installed browser skill rather than reporting the "
-        "fact as unverifiable.");
+        "result pages with run.");
+    if (!offered("browser")) {
+      add("When it cannot confirm a specific page, escalate to an installed "
+          "browser skill rather than reporting the fact as unverifiable.");
+    }
     if (offered("agent_start")) {
       add("Delegate research only for independent multi-step synthesis, not a "
           "single search.");
     }
+  }
+  if (offered("browser")) {
+    add("Use the browser when web_search or web_fetch leaves a page short: "
+        "built by scripts, behind a login or cut off. Try it before telling "
+        "the user something cannot be read or confirmed.");
   }
   // Its own section: appended to the last one, this guidance would read as
   // part of how to write the final answer.

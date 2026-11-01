@@ -481,19 +481,15 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
 
     def successful_search(_, body):
         assert_true(body["model"] == "search-model", body)
-        return {
-            "choices": [
-                {
-                    "message": {"content": "grounded answer", "annotations": [citation]},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
+        assert_true([tool["type"] for tool in body["tools"]] == ["openrouter:web_search"], body)
+        return event(
+            {"content": "grounded answer", "annotations": [citation]},
+            usage={
                 "prompt_tokens": 5,
                 "completion_tokens": 2,
                 "server_tool_use_details": {"web_search_requests": 2},
             },
-        }
+        )
 
     def rejected_search(handler, _):
         write_json_response(handler, {"error": {"message": "rate limited"}}, status=429)
@@ -1023,7 +1019,7 @@ def test_an_overloaded_provider_is_tried_again(root, home, *, binary):
         assert_true(len(server.requests) == 3, len(server.requests))
 
 
-def test_provider_responses_native_search_and_function_replay(root, home, *, binary):
+def test_provider_responses_function_replay(root, home, *, binary):
     # The replayed function_call lists the workspace, so it needs an entry to
     # list: an empty directory reports itself as empty and never gets there.
     (root / "listed.txt").write_text("x\n", encoding="utf-8")
@@ -1033,10 +1029,9 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
         assert_true(handler.headers.get("Authorization") == "Bearer response-key", handler.headers)
         assert_true("input" in body and "messages" not in body, body)
         assert_true(body.get("include") == ["reasoning.encrypted_content"], body)
-        hosted = [tool for tool in body["tools"] if tool.get("type") == "web_search"]
-        functions = [tool for tool in body["tools"] if tool.get("type") == "function"]
-        assert_true(len(hosted) == 1, body["tools"])
-        assert_true(all(tool.get("name") != "web_search" for tool in functions), functions)
+        # A route that can search offers the function like any other tool.
+        assert_true(all(tool.get("type") == "function" for tool in body["tools"]), body["tools"])
+        assert_true("web_search" in {tool["name"] for tool in body["tools"]}, body["tools"])
         write_sse_sequence(
             handler,
             [
@@ -1098,15 +1093,6 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
         write_sse_sequence(
             handler,
             [
-                {
-                    "type": "response.output_item.done",
-                    "output_index": 0,
-                    "item": {
-                        "type": "web_search_call",
-                        "id": "search-1",
-                        "status": "completed",
-                    },
-                },
                 {"type": "response.output_text.delta", "delta": "responses-native-ok"},
                 {
                     "type": "response.output_text.annotation.added",
@@ -1134,37 +1120,172 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
                 "UAGENT_INTERNAL_WIRE_API": "responses",
                 "UAGENT_INTERNAL_FEATURES": "hosted_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                "UAGENT_PROVIDERS": json.dumps(
-                    {
-                        "search": {
-                            "base_url": server.url,
-                            "api_key": "fallback-key",
-                            "supports": OPENROUTER_SUPPORTS,
-                        }
-                    }
-                ),
-                "UAGENT_WEB_SEARCH_MODEL": "search/fallback-model",
             }
         )
-        result = run(root, env, "--yolo", "--json", "-p", "inspect and search", binary=binary)
+        result = run(root, env, "--yolo", "--json", "-p", "inspect", binary=binary)
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 0, (result.stderr, envelope))
         assert_true(envelope["answer"].startswith("responses-native-ok"), envelope)
-        assert_true(envelope["usage"]["web_searches"] == 1, envelope)
         assert_true(len(server.requests) == 2, server.requests)
         sessions = {headers.get("X-Session-Id") for headers, _ in server.requests}
         assert_true(len(sessions) == 1 and None not in sessions, sessions)
 
 
-def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, binary):
-    """A provider-run search must look the same whichever provider ran it.
+def test_escape_during_a_web_search_stops_the_turn(root, home, *, binary):
+    finished = threading.Event()
 
-    Without this the wait is indistinguishable from thinking: the decoders
-    marked search events as progress and dropped everything that said what
-    they were.
+    def hang(handler, _):
+        finished.wait(budget(10))
+        try:
+            write_json_response(handler, {"error": {"message": "released"}}, status=500)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    with Server([hang]) as search_server:
+        with Server(
+            [tool_call("web_search", {"queries": ["slow"]}), event({"content": "kept going"})]
+        ) as model_server:
+            env = base_env(home, model_server.url)
+            env.update(
+                {
+                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
+                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
+                    "UAGENT_PROVIDERS": json.dumps(
+                        {
+                            "search": {
+                                "base_url": search_server.url,
+                                "api_key": "search-key",
+                                "supports": OPENROUTER_SUPPORTS,
+                            }
+                        }
+                    ),
+                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
+                }
+            )
+            try:
+                status, output = run_pty(
+                    root,
+                    env,
+                    [
+                        (b"search\n", b"Searching the web"),
+                        (b"\x1b", b"\xc2\xb7 interrupted"),
+                        b"/q\n",
+                    ],
+                    args=("--yolo",),
+                    timeout=20,
+                    binary=binary,
+                )
+            finally:
+                finished.set()
+            assert_true(status == 0, output)
+            assert_true(b"kept going" not in output, output)
+            assert_true(len(model_server.requests) == 1, model_server.requests)
+
+
+def test_web_search_is_a_tool_call_on_either_route(root, home, *, binary):
+    """A search reads as one call, and its answer stays in the conversation.
+
+    A search hosted inside the conversation's own response left the model
+    with no record of it on the next request, so it took real results for
+    figures it had made up.
     """
 
-    def responses_stream(handler, _body):
+    def responses_call(handler, body):
+        assert_true(all(tool.get("type") == "function" for tool in body["tools"]), body["tools"])
+        arguments = json.dumps({"queries": ["C++20"]})
+        write_sse_sequence(
+            handler,
+            [
+                {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "call_id": "call-1",
+                        "name": "web_search",
+                        "arguments": arguments,
+                    },
+                },
+                {
+                    "type": "response.completed",
+                    "response": {"status": "completed", "usage": {"input_tokens": 1}},
+                },
+            ],
+        )
+
+    def responses_finish(handler, body):
+        output = next(i for i in body["input"] if i.get("type") == "function_call_output")
+        assert_true("responses-search-ok" in output["output"], output)
+        assert_true("web_search_call" not in json.dumps(body["input"]), body["input"])
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "response.output_text.delta", "delta": "finished"},
+                {
+                    "type": "response.completed",
+                    "response": {"status": "completed", "usage": {"input_tokens": 1}},
+                },
+            ],
+        )
+
+    def anthropic_call(handler, body):
+        assert_true(all("input_schema" in tool for tool in body["tools"]), body["tools"])
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 1}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "call-1",
+                        "name": "web_search",
+                        "input": {},
+                    },
+                },
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": json.dumps({"queries": ["C++20"]}),
+                    },
+                },
+                {"type": "content_block_stop", "index": 0},
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "tool_use"},
+                    "usage": {"output_tokens": 1},
+                },
+                {"type": "message_stop"},
+            ],
+        )
+
+    def anthropic_finish(handler, body):
+        assert_true("anthropic-search-ok" in json.dumps(body["messages"][-1]), body["messages"])
+        assert_true("server_tool_use" not in json.dumps(body["messages"]), body["messages"])
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 1}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": "finished"},
+                },
+                {"type": "content_block_stop", "index": 0},
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"output_tokens": 1},
+                },
+                {"type": "message_stop"},
+            ],
+        )
+
+    def responses_stream(handler, body):
+        assert_true(body["tools"] == [{"type": "web_search"}], body["tools"])
         write_sse_sequence(
             handler,
             [
@@ -1209,7 +1330,11 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, bina
             ],
         )
 
-    def anthropic_stream(handler, _body):
+    def anthropic_stream(handler, body):
+        assert_true(
+            body["tools"] == [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+            body["tools"],
+        )
         write_sse_sequence(
             handler,
             [
@@ -1260,8 +1385,11 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, bina
             ],
         )
 
-    def events_for(wire_api, handler):
-        with Server([handler]) as server:
+    for wire_api, handlers in (
+        ("responses", [responses_call, responses_stream, responses_finish]),
+        ("anthropic_messages", [anthropic_call, anthropic_stream, anthropic_finish]),
+    ):
+        with Server(handlers) as server:
             env = base_env(home, server.url)
             env.update(
                 {
@@ -1269,58 +1397,29 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, bina
                     "UAGENT_INTERNAL_WIRE_API": wire_api,
                     "UAGENT_INTERNAL_FEATURES": "hosted_search",
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                    "UAGENT_PROVIDERS": json.dumps(
-                        {
-                            "search": {
-                                "base_url": server.url,
-                                "api_key": "fallback-key",
-                                "supports": OPENROUTER_SUPPORTS,
-                            }
-                        }
-                    ),
-                    "UAGENT_WEB_SEARCH_MODEL": "search/fallback-model",
                 }
             )
             result = run(root, env, "--yolo", "--json-stream", "-p", "search", binary=binary)
             assert_true(result.returncode == 0, result.stderr)
-            return [json.loads(line) for line in result.stdout.splitlines()]
-
-    for wire_api, handler, search_id in (
-        ("responses", responses_stream, "ws_1"),
-        ("anthropic_messages", anthropic_stream, "srvtoolu_1"),
-    ):
-        records = events_for(wire_api, handler)
-        searches = [r for r in records if r["type"] == "response.hosted_tool"]
-        assert_true(len(searches) >= 2, (wire_api, [r["type"] for r in records]))
-        assert_true(all(r["data"]["tool"] == "web_search" for r in searches), searches)
-        assert_true(all(r["data"]["id"] == search_id for r in searches), searches)
-        phases = [r["data"]["phase"] for r in searches]
-        assert_true(phases[0] in {"started", "searching"}, (wire_api, phases))
-        assert_true(phases[-1] == "completed", (wire_api, phases))
-        # One completion, however many times the provider announced it.
-        assert_true(phases.count("completed") == 1, (wire_api, phases))
-        # The query is the model's own prose and never leaves the wire.
-        assert_true(all("query" not in r["data"] for r in searches), searches)
-        # A hosted search is not a round this agent owes an answer to.
-        assert_true(
-            not [r for r in records if r["type"] == "tool.call"],
-            [r["type"] for r in records],
-        )
+            records = [json.loads(line) for line in result.stdout.splitlines()]
+            assert_true(len(server.requests) == 3, (wire_api, len(server.requests)))
+        calls = [r for r in records if r["type"] == "tool.call"]
+        assert_true([r["data"]["name"] for r in calls] == ["web_search"], (wire_api, calls))
+        # The side request stays out of what the conversation shows.
+        assert_true(not [r for r in records if r["type"] == "response.hosted_tool"], records)
         usage = next(r for r in records if r["type"] == "usage")
         assert_true(usage["data"]["usage"]["web_searches"] == 1, usage)
 
 
-def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binary):
+def test_provider_anthropic_hosted_tool_pause_turn_replay(root, home, *, binary):
+    code = {"type": "code_execution_20250825", "name": "code_execution"}
+
     def first(handler, body):
         assert_true(handler.path == "/v1/messages", handler.path)
         assert_true(handler.headers.get("x-api-key") == "anthropic-key", handler.headers)
         assert_true(handler.headers.get("anthropic-version") == "2023-06-01", handler.headers)
         assert_true(handler.headers.get("Authorization") is None, handler.headers)
-        hosted = [tool for tool in body["tools"] if tool.get("name") == "web_search"]
-        assert_true(
-            hosted == [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
-            hosted,
-        )
+        assert_true(body["tools"][-1] == code, body["tools"])
         assert_true("system" in body and body["messages"][0]["role"] == "user", body)
         assert_true(body["system"][0]["cache_control"] == {"type": "ephemeral"}, body)
         assert_true(body["cache_control"] == {"type": "ephemeral"}, body)
@@ -1337,8 +1436,8 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
                     "content_block": {
                         "type": "server_tool_use",
                         "id": "search-1",
-                        "name": "web_search",
-                        "input": {"query": "C++20"},
+                        "name": "code_execution",
+                        "input": {"code": "6*7"},
                     },
                 },
                 {"type": "content_block_stop", "index": 0},
@@ -1346,16 +1445,9 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
                     "type": "content_block_start",
                     "index": 1,
                     "content_block": {
-                        "type": "web_search_tool_result",
+                        "type": "code_execution_tool_result",
                         "tool_use_id": "search-1",
-                        "content": [
-                            {
-                                "type": "web_search_result",
-                                "url": "https://example.com/anthropic",
-                                "title": "Anthropic source",
-                                "encrypted_content": "opaque-index",
-                            }
-                        ],
+                        "content": {"type": "code_execution_result", "stdout": "42"},
                     },
                 },
                 {"type": "content_block_stop", "index": 1},
@@ -1372,9 +1464,8 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         assistant = body["messages"][-1]
         assert_true(assistant["role"] == "assistant", body["messages"])
         types = [block.get("type") for block in assistant["content"]]
-        assert_true(types == ["server_tool_use", "web_search_tool_result"], assistant)
-        result_block = assistant["content"][1]["content"][0]
-        assert_true(result_block.get("encrypted_content") == "opaque-index", result_block)
+        assert_true(types == ["server_tool_use", "code_execution_tool_result"], assistant)
+        assert_true(assistant["content"][1]["content"]["stdout"] == "42", assistant)
         write_sse_sequence(
             handler,
             [
@@ -1419,27 +1510,23 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         env = base_env(home, server.url)
         env.update(
             {
-                "UAGENT_API_KEY": "anthropic-key",
-                "UAGENT_INTERNAL_WIRE_API": "anthropic_messages",
-                "UAGENT_INTERNAL_FEATURES": "hosted_search",
-                "UAGENT_WEB_SEARCH_BACKEND": "auto",
+                "UAGENT_MODEL": "box/claude-test",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
-                        "search": {
+                        "box": {
                             "base_url": server.url,
-                            "api_key": "fallback-key",
-                            "supports": OPENROUTER_SUPPORTS,
+                            "api_key": "anthropic-key",
+                            "wire_api": "anthropic_messages",
+                            "hosted_tools": [code],
                         }
                     }
                 ),
-                "UAGENT_WEB_SEARCH_MODEL": "search/fallback-model",
             }
         )
-        result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
+        result = run(root, env, "--yolo", "--json", "-p", "compute", binary=binary)
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 0, (result.stderr, envelope))
         assert_true(envelope["answer"].startswith("anthropic-native-ok"), envelope)
-        assert_true(envelope["usage"]["web_searches"] == 1, envelope)
         assert_true(len(server.requests) == 2, server.requests)
         sessions = {headers.get("X-Session-Id") for headers, _ in server.requests}
         assert_true(len(sessions) == 1 and None not in sessions, sessions)

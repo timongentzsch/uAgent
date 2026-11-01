@@ -269,7 +269,6 @@ void Agent::Reset() {
                              {"prior_usage", UsageJson(session_usage_)}});
   last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
-  turn_search_trace_.Reset();
   session_usage_ = Usage{};
   SyncApiSessionUsage();
   route_usage_.clear();
@@ -509,7 +508,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   forked_at_time_ = std::move(record.metadata.forked_at_time);
   logged_msgs_ = 0;
   logged_schemas_.clear();
-  turn_search_trace_.Reset();
   ++revision_;
   PublishSideContext();
   return true;

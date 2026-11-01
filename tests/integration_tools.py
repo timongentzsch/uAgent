@@ -299,7 +299,10 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
     python_code = "print('python-one')\nprint('python-two')"
     with Server(
         [
-            tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
+            tool_call(
+                "run",
+                {"command": shell_command, "shell": "/bin/sh", "description": "Print two lines"},
+            ),
             tool_call(
                 "write_file",
                 {"path": ".uagent/scratch/trace.py", "content": python_code},
@@ -315,7 +318,7 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         # Each call is its headline, opened to its output's last lines.
         for expected in (
-            "Ran printf 'shell-one",
+            "Print two lines",
             "│ shell-one",
             "│ shell-two",
             "Ran trace.py",
@@ -1147,7 +1150,7 @@ def test_approval_remembers_a_command_prefix_and_forwards_a_refusal(root, home, 
         # Reaching rm proves `git status *` covered the second call without
         # consuming the refusal; rm is only ever exact, so that refusal is
         # delivered there.
-        assert_true(b"Ran rm -rf /tmp/uagent-nothing" in output, output)
+        assert_true(b"rm -rf /tmp/uagent-nothing" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)

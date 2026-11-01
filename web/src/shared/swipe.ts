@@ -93,9 +93,8 @@ export function useSheetSwipe(
   }, [ref, enabled, latest]);
 }
 
-// In the installed app, which has no back gesture of its own, a swipe from
-// the left edge opens the conversations drawer. Text that scrolls sideways,
-// the terminal and anything inside a dialog keep their touches.
+// A swipe from the left edge opens the conversations drawer. Text that scrolls
+// sideways, the terminal and anything inside a dialog keep their touches.
 export function useEdgeSwipe(enabled: boolean, open: () => void) {
   const latest = useLatest(open);
   useEffect(() => {
@@ -107,7 +106,6 @@ export function useEdgeSwipe(enabled: boolean, open: () => void) {
       const target = event.target as Element;
       if (
         event.touches.length !== 1 ||
-        !matchMedia("(display-mode: standalone)").matches ||
         touch.clientX > viewportBounds(true).left + edgeSwipeStartPx ||
         document.querySelector("dialog[open]") ||
         target.closest(".terminal-view")
@@ -120,6 +118,10 @@ export function useEdgeSwipe(enabled: boolean, open: () => void) {
         )
           return;
       from = { x: touch.clientX, y: touch.clientY };
+      // Safari starts its back swipe from here unless the touch is cancelled;
+      // a control's touch has to stay a tap.
+      if (event.cancelable && !target.closest("a, button, input, label, select"))
+        event.preventDefault();
     };
     const move = (event: TouchEvent) => {
       if (!from) return;
@@ -135,7 +137,7 @@ export function useEdgeSwipe(enabled: boolean, open: () => void) {
       latest.current();
     };
     const stop = () => (from = null);
-    document.addEventListener("touchstart", start, { passive: true });
+    document.addEventListener("touchstart", start, { passive: false });
     document.addEventListener("touchmove", move, { passive: true });
     document.addEventListener("touchend", stop, { passive: true });
     document.addEventListener("touchcancel", stop, { passive: true });

@@ -1,7 +1,7 @@
 // Screens that move: a conversation opened from the drawer slides in, a phone
-// sheet is pulled down to close, and the installed app's drawer opens from
-// the left edge. Transitions run in WebKit too, the engine iPhones use;
-// touches are dispatched through Chromium's input protocol.
+// sheet is pulled down to close, and the drawer opens from the left edge.
+// Transitions run in WebKit too, the engine iPhones use; touches are dispatched
+// through Chromium's input protocol.
 import {
   test,
   expect,
@@ -13,6 +13,7 @@ import {
 } from "./fixtures.js";
 
 const phone = { width: 390, height: 844 };
+const edgeSwipeStartPx = 24;
 
 // Counts the view transitions the app starts, each as the direction it set,
 // and those that got as far as animating (`ready`), with what the transcript
@@ -419,25 +420,32 @@ test.describe("touch", () => {
     const across = { x: 160, y: 404 };
     const drawer = (page) =>
       page.getByRole("dialog", { name: "Conversations" });
-    const standalone = () => {
-      const match = matchMedia.bind(window);
-      window.matchMedia = (query) =>
-        match(query === "(display-mode: standalone)" ? "all" : query);
-    };
 
-    test("opens the drawer in the installed app", async ({ page, session }) => {
-      await page.addInitScript(standalone);
+    test("opens the drawer and holds off the browser's back swipe", async ({
+      page,
+      session,
+    }) => {
       await page.goto(`/#session=${session.id}`);
       await online(page);
+      await page.evaluate(() =>
+        addEventListener("touchstart", (event) => {
+          window.cancelled = event.defaultPrevented;
+        }),
+      );
       await (await finger(page))(edge, across);
       await expect(drawer(page)).toBeVisible();
+      expect(await page.evaluate(() => window.cancelled)).toBe(true);
     });
 
-    test("does nothing in a browser tab", async ({ page, session }) => {
+    test("a control at the edge stays a tap", async ({ page, session }) => {
       await page.goto(`/#session=${session.id}`);
       await online(page);
-      await (await finger(page))(edge, across);
-      await expect(drawer(page)).toHaveCount(0);
+      const button = page.getByRole("button", { name: "Open conversations" });
+      const box = await button.boundingBox();
+      expect(box.x).toBeLessThan(edgeSwipeStartPx);
+      const at = { x: box.x + 2, y: box.y + box.height / 2 };
+      await (await finger(page))(at, at);
+      await expect(drawer(page)).toBeVisible();
     });
 
     test("does nothing from inside a code block", async ({
@@ -445,7 +453,6 @@ test.describe("touch", () => {
       host,
       request,
     }) => {
-      await page.addInitScript(standalone);
       const ids = await seed(host, request, {
         "Motion code": [
           { role: "user", content: "code" },

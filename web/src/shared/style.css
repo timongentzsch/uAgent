@@ -1548,6 +1548,45 @@ dialog.sidebar.drawer[open][data-leaving] {
     }
   }
 }
+/* A sheet pulled down by a finger (useSheetSwipe) follows it as it moves;
+   let go, it returns to its place by the transition above, or leaves. */
+dialog[data-layout="sheet"][data-dragging] {
+  translate: 0 var(--swipe, 0);
+  transition: none;
+}
+/* The header has nothing to scroll: a pull on it is the sheet's, so the
+   browser does not take it for a pan first. */
+dialog[data-layout="sheet"] > header {
+  touch-action: none;
+}
+/* A conversation opened from the drawer slides in from the right, going back
+   from the left (slide() in shared/motion.ts). Only the transcript moves; the
+   rest of the page changes at once, and the old transcript waits under the
+   new one. */
+:root[data-slide] .transcript {
+  view-transition-name: screen;
+}
+:root[data-slide]::view-transition-old(root),
+:root[data-slide]::view-transition-new(root),
+:root[data-slide]::view-transition-old(screen) {
+  animation: none;
+}
+:root[data-slide="forward"]::view-transition-new(screen) {
+  animation: screen-in-from-right var(--motion-base) var(--ease-standard);
+}
+:root[data-slide="back"]::view-transition-new(screen) {
+  animation: screen-in-from-left var(--motion-base) var(--ease-standard);
+}
+@keyframes screen-in-from-right {
+  from {
+    translate: 100% 0;
+  }
+}
+@keyframes screen-in-from-left {
+  from {
+    translate: -100% 0;
+  }
+}
 /* Animations off: the device asks for less motion, or Settings does
    (applyMotion sets the attribute for both). */
 :root[data-motion="off"] {

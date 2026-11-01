@@ -249,14 +249,15 @@ export const usePhone = () => useMedia("(max-width: 600px)");
 
 // Layout the stylesheet decides in a container query, which script cannot
 // ask: the query sets a custom property, read back as the room changes.
+function styled(selector: string, property: string) {
+  const element = document.querySelector(selector);
+  return (
+    !!element &&
+    getComputedStyle(element).getPropertyValue(property).trim() === "1"
+  );
+}
 function useStyled(selector: string, property: string, ready = true) {
-  const read = () => {
-    const element = document.querySelector(selector);
-    return (
-      !!element &&
-      getComputedStyle(element).getPropertyValue(property).trim() === "1"
-    );
-  };
+  const read = () => styled(selector, property);
   const [on, setOn] = useState(read);
   // biome-ignore lint/correctness/useExhaustiveDependencies: read only looks the element up again
   useLayoutEffect(() => {
@@ -287,6 +288,7 @@ function useStyled(selector: string, property: string, ready = true) {
 // conversation (style.css has the rule).
 export const useCompact = (ready?: boolean) =>
   !useStyled(".shell", "--docked", ready);
+export const compactNow = () => !styled(".shell", "--docked");
 
 // The conversation's column is as narrow as a phone, whatever the window.
 export const useNarrowColumn = (ready?: boolean) =>

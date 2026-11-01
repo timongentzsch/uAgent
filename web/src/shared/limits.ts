@@ -92,3 +92,13 @@ export const terminalScrollbackLines = 5_000;
 // moves farther than the slop is a scroll.
 export const longPressMs = 450;
 export const longPressSlopPx = 10;
+// A touch that moves farther than this is a swipe, not a press.
+export const swipeSlopPx = 10;
+// A sheet pulled down by this share of its height closes when let go, as
+// does one pulled faster than the flick speed (pixels per millisecond).
+export const sheetCloseShare = 0.3;
+export const sheetFlickSpeed = 0.6;
+// In the installed app a swipe from this close to the left edge, carried
+// this far across, opens the conversations drawer.
+export const edgeSwipeStartPx = 24;
+export const edgeSwipeOpenPx = 60;

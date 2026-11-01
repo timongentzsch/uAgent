@@ -1,3 +1,5 @@
+import { compactNow } from "./layout.ts";
+
 // Motion in script uses the same tokens as CSS (style.css :root), so the
 // one reduced-motion switch there covers animations started here too.
 type Motion = "fast" | "base" | "slow";
@@ -35,4 +37,33 @@ export async function animateOut(element: Element | null) {
   // Let the style change start its transitions before collecting them.
   await new Promise((resolve) => requestAnimationFrame(resolve));
   await settled(element);
+}
+
+let sliding: { run: ViewTransition; to: string } | undefined;
+
+// Runs the change to conversation `to` as a slide of the transcript in from
+// the side it came from (style.css names it for the run), where the list is
+// a drawer and the browser can; elsewhere the change happens at once. A
+// different change that arrives while one slides ends that one.
+export function slide(back: boolean, to: string, change: () => void) {
+  if (sliding?.to === to) return;
+  sliding?.run.skipTransition();
+  if (!document.startViewTransition || !motionMs("base") || !compactNow())
+    return change();
+  const root = document.documentElement;
+  root.dataset.slide = back ? "back" : "forward";
+  const run = document.startViewTransition(async () => {
+    change();
+    // The new conversation is drawn once the renders this started are done.
+    await new Promise((resolve) => setTimeout(resolve));
+  });
+  const mine = { run, to };
+  sliding = mine;
+  // A skipped transition rejects `ready`.
+  run.ready.catch(() => {});
+  void run.finished.finally(() => {
+    if (sliding !== mine) return;
+    sliding = undefined;
+    delete root.dataset.slide;
+  });
 }

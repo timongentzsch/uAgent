@@ -209,6 +209,7 @@ export default function Modals({
           className="browser-view"
           size="xl"
           layout={compact ? "sheet" : "panel"}
+          swipeable={false}
           close={close}
         >
           <Deferred

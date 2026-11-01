@@ -19,6 +19,8 @@ import { Modal, ErrorBoundary, Deferred, Spinner } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
+import { slide } from "../shared/motion.ts";
+import { useEdgeSwipe } from "../shared/swipe.ts";
 import Sidebar, { sessionOrder } from "../features/sidebar/sidebar.tsx";
 import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
@@ -177,6 +179,7 @@ function App() {
   const compact = useCompact(shown);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
+  useEdgeSwipe(compact, () => setDrawer(true));
   // The files sit beside the chat while its column has room, else in a sheet.
   const filesSheet = useNarrowColumn(shown) || compact;
   const { side, closeSide, ask, clearSides } = useSideConversations({
@@ -244,10 +247,14 @@ function App() {
     async (id: string) => {
       setNotice("");
       setPage("chat");
-      setSelected(id);
-      setDrawer(false);
+      const change = () => {
+        setSelected(id);
+        setDrawer(false);
+      };
+      if (id === selected) change();
+      else slide(false, id, change);
     },
-    [setSelected],
+    [selected, setSelected],
   );
   const { browserAvailable, install, setInstall, update, attach } = useBoot({
     upload,
@@ -763,6 +770,7 @@ function App() {
                         layout="sheet"
                         className="terminal-sheet"
                         header={false}
+                        swipeable={false}
                         close={() => setTerminalOpen(false)}
                       >
                         {terminal}

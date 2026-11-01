@@ -426,9 +426,7 @@ class Agent {
 
   void PrepareCall(const ToolCall& call, CallTask& task, TurnExecution& state,
                    StepState& loop);
-  void PublishWork(const std::vector<CallTask>& tasks,
-                   const std::vector<json>& activities,
-                   const std::vector<json>& groups);
+  void PublishWork(const std::vector<CallTask>& tasks);
   // Ends the work replying to the latest message of yours as `outcome`.
   void CloseWork(const std::string& outcome);
   // True when the user interrupted the batch.

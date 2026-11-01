@@ -196,7 +196,6 @@ Tool AskTool(AskPerson ask, AskImage image) {
   // Asking changes nothing and needs no capability: whoever may talk to the
   // user may ask them.
   tool.capabilities = 0;
-  tool.intent = "ask";
   tool.headline = [](const json& a) {
     const json* questions = JsonArray(a, "questions");
     return Headline{"Asking", "Asked",

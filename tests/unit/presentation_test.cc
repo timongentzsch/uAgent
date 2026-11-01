@@ -147,10 +147,11 @@ TEST_CASE(TestTreeRows) {
   CHECK(drawn.find("\\x1b") == std::string::npos);
 
   // A label is stored text: shown, never obeyed.
-  CHECK(Drawn({GroupNode("g-t-c1", {{"verb", "Explored\x1b[2J"},
-                                    {"calls", 2},
-                                    {"work", "w-m-1"}})})
-            .find("Explored\\x1b[2J 2 calls") != std::string::npos);
+  CHECK(Drawn({MakeNode(
+                  "t-c1", "w-m-1", "call",
+                  {{"state", "ok"},
+                   {"headline", {{"verb", "Read\x1b[2J"}, {"target", ""}}}})})
+            .find("Read\\x1b[2J") != std::string::npos);
 
   // A terminal whose locale cannot decode UTF-8 gets the same rows in ASCII
   // rather than mojibake. Model/tool content must remain byte-preserved.

@@ -82,19 +82,11 @@ export const chain = [
     headline: { verb: "Thinking", target: "" },
     body: { kind: "text", text: "look first" },
   },
-  {
-    id: "g-t-a",
-    parent: "w-m-12",
-    kind: "group",
-    state: "ok",
-    headline: { verb: "Explored", target: "2 calls" },
-    result: { items: 2, unit: "call" },
-  },
-  call("t-a", "g-t-a", 14, "ok", "Read", "fli/search.py", "120 lines · 5ms", {
+  call("t-a", "w-m-12", 14, "ok", "Read", "fli/search.py", "120 lines · 5ms", {
     kind: "text",
     text: "alpha",
   }),
-  call("t-b", "g-t-a", 15, "ok", "Read", "fli/models.py", "88 lines · 5ms", {
+  call("t-b", "w-m-12", 15, "ok", "Read", "fli/models.py", "88 lines · 5ms", {
     kind: "text",
     text: "beta",
   }),
@@ -249,5 +241,5 @@ export const steered = [
 // Two pages of history: the older one is read in front of the newer.
 export const pages = [plain, chain];
 
-// A conversation with calls, a failure, a group, guidance and an answer.
+// A conversation with calls, a failure, guidance and an answer.
 export const conversation = [...chain, ...failed, ...steered];

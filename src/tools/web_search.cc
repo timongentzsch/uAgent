@@ -197,7 +197,6 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
     return Headline{"Searching the web for", "Searched the web for", target};
   };
   t.parallel_safe = true;
-  t.intent = "research";
   t.parameters["properties"]["queries"]["maxItems"] = WebSearchMaxUses();
   // The request budget is per attempt; the tool deadline has to cover the
   // retries or it would cancel the call mid-recovery.

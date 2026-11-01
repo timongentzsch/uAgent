@@ -144,10 +144,9 @@ class Recorder {
   std::string Call(const std::string& response_id, const std::string& call_id,
                    const std::string& name, json view, const std::string& state,
                    const ResultFacts& facts, const std::string& output,
-                   const std::string& category = "explore",
                    const json& parts = nullptr) {
     const std::string id = DetailId(response_id, call_id);
-    const json activity = {{"category", category}, {"label", name}};
+    const json activity = {{"label", name}};
     conversation_.RecordDisplay(id, {{"activity", activity}, {"view", view}});
     Event("tool.call", {{"detail_id", id},
                         {"name", name},
@@ -174,23 +173,8 @@ class Recorder {
     return id;
   }
 
-  // A step's calls fold into `grouped`, published once the calls are.
-  void Group(const std::vector<std::string>& grouped) {
-    for (const std::string& call : grouped) {
-      conversation_.RecordDisplay(call, {{"group", "g-" + grouped.front()}});
-    }
-  }
-
-  // What a step's calls added to their work: their group and its counts.
-  void Step(const std::vector<std::string>& grouped, const json& counts) {
-    if (!grouped.empty()) {
-      const std::string id = "g-" + grouped.front();
-      const json group = {{"verb", "Explored"},
-                          {"calls", grouped.size()},
-                          {"work", WorkId(message_)}};
-      conversation_.RecordDisplay(id, group);
-      Changed(GroupNode(id, group));
-    }
+  // What a step's calls added to their work: its counts.
+  void Step(const json& counts) {
     conversation_.RecordDisplay(WorkId(message_), counts);
     Changed(WorkNode(message_, counts));
   }
@@ -303,32 +287,30 @@ TEST_CASE(TestGoldenChainOfCalls) {
   const std::string c =
       turn.Call("r-1-1-1", "c3", "edit_file",
                 {{"verb", {"Editing", "Edited"}}, {"target", "b.txt"}}, "ok",
-                change, "edited b.txt", "edit");
-  turn.Group({a, b});
+                change, "edited b.txt");
   turn.Result("c1", a);
   turn.Result("c2", b);
   turn.Result("c3", c);
-  turn.Step({a, b}, {{"items", 3}, {"errors", 0}, {"edited", 1}});
+  turn.Step({{"items", 3}, {"errors", 0}, {"edited", 1}});
   turn.Reply("r-1-2-1", "Fixed.");
   turn.Footer(124000, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
-  // The work folds what the turn did, the group the calls that read alike;
-  // the answer and the footer close the turn.
-  CHECK((page ==
-         std::vector<std::string>{
-             "turn m-2 < - \"fix it\"",
-             "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
-             "thinking r-1-1-1:thinking < w-m-2 Thinking \"look first\"",
-             "group g-" + a + " < w-m-2 [ok] Explored 2 calls",
-             "call " + a + " < g-" + a + " [ok] Read a.txt · 1 line · 5ms " +
-                 "\"alpha\"",
-             "call " + b + " < g-" + a + " [ok] Read b.txt · 1 line · 5ms " +
-                 "\"beta\"",
-             "call " + c + " < w-m-2 [ok] Edited b.txt · +1 −1 · 5ms " +
-                 "\"edited b.txt\"",
-             "message r-1-2-1 < m-2 \"Fixed.\"",
-             "footer m-8 < m-2",
-         }));
+  // The work folds what the turn did; the answer and the footer close the
+  // turn.
+  CHECK((
+      page ==
+      std::vector<std::string>{
+          "turn m-2 < - \"fix it\"",
+          "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
+          "thinking r-1-1-1:thinking < w-m-2 Thinking \"look first\"",
+          "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
+              "\"alpha\"",
+          "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " + "\"beta\"",
+          "call " + c + " < w-m-2 [ok] Edited b.txt · +1 −1 · 5ms " +
+              "\"edited b.txt\"",
+          "message r-1-2-1 < m-2 \"Fixed.\"",
+          "footer m-8 < m-2",
+      }));
   CHECK(Lines(turn.Live()) == page);
   // The terminal opens the work at depth 1 and everything at depth all; an
   // open node adds its body's tail, and closed thinking says nothing.
@@ -339,18 +321,18 @@ TEST_CASE(TestGoldenChainOfCalls) {
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
-             "    · Explored 2 calls\n"
+             "    · Read a.txt · 1 line · 5ms\n"
+             "    · Read b.txt · 1 line · 5ms\n"
              "    · Edited b.txt · +1 −1 · 5ms\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
              "  · Worked 3 steps · edited 1 file · 2m 4s\n"
              "    · Thinking\n"
              "      │ look first\n"
-             "    · Explored 2 calls\n"
-             "      · Read a.txt · 1 line · 5ms\n"
-             "        │ alpha\n"
-             "      · Read b.txt · 1 line · 5ms\n"
-             "        │ beta\n"
+             "    · Read a.txt · 1 line · 5ms\n"
+             "      │ alpha\n"
+             "    · Read b.txt · 1 line · 5ms\n"
+             "      │ beta\n"
              "    · Edited b.txt · +1 −1 · 5ms\n"
              "      │ edited b.txt\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
@@ -359,7 +341,8 @@ TEST_CASE(TestGoldenChainOfCalls) {
   // line once the turn does: after the answer, which streamed.
   CHECK(turn.Watched() ==
         "> fix it\n"
-        "    · Explored 2 calls\n"
+        "    · Read a.txt · 1 line · 5ms\n"
+        "    · Read b.txt · 1 line · 5ms\n"
         "    · Edited b.txt · +1 −1 · 5ms\n"
         "uagent\nFixed.\n"
         "  · Worked 3 steps · edited 1 file · 2m 4s\n"
@@ -381,19 +364,19 @@ TEST_CASE(TestGoldenFailedCalls) {
       turn.Call("r-1-1-1", "f", "read_path", kRead, "failed", none, "missing");
   const std::string x = turn.Call(
       "r-1-1-1", "x", "run", {{"verb", {"Running", "Ran"}}, {"target", "make"}},
-      "cancelled", none, "", "run");
+      "cancelled", none, "");
   const std::string d =
       turn.Call("r-1-1-1", "d", "run",
                 {{"verb", {"Running", "Ran"}}, {"target", "rm -rf out"}},
-                "failed", denied, "", "run");
+                "failed", denied, "");
   // Refused before it ran: no verb, the call it would have made.
-  const std::string j = turn.Call("r-1-1-1", "j", "Read /etc", nullptr,
-                                  "failed", rejected, "", "run");
+  const std::string j =
+      turn.Call("r-1-1-1", "j", "Read /etc", nullptr, "failed", rejected, "");
   for (const auto& [call, id] :
        {std::pair{"f", f}, {"x", x}, {"d", d}, {"j", j}}) {
     turn.Result(call, id);
   }
-  turn.Step({}, {{"items", 4}, {"errors", 4}, {"edited", 0}});
+  turn.Step({{"items", 4}, {"errors", 4}, {"edited", 0}});
   turn.Reply("r-1-2-1", "Nothing worked.");
   turn.Footer(3000, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
@@ -449,9 +432,9 @@ TEST_CASE(TestGoldenFileHandedOver) {
   const std::string s =
       turn.Call("r-1-1-1", "s", "share",
                 {{"verb", {"Sharing", "Shared"}}, {"target", "report.html"}},
-                "ok", {}, "", "share", json::array({file, link}));
+                "ok", {}, "", json::array({file, link}));
   turn.Result("s", s);
-  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Step({{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-2-1", "Here it is.");
   turn.Footer(2000, "complete");
   const json view = ConversationView(turn.History());
@@ -495,7 +478,7 @@ TEST_CASE(TestGoldenBlankReplyAndMcpCall) {
       turn.Call("r-1-1-1", "m", "mcp__docs__search",
                 {{"verb", {"Calling Search", "Called Search"}}}, "ok", {}, "");
   turn.Result("m", m);
-  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Step({{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-2-1", "\n");
   turn.Footer(1500, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
@@ -523,7 +506,7 @@ TEST_CASE(TestGoldenRunningTurn) {
   turn.Reply("r-1-1-1", "Building now.", "", {{"b", "run"}});
   const std::string b = turn.Call(
       "r-1-1-1", "b", "run", {{"verb", {"Running", "Ran"}}, {"target", "make"}},
-      "running", {}, "", "run");
+      "running", {}, "");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
   // An interim reply is a step of the work, which runs until the footer.
   CHECK((page == std::vector<std::string>{
@@ -547,11 +530,11 @@ TEST_CASE(TestGoldenSteeredTurn) {
   Recorder turn;
   turn.Say("check the disk");
   turn.Reply("r-1-1-1", "", "", {{"d", "run"}});
-  const std::string d = turn.Call(
-      "r-1-1-1", "d", "run", {{"verb", {"Running", "Ran"}}, {"target", "df"}},
-      "ok", {}, "", "run");
+  const std::string d =
+      turn.Call("r-1-1-1", "d", "run",
+                {{"verb", {"Running", "Ran"}}, {"target", "df"}}, "ok", {}, "");
   turn.Result("d", d);
-  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Step({{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Steer("also look at /home", 41000);
   // Read into the running turn, your message ends the work before it and
   // shows at once, after that work.
@@ -563,12 +546,11 @@ TEST_CASE(TestGoldenSteeredTurn) {
   };
   CHECK(Lines(turn.Live()) == first);
   turn.Reply("r-1-2-1", "", "", {{"h", "run"}});
-  const std::string h =
-      turn.Call("r-1-2-1", "h", "run",
-                {{"verb", {"Running", "Ran"}}, {"target", "du /home"}}, "ok",
-                {}, "", "run");
+  const std::string h = turn.Call(
+      "r-1-2-1", "h", "run",
+      {{"verb", {"Running", "Ran"}}, {"target", "du /home"}}, "ok", {}, "");
   turn.Result("h", h);
-  turn.Step({}, {{"items", 1}, {"errors", 0}, {"edited", 0}});
+  turn.Step({{"items", 1}, {"errors", 0}, {"edited", 0}});
   turn.Reply("r-1-3-1", "Both have room.");
   turn.Footer(59000, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);

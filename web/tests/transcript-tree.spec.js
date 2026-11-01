@@ -7,7 +7,7 @@ import {
 import { agents, conversation } from "./golden-turns.js";
 
 // The transcript tree on the Vite-served app with a mocked host: a saved
-// conversation of calls, a failure, a group, guidance and an answer, at each
+// conversation of calls, a failure, guidance and an answer, at each
 // detail level, on a phone and a desktop. Set UAGENT_SHOTS to a folder to
 // keep a screenshot of each.
 test.use({ serviceWorkers: "block" });
@@ -107,7 +107,7 @@ for (const [device, viewport] of [
       const shown = rows(page);
       // Minimal shows each turn's work as one line; default opens it.
       await expect(shown).toHaveCount(
-        { minimal: 4, default: 13, full: 15 }[level],
+        { minimal: 4, default: 14, full: 14 }[level],
       );
       const measured = await gaps(page);
       expect(measured.length).toBeGreaterThan(0);
@@ -186,7 +186,7 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await openMore(page);
   await page.getByRole("menuitem", { name: /^Detail/ }).click();
   await page.getByRole("menuitemradio", { name: "Full" }).click();
-  await expect(rows(page)).toHaveCount(15);
+  await expect(rows(page)).toHaveCount(14);
   await page
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })

@@ -49,11 +49,6 @@ json FilesNode(const json& record, std::string_view turn);
 // and its counts ("6 steps · 1 error"), and how long it took as the result
 // word.
 json WorkNode(const std::string& message, const json& facts);
-// The groups a step's calls fold into, from their activities: adjacent,
-// successful calls of one groupable intent. Each {id, verb, members}.
-std::vector<json> GroupCalls(const std::vector<json>& activities);
-// A group as recorded: {verb, calls, work}: "Explored" and "3 calls".
-json GroupNode(const std::string& id, const json& group);
 // A recorded entry: a receipt or a compaction is a notice, a turn's summary
 // its footer.
 json EntryNode(const json& entry);

@@ -69,7 +69,6 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
                         Capability(ToolCapability::kMutate);
   memory.memory_store = true;
   memory.retain_output = true;
-  memory.intent = "memory";
   memory.headline = [](const json& a) {
     const std::string action = JsonValue(a, "action", "");
     const std::string target = JsonValue(a, "key", JsonValue(a, "query", ""));

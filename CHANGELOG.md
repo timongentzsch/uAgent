@@ -4,8 +4,9 @@
 
 ### Changes
 
+- **Each call is one row.** Calls no longer fold into "Explored", "Researched" or "Edited" groups; "Worked N steps" is the only fold. They covered about one call in eight, and a `run` row now says what it does on its own.
 - **The prompt names the `browser` tool.** Where it is offered, the prompt and `web_fetch` point to it for pages built by scripts, behind a login or cut off, instead of to a skill, and a fetched page says it may be partial.
-- **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone; calls that only look still group as "Explored", and "edited N files" no longer counts commands.
+- **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone, and "edited N files" no longer counts commands.
 
 ### Fixes
 

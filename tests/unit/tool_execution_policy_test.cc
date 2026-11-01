@@ -34,36 +34,8 @@ TEST_CASE(TestToolExecutionPolicy) {
   Tool shell;
   shell.mutating = true;
   shell.capabilities = Capability(ToolCapability::kExecute);
-  CHECK(ToolActivityCategory(shell, json::object()) == "run");
-  // A command is never a file edit: "edited N files" counts files.
-  CHECK(ToolActivityCategory(shell, {{"command", "sed -i s/a/b/ f"}}) == "run");
-  // Only a command that just looks reads as explore, for grouping and never
-  // for authority.
   CHECK(RequiredApproval(shell, {{"command", "ls"}}) ==
         ApprovalClass::kYoloEligibleMutation);
-  CHECK(ToolActivityCategory(
-            shell, {{"command", "ls -la | head && git log"}}) == "explore");
-  for (const char* command :
-       {"npm test", "rm -rf out", "cat a > b", "git commit -m x", "ls $(pwd)",
-        "find . -delete", "git branch -D main"}) {
-    CHECK(ToolActivityCategory(shell, {{"command", command}}) == "run");
-  }
-  std::vector<json> activities;
-  for (const char* id : {"t-a", "t-b", "t-c", "t-d", "t-e", "t-f"}) {
-    activities.push_back({{"detail_id", id},
-                          {"category", "explore"},
-                          {"groupable", true},
-                          {"state", "ok"}});
-  }
-  activities[2]["state"] = "failed";
-  activities[4]["groupable"] = false;
-  // Only adjacent, successful, groupable calls of one intent fold; a lone
-  // call keeps its own row.
-  const std::vector<json> groups = GroupCalls(activities);
-  REQUIRE(groups.size() == 1);
-  CHECK(groups[0] == json({{"id", "g-t-a"},
-                           {"verb", "Explored"},
-                           {"members", {"t-a", "t-b"}}}));
 
   Tool tool;
   tool.name = "probe";

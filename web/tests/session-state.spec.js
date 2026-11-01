@@ -194,8 +194,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // The host grouped the two reads: the turn's work opens on one row under
-  // their label, as a terminal shows them.
+  // The turn's work opens on its calls, as a terminal shows them.
   const rows = page.locator(".transcript .node-row");
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
@@ -203,17 +202,18 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   // The reply's thinking is a step of the work too.
   await expect(rows).toHaveText([
     /^Worked.*2 steps/,
-    /^Explored.*2 calls/,
+    /^Read \./,
+    /^Read \./,
     /^Thinking/,
   ]);
   // The conversation menu sets how deep the tree opens: every call at full,
   // the whole turn's work as one line at minimal.
   await chooseDetail(page, "Full");
-  await expect(rows).toHaveCount(5);
+  await expect(rows).toHaveCount(4);
   await chooseDetail(page, "Minimal");
   await expect(rows).toHaveText([/^Worked.*2 steps/]);
   await chooseDetail(page, "Default");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   // Tables keep their layout and scroll instead of squeezing a column.
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
@@ -264,10 +264,10 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  // Retained history replays through the live pipeline: the same group and
+  // Retained history replays through the live pipeline: the same calls and
   // the receipt, none still running, and the row opened here stays open.
   await expect(
-    page.locator(".node-row", { hasText: "Explored" }),
+    page.locator(".node-row", { hasText: /^Read \./ }).first(),
   ).toBeVisible();
   await expect(page.locator(".transcript .node.running")).toHaveCount(0);
   await expect(

@@ -195,7 +195,6 @@ function RowNode({
           {kids.length > 0 && (
             <Kids
               kids={kids}
-              unit={node.result?.unit}
               since={node.time ?? since}
               depth={depth + 1}
               level={level}
@@ -214,13 +213,11 @@ function RowNode({
 // line that opens the earlier ones.
 function Kids({
   kids,
-  unit = "step",
   since,
   scope,
   ...props
 }: Scope & {
   kids: Branch[];
-  unit?: string;
   since?: string;
   scope: string;
 }) {
@@ -238,7 +235,7 @@ function Kids({
         >
           <ChevronRight class="row-chevron" aria-hidden="true" />
           <span class="node-headline">
-            … {plural(earlier.length, `earlier ${unit}`)}
+            … {plural(earlier.length, "earlier step")}
           </span>
         </Button>
       )}

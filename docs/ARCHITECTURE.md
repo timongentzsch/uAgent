@@ -218,7 +218,6 @@ for the terminal, the browser and process-child progress.
   descriptive labels.
 - A `run` call's row reads as its required `description`; the command shows
   when the row opens, and approvals and summaries always read the command.
-  Calls that only look group as `explore`, for display, granting nothing.
 - While the model reasons, the label is `Thinking · <line>`: the latest
   complete readable line of supplied reasoning, stripped of Markdown and
   capped at 160 bytes. Lines over 192 bytes are skipped; without a line the

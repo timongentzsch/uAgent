@@ -39,7 +39,6 @@ void RegisterTodoTool(std::vector<Tool>& tools) {
   // capability.
   todo.capabilities = 0;
   todo.category = "collaborate";
-  todo.intent = "todo";
   todo.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     const json* items = JsonArray(a, "items");
     if (items && std::ranges::count_if(*items, [](const json& item) {

@@ -93,6 +93,7 @@ settings saved for all conversations and the environment, never a folder's.
 | | `UAGENT_WEB_BIND` | `127.0.0.1`; `0.0.0.0` listens on all interfaces |
 | | `UAGENT_WEB_PUSH_CONTACT` | empty (no background push) |
 | | `UAGENT_BROWSER_DATA` | empty (no shared browser) |
+| | `UAGENT_WEB_NOTIFICATION_DETAIL` | on (background notifications name the conversation) |
 | | `UAGENT_WEB_TERMINAL` | on ([the terminal](#terminal)) |
 | | `UAGENT_WEB_TERMINAL_IDLE_MINUTES` | `60` (1–10080) |
 
@@ -146,8 +147,12 @@ draft or a pending decision.
 
 Turn them on per device under Settings → Host → Notifications. A
 notification is sent when a turn completes, a decision waits on you or a
-conversation fails. It says only that µAgent needs your attention, never a
-prompt or an answer, and opens the conversation at its decision.
+conversation fails. It names the conversation and why (needs your approval,
+has a question, ran into an error, finished), never a prompt, command or
+answer, and opens the conversation at its decision. That text shows on the
+lock screen and goes through the browser's push service, encrypted; with
+`UAGENT_WEB_NOTIFICATION_DETAIL=off` the notice says only that µAgent needs
+your attention.
 
 | Mode | When | Needs |
 | --- | --- | --- |

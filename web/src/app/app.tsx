@@ -27,6 +27,7 @@ import { nextIndex } from "../shared/listbox-nav.ts";
 import { isRunning, sessionById } from "../state/attention.ts";
 import { lockPageZoom, useCompact, useNarrowColumn } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
+import { useWakeLock } from "../shared/wake-lock.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import { stored, tabStorage } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
@@ -216,6 +217,7 @@ function App() {
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
   const running = !!session && isRunning(session, online);
+  useWakeLock(running);
   const { updateDraft, attachAnnotated, upload } = useDraftUploads({
     session,
     online,

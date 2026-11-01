@@ -30,8 +30,9 @@ class PushSender {
   bool Subscribe(const std::string& device, const json& subscription,
                  std::string& error);
   bool Revoke(const std::string& device);
+  // `detail` (title, reason) is sent inside the encrypted payload as given.
   bool Notify(const std::string& event, const std::string& session,
-              const std::string& device = {});
+              const std::string& device = {}, const json& detail = {});
 
  private:
   struct Impl;

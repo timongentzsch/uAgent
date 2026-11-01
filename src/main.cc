@@ -205,13 +205,17 @@ int WebMain([[maybe_unused]] const Options& options,
   const ConfigDescriptor& terminal = Cfg("UAGENT_WEB_TERMINAL");
   bool terminal_on = std::get<bool>(terminal.default_value);
   ParseBool(setting("UAGENT_WEB_TERMINAL"), terminal_on);
+  const ConfigDescriptor& detail = Cfg("UAGENT_WEB_NOTIFICATION_DETAIL");
+  bool notification_detail = std::get<bool>(detail.default_value);
+  ParseBool(setting("UAGENT_WEB_NOTIFICATION_DETAIL"), notification_detail);
   const ConfigDescriptor& idle = Cfg("UAGENT_WEB_TERMINAL_IDLE_MINUTES");
   int64_t idle_minutes = std::get<int64_t>(idle.default_value);
   ParseInt64(setting("UAGENT_WEB_TERMINAL_IDLE_MINUTES").c_str(), idle_minutes);
   return web::MasterMain(
       {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
-       setting("UAGENT_WEB_PUSH_CONTACT"), bind, setting("UAGENT_BROWSER_DATA"),
-       terminal_on, std::clamp(idle_minutes, idle.minimum, idle.maximum)},
+       setting("UAGENT_WEB_PUSH_CONTACT"), notification_detail, bind,
+       setting("UAGENT_BROWSER_DATA"), terminal_on,
+       std::clamp(idle_minutes, idle.minimum, idle.maximum)},
       argv);
 #else
   fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");

@@ -34,10 +34,9 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       "rgb(255, 255, 255)",
     );
     await expect(page.locator("#app")).toBeEmpty();
-    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
-      "content",
-      "#fff",
-    );
+    await expect(
+      page.locator('meta[name="theme-color"][media*="light"]'),
+    ).toHaveAttribute("content", "#fff");
     await page.evaluate(() => {
       localStorage.setItem("uagent-zoom", "100");
       document.documentElement.style.setProperty("--zoom", "1");

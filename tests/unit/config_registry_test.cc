@@ -131,6 +131,14 @@ void TestConfigRegistryContract() {
     }
   }
 
+  // A notification names its conversation unless the person turns that off,
+  // and only for the whole host: no folder decides it.
+  const ConfigDescriptor* detail =
+      FindConfigDescriptor("UAGENT_WEB_NOTIFICATION_DETAIL");
+  REQUIRE(detail != nullptr);
+  CHECK(std::get<bool>(detail->default_value));
+  CHECK(detail->scopes == kScopeUser);
+
   // Every getter returns exactly the registered default when unset.
   for (const GetterCheck& check : kIntGetters) {
     const ConfigDescriptor* descriptor =

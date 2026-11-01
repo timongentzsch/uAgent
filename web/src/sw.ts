@@ -7,7 +7,17 @@ declare const self: ServiceWorkerGlobalScope & {
 interface Attention {
   id?: string;
   session_id?: string;
+  // Present when the host's notification detail is on.
+  title?: string;
+  reason?: string;
 }
+// What raised a notice, as the host names it.
+const reasons: Record<string, string> = {
+  approval: "Needs your approval",
+  question: "Has a question for you",
+  error: "Ran into an error",
+  finished: "Finished",
+};
 import {
   precacheAndRoute,
   createHandlerBoundToURL,
@@ -96,13 +106,18 @@ async function attention(data: Attention | undefined) {
     !/^[a-f0-9]{16,64}$/.test(data.session_id || "")
   )
     return;
-  await self.registration.showNotification("µAgent needs your attention", {
-    body: "Open the app to see what the conversation needs.",
-    tag: data.id,
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
-    data: { session_id: data.session_id, decision: data.id },
-  });
+  await self.registration.showNotification(
+    data.title || "µAgent needs your attention",
+    {
+      body: data.title
+        ? (reasons[data.reason || ""] ?? "Needs your attention")
+        : "Open the app to see what the conversation needs.",
+      tag: data.id,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { session_id: data.session_id, decision: data.id },
+    },
+  );
 }
 self.addEventListener("message", (event) => {
   if (event.data?.type === "ACTIVATE_UPDATE") self.skipWaiting();

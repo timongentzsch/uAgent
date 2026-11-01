@@ -38,6 +38,7 @@
 #include "include/core/private_store.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/core/thread_annotations.h"
 #include "include/web/assets.h"
 #include "include/web/browser_viewer.h"
@@ -410,10 +411,17 @@ int Master::Run() {
       auto notices = host_.WaitForNotices();
       for (const auto& notice : notices) {
         if (!notice.attention_id.empty()) {
+          // With the setting off the title never leaves this machine.
+          json detail;
+          if (options_.notification_detail && !notice.title.empty()) {
+            detail = {{"title", Utf8Trunc(notice.title, kTitleChars)},
+                      {"reason", notice.reason}};
+          }
           std::lock_guard lock(mutex_);
           for (const auto& device : devices_) {
             if (device.Active()) {
-              push_->Notify(notice.attention_id, notice.session, device.id);
+              push_->Notify(notice.attention_id, notice.session, device.id,
+                            detail);
             }
           }
         }

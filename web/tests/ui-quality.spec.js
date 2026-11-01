@@ -296,7 +296,7 @@ test.describe("touch interaction", () => {
       ).toBeVisible();
       await scaledFields(settings, zoom);
       await search.fill("memory");
-      await expect(settings.locator('[role="switch"]').first()).toBeVisible();
+      await expect(settings.locator("input[switch]").first()).toBeVisible();
       await scaledFields(settings, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
       await page.getByRole("button", { name: "Model and effort" }).click();

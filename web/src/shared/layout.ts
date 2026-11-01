@@ -312,10 +312,13 @@ export function applyTheme(theme: string) {
       theme === "system" ? (media.matches ? "dark" : "light") : theme;
     const root = document.documentElement;
     root.dataset.theme = resolved;
-    // The browser's own bars take the palette's background.
-    document.querySelector<HTMLMetaElement>(
+    // The browser's own bars take the palette's background; on the system
+    // theme each scheme's meta keeps its own.
+    const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+    for (const meta of document.querySelectorAll<HTMLMetaElement>(
       'meta[name="theme-color"]',
-    )!.content = getComputedStyle(root).getPropertyValue("--bg").trim();
+    ))
+      meta.content = theme === "system" ? meta.dataset.bg! : bg;
   };
   apply();
   media.addEventListener("change", apply);
@@ -328,4 +331,6 @@ export function lockPageZoom() {
   const block = (event: Event) => event.preventDefault();
   for (const kind of ["gesturestart", "gesturechange"])
     document.addEventListener(kind, block, { passive: false });
+  // iOS applies :active (the press fill) only where a touch listener exists.
+  document.addEventListener("touchstart", () => {}, { passive: true });
 }

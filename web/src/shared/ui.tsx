@@ -181,7 +181,7 @@ export function Switch({
     <span class="switch">
       <Input
         type="checkbox"
-        role="switch"
+        switch
         aria-label={label}
         checked={checked}
         disabled={disabled}

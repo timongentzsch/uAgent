@@ -27,10 +27,19 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
-    "content",
-    "#fff",
-  );
+  await expect(
+    page.locator('meta[name="theme-color"][media*="light"]'),
+  ).toHaveAttribute("content", "#fff");
+  // The system theme leaves each scheme its own colour; a chosen theme
+  // sets both.
+  const darkBar = page.locator('meta[name="theme-color"][media*="dark"]');
+  await expect(darkBar).toHaveAttribute("content", "#000");
+  await page.getByLabel("Appearance").selectOption("light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(darkBar).toHaveAttribute("content", "#fff");
+  await page.getByLabel("Appearance").selectOption("system");
+  await expect(darkBar).toHaveAttribute("content", "#000");
+  await page.emulateMedia({ colorScheme: "light" });
   const composer = page.getByLabel("Message or guidance");
   const originalText = await composer.evaluate(
     (element) => getComputedStyle(element).fontSize,
@@ -598,7 +607,7 @@ test("a project overrides a setting; a draft survives other saves", async ({
     "Overridden in this folder",
   );
   // A switch applies as it flips; putting it back is the reset beside it.
-  const memory = form.getByRole("switch", { name: "Memory", exact: true });
+  const memory = form.getByRole("checkbox", { name: "Memory", exact: true });
   await expect(memory).toBeChecked();
   await memory.uncheck();
   const restore = form.getByRole("button", { name: "Reset Memory" });

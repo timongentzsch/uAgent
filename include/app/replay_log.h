@@ -33,7 +33,9 @@ struct ReplayBatch {
 };
 
 struct HostNotice {
-  std::string attention_id, session;
+  // `reason` is what raised the notice: approval, question, error or
+  // finished; `title` is the conversation's, filled in by the host.
+  std::string attention_id, session, reason, title;
   bool wake = false;
 };
 

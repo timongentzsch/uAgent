@@ -383,7 +383,7 @@ input[type="radio"] {
 .switch input[type="checkbox"] {
   width: auto;
 }
-.switch input[role="switch"] {
+.switch input[switch] {
   appearance: none;
   position: relative;
   width: var(--control-l);
@@ -396,7 +396,7 @@ input[type="radio"] {
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard);
 }
-.switch input[role="switch"]::before {
+.switch input[switch]::before {
   content: "";
   position: absolute;
   top: 1px;
@@ -406,11 +406,11 @@ input[type="radio"] {
   background: var(--knob);
   transition: translate var(--motion-fast) var(--ease-standard);
 }
-.switch input[role="switch"]:checked {
+.switch input[switch]:checked {
   background: var(--accent);
   border-color: var(--accent);
 }
-.switch input[role="switch"]:checked::before {
+.switch input[switch]:checked::before {
   translate: calc(var(--control-l) - var(--icon-l)) 0;
   background: var(--on-accent);
 }
@@ -418,6 +418,7 @@ input[type="radio"] {
    at the sides, so a label never sits off-centre in its fill. */
 button,
 .file-button {
+  transition: background var(--motion-fast) var(--ease-standard);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -454,9 +455,14 @@ select:disabled {
     background: var(--raised);
   }
 }
+/* A press fills at once and fades out on release (the fade is the base
+   transition; a press itself has none). The selectors outrank hover's. */
 button:enabled:active,
-.file-button:active {
+.file-button:active,
+.quiet:enabled:active,
+button.row:enabled:active {
   background: var(--hover);
+  transition: none;
 }
 .primary:enabled:active {
   background: var(--accent-active);
@@ -1130,15 +1136,6 @@ dialog.sidebar:not([open]) {
     opacity var(--motion-fast) var(--ease-out),
     scale var(--motion-fast) var(--ease-out);
 }
-/* A touch press sinks slightly, like a native control. */
-@media (pointer: coarse) {
-  button:enabled {
-    transition: scale var(--motion-fast) var(--ease-standard);
-  }
-  button:enabled:active {
-    scale: 0.97;
-  }
-}
 /* Every disclosure reads like a row that opens: a chevron that turns as it
    opens. */
 details > summary::before {
@@ -1597,11 +1594,11 @@ dialog.sidebar.drawer[open][data-leaving] {
     color: CanvasText;
     animation: none;
   }
-  .switch input[role="switch"]::before {
+  .switch input[switch]::before {
     forced-color-adjust: none;
     background: ButtonText;
   }
-  .switch input[role="switch"]:checked::before {
+  .switch input[switch]:checked::before {
     background: Highlight;
   }
   .primary,

@@ -23,6 +23,7 @@ using session::Pipe;
 using session::ReadFrames;
 using session::WriteFrame;
 inline constexpr size_t kWebDeviceLimit = 16;
+// Beyond this many open event streams, a new one ends the oldest.
 inline constexpr size_t kWebSseConnections = 4;
 inline constexpr size_t kWebRequestReceipts = 256;
 inline constexpr size_t kWebEventBatchBytes = KiB(64);

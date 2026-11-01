@@ -381,7 +381,7 @@ int Master::Run() {
       bool observed;
       {
         std::lock_guard lock(mutex_);
-        observed = sse_count_ > 0;
+        observed = !streams_.empty();
       }
       if (observed) {
         host_.RefreshPresence();

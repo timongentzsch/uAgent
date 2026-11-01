@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -114,7 +115,10 @@ class Master {
       SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_ UAGENT_GUARDED_BY(mutex_);
-  size_t sse_count_ UAGENT_GUARDED_BY(mutex_) = 0;
+  // The open event streams, oldest first. Each holds a flag that ends it at
+  // its next step.
+  std::list<std::shared_ptr<std::atomic<bool>>> streams_
+      UAGENT_GUARDED_BY(mutex_);
   struct Receipt {
     std::string fingerprint;
     json outcome;

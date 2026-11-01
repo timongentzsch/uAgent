@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +27,9 @@ namespace uagent::web::master {
 
 namespace {
 constexpr size_t kAssetMetadataBytes = KiB(1);
+// A stream with nothing to send looks again this often, which is how soon it
+// notices its page has gone; it writes a heartbeat every kReplayWait.
+constexpr auto kReplayPoll = std::chrono::seconds(1);
 constexpr auto kReplayWait = std::chrono::seconds(15);
 // Search across every conversation lists a few rows of each; within one, a
 // find bar steps through all of them.
@@ -81,14 +85,17 @@ void Master::Search(const Request& request, Response& response) {
 
 void Master::Events(const Request& request, Response& response) {
   std::string device;
+  // A page that went away without closing still holds its stream until the
+  // next step: the newest page takes the place of the oldest.
+  auto replaced = std::make_shared<std::atomic<bool>>(false);
   {
     std::lock_guard lock(mutex_);
-    if (sse_count_ >= kWebSseConnections) {
-      Error(response, "event connection limit reached", 429);
-      return;
+    if (streams_.size() >= kWebSseConnections) {
+      streams_.front()->store(true);
+      streams_.pop_front();
     }
     device = DeviceId(request);
-    ++sse_count_;
+    streams_.push_back(replaced);
   }
   std::string cursor = request.get_header_value("Last-Event-ID");
   if (cursor.empty()) {
@@ -106,8 +113,9 @@ void Master::Events(const Request& request, Response& response) {
   // replay never holds up another client's request.
   response.set_chunked_content_provider(
       "text/event-stream",
-      [this, device, next, valid, replay_watermark, ready_sent = false](
-          size_t, httplib::DataSink& sink) mutable {
+      [this, device, next, valid, replay_watermark, replaced,
+       last_write = Clock::now(),
+       ready_sent = false](size_t, httplib::DataSink& sink) mutable {
         auto authorized = [&] {
           std::lock_guard guard(mutex_);
           return std::any_of(devices_.begin(), devices_.end(),
@@ -115,14 +123,14 @@ void Master::Events(const Request& request, Response& response) {
                                return entry.id == device && entry.Active();
                              });
         };
-        if (stopping_ || !authorized()) {
+        if (stopping_ || replaced->load() || !authorized()) {
           return false;
         }
         // Caught up: wait for news, then read. A reader still replaying
         // reads the next batch at once.
         if (ready_sent) {
-          host_.WaitForReplay(next, kReplayWait);
-          if (stopping_ || !authorized()) return false;
+          host_.WaitForReplay(next, kReplayPoll);
+          if (stopping_ || replaced->load() || !authorized()) return false;
         }
         auto replay = host_.ReadReplay(
             next, valid, ready_sent ? host_.Cursor() : replay_watermark,
@@ -150,13 +158,18 @@ void Master::Events(const Request& request, Response& response) {
           ready_sent = true;
         }
         if (batch.empty()) {
+          // Nothing to say yet: the next pass looks again.
+          if (Clock::now() - last_write < kReplayWait) {
+            return true;
+          }
           batch = ": heartbeat\n\n";
         }
+        last_write = Clock::now();
         return sink.is_writable() && sink.write(batch.data(), batch.size());
       },
-      [this](bool) {
+      [this, replaced](bool) {
         std::lock_guard guard(mutex_);
-        --sse_count_;
+        streams_.remove(replaced);
       });
 }
 

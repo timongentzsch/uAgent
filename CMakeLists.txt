@@ -533,7 +533,7 @@ install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
 # installed documentation tree.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
 if(UAGENT_WEB)
-  install(FILES web/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+  install(FILES web/dist/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
   install(FILES third_party/cpp-httplib/LICENSE
           DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME cpp-httplib.txt)
 endif()

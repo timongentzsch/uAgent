@@ -24,7 +24,7 @@ std::string Set(const std::string& folder, const std::string& name,
 
 }  // namespace
 
-void TestSettingsStore() {
+TEST_CASE(TestSettingsStore) {
   TestWorkspace test("settings-store");
   const std::string folder = test.workspace.string();
 

@@ -21,7 +21,7 @@
 
 namespace uagent {
 
-void TestOpenRouterServerSearch() {
+TEST_CASE(TestOpenRouterServerSearch) {
   RuntimeConfig config;
   Api api(config);
   api.base_url = "https://openrouter.ai/api/v1";

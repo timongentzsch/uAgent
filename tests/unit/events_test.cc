@@ -28,7 +28,7 @@
 
 namespace uagent {
 
-void TestTurnStatus() {
+TEST_CASE(TestTurnStatus) {
   TurnStatus projection;
   auto emit = [&](EventId id, json data = json::object()) {
     if (!data.contains("turn")) data["turn"] = 1;
@@ -98,7 +98,7 @@ void TestTurnStatus() {
         kStatusLabelBytes - 1);
 }
 
-void TestObservabilityEvents() {
+TEST_CASE(TestObservabilityEvents) {
   json provenance = BuildProvenanceJson();
   CHECK(JsonValue(provenance, "format", 0) == 1);
   CHECK(provenance["binary_version"] == kVersion);

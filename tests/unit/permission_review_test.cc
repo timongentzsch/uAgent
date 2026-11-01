@@ -51,7 +51,7 @@ Endpoint Serving(const std::string& name, const std::string& key) {
 
 }  // namespace
 
-void TestPermissionReview() {
+TEST_CASE(TestPermissionReview) {
   // The questions are the ones tests/reviewer_eval measures the bars with.
   {
     std::ifstream file(std::string(UAGENT_TEST_SOURCE_DIR) +

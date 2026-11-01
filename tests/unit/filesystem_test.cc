@@ -25,7 +25,7 @@
 
 namespace uagent {
 
-void TestFileTools() {
+TEST_CASE(TestFileTools) {
   namespace fs = std::filesystem;
   auto contents = [](const fs::path& path) {
     std::ifstream input(path, std::ios::binary);
@@ -612,7 +612,7 @@ void TestFileTools() {
 // Two changes to one file in a turn keep the bytes from before the first,
 // and the journal survives a reopen; an undo restores them only while the
 // file still holds what the turn left.
-void TestEditJournal() {
+TEST_CASE(TestEditJournal) {
   auto write = [](const std::string& path, const std::string& text) {
     std::string error;
     REQUIRE(AtomicWriteFile(path, text, kPrivateFileMode, false, error));
@@ -678,7 +678,7 @@ void TestEditJournal() {
   CHECK((info.st_mode & 07777) == kPrivateFileMode);
 }
 
-void TestTerminalSafety() {
+TEST_CASE(TestTerminalSafety) {
   // Colour is a separate question from terminal-ness: an explicit opt-out
   // wins over an explicit opt-in, and both win over the isatty answer.
   const std::string prior_no_color = EnvStr("NO_COLOR");

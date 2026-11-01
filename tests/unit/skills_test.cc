@@ -27,7 +27,7 @@
 
 namespace uagent {
 
-void TestSkillDiscovery() {
+TEST_CASE(TestSkillDiscovery) {
   namespace fs = std::filesystem;
   {
     ScopedEnv bundled("UAGENT_SKILL_PATH",
@@ -306,7 +306,7 @@ void TestSkillDiscovery() {
 
 namespace uagent {
 
-void TestImportFromOtherAgents() {
+TEST_CASE(TestImportFromOtherAgents) {
   namespace fs = std::filesystem;
   // Tool references change; prose that happens to use the same words does not.
   const std::string rewritten = RewriteToolReferences(
@@ -422,7 +422,7 @@ std::string BlockedReason(const json& listed, const std::string& name) {
 }
 }  // namespace
 
-void TestImportBoundaries() {
+TEST_CASE(TestImportBoundaries) {
   namespace fs = std::filesystem;
   TestWorkspace test("import-bounds");
   const fs::path skills = test.home / ".claude/skills";
@@ -530,7 +530,7 @@ void TestImportBoundaries() {
 
 namespace uagent {
 
-void TestImportTruncation() {
+TEST_CASE(TestImportTruncation) {
   namespace fs = std::filesystem;
   TestWorkspace test("import-truncation");
   const fs::path skills = test.home / ".claude/skills";

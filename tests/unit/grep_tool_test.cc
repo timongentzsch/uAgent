@@ -20,7 +20,7 @@
 
 namespace uagent {
 
-void TestGrepTool() {
+TEST_CASE(TestGrepTool) {
   namespace fs = std::filesystem;
   fs::path root =
       fs::temp_directory_path() /

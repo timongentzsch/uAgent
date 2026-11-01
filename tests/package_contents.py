@@ -52,6 +52,8 @@ def main():
         fail("bin/uagent is missing")
 
     docs = f"{root}/share/doc/uagent/"
+    if f"{docs}THIRD_PARTY_NOTICES.md" not in files:
+        fail("frontend licence notices are missing")
     for name in sorted(guide.stem for guide in (source / "docs").glob("*.md")):
         if f"{docs}docs/{name}.md" not in files:
             fail(f"canonical guide docs/{name}.md is missing")

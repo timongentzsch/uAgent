@@ -21,7 +21,7 @@
 
 namespace uagent {
 
-void TestPythonTool() {
+TEST_CASE(TestPythonTool) {
   namespace fs = std::filesystem;
   CHECK(!PythonScriptHasDependencies(
       "# /// script\n# dependencies = [\n# ]\n# ///\n"));

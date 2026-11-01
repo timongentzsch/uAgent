@@ -225,7 +225,7 @@ bool PressOnDisplay(const std::string& socket,
     bytes.assign(count, '\0');
     for (size_t have = 0; have < count;) {
       pollfd ready{rfb.Get(), POLLIN, 0};
-      if (poll(&ready, 1, kRfbIoMs) <= 0) {
+      if (PollRetry(&ready, 1, kRfbIoMs) <= 0) {
         return false;
       }
       const ssize_t n = read(rfb.Get(), bytes.data() + have, count - have);

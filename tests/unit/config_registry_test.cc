@@ -102,7 +102,7 @@ std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
 
 }  // namespace
 
-void TestConfigRegistryContract() {
+TEST_CASE(TestConfigRegistryContract) {
   // Uniqueness: a duplicated name would make lookup order decide behaviour.
   std::set<std::string_view> names;
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
@@ -214,7 +214,7 @@ void TestConfigRegistryContract() {
 
 // The bug this pins: before strict parsing, every spelling except "0" read as
 // true, so UAGENT_MEMORY=false switched memory *on*.
-void TestStrictBooleanSettings() {
+TEST_CASE(TestStrictBooleanSettings) {
   bool value = false;
   for (const char* spelling : {"1", "true", "TRUE", "Yes", "on"}) {
     value = false;
@@ -260,7 +260,7 @@ void TestStrictBooleanSettings() {
   CHECK(RuntimeConfig::FromValues({}).memory_enabled);
 }
 
-void TestSelfDescriptionSchemas() {
+TEST_CASE(TestSelfDescriptionSchemas) {
   json settings = ConfigSchemaJson();
   CHECK(settings.size() == ConfigRegistry().size());
   for (const json& setting : settings) {
@@ -300,7 +300,7 @@ void TestSelfDescriptionSchemas() {
 }
 
 // A mistyped command names its nearest neighbour, never a far-off guess.
-void TestNearestSlashCommand() {
+TEST_CASE(TestNearestSlashCommand) {
   CHECK(NearestSlashCommand("/modle") == "/model");
   CHECK(NearestSlashCommand("/modle gpt-5") == "/model");
   CHECK(NearestSlashCommand("/halp") == "/help");

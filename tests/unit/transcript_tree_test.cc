@@ -264,7 +264,7 @@ const json kRead = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
 // The golden turns: each recorded as an agent records it, read back as a
 // saved page, and folded live from the same events into the same nodes.
 
-void TestGoldenPlainAnswer() {
+TEST_CASE(TestGoldenPlainAnswer) {
   Recorder turn;
   turn.Say("hi");
   turn.Reply("r-1-1-1", "Hello.");
@@ -283,7 +283,7 @@ void TestGoldenPlainAnswer() {
   CHECK(turn.Watched() == plain);
 }
 
-void TestGoldenChainOfCalls() {
+TEST_CASE(TestGoldenChainOfCalls) {
   Recorder turn;
   turn.Say("fix it");
   turn.Reply("r-1-1-1", "", "look first",
@@ -366,7 +366,7 @@ void TestGoldenChainOfCalls() {
         "0 in · 0 out · 2m 4s\n");
 }
 
-void TestGoldenFailedCalls() {
+TEST_CASE(TestGoldenFailedCalls) {
   Recorder turn;
   turn.Say("try");
   turn.Reply("r-1-1-1", "", "",
@@ -435,7 +435,7 @@ void TestGoldenFailedCalls() {
                               "0 in · 0 out · 3.0s\n");
 }
 
-void TestGoldenFileHandedOver() {
+TEST_CASE(TestGoldenFileHandedOver) {
   Recorder turn;
   turn.Say("make a report");
   turn.Reply("r-1-1-1", "", "", {{"s", "share"}});
@@ -484,7 +484,7 @@ void TestGoldenFileHandedOver() {
             "  · Worked 1 step · 2.0s\n0 in · 0 out · 2.0s\n");
 }
 
-void TestGoldenBlankReplyAndMcpCall() {
+TEST_CASE(TestGoldenBlankReplyAndMcpCall) {
   Recorder turn;
   turn.Say("look it up");
   // A reply that holds only blank text is no node, live or saved.
@@ -517,7 +517,7 @@ void TestGoldenBlankReplyAndMcpCall() {
   CHECK(turn.Watched() == "> look it up\n" + call + work + footer);
 }
 
-void TestGoldenRunningTurn() {
+TEST_CASE(TestGoldenRunningTurn) {
   Recorder turn;
   turn.Say("build");
   turn.Reply("r-1-1-1", "Building now.", "", {{"b", "run"}});
@@ -543,7 +543,7 @@ void TestGoldenRunningTurn() {
   CHECK(turn.Watched() == "> build\nuagent\nBuilding now.");
 }
 
-void TestGoldenSteeredTurn() {
+TEST_CASE(TestGoldenSteeredTurn) {
   Recorder turn;
   turn.Say("check the disk");
   turn.Reply("r-1-1-1", "", "", {{"d", "run"}});
@@ -606,7 +606,7 @@ void TestGoldenSteeredTurn() {
         "0 in · 0 out · 59.0s\n");
 }
 
-void TestGoldenPagesEndOnWholeTurns() {
+TEST_CASE(TestGoldenPagesEndOnWholeTurns) {
   Recorder turns;
   const std::string text(3000, 'x');
   for (int index = 0; index < 60; ++index) {
@@ -634,7 +634,7 @@ void TestGoldenPagesEndOnWholeTurns() {
 }
 
 // A compaction says what it kept and how long it took.
-void TestCompactionNoticeSaysWhatWent() {
+TEST_CASE(TestCompactionNoticeSaysWhatWent) {
   const json node = EntryNode({{"kind", "compaction"},
                                {"id", "a-1"},
                                {"compaction",

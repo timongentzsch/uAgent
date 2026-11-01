@@ -24,7 +24,7 @@ bool IsDerivedDiagnosticKey(const std::string& key) {
   return key == "auto_compact_pct" || key == "auto_compact_tokens";
 }
 
-void TestRuntimeConfigCoherence() {
+TEST_CASE(TestRuntimeConfigCoherence) {
   const RuntimeConfig config = RuntimeConfig::FromEnvironment();
   const json diagnostic = config.DiagnosticJson();
   REQUIRE(diagnostic.is_object());

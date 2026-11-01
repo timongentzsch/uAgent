@@ -175,6 +175,8 @@ class ScopedEnv {
 };
 
 extern int failures;
+// Adds a test to the ones the runner goes through; TEST_CASE calls it.
+bool RegisterTest(const char* name, void (*run)()) noexcept;
 // Records a failure and returns whether the condition held; the run continues
 // so one execution reports every failure rather than the first.
 bool Check(bool condition, const char* expression, const char* file, int line);
@@ -204,6 +206,14 @@ inline std::string SaveSettings(const SettingValues& values,
 }
 
 }  // namespace uagent
+
+// Defines a test and registers it. A source file listed for the build is all a
+// test needs, so a feature left out of a build takes its tests with it.
+#define TEST_CASE(name)                                    \
+  void name();                                             \
+  [[maybe_unused]] static const bool k##name##Registered = \
+      ::uagent::RegisterTest(#name, &(name));              \
+  void name()
 
 #define CHECK(expression) \
   ::uagent::Check((expression), #expression, __FILE__, __LINE__)

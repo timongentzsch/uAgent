@@ -42,7 +42,7 @@ SandboxInputs BaseInputs() {
 
 }  // namespace
 
-void TestSandboxPolicy() {
+TEST_CASE(TestSandboxPolicy) {
   SandboxPolicyResult base = BuildSandboxPolicy(BaseInputs());
   CHECK(HasRoot(base.policy, "/home/u/work"));
   CHECK(HasRoot(base.policy, "/private/var/folders/ab/T"));
@@ -152,7 +152,7 @@ void TestSandboxPolicy() {
   CHECK(!SandboxPathWithin("/de", "/dev"));
 }
 
-void TestSandboxLevels() {
+TEST_CASE(TestSandboxLevels) {
   SandboxPreset preset = SandboxPreset::kOff;
   for (const auto& [text, expected] :
        {std::pair<const char*, SandboxPreset>{"readonly",
@@ -245,7 +245,7 @@ void TestSandboxLevels() {
 // Yolo raises the default level to relaxed while it holds, and only that
 // level; plan mode lowers it to readonly; switching back restores the default
 // level's own status.
-void TestSandboxFollowsApprovalMode() {
+TEST_CASE(TestSandboxFollowsApprovalMode) {
   CHECK(YoloSandboxPreset(SandboxPreset::kDefault) == SandboxPreset::kRelaxed);
   for (SandboxPreset kept : {SandboxPreset::kReadOnly, SandboxPreset::kRelaxed,
                              SandboxPreset::kOff}) {
@@ -299,7 +299,7 @@ void TestSandboxFollowsApprovalMode() {
 }
 
 // Where Landlock cannot deny a write, it is undone and said.
-void TestSandboxWatch() {
+TEST_CASE(TestSandboxWatch) {
   namespace fs = std::filesystem;
   TestWorkspace test("watch");
   const fs::path hooks = test.workspace / ".git" / "hooks";
@@ -339,7 +339,7 @@ void TestSandboxWatch() {
   CHECK(SandboxRestoreNote(nullptr, workspace).empty());
 }
 
-void TestSandboxRendering() {
+TEST_CASE(TestSandboxRendering) {
   SandboxPolicy policy;
   policy.writable_roots = {"/private/tmp", "/w"};
   policy.denied_writes = {"/w/.uagent"};
@@ -401,7 +401,7 @@ void TestSandboxRendering() {
 // The person's own folders, the home folder's visible entries, close to
 // reads, except the workspace and what commands use in them; dot-folders and
 // everything outside the home folder stay open.
-void TestSandboxReads() {
+TEST_CASE(TestSandboxReads) {
   using Paths = std::vector<std::string>;
   SandboxInputs inputs = BaseInputs();
   inputs.workspace = "/home/u/Software/work";
@@ -470,7 +470,7 @@ void TestSandboxReads() {
   CHECK(BuildSandboxPolicy(inputs).policy.unreadable.empty());
 }
 
-void TestSandboxTrampolineArgs() {
+TEST_CASE(TestSandboxTrampolineArgs) {
   SandboxPolicy policy;
   policy.writable_roots = {"/w", "/private/tmp"};
   policy.denied_writes = {"/w/.mcp.json"};
@@ -534,7 +534,7 @@ void TestSandboxTrampolineArgs() {
 }
 
 // What is hidden, canonical, only while it exists.
-void TestSandboxHiddenPaths() {
+TEST_CASE(TestSandboxHiddenPaths) {
   namespace fs = std::filesystem;
   TestWorkspace test("hidden");
   const fs::path home = fs::canonical(test.home);
@@ -582,7 +582,7 @@ void TestSandboxHiddenPaths() {
   CHECK(hidden.size() == 6);
 }
 
-void TestSandboxProbe() {
+TEST_CASE(TestSandboxProbe) {
   // The probe reads the host, so what it reports is not assertable here -- what
   // is, is that it answers at all and answers the same way twice. A probe that
   // re-read the host per spawn would be both slower and free to change its mind

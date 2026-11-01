@@ -28,7 +28,7 @@ WireStreamDelta DecodeChatEvent(std::string_view data, ChatResult& result,
 }
 }  // namespace
 
-void TestReasoningPartReconciliation() {
+TEST_CASE(TestReasoningPartReconciliation) {
   ChatResult result;
   StreamCtx stream;
   stream.res = &result;
@@ -83,7 +83,7 @@ void TestReasoningPartReconciliation() {
   CHECK(router.reasoning_details[0]["summary"] == "Check code");
 }
 
-void TestSseChunkPartitions() {
+TEST_CASE(TestSseChunkPartitions) {
   auto event = [](const json& value, const char* ending = "\n\n") {
     return "data: " + value.dump() + ending;
   };
@@ -489,7 +489,7 @@ void TestSseChunkPartitions() {
   CHECK(parallel[1].args == "{\"command\":\"ls\"}");
 }
 
-void TestChatCompletionAnnotationDeduplication() {
+TEST_CASE(TestChatCompletionAnnotationDeduplication) {
   const json annotation = {
       {"type", "url_citation"},
       {"url_citation", {{"url", "https://example.com/source"}}}};
@@ -513,7 +513,7 @@ void TestChatCompletionAnnotationDeduplication() {
 
 // OpenRouter's chunks, trimmed: each names the upstream that served the call,
 // and the first one that does is kept.
-void TestChatCompletionServedBy() {
+TEST_CASE(TestChatCompletionServedBy) {
   ChatResult result;
   std::map<int, ToolCall> calls;
   for (const char* chunk :
@@ -553,7 +553,7 @@ void TestChatCompletionServedBy() {
   CHECK(responses.served_by.empty() && messages.served_by.empty());
 }
 
-void TestSseFraming() {
+TEST_CASE(TestSseFraming) {
   const std::string wire =
       ": keepalive\r\n"
       "id: 7\r\n"
@@ -594,7 +594,7 @@ void TestSseFraming() {
   CHECK(!bounded.Error().empty());
 }
 
-void TestActivityValidation() {
+TEST_CASE(TestActivityValidation) {
   namespace fs = std::filesystem;
   ActivitySupervisor supervisor;
   auto add_job = [&](Activity job) {

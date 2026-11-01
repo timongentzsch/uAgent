@@ -45,7 +45,7 @@ void Merge(json& view, const json& node) {
 
 // Search finds what a reader sees, archived rows included, and nothing the
 // view hides.
-void TestTranscriptSearch() {
+TEST_CASE(TestTranscriptSearch) {
   Conversation conversation;
   conversation.Reset(
       json::array({{{"role", "system"}, {"content", "the needle rules"}}}),
@@ -115,7 +115,7 @@ void TestTranscriptSearch() {
   }
 }
 
-void TestSharedArchiveSnapshots() {
+TEST_CASE(TestSharedArchiveSnapshots) {
   Conversation conversation;
   const json baseline = json::array({{{"role", "system"}, {"content", "sys"}}});
   conversation.Reset(baseline, {MessageKind::kSystem});
@@ -147,7 +147,7 @@ void TestSharedArchiveSnapshots() {
   CHECK(restored == conversation.SharedArchive());
 }
 
-void TestSideArchiveForks() {
+TEST_CASE(TestSideArchiveForks) {
   TestWorkspace workspace("side-archive");
   const std::string source = (workspace.workspace / "parent.json").string();
   SessionRecord record;
@@ -188,7 +188,7 @@ void TestSideArchiveForks() {
   CHECK(child.record->state.archive == record.state.archive);
 }
 
-void TestConversation() {
+TEST_CASE(TestConversation) {
   Conversation attachments;
   attachments.Push(
       {{"role", "user"},
@@ -497,7 +497,7 @@ void TestConversation() {
   CHECK(JsonDump(projection).size() < size_t{384} * 1024);
 }
 
-void TestSavedTranscriptIndex() {
+TEST_CASE(TestSavedTranscriptIndex) {
   TestWorkspace workspace("saved-transcript");
   Conversation conversation;
   conversation.Reset(
@@ -587,7 +587,7 @@ void TestSavedTranscriptIndex() {
 
 // A save of the bytes already written, to a file nobody touched, writes
 // nothing; a changed record or a file someone else rewrote is written.
-void TestSaveSkipsUnchangedFile() {
+TEST_CASE(TestSaveSkipsUnchangedFile) {
   TestWorkspace workspace("save-unchanged");
   const std::string path = (workspace.workspace / "session.json").string();
   SessionRecord record;
@@ -614,7 +614,7 @@ void TestSaveSkipsUnchangedFile() {
   CHECK(std::filesystem::exists(path));
 }
 
-void TestCompactionKeepsDisplayIdentity() {
+TEST_CASE(TestCompactionKeepsDisplayIdentity) {
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});
@@ -800,7 +800,7 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(replayed["view"]["nodes"][0]["body"]["text"] == "haha");
 }
 
-void TestLateRetainedBlockInsertsInSequenceOrder() {
+TEST_CASE(TestLateRetainedBlockInsertsInSequenceOrder) {
   // A retained completion arriving after newer rows (replay, pre-facts
   // emit) lands in sequence position, never appended after them.
   json view = {{"nodes", json::array()}};
@@ -826,7 +826,7 @@ void TestLateRetainedBlockInsertsInSequenceOrder() {
   CHECK(view["nodes"].back()["id"] == "t-b");
 }
 
-void TestHistoryReplaySkipsBareHeader() {
+TEST_CASE(TestHistoryReplaySkipsBareHeader) {
   Conversation replay;
   replay.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                {MessageKind::kSystem});
@@ -865,7 +865,7 @@ void TestHistoryReplaySkipsBareHeader() {
   CHECK(voiced.find("hello") != std::string::npos);
 }
 
-void TestToolResultHealsMissingMetadata() {
+TEST_CASE(TestToolResultHealsMissingMetadata) {
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});
@@ -922,7 +922,7 @@ void TestToolResultHealsMissingMetadata() {
 // Delivery receipts dedupe the per-request attachment notice. Display facts
 // are evictable, so the announcement record lives beside them: the first
 // delivery and later delivery changes announce, repeats stay quiet.
-void TestAttachmentDeliveryAnnouncements() {
+TEST_CASE(TestAttachmentDeliveryAnnouncements) {
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});
@@ -977,7 +977,7 @@ void TestAttachmentDeliveryAnnouncements() {
 // first -- exactly where attachment delivery receipts live -- which made the
 // request path re-print their notice after every tool result. Largest-first
 // eviction drops fat tool rows instead and keeps tiny control receipts.
-void TestDisplayFactEvictionKeepsSmallReceipts() {
+TEST_CASE(TestDisplayFactEvictionKeepsSmallReceipts) {
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});
@@ -1038,7 +1038,7 @@ void TestDisplayFactEvictionKeepsSmallReceipts() {
 // plus one gallery row per recorded delivery -- the web rendering contract.
 // A user literally typing the trailer without an attachment keeps it
 // verbatim.
-void TestAttachmentHistoryRendering() {
+TEST_CASE(TestAttachmentHistoryRendering) {
   CHECK(StripAttachedTrailer("plain prompt") == "plain prompt");
   CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\"") ==
         "look");
@@ -1105,7 +1105,7 @@ void TestAttachmentHistoryRendering() {
 
 // P1: fork-at-turn truncates message-exclusively at the Nth user turn and
 // stamps lineage; whole-session forks keep the legacy "Fork of" title.
-void TestForkAtTurnAndLineage() {
+TEST_CASE(TestForkAtTurnAndLineage) {
   TestWorkspace workspace("fork-at-turn");
   SessionRecord record;
   record.metadata.cwd = CanonicalCwd();
@@ -1183,7 +1183,7 @@ void TestForkAtTurnAndLineage() {
 // are not user messages: numbering, /share and forking before a message all
 // count only what the person wrote. /share never leaks system or internal
 // messages.
-void TestForkAtMessageAndShare() {
+TEST_CASE(TestForkAtMessageAndShare) {
   TestWorkspace workspace("fork-share");
   SessionRecord record;
   record.metadata.cwd = CanonicalCwd();
@@ -1268,7 +1268,7 @@ void TestForkAtMessageAndShare() {
 
 // P5: prefix switching resolves unique file-name/title matches and refuses
 // to guess on ambiguity, absence, or empty input.
-void TestSessionPrefixMatch() {
+TEST_CASE(TestSessionPrefixMatch) {
   TestWorkspace workspace("session-prefix");
   const std::string dir =
       UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd());

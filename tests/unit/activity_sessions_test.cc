@@ -100,7 +100,7 @@ std::vector<std::string> CompletionNotes(ActivitySupervisor& supervisor) {
 
 }  // namespace
 
-void TestSignalAndFileWatch() {
+TEST_CASE(TestSignalAndFileWatch) {
   RequestAbort();
   ClearAbort();
   pollfd stale_abort = {AbortWakeFd(), POLLIN, 0};
@@ -318,7 +318,7 @@ void TestSignalAndFileWatch() {
   std::filesystem::remove_all(project_root, remove_error);
 }
 
-void TestActivityBufferAndAdmission() {
+TEST_CASE(TestActivityBufferAndAdmission) {
   HeadTailBuffer buffer(10);
   buffer.Push("abcdefghij");
   buffer.Push("klmnop");
@@ -458,7 +458,7 @@ void TestActivityBufferAndAdmission() {
   CHECK(retained.Find(retained_ids.back()).has_value());
 }
 
-void TestRootCommands() {
+TEST_CASE(TestRootCommands) {
   CHECK(RootCommand("echo 'a b'", "", true, "N1") ==
         "sudo -k -S -p N1 -- bash -o pipefail -c 'echo '\\''a b'\\'''");
   CHECK(RootCommand("ls", "me@box", true, "N1") ==
@@ -590,7 +590,7 @@ void TestRootCommands() {
   std::filesystem::remove_all(bin);
 }
 
-void TestActivityStateGraph() {
+TEST_CASE(TestActivityStateGraph) {
   ActivitySession session;
   {
     std::lock_guard<std::mutex> lock(session.mutex);
@@ -633,7 +633,7 @@ void TestActivityStateGraph() {
   CHECK(long_row.value("label", "").size() < long_command.size());
 }
 
-void TestActivitySessions() {
+TEST_CASE(TestActivitySessions) {
   // Preserve producer failures through output filters in both pipes and PTYs.
   ActivitySupervisor pipeline;
   for (bool tty : {false, true}) {
@@ -789,7 +789,7 @@ void TestActivitySessions() {
   }
 }
 
-void TestActivityDescriptorAndInputPolicy() {
+TEST_CASE(TestActivityDescriptorAndInputPolicy) {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
 
@@ -858,7 +858,7 @@ void TestActivityDescriptorAndInputPolicy() {
   }
 }
 
-void TestActivityWaitAndDelivery() {
+TEST_CASE(TestActivityWaitAndDelivery) {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
 
@@ -1206,7 +1206,7 @@ void TestActivityWaitAndDelivery() {
   }
 }
 
-void TestDetachedActivityOwnership() {
+TEST_CASE(TestDetachedActivityOwnership) {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
   TestWorkspace workspace("detached-ownership");
@@ -1368,7 +1368,7 @@ void TestDetachedActivityOwnership() {
 // A killed command's grandchildren become zombies of whoever adopts them, and
 // an adopter that reaps late (a container's init, a CI agent) must not make
 // the stop of that command fail: nothing in such a group can run any more.
-void TestAGroupOfOnlyZombiesIsFinished() {
+TEST_CASE(TestAGroupOfOnlyZombiesIsFinished) {
   // A process name may hold parentheses and newlines; the fields follow the
   // last ')'. A record that does not fit says nothing.
   std::optional<ProcStat> plain = ParseProcStat("12 (sleep) Z 1 34 34 0\n");
@@ -1431,7 +1431,7 @@ void TestAGroupOfOnlyZombiesIsFinished() {
   CHECK(WaitPid(zombie, &status) == zombie);
 }
 
-void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
+TEST_CASE(TestThreadWorktreesGoOnlyWhenNothingIsLost) {
   TestWorkspace workspace("thread-worktree");
   const std::string project = CanonicalCwd();
   auto git = [](const std::string& dir, std::vector<std::string> args) {
@@ -1457,7 +1457,7 @@ void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
 }
 
 // /overview: the folder, its conversations and what needs you, as text.
-void TestFolderOverviewText() {
+TEST_CASE(TestFolderOverviewText) {
   TestWorkspace workspace("folder-overview");
   const std::string folder = CanonicalCwd();
   const std::string text = FolderOverviewText(folder);
@@ -1466,7 +1466,7 @@ void TestFolderOverviewText() {
   CHECK(text.ends_with("\nNothing needs you.\n"));
 }
 
-void TestChildSessionsStayOutOfTheCatalogue() {
+TEST_CASE(TestChildSessionsStayOutOfTheCatalogue) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("child-sessions");
   const fs::path dir =
@@ -1508,7 +1508,7 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   }
 }
 
-void TestMailbox() {
+TEST_CASE(TestMailbox) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("mailbox");
   auto note = [](const std::string& from, const std::string& text) {
@@ -1605,7 +1605,7 @@ void TestMailbox() {
   CHECK(TakeMail("../escape", all).empty());
 }
 
-void TestSessionMail() {
+TEST_CASE(TestSessionMail) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("session-mail");
   const fs::path dir = workspace.workspace;

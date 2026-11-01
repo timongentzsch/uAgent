@@ -258,7 +258,7 @@ Master, scheduled and manual runs always run them.
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh` (clang-format, cpplint, Ruff); `ctest -L source` |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
-| `web` | Biome format check and lint, Node tests, bundle, notices and size checks, a release host with Web Push |
+| `web` | Biome format check and lint, Node tests, bundle and size check, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |
 | `image` | On master and when `deploy/`, `.dockerignore` or a workflow changes: builds the container image for x86_64 and starts it under compose's seccomp profile |
 | `CI result` | fails if any required job failed or was cancelled |

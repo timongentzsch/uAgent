@@ -69,7 +69,7 @@ std::string RenderMarkdownColumns(const std::string& markdown,
 // A table header is reprinted by erasing the rendered rows it occupies:
 // `**bold**` is eight columns of source and four on screen, and counting the
 // source ate a line of transcript whenever that crossed a wrap boundary.
-void TestTableRetroErasesRenderedRows() {
+TEST_CASE(TestTableRetroErasesRenderedRows) {
   // 19 columns of source, 15 rendered: at 16 columns the source wraps and the
   // rendered line does not.
   const std::string table = "**aaaaaaaaaa** | bb\n---|---\n";
@@ -84,7 +84,7 @@ void TestTableRetroErasesRenderedRows() {
   CHECK(output.find("bb") != std::string::npos);
 }
 
-void TestInteractiveTranscriptFraming() {
+TEST_CASE(TestInteractiveTranscriptFraming) {
   std::string wire = CaptureStdout(
       [] {
         bool prior = PersistentComposer();
@@ -140,7 +140,7 @@ void TestInteractiveTranscriptFraming() {
 // Markup from other providers is recognized so a malformed response can be
 // suppressed and retried, never so it can be executed. uAgent runs structured
 // provider tool calls only.
-void TestForeignToolMarkup() {
+TEST_CASE(TestForeignToolMarkup) {
   CHECK(ContainsForeignToolCallMarkup(
       "<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"run\">"));
   CHECK(ContainsForeignToolCallMarkup(
@@ -167,7 +167,7 @@ void TestForeignToolMarkup() {
         LeadingToolMarkup::kProse);
 }
 
-void TestToolResults() {
+TEST_CASE(TestToolResults) {
   CHECK(RetryableHttpStatus(408));
   CHECK(RetryableHttpStatus(409));
   CHECK(RetryableHttpStatus(429));
@@ -278,7 +278,7 @@ void TestToolResults() {
         "https://example.com/source\nExample\ngrounded");
 }
 
-void TestRegistries() {
+TEST_CASE(TestRegistries) {
   // The prompt's wording may change; its safety rules and the instruction
   // files it names may not. The budget keeps it from growing.
   for (const char* rule :
@@ -365,7 +365,7 @@ void TestRegistries() {
   CHECK(CapabilityPrompt({}).empty());
 }
 
-void TestCommandAndDisplayRegistries() {
+TEST_CASE(TestCommandAndDisplayRegistries) {
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
   CHECK(command.argument == "vendor/model");
@@ -465,7 +465,7 @@ void TestCommandAndDisplayRegistries() {
   fs::remove_all(bin, cleanup_error);
 }
 
-void TestModelCatalogParsing() {
+TEST_CASE(TestModelCatalogParsing) {
   const auto anthropic = ParseModels(
       {{"data",
         json::array({{{"id", "test"},
@@ -530,7 +530,7 @@ void TestModelCatalogParsing() {
             {{"context_length", 2048}, {"max_model_len", 8192}}) == 2048);
 }
 
-void TestModelQueryMatching() {
+TEST_CASE(TestModelQueryMatching) {
   const std::string haystack =
       "openrouter/meta/muse-spark-1.3-contributor Meta: Muse Spark 1.3 "
       "Contributor";
@@ -544,7 +544,7 @@ void TestModelQueryMatching() {
   CHECK(MatchesModelQuery(haystack, ""));
 }
 
-void TestOptions() {
+TEST_CASE(TestOptions) {
   char executable[] = "uagent";
   char yolo[] = "--yolo";
   char prompt_flag[] = "-p";
@@ -651,7 +651,7 @@ void TestOptions() {
   CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
 }
 
-void TestMarkdownBlankLines() {
+TEST_CASE(TestMarkdownBlankLines) {
   // Models routinely end a message with a run of newlines. Each one is a
   // wasted terminal row, and the run before a tool row is the visible cost.
   CHECK(RenderMarkdownChunks({"a\n\n\n\n\nb\n"}) == "a\n\nb\n");
@@ -666,7 +666,7 @@ void TestMarkdownBlankLines() {
   CHECK(std::count(fenced.begin(), fenced.end(), '\n') == 6);
 }
 
-void TestMarkdownCode() {
+TEST_CASE(TestMarkdownCode) {
   // Inline code keeps its backticks: in the default foreground they are all
   // that sets it apart, in tables too.
   CHECK(RenderMarkdown("run `make` now\n").find("`make`") != std::string::npos);
@@ -688,7 +688,7 @@ void TestMarkdownCode() {
   CHECK(RenderMarkdown("~/src and ~~x\n") == "~/src and ~~x\n");
 }
 
-void TestMarkdownMath() {
+TEST_CASE(TestMarkdownMath) {
   std::string inline_math = RenderMarkdown(
       "inline $x^2$ and \\(y + 1\\)\n"
       "display $$z = 3$$ and $\\frac{1}{2} \\leq \\sqrt{x_1}$\n");
@@ -771,7 +771,7 @@ void TestMarkdownMath() {
   CHECK(narrow_table.find("deliberately wide") != std::string::npos);
 }
 
-void TestCapsAndEscaping() {
+TEST_CASE(TestCapsAndEscaping) {
   CHECK(StripLineNumbers("     1\tone\n     2\ttwo\n") == "one\ntwo\n");
   CHECK(StripLineNumbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
   // Tool output reaches the model verbatim: there is no text call syntax left

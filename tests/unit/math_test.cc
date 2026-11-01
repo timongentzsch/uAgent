@@ -9,7 +9,7 @@
 
 namespace uagent {
 
-void TestMathTransliteration() {
+TEST_CASE(TestMathTransliteration) {
   // MathCommand binary-searches the table, so an unsorted entry is not slow,
   // it is missing. Shipped out of order, neither Phi nor Pi resolved.
   CHECK(std::is_sorted(std::begin(kMathCommands), std::end(kMathCommands),

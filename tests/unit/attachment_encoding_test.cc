@@ -19,7 +19,7 @@
 
 namespace uagent {
 
-void TestAttachmentEncoding() {
+TEST_CASE(TestAttachmentEncoding) {
   namespace fs = std::filesystem;
   fs::path root = fs::temp_directory_path() /
                   ("uagent-attachment-test-" +
@@ -195,7 +195,7 @@ void TestAttachmentEncoding() {
 // HTML, and mislabeled files must not. Sniffing and inspection need no
 // converter, so this stays deterministic on every platform. Conversion
 // itself reuses the exercised PreparedImage machinery.
-void TestVectorAndHeicAttachments() {
+TEST_CASE(TestVectorAndHeicAttachments) {
   // HEIC shares the ISO BMFF ftyp box with MP4: the brand decides.
   const std::string box = std::string("\x00\x00\x00\x18", 4) + "ftyp";
   const std::string pad = std::string("\x00\x00\x00\x00", 4);
@@ -293,7 +293,7 @@ void TestVectorAndHeicAttachments() {
 
 // Speech and video ride the same inspect/prepare flow as images: magic
 // first, declared container on inconclusive sniff, provider-judged after.
-void TestAudioVideoAttachments() {
+TEST_CASE(TestAudioVideoAttachments) {
   namespace fs = std::filesystem;
   fs::path root = fs::temp_directory_path() / "uagent-av-attachments";
   std::error_code setup;

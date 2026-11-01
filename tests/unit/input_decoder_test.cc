@@ -10,7 +10,7 @@
 
 namespace uagent {
 
-void TestTerminalInputDecoder() {
+TEST_CASE(TestTerminalInputDecoder) {
   TerminalInputDecoder decoder;
   decoder.Feed("\x1b[2");
   CHECK(!decoder.Next());

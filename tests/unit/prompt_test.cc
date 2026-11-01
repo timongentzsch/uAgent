@@ -21,7 +21,7 @@ namespace fs = std::filesystem;
 
 // The system message is the base, then the context layers, each source kept
 // for inspection; nothing replaces the base.
-void TestResolvedPrompt() {
+TEST_CASE(TestResolvedPrompt) {
   const json context = {{{"scope", "repository"}, {"text", "project rules"}}};
   const json resolved = ResolvePrompt("base", context);
   CHECK(JsonValue(resolved, "effective", "") == "base\n\nproject rules");
@@ -31,7 +31,7 @@ void TestResolvedPrompt() {
 }
 
 // Two files a person edits: theirs and the folder's.
-void TestInstructionFiles() {
+TEST_CASE(TestInstructionFiles) {
   TestWorkspace workspace("instruction-files");
   const auto cwd = workspace.workspace;
   CHECK(InstructionPath(false, cwd).filename() == "AGENTS.md");
@@ -76,7 +76,7 @@ void TestInstructionFiles() {
 
 // What /instructions previews is what the request sends, before and after a
 // save and load.
-void TestPromptRequestParity() {
+TEST_CASE(TestPromptRequestParity) {
   TestWorkspace workspace("prompt-request");
   Api api{RuntimeConfig{}};
   std::vector<Tool> tools;

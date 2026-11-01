@@ -2,7 +2,9 @@
 
 #include <curl/curl.h>
 
+#include <algorithm>
 #include <clocale>
+#include <csignal>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -10,7 +12,6 @@
 
 #include "include/core/config_registry.h"
 #include "include/core/sandbox.h"
-#include "tests/unit/test_cases.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -29,16 +30,22 @@ struct TestCase {
   void (*run)();
 };
 
-const std::vector<TestCase>& Tests() {
-  static const std::vector<TestCase> kCases = {
-#define UAGENT_TEST_CASE(name) {#name, &(name)},
-      UAGENT_TESTS(UAGENT_TEST_CASE)
-#undef UAGENT_TEST_CASE
-  };
-  return kCases;
+std::vector<TestCase>& Tests() {
+  static std::vector<TestCase> cases;
+  return cases;
+}
+
+bool RegisterTest(const char* name, void (*run)()) noexcept {
+  Tests().push_back({name, run});
+  return true;
 }
 
 int RunTests(int argc, char** argv) {
+  // Registration follows link order; a run does not.
+  std::sort(Tests().begin(), Tests().end(),
+            [](const TestCase& left, const TestCase& right) {
+              return std::string_view(left.name) < right.name;
+            });
   std::string exact;
   std::string match;
   bool list = false;
@@ -112,5 +119,7 @@ int main(int argc, char** argv) {
   if (argc > 2 && std::string(argv[1]) == "--sandbox-child") {
     return uagent::SandboxChildMain(argc, argv);
   }
+  // As src/main.cc: a peer that has gone is an error to report, not a death.
+  signal(SIGPIPE, SIG_IGN);
   return uagent::RunTests(argc, argv);
 }

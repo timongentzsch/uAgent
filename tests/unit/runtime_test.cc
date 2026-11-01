@@ -42,7 +42,7 @@
 
 namespace uagent {
 
-void TestEarlyTurnInterruption() {
+TEST_CASE(TestEarlyTurnInterruption) {
   TestWorkspace workspace("early-turn-interruption");
   for (const bool before_turn : {true, false}) {
     Api api(RuntimeConfig{});
@@ -79,7 +79,7 @@ void TestEarlyTurnInterruption() {
 // A side question's thread has its own stop: the main turn's abort does not
 // reach it, clearing its stop leaves the main turn's intact, and its flag
 // alone cancels it.
-void TestLocalAbortIsolation() {
+TEST_CASE(TestLocalAbortIsolation) {
   ClearAbort();
   RequestAbort();
   std::atomic<bool> side{false};
@@ -95,7 +95,7 @@ void TestLocalAbortIsolation() {
   CHECK(!AbortRequested());
 }
 
-void TestBudgetMsScaling() {
+TEST_CASE(TestBudgetMsScaling) {
   {
     ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "6");
     CHECK(BudgetMs(2) == 12);
@@ -112,7 +112,7 @@ void TestBudgetMsScaling() {
   }
 }
 
-void TestRouteKeysAndShutdown() {
+TEST_CASE(TestRouteKeysAndShutdown) {
   std::ifstream contract(std::string(UAGENT_TEST_SOURCE_DIR) +
                          "/tests/fixtures/route_contract.json");
   json route_contract = json::parse(contract, nullptr, false);
@@ -134,7 +134,7 @@ void TestRouteKeysAndShutdown() {
   ClearAbort();
 }
 
-void TestUsageAccounting() {
+TEST_CASE(TestUsageAccounting) {
   UsageAccumulator accumulator;
   accumulator.Add(json{{"prompt_tokens", 5},
                        {"completion_tokens", 2},
@@ -197,7 +197,7 @@ void TestUsageAccounting() {
   std::filesystem::remove(ledger);
 }
 
-void TestRuntimeConfigAndRequests() {
+TEST_CASE(TestRuntimeConfigAndRequests) {
   // One table drives the set and the clear, so the two cannot drift apart.
   static constexpr std::pair<const char*, const char*> kRuntimeEnv[] = {
       {"UAGENT_MAX_STEPS", "0"},
@@ -431,7 +431,7 @@ void TestRuntimeConfigAndRequests() {
         RejectedCapability::kNone);
 }
 
-void TestRetrySafety() {
+TEST_CASE(TestRetrySafety) {
   ChatResult retryable;
   retryable.retryable = true;
   retryable.semantic_progress = true;
@@ -452,7 +452,7 @@ void TestRetrySafety() {
   CHECK(RemoteErrorCode(routed_error) == "slow");
 }
 
-void TestPermissionPolicy() {
+TEST_CASE(TestPermissionPolicy) {
   TestWorkspace workspace("permission-policy");
   ApprovalMode approval;
   CHECK(ParseApprovalMode("ask", approval));
@@ -592,7 +592,7 @@ void TestPermissionPolicy() {
   CHECK(rules["rules"].empty());
 }
 
-void TestAttributedUsageAccumulator() {
+TEST_CASE(TestAttributedUsageAccumulator) {
   UsageAccumulator accumulator;
   Usage direct;
   direct.input = 3;
@@ -675,7 +675,7 @@ void TestAttributedUsageAccumulator() {
 // Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model
 // wins, a vision-capable main route is inherited, otherwise a vision model of
 // the same endpoint's catalogue backs the analysis side call.
-void TestEffectiveImageModel() {
+TEST_CASE(TestEffectiveImageModel) {
   Api api(RuntimeConfig{});
   std::vector<Tool> tools;
   ActivitySupervisor processes;
@@ -698,7 +698,7 @@ void TestEffectiveImageModel() {
 // text: a runtime killed between the save and that turn receives it again.
 // A harness note is labelled as not the user's, and a worktree's .git
 // file counts as a repository.
-void TestHarnessNoteAndRepository() {
+TEST_CASE(TestHarnessNoteAndRepository) {
   CHECK(HarnessNote("chat", "Nobody is typing now.") ==
         "[chat, not a user message] Nobody is typing now.");
 
@@ -714,7 +714,7 @@ void TestHarnessNoteAndRepository() {
   CHECK(InGitRepository(workspace.workspace));
 }
 
-void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
+TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
   const std::string path = HistoryPath(folder, "parent");
@@ -773,7 +773,7 @@ void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
 // Where a message came from travels with it, not with its words: the person
 // typing what a queued mail says keeps their own message, and the mail its
 // origin.
-void TestMailKeepsItsOriginBesideTheSameWords() {
+TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
   Api api(RuntimeConfig{});
   api.model = "test";
   std::vector<Tool> tools;
@@ -801,7 +801,7 @@ void TestMailKeepsItsOriginBesideTheSameWords() {
   CHECK(JsonValue(rows[1], "origin", "") == "mail");
 }
 
-void TestAgentConfigAllowlist() {
+TEST_CASE(TestAgentConfigAllowlist) {
   namespace fs = std::filesystem;
   CHECK(AgentConfigKey("UAGENT_MODEL"));
   CHECK(AgentConfigKey("OPENROUTER_API_KEY"));
@@ -836,7 +836,7 @@ void TestAgentConfigAllowlist() {
   fs::remove_all(root, ec);
 }
 
-void TestChildEnvironmentPolicy() {
+TEST_CASE(TestChildEnvironmentPolicy) {
   ScopedEnv scoped_api("UAGENT_API_KEY", "secret");
   ScopedEnv scoped_token("GITHUB_TOKEN", "secret");
   ScopedEnv scoped_passwd("DATABASE_PASSWD", "secret");
@@ -936,7 +936,7 @@ void TestChildEnvironmentPolicy() {
   CHECK(child.Contains("UAGENT_API_KEY"));
 }
 
-void TestKnownEndpoints() {
+TEST_CASE(TestKnownEndpoints) {
   Endpoint openrouter;
   openrouter.base_url = "https://openrouter.ai/api/v1";
   CHECK(DeclareEndpoint(openrouter, {}));
@@ -990,7 +990,7 @@ void TestKnownEndpoints() {
   unsetenv("UAGENT_PROVIDERS");
 }
 
-void TestNamedProviders() {
+TEST_CASE(TestNamedProviders) {
   // Route variables keep their inherited value until the body changes them,
   // and every one of them is restored when this scope ends.
   ScopedEnv scoped_base_url("UAGENT_BASE_URL", std::getenv("UAGENT_BASE_URL"));
@@ -1211,7 +1211,7 @@ void TestNamedProviders() {
         std::string::npos);
 }
 
-void TestEffectiveConfigReload() {
+TEST_CASE(TestEffectiveConfigReload) {
   TestWorkspace workspace("effective-config");
   ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
   ScopedEnv scoped_model("UAGENT_MODEL");

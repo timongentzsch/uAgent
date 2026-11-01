@@ -30,7 +30,7 @@
 
 namespace uagent {
 
-void TestToolExecutionPolicy() {
+TEST_CASE(TestToolExecutionPolicy) {
   Tool shell;
   shell.mutating = true;
   shell.declared_intent = true;
@@ -356,7 +356,7 @@ void TestToolExecutionPolicy() {
   }
 }
 
-void TestBlockingWaitCalls() {
+TEST_CASE(TestBlockingWaitCalls) {
   // ask: up to eight questions; a header past the aim of 12 still goes
   // through, and one too long is refused by name.
   const auto question = [](const std::string& header) {
@@ -388,7 +388,7 @@ void TestBlockingWaitCalls() {
 // Every multi-action tool turns an action away before it runs when it
 // carries only what the schema itself requires, naming the fields that action
 // needs and what the call carried.
-void TestActionRequiresDeclarations() {
+TEST_CASE(TestActionRequiresDeclarations) {
   ActivitySupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor);
   const Api api(RuntimeConfig{});
@@ -430,7 +430,7 @@ void TestActionRequiresDeclarations() {
 
 // An action with its own payload is a tool of its own, so the schema itself
 // requires that payload and a provider that enforces schemas sees it.
-void TestPayloadToolsRequireTheirPayload() {
+TEST_CASE(TestPayloadToolsRequireTheirPayload) {
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
   AddAgentTools(tools, api, [] { return std::string(); });

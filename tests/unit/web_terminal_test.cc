@@ -31,7 +31,7 @@ std::string ReadUntil(web::TerminalViewer& viewer, const std::string& marker,
 
 }  // namespace
 
-void TestWebTerminal() {
+TEST_CASE(TestWebTerminal) {
   TestWorkspace workspace("web-terminal");
   // A plain shell, so the user's own profile cannot change what it prints.
   ScopedEnv shell("SHELL", "/bin/sh");

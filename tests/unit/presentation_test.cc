@@ -113,7 +113,7 @@ std::string Drawn(const std::vector<json>& calls,
 // A node's row is its headline and the host's words, marked and coloured by
 // its state; opened, it adds its body's last lines. The terminal reads
 // nothing else of a call.
-void TestTreeRows() {
+TEST_CASE(TestTreeRows) {
   json record = Record("c1", "agent_start", "failed",
                        "connection error: Couldn't connect to server\n"
                        "body-must-not-enter-row");
@@ -197,7 +197,7 @@ void TestTreeRows() {
 
 // Live, a node is drawn once its step has ended, as a resumed one is drawn;
 // a whole drawing shows a running node as it stands, and its end once more.
-void TestTreeDrawsLiveAsResumed() {
+TEST_CASE(TestTreeDrawsLiveAsResumed) {
   json record = Record("c1", "read_path", "running", "");
   record["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
   record["result"] = json::object();
@@ -243,7 +243,7 @@ void TestTreeDrawsLiveAsResumed() {
         }).empty());
 }
 
-void TestToolViews() {
+TEST_CASE(TestToolViews) {
   // The generic view: short scalars are fields, long text is code, nested
   // values are indented JSON, and display labels are never repeated.
   json view = ToolView(nullptr, {{"path", "a.txt"},
@@ -284,7 +284,7 @@ void TestToolViews() {
 }
 
 // The model reads the output, then the hints; a person reads the output.
-void TestModelHints() {
+TEST_CASE(TestModelHints) {
   ToolResult result = ToolSuccess("done");
   AddHint(result, "\n[collaborator agent-1; resume]");
   AddHint(result, "[clamped x]");
@@ -303,7 +303,7 @@ void TestModelHints() {
 
 // One function words a result from its facts, in a fixed order of what
 // matters most, then its duration.
-void TestResultWord() {
+TEST_CASE(TestResultWord) {
   auto word = [](const ResultFacts& facts, std::string_view state = "ok",
                  double ms = -1) { return ResultWord(facts, state, ms); };
   // A tool that reports no facts reads as its duration alone, or its state.
@@ -345,7 +345,7 @@ void TestResultWord() {
   CHECK(ResultState(CompletionStatus::kCancelled) == std::string("cancelled"));
 }
 
-void TestDiffLineColoring() {
+TEST_CASE(TestDiffLineColoring) {
   const std::string diff =
       "target: /tmp/config\n\n--- /tmp/config\n+++ /tmp/config\n"
       "  KEEP=1\n- OLD=1\n+ NEW=1\n";
@@ -371,7 +371,7 @@ void TestDiffLineColoring() {
 // explain: without this it reads as ordinary thinking for as many seconds as
 // the search takes. The row is ephemeral on purpose -- several searches a turn
 // would otherwise each leave a permanent line behind.
-void TestHostedSearchStatusRow() {
+TEST_CASE(TestHostedSearchStatusRow) {
   const bool prior = g_tty;
   g_tty = true;
   TerminalPresenter presenter;
@@ -429,7 +429,7 @@ void TestHostedSearchStatusRow() {
 // The working row used to be assembled inside the REPL loop, where nothing
 // could reach it. These pin the parts that are pure arithmetic on the view:
 // the frame clock, which counters appear, and the label/counter split.
-void TestTurnStatusBar() {
+TEST_CASE(TestTurnStatusBar) {
   bool prior = g_tty;
   bool prior_color = g_color;
   g_tty = true;
@@ -520,7 +520,7 @@ void TestTurnStatusBar() {
 // order is the whole point -- it is what decides that a user on a small
 // terminal keeps the route and loses the cache hit rate rather than the other
 // way round -- and until now nothing measured it.
-void TestStatusBarDropsByPriority() {
+TEST_CASE(TestStatusBarDropsByPriority) {
   bool prior = g_tty;
   bool prior_color = g_color;
   g_tty = true;

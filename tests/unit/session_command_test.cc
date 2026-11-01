@@ -49,7 +49,7 @@ static json CommandEnvelope(const std::string& kind) {
 
 // A completed receipt may leave the bounded lookup cache before the sender
 // wakes; the sender must still receive its exact acknowledgement.
-void TestOutcomeStoreReceiptLifetime() {
+TEST_CASE(TestOutcomeStoreReceiptLifetime) {
   for (int round = 0; round < 32; ++round) {
     session::OutcomeStore store;
     auto live = std::make_shared<session::HostSession>();
@@ -92,7 +92,7 @@ void TestOutcomeStoreReceiptLifetime() {
   }
 }
 
-void TestScheduledPreparationDoesNotBlockHost() {
+TEST_CASE(TestScheduledPreparationDoesNotBlockHost) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("scheduled-preparation");
   fs::create_directory(workspace.root / "bin");
@@ -160,7 +160,7 @@ void TestScheduledPreparationDoesNotBlockHost() {
   }
 }
 
-void TestSessionCommandKinds() {
+TEST_CASE(TestSessionCommandKinds) {
   const std::pair<const char*, session::SessionCommandKind> cases[] = {
       {"close", session::SessionCommandKind::kClose},
       {"interrupt", session::SessionCommandKind::kInterrupt},
@@ -199,7 +199,7 @@ void TestSessionCommandKinds() {
   }
 }
 
-void TestSessionCommandFields() {
+TEST_CASE(TestSessionCommandFields) {
   json command = CommandEnvelope("submit");
   command["text"] = "hello";
   command["client_request_id"] = "client-1";
@@ -224,7 +224,7 @@ void TestSessionCommandFields() {
   CHECK(!bare.cancelled);
 }
 
-void TestSessionCommandRejects() {
+TEST_CASE(TestSessionCommandRejects) {
   session::SessionCommand parsed;
   json wrong_session = CommandEnvelope("submit");
   wrong_session["session_id"] = "other";
@@ -244,7 +244,7 @@ void TestSessionCommandRejects() {
 
 // A reader catching up takes the backlog a batch at a time: Read stops at
 // its byte budget and the next call continues from where the reader got to.
-void TestReplayLogReadsInBatches() {
+TEST_CASE(TestReplayLogReadsInBatches) {
   session::ReplayLog log(MiB(1), 1024);
   for (int index = 0; index < 10; ++index) {
     log.Publish("e", "s", "g",
@@ -274,7 +274,7 @@ void TestReplayLogReadsInBatches() {
 
 // Streamed text and usage are held back between their first frames of a
 // turn; any other event sends what is held, in order, before itself.
-void TestTransientBatcherHoldsStreamedText() {
+TEST_CASE(TestTransientBatcherHoldsStreamedText) {
   std::vector<AppEvent> sent;
   session::TransientBatcher batcher(
       [&](const AppEvent& event) { sent.push_back(event); });
@@ -302,7 +302,7 @@ void TestTransientBatcherHoldsStreamedText() {
   CHECK(sent.back().type == AppType(EventId::kTurnCompleted));
 }
 
-void TestReceiptLog() {
+TEST_CASE(TestReceiptLog) {
   session::ReceiptLog log;
   json command = CommandEnvelope("submit");
   json previous;
@@ -327,7 +327,7 @@ void TestReceiptLog() {
         session::ReceiptVerdict::kReplay);
 }
 
-void TestReceiptLogBackpressure() {
+TEST_CASE(TestReceiptLogBackpressure) {
   session::ReceiptLog log;
   // Fill the log with pending commands: no completed receipt to evict.
   for (int i = 0; i < 256; ++i) {
@@ -355,7 +355,7 @@ void TestReceiptLogBackpressure() {
 
 // A full log evicts its oldest completed receipt, whatever the ids sort as,
 // so a retry of a recent command still replays.
-void TestReceiptLogEvictsOldest() {
+TEST_CASE(TestReceiptLogEvictsOldest) {
   session::ReceiptLog log;
   json previous;
   auto completed = [&](const std::string& id) {
@@ -375,7 +375,7 @@ void TestReceiptLogEvictsOldest() {
         session::ReceiptVerdict::kReplay);
 }
 
-void TestHostCommandKinds() {
+TEST_CASE(TestHostCommandKinds) {
   // The host runs close and saved-session management itself and
   // forwards everything else; a new kind must choose one explicitly.
   int forwarded = 0;
@@ -398,7 +398,7 @@ void TestHostCommandKinds() {
 
 // Display copies of tool files (screenshots) evict their oldest instead of
 // filling the session's quota, so the user's own uploads always fit.
-void TestToolCopiesKeepRoomForUserFiles() {
+TEST_CASE(TestToolCopiesKeepRoomForUserFiles) {
   TestWorkspace workspace("asset-tool-copies");
   const std::string session = UagentDir("history") + "/project/web-a.json";
   session::AssetStore store;
@@ -414,7 +414,7 @@ void TestToolCopiesKeepRoomForUserFiles() {
   CHECK(store.Store(session, "mine", "notes.txt", true).error.empty());
 }
 
-void TestCommandReplies() {
+TEST_CASE(TestCommandReplies) {
   TestWorkspace workspace("command-replies");
   Observability observability;
   AppContext context(RuntimeConfig{}, ConfigManager::Capture({}), Options{},
@@ -458,7 +458,7 @@ void TestCommandReplies() {
 // /cost reads each route from its full usage. It once copied input, output
 // and cache reads only, so a route's hit rate left cache writes out of the
 // denominator: live, one route said "cache 99%" while the total said 42%.
-void TestCostRoutesCountCacheWrites() {
+TEST_CASE(TestCostRoutesCountCacheWrites) {
   TestWorkspace workspace("cost-routes");
   Observability observability;
   AppContext context(RuntimeConfig{}, ConfigManager::Capture({}), Options{},
@@ -503,7 +503,7 @@ void TestCostRoutesCountCacheWrites() {
   });
 }
 
-void TestSavedHistoryInvalidation() {
+TEST_CASE(TestSavedHistoryInvalidation) {
   TestWorkspace workspace("history-cache");
   const std::string folder =
       UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd());
@@ -567,7 +567,7 @@ void TestSavedHistoryInvalidation() {
   CHECK(host.Snapshot(id, {}).value["state"].empty());
 }
 
-void TestSessionPersistence() {
+TEST_CASE(TestSessionPersistence) {
   TestWorkspace workspace("session-persistence");
   ScopedEnv session_path("UAGENT_INTERNAL_SESSION_PATH");
   const auto prior_approval = CurrentApprovalMode();
@@ -684,7 +684,7 @@ void TestSessionPersistence() {
 
 // A title is bounded in characters, as the web's form bounds it: accented
 // or other non-ASCII text gets its whole length, not a quarter of it.
-void TestTitlesCountCharacters() {
+TEST_CASE(TestTitlesCountCharacters) {
   std::string accented;
   for (size_t i = 0; i < kUserTitleChars; ++i) accented += "\xc3\xa9";
   CHECK(Utf8Chars(accented) == kUserTitleChars);
@@ -693,7 +693,7 @@ void TestTitlesCountCharacters() {
   CHECK(!ValidSessionTitle("tab\tinside"));
 }
 
-void TestSessionCatalogueCache() {
+TEST_CASE(TestSessionCatalogueCache) {
   TestWorkspace workspace("catalogue-cache");
   const std::string folder = UagentDir(kHistoryDir);
   CreatePrivateDirectories(folder);

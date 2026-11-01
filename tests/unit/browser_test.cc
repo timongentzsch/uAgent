@@ -3,9 +3,13 @@
 #include "include/browser/browser.h"
 
 #include <fcntl.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <chrono>
+#include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -16,6 +20,7 @@
 #include "include/browser/broker.h"
 #include "include/browser/runtime.h"
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
@@ -27,7 +32,7 @@
 
 namespace uagent {
 
-void TestBrowserInputFilter() {
+TEST_CASE(TestBrowserInputFilter) {
   web::RfbInputFilter filter;
   std::string output;
   CHECK(filter.Push("RFB 003.", output, false));
@@ -81,7 +86,7 @@ void TestBrowserInputFilter() {
   CHECK(!filter.Push(std::string("\x07", 1), output, true));
 }
 
-void TestBrowserHandoverRecovery() {
+TEST_CASE(TestBrowserHandoverRecovery) {
   TestWorkspace workspace("browser-handover");
   auto directory = std::filesystem::canonical(workspace.root) / "browser";
   ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
@@ -146,7 +151,7 @@ void TestBrowserHandoverRecovery() {
   CHECK(!std::filesystem::exists(directory / "handover.json"));
 }
 
-void TestBrowserProfiles() {
+TEST_CASE(TestBrowserProfiles) {
   TestWorkspace workspace("browser-profiles");
   auto directory = std::filesystem::canonical(workspace.root) / "browser";
   ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
@@ -267,7 +272,7 @@ struct FakeRuntime : FakeBrowser {
 
 // Scheduling is independent of page execution: FIFO admission, explicit
 // cancellation, fencing and expiry can be exercised without starting Chrome.
-void TestBrowserScheduling() {
+TEST_CASE(TestBrowserScheduling) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-queue");
   const auto directory = fs::canonical(workspace.root) / "browser";
@@ -347,7 +352,7 @@ void TestBrowserScheduling() {
   CHECK(acquire(kSessionC).contains("error"));
 }
 
-void TestBrowserParallelScheduling() {
+TEST_CASE(TestBrowserParallelScheduling) {
   namespace fs = std::filesystem;
   FakeBrowser fake("bp");
   const auto& directory = fake.data;
@@ -446,7 +451,7 @@ void TestBrowserParallelScheduling() {
   restored.Shutdown();
 }
 
-void TestBrowserProfileSignIn() {
+TEST_CASE(TestBrowserProfileSignIn) {
   namespace fs = std::filesystem;
   FakeBrowser fake("signin");
   const auto& directory = fake.data;
@@ -505,7 +510,7 @@ void TestBrowserProfileSignIn() {
 // Closing the controlling viewer hands the browser back, watching never takes
 // control, and an agent call made meanwhile fails at once instead of waiting.
 // An idle browser stops only while no human holds it.
-void TestBrowserHandBackOnClose() {
+TEST_CASE(TestBrowserHandBackOnClose) {
   FakeBrowser fake("handback");
   constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
@@ -578,7 +583,7 @@ void TestBrowserHandBackOnClose() {
 
 // Every attached page masks password fields before anything is drawn, and
 // back refuses a history entry the agent could not open by URL.
-void TestBrowserSecretMaskAndBack() {
+TEST_CASE(TestBrowserSecretMaskAndBack) {
   namespace fs = std::filesystem;
   FakeRuntime fake("secrets");
   // Whoever takes the browser looks before acting on it.
@@ -727,7 +732,7 @@ void TestBrowserSecretMaskAndBack() {
 // plea to stay is accepted unasked only when the agent is leaving the page.
 // A password field takes no typed text, nor does another site's frame. A
 // list or a date field is set, never typed into, or says what it takes.
-void TestBrowserDialogsAndPasswordFields() {
+TEST_CASE(TestBrowserDialogsAndPasswordFields) {
   namespace fs = std::filesystem;
   FakeRuntime fake("dialog");
   const auto profile = fake.data / "profile";
@@ -828,7 +833,7 @@ void TestBrowserDialogsAndPasswordFields() {
 // A file field takes a file; a button's chooser is held back and its field
 // takes it; a click that opens a chooser says so; what a page downloads lands
 // in the folder the action names and is told when it ends.
-void TestBrowserUploadsAndDownloads() {
+TEST_CASE(TestBrowserUploadsAndDownloads) {
   namespace fs = std::filesystem;
   FakeRuntime fake("files");
   const auto profile = fake.data / "profile";
@@ -898,7 +903,7 @@ void TestBrowserUploadsAndDownloads() {
 // that read alone; network tells a tab's requests since its document began.
 // A click can be right or double, a drag drops what the page held back, a
 // key can come with modifiers, and history goes forward as well as back.
-void TestBrowserConsoleNetworkAndPointer() {
+TEST_CASE(TestBrowserConsoleNetworkAndPointer) {
   FakeRuntime fake("pointer");
   const auto profile = fake.data / "profile";
   CHECK(!fake.Act({{"op", "open"}, {"url", "https://example.com/"}})
@@ -982,7 +987,7 @@ void TestBrowserConsoleNetworkAndPointer() {
   CHECK(reloaded);
 }
 
-void TestBrowserOrigin() {
+TEST_CASE(TestBrowserOrigin) {
   CHECK(browser::Origin("https://Example.COM/a?b#c") == "https://example.com");
   CHECK(browser::Origin("https://user:pw@example.com:443/") ==
         "https://example.com");
@@ -1001,9 +1006,41 @@ void TestBrowserOrigin() {
   CHECK(browser::Origin("file:///etc/hosts").empty());
 }
 
+// A child that exits during a request interrupts the wait for its answer,
+// which says nothing about the connection.
+TEST_CASE(TestBrowserRequestSurvivesASignal) {
+  FakeBrowser fake("bs");
+  std::filesystem::create_directories(fake.data);
+  Fd listener = ListenUnix(browser::SocketPath(), 1);
+  REQUIRE(static_cast<bool>(listener));
+  InstallSigchldHandler();
+  const pthread_t asker = pthread_self();
+  std::thread service([&] {
+    Fd client(accept(listener.Get(), nullptr, nullptr));
+    std::string request(4 + JsonDump(json{{"op", "ping"}}).size(), '\0');
+    for (size_t have = 0; have < request.size();) {
+      const ssize_t count =
+          read(client.Get(), request.data() + have, request.size() - have);
+      if (count <= 0) return;
+      have += static_cast<size_t>(count);
+    }
+    for (int tick = 0; tick < 20; ++tick) {
+      pthread_kill(asker, SIGCHLD);
+      poll(nullptr, 0, 5);
+    }
+    const std::string body = JsonDump(json{{"ok", true}});
+    WriteAll(client.Get(),
+             std::string(3, '\0') + static_cast<char>(body.size()) + body);
+  });
+  const json answer =
+      browser::Request({{"op", "ping"}}, static_cast<int>(BudgetMs(5000)));
+  service.join();
+  CHECK(answer.value("ok", false));
+}
+
 // The tool's own part: several steps in one call, in order, and a page that
 // is only read. The service runs here, in front of the stand-in Chrome.
-void TestBrowserToolQueue() {
+TEST_CASE(TestBrowserToolQueue) {
   namespace fs = std::filesystem;
   FakeBrowser fake("bq");
   int owner[2];
@@ -1076,7 +1113,7 @@ void TestBrowserToolQueue() {
   close(owner[0]);
 }
 
-void TestBrowserToolSteps() {
+TEST_CASE(TestBrowserToolSteps) {
   namespace fs = std::filesystem;
   FakeBrowser fake("tool");
   int owner[2];
@@ -1289,7 +1326,7 @@ void TestBrowserToolSteps() {
   CHECK(written);
 }
 
-void TestBrowserPageMemory() {
+TEST_CASE(TestBrowserPageMemory) {
   std::string page = "URL: https://a.test/\nElements:\n";
   for (int row = 1; row <= 40; ++row) {
     page += "[" + std::to_string(row) + "] link \"row " + std::to_string(row) +

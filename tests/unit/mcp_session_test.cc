@@ -33,7 +33,7 @@
 
 namespace uagent {
 
-void TestMcpContractHelpers() {
+TEST_CASE(TestMcpContractHelpers) {
   CHECK(McpResponseMatches({{"jsonrpc", "2.0"}, {"id", 1}, {"result", {}}}, 1));
   CHECK(
       !McpResponseMatches({{"jsonrpc", "1.0"}, {"id", 1}, {"result", {}}}, 1));
@@ -263,7 +263,7 @@ void TestMcpContractHelpers() {
   fs::remove_all(image_home, remove_error);
 }
 
-void TestWorkspaceScopedSession() {
+TEST_CASE(TestWorkspaceScopedSession) {
   namespace fs = std::filesystem;
   fs::path root =
       fs::temp_directory_path() /
@@ -402,7 +402,7 @@ void TestWorkspaceScopedSession() {
   fs::remove_all(root, ec);
 }
 
-void TestProjectTrustTracksSemanticConfig() {
+TEST_CASE(TestProjectTrustTracksSemanticConfig) {
   TestWorkspace test("trust");
 
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"one"}}})")
@@ -420,7 +420,7 @@ void TestProjectTrustTracksSemanticConfig() {
   CHECK(!ProjectConfigTrusted());
 }
 
-void TestScopedBaseAndMemory() {
+TEST_CASE(TestScopedBaseAndMemory) {
   namespace fs = std::filesystem;
   // Redaction is gated by a marker pre-scan, so every pattern alternative needs
   // a case here: a missing marker silently disables that pattern.

@@ -21,7 +21,7 @@
 
 namespace uagent {
 
-void TestConfigProposalAndCommit() {
+TEST_CASE(TestConfigProposalAndCommit) {
   TestWorkspace test("config-proposal");
   CHECK(SaveSettings(
             {{"UAGENT_MAX_TOOL_CALLS", "40"},
@@ -323,7 +323,7 @@ void TestConfigProposalAndCommit() {
 
 // A project's settings are saved under its folder, beside what is saved for
 // all conversations, and nowhere in the project.
-void TestProjectSettingsAreSavedByFolder() {
+TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   TestWorkspace test("config-project");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
   ConfigManager manager = ConfigManager::Capture({});
@@ -380,7 +380,7 @@ void TestProjectSettingsAreSavedByFolder() {
 
 // Get reports what each scope holds; reset clears a scope's overrides in one
 // save but never its secrets.
-void TestConfigurationResetKeepsSecrets() {
+TEST_CASE(TestConfigurationResetKeepsSecrets) {
   TestWorkspace test("config-reset");
   CHECK(SaveSettings({{"UAGENT_MAX_TOOL_CALLS", "40"},
                       {"UAGENT_WEB_SEARCH_BACKEND", "off"},

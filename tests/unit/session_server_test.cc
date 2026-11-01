@@ -19,7 +19,7 @@ namespace uagent {
 
 // A worker reports the executable it started from in its hello, so a host can
 // recycle workers left running across an upgrade.
-void TestWorkerBinaryIdentity() {
+TEST_CASE(TestWorkerBinaryIdentity) {
   TestWorkspace test("worker-binary");
   const std::filesystem::path probe = test.workspace / "uagent-probe";
   CHECK(ToolWriteFile(probe.string(), "v1").Ok());
@@ -48,7 +48,7 @@ void TestWorkerBinaryIdentity() {
 
 // Closing a runtime waits for the runtime, not for its socket file: one that
 // crashed leaves the file behind and is gone all the same.
-void TestCloseRuntimeWaitsForTheRuntime() {
+TEST_CASE(TestCloseRuntimeWaitsForTheRuntime) {
   TestWorkspace test("close-runtime");
   const std::string path = (test.workspace / "s.json").string();
   const std::string address = session::SocketPath(path);
@@ -87,7 +87,7 @@ void TestCloseRuntimeWaitsForTheRuntime() {
 
 // A command a client sends just before it closes is taken, also when it
 // closes with frames unread, which resets the socket.
-void TestACommandSentBeforeClosingIsTaken() {
+TEST_CASE(TestACommandSentBeforeClosingIsTaken) {
   TestWorkspace test("send-and-close");
   const std::string path = (test.workspace / "s.json").string();
   CreatePrivateDirectories(
@@ -110,7 +110,7 @@ void TestACommandSentBeforeClosingIsTaken() {
   CHECK(WaitUntil([&] { return taken.load(); }, BudgetMs(5000)));
 }
 
-void TestSessionFramePartitions() {
+TEST_CASE(TestSessionFramePartitions) {
   const json first = {{"v", session::kProtocol}, {"text", "a\nbλ"}};
   const json second = {{"v", session::kProtocol}, {"sequence", 2}};
   const std::string wire = JsonDump(first) + "\n" + JsonDump(second) + "\n";

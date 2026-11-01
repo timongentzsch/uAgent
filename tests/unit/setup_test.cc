@@ -10,7 +10,7 @@
 
 namespace uagent {
 
-void TestSetupSavesKeys() {
+TEST_CASE(TestSetupSavesKeys) {
   // OpenRouter's key is its own setting; nothing else is touched.
   SettingValues scope;
   ApplySetupKeys({.openrouter = "sk-or"}, scope);
@@ -53,7 +53,7 @@ void TestSetupSavesKeys() {
   CHECK(scope.empty());
 }
 
-void TestSetupSuggestsModel() {
+TEST_CASE(TestSetupSuggestsModel) {
   CHECK(SuggestModel("anthropic", {"claude-haiku-5-5", "claude-sonnet-4-5",
                                    "claude-sonnet-5-5", "claude-opus-5-5"}) ==
         "claude-sonnet-5-5");

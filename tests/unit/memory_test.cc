@@ -23,7 +23,7 @@ void WriteGlobal(const std::filesystem::path& dir, const std::string& name,
 
 // The always-on slice is the only memory every request pays for, so which
 // entries it admits is worth pinning. Nothing covered these loaders before.
-void TestMemoryAlwaysOnSelection() {
+TEST_CASE(TestMemoryAlwaysOnSelection) {
   namespace fs = std::filesystem;
   const char* prior_home = getenv("HOME");
   const std::string saved_home = prior_home ? prior_home : "";
@@ -89,7 +89,7 @@ void TestMemoryAlwaysOnSelection() {
 // The agent and the Library read one store. The 32-per-scope limit governs
 // writes only: live, the model saw 32 of 37 hand-placed files, and a memory
 // edited past 2 KiB was listed but could not be read or deleted.
-void TestMemoryOneView() {
+TEST_CASE(TestMemoryOneView) {
   namespace fs = std::filesystem;
   const char* prior_home = getenv("HOME");
   const std::string saved_home = prior_home ? prior_home : "";

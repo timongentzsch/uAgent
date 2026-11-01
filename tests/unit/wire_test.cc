@@ -40,7 +40,7 @@ size_t ItemsOfType(const json& values, std::string_view type) {
 
 }  // namespace
 
-void TestWireAdapters() {
+TEST_CASE(TestWireAdapters) {
   json schemas =
       json::array({FunctionSchema("web_search"), FunctionSchema("read_path")});
   json messages = json::array(
@@ -204,7 +204,7 @@ void TestWireAdapters() {
                                 HostedTool::kWebSearch));
 }
 
-void TestWireStreams() {
+TEST_CASE(TestWireStreams) {
   ChatResult responses_result;
   std::map<int, ToolCall> responses_calls;
   WireStreamState responses_state;
@@ -402,7 +402,7 @@ void TestWireStreams() {
 // A search the provider runs is visible progress, not a round this agent owes
 // a result for. Both halves matter: the lifecycle has to reach a presenter,
 // and the search must never reach the tool loop.
-void TestWireStreamHostedSearch() {
+TEST_CASE(TestWireStreamHostedSearch) {
   ChatResult result;
   std::map<int, ToolCall> calls;
   WireStreamState state;
@@ -553,7 +553,7 @@ void TestWireStreamHostedSearch() {
 // A tool the provider runs, defined in `hosted_tools`, is sent as written
 // with an agent's own tools, reported while it runs, and kept for replay;
 // its streamed input is never mistaken for a call to run here.
-void TestWireHostedToolDefinitions() {
+TEST_CASE(TestWireHostedToolDefinitions) {
   Api api(RuntimeConfig{});
   api.model = "hosted-test";
   const json code = {{"type", "code_execution_20250825"},
@@ -658,7 +658,7 @@ void TestWireHostedToolDefinitions() {
 // Usage and citation payloads are provider-controlled, and under
 // -fno-exceptions an operator[] chain through a scalar aborts the process.
 // Wrong-typed fields must decode into a sane result instead.
-void TestWireStreamMalformedValues() {
+TEST_CASE(TestWireStreamMalformedValues) {
   ChatResult responses_result;
   std::map<int, ToolCall> responses_calls;
   WireStreamState responses_state;
@@ -774,7 +774,7 @@ void TestWireStreamMalformedValues() {
   }
 }
 
-void TestWireCacheParity() {
+TEST_CASE(TestWireCacheParity) {
   Api switched(RuntimeConfig{});
   switched.model = "cache-test";
   json messages = json::array({{{"role", "system"}, {"content", "base"}},
@@ -847,7 +847,7 @@ bool Lacks(const json& body, const char* text) {
   return body.dump().find(text) == std::string::npos;
 }
 
-void TestWireHarnessNotes() {
+TEST_CASE(TestWireHarnessNotes) {
   json history = json::array({{{"role", "system"}, {"content", "base"}},
                               {{"role", "user"}, {"content", "question"}},
                               {{"role", "assistant"}, {"content", "answer"}}});
@@ -916,7 +916,7 @@ void TestWireHarnessNotes() {
   }
 }
 
-void TestWireCacheBreakpoint() {
+TEST_CASE(TestWireCacheBreakpoint) {
   json history = json::array({{{"role", "system"}, {"content", "base"}},
                               {{"role", "user"}, {"content", "question"}},
                               {{"role", "assistant"}, {"content", "answer"}}});
@@ -976,7 +976,7 @@ void TestWireCacheBreakpoint() {
   }
 }
 
-void TestWireSideRequestKnobs() {
+TEST_CASE(TestWireSideRequestKnobs) {
   json messages = json::array({{{"role", "user"}, {"content", "hi"}}});
   json schemas = json::array({FunctionSchema("read_path")});
   auto encode = [&](WireApi wire, bool forbid) {

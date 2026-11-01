@@ -17,7 +17,7 @@
 
 namespace uagent {
 
-void TestSafeJsonValues() {
+TEST_CASE(TestSafeJsonValues) {
   json values = {{"boolean", "true"},
                  {"integer", "12"},
                  {"negative", -1},
@@ -44,7 +44,7 @@ void TestSafeJsonValues() {
   CHECK(usage.cost == 0);
 }
 
-void TestProjectInstructionDiscovery() {
+TEST_CASE(TestProjectInstructionDiscovery) {
   namespace fs = std::filesystem;
   fs::path root = fs::temp_directory_path() /
                   ("uagent-instructions-test-" +

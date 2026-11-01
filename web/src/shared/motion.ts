@@ -5,10 +5,11 @@ import { compactNow } from "./layout.ts";
 type Motion = "fast" | "base" | "slow";
 
 export function motionMs(name: Motion) {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(
-    `--motion-${name}`,
-  );
-  return parseFloat(value) || 0;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--motion-${name}`)
+    .trim();
+  // The build may write a token in seconds.
+  return parseFloat(value) * (value.endsWith("ms") ? 1 : 1000) || 0;
 }
 
 export const motionEase = (name: "out" | "in" | "standard") =>
@@ -54,8 +55,17 @@ export function slide(back: boolean, to: string, change: () => void) {
   root.dataset.slide = back ? "back" : "forward";
   const run = document.startViewTransition(async () => {
     change();
-    // The new conversation is drawn once the renders this started are done.
-    await new Promise((resolve) => setTimeout(resolve));
+    // The slide carries the messages if they load in a moment; the page keeps
+    // the old frame until then. Past that it carries their placeholder.
+    const latest = performance.now() + motionMs("slow");
+    do await new Promise((resolve) => setTimeout(resolve));
+    while (
+      to &&
+      !document.querySelector(
+        `.transcript[data-session="${CSS.escape(to)}"]:not([aria-busy])`,
+      ) &&
+      performance.now() < latest
+    );
   });
   const mine = { run, to };
   sliding = mine;

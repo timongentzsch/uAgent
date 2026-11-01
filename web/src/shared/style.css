@@ -1565,6 +1565,7 @@ dialog[data-layout="sheet"] > header {
    new one. */
 :root[data-slide] .transcript {
   view-transition-name: screen;
+  background: var(--bg);
 }
 :root[data-slide]::view-transition-old(root),
 :root[data-slide]::view-transition-new(root),

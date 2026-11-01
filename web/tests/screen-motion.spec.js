@@ -15,7 +15,8 @@ import {
 const phone = { width: 390, height: 844 };
 
 // Counts the view transitions the app starts, each as the direction it set,
-// and those that got as far as animating (`ready`).
+// and those that got as far as animating (`ready`), with what the transcript
+// was when the last one began.
 const spyOnTransitions = () => {
   window.slides = [];
   window.animated = [];
@@ -26,7 +27,14 @@ const spyOnTransitions = () => {
       window.slides.push(direction);
       const run = original(update);
       run.ready.then(
-        () => window.animated.push(direction),
+        () => {
+          const box = document.querySelector(".transcript");
+          window.atStart = {
+            busy: box.hasAttribute("aria-busy"),
+            background: getComputedStyle(box).backgroundColor,
+          };
+          window.animated.push(direction);
+        },
         () => {},
       );
       return run;
@@ -132,6 +140,57 @@ test.describe("a conversation slides in", () => {
         .getByRole("dialog", { name: "Conversations" })
         .locator("[aria-current]"),
     ).toContainText("Motion A");
+  });
+
+  test("a slide covers the old conversation and carries the new one's messages", async ({
+    page,
+  }) => {
+    await page.goto(`/#session=${ids["Motion A"]}`);
+    await online(page);
+    test.skip(
+      await page.evaluate(() => !document.startViewTransition),
+      "no view transitions here",
+    );
+    // Room for a loaded machine: this is about the order, not the wait.
+    await page.addStyleTag({ content: ":root { --motion-slow: 3s; }" });
+    await open(page, "Motion B");
+    await expect
+      .poll(() => page.evaluate(() => window.animated))
+      .toEqual(["forward"]);
+    const { busy, background } = await page.evaluate(() => window.atStart);
+    expect(busy).toBe(false);
+    expect(background).not.toBe("rgba(0, 0, 0, 0)");
+  });
+
+  test("a conversation slow to load slides in as its placeholder, then fills", async ({
+    page,
+  }) => {
+    await page.goto(`/#session=${ids["Motion A"]}`);
+    await online(page);
+    test.skip(
+      await page.evaluate(() => !document.startViewTransition),
+      "no view transitions here",
+    );
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      new RegExp(`/api/sessions/${ids["Motion B"]}`),
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await open(page, "Motion B");
+    await expect
+      .poll(() => page.evaluate(() => window.animated))
+      .toEqual(["forward"]);
+    expect(await page.evaluate(() => window.atStart.busy)).toBe(true);
+    release();
+    await expect(page.locator(".transcript")).toContainText(
+      "Motion B message 59",
+    );
   });
 
   test("two quick choices end on the second", async ({ page }) => {

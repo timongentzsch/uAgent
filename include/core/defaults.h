@@ -65,11 +65,7 @@ inline constexpr char kExplicitSkillMarker[] = "[explicit skill instructions";
 // keep one by name with `shell.envAllow`; `sandbox.hideEnv` adds your own
 // names, e.g. sandbox.hideEnv=MYCLOUD_SESSION,INTERNAL_URL.
 inline constexpr std::string_view kHiddenEnvNames[] = {
-    "uagent_api_key",
-    "uagent_providers",
-    "uagent_session_budget",
-    "uagent_internal_usage_file",
-    "openrouter_api_key",
+    "uagent_providers", "uagent_session_budget", "uagent_internal_usage_file",
     "ssh_auth_sock",  // the agent that holds your ssh keys
     "xauthority"};    // the X display's login cookie
 inline constexpr std::string_view kHiddenEnvMarkers[] = {

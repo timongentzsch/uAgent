@@ -18,6 +18,7 @@ from integration_support import (
     run_pty,
     save_settings,
     saved_settings,
+    test_providers,
     tool_call,
     tool_results,
     two_route_providers,
@@ -143,7 +144,7 @@ def auto_review_run(
                 home,
                 model_server.url,
                 decision_providers(permission_server.url, **provider),
-                model="test",
+                model="test/test",
             )
             env["UAGENT_APPROVAL"] = "auto"
             env.update(environment or {})
@@ -267,7 +268,7 @@ def test_auto_permission_card_shows_the_reasons(root, home, *, binary):
     with Server([reviewer]) as permission_server:
         with Server([write_call(root / "card.txt"), event({"content": "card-ok"})]) as model:
             env = provider_env(
-                home, model.url, decision_providers(permission_server.url), model="test"
+                home, model.url, decision_providers(permission_server.url), model="test/test"
             )
             env["UAGENT_APPROVAL"] = "auto"
             code, output = run_pty(
@@ -306,7 +307,7 @@ def test_auto_permission_reviewer_judges_against_the_first_request_too(root, hom
             ]
         ) as model_server:
             env = provider_env(
-                home, model_server.url, decision_providers(permission_server.url), model="test"
+                home, model_server.url, decision_providers(permission_server.url), model="test/test"
             )
             env["UAGENT_APPROVAL"] = "auto"
             result = run_dialog(
@@ -408,7 +409,7 @@ def test_auto_permission_reviewer_rechecks_after_user_restriction(root, home, *,
             [write_call(target, "again", "first"), event({"content": "written"}), repeat, finish]
         ) as model_server:
             env = provider_env(
-                home, model_server.url, decision_providers(permission_server.url), model="test"
+                home, model_server.url, decision_providers(permission_server.url), model="test/test"
             )
             env["UAGENT_APPROVAL"] = "auto"
             result = run_dialog(root, env, "write twice.txt\nstop writing\n/q\n", binary=binary)
@@ -464,7 +465,6 @@ def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
 
     with Server([write_call(target, "not approved"), finish]) as model_server:
         env = base_env(home, model_server.url)
-        env.pop("OPENROUTER_API_KEY", None)
         env["UAGENT_APPROVAL"] = "auto"
         result = run(root, env, "--json", "-p", "write it", binary=binary)
         envelope = json.loads(result.stdout)
@@ -516,15 +516,15 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
+                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
                             "search": {
                                 "base_url": search_server.url,
                                 "api_key": "search-key",
                                 "supports": OPENROUTER_SUPPORTS,
-                            }
+                            },
                         }
                     ),
                     "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
@@ -567,15 +567,15 @@ def test_web_search_retries_respect_turn_deadline(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
+                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
                             "search": {
                                 "base_url": search_server.url,
                                 "api_key": "search-key",
                                 "supports": OPENROUTER_SUPPORTS,
-                            }
+                            },
                         }
                     ),
                     "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
@@ -615,15 +615,15 @@ def test_web_search_slow_response_respects_turn_deadline(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
+                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
                             "search": {
                                 "base_url": search_server.url,
                                 "api_key": "search-key",
                                 "supports": OPENROUTER_SUPPORTS,
-                            }
+                            },
                         }
                     ),
                     "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
@@ -683,7 +683,7 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home, *, binary):
     )
     with Server([first, verify_tool_step]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_INTERNAL_FEATURES"] = ",".join(OPENROUTER_SUPPORTS)
+        env["UAGENT_PROVIDERS"] = test_providers(server.url, supports=OPENROUTER_SUPPORTS)
         result = run(root, env, "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
@@ -829,7 +829,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         }
     }
     try:
-        env = provider_env(home, first.url, providers, "active-live")
+        env = provider_env(home, first.url, providers, "test/active-live")
         # A raw startup route may accept an explicit effort. A later catalog
         # route with no advertised effort support must replace, not inherit,
         # that state.
@@ -842,7 +842,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         )
         assert_true("second/gpt-live" in catalog_result.stdout, catalog_result.stdout)
         assert_true("active-live" in catalog_result.stdout, catalog_result.stdout)
-        assert_true("keeping active-live" in catalog_result.stdout, catalog_result.stdout)
+        assert_true("keeping test/active-live" in catalog_result.stdout, catalog_result.stdout)
         assert_true("original-route-ok" in catalog_result.stdout, catalog_result.stdout)
         assert_true(len(first.requests) == 1, first.requests)
 
@@ -866,7 +866,7 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         # Changing only the effort keeps it without another catalog request,
         # and the picker's queries left a catalogue that serves the first.
         providers["second"].pop("context")
-        direct_env = provider_env(home, first.url, providers, "active-live")
+        direct_env = provider_env(home, first.url, providers, "test/active-live")
         probes = len(second.get_requests)
         direct = run_dialog(
             root,
@@ -1012,7 +1012,7 @@ def test_an_overloaded_provider_is_tried_again(root, home, *, binary):
 
     with Server([busy, busy, answer]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_INTERNAL_WIRE_API"] = "responses"
+        env["UAGENT_PROVIDERS"] = test_providers(server.url, wire_api="responses")
         result = run(root, env, "--json", "-p", "go", timeout=60, binary=binary)
         envelope = json.loads(result.stdout.strip().splitlines()[-1])
         assert_true(envelope["answer"] == "after-overload-ok", envelope)
@@ -1116,9 +1116,12 @@ def test_provider_responses_function_replay(root, home, *, binary):
         env = base_env(home, server.url)
         env.update(
             {
-                "UAGENT_API_KEY": "response-key",
-                "UAGENT_INTERNAL_WIRE_API": "responses",
-                "UAGENT_INTERNAL_FEATURES": "hosted_search",
+                "UAGENT_PROVIDERS": test_providers(
+                    server.url,
+                    api_key="response-key",
+                    wire_api="responses",
+                    supports=["hosted_search"],
+                ),
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
             }
         )
@@ -1148,15 +1151,15 @@ def test_escape_during_a_web_search_stops_the_turn(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_INTERNAL_FEATURES": ",".join(OPENROUTER_SUPPORTS),
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
+                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
                             "search": {
                                 "base_url": search_server.url,
                                 "api_key": "search-key",
                                 "supports": OPENROUTER_SUPPORTS,
-                            }
+                            },
                         }
                     ),
                     "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
@@ -1393,9 +1396,12 @@ def test_web_search_is_a_tool_call_on_either_route(root, home, *, binary):
             env = base_env(home, server.url)
             env.update(
                 {
-                    "UAGENT_API_KEY": "search-key",
-                    "UAGENT_INTERNAL_WIRE_API": wire_api,
-                    "UAGENT_INTERNAL_FEATURES": "hosted_search",
+                    "UAGENT_PROVIDERS": test_providers(
+                        server.url,
+                        api_key="search-key",
+                        wire_api=wire_api,
+                        supports=["hosted_search"],
+                    ),
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                 }
             )
@@ -1664,7 +1670,7 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true(route["credential"] == "set", described)
         scoped = {provider["name"] for provider in described["providers"]}
         assert_true("fixture-provider" in scoped, described)
-        assert_true(described["selection"] == "[provider/]model[:effort]", described)
+        assert_true(described["selection"] == "provider/model[:effort]", described)
         assert_true("high" in described["efforts"], described)
         # The table names routes; it never carries what authenticates them.
         assert_true("canary-route-key" not in json.dumps(described), described)
@@ -1687,14 +1693,14 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         env = base_env(home, server.url)
         env.update(
             {
-                "UAGENT_API_KEY": "canary-api-key",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
+                        "test": {"base_url": server.url, "api_key": "canary-api-key"},
                         "fixture-provider": {
                             "base_url": server.url,
                             "api_key": "canary-route-key",
                             "models": {"fixture-route": "fixture-model"},
-                        }
+                        },
                     }
                 ),
             }
@@ -1726,7 +1732,7 @@ def test_uagent_tool_lists_every_setting(root, home, *, binary):
 
     with Server([ask, finish]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_API_KEY"] = "canary-api-key"
+        env["UAGENT_PROVIDERS"] = test_providers(server.url, api_key="canary-api-key")
         # Room for the whole catalogue beside the tools, so it is read uncut
         # rather than compacted away.
         env["UAGENT_CONTEXT"] = "32768"
@@ -1776,8 +1782,9 @@ def test_provider_summary_capability_fallback(root, home, *, binary):
         env = base_env(home, server.url)
         env.update(
             {
-                "UAGENT_INTERNAL_WIRE_API": "responses",
-                "UAGENT_INTERNAL_MODEL_FEATURES": '{"reasoning_summary":true}',
+                "UAGENT_PROVIDERS": test_providers(
+                    server.url, wire_api="responses", features={"reasoning_summary": True}
+                ),
             }
         )
         result = run(root, env, "-p", "inspect", binary=binary)
@@ -1803,7 +1810,7 @@ def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home,
         return catalog
 
     with Server([event({"content": "catalog-ok"})] * 3, get_response=slow_catalog) as server:
-        env = {**base_env(home, server.url), "UAGENT_MODEL": "catalog-model"}
+        env = {**base_env(home, server.url), "UAGENT_MODEL": "test/catalog-model"}
         del env["UAGENT_CONTEXT"]
         # The first start has no catalogue: it waits for the provider's.
         cold = run_dialog(root, env, "/status\n/q\n", timeout=3 * delay, binary=binary)
@@ -1852,7 +1859,7 @@ def test_a_start_reuses_the_days_catalogue_instead_of_waiting_for_it(root, home,
         requests = len(server.get_requests)
         catalog["data"].append({"id": "newer-model", "context_length": 16000})
         newer = run_dialog(
-            root, {**env, "UAGENT_MODEL": "newer-model"}, "/status\n/q\n", binary=binary
+            root, {**env, "UAGENT_MODEL": "test/newer-model"}, "/status\n/q\n", binary=binary
         )
         assert_true(len(server.get_requests) == requests + 1, server.get_requests)
         assert_true("16k" in window_of(newer), newer.stdout)
@@ -1872,7 +1879,7 @@ def test_only_a_usable_catalogue_is_kept_and_read(root, home, *, binary):
         write_json_response(handler, body, status=status)
 
     with Server([event({"content": "catalog-ok"})], get_response=answer) as server:
-        env = {**base_env(home, server.url), "UAGENT_MODEL": "catalog-model"}
+        env = {**base_env(home, server.url), "UAGENT_MODEL": "test/catalog-model"}
         del env["UAGENT_CONTEXT"]
         models = home / ".uagent" / "models"
 
@@ -1893,7 +1900,7 @@ def test_only_a_usable_catalogue_is_kept_and_read(root, home, *, binary):
         assert_true(len(server.get_requests) == 4, server.get_requests)
 
 
-def test_no_model_set_headless_lists_the_endpoints_models(root, home, *, binary):
+def test_no_model_set_headless_names_the_providers(root, home, *, binary):
     models = {"data": [{"id": f"model-{number:02d}"} for number in range(12)]}
     with Server([event({"content": "never asked"})], get_response=models) as server:
         env = base_env(home, server.url)
@@ -1902,10 +1909,8 @@ def test_no_model_set_headless_lists_the_endpoints_models(root, home, *, binary)
             result = run(root, env, *flags, binary=binary)
             text = result.stdout + result.stderr
             assert_true(result.returncode != 0, text)
-            assert_true("no model set: set `model` (UAGENT_MODEL)" in text, text)
-            # Up to ten ids, in the endpoint's order, and a count of the rest.
-            assert_true("model-00" in text and "model-09" in text, text)
-            assert_true("model-10" not in text and "and 2 more" in text, text)
+            assert_true("no model set: set `model` as provider/model" in text, text)
+            assert_true("one of: test" in text, text)
         assert_true(not server.requests, server.requests)
 
 
@@ -1928,7 +1933,7 @@ def test_a_conversation_without_a_model_starts_at_the_picker(root, home, *, bina
         assert_true("beta-answered" in result.stdout, result.stdout)
         assert_true(server.requests[0][1]["model"] == "beta", server.requests)
         # The first choice is kept for the conversations after it.
-        assert_true(saved_settings(home) == {"model": "beta"}, saved_settings(home))
+        assert_true(saved_settings(home) == {"model": "test/beta"}, saved_settings(home))
         later = run_dialog(root, env, "probe\n/q\n", binary=binary)
         assert_true("again" in later.stdout, later.stdout + later.stderr)
         assert_true(server.requests[1][1]["model"] == "beta", server.requests)
@@ -1955,7 +1960,7 @@ def test_images_go_to_a_vision_model_of_the_same_endpoint(root, home, *, binary)
 
     with Server([describe, answer], get_response=models) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MODEL"] = "text-model"
+        env["UAGENT_MODEL"] = "test/text-model"
         del env["UAGENT_CONTEXT"]
         result = run(
             root, env, "--yolo", "--attach", str(picture), "-p", "what is this", binary=binary
@@ -1967,7 +1972,7 @@ def test_images_go_to_a_vision_model_of_the_same_endpoint(root, home, *, binary)
     text_only = {"data": [{"id": "text-model", "input_modalities": ["text"]}]}
     with Server([event({"content": "blind"})], get_response=text_only) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MODEL"] = "text-model"
+        env["UAGENT_MODEL"] = "test/text-model"
         del env["UAGENT_CONTEXT"]
         result = run(
             root,
@@ -2007,7 +2012,7 @@ def test_an_image_the_vision_model_cannot_read_is_tried_once_per_turn(root, home
 
     with Server([respond], get_response=models) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MODEL"] = "text-model"
+        env["UAGENT_MODEL"] = "test/text-model"
         del env["UAGENT_CONTEXT"]
         result = run(root, env, "--yolo", "--attach", str(picture), "-p", "what", binary=binary)
         assert_true(result.stdout.strip() == "done", result.stdout + result.stderr)
@@ -2034,7 +2039,7 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
             [tool_call("web_search", {"queries": ["current fact"]}), event({"content": "done"})]
         ) as plain:
             env = base_env(home, plain.url)
-            env["UAGENT_PROVIDERS"] = json.dumps(providers)
+            env["UAGENT_PROVIDERS"] = json.dumps({"test": {"base_url": plain.url}, **providers})
             env["UAGENT_WEB_SEARCH_MODEL"] = "search-model"
             result = run(root, env, "--yolo", "-p", "search", binary=binary)
             assert_true(result.stdout.strip() == "done", result.stdout + result.stderr)
@@ -2046,7 +2051,7 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
         # it and the person is told once what to set.
         with Server([event({"content": "first"}), event({"content": "second"})]) as plain:
             env = base_env(home, plain.url)
-            env["UAGENT_PROVIDERS"] = json.dumps(providers)
+            env["UAGENT_PROVIDERS"] = json.dumps({"test": {"base_url": plain.url}, **providers})
             result = run_dialog(root, env, "one\ntwo\n/q\n", "--yolo", binary=binary)
             assert_true(result.returncode == 0, result.stdout + result.stderr)
             for _, body in plain.requests:
@@ -2059,7 +2064,7 @@ def test_search_goes_to_an_endpoint_that_offers_it_and_otherwise_is_off(root, ho
         # Turned off by the person, it is nothing they need to be told about.
         with Server([event({"content": "quiet"})]) as plain:
             env = base_env(home, plain.url)
-            env["UAGENT_PROVIDERS"] = json.dumps(providers)
+            env["UAGENT_PROVIDERS"] = json.dumps({"test": {"base_url": plain.url}, **providers})
             dialog = "/tools off web_search\none\n/q\n"
             result = run_dialog(root, env, dialog, "--yolo", binary=binary)
             assert_true(result.returncode == 0, result.stdout + result.stderr)
@@ -2079,7 +2084,7 @@ def test_search_is_offered_to_a_conversation_that_chose_its_model_late(root, hom
     with Server([event({"content": "answered"})], get_response=models) as server:
         env = base_env(home, server.url)
         del env["UAGENT_MODEL"]
-        env["UAGENT_INTERNAL_FEATURES"] = ",".join(OPENROUTER_SUPPORTS)
+        env["UAGENT_PROVIDERS"] = test_providers(server.url, supports=OPENROUTER_SUPPORTS)
         result = run_dialog(root, env, "1\nprobe\n/q\n", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true("web_search" in function_names(server.requests[0][1]), server.requests)

@@ -669,21 +669,21 @@ TEST_CASE(TestScopedBaseAndMemory) {
   // A project's setting wins key by key; what is saved for all fills the
   // rest.
   CHECK(SaveSettings({{"UAGENT_MODEL", "global/model"},
-                      {"UAGENT_API_KEY", "global-key"}})
+                      {"UAGENT_MEMORY_MODEL", "global/memory"}})
             .empty());
   CHECK(SaveSettings({{"UAGENT_MODEL", "project/model"}}, CanonicalCwd())
             .empty());
   unsetenv("UAGENT_MODEL");
-  unsetenv("UAGENT_API_KEY");
+  unsetenv("UAGENT_MEMORY_MODEL");
   ConfigManager trusted = ConfigManager::Capture({});
   (void)trusted.Initialize();
   CHECK(SettingText(Cfg("UAGENT_MODEL")) == "project/model");
-  CHECK(SettingText(Cfg("UAGENT_API_KEY")) == "global-key");
+  CHECK(SettingText(Cfg("UAGENT_MEMORY_MODEL")) == "global/memory");
   // What is saved is read from the settings, never put in the environment.
   CHECK(getenv("UAGENT_MODEL") == nullptr);
 
   unsetenv("UAGENT_MODEL");
-  unsetenv("UAGENT_API_KEY");
+  unsetenv("UAGENT_MEMORY_MODEL");
 }
 
 }  // namespace uagent

@@ -36,7 +36,7 @@ enum class ConfigType { kInt, kDouble, kBool, kString };
 // restart even though nothing freezes its value.
 enum class ReloadPolicy { kNextUserTurn, kRestartRequired };
 
-enum class Sensitivity { kPublic, kSecret, kCompositeSecret };
+enum class Sensitivity { kPublic, kCompositeSecret };
 
 // Bit flags: a setting may be persistable at more than one layer.
 enum ConfigScope : unsigned {
@@ -302,28 +302,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Terminal idle minutes",
         "How long a terminal nobody has open may print nothing before it "
         "ends"),
-    // Route selection and credentials.
-    registry::Named(
-        registry::Fallback(
-            registry::Str("endpoint.baseUrl", "UAGENT_BASE_URL", {}, "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                          "route", "active API base URL"),
-            "OpenRouter when OPENROUTER_API_KEY is set"),
-        "API address",
-        "Where requests go; empty uses OpenRouter when its key is set"),
-    registry::Named(
-        registry::Str("endpoint.apiKey", "UAGENT_API_KEY", {},
-                      kPlaceholderApiKey, ReloadPolicy::kRestartRequired,
-                      Sensitivity::kSecret, "route",
-                      "credential for the active route"),
-        "API key", "Credential sent to the API address"),
-    registry::Named(
-        registry::Str("openrouter.apiKey", "OPENROUTER_API_KEY", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kSecret,
-                      "route",
-                      "OpenRouter credential used when no base URL is set"),
-        "OpenRouter key",
-        "Credential for OpenRouter, used when no API address is set"),
+    // Route selection.
     registry::PerConversation(registry::Named(
         registry::Fallback(
             registry::Str(
@@ -350,7 +329,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "providers", "UAGENT_PROVIDERS", {}, "",
             ReloadPolicy::kRestartRequired, Sensitivity::kCompositeSecret,
             "route", "JSON object of named endpoints, transports, and aliases"),
-        "Named providers"),
+        "Providers",
+        "Addresses that serve models, each with its key; a model is chosen as "
+        "provider/model"),
     registry::Named(
         registry::Int("contextWindow", "UAGENT_CONTEXT", {}, 0, kConfigAnyMin,
                       kConfigAnyMax, ReloadPolicy::kRestartRequired, "route",

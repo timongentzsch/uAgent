@@ -131,8 +131,8 @@ def test_web_project_trust_and_config_precedence(root, home, *, binary):
     first, second = root / "overriding", root / "plain"
     for project in (first, second):
         project.mkdir()
-    save_settings(home, binary=binary, UAGENT_MODEL="global/model")
-    save_settings(home, folder=first, binary=binary, UAGENT_MODEL="project/model")
+    save_settings(home, binary=binary, UAGENT_MODEL="test/global-model")
+    save_settings(home, folder=first, binary=binary, UAGENT_MODEL="test/project-model")
     with Server([lambda _, _body: event({"content": "Configured"})]) as provider:
         with web_host(binary, root, home, provider.url, extra_env={"UAGENT_MODEL": None}) as (
             client,
@@ -150,8 +150,8 @@ def test_web_project_trust_and_config_precedence(root, home, *, binary):
                 changes=[{"key": "UAGENT_MAX_STEPS", "value": "7"}],
             )
             assert_true(saved_settings(home, second) == {"limits.maxSteps": 7}, "not saved")
-            assert_true(saved_settings(home) == {"model": "global/model"}, "leaked")
-            for project, expected in ((first, "project/model"), (second, "global/model")):
+            assert_true(saved_settings(home) == {"model": "test/global-model"}, "leaked")
+            for project, expected in ((first, "test/project-model"), (second, "test/global-model")):
                 session = client.create(project)
                 value = client.until(session, lambda value: value["metadata"]["status"] == "idle")
                 assert_true(not value.get("pending"), value)

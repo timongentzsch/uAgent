@@ -34,7 +34,7 @@ Endpoint OpenRouterEndpoint() {
   Endpoint endpoint;
   endpoint.base_url = "https://openrouter.ai/api/v1";
   endpoint.api_key = "key";
-  CHECK(DeclareEndpoint(endpoint, {}));
+  CHECK(DeclareHost(endpoint));
   return endpoint;
 }
 

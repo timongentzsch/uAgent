@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "benchmarks" / "scenarios"
 BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "hermetic.json"
 # The route name every scripted case is run against.
-MODEL = "eval"
+MODEL = "mock/eval"
 
 # One HTTP/SSE fixture serves the integration suite and this harness; a second
 # copy would drift from the transport the tests actually exercise.
@@ -267,8 +267,9 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
     env["no_proxy"] = env["NO_PROXY"]
     env.update(
         {
-            "UAGENT_BASE_URL": mock.url,
-            "UAGENT_API_KEY": "evaluation-placeholder",
+            "UAGENT_PROVIDERS": json.dumps(
+                {"mock": {"base_url": mock.url, "api_key": "evaluation-placeholder"}}
+            ),
             "UAGENT_CONTEXT": "16384",
             "UAGENT_REQUEST_TIMEOUT": "10",
             "UAGENT_STREAM_TIMEOUT": "5",

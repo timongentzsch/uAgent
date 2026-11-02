@@ -56,26 +56,17 @@ BootstrapResult Failure(std::string error, int exit_code = 1) {
   return {nullptr, std::move(error), exit_code};
 }
 
-// A run nobody can answer never picks a model for the person: it says what the
-// endpoint offers.
-std::string NoModelMessage(Api& api) {
-  constexpr size_t kListed = 10;
-  std::string message = "no model set: set `model` (UAGENT_MODEL)";
-  std::optional<std::vector<ModelInfo>> models = CachedModels(api);
-  if (!models) {
-    models = QueryModels(api);
+// A run nobody can answer never picks a model for the person: it says how to
+// name one.
+std::string ModelHint(const std::vector<Endpoint>& providers) {
+  if (providers.empty()) {
+    return "add a provider with uagent setup or the providers setting";
   }
-  if (!models || models->empty()) {
-    return message + "; " + UrlHost(api.base_url) + " lists no models";
+  std::string names;
+  for (const Endpoint& provider : providers) {
+    names += (names.empty() ? "" : ", ") + provider.name;
   }
-  message += "; " + UrlHost(api.base_url) + " offers:";
-  for (size_t i = 0; i < models->size() && i < kListed; ++i) {
-    message += (i ? ", " : " ") + (*models)[i].id;
-  }
-  if (models->size() > kListed) {
-    message += ", and " + std::to_string(models->size() - kListed) + " more";
-  }
-  return message;
+  return "set `model` as provider/model, the provider one of: " + names;
 }
 
 class ScopedChannelInput {
@@ -405,21 +396,24 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);
-  if (api.base_url.empty() && !context->options.show_system_prompt) {
-    DebugLog("startup_error", {{"error", "UAGENT_BASE_URL is not set"}});
-    return Failure(
-        "no provider configured — run uagent setup to save an OpenRouter, "
-        "OpenAI or Anthropic key, set OPENROUTER_API_KEY, or point "
-        "UAGENT_BASE_URL at a supported API endpoint, e.g.\n"
-        "  export UAGENT_BASE_URL=http://localhost:8080/v1");
-  }
-  if (!context->options.show_system_prompt && api.model.empty() &&
-      !context->channel) {
-    DebugLog("startup_error",
-             {{"error", "no model set"}, {"base_url", api.base_url}});
-    return Failure(NoModelMessage(api));
+  // With no provider there is nothing to choose from, even in a picker.
+  if (!context->options.show_system_prompt && api.base_url.empty() &&
+      context->provider.providers.empty()) {
+    DebugLog("startup_error", {{"error", "no provider"}});
+    return Failure("no provider: " + ModelHint(context->provider.providers));
   }
   // A conversation without a model starts at the model picker.
+  if (!context->options.show_system_prompt && api.model.empty() &&
+      !context->channel) {
+    DebugLog("startup_error", {{"error", "no model set"}});
+    return Failure("no model set: " + ModelHint(context->provider.providers));
+  }
+  if (!context->options.show_system_prompt && !api.model.empty() &&
+      api.base_url.empty()) {
+    DebugLog("startup_error", {{"error", "no provider serves the model"}});
+    return Failure("no provider serves " + api.model + ": " +
+                   ModelHint(context->provider.providers));
+  }
   ProbeModel(api);
   ActivateRoute(api);
   // A flag for a conversation's setting sets it for that conversation, and

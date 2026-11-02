@@ -17,7 +17,12 @@ Saved settings live in one private document,
     "model": "openrouter/vendor/model",
     "limits.maxTurnCost": 2,
     "sandbox.network": false,
-    "openrouter.apiKey": "$OPENROUTER_KEY",
+    "providers": {
+      "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key": "$OPENROUTER_KEY"
+      }
+    },
     "variables": { "OPENROUTER_KEY": "sk-or-…" }
   },
   "projects": {

@@ -210,11 +210,9 @@ namespace {
 
 std::string DisplayValue(const ConfigDescriptor& descriptor,
                          const std::string& value) {
-  if (descriptor.sensitivity == Sensitivity::kPublic) return value;
-  if (descriptor.sensitivity == Sensitivity::kCompositeSecret) {
-    return SanitizeCompositeValue(value);
-  }
-  return "<redacted>";
+  return descriptor.sensitivity == Sensitivity::kPublic
+             ? value
+             : SanitizeCompositeValue(value);
 }
 
 std::string PrettyCompositeValue(const std::string& value) {
@@ -331,14 +329,6 @@ ConfigProposal Prepare(ConfigProposalScope scope,
     }
     if (proposal.written.contains(change.key)) {
       proposal.error = change.key + " appears twice in one request";
-      return proposal;
-    }
-    if (!direct_user && !change.unset &&
-        descriptor->sensitivity == Sensitivity::kSecret) {
-      proposal.error =
-          change.key +
-          " holds a credential and cannot be set through a tool argument; "
-          "unset it here or enter the replacement directly";
       return proposal;
     }
     std::string value = change.value;

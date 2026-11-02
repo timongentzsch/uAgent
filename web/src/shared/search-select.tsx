@@ -6,9 +6,15 @@ import "./search-select.css";
 import { matches } from "./fuzzy.ts";
 import { nextIndex, plainKey } from "./listbox-nav.ts";
 
-// A select with a search box, for long lists such as models.
+// A select with a search box, for long lists such as models, which may be
+// grouped under headings.
 
-type SearchOption = { value: string; label: string; detail?: string };
+type SearchOption = {
+  value: string;
+  label: string;
+  detail?: string;
+  group?: string;
+};
 
 // A closed choice stays selected while its search text is edited. Only
 // picking an option changes the value handed to the owner.
@@ -109,6 +115,7 @@ export function SearchSelect({
             index={active}
             pick={pick}
             keyOf={(option) => option.value}
+            groupOf={(option) => option.group}
             class="search-select-list"
           >
             {(option) => (

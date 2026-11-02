@@ -35,7 +35,7 @@ TEST_CASE(TestSettingsStore) {
   // One scope changes at a time; the other folder and the rest stay. A name
   // that is no setting is what a value refers to as $NAME.
   CHECK(Set("", "MY_KEY", "secret").empty());
-  CHECK(Set("", "UAGENT_BASE_URL", "http://one/v1/").empty());
+  CHECK(Set("", "UAGENT_TITLE_MODEL", "off").empty());
   CHECK(Set("", "UAGENT_MODEL", "m2").empty());
   CHECK(Set(folder, "UAGENT_MAX_STEPS", "7").empty());
   CHECK(Set("/other", "UAGENT_MODEL", "m3").empty());
@@ -48,7 +48,7 @@ TEST_CASE(TestSettingsStore) {
   // own type; what a value refers to is kept apart under "variables".
   CHECK(Set("", "UAGENT_MAX_STEPS", "12").empty());
   CHECK(Set("", "UAGENT_SANDBOX", "relaxed").empty());
-  CHECK(Set("", "UAGENT_API_KEY", "$MY_KEY").empty());
+  CHECK(Set("", "UAGENT_MEMORY_MODEL", "$MY_KEY").empty());
   const auto document = [] {
     return json::parse(ReadFile(SettingsPath(), 1 << 20).value_or(""));
   };
@@ -56,14 +56,14 @@ TEST_CASE(TestSettingsStore) {
   const json all = document()["all"];
   CHECK(all["model"] == "m2" && all["limits.maxSteps"] == 12);
   CHECK(all["sandbox.level"] == "relaxed");
-  CHECK(all["endpoint.apiKey"] == "$MY_KEY");
+  CHECK(all["memory.model"] == "$MY_KEY");
   CHECK(all["variables"] == json({{"MY_KEY", "secret"}}));
   CHECK(!all.contains("UAGENT_MODEL") && !all.contains("MY_KEY"));
   CHECK(ReadSettings(folder).all.at("UAGENT_MAX_STEPS") == "12");
   CHECK(ReadSettings(folder).all.at("UAGENT_SANDBOX") == "relaxed");
   CHECK(ReadSettings(folder).warning.empty());
   for (const char* name :
-       {"UAGENT_MAX_STEPS", "UAGENT_SANDBOX", "UAGENT_API_KEY"}) {
+       {"UAGENT_MAX_STEPS", "UAGENT_SANDBOX", "UAGENT_MEMORY_MODEL"}) {
     CHECK(ChangeSettings("", [&](SettingValues& scope) {
             scope.erase(name);
             return std::string();

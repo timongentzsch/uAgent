@@ -599,6 +599,8 @@ export interface Model {
 }
 interface ModelCatalogue {
   models: Model[];
+  // Providers whose list did not come back: no key, or no answer.
+  unavailable?: string[];
 }
 // One setting as the host states it: its description, then the facts.
 // Where a setting's value can be saved, and every place it can come from.

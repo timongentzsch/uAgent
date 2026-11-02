@@ -17,7 +17,7 @@ EnvironmentOverrides ChildAgentEnvironment(Route route,
   EnvironmentOverrides environment = RouteEnvironment(route);
   environment.emplace_back("UAGENT_INTERNAL_DEPTH",
                            std::to_string(AgentDepth() + 1));
-  environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
+  environment.emplace_back("UAGENT_INTERNAL_API_KEY", std::move(route.api_key));
   environment.emplace_back("UAGENT_INTERNAL_USAGE_FILE", UsageLedger(session));
   // A child is never less confined than the session that starts it, nor
   // more open: it runs under the sandbox this process's commands run under

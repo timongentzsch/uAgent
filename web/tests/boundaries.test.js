@@ -108,8 +108,9 @@ test("host paths are written in state/api.ts only", () => {
   for (const path of sources("src")) {
     if (path === "state/api.ts" || path.endsWith(".css")) continue;
     const code = withoutComments(readFileSync(join("src", path), "utf8"));
+    // A path the host serves, not an address that holds /api/ elsewhere.
     for (const [index, line] of code.split("\n").entries())
-      if (line.includes("/api/")) stray.push(`${path}:${index + 1}`);
+      if (/["'`]\/api\//.test(line)) stray.push(`${path}:${index + 1}`);
   }
   assert.deepEqual(stray, []);
 });

@@ -194,12 +194,10 @@ const char* SensitivityName(Sensitivity sensitivity) {
   switch (sensitivity) {
     case Sensitivity::kPublic:
       return "public";
-    case Sensitivity::kSecret:
-      return "secret";
     case Sensitivity::kCompositeSecret:
       return "composite-secret";
   }
-  return "secret";
+  return "composite-secret";
 }
 
 }  // namespace uagent

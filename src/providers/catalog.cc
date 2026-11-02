@@ -17,16 +17,11 @@
 
 namespace uagent {
 namespace {
-// The well-known endpoints, as data: an address, the variable its key is read
-// from (empty: none is offered by itself) and what it declares. An endpoint
-// is available when its key is set; a provider entry of the same name only
-// states what differs. This table and the provider entries are the only
-// places a vendor is named.
+// What a well-known host declares, as data, for any provider whose address
+// is on it. This table and the provider entries are the only places a vendor
+// is named.
 struct KnownEndpoint {
-  const char* name;
-  const char* base_url;
   const char* host;
-  const char* key_variable;
   FeatureSet features;
   const char* options;
 };
@@ -48,8 +43,7 @@ constexpr char kOpenRouterOptions[] = R"({
 })";
 
 constexpr KnownEndpoint kKnownEndpoints[] = {
-    {"openrouter", "https://openrouter.ai/api/v1", "openrouter.ai",
-     "OPENROUTER_API_KEY",
+    {"openrouter.ai",
      FeaturesOf({Feature::kHostedSearch, Feature::kProviderRouting,
                  Feature::kSessionPassthrough, Feature::kRawVendorIds,
                  Feature::kModelVariants, Feature::kReasoningObject,
@@ -57,24 +51,10 @@ constexpr KnownEndpoint kKnownEndpoints[] = {
                  Feature::kPdfParser, Feature::kInlineUsage,
                  Feature::kDecisions}),
      kOpenRouterOptions},
-    {"openai", "https://api.openai.com/v1", "api.openai.com", "",
+    {"api.openai.com",
      FeaturesOf({Feature::kMaxCompletionTokens, Feature::kReasoningSummary}),
      ""},
 };
-
-const KnownEndpoint* KnownEndpointForUrl(const std::string& url) {
-  const std::string host = UrlHost(url);
-  for (const KnownEndpoint& known : kKnownEndpoints) {
-    const std::string name = known.host;
-    if (host == name || host.ends_with("." + name)) return &known;
-  }
-  return nullptr;
-}
-
-void Declare(Endpoint& endpoint, const KnownEndpoint& known) {
-  endpoint.features = known.features;
-  endpoint.options = *known.options ? json::parse(known.options) : json();
-}
 
 constexpr std::chrono::hours kCatalogueLife{24};
 constexpr size_t kCatalogueCacheBytes = MiB(8);
@@ -90,6 +70,23 @@ std::string CataloguePath(const std::string& identity) {
 }
 
 }  // namespace
+
+bool DeclareHost(Endpoint& endpoint) {
+  const std::string host = UrlHost(endpoint.base_url);
+  for (const KnownEndpoint& known : kKnownEndpoints) {
+    const std::string name = known.host;
+    if (host != name && !host.ends_with("." + name)) continue;
+    endpoint.features = known.features;
+    endpoint.options = *known.options ? json::parse(known.options) : json();
+    return true;
+  }
+  return false;
+}
+
+bool HasKey(const Endpoint& endpoint) {
+  return !endpoint.api_key.empty() && endpoint.api_key != kPlaceholderApiKey;
+}
+
 const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
                              const std::string& name) {
   for (const Endpoint& provider : providers) {
@@ -98,40 +95,13 @@ const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
   return nullptr;
 }
 
-// The provider serving a base URL, else the well-known endpoint whose name
-// selects it; a custom endpoint has no name to scope with.
+// The provider serving a base URL.
 std::string ProviderScope(const std::string& base_url,
                           const std::vector<Endpoint>& providers) {
   for (const Endpoint& provider : providers) {
     if (provider.base_url == base_url) return provider.name;
   }
-  const KnownEndpoint* known = KnownEndpointForUrl(base_url);
-  return known && *known->key_variable ? known->name : std::string();
-}
-
-const Endpoint* DefaultEndpoint(const std::vector<Endpoint>& providers) {
-  for (const KnownEndpoint& known : kKnownEndpoints) {
-    if (!*known.key_variable) continue;
-    if (const Endpoint* endpoint = FindEndpoint(providers, known.name)) {
-      return endpoint;
-    }
-  }
-  return nullptr;
-}
-
-bool DeclareEndpoint(Endpoint& endpoint,
-                     const std::vector<Endpoint>& providers) {
-  for (const Endpoint& provider : providers) {
-    if (provider.base_url != endpoint.base_url) continue;
-    endpoint.name = provider.name;
-    endpoint.features = provider.features;
-    endpoint.options = provider.options;
-    endpoint.hosted_tools = provider.hosted_tools;
-    return true;
-  }
-  const KnownEndpoint* known = KnownEndpointForUrl(endpoint.base_url);
-  if (known) Declare(endpoint, *known);
-  return known != nullptr;
+  return {};
 }
 
 ProviderCatalog LoadProviderCatalog() {
@@ -145,23 +115,10 @@ ProviderCatalog LoadProviderCatalog() {
         provider_name.find('/') != std::string::npos) {
       continue;
     }
-    // An entry named like a well-known endpoint may state only what differs.
-    const KnownEndpoint* known = nullptr;
-    for (const KnownEndpoint& row : kKnownEndpoints) {
-      if (provider_name == row.name) known = &row;
-    }
     Endpoint endpoint;
     endpoint.name = provider_name;
     std::string base_url = JsonValue(provider, "base_url", "");
     endpoint.api_key = JsonValue(provider, "api_key", kPlaceholderApiKey);
-    if (base_url.empty() && known) {
-      base_url = known->base_url;
-      if (!provider.contains("api_key")) {
-        endpoint.api_key =
-            *known->key_variable ? SettingText(known->key_variable) : "";
-        if (endpoint.api_key.empty()) continue;
-      }
-    }
     if (base_url.empty()) continue;
     endpoint.base_url = StripTrailingSlashes(std::move(base_url));
     endpoint.context = JsonValue(provider, "context", int64_t{0});
@@ -169,9 +126,7 @@ ProviderCatalog LoadProviderCatalog() {
         ParseWireApi(JsonValue(provider, "wire_api", "chat_completions"));
     if (!wire_api) continue;
     endpoint.wire_api = *wire_api;
-    if (const KnownEndpoint* row = KnownEndpointForUrl(endpoint.base_url)) {
-      Declare(endpoint, *row);
-    }
+    DeclareHost(endpoint);
     if (provider.contains("supports")) {
       std::string unknown;
       endpoint.features = {};
@@ -230,24 +185,6 @@ ProviderCatalog LoadProviderCatalog() {
         catalog.models.push_back(std::move(route));
       }
     }
-  }
-  return catalog;
-}
-
-ProviderCatalog SessionProviderCatalog() {
-  ProviderCatalog catalog = LoadProviderCatalog();
-  for (const KnownEndpoint& known : kKnownEndpoints) {
-    std::string api_key =
-        *known.key_variable ? SettingText(known.key_variable) : std::string();
-    if (api_key.empty() || FindEndpoint(catalog.providers, known.name)) {
-      continue;
-    }
-    Endpoint endpoint;
-    endpoint.name = known.name;
-    endpoint.base_url = known.base_url;
-    endpoint.api_key = std::move(api_key);
-    Declare(endpoint, known);
-    catalog.providers.push_back(std::move(endpoint));
   }
   return catalog;
 }

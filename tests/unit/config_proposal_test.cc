@@ -25,7 +25,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
   TestWorkspace test("config-proposal");
   CHECK(SaveSettings(
             {{"UAGENT_MAX_TOOL_CALLS", "40"},
-             {"OPENROUTER_API_KEY", "canary-secret"},
              {"QWEN_GPU_API_KEY", "adjacent-provider-secret"},
              {"UAGENT_PROVIDERS",
               R"({"old":{"base_url":"https://old.example/v1",)"
@@ -35,8 +34,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
 
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
   ScopedEnv no_providers("UAGENT_PROVIDERS");
-  // Initialize exports file values into the process environment.
-  ScopedEnv no_route_key("OPENROUTER_API_KEY");
   ConfigManager manager = ConfigManager::Capture({});
   RuntimeConfig active = manager.Initialize();
 
@@ -53,16 +50,14 @@ TEST_CASE(TestConfigProposalAndCommit) {
   CHECK(!choice.ok);
   CHECK(choice.error.find("auto off") != std::string::npos);
 
-  // A credential may never arrive through a tool argument.
-  ConfigProposal secret =
+  // A person may type a provider's key itself; no preview shows it.
+  auto human_secret =
       PrepareConfigProposal(ConfigProposalScope::kUser,
-                            {{"OPENROUTER_API_KEY", "leaked", false}}, manager);
-  CHECK(!secret.ok);
-  CHECK(secret.error.find("credential") != std::string::npos);
-  auto human_secret = PrepareConfigProposal(
-      ConfigProposalScope::kUser,
-      {{"OPENROUTER_API_KEY", "human-secret-replacement", false}}, manager,
-      /*direct_user=*/true);
+                            {{"UAGENT_PROVIDERS",
+                              R"({"old":{"base_url":"https://old.example/v1",)"
+                              R"("api_key":"human-secret-replacement"}})",
+                              false}},
+                            manager, /*direct_user=*/true);
   CHECK(human_secret.ok);
   CHECK(human_secret.Preview().find("human-secret-replacement") ==
         std::string::npos);
@@ -70,12 +65,6 @@ TEST_CASE(TestConfigProposalAndCommit) {
       ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", "[]", false}}, manager,
       /*direct_user=*/true);
   CHECK(!invalid_human_provider.ok);
-
-  // Removing a credential does not carry one through the tool arguments.
-  ConfigProposal unset_secret = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"OPENROUTER_API_KEY", "", true}}, manager);
-  CHECK(unset_secret.ok);
-  CHECK(unset_secret.Preview().find("canary-secret") == std::string::npos);
 
   // A boolean takes any documented spelling and is stored in one of them.
   ConfigProposal boolean = PrepareConfigProposal(
@@ -173,12 +162,13 @@ TEST_CASE(TestConfigProposalAndCommit) {
   // Preparing saves nothing.
   CHECK(ReadSettings("").all.at("UAGENT_MAX_TOOL_CALLS") == "40");
   // A secret is no part of the preview.
-  CHECK(proposal.Preview().find("canary-secret") == std::string::npos);
+  CHECK(proposal.Preview().find("adjacent-provider-secret") ==
+        std::string::npos);
 
   CHECK(CommitConfigProposal(proposal, error));
   SettingValues saved = ReadSettings("").all;
   CHECK(saved.at("UAGENT_MAX_TOOL_CALLS") == "120");
-  CHECK(saved.at("OPENROUTER_API_KEY") == "canary-secret");  // untouched
+  CHECK(saved.at("QWEN_GPU_API_KEY") == "adjacent-provider-secret");
 
   // Replaying the same approved proposal is refused: what it replaces is no
   // longer there.
@@ -342,17 +332,17 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
   // own.
   CHECK(ChangeSettings(test.workspace.string(), [](SettingValues& project) {
           project["TOKEN"] = "project-token";
-          project["UAGENT_API_KEY"] = "$TOKEN";
+          project["UAGENT_PROVIDERS"] = "$TOKEN";
           return std::string();
         }).empty());
   const auto resolved = manager.Read();
-  CHECK(resolved.values.at("UAGENT_API_KEY") == "project-token");
+  CHECK(resolved.values.at("UAGENT_PROVIDERS") == "project-token");
   CHECK(!resolved.values.contains("TOKEN"));
   // A reset is refused when a setting it removes changed since it was read.
   ConfigProposal reset =
       PrepareConfigReset(ConfigProposalScope::kProject, manager);
   CHECK(reset.ok && reset.written.contains("UAGENT_MAX_TOOL_CALLS"));
-  CHECK(!reset.written.contains("UAGENT_API_KEY"));
+  CHECK(!reset.written.contains("UAGENT_PROVIDERS"));
   CHECK(ChangeSettings(test.workspace.string(), [](SettingValues& project) {
           project["UAGENT_MAX_TOOL_CALLS"] = "121";
           project["UAGENT_MAX_STEPS"] = "3";
@@ -382,13 +372,15 @@ TEST_CASE(TestProjectSettingsAreSavedByFolder) {
 // save but never its secrets.
 TEST_CASE(TestConfigurationResetKeepsSecrets) {
   TestWorkspace test("config-reset");
+  const std::string providers =
+      R"({"p":{"base_url":"https://p.example/v1","api_key":"keep-me"}})";
   CHECK(SaveSettings({{"UAGENT_MAX_TOOL_CALLS", "40"},
                       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
-                      {"OPENROUTER_API_KEY", "keep-me"}})
+                      {"UAGENT_PROVIDERS", providers}})
             .empty());
   ScopedEnv no_calls("UAGENT_MAX_TOOL_CALLS");
   ScopedEnv no_backend("UAGENT_WEB_SEARCH_BACKEND");
-  ScopedEnv no_key("OPENROUTER_API_KEY");
+  ScopedEnv no_providers("UAGENT_PROVIDERS");
   ConfigManager manager = ConfigManager::Capture({});
   RuntimeConfig active = manager.Read().config;
   auto find = [](const json& result, const std::string& name) {
@@ -404,8 +396,8 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
   CHECK(calls["set"]["user"] == 40 && calls["effective"] == 40);
   CHECK(calls["scopes"].size() == 2 && calls["scopes"][1] == "project");
   CHECK(calls["source"] == "user" && calls["locked"] == false);
-  CHECK(find(got, "OPENROUTER_API_KEY")["set"]["user"] == true);
-  CHECK(!find(got, "OPENROUTER_API_KEY").contains("effective"));
+  CHECK(find(got, "UAGENT_PROVIDERS")["set"]["user"].dump().find("keep-me") ==
+        std::string::npos);
   const json steps = find(got, "UAGENT_MAX_STEPS");
   CHECK(!steps.contains("set") && steps["effective"] == steps["default"]);
   CHECK(steps["source"] == "default");
@@ -418,9 +410,9 @@ TEST_CASE(TestConfigurationResetKeepsSecrets) {
   CHECK(reset["effects"].size() == 2);
   CHECK(reset["effects"][0]["effect"] == "next_turn");
   CHECK(!find(reset, "UAGENT_MAX_TOOL_CALLS").contains("set"));
-  CHECK(find(reset, "OPENROUTER_API_KEY")["set"]["user"] == true);
-  CHECK(ReadSettings("").all ==
-        (SettingValues{{"OPENROUTER_API_KEY", "keep-me"}}));
+  const SettingValues kept = ReadSettings("").all;
+  CHECK(kept.size() == 1 &&
+        json::parse(kept.at("UAGENT_PROVIDERS")) == json::parse(providers));
   // Nothing left to reset is not an error and writes nothing.
   json again = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
                                     manager);

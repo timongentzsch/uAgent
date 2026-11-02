@@ -37,11 +37,6 @@ const WHOLE = {
   },
 } as const;
 
-// How the connection settings fit together, said once above them.
-const INTRO: Partial<Record<SavedScope, string>> = {
-  user: "To connect, one of these is enough: an OpenRouter key, or an API address with its key. Named providers add further endpoints, each with its own address and key; a model is then chosen as provider/model.",
-};
-
 // Everything that can be saved at `scope`, under its groups, each setting
 // edited in place. The box narrows the same rows.
 export default function Configuration({
@@ -133,9 +128,6 @@ export default function Configuration({
             <code>{JSON.stringify(config.document ?? {}, null, 2)}</code>
           </pre>
         </Group>
-      )}
-      {!asFile && INTRO[scope] && !needle && (
-        <p class="group-footer small">{INTRO[scope]}</p>
       )}
       {!asFile &&
         config.categories.map(({ id, label }) => {

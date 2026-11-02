@@ -180,16 +180,13 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
     for (const auto& [scope, held] : configured.layers) {
       if (auto own = held.find(key);
           own != held.end() && !own->second.empty()) {
-        // A secret is only said to be set; the providers are shown with
-        // their keys hidden.
+        // The providers are shown with their keys hidden; from a variable,
+        // they are only said to be set.
         json shown =
             json::parse(SanitizeCompositeValue(own->second), nullptr, false);
-        entry["set"][scope] =
-            !secret ? TypedValue(descriptor, own->second)
-            : descriptor.sensitivity == Sensitivity::kCompositeSecret &&
-                    shown.is_object()
-                ? std::move(shown)
-                : json(true);
+        entry["set"][scope] = !secret ? TypedValue(descriptor, own->second)
+                              : shown.is_object() ? std::move(shown)
+                                                  : json(true);
       }
     }
     if (!secret) {
@@ -277,19 +274,18 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       // Which routes exist, never their credentials. A model that cannot read
       // this guesses a selection, and a guess that resolves to the wrong
       // endpoint fails as an authentication error rather than as a typo.
-      ProviderCatalog catalog = SessionProviderCatalog();
+      ProviderCatalog catalog = LoadProviderCatalog();
       json models = json::array();
       for (const Route& route : catalog.models) {
         if (!name.empty() && route.route_name != name) continue;
-        models.push_back(
-            {{"name", route.route_name},
-             {"model", route.model},
-             {"base_url", RedactedUrl(route.base_url)},
-             {"wire_api", WireApiName(route.wire_api)},
-             {"features", FeatureNames(route.features)},
-             {"context", route.ctx_window},
-             {"effort", route.reasoning_effort},
-             {"credential", route.api_key.empty() ? "unset" : "set"}});
+        models.push_back({{"name", route.route_name},
+                          {"model", route.model},
+                          {"base_url", RedactedUrl(route.base_url)},
+                          {"wire_api", WireApiName(route.wire_api)},
+                          {"features", FeatureNames(route.features)},
+                          {"context", route.ctx_window},
+                          {"effort", route.reasoning_effort},
+                          {"credential", HasKey(route) ? "set" : "unset"}});
       }
       json providers = json::array();
       for (const Endpoint& provider : catalog.providers) {
@@ -300,17 +296,18 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
              {"wire_api", WireApiName(provider.wire_api)},
              {"features", FeatureNames(provider.features)},
              {"context", provider.context},
-             {"credential", provider.api_key.empty() ? "unset" : "set"}});
+             {"credential", HasKey(provider) ? "set" : "unset"}});
       }
       out["active"] = RouteSelection(inputs.api, catalog.providers);
       out["models"] = std::move(models);
       out["providers"] = std::move(providers);
-      out["selection"] = "[provider/]model[:effort]";
+      out["selection"] = "provider/model[:effort]";
       out["efforts"] = kReasoningEfforts;
       out["note"] =
-          "A named model route resolves by its own name; any other id resolves "
-          "against a provider scope. Ids a provider serves are not enumerated "
-          "here — only what this build is configured to reach.";
+          "A named model route resolves by its own name; any other id is "
+          "provider/model. Ids a provider serves are not enumerated here — "
+          "only what this build is configured to reach; change providers with "
+          "uagent_configure.";
       break;
     }
     case SelfTopic::kPrompt: {

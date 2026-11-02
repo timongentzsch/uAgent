@@ -419,7 +419,7 @@ const RouteResolution& Agent::ImageRoute() const {
                           "\n" + api_.model + "\n" +
                           (api_.capabilities.image_input ? "y" : "n");
   if (image_route_.first != key) {
-    ProviderCatalog catalog = SessionProviderCatalog();
+    ProviderCatalog catalog = LoadProviderCatalog();
     image_route_ = {key,
                     ResolveImageRoute(api_, catalog.models, catalog.providers,
                                       api_.config.image_model)};

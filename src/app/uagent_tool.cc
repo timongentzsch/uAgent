@@ -287,7 +287,7 @@ Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
                  {"description",
                   "required for set; omitted for unset. UAGENT_PROVIDERS "
                   "takes only the providers to add or change, as a JSON "
-                  "object; null removes one"}}}}},
+                  "object, a key only as $VARIABLE; null removes one"}}}}},
              {"required", json::array({"key", "operation"})}}}}}}},
        {"required", json::array({"scope", "changes"})}},
       // Reaching here means the human approved the preview built from these

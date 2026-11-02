@@ -292,6 +292,8 @@ with (
         provider.url,
         args.port,
         extra_env={
+            # The saved providers apply, not the test environment's.
+            "UAGENT_PROVIDERS": None,
             "UAGENT_MODEL": None if args.no_model else "mock/main:high",
             # The terminal's shell, the same on every machine.
             "SHELL": "/bin/sh",

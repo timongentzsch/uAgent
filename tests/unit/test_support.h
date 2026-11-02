@@ -38,7 +38,7 @@ inline void UseEndpoint(Api& api, const std::string& url,
   api.wire_api = wire_api;
   api.features = {};
   api.options = nullptr;
-  DeclareEndpoint(api, {});
+  DeclareHost(api);
   if (hosted_search) api.features.Add(Feature::kHostedSearch);
   api.capabilities = CapabilitiesForRoute(api.wire_api, api.features);
 }

@@ -36,20 +36,19 @@ struct Known {
   const char* label;
   const char* variable;
   const char* base_url;
-  const char* wire_api;
   WireApi wire;
 };
 constexpr Known kKnown[] = {
     {"anthropic", "Anthropic", "ANTHROPIC_API_KEY",
-     "https://api.anthropic.com/v1", "anthropic_messages",
-     WireApi::kAnthropicMessages},
+     "https://api.anthropic.com/v1", WireApi::kAnthropicMessages},
     {"openai", "OpenAI", "OPENAI_API_KEY", "https://api.openai.com/v1",
-     "responses", WireApi::kResponses},
+     WireApi::kResponses},
     {"openrouter", "OpenRouter", "OPENROUTER_API_KEY",
-     "https://openrouter.ai/api/v1", nullptr, WireApi::kChatCompletions},
+     "https://openrouter.ai/api/v1", WireApi::kChatCompletions},
 };
 
-std::string& KeyOf(SetupKeys& keys, const std::string& name) {
+template <typename Keys>
+auto& KeyOf(Keys& keys, std::string_view name) {
   if (name == "anthropic") return keys.anthropic;
   if (name == "openai") return keys.openai;
   return keys.openrouter;
@@ -223,8 +222,10 @@ std::string ChooseModel(const std::vector<std::string>& ids,
 }  // namespace
 
 void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
-  if (!keys.openrouter.empty()) scope["OPENROUTER_API_KEY"] = keys.openrouter;
-  if (keys.openai.empty() && keys.anthropic.empty()) return;
+  if (keys.openrouter.empty() && keys.openai.empty() &&
+      keys.anthropic.empty()) {
+    return;
+  }
   json providers = json::object();
   if (auto held = scope.find(kProviders); held != scope.end()) {
     providers = json::parse(held->second, nullptr, false);
@@ -232,15 +233,15 @@ void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
     if (!providers.is_object()) return;
   }
   for (const Known& known : kKnown) {
-    if (!known.wire_api) continue;
-    const std::string& key =
-        std::string_view(known.name) == "openai" ? keys.openai : keys.anthropic;
+    const std::string& key = KeyOf(keys, known.name);
     if (key.empty()) continue;
     scope[known.variable] = key;
     json& provider = providers[known.name];
     if (!provider.is_object()) provider = json::object();
     if (!provider.contains("base_url")) provider["base_url"] = known.base_url;
-    if (!provider.contains("wire_api")) provider["wire_api"] = known.wire_api;
+    if (!provider.contains("wire_api")) {
+      provider["wire_api"] = WireApiName(known.wire);
+    }
     provider["api_key"] = std::string("$") + known.variable;
   }
   scope[kProviders] = JsonDump(providers);

@@ -17,7 +17,7 @@ layer.
 | `src/app/folder_overview.cc`, `launch.cc` | A folder at a glance (spend, changes, git) for the web's overview and `/overview`, and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, session links and search, supervision services (activities, child agent), mail delivery, the edit journal behind `/undo`, memory store and the transcript view every client draws |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
-| `src/providers/` | Well-known endpoints, provider entries, model selection grammar and route policy |
+| `src/providers/` | Provider entries, what well-known hosts declare, model selection grammar and route policy |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
 | `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory, todo); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |

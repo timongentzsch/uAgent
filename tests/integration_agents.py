@@ -634,7 +634,7 @@ def test_an_agent_reaches_a_named_provider_with_its_key(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        for name in ("UAGENT_BASE_URL", "UAGENT_API_KEY", "UAGENT_MODEL"):
+        for name in ("UAGENT_PROVIDERS", "UAGENT_MODEL"):
             env.pop(name, None)
         save_settings(
             home,

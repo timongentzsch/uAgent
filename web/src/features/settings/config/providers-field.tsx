@@ -34,6 +34,42 @@ const WIRES: [string, string, string][] = [
   ["anthropic_messages", "Anthropic", "Messages (Anthropic)"],
 ];
 
+// Where a new provider may start from: its name, address and API, each still
+// editable. Nothing is sent until its key is added and it is saved.
+type Preset = { label: string; name: string; base_url: string; wire: string };
+const PRESETS: Preset[] = [
+  {
+    label: "OpenRouter",
+    name: "openrouter",
+    base_url: "https://openrouter.ai/api/v1",
+    wire: "chat_completions",
+  },
+  {
+    label: "OpenAI",
+    name: "openai",
+    base_url: "https://api.openai.com/v1",
+    wire: "responses",
+  },
+  {
+    label: "Anthropic",
+    name: "anthropic",
+    base_url: "https://api.anthropic.com/v1",
+    wire: "anthropic_messages",
+  },
+  {
+    label: "Ollama",
+    name: "ollama",
+    base_url: "http://localhost:11434/v1",
+    wire: "chat_completions",
+  },
+];
+
+// Where a provider's key comes from, as its row says it.
+const keyOf = (entry: Provider) => {
+  const key = text(entry.api_key);
+  return key.startsWith("$") ? `key from ${key}` : key ? "key set" : "no key";
+};
+
 // The fields edited here; anything else a provider holds is kept as written
 // and named in its sheet.
 const EDITED = ["base_url", "api_key", "wire_api", "hosted_tools"];
@@ -43,8 +79,9 @@ const wireOf = (entry: Provider) => text(entry.wire_api) || "chat_completions";
 const isObject = (value: JSONValue): value is Provider =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-// The named providers as a list of their own: one row each, edited in a
-// sheet, and Add in the caption. A model is then chosen as provider/model.
+// The providers as a list of their own: one row each, edited in a sheet, and
+// Add in the caption; with none yet, the presets to start from. A model is
+// then chosen as provider/model.
 export function ProvidersField({
   label,
   footer,
@@ -65,8 +102,10 @@ export function ProvidersField({
   save: (text: string) => Promise<boolean>;
 }) {
   const held: Providers = value && isObject(value) ? (value as Providers) : {};
-  // The provider whose sheet is open; "" while adding one.
-  const [open, setOpen] = useState<string>();
+  // The provider whose sheet is open, by name; "" while adding one, from a
+  // preset or none.
+  const [open, setOpen] = useState<{ name: string; preset?: Preset }>();
+  const empty = !Object.keys(held).length;
   return (
     <>
       <Group
@@ -76,24 +115,43 @@ export function ProvidersField({
           <Button
             size="compact"
             disabled={disabled}
-            onClick={() => setOpen("")}
+            onClick={() => setOpen({ name: "" })}
           >
             Add a provider
           </Button>
         }
       >
+        {empty && (
+          <div class="group-block">
+            <p>
+              No provider yet. A provider is an address that serves models, with
+              its key.
+            </p>
+            <Actions>
+              {PRESETS.map((preset) => (
+                <Button
+                  key={preset.name}
+                  disabled={disabled}
+                  onClick={() => setOpen({ name: "", preset })}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </Actions>
+          </div>
+        )}
         {Object.entries(held).map(([name, entry]) => (
           <Row
             key={name}
             label={name}
-            detail={text(entry.base_url) || "No address"}
+            detail={`${text(entry.base_url) || "No address"} · ${keyOf(entry)}`}
           >
             {WIRES.find(([id]) => id === wireOf(entry))?.[1]}
             <Button
               size="compact"
               aria-label={`Edit ${name}`}
               disabled={disabled}
-              onClick={() => setOpen(name)}
+              onClick={() => setOpen({ name })}
             >
               Edit
             </Button>
@@ -102,12 +160,13 @@ export function ProvidersField({
       </Group>
       {open !== undefined && (
         <Modal
-          title={open ? "Edit provider" : "Add a provider"}
+          title={open.name ? "Edit provider" : "Add a provider"}
           layout="sheet"
           close={() => setOpen(undefined)}
         >
           <ProviderForm
-            name={open}
+            name={open.name}
+            preset={open.preset}
             held={held}
             error={error}
             disabled={disabled}
@@ -126,6 +185,7 @@ export function ProvidersField({
 // the endpoint's API documents it and sent as written.
 function ProviderForm({
   name: before,
+  preset,
   held,
   error,
   disabled,
@@ -133,6 +193,8 @@ function ProviderForm({
 }: {
   // Empty for a new provider.
   name: string;
+  // What a new one starts from.
+  preset?: Preset;
   held: Providers;
   error?: string;
   disabled: boolean;
@@ -142,10 +204,17 @@ function ProviderForm({
   const entry = held[before] || {};
   const stored = text(entry.api_key);
   const listed = Array.isArray(entry.hosted_tools) ? entry.hosted_tools : [];
-  const [name, setName] = useState(before);
-  const [address, setAddress] = useState(text(entry.base_url));
+  const [name, setName] = useState(before || preset?.name || "");
+  const [address, setAddress] = useState(
+    text(entry.base_url) || preset?.base_url || "",
+  );
   const [key, setKey] = useState(stored === HIDDEN ? "" : stored);
-  const [wire, setWire] = useState(wireOf(entry));
+  const [wire, setWire] = useState(preset?.wire || wireOf(entry));
+  const start = (from: Preset) => {
+    setName(from.name);
+    setAddress(from.base_url);
+    setWire(from.wire);
+  };
   const [search, setSearch] = useState(listed.includes("web_search"));
   const [tools, setTools] = useState(listed.filter(isObject));
   // The definition open for editing, as typed, and why it was refused.
@@ -251,6 +320,24 @@ function ProviderForm({
   );
   return (
     <form class="provider-form" onSubmit={submit}>
+      {!before && (
+        <Group
+          title="Start from"
+          footer="Fills the fields below; each stays editable."
+        >
+          <Actions>
+            {PRESETS.map((from) => (
+              <Button
+                key={from.name}
+                aria-pressed={address === from.base_url && wire === from.wire}
+                onClick={() => start(from)}
+              >
+                {from.label}
+              </Button>
+            ))}
+          </Actions>
+        </Group>
+      )}
       <Field
         label="Name"
         help={`Letters, digits, - and _. Its models are chosen as ${wanted || "name"}/model.`}

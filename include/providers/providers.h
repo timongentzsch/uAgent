@@ -109,28 +109,23 @@ RouteResolution ResolveReviewRoute(const Api& api,
 
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);
-// The providers of the settings plus the well-known endpoints whose key is
-// set, with the routes their aliases name.
+// The providers of the settings, with the routes their aliases name. Every
+// consumer of the selection schema reads this one catalogue, so
+// `provider/model` means the same thing to all of them.
 ProviderCatalog LoadProviderCatalog();
-// Every consumer of the selection schema reads the same catalogue, so
-// `openrouter/<id>` means the same thing to all of them.
-ProviderCatalog SessionProviderCatalog();
 const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
                              const std::string& name);
-// The endpoint used when none is addressed: the first well-known one whose
-// key is set, else nothing.
-const Endpoint* DefaultEndpoint(const std::vector<Endpoint>& providers);
-// What an endpoint declares of itself, by its address: the provider entry
-// that has it, else the well-known endpoint. False when neither does.
-bool DeclareEndpoint(Endpoint& endpoint,
-                     const std::vector<Endpoint>& providers);
+// What a well-known host declares of an endpoint on it (features, options);
+// false when its address is on none.
+bool DeclareHost(Endpoint& endpoint);
+// Whether an endpoint has a key of its own, not the placeholder that stands
+// in for none.
+bool HasKey(const Endpoint& endpoint);
 std::optional<Route> ResolveModelRoute(const std::vector<Route>& routes,
                                        const std::vector<Endpoint>& providers,
                                        const std::string& selection);
 // The selection that would reproduce a route in the shared schema,
-// [endpoint/]model[:effort] — the same string the user could pass to
-// --model. The endpoint scope is omitted when no provider or well-known
-// endpoint serves its base URL.
+// provider/model[:effort] — the same string the user could pass to --model.
 std::string RouteSelection(const Route& route,
                            const std::vector<Endpoint>& providers);
 // The same, by the name the route was chosen by where it has one of its own

@@ -22,6 +22,9 @@ json ClaimScheduledRuns(int64_t now, size_t slots);
 json UpdateScheduledRun(const std::string& id, const std::string& status,
                         const std::string& error = "");
 bool ScheduledRunActive(const std::string& status);
+// A task's check, run in `cwd` by the control helper so the sandbox fits that
+// folder: {"exit", "output"}, or {"error"} when it did not finish.
+json RunScheduleCheck(const std::string& cwd, const std::string& command);
 // Points the runs saved at a path of `moved` at the path it maps to.
 json MoveScheduledSessions(const std::map<std::string, std::string>& moved);
 }  // namespace uagent

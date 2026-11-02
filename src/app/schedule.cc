@@ -3,6 +3,7 @@
 
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/wait.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -12,7 +13,9 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 
+#include "include/agent/activity_supervisor.h"
 #include "include/app/control.h"
 #include "include/app/launch.h"
 #include "include/core/config_registry.h"
@@ -20,7 +23,9 @@
 #include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/tools/shell.h"
 
 namespace uagent {
 namespace {
@@ -28,6 +33,11 @@ constexpr size_t kStoreBytes = MiB(4);
 constexpr size_t kTasks = 64, kRuns = 128;
 constexpr size_t kScheduleNameChars = 256;
 constexpr size_t kSchedulePromptChars = KiB(8);
+constexpr size_t kScheduleCheckChars = KiB(2);
+// What a check prints reaches the run's prompt; its end says the most.
+constexpr size_t kCheckOutputChars = KiB(4);
+// How long a task's check may run before its run fails.
+constexpr int kCheckSeconds = 50;
 constexpr size_t kTimezoneNameChars = 100;
 constexpr int kUpcomingScheduleTimes = 3;
 json Empty() {
@@ -88,8 +98,8 @@ json Mutate(const std::function<json(json&)>& change) {
   return result;
 }
 constexpr char kUnknownAction[] =
-    "unknown schedule action; use list, get, preview, save, run, pause, "
-    "resume, forget or stop";
+    "unknown schedule action; use list, get, preview, check, save, run, "
+    "pause, resume, forget or stop";
 json Run(const json& task, int64_t at, const std::string& status) {
   auto id = HashHex(MakeSessionId());
   const auto project = JsonValue(task, "cwd", "");
@@ -294,11 +304,13 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
   json task = JsonValue(request, "task", json::object());
   const std::string name = Trim(JsonValue(task, "name", ""));
   const std::string prompt = Trim(JsonValue(task, "prompt", ""));
+  const std::string check = Trim(JsonValue(task, "check", ""));
   const auto environment = JsonValue(task, "environment", "worktree");
   const std::string permissions = JsonValue(task, "permissions", "ask");
   task["permissions"] = permissions;
   if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
       prompt.size() > kSchedulePromptChars ||
+      check.size() > kScheduleCheckChars ||
       (environment != "local" && environment != "worktree") ||
       !Cfg("UAGENT_APPROVAL").Accepts(permissions)) {
     return {{"error",
@@ -336,6 +348,7 @@ json ScheduleSave(json& store, const json& request, const std::string& id,
                 {"environment", environment},
                 {"permissions", permissions},
                 {"model", JsonValue(task, "model", "")},
+                {"check", check},
                 {"schedule", schedule},
                 {"enabled", JsonValue(task, "enabled", true)},
                 {"next", preview["times"][0]},
@@ -391,6 +404,32 @@ json ScheduleChange(json& store, const json& request, const std::string& id,
   (*found)["revision"] = HashHex(MakeSessionId());
   return {{"item", *found}};
 }
+// A task's check, in this helper's folder under the sandbox and environment
+// a command gets: exit 0 starts the run, 1 means nothing new.
+json ScheduleCheck(const json& request) {
+  ActivitySupervisor processes;
+  ShellCommandResult done = RunShellCommand(
+      processes, ToolContext().WithTimeout(kCheckSeconds),
+      {.command = JsonValue(request, "command", ""), .shell = "sh"});
+  std::string output = std::move(done.result.output);
+  if (output.size() > kCheckOutputChars) {
+    output.erase(0,
+                 Utf8BoundaryAfter(output, output.size() - kCheckOutputChars));
+  }
+  if (!done.wait_status || done.result.status == CompletionStatus::kTimedOut) {
+    return {{"error", "check did not finish: " + output}};
+  }
+  return {{"exit",
+           WIFEXITED(*done.wait_status) ? WEXITSTATUS(*done.wait_status) : -1},
+          {"output", output}};
+}
+json RunScheduleCheck(const std::string& cwd, const std::string& command) {
+  return ControlProcess({{"kind", "schedule"},
+                         {"action", "check"},
+                         {"cwd", cwd},
+                         {"command", command}},
+                        kCheckSeconds + 10);
+}
 json ScheduleControl(const json& request) {
   const auto action = JsonValue(request, "action", "");
   if (action == "list") {
@@ -409,6 +448,7 @@ json ScheduleControl(const json& request) {
                          JsonValue(request, "after", NowSeconds()));
   }
   if (action == "get") return ScheduleGet(request);
+  if (action == "check") return ScheduleCheck(request);
   if (action != "stop" && action != "save" && action != "run" &&
       action != "pause" && action != "resume" && action != "forget") {
     return {{"error", kUnknownAction}};

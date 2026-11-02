@@ -48,8 +48,8 @@ int Reach(ApprovalMode mode) {
 // A task as the model needs it: enough to check it and name it again.
 json TaskBrief(const json& task) {
   json brief = json::object();
-  for (const char* field : {"id", "name", "schedule", "permissions", "model",
-                            "cwd", "enabled", "upcoming", "error"}) {
+  for (const char* field : {"id", "name", "schedule", "check", "permissions",
+                            "model", "cwd", "enabled", "upcoming", "error"}) {
     if (task.contains(field)) brief[field] = task[field];
   }
   return brief;
@@ -108,6 +108,7 @@ ToolResult Schedule(const json& arguments, const std::string& model) {
       for (const char* field : {"name", "prompt", "schedule"}) {
         task[field] = arguments[field];
       }
+      task["check"] = JsonValue(arguments, "check", "");
       task["permissions"] = JsonValue(arguments, "permissions",
                                       ApprovalModeName(CurrentApprovalMode()));
       request["task"] = std::move(task);
@@ -138,6 +139,8 @@ Tool ScheduleTool(std::function<std::string()> model) {
         "prompt":{"type":"string"},
         "schedule":{"type":"object","description":
           "type once+at (unix) | interval+seconds (>=60) | weekly+days (0=Sun)+time (HH:MM)+timezone (IANA)"},
+        "check":{"type":"string","description":
+          "optional shell command run first in the folder: exit 0 starts the run with its output, 1 skips it without a model call"},
         "permissions":{"type":"string","enum":["plan","ask","auto","yolo"],
           "description":"default and most: this conversation's"}},
         "required":["action"]})json"),

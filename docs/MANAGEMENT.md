@@ -103,6 +103,13 @@ Each run is an ordinary session, started from a frozen copy of the task:
   When a run needs a decision, open it in the web UI or terminal.
 - `environment`: `worktree` (the default) runs in a git worktree detached
   at the committed `HEAD`; `local` runs in the folder.
+- `check`: an optional shell command run first, in the run's folder, under
+  the sandbox and environment a command gets, for up to 50 seconds. Exit 0
+  starts the run with the check's output, if any (its last 4 KiB), added
+  to the prompt; exit 1 records the run as "nothing new" without asking a model;
+  anything else, or no exit in time, fails the run with its output. A check
+  makes frequent polling cheap: `./in_stock.sh` every two minutes costs a
+  model call only when it finds stock.
 
 Worktrees and conversations are kept for review, including after the task is
 deleted; remove a reviewed worktree with `git worktree remove`.
@@ -136,6 +143,9 @@ uagent --control '{
   }
 }'
 ```
+
+`check` runs a `command` in `cwd` exactly as a task's check would, to try
+one before saving it.
 
 A schedule is `{"type":"once","at":UNIX}`,
 `{"type":"interval","seconds":N}` (optional `start`) or the weekly form

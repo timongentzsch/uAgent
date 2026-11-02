@@ -992,6 +992,8 @@ export interface ScheduledTask {
   revision: string;
   name: string;
   prompt: string;
+  // A shell command run before each run: exit 0 starts it, 1 skips it.
+  check: string;
   cwd: string;
   model: string;
   permissions: "ask" | "auto" | "yolo" | "plan";

@@ -327,6 +327,54 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
             assert_true(len(provider.requests) == 1, "restart submitted the same run again")
 
 
+def test_a_scheduled_check_decides_whether_the_model_is_asked(root, home, *, binary):
+    """Exit 1 records nothing new and asks no model; exit 0 starts the run
+    with what the check printed; anything else fails the run."""
+
+    def answer(_index, _body):
+        return event({"content": "Seen"})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, env):
+            client.pair(code)
+
+            def run_with(check):
+                task = dict(
+                    name="Watch",
+                    prompt="Report what changed.",
+                    check=check,
+                    cwd=str(root),
+                    environment="local",
+                    permissions="ask",
+                    schedule=dict(type="interval", seconds=3600),
+                )
+                item = client.command("schedule", action="save", revision="", task=task)["result"][
+                    "item"
+                ]
+                run = control(binary, root, env, "schedule", action="run", key=item["id"])["run"]
+
+                seen = {}
+
+                def settled():
+                    runs = client.command("schedule", action="list")["result"]["runs"]
+                    seen.update(next(r for r in runs if r["id"] == run["id"]))
+                    return seen["status"] in ("quiet", "failed", "completed")
+
+                wait_until(settled, "the run never settled", timeout=30)
+                return seen
+
+            assert_true(run_with("test -e flag")["status"] == "quiet", "a quiet check ran")
+            assert_true(provider.requests == [], provider.requests)
+            failed = run_with("echo broken >&2; exit 3")
+            assert_true(failed["status"] == "failed" and "broken" in failed["error"], failed)
+            # The check runs in the task's folder.
+            (root / "flag").write_text("")
+            found = run_with("test -e flag && echo the flag is up")
+            assert_true(found["status"] == "completed", found)
+            prompt = json.dumps(provider.requests[-1][1]["messages"][-1])
+            assert_true("the flag is up" in prompt, prompt)
+
+
 def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary):
     """A server the task leaves running must not hold its run open."""
 

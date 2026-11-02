@@ -57,7 +57,8 @@ void SessionHost::RecordRun(const RunUpdate& update) {
   }
 }
 
-std::shared_ptr<HostSession> SessionHost::StartScheduledRun(const json& run) {
+std::shared_ptr<HostSession> SessionHost::StartScheduledRun(
+    const json& run, const std::string& checked) {
   const json& definition = run["definition"];
   const std::string cwd = JsonValue(run, "cwd", "");
   const std::string id = JsonValue(run, "id", "");
@@ -72,6 +73,11 @@ std::shared_ptr<HostSession> SessionHost::StartScheduledRun(const json& run) {
   session->task_id = JsonValue(run, "task_id", "");
   session->launch = definition;
   session->launch_prompt = JsonValue(definition, "prompt", "");
+  if (!checked.empty()) {
+    session->launch_prompt +=
+        "\n\nThe task's check found something; it printed:\n```\n" + checked +
+        "\n```";
+  }
   return session;
 }
 
@@ -228,6 +234,13 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
               ? CreateWorktree(JsonValue(definition, "cwd", ""),
                                JsonValue(run, "cwd", ""))
               : "";
+      // A check decides, before any model is asked, whether this run has
+      // anything to do.
+      const std::string check = JsonValue(definition, "check", "");
+      const json checked =
+          starting && failure.empty() && !check.empty()
+              ? RunScheduleCheck(JsonValue(run, "cwd", ""), check)
+              : json{{"exit", 0}};
       const json current = starting ? ReadSchedules() : before;
       lock.lock();
       if (stopping_) return wait;
@@ -241,9 +254,18 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
         }
         continue;
       }
+      const int64_t exit = JsonValue(checked, "exit", int64_t{-1});
+      const std::string output = JsonValue(checked, "output", "");
       if (!failure.empty()) {
         RecordRun({id, "failed", failure});
-      } else if (auto session = StartScheduledRun(run)) {
+      } else if (checked.contains("error")) {
+        RecordRun({id, "failed", JsonValue(checked, "error", "")});
+      } else if (exit == 1) {
+        RecordRun({id, "quiet", ""});
+      } else if (exit != 0) {
+        RecordRun({id, "failed",
+                   "check exited " + std::to_string(exit) + ": " + output});
+      } else if (auto session = StartScheduledRun(run, output)) {
         tick.activate.push_back(std::move(session));
       }
     }

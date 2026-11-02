@@ -446,6 +446,7 @@ TEST_CASE(TestScheduleTool) {
   const json save = {{"action", "save"},
                      {"name", "Stock check"},
                      {"prompt", "Tell me what changed."},
+                     {"check", "./in_stock.sh"},
                      {"schedule", {{"type", "interval"}, {"seconds", 3600}}}};
   json wider = save;
   wider["permissions"] = "yolo";
@@ -459,6 +460,7 @@ TEST_CASE(TestScheduleTool) {
   CHECK(saved.Ok());
   const json item = json::parse(saved.output);
   CHECK(item["permissions"] == "auto" && item["model"] == "local/haiku");
+  CHECK(item["check"] == "./in_stock.sh");
   CHECK(item["cwd"] == workspace.workspace.string());
   CHECK(item["upcoming"].size() == 3);
   CHECK(item["host_running"] == false);

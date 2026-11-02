@@ -585,7 +585,6 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model) {
   tool.delegates = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
-  tool.intent = "delegate";
   tool.result_chars = static_cast<int64_t>(kWaitChars) + 4096;
   tool.headline = [](const json& a) {
     return Headline{"Starting agent", "Started agent",
@@ -609,7 +608,6 @@ Tool AgentSendTool() {
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
-  tool.intent = "delegate";
   tool.headline = [](const json& a) {
     return Headline{"Messaging", "Messaged", JsonValue(a, "id", "")};
   };

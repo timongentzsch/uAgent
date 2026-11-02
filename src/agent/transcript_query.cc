@@ -65,13 +65,8 @@ std::vector<json> WithStructure(std::vector<json> nodes, const json& facts) {
   for (const json& node : nodes) held.insert(JsonValue(node, "id", ""));
   std::vector<json> out;
   std::function<void(const std::string&)> ensure = [&](const std::string& id) {
-    if (!(id.starts_with("w-") || id.starts_with("g-")) ||
-        !held.insert(id).second) {
-      return;
-    }
-    const json& recorded = JsonValue(facts, id.c_str(), kNone);
-    json node = id.starts_with("g-") ? GroupNode(id, recorded)
-                                     : WorkNode(id.substr(2), recorded);
+    if (!id.starts_with("w-") || !held.insert(id).second) return;
+    json node = WorkNode(id.substr(2), JsonValue(facts, id.c_str(), kNone));
     ensure(JsonValue(node, "parent", ""));
     out.push_back(std::move(node));
   };

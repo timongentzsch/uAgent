@@ -155,7 +155,6 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     }
     return std::nullopt;
   };
-  activity.intent = "run";
   activity.headline = [](const json& a) {
     const std::string operation = JsonValue(a, "operation", "");
     const std::string target =

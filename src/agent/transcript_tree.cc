@@ -101,14 +101,6 @@ const json* ResultRecord(const json& facts, uint64_t sequence,
 
 bool IsFile(const json& part) { return JsonValue(part, "kind", "") == "file"; }
 
-// The verb a run of same-intent calls folds under; empty for intents whose
-// calls always keep their own rows.
-std::string GroupVerb(const std::string& intent) {
-  return intent == "explore"    ? "Explored"
-         : intent == "research" ? "Researched"
-         : intent == "edit"     ? "Edited"
-                                : "";
-}
 }  // namespace
 
 json MakeNode(std::string id, std::string_view parent, std::string_view kind,
@@ -158,9 +150,8 @@ json CallNode(const json& record, std::string_view work) {
   const std::string state = JsonValue(record, "state", "running");
   const json activity = JsonValue(record, "activity", kNone);
   const json view = JsonValue(record, "view", json(nullptr));
-  const std::string group = JsonValue(record, "group", "");
   json node = MakeNode(
-      JsonValue(record, "detail_id", ""), group.empty() ? work : group, "call",
+      JsonValue(record, "detail_id", ""), work, "call",
       {{"state", state},
        {"headline", JsonValue(record, "headline",
                               CallHeadline(view, state,
@@ -230,46 +221,8 @@ json WorkNode(const std::string& message, const json& facts) {
         {{"word",
           done ? FmtDuration(JsonValue(facts, "duration_ms", 0.0) / 1000) : ""},
          {"items", steps},
-         {"unit", "step"},
          {"edited", edited},
          {"errors", errors}}}});
-}
-
-std::vector<json> GroupCalls(const std::vector<json>& activities) {
-  std::vector<json> groups;
-  for (size_t begin = 0; begin < activities.size();) {
-    const std::string intent = JsonValue(activities[begin], "category", "");
-    const std::string verb = GroupVerb(intent);
-    auto eligible = [&](size_t i) {
-      return !verb.empty() &&
-             JsonValue(activities[i], "category", "") == intent &&
-             JsonValue(activities[i], "groupable", false) &&
-             JsonValue(activities[i], "state", "") == "ok";
-    };
-    size_t end = begin + 1;
-    while (eligible(begin) && end < activities.size() && eligible(end)) ++end;
-    if (end - begin > 1) {
-      json members = json::array();
-      for (size_t i = begin; i < end; ++i) {
-        members.push_back(JsonValue(activities[i], "detail_id", ""));
-      }
-      groups.push_back({{"id", "g-" + members[0].get<std::string>()},
-                        {"verb", verb},
-                        {"members", std::move(members)}});
-    }
-    begin = end;
-  }
-  return groups;
-}
-
-json GroupNode(const std::string& id, const json& group) {
-  const int64_t calls = JsonValue(group, "calls", int64_t{0});
-  return MakeNode(id, JsonValue(group, "work", ""), "group",
-                  {{"state", "ok"},
-                   {"headline",
-                    {{"verb", JsonValue(group, "verb", "")},
-                     {"target", Plural(calls, "call")}}},
-                   {"result", {{"items", calls}, {"unit", "call"}}}});
 }
 
 json EntryNode(const json& entry) {

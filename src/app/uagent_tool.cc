@@ -25,7 +25,6 @@ void RequireHuman(Tool& tool) {
   };
   tool.capabilities = 0;
   tool.category = "system";
-  tool.intent = "setup";
 }
 }  // namespace
 
@@ -84,7 +83,6 @@ Tool UagentTool(SelfDescriptionProvider describe) {
   tool.capabilities = 0;
   tool.parallel_safe = true;
   tool.category = "system";
-  tool.intent = "setup";
   tool.headline = [](const json& arguments) {
     return Headline{"Inspecting", "Inspected",
                     JsonValue(arguments, "topic", "status") + " " +

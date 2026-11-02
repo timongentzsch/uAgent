@@ -319,7 +319,6 @@ Tool WebFetchTool(Api& api) {
   t.headline = [](const json& a) {
     return Headline{"Fetching", "Fetched", JsonValue(a, "url", "")};
   };
-  t.intent = "research";
   t.dedupe_output = true;
   return t;
 }

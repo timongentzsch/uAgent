@@ -177,15 +177,7 @@ export interface MemoryNote {
 export interface Node {
   id: string;
   parent: string | null;
-  kind:
-    | "turn"
-    | "message"
-    | "work"
-    | "group"
-    | "call"
-    | "thinking"
-    | "notice"
-    | "footer";
+  kind: "turn" | "message" | "work" | "call" | "thinking" | "notice" | "footer";
   sequence?: number;
   time?: string;
   state?: RowState;

@@ -4,11 +4,13 @@
 
 ### Changes
 
+- **Each call is one row.** Calls no longer fold into "Explored", "Researched" or "Edited" groups; "Worked N steps" is the only fold. They covered about one call in eight, and a `run` row now says what it does on its own.
 - **The prompt names the `browser` tool.** Where it is offered, the prompt and `web_fetch` point to it for pages built by scripts, behind a login or cut off, instead of to a skill, and a fetched page says it may be partial.
-- **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone; calls that only look still group as "Explored", and "edited N files" no longer counts commands.
+- **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone, and "edited N files" no longer counts commands.
 
 ### Fixes
 
+- **One item sent bare counts as a list.** A model that sends a single string where a tool takes a list of strings, such as one `web_search` query, is no longer refused and sent back for another round.
 - **A switch that is on keeps its right edge.** Its knob slid past the end of the track and covered the border.
 - **`web_search` is always a tool call.** A search hosted inside the conversation's own response could leave no record of itself for the next request, so a model took its real results for figures it had made up and withdrew them. A search now runs as a side request on a route that can search; its cited answer is a tool result that stays in the conversation and shows as a row in the history. `search_plugin` and `search_sources` are gone from `supports`: `hosted_search` now says an endpoint can search on any wire API. Set `webSearch.model` to answer searches with a cheaper model than the conversation's.
 - **A signal no longer fails a browser action.** A signal arriving while a browser request, a Chrome control read, an RFB read or a timed write waited, such as a child process exiting, counted as a lost connection. The action then failed with "browser service timed out or disconnected". These waits now carry on.

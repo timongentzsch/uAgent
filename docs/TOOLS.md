@@ -228,10 +228,8 @@ stopped), a state (running, ok, failed, cancelled) and a body to open.
 Nothing in it names a tool, provider or model; an MCP or unknown tool reads
 "Called NAME".
 
-Adjacent successful calls of one kind fold into one group (Explored,
-Researched, Verified or Edited). A failure or an approval prompt keeps its
-own row. The work line counts what it holds: "Worked 6 steps · edited 1
-file · 1 error". A tool declares the calls that only look at earlier work
+Each call is one row, and the work line is the only fold. It counts what it
+holds: "Worked 6 steps · edited 1 file · 1 error". A tool declares the calls that only look at earlier work
 `routine` (an `activity` wait, poll or list, an `agents` list): their rows
 show at full detail only.
 

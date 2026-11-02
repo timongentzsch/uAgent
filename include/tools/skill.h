@@ -207,8 +207,6 @@ inline Tool SkillTool(std::vector<Skill> skills,
   t.capabilities = Capability(ToolCapability::kInspect);
   t.retain_output = true;
   t.result_chars = static_cast<int64_t>(kSkillBodyBytes) + 1024;
-  // A procedure the rest of the turn follows keeps a row of its own.
-  t.intent = "memory";
   t.headline = [](const json& a) {
     std::string name = JsonValue(a, "name", "");
     return Headline{"Loading skill", "Loaded skill",

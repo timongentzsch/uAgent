@@ -877,7 +877,6 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   tool.capabilities = Capability(ToolCapability::kInspect) |
                       Capability(ToolCapability::kMutate) |
                       Capability(ToolCapability::kExternal);
-  tool.intent = "research";
   tool.headline = [](const json& args) {
     const Action* action = FindAction(args);
     const std::string name = action ? action->name : "";

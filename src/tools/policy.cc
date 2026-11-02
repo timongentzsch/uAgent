@@ -324,9 +324,28 @@ void ClampToolArguments(const Tool& tool, json& args,
   }
 }
 
+namespace {
+// Models send the one item of a list of strings bare: what they meant is plain,
+// and refusing it costs a round.
+void WrapBareItems(const Tool& tool, json& args) {
+  const json* properties = JsonObject(tool.parameters, "properties");
+  if (!properties) return;
+  for (const auto& [name, schema] : properties->items()) {
+    const auto value = args.find(name);
+    const json* items = JsonObject(schema, "items");
+    if (value != args.end() && value->is_string() && items &&
+        JsonValue(schema, "type", "") == "array" &&
+        JsonValue(*items, "type", "") == "string") {
+      *value = json::array({*value});
+    }
+  }
+}
+}  // namespace
+
 void CanonicalizeToolArguments(const Tool& tool, json& args,
                                std::vector<std::string>* clamped) {
   if (!args.is_object()) return;
+  WrapBareItems(tool, args);
   if (tool.canonicalize) tool.canonicalize(args);
   ClampToolArguments(tool, args, clamped);
 }

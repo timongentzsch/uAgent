@@ -343,8 +343,7 @@ before Submit.
   changed since is kept and says why. Changes made by shell commands are not
   tracked.
 - A turn's work is one tree drawn from the host's nodes
-  ([Tools](TOOLS.md#presentation)): a "Worked" row holding the steps, calls
-  that read as one step folded into one row ("Explored 4 calls"). Each row is
+  ([Tools](TOOLS.md#presentation)): a "Worked" row holding the steps. Each row is
   one line with its result on the right and opens to its body; Enter or Space
   toggles it and ←/→ close or open it. **Detail** in the conversation menu
   sets how deep the tree starts open on this device; a turn of more than 30

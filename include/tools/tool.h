@@ -289,10 +289,7 @@ struct Tool {
   std::string description;
   json parameters;        // JSON-schema for the args
   bool mutating = false;  // gated behind user approval
-  // What a call is for, when capabilities do not already say it (see
-  // ToolActivityCategory); presentation and grouping only, never authority.
-  std::string intent;
-  Approval mutates;  // argument-dependent mutation (e.g. memory save)
+  Approval mutates;       // argument-dependent mutation (e.g. memory save)
   // Calls that only observe earlier work (a wait, a list): their rows show
   // at full detail only.
   Approval routine;
@@ -369,13 +366,6 @@ Tool& AddTool(std::vector<Tool>& tools, Tool tool);
 bool ToolMutates(const Tool& tool, const json& arguments);
 
 bool ToolCallBlocks(const Tool& tool, const json& arguments);
-
-// What a call is for, one of explore, research, edit, verify, run, setup,
-// delegate (memory and share rows stay apart). Native tools know theirs; run
-// and scratch take the model's `intent`, else a read-only command reads as
-// explore. Neither this label nor a successful exit proves absence of effects.
-std::string ToolActivityCategory(const Tool& tool, const json& args);
-// Intents the command tools accept from the model.
 
 // The authority a call needs. A tool may escalate specific arguments; nothing
 // can de-escalate below what the tool itself declares.

@@ -1,9 +1,10 @@
+import { ChevronRight } from "lucide-preact";
 import { duration } from "../../shared/duration.ts";
 import { count } from "../../shared/quantities.ts";
 import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { useResource } from "../../shared/use-resource.ts";
-import { Actions, Button, LoadError, Time } from "../../shared/ui.tsx";
+import { Button, LoadError, Time } from "../../shared/ui.tsx";
 import { contextSummary } from "../../state/context-summary.ts";
 import {
   Rows,
@@ -88,6 +89,17 @@ function StatisticsContent({
   const reply = node?.role === "assistant" ? node : undefined;
   const side = summary?.background_statistics;
   const fork = state?.view?.fork;
+  const context = contextSummary(state?.context_tokens, state?.context_window);
+  // A total of this conversation's and its side agents' work; none counted
+  // is zero only where everything was recorded.
+  const total = (own?: number, sides?: number) =>
+    count(
+      own === undefined
+        ? stats?.complete
+          ? 0
+          : undefined
+        : own + (sides || 0),
+    );
   const rows: Row[] = summary
     ? [
         ["Outcome", summary.outcome],
@@ -120,6 +132,24 @@ function StatisticsContent({
         ]
       : [
           [
+            "Context",
+            // The value opens what it summarises.
+            showContext ? (
+              <Button
+                variant="quiet"
+                class="stats-open"
+                aria-label="Raw context"
+                disabled={!online}
+                onClick={showContext}
+              >
+                {context}
+                <ChevronRight class="row-chevron" />
+              </Button>
+            ) : (
+              context
+            ),
+          ],
+          [
             fork ? "Turns in fork (all agents)" : "Turns (all agents)",
             count(
               stats?.recorded_turns === undefined
@@ -131,23 +161,11 @@ function StatisticsContent({
           ],
           [
             "Tool calls (all agents)",
-            count(
-              stats?.tool_calls === undefined
-                ? stats?.complete
-                  ? 0
-                  : undefined
-                : stats.tool_calls + (stats.side_tool_calls || 0),
-            ),
+            total(stats?.tool_calls, stats?.side_tool_calls),
           ],
           [
             "Model calls (all agents)",
-            count(
-              stats?.model_calls === undefined
-                ? stats?.complete
-                  ? 0
-                  : undefined
-                : stats.model_calls + (stats.side_model_calls || 0),
-            ),
+            total(stats?.model_calls, stats?.side_model_calls),
           ],
           ["Parent turn time", duration(stats?.duration_ms)],
           ["Side agent time (summed)", duration(stats?.side_duration_ms)],
@@ -182,32 +200,6 @@ function StatisticsContent({
         <>
           {!node && fork && (
             <p>Forked from “{fork.title}”. Totals count work in this fork.</p>
-          )}
-          {!node && (
-            <>
-              <Rows
-                rows={[
-                  [
-                    "Context",
-                    contextSummary(
-                      state?.context_tokens,
-                      state?.context_window,
-                    ),
-                  ],
-                ]}
-              />
-              {showContext && (
-                <Actions>
-                  <Button
-                    variant="secondary"
-                    disabled={!online}
-                    onClick={showContext}
-                  >
-                    Raw context
-                  </Button>
-                </Actions>
-              )}
-            </>
           )}
           <Rows rows={rows} />
           <UsageRows

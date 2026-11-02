@@ -17,3 +17,12 @@
   text-align: right;
   overflow-wrap: anywhere;
 }
+/* A value that opens more: text-sized, its chevron after it, no field;
+   it takes the row's whole height and width to be easy to hit. */
+.stats-open {
+  width: 100%;
+  min-height: auto;
+  margin-block: calc(-1 * var(--space-3));
+  padding: var(--space-3) 0;
+  justify-content: flex-end;
+}

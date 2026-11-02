@@ -76,7 +76,7 @@ export function StatisticsLayout({
 }
 
 // How many rows each scope lists before its usage rows.
-const SCOPE_ROWS = { Turn: 10, Message: 7, Conversation: 9 };
+const SCOPE_ROWS = { Turn: 10, Message: 7, Conversation: 10 };
 export function StatisticsLoading({ unit }: { unit?: StatisticsUnit }) {
   return (
     <StatisticsLayout unit={unit} scope={unit ? "turn" : "session"}>

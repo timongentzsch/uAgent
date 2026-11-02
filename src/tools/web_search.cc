@@ -55,7 +55,7 @@ std::optional<Route> SelectWebSearchRoute(
     return route;
   };
   if (selection.base.find('/') != std::string::npos) {
-    ProviderCatalog catalog = SessionProviderCatalog();
+    ProviderCatalog catalog = LoadProviderCatalog();
     if (std::optional<Route> route = ResolveModelRoute(
             catalog.models, catalog.providers, selection.base)) {
       // An explicit selection is authoritative: an endpoint that declares no

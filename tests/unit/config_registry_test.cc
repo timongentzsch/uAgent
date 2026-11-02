@@ -198,7 +198,9 @@ TEST_CASE(TestConfigRegistryContract) {
 
   // The diagnostic that feeds /context, /config KEY and uagent never
   // carries a credential.
-  ScopedEnv route_key("OPENROUTER_API_KEY", "canary-secret-value");
+  ScopedEnv route_key(
+      "UAGENT_PROVIDERS",
+      R"({"p":{"base_url":"https://p.test/v1","api_key":"canary-secret-value"}})");
   CHECK(JsonDump(RuntimeConfig::FromEnvironment().DiagnosticJson())
             .find("canary-secret-value") == std::string::npos);
 

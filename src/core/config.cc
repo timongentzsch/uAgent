@@ -87,7 +87,7 @@ bool AgentConfigKey(const std::string& key) {
   // A parent hands UAGENT_INTERNAL_* names to its children through the
   // environment; they are not settings, so no config file may carry one.
   if (key.starts_with("UAGENT_INTERNAL_")) return false;
-  return key.starts_with("UAGENT_") || key == "OPENROUTER_API_KEY";
+  return key.starts_with("UAGENT_");
 }
 
 bool ProjectMcpPresent() {

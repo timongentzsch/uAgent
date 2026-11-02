@@ -36,7 +36,7 @@ TEST_CASE(TestWebTerminal) {
   // A plain shell, so the user's own profile cannot change what it prints.
   ScopedEnv shell("SHELL", "/bin/sh");
   ScopedEnv secret("OPENROUTER_API_KEY", "planted-openrouter");
-  ScopedEnv setting("UAGENT_API_KEY", "planted-uagent");
+  ScopedEnv setting("UAGENT_INTERNAL_API_KEY", "planted-uagent");
   ScopedEnv agent("SSH_AUTH_SOCK", "/tmp/agent.sock");
   web::Terminals terminals(2, std::chrono::minutes(1));
   std::string error;
@@ -59,7 +59,7 @@ TEST_CASE(TestWebTerminal) {
   CHECK(viewer->Resize(30, 100));
   CHECK(viewer->Write(
       "pwd; stty size; echo \"[${OPENROUTER_API_KEY:-none}]\" "
-      "\"[${UAGENT_API_KEY:-none}]\" \"[${UAGENT_APPROVAL:-none}]\" "
+      "\"[${UAGENT_INTERNAL_API_KEY:-none}]\" \"[${UAGENT_APPROVAL:-none}]\" "
       "\"[$SSH_AUTH_SOCK]\" \"[$TERM]\"\n"));
   std::string seen = ReadUntil(*viewer, "[xterm-256color]");
   CHECK(seen.find(cwd + "\r\n") != std::string::npos);

@@ -61,9 +61,11 @@ fact comes from the binary.
   approval mode only), then command-line flags, then process environment,
   then what is saved for the folder, then what is saved for all
   conversations, then built-in defaults.
-- Treat `UAGENT_API_KEY`, `OPENROUTER_API_KEY`, keys embedded in
-  `UAGENT_PROVIDERS`, web-search keys, and MCP credentials as secrets. `uagent`
-  reports them as set or unset and never shows the value.
+- Treat provider keys (in `UAGENT_PROVIDERS` or the variables they name),
+  web-search keys, and MCP credentials as secrets. `uagent` reports them as
+  set or unset and never shows the value. A provider added through
+  `uagent_configure` names its key as `$VARIABLE`; the person sets the value
+  in Settings or with `uagent setup`.
 - Do not add secrets to a repository. Saved settings live in µAgent's own
   private `~/.uagent/config/settings.json`, never in a folder.
 - `/model` and `/effort` choose for the conversation they are

@@ -926,14 +926,6 @@ def test_process_hardening_scrubs_loader_variables(root, home, *, binary):
 
 def test_composite_configuration_requires_exact_human_approval(root, home, *, binary):
     """Safe credential references reach a redacted prompt, even under --yolo."""
-    save_settings(
-        home,
-        binary=binary,
-        LOCAL_PROXY_API_KEY="adjacent-integration-secret",
-        UAGENT_PROVIDERS={
-            "old": {"base_url": "https://old.example/v1", "api_key": "$LOCAL_PROXY_API_KEY"}
-        },
-    )
     proposed = json.dumps(
         {
             "codex-local": {
@@ -961,9 +953,22 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         return event({"content": "composite-config-ok"})
 
     with Server([request_change, finish]) as server:
+        # The providers are saved, not set in the environment, which would
+        # outrank what the tool saves.
+        save_settings(
+            home,
+            binary=binary,
+            LOCAL_PROXY_API_KEY="adjacent-integration-secret",
+            UAGENT_PROVIDERS={
+                "old": {"base_url": "https://old.example/v1", "api_key": "$LOCAL_PROXY_API_KEY"},
+                "test": {"base_url": server.url},
+            },
+        )
+        env = base_env(home, server.url)
+        del env["UAGENT_PROVIDERS"]
         status, output = run_pty(
             root,
-            base_env(home, server.url),
+            env,
             [
                 (b"configure providers\n", b"Allow uagent_configure?"),
                 (b"y\n", b"composite-config-ok"),

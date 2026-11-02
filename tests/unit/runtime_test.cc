@@ -785,7 +785,7 @@ TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
 TEST_CASE(TestAgentConfigAllowlist) {
   namespace fs = std::filesystem;
   CHECK(AgentConfigKey("UAGENT_MODEL"));
-  CHECK(AgentConfigKey("OPENROUTER_API_KEY"));
+  CHECK(!AgentConfigKey("OPENROUTER_API_KEY"));
   CHECK(!AgentConfigKey("OPENAI_API_KEY"));
   CHECK(!AgentConfigKey("UAGENT_INTERNAL_DEPTH"));
 
@@ -794,14 +794,14 @@ TEST_CASE(TestAgentConfigAllowlist) {
       ("uagent-config-test-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root / ".uagent");
   ScopedEnv scoped_home("HOME", root.c_str());
-  ScopedEnv scoped_key("OPENROUTER_API_KEY");
+  ScopedEnv scoped_model("UAGENT_MEMORY_MODEL");
   // A value may refer to another by name.
   CHECK(
-      SaveSettings({{"secret", "test-key"}, {"OPENROUTER_API_KEY", "$secret"}})
+      SaveSettings({{"secret", "test-key"}, {"UAGENT_MEMORY_MODEL", "$secret"}})
           .empty());
   ConfigManager loaded = ConfigManager::Capture({});
   (void)loaded.Initialize();
-  CHECK(SettingText("OPENROUTER_API_KEY") == "test-key");
+  CHECK(SettingText("UAGENT_MEMORY_MODEL") == "test-key");
   // So may one in the environment, where a $ that names nothing stays.
   {
     ScopedEnv providers(
@@ -818,7 +818,7 @@ TEST_CASE(TestAgentConfigAllowlist) {
 }
 
 TEST_CASE(TestChildEnvironmentPolicy) {
-  ScopedEnv scoped_api("UAGENT_API_KEY", "secret");
+  ScopedEnv scoped_api("UAGENT_INTERNAL_API_KEY", "secret");
   ScopedEnv scoped_token("GITHUB_TOKEN", "secret");
   ScopedEnv scoped_passwd("DATABASE_PASSWD", "secret");
   ScopedEnv scoped_access("SERVICE_ACCESS_KEY", "secret");
@@ -832,7 +832,7 @@ TEST_CASE(TestChildEnvironmentPolicy) {
                          " GITHUB_TOKEN, SSH_AUTH_SOCK, OPENROUTER_API_KEY ");
 
   ChildEnvironment shell;
-  CHECK(!shell.Contains("UAGENT_API_KEY"));
+  CHECK(!shell.Contains("UAGENT_INTERNAL_API_KEY"));
   CHECK(!shell.Contains("GITHUB_TOKEN"));
   CHECK(!shell.Contains("DATABASE_PASSWD"));
   CHECK(!shell.Contains("SERVICE_ACCESS_KEY"));
@@ -852,7 +852,7 @@ TEST_CASE(TestChildEnvironmentPolicy) {
 
   CHECK(!shell.Contains("OPENROUTER_API_KEY"));
   ChildEnvironment approved({}, ChildEnvironmentPolicy::kApprovedShell);
-  CHECK(!approved.Contains("UAGENT_API_KEY"));
+  CHECK(!approved.Contains("UAGENT_INTERNAL_API_KEY"));
   CHECK(approved.Contains("GITHUB_TOKEN"));
   // Named by the user, a credential of uagent's own reaches the command too.
   CHECK(approved.Contains("OPENROUTER_API_KEY"));
@@ -876,9 +876,9 @@ TEST_CASE(TestChildEnvironmentPolicy) {
   CHECK(ChildEnvironment({{"INTERNAL_URL", "explicit"}})
             .Contains("INTERNAL_URL"));
 
-  ChildEnvironment delegated({{"UAGENT_API_KEY", "explicit"},
+  ChildEnvironment delegated({{"UAGENT_INTERNAL_API_KEY", "explicit"},
                               {"UAGENT_INTERNAL_USAGE_FILE", "/tmp/child"}});
-  CHECK(delegated.Contains("UAGENT_API_KEY"));
+  CHECK(delegated.Contains("UAGENT_INTERNAL_API_KEY"));
   CHECK(delegated.Contains("UAGENT_INTERNAL_USAGE_FILE"));
 
   Route route;
@@ -899,8 +899,8 @@ TEST_CASE(TestChildEnvironmentPolicy) {
                      [&](const auto& entry) { return entry.first == key; });
     return found == child_overrides.end() ? std::string() : found->second;
   };
-  CHECK(child_value("UAGENT_BASE_URL") == "https://child.example/v1");
-  CHECK(child_value("UAGENT_API_KEY") == "child-key");
+  CHECK(child_value("UAGENT_INTERNAL_BASE_URL") == "https://child.example/v1");
+  CHECK(child_value("UAGENT_INTERNAL_API_KEY") == "child-key");
   // A child reports its spend to its parent session's ledger.
   CHECK(child_value("UAGENT_INTERNAL_USAGE_FILE") == UsageLedger("parent-id"));
   CHECK(child_value("UAGENT_MODEL") == "child-model");
@@ -914,67 +914,53 @@ TEST_CASE(TestChildEnvironmentPolicy) {
         R"([{"type":"code_interpreter"}])");
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
-  CHECK(child.Contains("UAGENT_API_KEY"));
+  CHECK(child.Contains("UAGENT_INTERNAL_API_KEY"));
 }
 
 TEST_CASE(TestKnownEndpoints) {
   Endpoint openrouter;
   openrouter.base_url = "https://openrouter.ai/api/v1";
-  CHECK(DeclareEndpoint(openrouter, {}));
+  CHECK(DeclareHost(openrouter));
   CHECK(openrouter.features.Has(Feature::kPromptCacheControl));
   CHECK(openrouter.features.Has(Feature::kHostedSearch));
   CHECK(openrouter.Option("pdf_engine") == "cloudflare-ai");
   Endpoint edge;
   edge.base_url = "https://edge.openrouter.ai/v1";
-  CHECK(DeclareEndpoint(edge, {}) && edge.features == openrouter.features);
+  CHECK(DeclareHost(edge) && edge.features == openrouter.features);
   Endpoint openai;
   openai.base_url = "https://api.openai.com/v1";
-  CHECK(DeclareEndpoint(openai, {}));
+  CHECK(DeclareHost(openai));
   CHECK(openai.features.Has(Feature::kMaxCompletionTokens));
   CHECK(!openai.features.Has(Feature::kHostedSearch));
   Endpoint unknown;
   unknown.base_url = "https://provider.test/v1";
-  CHECK(!DeclareEndpoint(unknown, {}));
+  CHECK(!DeclareHost(unknown));
   CHECK(unknown.features == FeatureSet{});
-  // A provider entry that has the address says what the endpoint is.
-  Endpoint configured;
-  configured.name = "gateway";
-  configured.base_url = "https://provider.test/v1";
-  configured.features = FeaturesOf({Feature::kReasoningObject});
-  configured.options = {{"provider", "fast"}};
-  CHECK(DeclareEndpoint(unknown, {configured}));
-  CHECK(unknown.name == "gateway");
-  CHECK(unknown.features.Has(Feature::kReasoningObject));
-  CHECK(unknown.Option("provider") == "fast");
 
-  // An endpoint is available when its key is set; it names no model.
+  // OpenRouter is a provider like any other: there only when an entry names
+  // it, whatever key the environment holds, and its host's features come
+  // with it under any name.
   ScopedEnv no_providers("UAGENT_PROVIDERS");
-  ScopedEnv scoped_key("OPENROUTER_API_KEY");
-  CHECK(DefaultEndpoint(SessionProviderCatalog().providers) == nullptr);
-  setenv("OPENROUTER_API_KEY", "test-key", 1);
-  ProviderCatalog catalog = SessionProviderCatalog();
-  const Endpoint* available = DefaultEndpoint(catalog.providers);
-  REQUIRE(available != nullptr);
-  CHECK(available->name == "openrouter");
-  CHECK(available->api_key == "test-key");
-  CHECK(available->base_url == openrouter.base_url);
-  CHECK(available->features == openrouter.features);
-  // A provider entry named like a known endpoint states what differs.
+  ScopedEnv scoped_key("OPENROUTER_API_KEY", "test-key");
+  CHECK(LoadProviderCatalog().providers.empty());
   setenv("UAGENT_PROVIDERS",
-         R"json({"openrouter":{"options":{"provider":"streamlake"}}})json", 1);
-  catalog = SessionProviderCatalog();
+         R"json({"router":{"base_url":"https://openrouter.ai/api/v1",
+                 "api_key":"$OPENROUTER_API_KEY",
+                 "options":{"provider":"streamlake"}}})json",
+         1);
+  ProviderCatalog catalog = LoadProviderCatalog();
   REQUIRE(catalog.providers.size() == 1);
-  CHECK(catalog.providers[0].base_url == openrouter.base_url);
-  CHECK(catalog.providers[0].api_key == "test-key");
+  CHECK(catalog.providers[0].name == "router");
+  CHECK(catalog.providers[0].features == openrouter.features);
   CHECK(catalog.providers[0].Option("provider") == "streamlake");
   CHECK(catalog.providers[0].Option("pdf_engine") == "cloudflare-ai");
-  unsetenv("UAGENT_PROVIDERS");
 }
 
 TEST_CASE(TestNamedProviders) {
   // Route variables keep their inherited value until the body changes them,
   // and every one of them is restored when this scope ends.
-  ScopedEnv scoped_base_url("UAGENT_BASE_URL", std::getenv("UAGENT_BASE_URL"));
+  ScopedEnv scoped_base_url("UAGENT_INTERNAL_BASE_URL",
+                            std::getenv("UAGENT_INTERNAL_BASE_URL"));
   ScopedEnv scoped_model("UAGENT_MODEL", std::getenv("UAGENT_MODEL"));
   ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
                           std::getenv("UAGENT_REASONING_EFFORT"));
@@ -985,8 +971,6 @@ TEST_CASE(TestNamedProviders) {
                         std::getenv("UAGENT_INTERNAL_WIRE_API"));
   ScopedEnv scoped_providers("UAGENT_PROVIDERS",
                              std::getenv("UAGENT_PROVIDERS"));
-  ScopedEnv scoped_openrouter("OPENROUTER_API_KEY",
-                              std::getenv("OPENROUTER_API_KEY"));
   json configured = {
       {"", {{"base_url", "https://empty.test/v1"}}},
       {"all", {{"base_url", "https://reserved.test/v1"}}},
@@ -1050,7 +1034,7 @@ TEST_CASE(TestNamedProviders) {
   setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:low", 1);
   setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
   setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);
-  unsetenv("UAGENT_BASE_URL");
+  unsetenv("UAGENT_INTERNAL_BASE_URL");
   unsetenv("UAGENT_REASONING_EFFORT");
   RuntimeConfig startup_config;
   Api startup(startup_config);
@@ -1141,7 +1125,11 @@ TEST_CASE(TestNamedProviders) {
   UseOpenRouterDialect(openrouter_api);
   openrouter_api.model = "parent-model";
   openrouter_api.reasoning_effort = "high";
-  CHECK(RouteSelection(openrouter_api, {}) == "openrouter/parent-model:high");
+  // The selection names the provider that has the address, by its name.
+  Endpoint router;
+  router.name = "router";
+  router.base_url = openrouter_api.base_url;
+  CHECK(RouteSelection(openrouter_api, {router}) == "router/parent-model:high");
   openrouter_api.reasoning_effort.clear();
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   openrouter_api.base_url = "http://127.0.0.1:8787/api/v1";
@@ -1172,15 +1160,8 @@ TEST_CASE(TestNamedProviders) {
   ModelSearch alias_search = SearchModels(no_catalog, aliases, {}, "static");
   CHECK(alias_search.matches.size() == 2);
 
-  setenv("OPENROUTER_API_KEY", "openrouter-key", 1);
-  catalog = SessionProviderCatalog();
-  const Endpoint* openrouter = FindEndpoint(catalog.providers, "openrouter");
-  CHECK(openrouter != nullptr);
-  CHECK(openrouter && openrouter->base_url == "https://openrouter.ai/api/v1");
-  CHECK(openrouter && openrouter->api_key == "openrouter-key");
-  CHECK(catalog.providers.size() == 3);
-
-  setenv("UAGENT_BASE_URL", "https://direct.test/v1", 1);
+  // A child handed a route it cannot read keeps no address.
+  setenv("UAGENT_INTERNAL_BASE_URL", "https://direct.test/v1", 1);
   setenv("UAGENT_MODEL", "direct-model", 1);
   setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
   setenv("UAGENT_INTERNAL_FEATURES", "invalid-direct-feature", 1);
@@ -1196,22 +1177,21 @@ TEST_CASE(TestEffectiveConfigReload) {
   TestWorkspace workspace("effective-config");
   ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
   ScopedEnv scoped_model("UAGENT_MODEL");
-  ScopedEnv scoped_route_key("OPENROUTER_API_KEY");
-  ScopedEnv scoped_base_url("UAGENT_BASE_URL");
+  ScopedEnv scoped_providers("UAGENT_PROVIDERS");
   ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
-  CHECK(
-      SaveSettings({{"UAGENT_MAX_STEPS", "4"},
-                    {"UAGENT_INTERNAL_TOOLSET", "lean"},
-                    {"UAGENT_MAX_TOOL_CALLS", "2"},
-                    {"UAGENT_MAX_TURN_TOKENS", "100"},
-                    {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
-                    {"UAGENT_MCP_TIMEOUT", "9"},
-                    {"UAGENT_MODEL", "initial-model"},
-                    {"UAGENT_SESSION_BUDGET", "1"},
-                    {"UAGENT_BASE_URL", "https://user:pass@review.example/v1"},
-                    {"route_secret", "private-route-key"},
-                    {"OPENROUTER_API_KEY", "$route_secret"}})
-          .empty());
+  CHECK(SaveSettings({{"UAGENT_MAX_STEPS", "4"},
+                      {"UAGENT_INTERNAL_TOOLSET", "lean"},
+                      {"UAGENT_MAX_TOOL_CALLS", "2"},
+                      {"UAGENT_MAX_TURN_TOKENS", "100"},
+                      {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
+                      {"UAGENT_MCP_TIMEOUT", "9"},
+                      {"UAGENT_MODEL", "initial-model"},
+                      {"UAGENT_SESSION_BUDGET", "1"},
+                      {"route_secret", "private-route-key"},
+                      {"UAGENT_PROVIDERS",
+                       R"({"r":{"base_url":"https://review.example/v1",)"
+                       R"("api_key":"$route_secret"}})"}})
+            .empty());
   // The CLI layer outranks the environment and what is saved.
   ConfigManager manager = ConfigManager::Capture(
       {{"UAGENT_SESSION_BUDGET", "3.5"}, {"UAGENT_MEMORY", "0"}});
@@ -1232,7 +1212,6 @@ TEST_CASE(TestEffectiveConfigReload) {
   CHECK(!diagnostic["sources"].contains("UAGENT_REQUEST_TIMEOUT"));
   std::string shown = JsonDump(diagnostic);
   CHECK(shown.find("private-route-key") == std::string::npos);
-  CHECK(shown.find("user:pass") == std::string::npos);
 
   CHECK(ChangeSettings("", [](SettingValues& all) {
           all["UAGENT_MAX_TOOL_CALLS"] = "7";
@@ -1241,7 +1220,9 @@ TEST_CASE(TestEffectiveConfigReload) {
           all["UAGENT_MCP_TIMEOUT"] = "10";
           all["UAGENT_TOOL_RESULT_CHARS"] = "1234";
           all["UAGENT_MODEL"] = "next-model";
-          all["OPENROUTER_API_KEY"] = "changed-secret";
+          all["UAGENT_PROVIDERS"] =
+              R"({"r":{"base_url":"https://review.example/v1",)"
+              R"("api_key":"changed-secret"}})";
           return std::string();
         }).empty());
   std::optional<ConfigReload> reload = manager.Reload(active);
@@ -1258,7 +1239,7 @@ TEST_CASE(TestEffectiveConfigReload) {
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
                   "UAGENT_MODEL") != reload->deferred.end());
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
-                  "OPENROUTER_API_KEY") != reload->deferred.end());
+                  "UAGENT_PROVIDERS") != reload->deferred.end());
   CHECK(
       JsonDump(manager.DiagnosticJson(reload->active)).find("changed-secret") ==
       std::string::npos);

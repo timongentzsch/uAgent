@@ -182,7 +182,7 @@ std::string StartMemoryExtractor(ActivitySupervisor& processes, const Api& api,
   // cheaper or local route than the conversation.
   std::string selection = SettingText(Cfg("UAGENT_MEMORY_MODEL"));
   ProviderCatalog catalog =
-      selection.empty() ? ProviderCatalog{} : SessionProviderCatalog();
+      selection.empty() ? ProviderCatalog{} : LoadProviderCatalog();
   RouteResolution resolved =
       ResolveSideRoute(api, catalog.models, catalog.providers, selection);
   if (!resolved.none.empty()) {

@@ -221,6 +221,11 @@ class Server:
             )
 
 
+def test_providers(url, **fields):
+    """The one provider a scripted server is reached as: `test`."""
+    return json.dumps({"test": {"base_url": url, **fields}})
+
+
 def base_env(home, url):
     env = {key: value for key, value in os.environ.items() if not key.startswith("UAGENT_")}
     # PTY cases assert µAgent's coloured interactive surface. Keep the fixture
@@ -231,8 +236,8 @@ def base_env(home, url):
     env.update(
         {
             "HOME": str(home),
-            "UAGENT_BASE_URL": url,
-            "UAGENT_MODEL": "test",
+            "UAGENT_PROVIDERS": test_providers(url),
+            "UAGENT_MODEL": "test/test",
             "UAGENT_CONTEXT": "16384",
             "UAGENT_REQUEST_TIMEOUT": timeout_setting(REQUEST_TIMEOUT_SECONDS),
             "UAGENT_STREAM_TIMEOUT": timeout_setting(STREAM_TIMEOUT_SECONDS),
@@ -245,7 +250,7 @@ def base_env(home, url):
 
 def provider_env(home, url, providers, model=None):
     env = base_env(home, url)
-    env["UAGENT_PROVIDERS"] = json.dumps(providers)
+    env["UAGENT_PROVIDERS"] = json.dumps({"test": {"base_url": url}, **providers})
     if model is None:
         env.pop("UAGENT_MODEL")
     else:

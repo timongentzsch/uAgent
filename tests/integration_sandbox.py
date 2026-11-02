@@ -29,6 +29,7 @@ from integration_support import (
     run_pty,
     save_settings,
     settings_path,
+    test_providers,
     tool_call,
 )
 
@@ -96,7 +97,7 @@ def run_once(root, env, command, *flags, binary):
     """One turn that runs `command` through the shell tool."""
     with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
         env = dict(env)
-        env["UAGENT_BASE_URL"] = server.url
+        env["UAGENT_PROVIDERS"] = test_providers(server.url)
         return run_dialog(
             workspace(root), env, "y\n", *flags, "-p", "go", timeout=30, binary=binary
         )
@@ -115,7 +116,7 @@ def tool_output(root, env, command, headless=False, *, binary, **arguments):
 
     with Server([route]) as server:
         env = dict(env)
-        env["UAGENT_BASE_URL"] = server.url
+        env["UAGENT_PROVIDERS"] = test_providers(server.url)
         if headless:
             run(workspace(root), env, "--yolo", "-p", "go", timeout=30, binary=binary)
         else:
@@ -653,7 +654,7 @@ def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
     command = "; ".join(f"{probe} && echo x > reach-{name}" for name, probe in probes.items())
     arguments = {"command": command, **({"sandbox": False} if approve else {})}
     with Server([tool_call("run", arguments), event({"content": "reach-ok"})]) as server:
-        env = dict(env, UAGENT_BASE_URL=server.url)
+        env = dict(env, UAGENT_PROVIDERS=test_providers(server.url))
         if approve:
             run_pty(
                 ws,
@@ -1069,7 +1070,7 @@ def file_tool_output(root, env, name, arguments, *, binary, yolo=True):
 
     with Server([route]) as server:
         env = dict(env)
-        env["UAGENT_BASE_URL"] = server.url
+        env["UAGENT_PROVIDERS"] = test_providers(server.url)
         flags = ("--yolo",) if yolo else ()
         run(workspace(root), env, *flags, "-p", "go", timeout=30, binary=binary)
     return seen[0] if seen else ""

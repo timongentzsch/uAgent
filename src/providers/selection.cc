@@ -167,6 +167,8 @@ std::string SelectModel(Api& api, const std::vector<Route>& routes,
     selected = route->route_name;
   } else if (CanUseRawModel(api, selection.base) ||
              EndpointOffers(api, selection.base)) {
+    // A model of the active provider, named by it so it is found again.
+    selected = ComposeSelection(api.name, selection.base, "");
     api.model = selection.base;
     api.route_name.clear();
     api.ctx_window = 0;

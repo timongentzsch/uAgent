@@ -90,7 +90,7 @@ never goes to the parent.
   entry sets `"sandbox": false`.
 - Auto mode sends the current request, the tool name, the folder and a
   bounded action preview to the decision model of an endpoint that declares
-  `decisions` (OpenRouter by default). It asks for providers that retain no
+  `decisions` (a provider at openrouter.ai does). It asks for providers that retain no
   data and identifies the conversation by a hash. It allows only above the
   model's allow bar with no risk question above its risk bar. It never judges
   a call outside the sandbox or the folder, or a command while the sandbox is

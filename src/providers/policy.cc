@@ -45,7 +45,7 @@ EnvironmentOverrides RouteEnvironment(const Route& route) {
     features += (features.empty() ? "" : ",") + name.get<std::string>();
   }
   return {
-      {"UAGENT_BASE_URL", route.base_url},
+      {"UAGENT_INTERNAL_BASE_URL", route.base_url},
       {"UAGENT_MODEL", route.model},
       {"UAGENT_INTERNAL_MODEL_FEATURES", JsonDump(route.model_features)},
       {"UAGENT_REASONING_EFFORT", route.reasoning_effort},
@@ -147,8 +147,7 @@ RouteResolution ResolveReviewRoute(const Api& api,
                                    const std::string& setting) {
   auto serves = [](const Endpoint& endpoint) {
     return endpoint.features.Has(Feature::kDecisions) &&
-           !endpoint.Option("decisions_url").empty() &&
-           !endpoint.api_key.empty() && endpoint.api_key != kPlaceholderApiKey;
+           !endpoint.Option("decisions_url").empty() && HasKey(endpoint);
   };
   const Endpoint* chosen = nullptr;
   std::string model = setting;
@@ -173,8 +172,7 @@ RouteResolution ResolveReviewRoute(const Api& api,
   RouteResolution resolved;
   if (!chosen) {
     resolved.none =
-        "no configured endpoint serves decision models (OpenRouter does, "
-        "with OPENROUTER_API_KEY set)";
+        "no provider serves decision models; one at openrouter.ai does";
     return resolved;
   }
   static_cast<Endpoint&>(resolved.route) = *chosen;
@@ -231,8 +229,10 @@ void ActivateRoute(Api& api) {
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
-  api.base_url = StripTrailingSlashes(SettingText(Cfg("UAGENT_BASE_URL")));
-  api.api_key = SettingText(Cfg("UAGENT_API_KEY"));
+  // A parent hands its child the route it chose; anyone else names one of
+  // the providers in the model setting.
+  api.base_url = StripTrailingSlashes(EnvStr("UAGENT_INTERNAL_BASE_URL"));
+  api.api_key = EnvStr("UAGENT_INTERNAL_API_KEY");
   if (api.api_key.empty()) api.api_key = kPlaceholderApiKey;
   ModelSelection requested =
       ParseModelSelection(SettingText(Cfg("UAGENT_MODEL")));
@@ -240,13 +240,13 @@ ProviderSetup ConfigureProvider(Api& api) {
   const std::string configured_effort =
       SettingText(Cfg("UAGENT_REASONING_EFFORT"));
   api.reasoning_effort = configured_effort;
-  api.ctx_window = LongSetting(Cfg("UAGENT_CONTEXT"));
+  const int64_t configured_context = LongSetting(Cfg("UAGENT_CONTEXT"));
+  api.ctx_window = configured_context;
   std::string wire_setting =
       EnvStr("UAGENT_INTERNAL_WIRE_API", "chat_completions");
   std::optional<WireApi> configured_wire = ParseWireApi(wire_setting);
   api.wire_api = configured_wire.value_or(WireApi::kChatCompletions);
-  // A parent hands its child the features and options of the route it chose;
-  // anyone else gets what the address declares.
+  // A parent hands its child the features and options of the route it chose.
   std::string metadata_error;
   if (!configured_wire) metadata_error = "invalid wire API: " + wire_setting;
   const bool inherited = std::getenv("UAGENT_INTERNAL_FEATURES") != nullptr;
@@ -276,17 +276,16 @@ ProviderSetup ConfigureProvider(Api& api) {
   };
   start_capabilities();
 
-  ProviderCatalog catalog = SessionProviderCatalog();
+  ProviderCatalog catalog = LoadProviderCatalog();
   ProviderSetup setup{
       std::move(catalog.models), std::move(catalog.providers), {}};
   bool route_metadata_validated = false;
   if (std::optional<Route> route =
           ResolveModelRoute(setup.routes, setup.providers, api.model)) {
     ApplyRoute(api, *route);
+    // A window set for all conversations wins over the provider's profile.
+    if (configured_context > 0) api.ctx_window = configured_context;
     route_metadata_validated = true;
-  } else if (!inherited && !api.base_url.empty()) {
-    DeclareEndpoint(api, setup.providers);
-    start_capabilities();
   }
   // Command-line/config suffixes are the most specific route policy. Apply
   // them after a named route so they override its defaults without becoming
@@ -295,16 +294,6 @@ ProviderSetup ConfigureProvider(Api& api) {
   if (requested.effort.empty() && !configured_effort.empty() &&
       SupportsReasoningEffort(api, configured_effort)) {
     api.reasoning_effort = configured_effort;
-  }
-  if (api.base_url.empty() && metadata_error.empty()) {
-    // No address: the first well-known endpoint whose key is set.
-    if (const Endpoint* endpoint = DefaultEndpoint(setup.providers)) {
-      static_cast<Endpoint&>(api) = *endpoint;
-      if (api.ctx_window == 0) api.ctx_window = endpoint->context;
-      start_capabilities();
-      api.capabilities.SetModelFeatures(endpoint->model_features);
-      route_metadata_validated = true;
-    }
   }
   if (!metadata_error.empty() && !route_metadata_validated) {
     setup.warning = std::move(metadata_error);

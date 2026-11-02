@@ -177,19 +177,12 @@ void HandleContext(AppSession& session, CommandReply& reply) {
   auto source = [&](const char* key, const std::string& fallback = "runtime") {
     return sources.is_object() ? JsonValue(sources, key, fallback) : fallback;
   };
-  std::string model_source = source("UAGENT_MODEL");
-  std::string credential_source =
-      source("UAGENT_API_KEY", source("OPENROUTER_API_KEY"));
   effective["route"] = {
+      {"provider", session.ApiClient().name},
       {"base_url", RedactedUrl(session.ApiClient().base_url)},
-      {"base_url_source", source("UAGENT_BASE_URL")},
       {"model", session.ApiClient().model},
-      {"model_source", std::move(model_source)},
-      {"credentials", session.ApiClient().api_key.empty() ||
-                              session.ApiClient().api_key == kPlaceholderApiKey
-                          ? "<unset>"
-                          : "<set>"},
-      {"credential_source", std::move(credential_source)},
+      {"model_source", source("UAGENT_MODEL")},
+      {"credentials", HasKey(session.ApiClient()) ? "<set>" : "<unset>"},
       {"context_window", session.ApiClient().ctx_window}};
   reply.Print("%seffective configuration%s\n%s\n", BOLD(), RST(),
               TerminalSafe(JsonDump(effective, 2)).c_str());

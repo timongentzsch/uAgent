@@ -17,9 +17,9 @@ struct SetupKeys {
   std::string openrouter = "", openai = "", anthropic = "";
 };
 
-// Writes `keys` into one scope: OpenRouter's into its setting, OpenAI's and
-// Anthropic's into variables that a provider of that name refers to. Other
-// providers, and fields a saved provider of that name already has, stay.
+// Writes `keys` into one scope, each into a variable that a provider of that
+// name refers to. Other providers, and fields a saved provider of that name
+// already has, stay.
 void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope);
 
 // The model offered first for `provider` (openrouter, openai or anthropic)

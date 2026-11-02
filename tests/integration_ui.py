@@ -114,13 +114,13 @@ def test_a_start_without_a_provider_says_why(root, home, *, binary):
     # The runtime fails before a terminal has connected; its reason still
     # reaches the terminal instead of only its exit status.
     env = base_env(home, "")
-    for name in ("UAGENT_BASE_URL", "UAGENT_MODEL", "OPENROUTER_API_KEY"):
+    for name in ("UAGENT_PROVIDERS", "UAGENT_MODEL"):
         env.pop(name, None)
     result = run_dialog(root, env, "", binary=binary)
     # Before a client connects it reaches stderr, after one does the screen.
     output = result.stdout + result.stderr
     assert_true(result.returncode == 1, output)
-    assert_true("no provider configured — run uagent setup" in output, output)
+    assert_true("no provider: add a provider with uagent setup" in output, output)
     assert_true("ended while starting" not in output, output)
 
 
@@ -403,7 +403,7 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
         # A 24-column status keeps state, route and approval mode.
-        assert_true(b"Ready \xc2\xb7 test \xc2\xb7 Ask\x1b[K" in output, output)
+        assert_true(b"Ready \xc2\xb7 test/test \xc2\xb7 Ask\x1b[K" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.
@@ -499,7 +499,7 @@ def test_model_picker_lists_the_models_before_asking(root, home, *, binary):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(b"/model alpha\r", b"model # "), (b"2\r", b"model alpha-two"), b"/q\r"],
+            [(b"/model alpha\r", b"model # "), (b"2\r", b"model test/alpha-two"), b"/q\r"],
             startup_marker=b"Ready",
             binary=binary,
         )
@@ -507,7 +507,7 @@ def test_model_picker_lists_the_models_before_asking(root, home, *, binary):
         # The command is still running when it asks: the list it asks about
         # comes with the question, not with the command's result.
         asked = output.index(b"model # ")
-        assert_true(b"[2]   alpha-two" in output[:asked], output)
+        assert_true(b"[2]   test/alpha-two" in output[:asked], output)
 
 
 def test_input_redraw_focus_switch_preserves_multiline_draft(root, home, *, binary):
@@ -635,7 +635,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
                 # The idle status carries the route in schema form, then the
                 # approval mode, and the context window beside what is used.
                 # The answer may arrive in the same frame.
-                (b"y\n", b"Ready \xc2\xb7 test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
+                (b"y\n", b"Ready \xc2\xb7 test/test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),
@@ -1333,8 +1333,12 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     save_settings(
         home,
         binary=binary,
-        OPENROUTER_API_KEY="context-secret-sentinel",
-        UAGENT_BASE_URL="https://user:pass@review.example/v1",
+        UAGENT_PROVIDERS={
+            "review": {
+                "base_url": "https://review.example/v1",
+                "api_key": "context-secret-sentinel",
+            }
+        },
     )
     skill = workspace / ".uagent" / "skills" / "context-demo"
     skill.mkdir(parents=True)
@@ -1367,7 +1371,6 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
         assert_true(b'"name": "skill"' in output, output)
         assert_true(b'"UAGENT_MODEL": "environment"' in output, output)
         assert_true(b"context-secret-sentinel" not in output, output)
-        assert_true(b"user:pass" not in output, output)
         assert_true(b'"enabled": true' in output, output)
         assert_true(not server.requests, server.requests)
 

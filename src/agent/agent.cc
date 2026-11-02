@@ -89,7 +89,7 @@ void Agent::PublishSideContext() {
   selection = tool_selection_.Save();
   selection["only"] = EnabledTools();
   json& chosen = context->state.display["facts"]["session-settings"]["chosen"];
-  const auto providers = SessionProviderCatalog().providers;
+  const auto providers = LoadProviderCatalog().providers;
   if (!providers.empty()) {
     chosen["UAGENT_MODEL"] = ChosenSelection(api_, providers);
   }
@@ -164,7 +164,7 @@ void Agent::StartTitle(const std::string& user_input) {
   if (selection == "off") {
     return;
   }
-  ProviderCatalog catalog = SessionProviderCatalog();
+  ProviderCatalog catalog = LoadProviderCatalog();
   RouteResolution resolved =
       ResolveSideRoute(api_, catalog.models, catalog.providers, selection);
   if (!resolved.none.empty()) {

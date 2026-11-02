@@ -12,6 +12,7 @@ from integration_support import (
     assert_true,
     budget,
     event,
+    test_providers,
     wait_until,
     write_json_response,
 )
@@ -30,14 +31,16 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             root,
             home,
             provider.url,
-            extra_env={"UAGENT_API_KEY": "private-http-test-key", "UAGENT_CONTEXT": "32768"},
+            extra_env={
+                "UAGENT_PROVIDERS": test_providers(provider.url, api_key="private-http-test-key"),
+                "UAGENT_CONTEXT": "32768",
+            },
         ) as (client, code, _, _):
             client.pair(code)
             config = client.command("config")["result"]
             settings = {item["name"]: item for item in config["settings"]}
-            assert_true(
-                len(settings) > 60 and "effective" not in settings["UAGENT_API_KEY"], config
-            )
+            assert_true(len(settings) > 60, config)
+            assert_true("private-http-test-key" not in json.dumps(config), config)
             changed = client.command(
                 "config",
                 operation="apply",
@@ -386,7 +389,7 @@ def test_the_title_is_written_by_the_conversations_model(root, home, *, binary):
         return event({"content": "Named by the session model"})
 
     with Server([route]) as provider:
-        env = {"UAGENT_TITLE_MODEL": "", "UAGENT_MODEL": "session-model"}
+        env = {"UAGENT_TITLE_MODEL": "", "UAGENT_MODEL": "test/session-model"}
         with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
             client.pair(code)
             session = client.create(root)
@@ -545,8 +548,9 @@ def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
             client.until(session, lambda value: "no model set" in value["state"]["error"])
             assert_true(not served, served)
             catalog = client.command("model", session, operation="catalog")["result"]
-            assert_true([item["value"] for item in catalog["models"]] == ["alpha", "beta"], catalog)
-            client.command("model", session, operation="select", model="beta")
+            values = [item["value"] for item in catalog["models"]]
+            assert_true(values == ["test/alpha", "test/beta"], catalog)
+            client.command("model", session, operation="select", model="test/beta")
             client.command("submit", session, text="after choosing")
             client.until(
                 session,

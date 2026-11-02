@@ -481,7 +481,10 @@ def test_image_fallback_reaches_another_provider(root, home, *, binary):
     try:
         env = base_env(home, parent.url)
         env["UAGENT_PROVIDERS"] = json.dumps(
-            {"eyes": {"base_url": vision.url, "api_key": "eyes-key"}}
+            {
+                "test": {"base_url": parent.url},
+                "eyes": {"base_url": vision.url, "api_key": "eyes-key"},
+            }
         )
         env["UAGENT_IMAGE_MODEL"] = "eyes/vision-model"
         result = run(

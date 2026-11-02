@@ -39,10 +39,13 @@ screen reader ([Accessibility](ACCESSIBILITY.md)).
 
 ## Models and providers
 
-A model is named `[provider/]model[:effort]`, for example
-`deepseek/deepseek-v4-flash:high`. A suffix that is not an effort stays in
-the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
-`:floor` or `:free`) is part of the name: `openrouter/vendor/model:nitro:high`.
+Every model is reached through a provider: an address that serves models,
+with its key. OpenRouter is one like any other. A model is named
+`provider/model[:effort]`, for example
+`openrouter/deepseek/deepseek-v4-flash:high`. A suffix that is not an effort
+stays in the model id, so an endpoint's routing suffix (OpenRouter's
+`:nitro`, `:floor` or `:free`) is part of the name:
+`openrouter/vendor/model:nitro:high`.
 
 - `/model QUERY` searches the models your key offers and selects one; `/model
   all` lists every catalogue.
@@ -50,7 +53,7 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
   saves it for new ones. `/effort LEVEL` sets the reasoning effort.
 - With no model set, the first start opens the model picker and saves your
   choice as `/model NAME --default` does. `-p` and `--json` never choose for
-  you: they exit with an error that lists up to ten of the endpoint's models.
+  you: they exit with an error that names your providers.
 - Background work uses your conversation's model unless you name one: the
   title (`title.model`, or `off`), memory extraction and agents. Image
   reading does too when that model accepts images; otherwise it uses the
@@ -59,28 +62,21 @@ the model id, so an endpoint's routing suffix (OpenRouter's `:nitro`,
 - Web search needs hosted search on the conversation's route, or an
   endpoint with a search plugin (OpenRouter has one) and `webSearch.model`;
   see [Tools](TOOLS.md#web).
-- The `auto` approval reviewer needs an endpoint that declares `decisions`
-  (OpenRouter does). With none, Auto mode asks you.
+- The `auto` approval reviewer needs a provider that declares `decisions`
+  (one at openrouter.ai does). With none, Auto mode asks you.
 
 `uagent setup` asks for an OpenRouter, OpenAI and Anthropic key (Enter skips
 one), checks each against its endpoint, and saves them for all conversations
-with a default model it suggests from the first endpoint that has a key. An
-OpenAI or Anthropic key becomes a provider named `openai` or `anthropic` that
-refers to it as a variable, so `anthropic/claude-sonnet-5-5` names a model
-there. Run it again to change them; a start with no key offers it.
+with a default model it suggests from the first endpoint that has a key. Each
+key becomes a provider named `openrouter`, `openai` or `anthropic` that refers
+to it as a variable, so `anthropic/claude-sonnet-5-5` names a model there.
+Run it again to change them; a start with no provider offers it.
 
-To keep a key between shells, save it once instead of exporting it. It
-applies to conversations started afterwards (`/restart` applies it to this
-one):
-
-```text
-/config user openrouter.apiKey=sk-or-…
-```
-
-One endpoint that speaks Chat Completions needs only `UAGENT_BASE_URL`,
-`UAGENT_MODEL` and, if it asks for one, `UAGENT_API_KEY`. Anything else is a
-named provider in the settings file (`~/.uagent/config/settings.json`, also
-editable in the web's Settings):
+In the web, Settings → All conversations → Providers lists them; Add a
+provider starts from OpenRouter, OpenAI, Anthropic or Ollama, or any other
+address. Providers apply to conversations started afterwards (`/restart`
+applies them to this one). They live in the settings file
+(`~/.uagent/config/settings.json`):
 
 ```json
 {
@@ -96,6 +92,8 @@ editable in the web's Settings):
         "models": { "sonnet": "claude-sonnet-5-5" }
       },
       "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key": "$OPENROUTER_API_KEY",
         "options": { "provider": "Fireworks", "pdf_engine": "mistral-ocr" }
       },
       "local": {
@@ -103,7 +101,7 @@ editable in the web's Settings):
         "context": 131072
       }
     },
-    "variables": { "WORK_KEY": "…" }
+    "variables": { "WORK_KEY": "…", "OPENROUTER_API_KEY": "sk-or-…" }
   }
 }
 ```
@@ -117,9 +115,8 @@ editable in the web's Settings):
 | `supports` | What an endpoint of OpenRouter's dialect does, from `hosted_search`, `provider_routing`, `session_passthrough`, `raw_vendor_ids`, `model_variants`, `reasoning_object`, `reasoning_replay_text`, `prompt_cache_control`, `pdf_parser`, `max_completion_tokens`, `reasoning_summary`, `inline_usage` and `decisions` |
 | `hosted_tools` | Tools the endpoint runs itself. `"web_search"` declares `hosted_search`, which `web_search` then runs on; an object is a tool as the endpoint's API documents it, such as `{"type": "code_execution_20250825", "name": "code_execution"}`, sent as written with the agent's requests there, in place of the agent's own tool of its `name`, and replayed with its results. A model's own list replaces the provider's |
 
-An endpoint with an OpenRouter or OpenAI address is recognized by it. A
-provider named `openrouter` needs no `base_url` or `api_key` (the key is
-`OPENROUTER_API_KEY`) and states only what differs, as above.
+An address on `openrouter.ai` or `api.openai.com` brings what that host
+supports, whatever the provider is called; `supports` replaces it.
 
 `decisions` marks an endpoint that serves decision models for
 [Auto approval](#approvals-and-the-sandbox). Its `options` give the address

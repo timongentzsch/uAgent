@@ -11,18 +11,21 @@
 namespace uagent {
 
 TEST_CASE(TestSetupSavesKeys) {
-  // OpenRouter's key is its own setting; nothing else is touched.
+  // Each key becomes a provider that refers to its variable; OpenRouter is
+  // one like the others.
   SettingValues scope;
   ApplySetupKeys({.openrouter = "sk-or"}, scope);
   CHECK(scope.at("OPENROUTER_API_KEY") == "sk-or");
-  CHECK(!scope.contains("UAGENT_PROVIDERS"));
+  json providers = json::parse(scope.at("UAGENT_PROVIDERS"));
+  CHECK(providers["openrouter"]["api_key"] == "$OPENROUTER_API_KEY");
+  CHECK(providers["openrouter"]["base_url"] == "https://openrouter.ai/api/v1");
+  CHECK(providers["openrouter"]["wire_api"] == "chat_completions");
 
-  // OpenAI and Anthropic become providers that refer to their variables.
   scope.clear();
   ApplySetupKeys({.openai = "sk-oa", .anthropic = "sk-ant"}, scope);
   CHECK(scope.at("OPENAI_API_KEY") == "sk-oa");
   CHECK(scope.at("ANTHROPIC_API_KEY") == "sk-ant");
-  json providers = json::parse(scope.at("UAGENT_PROVIDERS"));
+  providers = json::parse(scope.at("UAGENT_PROVIDERS"));
   CHECK(providers["anthropic"]["api_key"] == "$ANTHROPIC_API_KEY");
   CHECK(providers["anthropic"]["wire_api"] == "anthropic_messages");
   CHECK(providers["anthropic"]["base_url"] == "https://api.anthropic.com/v1");

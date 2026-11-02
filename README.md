@@ -117,8 +117,8 @@ cd my-project
 uagent          # Enter sends, Esc stops, / lists commands
 ```
 
-A start with no key asks to run setup. `OPENROUTER_API_KEY`, or
-`UAGENT_BASE_URL` and `UAGENT_MODEL`, work without saving anything.
+A start with no provider asks to run setup. `UAGENT_PROVIDERS` and
+`UAGENT_MODEL` work without saving anything.
 
 - **Approvals:** answer `y` (once), `s` (this conversation), `a` (always in
   this repository) or `n`.

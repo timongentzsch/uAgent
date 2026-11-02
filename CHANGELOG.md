@@ -8,6 +8,7 @@
 - **A scheduled task can check before it asks a model.** A task's optional `check` is a shell command run first in its folder: exit 0 starts the run with what it printed, exit 1 records "nothing new" without a model call. Frequent polling, such as a stock alert every two minutes, now costs a model call only when something changed.
 - **Each call is one row.** Calls no longer fold into "Explored", "Researched" or "Edited" groups; "Worked N steps" is the only fold. They covered about one call in eight, and a `run` row now says what it does on its own.
 - **The prompt names the `browser` tool.** Where it is offered, the prompt and `web_fetch` point to it for pages built by scripts, behind a login or cut off, instead of to a skill, and a fetched page says it may be partial.
+- **Every build has the web interface and the browser.** The `UAGENT_WEB` and `UAGENT_BROWSER` build options are gone, so building from source needs Node.js (or a built `web/dist`); `install.sh` says so instead of building a terminal-only binary. Web Push stays optional with `UAGENT_WEB_PUSH`.
 - **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone, and "edited N files" no longer counts commands.
 
 ### Fixes

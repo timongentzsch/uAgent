@@ -180,14 +180,12 @@ void Application::RunTurns(const std::string& input, json content,
     }
     context_.root_passwords.clear();
   }
-#ifdef UAGENT_BROWSER
   // The turn is over: the shared browser is free for the next conversation.
   if (!context_.browser_lease.empty()) {
     browser::Request(
         {{"op", "release"}, {"session_id", context_.browser_lease}},
         browser::kProbeMs);
   }
-#endif
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
 }
 

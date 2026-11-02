@@ -23,7 +23,6 @@ def image(paths):
     )
 
 
-SWITCHES = ("UAGENT_WEB", "UAGENT_BROWSER")  # also matches UAGENT_WEB_PUSH
 HEAVY_DIRS = (
     "src/web/",
     "src/browser/",
@@ -35,18 +34,12 @@ HEAVY_DIRS = (
 )
 
 
-def heavy(paths, old, new):
-    """Whether a pull request also runs the legs that master always runs:
-    ThreadSanitizer, Linux ARM64 and the CLI-only and no-browser variants.
-    They matter for the build, the workflows and any source that a feature
-    switch compiles differently, before or after the change: `old(path)` and
-    `new(path)` give a file's text on each side, empty where it does not exist."""
+def heavy(paths):
+    """Whether a pull request also runs the legs that master always runs,
+    ThreadSanitizer and Linux ARM64: for the build, the workflows and the
+    web host and browser."""
     return any(
-        path.startswith(HEAVY_DIRS)
-        or path in ("CMakeLists.txt", "CMakePresets.json")
-        or (
-            path.endswith((".cc", ".h")) and any(name in old(path) + new(path) for name in SWITCHES)
-        )
+        path.startswith(HEAVY_DIRS) or path in ("CMakeLists.txt", "CMakePresets.json")
         for path in paths
     )
 
@@ -115,18 +108,7 @@ elif __name__ == "__main__":
             ["git", "diff", "--name-only", "--no-renames", "-z", base]
         )
         paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
-
-        def old(path):
-            done = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True)
-            return done.stdout.decode(errors="replace")
-
-        def new(path):
-            try:
-                return Path(path).read_text(errors="replace")
-            except OSError:
-                return ""
-
-        is_heavy = heavy(paths, old, new)
+        is_heavy = heavy(paths)
         result = {
             **classify(paths),
             "tidy": tidy(paths),

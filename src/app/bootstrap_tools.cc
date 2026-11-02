@@ -145,7 +145,6 @@ std::vector<Tool> BuildTools(AppContext& context,
         },
         std::move(image)));
   }
-#ifdef UAGENT_BROWSER
   // The web host runs the browser; any top-level session that reaches it may
   // use it, one at a time. A one-shot run has no session file to be named by.
   if (!browser::DataDirectory().empty() &&
@@ -165,7 +164,6 @@ std::vector<Tool> BuildTools(AppContext& context,
               {.id = id, .kind = "browser", .prompt = prompt}, eof);
         }));
   }
-#endif
   // An agent's MCP servers are its first ancestor's: each agent starting
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {

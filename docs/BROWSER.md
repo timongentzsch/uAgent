@@ -5,10 +5,10 @@ can watch, take over and sign in to from any paired device. For the web
 interface itself, see [Web interface](WEB.md).
 
 This browser is the user's own: one persistent, signed-in profile that one
-conversation drives at a time. Where it is not set up (macOS, a terminal-only
-install), the bundled `browser-use` skill gives the agent a throwaway headless
-browser through `playwright-cli` instead, one per process and with no saved
-logins; it also suits checking a page you are building.
+conversation drives at a time. Where it is not set up (macOS, or a Linux host
+without Chrome and TigerVNC), the bundled `browser-use` skill gives the agent
+a throwaway headless browser through `playwright-cli` instead, one per process
+and with no saved logins; it also suits checking a page you are building.
 
 The optional [Compose stack](../deploy/compose.yaml) builds one image with
 the web host, Chrome Stable and TigerVNC; a Linux host with the same

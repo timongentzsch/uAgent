@@ -105,10 +105,9 @@ the image or the binary itself. Releases ship archives (`bin/uagent`; keep
 `bin` and `share` together) with Sigstore-signed checksums, and the image as
 `ghcr.io/timongentzsch/uagent`.
 
-Building needs CMake 3.21+, a C++20 compiler, libcurl 7.66+ and zlib, plus
-Node.js for the web interface. `-DUAGENT_WEB=OFF` builds a terminal-only
-binary, `-DUAGENT_BROWSER=OFF` leaves out the agent's browser and
-`-DUAGENT_WEB_PUSH=ON` adds Web Push (needs OpenSSL 3).
+Building needs CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and
+Node.js for the web interface. `-DUAGENT_WEB_PUSH=ON` adds Web Push (needs
+OpenSSL 3).
 
 ## Quick start
 

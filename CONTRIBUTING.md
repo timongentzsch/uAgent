@@ -42,9 +42,7 @@ npm run size
 ```
 
 `web/dist` is build output and not committed; CI builds it once and embeds it
-in every native build. A build tree first configured without `web/dist` is
-terminal-only: after the first `npm run build`, configure it again with
-`-DUAGENT_WEB=ON`.
+in every native build, so run `npm run build` before the first configure.
 `npm run test:browser` runs the Playwright suite against a native host; see
 [Testing](docs/TESTING.md#web-tests).
 

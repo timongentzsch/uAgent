@@ -138,39 +138,6 @@ jobs:
 
   # The feature switches compile different #if paths. Each builds on its own
   # runner instead of after the x86 leg.
-  variants:
-    name: variant (${{ matrix.name }})
-    needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.heavy == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: cli-only
-            flags: -DUAGENT_WEB=OFF
-            tests: "^(core|integration_runtime|integration_providers)$"
-          - name: no-browser
-            flags: -DUAGENT_BROWSER=OFF
-            tests: "^core$"
-    env:
-      UAGENT_TEST_TIMEOUT_SCALE: "3"
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/native-setup
-        with:
-          web-dist: true
-          ccache: variant-${{ matrix.name }}
-      - name: Configure
-        run: >-
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          -DUAGENT_WARNINGS_AS_ERRORS=ON ${{ matrix.flags }}
-      - name: Build
-        run: cmake --build build --parallel 4
-      - name: Test
-        run: ctest --test-dir build --output-on-failure -j 2 -R '${{ matrix.tests }}'
-
   sanitizers:
     needs: [changes, web-dist]
     if: needs.changes.outputs.native == 'true'
@@ -439,7 +406,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
+    needs: [changes, web-dist, build-and-test, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

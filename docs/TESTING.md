@@ -45,7 +45,7 @@ Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 | --- | --- |
 | `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`; Web Push encryption only with `UAGENT_WEB_PUSH=ON`) |
 | `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_delegation`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`) |
-| `integration_web`, `integration_management` | native web host; only with `UAGENT_WEB=ON` |
+| `integration_web`, `integration_management` | native web host |
 | `behavior_eval` | scenario scores against the committed baseline |
 | `eval_harness_self_test`, `session_metrics_self_test` | measurement tooling (label `source`) |
 | `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
@@ -240,18 +240,16 @@ The Linux build jobs reuse compiled objects through ccache
 `master`. A newer push to a pull request cancels the older run; runs on
 `master` are never cancelled, so each merge is tested as it landed.
 
-A pull request skips the slowest legs (ARM64, the variants and
-ThreadSanitizer) unless it is heavy: it touches `CMakeLists.txt`,
-`CMakePresets.json`, `cmake/`, `third_party/`, `.github/`, `src/web/`,
-`src/browser/`, `include/web/`, `include/browser/`, or a C++ file that
-mentions `UAGENT_WEB` or `UAGENT_BROWSER` (`heavy` in `.github/changes.py`).
+A pull request skips the slowest legs (ARM64 and ThreadSanitizer) unless
+it is heavy: it touches `CMakeLists.txt`, `CMakePresets.json`, `cmake/`,
+`third_party/`, `.github/`, `src/web/`, `src/browser/`, `include/web/` or
+`include/browser/` (`heavy` in `.github/changes.py`).
 Master, scheduled and manual runs always run them.
 
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
 | `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
-| `variants` | On master and for heavy changes: CLI-only and no-browser Release builds with their tests |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |

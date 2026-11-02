@@ -282,63 +282,32 @@ target_link_libraries(uagent_app PUBLIC uagent_tools)
 
 add_executable(uagent src/main.cc)
 # The web UI is built, not checked in (`npm ci && npm run build` in web/, or
-# CI's web-dist artifact). A first configure without it builds CLI-only rather
-# than failing; -DUAGENT_WEB=ON insists on it.
-if(NOT DEFINED UAGENT_WEB AND NOT EXISTS
-                             "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/.assets")
-  message(WARNING "web/dist is not built, so this build has no web UI. Run "
-                  "`npm ci && npm run build` in web/, then configure again "
-                  "with -DUAGENT_WEB=ON.")
-  set(UAGENT_WEB OFF CACHE BOOL "Embed the native web master and PWA")
-endif()
-option(UAGENT_WEB "Embed the native web master and PWA" ON)
+# CI's web-dist artifact), and embedded with the browser appliance (Chrome
+# shown over noVNC) the web host runs.
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
-# The browser appliance (Chrome shown over noVNC) runs only under the web
-# host; without it, src/web/no_browser.cc reports no browser.
-include(CMakeDependentOption)
-cmake_dependent_option(UAGENT_BROWSER "Build the browser appliance" ON
-                       "UAGENT_WEB" OFF)
-if(UAGENT_WEB)
-  include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc src/web/master_auth.cc
-                         src/web/master_command.cc src/web/master_files.cc
-                         src/web/master_stream.cc src/web/master_terminal.cc
-                         src/web/terminal.cc "${_web_generated}")
-  find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
-  target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
-  target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
-  # The browser appliance only runs under the web host, so builds without it
-  # leave the browser unreferenced and the linker drops it.
-  if(UAGENT_BROWSER)
-    target_sources(uagent_tools PRIVATE src/browser/browser.cc
-                                        src/browser/broker.cc
-                                        src/browser/runtime.cc
-                                        src/browser/runtime_act.cc
-                                        src/browser/runtime_control.cc
-                                        src/browser/runtime_page.cc
-                                        src/tools/browser.cc)
-    target_sources(uagent_web PRIVATE src/web/browser_viewer.cc
-                                      src/web/rfb_filter.cc)
-    foreach(_uagent_target uagent uagent_app uagent_web)
-      target_compile_definitions(${_uagent_target} PRIVATE UAGENT_BROWSER)
-    endforeach()
-  else()
-    target_sources(uagent_web PRIVATE src/web/no_browser.cc)
-  endif()
-  target_compile_definitions(uagent PRIVATE UAGENT_WEB)
-  target_compile_definitions(uagent_app PRIVATE UAGENT_WEB)
-  target_link_libraries(uagent PRIVATE uagent_web)
-  if(UAGENT_WEB_PUSH)
-    find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
-    target_sources(uagent_web PRIVATE src/web/push.cc src/web/push_crypto.cc)
-    target_link_libraries(uagent_web PUBLIC OpenSSL::Crypto)
-  else()
-    target_sources(uagent_web PRIVATE src/web/no_push.cc)
-  endif()
-elseif(UAGENT_WEB_PUSH)
-  message(FATAL_ERROR "UAGENT_WEB_PUSH requires UAGENT_WEB")
+include(cmake/embed_web.cmake)
+add_library(uagent_web src/web/master.cc src/web/master_auth.cc
+                       src/web/master_command.cc src/web/master_files.cc
+                       src/web/master_stream.cc src/web/master_terminal.cc
+                       src/web/terminal.cc src/web/browser_viewer.cc
+                       src/web/rfb_filter.cc "${_web_generated}")
+find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
+target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
+target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
+target_sources(uagent_tools PRIVATE src/browser/browser.cc
+                                    src/browser/broker.cc
+                                    src/browser/runtime.cc
+                                    src/browser/runtime_act.cc
+                                    src/browser/runtime_control.cc
+                                    src/browser/runtime_page.cc
+                                    src/tools/browser.cc)
+target_link_libraries(uagent PRIVATE uagent_web)
+if(UAGENT_WEB_PUSH)
+  find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
+  target_sources(uagent_web PRIVATE src/web/push.cc src/web/push_crypto.cc)
+  target_link_libraries(uagent_web PUBLIC OpenSSL::Crypto)
 else()
-  target_link_libraries(uagent PRIVATE uagent_app)
+  target_sources(uagent_web PRIVATE src/web/no_push.cc)
 endif()
 
 # `third_party/json.hpp` is 25k lines and reaches 82 of the ~90 translation
@@ -371,10 +340,7 @@ if(ipo_ok)
   foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
     set_property(TARGET ${_uagent_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   endforeach()
-  set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-  if(UAGENT_WEB)
-    set_property(TARGET uagent_web PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-  endif()
+  set_property(TARGET uagent uagent_web PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
 include(CTest)
@@ -413,20 +379,12 @@ if(BUILD_TESTING)
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
   # uagent_web brings uagent_app; linking both lists it twice.
-  if(UAGENT_WEB)
-    target_sources(uagent_tests PRIVATE tests/unit/web_terminal_test.cc)
-    if(UAGENT_WEB_PUSH)
-      target_sources(uagent_tests PRIVATE tests/unit/web_push_test.cc)
-    endif()
-    target_link_libraries(uagent_tests PRIVATE uagent_web)
-    target_compile_definitions(uagent_tests PRIVATE UAGENT_WEB)
-  else()
-    target_link_libraries(uagent_tests PRIVATE uagent_app)
+  target_sources(uagent_tests PRIVATE tests/unit/web_terminal_test.cc
+                                      tests/unit/browser_test.cc)
+  if(UAGENT_WEB_PUSH)
+    target_sources(uagent_tests PRIVATE tests/unit/web_push_test.cc)
   endif()
-  if(UAGENT_BROWSER)
-    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc)
-    target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
-  endif()
+  target_link_libraries(uagent_tests PRIVATE uagent_web)
   # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
   # and a reused header has to have been built with the same command line.
   target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})
@@ -437,10 +395,7 @@ if(BUILD_TESTING)
   # at the job's limit.
   set_tests_properties(core PROPERTIES TIMEOUT 600)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  set(_groups runtime tools ui providers mcp agents sandbox)
-  if(UAGENT_WEB)
-    list(APPEND _groups web management)
-  endif()
+  set(_groups runtime tools ui providers mcp agents sandbox web management)
   foreach(group IN LISTS _groups)
     # By far the longest group (80 s of 190 s in all), so it alone decided
     # how long a parallel run takes: dealt to three runners, and counted as three.
@@ -529,8 +484,6 @@ install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
 # Keep the source-relative paths used by README and CONTRIBUTING valid in an
 # installed documentation tree.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
-if(UAGENT_WEB)
-  install(FILES web/dist/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
-  install(FILES third_party/cpp-httplib/LICENSE
-          DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME cpp-httplib.txt)
-endif()
+install(FILES web/dist/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(FILES third_party/cpp-httplib/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME cpp-httplib.txt)

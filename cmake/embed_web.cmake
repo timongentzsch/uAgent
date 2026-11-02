@@ -4,7 +4,7 @@
 set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")
 set(_web_manifest "${_web_root}/.assets")
 if(NOT EXISTS "${_web_manifest}")
-  message(FATAL_ERROR "web/dist is empty or missing: run `npm run build` in web/ to generate the PWA bundle, or configure with -DUAGENT_WEB=OFF for a headless-only binary")
+  message(FATAL_ERROR "web/dist is empty or missing: run `npm run build` in web/ to generate the PWA bundle")
 endif()
 file(STRINGS "${_web_manifest}" _web_paths)
 set(_web_gzip_manifest "${_web_root}/.gzip-manifest.json")

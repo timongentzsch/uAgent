@@ -171,9 +171,9 @@ export function FindBar({
         return;
       }
       const ranges = rangesIn(row, query);
-      const folded = row.matches('[aria-expanded="false"]')
-        ? row
-        : row.querySelector('[aria-expanded="false"]');
+      // A closed row's own toggle, never a menu button the row also holds.
+      const closed = '.node-row[aria-expanded="false"]';
+      const folded = row.matches(closed) ? row : row.querySelector(closed);
       if (ranges.length <= spot.nth && folded instanceof HTMLElement) {
         // A closed row mounts its body on opening; look again after it.
         folded.click();

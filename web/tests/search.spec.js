@@ -154,6 +154,34 @@ test("nothing found says so", async ({ page, host }) => {
   ).toBeDisabled();
 });
 
+test("the find bar keeps focus on words the transcript does not show", async ({
+  page,
+  host,
+}) => {
+  await page.goto("/");
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  // The host counts the link's address; the message shows only its text.
+  await saveHistory(host, "burrow.json", {
+    id: "burrow",
+    title: "Burrow",
+    turns: 1,
+    messages: [
+      { role: "user", content: "See [the burrow](https://example.com/numbat)" },
+      { role: "assistant", content: "Noted." },
+    ],
+  });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Burrow/ }).click();
+  await page.keyboard.press(`${mod}+f`);
+  const field = findBar(page).getByRole("searchbox");
+  await expect(field).toBeFocused();
+  await field.pressSequentially("numbat");
+  await expect(findBar(page)).toContainText("1 of 1");
+  // Landing on its row opens no menu there, so typing goes on in the field.
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(field).toBeFocused();
+});
+
 // Spotlight's own shape and keys: centered high, every hit marked, places in
 // their order, more under a conversation, ">" for commands, Esc stepping back.
 test("search is a centered panel that groups, marks and steps back", async ({

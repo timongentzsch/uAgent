@@ -135,18 +135,16 @@ TEST_CASE(TestRouteKeysAndShutdown) {
 }
 
 TEST_CASE(TestUsageAccounting) {
-  UsageAccumulator accumulator;
-  accumulator.Add(json{{"prompt_tokens", 5},
-                       {"completion_tokens", 2},
-                       {"prompt_tokens_details", {{"cache_write_tokens", 2}}}});
-  accumulator.Add(Usage{3, 4, 1, 0, 0.25});
-  Usage total = accumulator.Take();
+  Usage total;
+  total.Add({{"prompt_tokens", 5},
+             {"completion_tokens", 2},
+             {"prompt_tokens_details", {{"cache_write_tokens", 2}}}});
+  total.Merge(Usage{3, 4, 1, 0, 0.25});
   CHECK(total.input == 6);
   CHECK(total.output == 6);
   CHECK(total.cache_read == 1);
   CHECK(total.cache_write == 2);
   CHECK(total.cost == 0.25);
-  CHECK(accumulator.Take().input == 0);
 
   Usage responses, anthropic;
   responses.Add({{"input_tokens", 100},

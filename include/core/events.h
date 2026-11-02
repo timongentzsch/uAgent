@@ -126,7 +126,6 @@ struct AppEvent {
   std::string time;
   std::string type;
   json data = nullptr;
-  bool durable = false;
 };
 
 using EventSubscriber = std::function<void(const AppEvent&)>;

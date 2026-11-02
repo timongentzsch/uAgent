@@ -158,10 +158,7 @@ void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
 }
 
 // The request path judges session budgets from these, not from the usage.
-void Agent::SyncApiSessionUsage() {
-  api_.session_cost = session_usage_.cost;
-  api_.session_generated_tokens = session_usage_.GeneratedTokens();
-}
+void Agent::SyncApiSessionUsage() { api_.session_cost = session_usage_.cost; }
 
 void Agent::MergeSessionUsage(const Usage& usage) {
   session_usage_.Merge(usage);

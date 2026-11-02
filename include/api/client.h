@@ -47,7 +47,6 @@ struct ApiSettings : Route {
 class Api : public ApiSettings {
  public:
   double session_cost = 0;
-  int64_t session_generated_tokens = 0;
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment());
   explicit Api(ApiSettings settings);

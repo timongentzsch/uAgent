@@ -28,7 +28,6 @@ namespace uagent {
 struct CallTask {
   const Tool* tool = nullptr;
   json activity = json::object();
-  json raw_args;
   json args;
   std::vector<std::string> clamped;  // pacing hints pulled to their bound
   // What its approval was decided as, before any call of its batch ran.

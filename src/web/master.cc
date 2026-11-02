@@ -81,10 +81,6 @@ std::string PairingText(const std::string& origin, const std::string& code) {
 // Whether the client takes gzip: an explicit gzip entry decides, else `*`;
 // a q of 0 refuses. Codings match case-insensitively and whole.
 bool AcceptsGzip(const std::string& header) {
-  auto trim = [](std::string& text) {
-    text.erase(0, text.find_first_not_of(" \t"));
-    text.erase(text.find_last_not_of(" \t") + 1);
-  };
   int gzip = -1, any = -1;
   size_t at = 0;
   while (at <= header.size()) {
@@ -95,9 +91,8 @@ bool AcceptsGzip(const std::string& header) {
     std::string coding = entry.substr(0, semi);
     std::string params =
         semi == std::string::npos ? "" : entry.substr(semi + 1);
-    trim(coding);
-    trim(params);
-    std::transform(coding.begin(), coding.end(), coding.begin(), ::tolower);
+    coding = AsciiLower(Trim(coding));
+    params = Trim(params);
     int accepted = 1;
     if (params.size() > 2 && (params[0] == 'q' || params[0] == 'Q') &&
         params[1] == '=') {

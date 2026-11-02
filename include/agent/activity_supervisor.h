@@ -174,8 +174,6 @@ class ActivitySupervisor {
   // is consumed exactly once. Removal and retention share the same lock.
   std::optional<Activity> Take(int64_t id, bool retain = false);
   std::vector<Activity> Snapshot() const;
-  // What runs now: the background activities and those a tool call waits on.
-  std::vector<Activity> Running() const;
   std::vector<Activity> TakeAllForShutdown();
   // Commands a stop ended, which report no completion: their rows take
   // their end from here (Agent::DrainActivities).

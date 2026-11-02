@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -74,24 +73,15 @@ constexpr TokenShape kTokenShapes[] = {
 // longer be gated out of existence -- `passwd` was missed that way once.
 bool MentionsSecret(std::string_view text) {
   static const std::vector<std::string> kMarkers = [] {
-    std::vector<std::string> all;
-    for (const std::string& keyword : RedactKeywords()) {
-      all.push_back(AsciiLower(keyword));
-    }
-    for (const char* fixed : {"bearer", "-----begin"}) {
-      all.emplace_back(fixed);
-    }
+    std::vector<std::string> all = RedactKeywords();
+    all.insert(all.end(), {"bearer", "-----begin"});
     for (const TokenShape& shape : kTokenShapes) all.emplace_back(shape.marker);
     return all;
   }();
-  return std::any_of(
-      kMarkers.begin(), kMarkers.end(), [&](const std::string& marker) {
-        return std::search(text.begin(), text.end(), marker.begin(),
-                           marker.end(), [](char left, char right) {
-                             return std::tolower(static_cast<unsigned char>(
-                                        left)) == right;
-                           }) != text.end();
-      });
+  return std::any_of(kMarkers.begin(), kMarkers.end(),
+                     [&](const std::string& marker) {
+                       return ContainsCaseInsensitive(text, marker);
+                     });
 }
 
 std::string MemoryEventsPath() {

@@ -516,13 +516,6 @@ std::vector<Activity> ActivitySupervisor::Snapshot() const {
   return activities_;
 }
 
-std::vector<Activity> ActivitySupervisor::Running() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  std::vector<Activity> jobs = activities_;
-  jobs.insert(jobs.end(), foreground_.begin(), foreground_.end());
-  return jobs;
-}
-
 void ActivitySupervisor::Stopped(EndedCommand ended) {
   {
     std::lock_guard<std::mutex> lock(mutex_);

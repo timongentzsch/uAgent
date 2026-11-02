@@ -75,7 +75,6 @@ RouteResolution ResolveSideRoute(const Api& api,
     } else {
       // A bare model id on the parent's provider also lands here; only the
       // execution paths decide whether that is usable.
-      resolved.unresolved = true;
       if (route.model != api.model) route.model_features = nullptr;
     }
   }

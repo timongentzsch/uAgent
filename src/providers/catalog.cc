@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -91,24 +90,6 @@ std::string CataloguePath(const std::string& identity) {
 }
 
 }  // namespace
-std::string NormalizeModelId(std::string model) {
-  model = Trim(model);
-  bool separator = false;
-  std::string normalized;
-  normalized.reserve(model.size());
-  for (char raw : model) {
-    const unsigned char value = Byte(raw);
-    if (std::isspace(value)) {
-      separator = !normalized.empty();
-      continue;
-    }
-    if (separator && normalized.back() != '-') normalized += '-';
-    separator = false;
-    normalized += static_cast<char>(value);
-  }
-  return normalized;
-}
-
 const Endpoint* FindEndpoint(const std::vector<Endpoint>& providers,
                              const std::string& name) {
   for (const Endpoint& provider : providers) {

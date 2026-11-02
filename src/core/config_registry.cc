@@ -117,13 +117,6 @@ std::string StringSetting(const ConfigDescriptor& descriptor) {
   return value ? std::string(*value) : std::string();
 }
 
-double DoubleSetting(const ConfigDescriptor& descriptor) {
-  const double* declared = std::get_if<double>(&descriptor.default_value);
-  double value = declared ? *declared : 0.0;
-  ParseFiniteDouble(SettingText(descriptor).c_str(), value);
-  return value;
-}
-
 // Booleans are normalized to 0/1 in place, so one spelling is saved whichever
 // of the accepted words the caller wrote.
 bool ValidSettingValue(const ConfigDescriptor& descriptor, std::string& value,

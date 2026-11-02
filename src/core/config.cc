@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <set>
 #include <string>
 #include <utility>
@@ -97,14 +96,11 @@ bool ProjectMcpPresent() {
 }
 
 bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
-  std::error_code ec;
-  uintmax_t bytes = std::filesystem::file_size(kMcpConfigFile, ec);
-  if (ec || bytes > kMcpConfigBytes) {
-    error = ec ? ec.message() : "configuration exceeds byte limit";
+  std::string bytes;
+  if (!ReadRegularFile(kMcpConfigFile, kMcpConfigBytes, bytes, error)) {
     return false;
   }
-  std::ifstream file(kMcpConfigFile);
-  snapshot = json::parse(file, nullptr, false);
+  snapshot = json::parse(bytes, nullptr, false);
   if (!snapshot.is_object()) {
     error = "this folder's .mcp.json is not a valid JSON object";
     return false;

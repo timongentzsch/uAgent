@@ -19,6 +19,7 @@ export const secret = (setting: ConfigSetting) =>
 export const itemized = (setting: ConfigSetting) =>
   setting.sensitivity === "composite-secret" && !setting.locked;
 
+// A held value as a line of text; the providers by their names.
 export const shown = (value?: JSONValue) =>
   value == null || value === ""
     ? ""
@@ -26,7 +27,9 @@ export const shown = (value?: JSONValue) =>
       ? value
         ? "On"
         : "Off"
-      : String(value);
+      : typeof value === "object"
+        ? Object.keys(value).join(", ")
+        : String(value);
 
 // A held value as the host takes it back.
 export const raw = (value?: JSONValue) =>

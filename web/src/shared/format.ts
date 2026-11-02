@@ -48,3 +48,11 @@ export function formatBody(text = "", readable = false) {
     return text;
   }
 }
+
+// Text as HTML that shows it, for markup assembled by hand.
+export function escapeHTML(value: string) {
+  return value.replace(
+    /[&<>]/g,
+    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!,
+  );
+}

@@ -37,7 +37,6 @@ export interface Usage {
   reasoning?: number;
   cache_read?: number;
   cache_write?: number;
-  web_searches?: number;
   cost: number;
   cost_reported?: boolean;
 }
@@ -75,16 +74,15 @@ export interface Exchange {
   time?: string;
   request_headers?: string;
   response_headers?: string;
-  turn_root?: string;
   served_by?: string;
   generation_id?: string;
 }
 // One state vocabulary for every call and receipt.
-export type RowState = "running" | "ok" | "failed" | "cancelled";
+type RowState = "running" | "ok" | "failed" | "cancelled";
 // What a finished call's result was. The host words it: `word` is the
 // whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
 // behind it are for reading.
-export interface ResultFacts {
+interface ResultFacts {
   word?: string;
   exit?: { code?: number; signal?: number };
   added?: number;
@@ -93,7 +91,6 @@ export interface ResultFacts {
   unit?: string;
   outcome?: string;
   reason?: string;
-  no_change?: boolean;
 }
 // How a row draws its body: a "tail" keeps a command's last lines visible.
 export type BodyKind =
@@ -125,20 +122,18 @@ export interface LinkPart {
   label: string;
 }
 // "Editing a.ts" while running, "Edited a.ts" after; input shows on expand.
-export interface ToolView {
+interface ToolView {
   verb?: [string, string];
   target?: string;
   input?: ToolPart[];
 }
-export interface TurnSummary {
+interface TurnSummary {
   usage_reported?: boolean;
   turn: number;
   outcome: string;
   route?: string;
   tool_calls: number;
-  direct_tool_calls: number;
   model_calls?: number;
-  direct_model_calls: number;
   background_statistics?: Statistics;
   steps: number;
   duration_ms: number;
@@ -147,7 +142,6 @@ export interface TurnSummary {
   usage: Usage;
   // Files the turn's edit, write and delete tools changed (at most 50).
   files?: TurnFile[];
-  turn_root?: string;
   generation_ms?: number;
   generated_tokens?: number;
   messages?: number;
@@ -165,7 +159,7 @@ interface TurnStop {
   detail?: string;
 }
 // What a note about memory says, as the host recorded it.
-export interface MemoryNote {
+interface MemoryNote {
   action: string;
   key: string;
   automatic: boolean;
@@ -276,11 +270,11 @@ interface PendingBase {
   note?: string;
 }
 // The model's questions; `prompt` repeats the first.
-export interface AskPending extends PendingBase {
+interface AskPending extends PendingBase {
   kind: "ask";
   questions?: AskQuestion[];
 }
-export interface ApprovalPending extends PendingBase {
+interface ApprovalPending extends PendingBase {
   kind: "approval";
   approval?: {
     tool: string;
@@ -295,7 +289,7 @@ export interface ApprovalPending extends PendingBase {
   };
 }
 // A line of text, a password, a file to edit, or a step done in the browser.
-export interface InputPending extends PendingBase {
+interface InputPending extends PendingBase {
   kind:
     | "text"
     | "secret"
@@ -346,7 +340,7 @@ export interface PermissionRules {
   rules: PermissionRule[];
 }
 // Lifecycle status owned by the native session host.
-export type SessionStatus =
+type SessionStatus =
   | "draft"
   | "saved"
   | "starting"
@@ -516,15 +510,10 @@ interface EventData extends Omit<Partial<Exchange>, "status"> {
   text?: string;
   reset?: boolean;
   id?: string;
-  response_id?: string;
-  occurrence_id?: string;
-  call_id?: string;
-  detail_id?: string;
   turn?: number;
   request?: string;
   attempt?: number;
   name?: string;
-  arguments?: JSONValue;
   view?: ToolView;
   result?: JSONValue;
   activity_id?: number;
@@ -608,7 +597,7 @@ export interface Model {
   active?: boolean;
   efforts?: string[];
 }
-export interface ModelCatalogue {
+interface ModelCatalogue {
   models: Model[];
 }
 // One setting as the host states it: its description, then the facts.
@@ -625,7 +614,6 @@ export interface ConfigSetting {
   category: string;
   type: string;
   sensitivity: string;
-  takes_effect: string;
   default?: JSONValue;
   minimum?: number;
   maximum?: number;
@@ -967,7 +955,6 @@ export interface ImportItem {
 }
 interface ImportResult {
   items?: ImportItem[];
-  imported?: { kind: string; name: string }[];
   skipped?: { kind: string; name: string; reason: string }[];
 }
 interface LibraryResult {
@@ -1054,7 +1041,7 @@ export interface TerminalInfo {
   started: number;
 }
 // The folders' shells, and the one just opened.
-export interface TerminalList {
+interface TerminalList {
   id?: string;
   terminals: TerminalInfo[];
 }

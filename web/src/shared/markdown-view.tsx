@@ -15,6 +15,7 @@ import {
   usePlaceholder,
 } from "./ui.tsx";
 import { useResource } from "./use-resource.ts";
+import { escapeHTML } from "./format.ts";
 
 // Renders Markdown into the transcript and the Files pane: the finished text
 // as cached blocks, a streaming reply as head and tail, and the lazy loading
@@ -75,13 +76,6 @@ function plainSegments(tail: string, startLine: number) {
     line += (value.match(/\n/g) || []).length;
   }
   return segments;
-}
-
-function escapeHTML(value: string) {
-  return value.replace(
-    /[&<>]/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!,
-  );
 }
 
 function CodeBlock({

@@ -203,6 +203,9 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         assert_true(len(server.requests) == 5, server.requests)
         assert_true(b"memory-extract-user-sentinel" not in output, output)
         assert_true(b"Activity result" not in output, output)
+        # The extractor's own pass is not saved as a conversation of the folder.
+        saved = [path.read_text() for path in (home / ".uagent/history").rglob("*.json")]
+        assert_true(not any("memory extraction" in text for text in saved), saved)
 
         # A completed source is not processed again. Disabling generation also
         # prevents a changed source from becoming eligible.

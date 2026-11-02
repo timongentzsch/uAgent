@@ -8,6 +8,7 @@ import bash from "highlight.js/lib/languages/bash";
 import json from "highlight.js/lib/languages/json";
 import diff from "highlight.js/lib/languages/diff";
 import xml from "highlight.js/lib/languages/xml";
+import { escapeHTML } from "./format.ts";
 import css from "highlight.js/lib/languages/css";
 import yaml from "highlight.js/lib/languages/yaml";
 import ini from "highlight.js/lib/languages/ini";
@@ -115,12 +116,6 @@ export function languageFor(path: string) {
   );
 }
 
-const escape = (text: string) =>
-  text.replace(
-    /[&<>]/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!,
-  );
-
 // A file as lines of HTML, highlighted by its name. A span a line break
 // cuts through (a block comment, a template string) is closed at the end
 // of the line and opened again on the next, so each line stands alone.
@@ -129,7 +124,7 @@ export function highlightLines(text: string, path: string) {
   const html =
     language && text.length <= maxFileHighlightChars
       ? hljs.highlight(text, { language, ignoreIllegals: true }).value
-      : escape(text);
+      : escapeHTML(text);
   const lines: string[] = [];
   const open: string[] = [];
   let line = "";

@@ -109,7 +109,7 @@ jobs:
       - name: Verify native architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
-        run: ctest --test-dir build --output-on-failure -j 3 -LE source
+        run: ctest --test-dir build --output-on-failure -j 3
       - name: Package
         shell: bash
         run: |
@@ -138,39 +138,6 @@ jobs:
 
   # The feature switches compile different #if paths. Each builds on its own
   # runner instead of after the x86 leg.
-  variants:
-    name: variant (${{ matrix.name }})
-    needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.heavy == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: cli-only
-            flags: -DUAGENT_WEB=OFF
-            tests: "^(core|integration_runtime|integration_providers)$"
-          - name: no-browser
-            flags: -DUAGENT_BROWSER=OFF
-            tests: "^core$"
-    env:
-      UAGENT_TEST_TIMEOUT_SCALE: "3"
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/native-setup
-        with:
-          web-dist: true
-          ccache: variant-${{ matrix.name }}
-      - name: Configure
-        run: >-
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          -DUAGENT_WARNINGS_AS_ERRORS=ON ${{ matrix.flags }}
-      - name: Build
-        run: cmake --build build --parallel 4
-      - name: Test
-        run: ctest --test-dir build --output-on-failure -j 2 -R '${{ matrix.tests }}'
-
   sanitizers:
     needs: [changes, web-dist]
     if: needs.changes.outputs.native == 'true'
@@ -192,7 +159,7 @@ jobs:
       - name: Build
         run: cmake --build --preset sanitize --parallel 4 && ccache --show-stats
       - name: Test
-        run: ctest --preset sanitize -j 2 -LE source
+        run: ctest --preset sanitize -j 2
       # Session workers run with no stderr, so every process writes its
       # sanitizer report to a file (CMakePresets.json log_path).
       - name: Sanitizer reports
@@ -231,11 +198,11 @@ jobs:
         if: failure()
         run: cat build/tsan/report.* 2>/dev/null || echo "no sanitizer report"
 
-  # Not on a pull request: the same suites already run there under two
+  # Weekly and by hand only: the same suites run on every change under two
   # sanitizers and on three systems, and the floor it guards moves slowly.
   coverage:
     needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -294,11 +261,6 @@ jobs:
           version: "0.11.28"
           enable-cache: true
       - run: .github/lint.sh
-      - uses: ./.github/actions/native-setup
-      - name: Source and Python contracts
-        run: |
-          cmake --preset debug
-          ctest --preset debug -L source
 
   web:
     needs: changes
@@ -439,7 +401,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, web-dist, build-and-test, variants, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
+    needs: [changes, web-dist, build-and-test, sanitizers, thread-sanitizer, coverage, lint, clang-tidy, web, web-browser, image]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

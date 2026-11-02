@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import subprocess
 import threading
 import time
 
@@ -15,7 +16,22 @@ from integration_support import (
 )
 from web_support import web_host
 
-from integration_web._common import p256_public_key
+
+def p256_public_key():
+    """A fresh uncompressed P-256 point, as a browser's p256dh key."""
+    pem = subprocess.run(
+        ["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    der = subprocess.run(
+        ["openssl", "ec", "-pubout", "-outform", "DER"],
+        input=pem,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return base64.urlsafe_b64encode(der[-65:]).rstrip(b"=").decode()
+
 
 # A push record is the 86-byte aes128gcm header, the payload, one padding
 # byte and a 16-byte tag: the capture file shows the payload's size, not its

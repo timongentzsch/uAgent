@@ -410,11 +410,9 @@ json ToolSurfaceJson() {
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
   conditional.emplace_back(ScheduleTool([] { return std::string(); }),
                            "a session with a client");
-#ifdef UAGENT_BROWSER
   conditional.emplace_back(
       BrowserTool("", nullptr),
       "a top-level session while the web host runs the browser");
-#endif
   conditional.emplace_back(SkillTool({}, {}), "skills installed");
 
   json out = json::array();

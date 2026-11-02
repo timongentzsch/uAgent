@@ -86,34 +86,16 @@ test("progressive rendering retains text while syntax highlighting loads", async
   }
 });
 
-test("streaming stays pinned to the end while following", async ({
+// A line still being written may not yet decide its block (a table row,
+// a setext underline, a bare list marker). Shown early and then undone,
+// everything above the end would drop for a frame and rise again. Nor
+// does the reply's text move when its turn ends.
+test("streamed content only grows and stays pinned to the end", async ({
   page,
   session,
   command,
 }) => {
   test.setTimeout(120000);
-  await startProbe(page, session, command);
-  // A frame can land between a state apply and its pre-paint pin, so a
-  // single excursion is not detachment: what matters is that the tail
-  // recovers to the band and settles at zero when done.
-  const gaps = await gapsUntilIdle(page);
-  expect(gaps.filter((value) => value > 100).length).toBeLessThanOrEqual(2);
-  expect(gaps.slice(-5).every((value) => value <= 100)).toBe(true);
-  await expect.poll(() => gap(page)).toBeLessThan(2);
-  await expect(
-    page.getByRole("button", { name: "Jump to latest" }),
-  ).toHaveCount(0);
-});
-
-// A line still being written may not yet decide its block (a table row,
-// a setext underline, a bare list marker). Shown early and then undone,
-// everything above the end would drop for a frame and rise again. Nor
-// does the reply's text move when its turn ends.
-test("streamed content only grows while pinned", async ({
-  page,
-  session,
-  command,
-}) => {
   await startProbe(page, session, command, "Structured stream probe");
   const reply = page.locator(".message.response").last();
   const textTop = () =>
@@ -129,8 +111,19 @@ test("streamed content only grows while pinned", async ({
     (frame, index) => index && frame.height < frames[index - 1].height,
   );
   expect(shrinks).toEqual([]);
-  expect(frames.at(-1).gap).toBeLessThan(2);
+  // The reply outgrows the view, so there is an end to stay pinned to.
+  expect(frames.at(-1).height - frames[0].height).toBeGreaterThan(400);
+  // A frame can land between a state apply and its pre-paint pin, so a
+  // single excursion is not detachment: what matters is that the tail
+  // recovers to the band and settles at zero when done.
+  const gaps = frames.map((frame) => frame.gap);
+  expect(gaps.filter((value) => value > 100).length).toBeLessThanOrEqual(2);
+  expect(gaps.slice(-5).every((value) => value <= 100)).toBe(true);
+  expect(gaps.at(-1)).toBeLessThan(2);
   expect(await textTop()).toBe(streaming);
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }),
+  ).toHaveCount(0);
 });
 
 test("scrolled-up reader is never yanked down by streaming", async ({

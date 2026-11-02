@@ -366,11 +366,9 @@ TEST_CASE(TestActionRequiresDeclarations) {
   std::vector<Tool> tools = BuiltinTools(supervisor);
   const Api api(RuntimeConfig{});
   AddAgentTools(tools, api, [] { return std::string(); });
-#ifdef UAGENT_BROWSER
   tools.push_back(BrowserTool("cccccccccccccccccccccccccccccccc",
                               [](const std::string&, const std::string&,
                                  bool*) { return std::string(); }));
-#endif
   std::vector<std::string> declared;
   for (const Tool& tool : tools) {
     const ActionRequires& table = tool.action_requires;
@@ -393,9 +391,7 @@ TEST_CASE(TestActionRequiresDeclarations) {
   }
   std::vector<std::string> multi_action = {"activity", "agents", "decide",
                                            "memory"};
-#ifdef UAGENT_BROWSER
   multi_action.emplace_back("browser");
-#endif
   std::ranges::sort(declared);
   std::ranges::sort(multi_action);
   CHECK(declared == multi_action);

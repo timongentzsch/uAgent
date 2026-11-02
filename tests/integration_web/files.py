@@ -2,10 +2,8 @@ import json
 import subprocess
 from urllib.parse import urlencode
 
-from integration_support import Server, assert_true, event
+from integration_support import SMALL_PNG, Server, assert_true, event
 from web_support import WebClient, web_host
-
-from integration_web._common import PNG
 
 
 def test_web_files_list_read_serve_and_find(root, home, *, binary):
@@ -19,7 +17,7 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
     # A 2-byte character straddles the 1 MiB cut.
     (project / "big.txt").write_text("x" + "é" * 600_000)
     (project / "blob.bin").write_bytes(b"\x00\x01binary")
-    (project / "pixel.png").write_bytes(PNG)
+    (project / "pixel.png").write_bytes(SMALL_PNG)
     (project / "draw.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
     (project / "page.html").write_text("<script>alert(1)</script>")
     (project / ".mcp.json").write_text("{}")
@@ -80,7 +78,7 @@ def test_web_files_list_read_serve_and_find(root, home, *, binary):
             assert_true(answer(read=".mcp.json")[0] == 404, "self-configuration was readable")
 
             status, body, headers = files(raw="pixel.png")
-            assert_true(status == 200 and body == PNG, status)
+            assert_true(status == 200 and body == SMALL_PNG, status)
             assert_true(headers["Content-Type"] == "image/png", headers)
             assert_true("Content-Disposition" not in headers, headers)
             assert_true(

@@ -17,7 +17,7 @@ from integration_support import (
 )
 from web_support import web_host
 
-from integration_web._common import ASSET_NAME_CHARS
+ASSET_NAME_CHARS = 128
 
 
 def test_web_http_context_configuration_permissions_and_fork(root, home, *, binary):

@@ -513,8 +513,7 @@ TEST_CASE(TestFileTools) {
       CHECK(PathApprovalClass(instructions, PathAccess::kWrite) ==
             ApprovalClass::kMandatoryHuman);
     }
-    for (const char* name :
-         {"/AGENTS.md", "/AGENTS.override.md", "/.uagent/PANEL.md"}) {
+    for (const char* name : {"/AGENTS.md", "/AGENTS.override.md"}) {
       CHECK(PathApprovalClass(CanonicalCwd() + name, PathAccess::kWrite) ==
             ApprovalClass::kNone);
     }

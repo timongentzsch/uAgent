@@ -1,7 +1,6 @@
-# The CI smoke run is a regression check: a few thousand executions from the
-# committed corpus, sized to keep a pull request fast. Finding a new input
-# takes longer than that, so the search runs here on its own schedule and
-# hands back whatever it reached as the next run's starting point.
+# Finding a new input takes minutes per fuzzer, so the search runs here on its
+# own schedule and hands back whatever it reached as the next run's starting
+# point.
 name: Fuzz
 
 on:

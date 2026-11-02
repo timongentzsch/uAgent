@@ -13,7 +13,7 @@ WORKDIR /src
 COPY . .
 COPY --from=frontend /web/dist /src/web/dist
 RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
-    -DUAGENT_WEB=ON -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
+    -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
     && cmake --build /tmp/uagent-build --target uagent -j 4 \
     && cmake --install /tmp/uagent-build --prefix /opt/uagent --strip
 

@@ -72,14 +72,12 @@ struct ModelSelection {
 ModelSelection ParseModelSelection(const std::string& selection);
 
 // Where a side model runs: the parent's route unless the selection names one
-// that resolves. `unresolved` marks a named route that matched nothing, which
-// only the execution paths treat as an error. `none` says why no model serves
-// the route, when none does. Shared by the title, vision and
-// memory-extraction paths so one selection means one thing.
+// that resolves. `none` says why no model serves the route, when none does.
+// Shared by the title, vision and memory-extraction paths so one selection
+// means one thing.
 struct RouteResolution {
   Route route;
   std::string selection, none;
-  bool unresolved = false;
 };
 
 // The route variables a process started for this route reads: endpoint,
@@ -109,7 +107,6 @@ RouteResolution ResolveReviewRoute(const Api& api,
                                    const std::vector<Endpoint>& providers,
                                    const std::string& setting);
 
-std::string NormalizeModelId(std::string model);
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);
 // The providers of the settings plus the well-known endpoints whose key is

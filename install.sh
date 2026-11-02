@@ -109,14 +109,8 @@ fi
 if [ "$mode" = source ]; then
   node=no
   if has npm; then node=yes; fi
-  # The web interface, and with it the browser, needs Node.js or a built
-  # web/dist.
-  web=$node
-  if [ -f "$root/web/dist/.assets" ]; then web=yes; fi
   found="Docker: $(yes_no "$docker"), Node.js: $(yes_no "$node")"
 else
-  # Release archives carry the web interface.
-  web=yes
   found="Docker: $(yes_no "$docker")"
 fi
 if [ "$os" = Linux ]; then
@@ -147,7 +141,7 @@ if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes
   here=
   [ "$mode" = release ] && [ -n "$unsupported" ] && here=", built from source ($unsupported)"
   echo "1) In a container (recommended): web interface, browser and terminal, isolated from this machine"
-  echo "2) Here: the terminal$([ "$web" = yes ] && echo ", the web interface")$([ "$web$browser" = yesyes ] && echo " and the browser")$here"
+  echo "2) Here: the terminal, the web interface$([ "$browser" = yes ] && echo " and the browser")$here"
   reply 'Install [1]:' || true
   [ "$answer" = 2 ] || choice=container
 fi
@@ -229,7 +223,7 @@ if [ "$mode" = release ] && [ -n "$unsupported" ]; then build_from_source "$unsu
 
 # The agent's browser needs Chrome and TigerVNC on Linux; offer the packages
 # the container image installs.
-if [ "$os" = Linux ] && [ "$web" = yes ] && [ "$browser" = no ] && has apt-get &&
+if [ "$os" = Linux ] && [ "$browser" = no ] && has apt-get &&
    ask "Install Chrome and TigerVNC for the agent's browser, with sudo?"; then
   deb=$tmp/chrome.deb
   fetch "https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb" "$deb"
@@ -241,8 +235,12 @@ bin=$prefix/bin/uagent
 installed=
 if [ -x "$bin" ]; then installed=$("$bin" --version 2>/dev/null | sed 's/^uagent //'); fi
 if [ "$mode" = source ]; then
-  # Reuse a built UI only while its source inputs match. Without npm, CMake
-  # can still embed a supplied bundle or build the CLI-only configuration.
+  # Every build embeds the web interface: reuse a built one only while its
+  # source inputs match, and without npm only a supplied bundle.
+  if [ "$node" = no ] && [ ! -f "$root/web/dist/.assets" ]; then
+    echo "building from source needs Node.js (npm) for the web interface" >&2
+    exit 1
+  fi
   if [ "$node" = yes ] && ! node "$root/web/scripts/build-state.js" check; then
     if ! node "$root/web/scripts/build-state.js" check-dependencies; then
       npm ci --prefix "$root/web"
@@ -253,10 +251,6 @@ if [ "$mode" = source ]; then
   if [ ! -f "$build/CMakeCache.txt" ]; then
     cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
   fi
-  # Every run says whether the web UI is built: a tree first configured
-  # without it gains it once Node.js or a built web/dist is here, and a tree
-  # configured by hand keeps its other choices.
-  cmake -S "$root" -B "$build" -DUAGENT_WEB="$([ "$web" = yes ] && echo ON || echo OFF)"
   cmake --build "$build" --target uagent --parallel "$build_jobs"
   cmake --install "$build" --prefix "$prefix" --strip
   policy_source=$root/deploy/chrome-policy.json
@@ -302,7 +296,7 @@ fi
 
 # Chrome reads managed policy only from a root-owned directory.
 policy=/etc/opt/chrome/policies/managed/uagent.json
-if [ "$os" = Linux ] && [ "$web" = yes ] && [ -n "$policy_source" ] && has google-chrome-stable &&
+if [ "$os" = Linux ] && [ -n "$policy_source" ] && has google-chrome-stable &&
    ! cmp -s "$policy_source" "$policy" 2>/dev/null; then
   if ask "Install the Chrome policy for the agent's browser (downloads PDFs, blocks the password pages), with sudo?"; then
     sudo install -D -m 0644 "$policy_source" "$policy"
@@ -448,8 +442,6 @@ if [ "$web_service" = yes ]; then
       echo "See: ~/Library/Logs/uagent-web.log (set UAGENT_WEB_PORT if another program uses $port)" >&2
     fi
   fi
-elif [ "$web" = yes ]; then
-  echo "Installed $bin. Start it with: uagent, or the web interface with: uagent --web"
 else
-  echo "Installed $bin. Start it with: uagent"
+  echo "Installed $bin. Start it with: uagent, or the web interface with: uagent --web"
 fi

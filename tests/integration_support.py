@@ -496,17 +496,6 @@ def has_message(messages, role, content):
     )
 
 
-def user_texts(messages):
-    """Every user-role message content, as text, in order."""
-    return [str(m.get("content", "")) for m in messages if m.get("role") == "user"]
-
-
-def user_prompt(messages, prompts):
-    """The first user message whose content is one of `prompts`, or None:
-    which child of a batch a request belongs to."""
-    return next((text for text in user_texts(messages) if text in prompts), None)
-
-
 class Concurrency:
     """Counts what runs at once inside `with`; `most` is the peak."""
 
@@ -584,31 +573,6 @@ def live_process_states(pids):
         if result.returncode == 0 and state and not state.startswith("Z"):
             states[pid] = state
     return states
-
-
-def wait_for_processes_stopped(pids, timeout=2):
-    """Allow process-group teardown and orphan reaping to settle."""
-    deadline = time.monotonic() + budget(timeout)
-    states = live_process_states(pids)
-    while states and time.monotonic() < deadline:
-        time.sleep(0.02)
-        states = live_process_states(states)
-    return states
-
-
-def descendant_pids(root_pid):
-    """Every process below root_pid, so a leaked grandchild is still visible."""
-    children = {}
-    for line in subprocess.check_output(["ps", "-axo", "pid=,ppid="], text=True).splitlines():
-        child, parent = map(int, line.split())
-        children.setdefault(parent, []).append(child)
-    found, pending = set(), [root_pid]
-    while pending:
-        for child in children.get(pending.pop(), []):
-            if child not in found:
-                found.add(child)
-                pending.append(child)
-    return found
 
 
 def fnv1a64(text):

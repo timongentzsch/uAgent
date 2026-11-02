@@ -406,16 +406,15 @@ TEST_CASE(TestHostedSearchStatusRow) {
   const std::string corrected = CaptureStdout([&] {
     TerminalPresenter verbose;
     verbose.SetDetail(DetailFor("full"));
-    verbose.Consume(AppEvent{1, "", "response.started", json::object(), false});
-    verbose.Consume(AppEvent{
-        2, "", "response.reasoning.delta", {{"text", "original"}}, false});
+    verbose.Consume(AppEvent{1, "", "response.started", json::object()});
+    verbose.Consume(
+        AppEvent{2, "", "response.reasoning.delta", {{"text", "original"}}});
     verbose.Consume(AppEvent{3,
                              "",
                              "response.reasoning.delta",
                              {{"text", "complete reconciled snapshot"},
                               {"append_text", "revision"},
-                              {"corrected", true}},
-                             false});
+                              {"corrected", true}}});
     verbose.Finish();
   });
   CHECK(corrected.find("[Updated provider reasoning]") != std::string::npos);

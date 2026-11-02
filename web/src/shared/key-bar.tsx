@@ -5,7 +5,7 @@ import { Button } from "./ui.tsx";
 // The keys a touch keyboard lacks, by their KeyboardEvent.key name, and a
 // sticky Ctrl for the next key typed. The browser viewer and the terminal
 // each send a key their own way.
-export const BAR_KEYS = {
+const BAR_KEYS = {
   Escape: "Esc",
   Tab: "Tab",
   ArrowLeft: "←",

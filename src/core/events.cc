@@ -465,7 +465,7 @@ void Observability::Emit(Event event) noexcept {
     }
     if (!subscribers_.empty()) {
       app_event = {++app_sequence_, UtcStamp(), policy.app_type,
-                   AppProjection(event), policy.Durable()};
+                   AppProjection(event)};
       subscribers.reserve(subscribers_.size());
       subscribers = subscribers_;
     }

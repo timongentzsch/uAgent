@@ -214,7 +214,7 @@ class Recorder {
   void Event(const std::string& type, const json& data) {
     ApplySessionEvent(live_, type, data);
     watched_ += CaptureStdout([&] {
-      watcher_.Consume(AppEvent{0, "", type, data, false});
+      watcher_.Consume(AppEvent{0, "", type, data});
       // As a terminal holds its tree: calls and nodes, not their results.
       if (type == "tool.call" || type == "message.changed") {
         ApplySessionEvent(terminal_, type, data);

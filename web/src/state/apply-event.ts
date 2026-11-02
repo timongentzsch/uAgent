@@ -28,7 +28,7 @@ type Ref<T> = { current: T };
 // What applying the stream's events reads and changes: the event stream
 // owner's state and refs, handed over as they are, so what one event does
 // can be followed, and tested, apart from it.
-export interface EventHost {
+interface EventHost {
   live: Ref<Record<string, Snapshot>>;
   snapshots: SnapshotStore;
   selection: Ref<string>;

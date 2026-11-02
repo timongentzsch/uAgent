@@ -129,11 +129,6 @@ RouteUsage RouteUsageFromJson(const json& value);
 
 class UsageAccumulator {
  public:
-  void Add(const json& usage) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    unassigned_.Add(usage);
-  }
-
   void Add(const Usage& usage) {
     std::lock_guard<std::mutex> lock(mutex_);
     unassigned_.Merge(usage);
@@ -150,17 +145,6 @@ class UsageAccumulator {
       MergeNumericStatistics(unassigned_statistics_, statistics);
     }
     routes_[route].Merge(usage);
-  }
-
-  Usage Take() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    Usage usage = unassigned_;
-    for (const auto& [_, attributed] : turns_) usage.Merge(attributed);
-    unassigned_ = {};
-    unassigned_statistics_ = json::object();
-    turns_.clear();
-    turn_statistics_.clear();
-    return usage;
   }
 
   // Usage, route attribution, parent-turn attribution and child statistics

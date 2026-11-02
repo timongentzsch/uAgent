@@ -159,8 +159,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
     failed.trace_status = status;
     failed.issue = std::move(issue);
   };
-  task.raw_args = json::parse(call.args, nullptr, false);
-  task.args = task.raw_args;
+  task.args = json::parse(call.args, nullptr, false);
   task.tool = FindTool(tools_, call.name);
   const Tool* tool = task.tool;
   if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);

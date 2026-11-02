@@ -112,8 +112,9 @@ int Application::FinishHeadless(std::string answer, std::string error,
 }
 
 int Application::RunHeadless() {
-  // Saved like any conversation, so `-c -p` continues it.
-  persist_ = true;
+  // Saved like any conversation, so `-c -p` continues it; the memory
+  // extractor's pass over another conversation is not one of its own.
+  persist_ = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE").empty();
   // Spend is reported from here on: a continued conversation's envelope
   // carries this run, not everything before it.
   used_before_ = UsageTotals();

@@ -844,7 +844,6 @@ std::string SettingText(const std::string& name);
 int64_t LongSetting(const ConfigDescriptor& descriptor);
 bool BoolSetting(const ConfigDescriptor& descriptor);
 std::string StringSetting(const ConfigDescriptor& descriptor);
-double DoubleSetting(const ConfigDescriptor& descriptor);
 
 // Whether a setting takes `value`, and why not, naming the setting as
 // `called` (its environment name when empty).

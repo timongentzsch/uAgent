@@ -95,23 +95,6 @@ TEST_CASE(TestLocalAbortIsolation) {
   CHECK(!AbortRequested());
 }
 
-TEST_CASE(TestBudgetMsScaling) {
-  {
-    ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "6");
-    CHECK(BudgetMs(2) == 12);
-    CHECK(BudgetMs(0) == 0);
-    CHECK(BudgetMs(-2) == -2);
-  }
-  for (const char* invalid : {"nan", "inf", "1e308", "6junk"}) {
-    ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", invalid);
-    CHECK(BudgetMs(2) == 2);
-  }
-  {
-    ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "9223372036854775808");
-    CHECK(BudgetMs(1) == 1);
-  }
-}
-
 TEST_CASE(TestRouteKeysAndShutdown) {
   std::ifstream contract(std::string(UAGENT_TEST_SOURCE_DIR) +
                          "/tests/fixtures/route_contract.json");
@@ -135,18 +118,16 @@ TEST_CASE(TestRouteKeysAndShutdown) {
 }
 
 TEST_CASE(TestUsageAccounting) {
-  UsageAccumulator accumulator;
-  accumulator.Add(json{{"prompt_tokens", 5},
-                       {"completion_tokens", 2},
-                       {"prompt_tokens_details", {{"cache_write_tokens", 2}}}});
-  accumulator.Add(Usage{3, 4, 1, 0, 0.25});
-  Usage total = accumulator.Take();
+  Usage total;
+  total.Add({{"prompt_tokens", 5},
+             {"completion_tokens", 2},
+             {"prompt_tokens_details", {{"cache_write_tokens", 2}}}});
+  total.Merge(Usage{3, 4, 1, 0, 0.25});
   CHECK(total.input == 6);
   CHECK(total.output == 6);
   CHECK(total.cache_read == 1);
   CHECK(total.cache_write == 2);
   CHECK(total.cost == 0.25);
-  CHECK(accumulator.Take().input == 0);
 
   Usage responses, anthropic;
   responses.Add({{"input_tokens", 100},

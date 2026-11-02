@@ -2,7 +2,7 @@ import { useLayoutEffect, useReducer } from "preact/hooks";
 import type { Snapshot } from "../shared/types.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
-export type Snapshots = Record<string, Snapshot>;
+type Snapshots = Record<string, Snapshot>;
 
 // The loaded conversations, outside component state: the event stream
 // replaces them every frame, and only a component that reads one re-renders.

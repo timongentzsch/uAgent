@@ -40,9 +40,7 @@ extern char** environ;
 #include "include/core/term.h"
 #include "include/core/usage.h"
 #include "include/tools/memory.h"
-#ifdef UAGENT_WEB
 #include "include/web/protocol.h"
-#endif
 
 namespace uagent {
 namespace {
@@ -157,9 +155,7 @@ int ShowSystemPrompt(Options options, char* executable,
 }
 
 // --web: the master process; only user configuration reaches it.
-int WebMain([[maybe_unused]] const Options& options,
-            [[maybe_unused]] char** argv) {
-#ifdef UAGENT_WEB
+int WebMain(const Options& options, char** argv) {
   if (!options.prompt.empty() || options.json || options.json_stream ||
       options.resume_latest || options.resume_pick || options.yolo ||
       options.trust_project || !options.attach_paths.empty()) {
@@ -217,10 +213,6 @@ int WebMain([[maybe_unused]] const Options& options,
        setting("UAGENT_BROWSER_DATA"), terminal_on,
        std::clamp(idle_minutes, idle.minimum, idle.maximum)},
       argv);
-#else
-  fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
-  return 2;
-#endif
 }
 
 // A headless run: one prompt, its answer as text, a JSON envelope or an event
@@ -268,11 +260,9 @@ int Main(int argc, char** argv) {
     return session::WorkerMain(argc, argv);
   }
   if (argc == 2 && std::string_view(argv[1]) == "setup") return SetupMain();
-#ifdef UAGENT_WEB
   if (argc == 2 && std::string_view(argv[1]) == "--browser-service") {
     return browser::ServiceMain(3);
   }
-#endif
   Observability observability;
   SetObservability(&observability);
   ParsedOptions parsed = ParseOptions(argc, argv);

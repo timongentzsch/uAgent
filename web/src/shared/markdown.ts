@@ -20,7 +20,7 @@ const relative = (url: string) =>
   !!url && !/^([a-z][a-z\d+.-]*:|[/#])/i.test(url);
 // The folder-relative path `target` names from `base`, or undefined when it
 // leaves the folder.
-export function resolvePath(base: string, target: string) {
+function resolvePath(base: string, target: string) {
   const parts = base ? base.split("/") : [];
   try {
     for (const part of target

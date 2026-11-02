@@ -8,10 +8,15 @@
 - **A scheduled task can check before it asks a model.** A task's optional `check` is a shell command run first in its folder: exit 0 starts the run with what it printed, exit 1 records "nothing new" without a model call. Frequent polling, such as a stock alert every two minutes, now costs a model call only when something changed.
 - **Each call is one row.** Calls no longer fold into "Explored", "Researched" or "Edited" groups; "Worked N steps" is the only fold. They covered about one call in eight, and a `run` row now says what it does on its own.
 - **The prompt names the `browser` tool.** Where it is offered, the prompt and `web_fetch` point to it for pages built by scripts, behind a login or cut off, instead of to a skill, and a fetched page says it may be partial.
+- **The Context value opens the raw context.** In a conversation's statistics, the context line itself leads to the raw context, in place of a separate button under it.
+- **Every build has the web interface and the browser.** The `UAGENT_WEB` and `UAGENT_BROWSER` build options are gone, so building from source needs Node.js (or a built `web/dist`); `install.sh` says so instead of building a terminal-only binary. Web Push stays optional with `UAGENT_WEB_PUSH`.
 - **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone, and "edited N files" no longer counts commands.
 
 ### Fixes
 
+- **Memory extraction no longer leaves conversations behind.** Each background extraction was saved as a conversation of its own, titled "This is bounded background memory extraction…", in the space of the conversation it read.
+- **The find box keeps focus while you type.** When a message held more matches than it showed, such as a word in a link's address, Find clicked the message's actions button to open it; the menu then took the focus.
+- **A long title no longer matches every search.** Search matched a name by its letters in order anywhere, so a long conversation title turned up for most words and crowded out the conversations that hold them. Letters spread wider than twice the query no longer match; an abbreviation such as "plt prb" still finds "Palette probe".
 - **`--control` says what it expects.** A schedule request with a missing or unknown `action` returned the task list, and a request with no known `kind` said only "unknown library kind"; both now name the valid values. A caller the sandbox keeps out of the web host's folder no longer reads `runner_active: false`.
 - **One item sent bare counts as a list.** A model that sends a single string where a tool takes a list of strings, such as one `web_search` query, is no longer refused and sent back for another round.
 - **A switch that is on keeps its right edge.** Its knob slid past the end of the track and covered the border.

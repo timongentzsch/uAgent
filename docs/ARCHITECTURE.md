@@ -45,16 +45,16 @@ above it:
 | `uagent_api` | `src/api/` |
 | `uagent_toolcore` | Tool vocabulary (`src/tools/tool.cc`), `src/media/` and `src/providers/`; no agent, tool or app dependency |
 | `uagent_agent` | `src/agent/`: turn loop, persistence, supervision services, memory store, transcript view |
-| `uagent_tools` | Tool surface and `src/mcp/`, consuming agent services; `src/browser/` when `UAGENT_BROWSER=ON` (the default with the web UI) |
+| `uagent_tools` | Tool surface, `src/mcp/` and `src/browser/`, consuming agent services |
 | `uagent_app` | `src/app/`, `src/ui/`, `src/cli/` |
-| `uagent_web` | `src/web/` and the embedded bundle; built when `UAGENT_WEB=ON` (default) |
+| `uagent_web` | `src/web/` and the embedded bundle |
 
 Tests, benchmarks and `uagent_web` link `uagent_app`; the fuzzers link only
 `uagent_core_base` and the source they fuzz.
 
 Public headers live in `include/<module>/`, mirroring `src/<module>/`.
 Declarations shared only inside one module stay in `src/<module>/*_internal.h`.
-`tests/boundary_test.py` (CTest `layer_boundary`) rejects a new include that
+`tests/boundary_test.py` (run by `.github/lint.sh`) rejects a new include that
 points up this order; its `KNOWN` set lists the remaining exceptions.
 
 The web host embeds the built `web/dist` (`npm ci && npm run build` in `web/`,

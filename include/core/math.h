@@ -10,7 +10,8 @@
 namespace uagent {
 // Pure transliteration: LaTeX math → Unicode. No SGR and no renderer state,
 // so the same table serves the streaming renderer and any later consumer.
-// Kept in sorted order because MathCommand binary-searches it.
+// Sorted, because MathCommand binary-searches it: an entry out of order is
+// not slow but missing (shipped that way, neither Phi nor Pi resolved).
 inline constexpr std::pair<std::string_view, std::string_view> kMathCommands[] =
     {
         {"Delta", "Δ"},      {"Gamma", "Γ"},     {"Lambda", "Λ"},
@@ -29,6 +30,9 @@ inline constexpr std::pair<std::string_view, std::string_view> kMathCommands[] =
         {"rightarrow", "→"}, {"sigma", "σ"},     {"sum", "∑"},
         {"theta", "θ"},      {"times", "×"},     {"to", "→"},
 };
+static_assert(std::ranges::is_sorted(kMathCommands, {}, [](const auto& entry) {
+  return entry.first;
+}));
 inline std::string MathCommand(std::string_view name) {
   auto it =
       std::lower_bound(std::begin(kMathCommands), std::end(kMathCommands), name,

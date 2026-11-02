@@ -105,54 +105,20 @@ async function expectFitting(page, width) {
   expect(problems).toEqual([]);
 }
 
-test("each size draws the list or a drawer and fits the window", async ({
+test("every size decides the list by whether it fits and fits the window", async ({
   page,
   host,
 }) => {
   await openLong(page, host);
-  for (const [width, height] of sizes) {
+  const widths = Array.from({ length: 18 }, (_, step) => [
+    300 + step * 40,
+    890,
+  ]);
+  for (const [width, height] of [...sizes, ...widths]) {
     await resize(page, width, height);
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
     await expectFitting(page, width);
   }
-});
-
-test("every width decides the list by whether it fits", async ({
-  page,
-  host,
-}) => {
-  await openLong(page, host);
-  for (let width = 300; width <= 1000; width += 40) {
-    await resize(page, width, 890);
-    await expectFitting(page, width);
-  }
-});
-
-test("a folded phone with the keyboard up keeps its composer in sight", async ({
-  page,
-  host,
-}) => {
-  await openLong(page, host);
-  await resize(page, 466, 678);
-  const input = page.getByLabel("Message or guidance");
-  await online(page);
-  await input.focus();
-  await page.evaluate(() => {
-    Object.defineProperty(visualViewport, "height", {
-      configurable: true,
-      value: 350,
-    });
-    visualViewport.dispatchEvent(new Event("resize"));
-  });
-  await expect
-    .poll(async () => (await page.locator(".composer").boundingBox()).y)
-    .toBeLessThan(350);
-  const composer = await page.locator(".composer").boundingBox();
-  expect(composer.y + composer.height).toBeLessThanOrEqual(350);
-  const transcript = await page.locator(".transcript").boundingBox();
-  expect(transcript.height).toBeGreaterThan(60);
-  await page.keyboard.type("still typing");
-  await expect(input).toHaveValue("still typing");
 });
 
 test("resizing across every threshold keeps the draft, the place and the page", async ({

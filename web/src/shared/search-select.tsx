@@ -8,7 +8,7 @@ import { nextIndex, plainKey } from "./listbox-nav.ts";
 
 // A select with a search box, for long lists such as models.
 
-export type SearchOption = { value: string; label: string; detail?: string };
+type SearchOption = { value: string; label: string; detail?: string };
 
 // A closed choice stays selected while its search text is edited. Only
 // picking an option changes the value handed to the owner.

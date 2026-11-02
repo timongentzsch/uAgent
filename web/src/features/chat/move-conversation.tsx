@@ -18,7 +18,7 @@ import {
 } from "../../shared/ui.tsx";
 
 // The conversation and the agents under it, which a move takes along.
-export function familyOf(sessions: Session[], item: Session) {
+function familyOf(sessions: Session[], item: Session) {
   const family = [item];
   for (const member of family)
     family.push(...sessions.filter((other) => other.parent === member.id));

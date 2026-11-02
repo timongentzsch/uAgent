@@ -57,7 +57,7 @@ void Terminal::Receive(const json& frame) {
   if (kind == "state") {
     ReceiveState(frame);
   } else if (kind == "turn_status") {
-    presenter_.Consume(AppEvent{0, "", "turn.status", frame, false});
+    presenter_.Consume(AppEvent{0, "", "turn.status", frame});
     std::lock_guard lock(mutex_);
     state_["turn_status"] = JsonValue(frame, "turn_status", kIdleStatus);
     wake_.Wake();
@@ -98,7 +98,7 @@ void Terminal::ReceiveState(const json& frame) {
   if (!history_) {
     if (const json* notices = JsonArray(state, "notices")) {
       for (const auto& notice : *notices) {
-        presenter_.Consume(AppEvent{0, "", "notice", notice, false});
+        presenter_.Consume(AppEvent{0, "", "notice", notice});
       }
     }
     const json* view = JsonObject(state, "view");
@@ -167,8 +167,7 @@ bool Terminal::ReceiveEvent(const json& frame) {
         Restyle(*detail);
       }
     }
-    presenter_.Consume(
-        AppEvent{0, JsonValue(frame, "time", ""), type, data, false});
+    presenter_.Consume(AppEvent{0, JsonValue(frame, "time", ""), type, data});
   }
   return true;
 }

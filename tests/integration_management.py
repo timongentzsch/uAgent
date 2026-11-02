@@ -208,7 +208,20 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
         "stale deletion",
     )
     call(action="forget", key=item["id"], revision=paused["revision"])
-    assert_true(call()["tasks"] == [], "task not deleted")
+    assert_true(call(action="list")["tasks"] == [], "task not deleted")
+    # A guessed request is told what exists rather than handed the list.
+    for guess in ({}, {"op": "create"}, {"action": "create"}):
+        assert_true("unknown schedule action" in call(**guess)["error"], guess)
+    # Unreadable, as the sandbox hides it: unknown, not stopped.
+    lock = home / ".uagent" / "web" / "master.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("")
+    lock.chmod(0)
+    assert_true("runner_active" not in call(action="list"), "a hidden host read as stopped")
+    lock.unlink()
+    assert_true(call(action="list")["runner_active"] is False, "a missing host read as unknown")
+    unnamed = control(binary, root, env, "", action="list")
+    assert_true("unknown kind; use memory" in unnamed["error"], unnamed)
 
 
 def test_a_schedule_change_reaches_a_waiting_event_stream_at_once(root, home, *, binary):

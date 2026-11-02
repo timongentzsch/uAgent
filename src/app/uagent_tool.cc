@@ -8,9 +8,11 @@
 #include <utility>
 #include <vector>
 
+#include "include/app/schedule.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/lease.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
 
@@ -26,7 +28,169 @@ void RequireHuman(Tool& tool) {
   tool.capabilities = 0;
   tool.category = "system";
 }
+
+// How much an approval mode lets a run do alone: a task gets no more than
+// the conversation that scheduled it.
+int Reach(ApprovalMode mode) {
+  switch (mode) {
+    case ApprovalMode::kPlan:
+      return 0;
+    case ApprovalMode::kAsk:
+      return 1;
+    case ApprovalMode::kAuto:
+      return 2;
+    case ApprovalMode::kYolo:
+      return 3;
+  }
+  return 0;
+}
+
+// A task as the model needs it: enough to check it and name it again.
+json TaskBrief(const json& task) {
+  json brief = json::object();
+  for (const char* field : {"id", "name", "schedule", "permissions", "model",
+                            "cwd", "enabled", "upcoming", "error"}) {
+    if (task.contains(field)) brief[field] = task[field];
+  }
+  return brief;
+}
+
+ToolResult Schedule(const json& arguments, const std::string& model) {
+  const std::string action = JsonValue(arguments, "action", "");
+  const std::string key = JsonValue(arguments, "key", "");
+  // Tasks wait for the web host; only it starts runs.
+  const bool hosted =
+      FileLease::HasLiveOwner(UagentDir(kWebDir) + "/" + kMasterLockFile);
+  json out = json::object();
+  if (action == "list") {
+    json listed = ScheduleControl({{"action", "list"}});
+    if (listed.contains("error")) {
+      return ToolFailure(ToolErrorCode::kProcessFailed,
+                         JsonValue(listed, "error", ""));
+    }
+    out["tasks"] = json::array();
+    for (const json& task : listed["tasks"]) {
+      out["tasks"].push_back(TaskBrief(task));
+    }
+    // The latest runs say how a task is doing; older ones are in the view.
+    out["runs"] = json::array();
+    const json& runs = listed["runs"];
+    for (size_t i = runs.size() > 10 ? runs.size() - 10 : 0; i < runs.size();
+         ++i) {
+      const json& run = runs[i];
+      out["runs"].push_back({{"task_id", run["task_id"]},
+                             {"scheduled_for", run["scheduled_for"]},
+                             {"status", run["status"]},
+                             {"error", JsonValue(run, "error", "")}});
+    }
+  } else {
+    json current = json::object();
+    if (!key.empty()) {
+      json found = ScheduleControl({{"action", "get"}, {"key", key}});
+      if (found.contains("error")) {
+        return ToolFailure(ToolErrorCode::kNotFound,
+                           "no scheduled task has id " + key +
+                               "; list shows the ids, and save without key "
+                               "creates a task");
+      }
+      current = found["item"];
+    }
+    json request = {{"action", action},
+                    {"key", key},
+                    {"revision", JsonValue(current, "revision", "")}};
+    if (action == "save") {
+      // A new task runs where and on what this conversation does, in the
+      // folder itself: a check's state and scripts are there.
+      json task = key.empty() ? json{{"cwd", CanonicalCwd()},
+                                     {"model", model},
+                                     {"environment", "local"}}
+                              : current;
+      for (const char* field : {"name", "prompt", "schedule"}) {
+        task[field] = arguments[field];
+      }
+      task["permissions"] = JsonValue(arguments, "permissions",
+                                      ApprovalModeName(CurrentApprovalMode()));
+      request["task"] = std::move(task);
+    }
+    json result = ScheduleControl(request);
+    if (result.contains("error")) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         JsonValue(result, "error", ""));
+    }
+    out = result.contains("item") ? TaskBrief(result["item"]) : result;
+  }
+  out["host_running"] = hosted;
+  if (!hosted) out["note"] = "tasks run only while uagent --web runs";
+  return ToolSuccess(JsonDump(out, 2));
+}
 }  // namespace
+
+Tool ScheduleTool(std::function<std::string()> model) {
+  Tool tool = MakeTool(
+      "schedule",
+      "Tasks the uAgent host runs by itself; each run is a new conversation "
+      "in this folder on this model. save creates one or replaces key's.",
+      json::parse(R"json({"type":"object","properties":{
+        "action":{"type":"string",
+          "enum":["list","save","pause","resume","forget","run"]},
+        "key":{"type":"string","description":"an existing task's id from list; leave out to create"},
+        "name":{"type":"string"},
+        "prompt":{"type":"string"},
+        "schedule":{"type":"object","description":
+          "type once+at (unix) | interval+seconds (>=60) | weekly+days (0=Sun)+time (HH:MM)+timezone (IANA)"},
+        "permissions":{"type":"string","enum":["plan","ask","auto","yolo"],
+          "description":"default and most: this conversation's"}},
+        "required":["action"]})json"),
+      [model = std::move(model)](const json& arguments, const ToolContext&) {
+        return Schedule(arguments, model());
+      });
+  tool.action_requires = {"action",
+                          {{"save", {"name", "prompt", "schedule"}},
+                           {"pause", {"key"}},
+                           {"resume", {"key"}},
+                           {"forget", {"key"}},
+                           {"run", {"key"}}}};
+  tool.mutates = [](const json& arguments) {
+    return JsonValue(arguments, "action", "") != "list";
+  };
+  tool.routine = [](const json& arguments) {
+    return JsonValue(arguments, "action", "") == "list";
+  };
+  tool.validate =
+      [](const json& arguments) -> std::optional<ToolArgumentIssue> {
+    if (!arguments.contains("permissions")) return std::nullopt;
+    ApprovalMode asked = ApprovalMode::kAsk;
+    const ApprovalMode own = CurrentApprovalMode();
+    if (ParseApprovalMode(JsonValue(arguments, "permissions", ""), asked) &&
+        Reach(asked) <= Reach(own)) {
+      return std::nullopt;
+    }
+    return ArgumentIssue("schedule.permissions",
+                         std::string("permissions may be at most this "
+                                     "conversation's: ") +
+                             ApprovalModeName(own),
+                         "permissions");
+  };
+  // A run executes whatever its prompt leads to, unattended.
+  tool.capabilities = Capability(ToolCapability::kInspect) |
+                      Capability(ToolCapability::kMutate) |
+                      Capability(ToolCapability::kExecute);
+  tool.category = "system";
+  tool.headline = [](const json& arguments) {
+    const std::string action = JsonValue(arguments, "action", "");
+    const std::string target =
+        JsonValue(arguments, "name", JsonValue(arguments, "key", ""));
+    if (action == "list") {
+      return Headline{"Listing", "Listed", "scheduled tasks"};
+    }
+    if (action == "save") return Headline{"Scheduling", "Scheduled", target};
+    if (action == "pause") return Headline{"Pausing", "Paused", target};
+    if (action == "resume") return Headline{"Resuming", "Resumed", target};
+    if (action == "run") return Headline{"Starting", "Started", target};
+    return Headline{"Deleting", "Deleted", target};
+  };
+  return tool;
+}
 
 Tool UagentTool(SelfDescriptionProvider describe) {
   Tool tool = MakeTool(

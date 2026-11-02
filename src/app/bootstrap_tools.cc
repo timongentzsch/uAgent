@@ -116,6 +116,11 @@ std::vector<Tool> BuildTools(AppContext& context,
   // availability.
   tools.push_back(WebFetchTool(api));
   if (!session_path.empty()) tools.push_back(ArtifactTool(session_path));
+  if (context.channel) {
+    tools.push_back(ScheduleTool([app = &context] {
+      return ChosenSelection(app->runtime.api, app->provider.providers);
+    }));
+  }
   // Only a session someone can answer gets ask: never a headless run, which
   // could only ever time out.
   if (context.channel && InteractiveApprovalAvailable()) {

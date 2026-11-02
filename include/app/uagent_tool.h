@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 #define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
-// The uagent tools: the model inspects this build and proposes, never
-// applies, a change to its settings or instructions.
+// The uagent tools: the model inspects this build, proposes (never applies)
+// a change to its settings or instructions, and manages scheduled tasks.
 
 #include <functional>
 #include <memory>
@@ -35,6 +35,11 @@ Tool UagentTool(SelfDescriptionProvider describe);
 Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
                          const std::shared_ptr<ConfigApprovals>& store);
 Tool UagentInstructionsTool();
+
+// Scheduled tasks for this folder, approved like any other change: a task
+// runs on `model` (the conversation's, read at each call) with no more
+// approval reach than the conversation that saved it.
+Tool ScheduleTool(std::function<std::string()> model);
 
 }  // namespace uagent
 

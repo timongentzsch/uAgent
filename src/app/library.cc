@@ -217,6 +217,8 @@ json LibraryControl(const json& request,
   if (kind == "memory") return MemoryControl(request, cwd);
   if (kind == "skills") return SkillControl(request, cwd);
   if (kind == "import") return ImportControl(request, cwd);
-  return {{"error", "unknown library kind"}};
+  return {{"error",
+           "unknown kind; use memory, skills, import, schedule, instructions, "
+           "permission_rules, models or provider"}};
 }
 }  // namespace uagent

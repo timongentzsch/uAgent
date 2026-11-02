@@ -87,7 +87,9 @@ control request.
 A scheduled task is a prompt that runs by itself: once at a future time, at
 a fixed interval between one minute and one year, or on selected weekdays at
 `HH:MM` in an installed IANA timezone. Create and edit tasks in the web UI's
-Scheduled view or with the `save` request below.
+Scheduled view, with the `save` request below, or ask the agent: its
+`schedule` tool saves a task in the conversation's folder, on its model,
+with at most its approval mode.
 
 Tasks run only while `uagent --web` runs on the host; no browser needs to
 stay open. Previews use the same calculation as execution. A repeated local
@@ -140,7 +142,8 @@ A schedule is `{"type":"once","at":UNIX}`,
 above, where day 0 is Sunday. `preview` takes a `schedule` and an optional
 Unix `after` and returns when it would run.
 
-The other actions take the task's `key`: `list` (none), `get`, `run`, and
+An unknown or missing `action` is an error that names the valid ones. The
+other actions take the task's `key`: `list` (none), `get`, `run`, and
 `pause`, `resume` and `forget` with its `revision`; `stop` takes the run ID
 as `key`. In the terminal, `/schedule run|pause|resume|forget ID` and
 `/schedule stop RUN_ID` do the same without JSON; `/schedule` lists the IDs.

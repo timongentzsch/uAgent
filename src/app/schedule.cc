@@ -87,6 +87,9 @@ json Mutate(const std::function<json(json&)>& change) {
   }
   return result;
 }
+constexpr char kUnknownAction[] =
+    "unknown schedule action; use list, get, preview, save, run, pause, "
+    "resume, forget or stop";
 json Run(const json& task, int64_t at, const std::string& status) {
   auto id = HashHex(MakeSessionId());
   const auto project = JsonValue(task, "cwd", "");
@@ -389,11 +392,16 @@ json ScheduleChange(json& store, const json& request, const std::string& id,
   return {{"item", *found}};
 }
 json ScheduleControl(const json& request) {
-  const auto action = JsonValue(request, "action", "list");
+  const auto action = JsonValue(request, "action", "");
   if (action == "list") {
     auto result = Public(ReadSchedules());
-    result["runner_active"] =
-        FileLease::HasLiveOwner(UagentDir(kWebDir) + "/" + kMasterLockFile);
+    // A sandboxed caller cannot see the web host's folder, so it cannot tell
+    // whether the host runs: say nothing rather than "stopped".
+    const std::string lock = UagentDir(kWebDir) + "/" + kMasterLockFile;
+    Fd probe(open(lock.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+    if (probe || errno == ENOENT) {
+      result["runner_active"] = FileLease::HasLiveOwner(lock);
+    }
     return result;
   }
   if (action == "preview") {
@@ -401,6 +409,10 @@ json ScheduleControl(const json& request) {
                          JsonValue(request, "after", NowSeconds()));
   }
   if (action == "get") return ScheduleGet(request);
+  if (action != "stop" && action != "save" && action != "run" &&
+      action != "pause" && action != "resume" && action != "forget") {
+    return {{"error", kUnknownAction}};
+  }
   return Mutate([&](json& store) -> json {
     const auto id = JsonValue(request, "key", "");
     auto found = std::find_if(
@@ -412,10 +424,7 @@ json ScheduleControl(const json& request) {
       return {{"error", "scheduled task not found"}};
     }
     if (action == "run") return ScheduleRun(store, id, *found);
-    if (action == "pause" || action == "resume" || action == "forget") {
-      return ScheduleChange(store, request, id, found, action);
-    }
-    return {{"error", "unknown schedule action"}};
+    return ScheduleChange(store, request, id, found, action);
   });
 }
 json ClaimScheduledRuns(int64_t now, size_t slots) {

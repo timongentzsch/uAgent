@@ -39,6 +39,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions) | always |
 | `uagent_configure`, `uagent_instructions` | change settings, or replace an instructions file, by an exact diff a person approves | only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
+| `schedule` | list, save, pause, resume, delete or run scheduled tasks; a task runs in this folder on this conversation's model, with no wider approval mode than this conversation's; see [Management](MANAGEMENT.md#scheduled-tasks) | a session with a client |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search an endpoint runs | a search can run on the conversation's route (see below) |
 | `todo` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |

@@ -4,12 +4,14 @@
 
 ### Changes
 
+- **The agent can schedule tasks.** A `schedule` tool lists, saves, pauses, resumes, deletes and runs scheduled tasks. A task it saves runs in the conversation's folder on its model, with no wider approval mode than the conversation's. Before, an agent asked to schedule something had no way to, and argued against it.
 - **Each call is one row.** Calls no longer fold into "Explored", "Researched" or "Edited" groups; "Worked N steps" is the only fold. They covered about one call in eight, and a `run` row now says what it does on its own.
 - **The prompt names the `browser` tool.** Where it is offered, the prompt and `web_fetch` point to it for pages built by scripts, behind a login or cut off, instead of to a skill, and a fetched page says it may be partial.
 - **A `run` row reads as what it does.** `run` requires a `description` ("Run the unit tests"), shown on the row, with the command when it opens. Approvals still show the command. The `intent` argument of `run` and `scratch` is gone, and "edited N files" no longer counts commands.
 
 ### Fixes
 
+- **`--control` says what it expects.** A schedule request with a missing or unknown `action` returned the task list, and a request with no known `kind` said only "unknown library kind"; both now name the valid values. A caller the sandbox keeps out of the web host's folder no longer reads `runner_active: false`.
 - **One item sent bare counts as a list.** A model that sends a single string where a tool takes a list of strings, such as one `web_search` query, is no longer refused and sent back for another round.
 - **A switch that is on keeps its right edge.** Its knob slid past the end of the track and covered the border.
 - **`web_search` is always a tool call.** A search hosted inside the conversation's own response could leave no record of itself for the next request, so a model took its real results for figures it had made up and withdrew them. A search now runs as a side request on a route that can search; its cited answer is a tool result that stays in the conversation and shows as a row in the history. `search_plugin` and `search_sources` are gone from `supports`: `hosted_search` now says an endpoint can search on any wire API. Set `webSearch.model` to answer searches with a cheaper model than the conversation's.

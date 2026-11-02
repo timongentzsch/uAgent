@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from integration_support import (
+    SMALL_PNG,
     Server,
     assert_true,
     budget,
@@ -15,8 +16,6 @@ from integration_support import (
     wait_until,
 )
 from web_support import WebClient, web_host
-
-from integration_web._common import PNG
 
 
 def test_web_atomic_images_and_session_isolation(root, home, *, binary):
@@ -50,7 +49,9 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
                 and headers["Content-Type"] == "image/svg+xml",
                 headers,
             )
-            status, image, _ = client.json(endpoint, raw=PNG, headers={"Content-Type": "image/png"})
+            status, image, _ = client.json(
+                endpoint, raw=SMALL_PNG, headers={"Content-Type": "image/png"}
+            )
             assert_true(status == 200, image)
             status, rejected, _ = client.json(
                 "/api/command",
@@ -81,7 +82,7 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             client.command("close", session)
             assert_true(image["id"] in json.dumps(client.snapshot(session)), "image reference lost")
             asset = f"/api/sessions/{session['id']}/assets/{image['id']}"
-            assert_true(client.request(asset)[1] == PNG, "source asset changed")
+            assert_true(client.request(asset)[1] == SMALL_PNG, "source asset changed")
             anonymous = WebClient(client.port)
             assert_true(anonymous.request(asset)[0] == 401, "private image was public")
             outside = root / "separate-workspace"
@@ -112,7 +113,7 @@ def test_web_ask_shows_option_images_as_session_assets(root, home, *, binary):
     asset it can load, never the workspace path alone."""
     workspace = root / "workspace"
     (workspace / "mockups").mkdir(parents=True)
-    (workspace / "mockups" / "cards.png").write_bytes(PNG)
+    (workspace / "mockups" / "cards.png").write_bytes(SMALL_PNG)
     questions = [
         {
             "question": "Which layout?",
@@ -144,7 +145,7 @@ def test_web_ask_shows_option_images_as_session_assets(root, home, *, binary):
             assert_true(option["preview"] == "[#][#]", option)
             asset = option["image"]["id"]
             status, body, headers = client.request(f"/api/sessions/{session['id']}/assets/{asset}")
-            assert_true(status == 200 and body == PNG, (status, headers))
+            assert_true(status == 200 and body == SMALL_PNG, (status, headers))
             client.command(
                 "reply",
                 session,

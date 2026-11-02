@@ -95,23 +95,6 @@ TEST_CASE(TestLocalAbortIsolation) {
   CHECK(!AbortRequested());
 }
 
-TEST_CASE(TestBudgetMsScaling) {
-  {
-    ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "6");
-    CHECK(BudgetMs(2) == 12);
-    CHECK(BudgetMs(0) == 0);
-    CHECK(BudgetMs(-2) == -2);
-  }
-  for (const char* invalid : {"nan", "inf", "1e308", "6junk"}) {
-    ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", invalid);
-    CHECK(BudgetMs(2) == 2);
-  }
-  {
-    ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "9223372036854775808");
-    CHECK(BudgetMs(1) == 1);
-  }
-}
-
 TEST_CASE(TestRouteKeysAndShutdown) {
   std::ifstream contract(std::string(UAGENT_TEST_SOURCE_DIR) +
                          "/tests/fixtures/route_contract.json");

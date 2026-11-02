@@ -55,8 +55,6 @@ def iter_group_modules(module):
     yield module
     if hasattr(module, "__path__"):
         for info in pkgutil.iter_modules(module.__path__):
-            if info.name.startswith("_"):
-                continue
             yield importlib.import_module(f"{module.__name__}.{info.name}")
 
 

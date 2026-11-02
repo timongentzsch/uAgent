@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 
 from integration_support import (
+    SMALL_PNG,
     Server,
     assert_true,
     budget,
@@ -16,8 +17,6 @@ from integration_support import (
     write_session,
 )
 from web_support import web_host
-
-from integration_web._common import PNG
 
 
 def test_web_conversation_management_and_statistics(root, home, *, binary):
@@ -51,7 +50,9 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
             assert_true(session["generation"] != previous_generation, "rejoined a closing runtime")
             client.until(session, lambda value: value["metadata"]["status"] == "idle")
             endpoint = f"/api/sessions/{session['id']}/attachments"
-            status, image, _ = client.json(endpoint, raw=PNG, headers={"Content-Type": "image/png"})
+            status, image, _ = client.json(
+                endpoint, raw=SMALL_PNG, headers={"Content-Type": "image/png"}
+            )
             assert_true(status == 200, image)
             client.command(
                 "submit",

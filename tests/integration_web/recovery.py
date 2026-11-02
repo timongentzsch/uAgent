@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from integration_support import (
+    SMALL_PNG,
     Server,
     assert_true,
     budget,
@@ -17,8 +18,6 @@ from integration_support import (
     saved_settings,
 )
 from web_support import WebClient, web_host
-
-from integration_web._common import PNG
 
 
 def test_web_restart_durable_images_and_read_only_catalogue(root, home, *, binary):
@@ -30,7 +29,7 @@ def test_web_restart_durable_images_and_read_only_catalogue(root, home, *, binar
             saved = client.create(project)
             status, asset, _ = client.json(
                 f"/api/sessions/{saved['id']}/attachments",
-                raw=PNG,
+                raw=SMALL_PNG,
                 headers={"Content-Type": "image/png"},
             )
             assert_true(status == 200, asset)
@@ -57,7 +56,7 @@ def test_web_restart_durable_images_and_read_only_catalogue(root, home, *, binar
             value = client.snapshot(saved)
             assert_true(asset["id"] in json.dumps(value), value)
             assert_true(
-                client.request(f"/api/sessions/{saved['id']}/assets/{asset['id']}")[1] == PNG,
+                client.request(f"/api/sessions/{saved['id']}/assets/{asset['id']}")[1] == SMALL_PNG,
                 "restart changed original bytes",
             )
             private = client.json(f"/api/sessions/{saved['id']}?detail=m-1")[1]
@@ -78,7 +77,7 @@ def test_web_restart_durable_images_and_read_only_catalogue(root, home, *, binar
             ]
             assert_true(len(image_parts) == 1, provider.requests[-1])
             assert_true(
-                base64.b64decode(image_parts[0]["image_url"]["url"].split(",", 1)[1]) == PNG,
+                base64.b64decode(image_parts[0]["image_url"]["url"].split(",", 1)[1]) == SMALL_PNG,
                 "resume did not preserve the original image",
             )
 
@@ -192,7 +191,9 @@ def test_web_slow_upload_does_not_block_controls(root, home, *, binary):
             client.pair(code)
             session = client.create(project)
             endpoint = f"/api/sessions/{session['id']}/attachments"
-            status, image, _ = client.json(endpoint, raw=PNG, headers={"Content-Type": "image/png"})
+            status, image, _ = client.json(
+                endpoint, raw=SMALL_PNG, headers={"Content-Type": "image/png"}
+            )
             assert_true(status == 200, image)
             with socket.create_connection(("127.0.0.1", client.port)) as slow:
                 headers = (
@@ -200,7 +201,7 @@ def test_web_slow_upload_does_not_block_controls(root, home, *, binary):
                     f"Origin: {client.origin}\r\nCookie: {client.cookie}\r\n"
                     "Content-Type: image/png\r\nContent-Length: 1000\r\n\r\n"
                 )
-                slow.sendall(headers.encode() + PNG[:16])
+                slow.sendall(headers.encode() + SMALL_PNG[:16])
                 time.sleep(0.1)
                 result = []
                 thread = threading.Thread(

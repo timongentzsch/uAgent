@@ -4,7 +4,6 @@
 #include <openssl/evp.h>
 
 #include <atomic>
-#include <cstdio>
 #include <filesystem>
 #include <string>
 
@@ -13,18 +12,8 @@
 #include "include/web/push_crypto.h"
 #include "tests/unit/test_support.h"
 
-// This binary has no Check() to report through; a failure ends the run.
-#undef REQUIRE
-#define REQUIRE(value)                                                \
-  do {                                                                \
-    if (!(value)) {                                                   \
-      std::fprintf(stderr, "failed line %d: %s\n", __LINE__, #value); \
-      return 1;                                                       \
-    }                                                                 \
-  } while (false)
-
 namespace uagent::web {
-int TestPush() {
+TEST_CASE(TestWebPush) {
   const std::string as_public = Unbase64Url(
       "BP4z9KsN6nGRTbVYI_"
       "c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8");
@@ -148,12 +137,6 @@ int TestPush() {
     REQUIRE(deliveries == 1 && private_payload);
   }
   std::filesystem::remove_all(temporary);
-  std::puts(
-      "Web Push: RFC 8291 vector, VAPID verification, SSRF policy, "
-      "deduplication and expiry passed");
-  return 0;
 }
 
 }  // namespace uagent::web
-
-int main() { return uagent::web::TestPush(); }

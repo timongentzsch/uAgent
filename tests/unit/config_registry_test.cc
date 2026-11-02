@@ -124,12 +124,36 @@ TEST_CASE(TestConfigRegistryContract) {
     }
   }
 
+  // Every setting has one name in the settings file, spelled as a path of
+  // words, and none takes the name the file keeps for variables.
+  std::set<std::string_view> keys;
+  // A struct member added without a table entry in env.cc would keep its
+  // hard-coded default; every field shows in the diagnostic instead.
+  const json diagnostic = RuntimeConfig::FromEnvironment().DiagnosticJson();
+  std::set<std::string> fields;
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
     CHECK(!descriptor.label.empty());
+    const std::string_view key = descriptor.key;
+    CHECK(!key.empty() && key != "variables" && keys.insert(key).second);
+    CHECK(std::islower(static_cast<unsigned char>(key.front())) != 0);
+    CHECK(std::ranges::all_of(
+        key, [](unsigned char c) { return std::isalnum(c) != 0 || c == '.'; }));
+    CHECK(key.back() != '.' && key.find("..") == std::string_view::npos);
+    CHECK(FindConfigKey(key) == &descriptor);
     if (!descriptor.field.empty()) {
       CHECK(RuntimeConfigField(descriptor.environment) == descriptor.field);
+      CHECK(diagnostic.contains(descriptor.field));
+      fields.insert(std::string(descriptor.field));
     }
   }
+  // Every diagnostic key traces back to a field, or is derived from one.
+  for (auto it = diagnostic.begin(); it != diagnostic.end(); ++it) {
+    CHECK(fields.count(it.key()) > 0 || it.key() == "auto_compact_pct" ||
+          it.key() == "auto_compact_tokens");
+  }
+  // FromValues reads a renamed field through the same tables.
+  CHECK(RuntimeConfig::FromValues({{"UAGENT_APPROVAL", "yolo"}}).approval ==
+        "yolo");
 
   // A notification names its conversation unless the person turns that off,
   // and only for the whole host: no folder decides it.
@@ -175,8 +199,8 @@ TEST_CASE(TestConfigRegistryContract) {
   // The diagnostic that feeds /context, /config KEY and uagent never
   // carries a credential.
   ScopedEnv route_key("OPENROUTER_API_KEY", "canary-secret-value");
-  json diagnostic = RuntimeConfig::FromEnvironment().DiagnosticJson();
-  CHECK(JsonDump(diagnostic).find("canary-secret-value") == std::string::npos);
+  CHECK(JsonDump(RuntimeConfig::FromEnvironment().DiagnosticJson())
+            .find("canary-secret-value") == std::string::npos);
 
   // Direct runtime lookups are occasionally necessary at bootstrap, but they
   // still belong to the registry unless their name explicitly marks

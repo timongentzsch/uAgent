@@ -43,10 +43,9 @@ Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 
 | CTest name | Covers |
 | --- | --- |
-| `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`) |
+| `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`; Web Push encryption only with `UAGENT_WEB_PUSH=ON`) |
 | `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_delegation`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`) |
 | `integration_web`, `integration_management` | native web host; only with `UAGENT_WEB=ON` |
-| `web_push` | Web Push encryption; only with `UAGENT_WEB_PUSH=ON` |
 | `behavior_eval` | scenario scores against the committed baseline |
 | `eval_harness_self_test`, `session_metrics_self_test` | measurement tooling (label `source`) |
 | `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |

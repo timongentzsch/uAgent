@@ -384,7 +384,6 @@ if(BUILD_TESTING)
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
     tests/unit/config_proposal_test.cc
-    tests/unit/config_coherence_test.cc
     tests/unit/config_registry_test.cc
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
@@ -416,6 +415,9 @@ if(BUILD_TESTING)
   # uagent_web brings uagent_app; linking both lists it twice.
   if(UAGENT_WEB)
     target_sources(uagent_tests PRIVATE tests/unit/web_terminal_test.cc)
+    if(UAGENT_WEB_PUSH)
+      target_sources(uagent_tests PRIVATE tests/unit/web_push_test.cc)
+    endif()
     target_link_libraries(uagent_tests PRIVATE uagent_web)
     target_compile_definitions(uagent_tests PRIVATE UAGENT_WEB)
   else()
@@ -438,11 +440,6 @@ if(BUILD_TESTING)
   set(_groups runtime tools ui providers mcp agents sandbox)
   if(UAGENT_WEB)
     list(APPEND _groups web management)
-    if(UAGENT_WEB_PUSH)
-      add_executable(uagent_push_tests tests/unit/web_push_test.cc)
-      target_link_libraries(uagent_push_tests PRIVATE uagent_web)
-      add_test(NAME web_push COMMAND uagent_push_tests)
-    endif()
   endif()
   foreach(group IN LISTS _groups)
     # By far the longest group (80 s of 190 s in all), so it alone decided

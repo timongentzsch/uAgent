@@ -17,7 +17,8 @@ from integration_support import (
 )
 from web_support import web_host
 
-from integration_web._common import PARTIAL_USAGE_GATE_SECONDS, PARTIAL_USAGE_REQUEST_SECONDS
+PARTIAL_USAGE_GATE_SECONDS = 10
+PARTIAL_USAGE_REQUEST_SECONDS = 25
 
 
 def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):

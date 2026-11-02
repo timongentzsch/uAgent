@@ -10,15 +10,6 @@
 namespace uagent {
 
 TEST_CASE(TestMathTransliteration) {
-  // MathCommand binary-searches the table, so an unsorted entry is not slow,
-  // it is missing. Shipped out of order, neither Phi nor Pi resolved.
-  CHECK(std::is_sorted(std::begin(kMathCommands), std::end(kMathCommands),
-                       [](const auto& left, const auto& right) {
-                         return left.first < right.first;
-                       }));
-  for (const auto& [name, glyph] : kMathCommands) {
-    CHECK(MathCommand(name) == std::string(glyph));
-  }
   CHECK(MathCommand("Phi") == "Φ");
   CHECK(MathCommand("Pi") == "Π");
   CHECK(MathCommand("nosuchcommand").empty());

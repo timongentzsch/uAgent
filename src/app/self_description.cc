@@ -408,6 +408,8 @@ json ToolSurfaceJson() {
     conditional.emplace_back(std::move(tool), when);
   }
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
+  conditional.emplace_back(ScheduleTool([] { return std::string(); }),
+                           "a session with a client");
 #ifdef UAGENT_BROWSER
   conditional.emplace_back(
       BrowserTool("", nullptr),

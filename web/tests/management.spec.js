@@ -294,6 +294,16 @@ test("library drafts, shared controls and scheduled results", async ({
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
+  // A check that finds nothing records the run without asking a model.
+  await page.getByLabel("Check · optional", { exact: true }).fill("exit 1");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Run now", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Run now", exact: true }).click();
+  await expect(page.locator(".run-row").first()).toContainText("Nothing new", {
+    timeout: 20000,
+  });
   await page.getByRole("button", { name: "Task menu", exact: true }).click();
   await page.getByRole("menuitem", { name: "Pause", exact: true }).click();
   await expect(

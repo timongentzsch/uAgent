@@ -436,4 +436,49 @@ TEST_CASE(TestPayloadToolsRequireTheirPayload) {
             ApprovalClass::kMandatoryHuman);
 }
 
+// The agent's scheduled tasks: saved in this folder on this conversation's
+// approval reach at most, and listed, paused and deleted by id.
+TEST_CASE(TestScheduleTool) {
+  TestWorkspace workspace("schedule-tool");
+  const ApprovalMode before = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kAuto);
+  const Tool tool = ScheduleTool([] { return std::string("local/haiku"); });
+  const json save = {{"action", "save"},
+                     {"name", "Stock check"},
+                     {"prompt", "Tell me what changed."},
+                     {"check", "./in_stock.sh"},
+                     {"schedule", {{"type", "interval"}, {"seconds", 3600}}}};
+  json wider = save;
+  wider["permissions"] = "yolo";
+  CHECK(tool.validate(wider)->code == "schedule.permissions");
+  json narrower = save;
+  narrower["permissions"] = "ask";
+  CHECK(!tool.validate(narrower));
+  CHECK(tool.mutates(save) && !tool.mutates({{"action", "list"}}));
+
+  ToolResult saved = tool.run(save, ToolContext{});
+  CHECK(saved.Ok());
+  const json item = json::parse(saved.output);
+  CHECK(item["permissions"] == "auto" && item["model"] == "local/haiku");
+  CHECK(item["check"] == "./in_stock.sh");
+  CHECK(item["cwd"] == workspace.workspace.string());
+  CHECK(item["upcoming"].size() == 3);
+  CHECK(item["host_running"] == false);
+  // A key the model made up names no task: the answer says how to create one.
+  json invented = save;
+  invented["key"] = "flag-watch";
+  CHECK(tool.run(invented, ToolContext{}).output.find("without key creates") !=
+        std::string::npos);
+  const json run = {{"action", "run"}, {"key", item["id"]}};
+  CHECK(!tool.run(run, ToolContext{}).Ok());
+
+  const json pause = {{"action", "pause"}, {"key", item["id"]}};
+  CHECK(json::parse(tool.run(pause, ToolContext{}).output)["enabled"] == false);
+  const json forget = {{"action", "forget"}, {"key", item["id"]}};
+  CHECK(tool.run(forget, ToolContext{}).Ok());
+  const json list = {{"action", "list"}};
+  CHECK(json::parse(tool.run(list, ToolContext{}).output)["tasks"].empty());
+  SetApprovalMode(before);
+}
+
 }  // namespace uagent

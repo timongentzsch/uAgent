@@ -43,6 +43,7 @@ const blank = (cwd: string): ScheduledTask => ({
   revision: "",
   name: "",
   prompt: "",
+  check: "",
   cwd,
   model: "",
   permissions: "ask",
@@ -111,6 +112,7 @@ export default function Scheduled({
       ? JSON.stringify([
           value.name,
           value.prompt,
+          value.check,
           value.cwd,
           value.model,
           value.permissions,
@@ -306,6 +308,15 @@ export default function Scheduled({
                         edit({ prompt: event.currentTarget.value })
                       }
                       placeholder="What should uAgent do, and what result should it report?"
+                    />
+                  </Field>
+                  <Field label="Check · optional">
+                    <Input
+                      value={task.check}
+                      onInput={(event) =>
+                        edit({ check: event.currentTarget.value })
+                      }
+                      placeholder="Shell command: exit 0 runs the task with its output, 1 skips it"
                     />
                   </Field>
                   <div class="field-row">
@@ -547,14 +558,18 @@ export default function Scheduled({
                       <ListRow
                         disabled={
                           run.session_available === false ||
-                          ["queued", "starting", "missed", "skipped"].includes(
-                            run.status,
-                          )
+                          [
+                            "queued",
+                            "starting",
+                            "missed",
+                            "skipped",
+                            "quiet",
+                          ].includes(run.status)
                         }
                         onClick={() => choose(run.session_id).catch(setError)}
                         title={run.title}
                         unread={unread.has(run.session_id) && "Unread results"}
-                        meta={`${capitalize(run.status)} · ${moment(run.scheduled_for)}`}
+                        meta={`${run.status === "quiet" ? "Nothing new" : capitalize(run.status)} · ${moment(run.scheduled_for)}`}
                       >
                         {run.error && <small>{run.error}</small>}
                       </ListRow>

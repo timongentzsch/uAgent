@@ -341,7 +341,8 @@ class SessionHost {
                                            const SnapshotQuery& query);
   SnapshotResult SavedSnapshot(std::shared_ptr<HostSession> session,
                                const SnapshotQuery& query);
-  std::shared_ptr<HostSession> StartScheduledRun(const json& run)
+  std::shared_ptr<HostSession> StartScheduledRun(const json& run,
+                                                 const std::string& checked)
       UAGENT_REQUIRES(mutex_);
   // `lock` is the caller's lock on mutex_, passed only for condition-variable
   // waits. These helpers release and retake mutex_ itself, so the analysis

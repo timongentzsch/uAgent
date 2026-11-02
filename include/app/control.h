@@ -13,6 +13,6 @@ json ManagementCommand(const std::string& kind, const std::string& argument);
 // Metadata-only helper: no provider bootstrap, agent turn, or folder trust
 // prompt.
 int ControlMain(const std::string& argument);
-json ControlProcess(const json& request);
+json ControlProcess(const json& request, int timeout_seconds = 15);
 }  // namespace uagent
 #endif

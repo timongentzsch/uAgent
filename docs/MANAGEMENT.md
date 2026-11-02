@@ -87,7 +87,9 @@ control request.
 A scheduled task is a prompt that runs by itself: once at a future time, at
 a fixed interval between one minute and one year, or on selected weekdays at
 `HH:MM` in an installed IANA timezone. Create and edit tasks in the web UI's
-Scheduled view or with the `save` request below.
+Scheduled view, with the `save` request below, or ask the agent: its
+`schedule` tool saves a task in the conversation's folder, on its model,
+with at most its approval mode.
 
 Tasks run only while `uagent --web` runs on the host; no browser needs to
 stay open. Previews use the same calculation as execution. A repeated local
@@ -101,6 +103,13 @@ Each run is an ordinary session, started from a frozen copy of the task:
   When a run needs a decision, open it in the web UI or terminal.
 - `environment`: `worktree` (the default) runs in a git worktree detached
   at the committed `HEAD`; `local` runs in the folder.
+- `check`: an optional shell command run first, in the run's folder, under
+  the sandbox and environment a command gets, for up to 50 seconds. Exit 0
+  starts the run with the check's output, if any (its last 4 KiB), added
+  to the prompt; exit 1 records the run as "nothing new" without asking a model;
+  anything else, or no exit in time, fails the run with its output. A check
+  makes frequent polling cheap: `./in_stock.sh` every two minutes costs a
+  model call only when it finds stock.
 
 Worktrees and conversations are kept for review, including after the task is
 deleted; remove a reviewed worktree with `git worktree remove`.
@@ -135,12 +144,16 @@ uagent --control '{
 }'
 ```
 
+`check` runs a `command` in `cwd` exactly as a task's check would, to try
+one before saving it.
+
 A schedule is `{"type":"once","at":UNIX}`,
 `{"type":"interval","seconds":N}` (optional `start`) or the weekly form
 above, where day 0 is Sunday. `preview` takes a `schedule` and an optional
 Unix `after` and returns when it would run.
 
-The other actions take the task's `key`: `list` (none), `get`, `run`, and
+An unknown or missing `action` is an error that names the valid ones. The
+other actions take the task's `key`: `list` (none), `get`, `run`, and
 `pause`, `resume` and `forget` with its `revision`; `stop` takes the run ID
 as `key`. In the terminal, `/schedule run|pause|resume|forget ID` and
 `/schedule stop RUN_ID` do the same without JSON; `/schedule` lists the IDs.

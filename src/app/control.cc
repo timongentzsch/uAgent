@@ -57,9 +57,9 @@ json ManagementControl(const json& request) {
   }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));
 }
-json ControlProcess(const json& request) {
-  auto child = CaptureProcess({ExecutablePath(), "--control", "-"}, 15,
-                              JsonDump(request));
+json ControlProcess(const json& request, int timeout_seconds) {
+  auto child = CaptureProcess({ExecutablePath(), "--control", "-"},
+                              timeout_seconds, JsonDump(request));
   json result = json::parse(child.output, nullptr, false);
   if (!result.is_object()) {
     return {

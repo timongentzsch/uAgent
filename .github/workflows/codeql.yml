@@ -29,11 +29,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - id: changes
-        run: python3 .github/changes.py
       - name: Initialize CodeQL
-        if: steps.changes.outputs.native == 'true'
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: c-cpp
@@ -41,14 +37,12 @@ jobs:
           # The trap cache is saved from master only and took 878 MB of the
           # repository's 10 GB cache quota, which the compiler caches need.
           trap-caching: false
-      - if: steps.changes.outputs.native == 'true'
-        uses: ./.github/actions/native-setup
+      - uses: ./.github/actions/native-setup
       # CodeQL reads the compiler invocations, not the binary, so an unoptimised
       # build without the release link-time optimisation is enough. The web
       # host and the browser compile only with a web UI to embed, and one page
       # serves: the analysis reads the C++, not the bundle.
       - name: Configure
-        if: steps.changes.outputs.native == 'true'
         run: |
           mkdir -p web/dist
           echo '<!doctype html>' > web/dist/index.html
@@ -56,10 +50,8 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=OFF \
             -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON
       - name: Build
-        if: steps.changes.outputs.native == 'true'
         run: cmake --build build --parallel 4
       - name: Analyze
-        if: steps.changes.outputs.native == 'true'
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: "/language:c-cpp"

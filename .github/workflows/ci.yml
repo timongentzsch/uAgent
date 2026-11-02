@@ -109,7 +109,7 @@ jobs:
       - name: Verify native architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
-        run: ctest --test-dir build --output-on-failure -j 3 -LE source
+        run: ctest --test-dir build --output-on-failure -j 3
       - name: Package
         shell: bash
         run: |
@@ -159,7 +159,7 @@ jobs:
       - name: Build
         run: cmake --build --preset sanitize --parallel 4 && ccache --show-stats
       - name: Test
-        run: ctest --preset sanitize -j 2 -LE source
+        run: ctest --preset sanitize -j 2
       # Session workers run with no stderr, so every process writes its
       # sanitizer report to a file (CMakePresets.json log_path).
       - name: Sanitizer reports
@@ -198,11 +198,11 @@ jobs:
         if: failure()
         run: cat build/tsan/report.* 2>/dev/null || echo "no sanitizer report"
 
-  # Not on a pull request: the same suites already run there under two
+  # Weekly and by hand only: the same suites run on every change under two
   # sanitizers and on three systems, and the floor it guards moves slowly.
   coverage:
     needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -261,11 +261,6 @@ jobs:
           version: "0.11.28"
           enable-cache: true
       - run: .github/lint.sh
-      - uses: ./.github/actions/native-setup
-      - name: Source and Python contracts
-        run: |
-          cmake --preset debug
-          ctest --preset debug -L source
 
   web:
     needs: changes

@@ -54,7 +54,7 @@ Tests, benchmarks and `uagent_web` link `uagent_app`; the fuzzers link only
 
 Public headers live in `include/<module>/`, mirroring `src/<module>/`.
 Declarations shared only inside one module stay in `src/<module>/*_internal.h`.
-`tests/boundary_test.py` (CTest `layer_boundary`) rejects a new include that
+`tests/boundary_test.py` (run by `.github/lint.sh`) rejects a new include that
 points up this order; its `KNOWN` set lists the remaining exceptions.
 
 The web host embeds the built `web/dist` (`npm ci && npm run build` in `web/`,

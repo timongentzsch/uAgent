@@ -417,19 +417,6 @@ if(BUILD_TESTING)
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
   set_tests_properties(integration_runtime PROPERTIES PROCESSORS 3)
-  # Source checks: no binary needed, so CI runs them apart (label `source`).
-  foreach(_check IN ITEMS "ci_changes|tests/ci_changes_test.py"
-                          "layer_boundary|tests/boundary_test.py"
-                          "wire_contract|tests/wire_contract_test.py"
-                          "session_metrics_self_test|benchmarks/session_metrics.py|--self-test"
-                          "eval_harness_self_test|benchmarks/eval.py|--self-test")
-    string(REPLACE "|" ";" _check "${_check}")
-    list(POP_FRONT _check _name _script)
-    add_test(NAME ${_name}
-             COMMAND ${Python3_EXECUTABLE}
-                     ${CMAKE_CURRENT_SOURCE_DIR}/${_script} ${_check})
-    set_tests_properties(${_name} PROPERTIES LABELS source)
-  endforeach()
   # Behavioral scoreboard: every scenario is scored and compared against the
   # committed baseline, so a harness change that costs rounds, batching or
   # answer quality fails here rather than being noticed later.

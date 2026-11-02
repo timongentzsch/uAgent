@@ -35,20 +35,19 @@ runs beyond them.
 ```sh
 ctest --preset debug                      # everything, six tests at a time
 ctest --preset debug -R '^core$'          # one CTest by name
-ctest --preset debug -L source            # only the source contracts
-ctest --preset debug -LE source           # everything else
 ```
+
+The source contracts and measurement self-tests need no build; they run in
+`.github/lint.sh` with the format checks.
 
 Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 
 | CTest name | Covers |
 | --- | --- |
 | `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`; Web Push encryption only with `UAGENT_WEB_PUSH=ON`) |
-| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_delegation`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`) |
+| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_agents`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and a PTY (`tests/integration_<group>.py` or `tests/integration_<group>/`) |
 | `integration_web`, `integration_management` | native web host |
 | `behavior_eval` | scenario scores against the committed baseline |
-| `eval_harness_self_test`, `session_metrics_self_test` | measurement tooling (label `source`) |
-| `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
 | `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
 
 Beyond the runners, `tests/fixtures/` holds the provider route contract, saved
@@ -70,7 +69,7 @@ python3 tests/integration.py build/debug/uagent --group tools -j 8
 python3 tests/integration.py build/debug/uagent -j 8      # every group
 ```
 
-The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
+The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `agents`,
 `sandbox`, `web` and `management`; `--list` prints each case with its group.
 
 - A new top-level `test_` function in a group's module registers itself.
@@ -87,7 +86,7 @@ The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
 
 ```sh
 cmake --preset sanitize && cmake --build --preset sanitize --parallel
-ctest --preset sanitize -LE source        # ASan and UBSan
+ctest --preset sanitize                   # ASan and UBSan
 
 cmake --preset tsan && cmake --build --preset tsan --parallel
 ctest --preset tsan -R '^(core|integration_(runtime|tools|web))$'
@@ -163,7 +162,7 @@ Playwright has two projects. `chromium` runs every spec. `webkit` runs
 `btw`, `guidance-queue`, `phone-layout`, `reload`, `mobile-navigation`,
 `loading-surfaces`, `session-state`, `ui-quality`, `browser`, `model-picker`,
 `ask`, `menu`, `image-viewer`, `dismiss`, `history-anchor`, `scroll-restore`,
-`scroll-stick` and `search`. A failed test is retried once, locally and in CI.
+`scroll-stick`, `search` and `screen-motion`. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
@@ -228,10 +227,10 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 | anything else | every job |
 
 A pull request that touches native code runs what a push to `master` runs,
-with two exceptions that `master` then covers. `coverage` runs on `master`
-only. `clang-tidy` reads the translation units the pull request changed, in
-one job; when it changes a header, the build files or the rules, it reads
-all of them, as `master` always does.
+with one exception that `master` then covers: `clang-tidy` reads the
+translation units the pull request changed, in one job; when it changes a
+header, the build files or the rules, it reads all of them, as `master`
+always does. `coverage` runs weekly and by hand only.
 
 The Linux build jobs reuse compiled objects through ccache
 (`.github/actions/native-setup`), restored in every run and saved only from
@@ -247,11 +246,11 @@ Master, scheduled and manual runs always run them.
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
-| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
-| `sanitizers` | `sanitize` preset, `ctest -LE source` |
+| `build-and-test` | Release builds with Web Push on Linux x86_64 and macOS ARM64, and Linux ARM64 on master and for heavy changes; `ctest`; packaging |
+| `sanitizers` | `sanitize` preset, `ctest` |
 | `thread-sanitizer` | On master and for heavy changes: `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
-| `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
-| `lint` | `.github/lint.sh` (clang-format, cpplint, Ruff); `ctest -L source` |
+| `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
+| `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff and the source contracts |
 | `clang-tidy` | clang-tidy, translation units split across three runners |
 | `web` | Biome format check and lint, Node tests, bundle and size check, a release host with Web Push |
 | `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), split across three runners |

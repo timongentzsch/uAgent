@@ -1,90 +1,10 @@
 // A reload looks like the app, not a page loading: its frame paints before
 // any script runs, the conversation fills it in place, and nothing jumps.
-import { test, expect, saveHistory } from "./fixtures.js";
+import { test, expect } from "./fixtures.js";
 
 // What a page route holds or refuses must reach it: WebKit sends a page's
 // requests past routes once a service worker controls it.
 test.use({ serviceWorkers: "block" });
-
-// Marks when the frame, then the conversation's first row, enter the page,
-// and the layout shift that followed. Installed before the document parses.
-function trackReload() {
-  globalThis.reloadMarks = { shift: 0 };
-  new PerformanceObserver((list) => {
-    for (const entry of list.getEntries())
-      if (!entry.hadRecentInput) globalThis.reloadMarks.shift += entry.value;
-  }).observe({ type: "layout-shift", buffered: true });
-  new MutationObserver(() => {
-    const marks = globalThis.reloadMarks;
-    marks.frame ??= document.querySelector("main.conversation")
-      ? performance.now()
-      : undefined;
-    marks.content ??= document.querySelector(
-      ".transcript .message:not(.placeholder .message)",
-    )
-      ? performance.now()
-      : undefined;
-  }).observe(document, { childList: true, subtree: true });
-}
-
-async function openSeeded(page, host, request) {
-  await saveHistory(host, "reload.json", {
-    id: "reload-probe",
-    title: "Reload probe",
-    turns: 20,
-    messages: Array.from({ length: 40 }, (_, index) => ({
-      role: index % 2 ? "assistant" : "user",
-      content: `Reload probe message ${index}. `.repeat(index % 2 ? 12 : 2),
-    })),
-  });
-  const { sessions } = await (
-    await request.get("/api/sessions?refresh=1")
-  ).json();
-  const { id } = sessions.find((item) => item.title === "Reload probe");
-  await page.goto(`/#session=${id}`);
-  await expect(page.locator(".transcript .message").first()).toBeVisible();
-  return id;
-}
-
-test.describe("timings", () => {
-  // Measured as a reload runs on a device: its code from the worker's cache.
-  test.use({ serviceWorkers: "allow" });
-  for (const [name, viewport] of [
-    ["phone", { width: 390, height: 844 }],
-    ["desktop", { width: 1280, height: 800 }],
-  ])
-    test(`reload timings on a slow ${name} are recorded`, async ({
-      page,
-      host,
-      request,
-    }, testInfo) => {
-      test.skip(testInfo.project.name !== "chromium", "CDP throttling");
-      await page.setViewportSize(viewport);
-      await openSeeded(page, host, request);
-      await page.addInitScript(trackReload);
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
-      await page.reload();
-      await expect(
-        page.locator(".transcript .message:not(.placeholder .message)").first(),
-      ).toBeVisible();
-      const marks = await page.evaluate(() => ({
-        ...globalThis.reloadMarks,
-        paint: performance.getEntriesByName("first-paint")[0]?.startTime,
-      }));
-      const recorded = Object.fromEntries(
-        Object.entries(marks).map(([key, value]) => [
-          key,
-          Math.round(value * 1000) / 1000,
-        ]),
-      );
-      console.log(`reload ${name}: ${JSON.stringify(recorded)}`);
-      await testInfo.attach(`reload-${name}.json`, {
-        body: JSON.stringify(recorded),
-        contentType: "application/json",
-      });
-    });
-});
 
 const box = (locator) =>
   locator.evaluate((node) => {

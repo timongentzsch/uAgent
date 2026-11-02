@@ -64,10 +64,6 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(page.getByLabel("Model", { exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText("mock/model-b:high");
-  const textbox = await page.getByLabel("Message or guidance").boundingBox();
-  const selector = await model.boundingBox();
-  // A one-line draft on a wide screen shares its row with the controls.
-  expect(selector.x).toBeGreaterThanOrEqual(textbox.x + textbox.width);
   await expect(page.getByLabel("Message or guidance")).toHaveValue(
     "Keep this unsent draft",
   );

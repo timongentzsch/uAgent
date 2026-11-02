@@ -128,9 +128,8 @@ npm run test:spec -- tests/phone-layout.spec.js   # one spec: Chromium, no retry
 
 Which binary and bundle a browser test drives:
 
-- `tests/web_host.py` runs `UAGENT_TEST_BINARY`, or by default
-  `../build/debug/uagent` locally and `../build/release/uagent` in CI and for
-  `performance.spec.js`, whose timings are a release build's.
+- `tests/web_host.py` runs `UAGENT_TEST_BINARY` (CI sets it), or by default
+  `../build/debug/uagent`.
 - Locally the host serves `web/dist` from disk, so a web edit needs
   `npm run build` but no rebuild of the binary. In CI it serves the bundle
   embedded in the binary, as a release does.
@@ -154,9 +153,8 @@ What a spec may assume about time:
 - A layer closed from the interface (a popover, a dialog) removes its history
   entry in a step back of its own. A spec that then navigates by
   `location.hash` first waits for `history.state?.layer` to be gone.
-- Speed is recorded, not asserted: frame gaps, input latency and open times
-  go into attachments (`web-performance.json`, `reload-frame-gaps.json`) and
-  never fail a run.
+- Speed is recorded, not asserted: frame gaps across a reload go into an
+  attachment (`reload-frame-gaps.json`) and never fail a run.
 - The only fixed pauses are gestures: the long-press holds in
   `browser.spec.js`, and the pauses between the wheel and scroll steps in
   `scroll-stick.spec.js`.

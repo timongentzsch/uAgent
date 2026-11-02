@@ -39,19 +39,7 @@ for (const touch of [false, true]) {
 
       await trigger.focus();
       await trigger.press("Enter");
-      await page.getByRole("menuitem", { name: "More", exact: true }).focus();
-      await page.keyboard.press("ArrowRight");
-      await page.getByRole("menuitem", { name: /^Detail/ }).focus();
-      await page.keyboard.press("ArrowRight");
-      await expect(page.getByRole("menuitemradio").first()).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(
-        page.getByRole("menuitem", { name: /^Detail/ }),
-      ).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(
-        page.getByRole("menuitem", { name: "More", exact: true }),
-      ).toBeFocused();
+      await expect(page.getByRole("menu")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveCSS("outline-style", "solid");

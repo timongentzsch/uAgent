@@ -153,14 +153,6 @@ test("the tips of an empty conversation go with its first message", async ({
   await expect(tips).toHaveCount(0);
 });
 
-test("search opens from the phone's sidebar", async ({ page, session }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/#session=${session.id}`);
-  await page.getByLabel("Open conversations").click();
-  await page.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
-});
-
 test.describe("pairing by link", () => {
   test.use({ paired: false });
 

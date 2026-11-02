@@ -118,6 +118,17 @@ test("a switch is a native switch with a name, a click and a key", async ({
   await memory.focus();
   await page.keyboard.press("Space");
   await expect(memory).toBeChecked({ checked: before });
+  // A forced palette still draws the knob apart from its track.
+  await page.emulateMedia({ forcedColors: "active" });
+  const switches = settings.locator('.switch input[role="switch"]');
+  for (const index of [0, (await switches.count()) - 1]) {
+    const { knob, track } = await switches.nth(index).evaluate((input) => ({
+      knob: getComputedStyle(input, "::before").backgroundColor,
+      track: getComputedStyle(input).backgroundColor,
+    }));
+    expect(knob).not.toBe("rgba(0, 0, 0, 0)");
+    expect(knob).not.toBe(track);
+  }
 });
 
 test.describe("on a touch screen", () => {

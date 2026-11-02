@@ -122,33 +122,6 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await expect(menu).toHaveCount(0);
 });
 
-test("a forced palette still draws the switch knob apart from its track", async ({
-  page,
-  session,
-}) => {
-  await page.emulateMedia({ forcedColors: "active" });
-  await page.goto(`/#session=${session.id}`);
-  await headerAction(page, "Settings");
-  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-  await settings
-    .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
-    .click();
-  await settings
-    .getByRole("searchbox", { name: "Find a setting" })
-    .fill("memory");
-  const switches = settings.locator('.switch input[role="switch"]');
-  await expect(switches.first()).toBeVisible();
-  for (const index of [0, (await switches.count()) - 1]) {
-    const { knob, track } = await switches.nth(index).evaluate((input) => ({
-      knob: getComputedStyle(input, "::before").backgroundColor,
-      track: getComputedStyle(input).backgroundColor,
-    }));
-    expect(knob).not.toBe("rgba(0, 0, 0, 0)");
-    expect(knob).not.toBe(track);
-  }
-});
-
 for (const scheme of ["dark", "light"])
   test(`a conversation with a reply has no violations in ${scheme}`, async ({
     page,

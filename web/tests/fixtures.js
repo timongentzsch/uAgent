@@ -269,10 +269,9 @@ export const test = base.extend({
     const child = spawn("python3", [
       "../tests/web_host.py",
       "--binary",
-      // CI builds the release binary only, and timings are measured on it;
-      // otherwise the debug one, which links fast.
-      process.env.UAGENT_TEST_BINARY ||
-        `../build/${process.env.CI || testInfo.file.includes("performance.spec") ? "release" : "debug"}/uagent`,
+      // CI names the binary it built; otherwise the debug one, which links
+      // fast.
+      process.env.UAGENT_TEST_BINARY || "../build/debug/uagent",
       "--port",
       "0",
       "--fixture",

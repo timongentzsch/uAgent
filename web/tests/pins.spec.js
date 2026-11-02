@@ -16,28 +16,6 @@ const lists = (page) => {
   };
 };
 
-test("a conversation is pinned from its menu and unpinned again", async ({
-  page,
-  session,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/#session=${session.id}`);
-  const { pinned, folders } = lists(page);
-  await expect(folders.locator(".session")).toHaveCount(1);
-  await expect(pinned).toHaveCount(0);
-
-  await folders.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
-  await expect(pinned.locator(".session")).toHaveCount(1);
-  // It leaves its place rather than showing twice.
-  await expect(folders.locator(".session")).toHaveCount(0);
-
-  await pinned.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
-  await expect(pinned).toHaveCount(0);
-  await expect(folders.locator(".session")).toHaveCount(1);
-});
-
 test("a plain folder is pinned from its menu, with its conversations", async ({
   page,
   session,
@@ -57,7 +35,7 @@ test("a plain folder is pinned from its menu, with its conversations", async ({
   await expect(folders.locator(".session")).toHaveCount(1);
 });
 
-test("another browser lists the same pins live", async ({
+test("a conversation is pinned from its menu and unpinned, live in another browser", async ({
   browser,
   page,
   session,
@@ -65,22 +43,26 @@ test("another browser lists the same pins live", async ({
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
+  const { pinned, folders } = lists(page);
+  await expect(folders.locator(".session")).toHaveCount(1);
+  await expect(pinned).toHaveCount(0);
   const other = await (await browser.newContext({ storageState })).newPage();
   await withoutServiceWorker(other);
   await other.setViewportSize({ width: 1440, height: 900 });
   await other.goto(`/#session=${session.id}`);
   await expect(lists(other).folders.locator(".session")).toHaveCount(1);
 
-  await lists(page)
-    .folders.getByRole("button", { name: "Conversation menu" })
-    .click();
+  await folders.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
+  await expect(pinned.locator(".session")).toHaveCount(1);
+  // It leaves its place rather than showing twice.
+  await expect(folders.locator(".session")).toHaveCount(0);
   await expect(lists(other).pinned.locator(".session")).toHaveCount(1);
 
-  await lists(page)
-    .pinned.getByRole("button", { name: "Conversation menu" })
-    .click();
+  await pinned.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
+  await expect(pinned).toHaveCount(0);
+  await expect(folders.locator(".session")).toHaveCount(1);
   await expect(lists(other).pinned).toHaveCount(0);
 });
 

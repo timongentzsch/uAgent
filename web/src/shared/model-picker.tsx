@@ -97,25 +97,35 @@ export default function ModelPicker({
             disabled={action.busy}
             options={[
               ...(model && !selected ? [{ value: model, label: model }] : []),
-              ...catalog.models.map((item) => ({
-                value: item.value,
-                label: item.label,
-                detail: [
-                  item.value !== item.label ? item.value : "",
-                  item.name && item.name !== item.label ? item.name : "",
-                  item.efforts?.length
-                    ? `Supports ${item.efforts.join(", ")}`
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-              })),
+              ...catalog.models
+                .map((item) => ({
+                  value: item.value,
+                  label: item.label,
+                  // Listed under the provider that serves it.
+                  group: item.label.split("/")[0],
+                  detail: [
+                    item.value !== item.label ? item.value : "",
+                    item.name && item.name !== item.label ? item.name : "",
+                    item.efforts?.length
+                      ? `Supports ${item.efforts.join(", ")}`
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                }))
+                .toSorted((a, b) => a.group.localeCompare(b.group)),
             ]}
             change={(value) => {
               setModel(value);
               setEffort("default");
             }}
           />
+          {!!catalog.unavailable?.length && (
+            <p class="muted small">
+              No list from {catalog.unavailable.join(", ")}: check its address
+              and key under Providers in Settings.
+            </p>
+          )}
           <div class="field-row">
             <Field label="Effort">
               <Select

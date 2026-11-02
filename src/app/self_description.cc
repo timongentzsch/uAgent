@@ -189,13 +189,18 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
                                                   : json(true);
       }
     }
+    auto merged = configured.values.find(key);
     if (!secret) {
-      auto merged = configured.values.find(key);
       json effective = merged != configured.values.end()
                            ? TypedValue(descriptor, merged->second)
                            : json();
       entry["effective"] =
           effective.is_null() ? entry["default"] : std::move(effective);
+    } else if (merged != configured.values.end()) {
+      // The providers in effect, so their names can be read; keys hidden.
+      json shown =
+          json::parse(SanitizeCompositeValue(merged->second), nullptr, false);
+      if (shown.is_object()) entry["effective"] = std::move(shown);
     }
     settings.push_back(std::move(entry));
   }

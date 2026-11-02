@@ -1727,6 +1727,8 @@ def test_uagent_tool_lists_every_setting(root, home, *, binary):
         assert_true(setting["key"] == "limits.maxToolCalls", setting)
         assert_true(setting["effective"] == 120 and setting["default"] == 0, setting)
         assert_true(setting["description"], setting)
+        # The providers are named, as a question about them needs, keys hidden.
+        assert_true(named["UAGENT_PROVIDERS"]["effective"]["test"]["base_url"], named)
         assert_true("canary-api-key" not in result, "secret leaked into catalogue")
         return event({"content": "catalogue-ok"})
 

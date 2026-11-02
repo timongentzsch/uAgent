@@ -54,6 +54,9 @@ test("fuzzy matching ranks a prefix, then a word start, then a subsequence", () 
     ["Tools"],
   );
   assert.equal(fuzzyScore("xyz", "Tools"), -1);
+  // Letters scattered across a long text are not a match.
+  assert.equal(fuzzyScore("wombat", "Write one more brief abstract today"), -1);
+  assert.ok(fuzzyScore("plt prb", "Palette probe") >= 2);
   assert.equal(fuzzyScore("", "Tools"), 0);
 });
 test("a filter matches when every word occurs in some field", () => {

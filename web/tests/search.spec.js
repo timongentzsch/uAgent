@@ -211,6 +211,18 @@ test("search is a centered panel that groups, marks and steps back", async ({
       { role: "assistant", content: "noted" },
     ],
   });
+  // A title as long as the message it came from holds the letters of most
+  // words somewhere, in order: it matches only a word it has.
+  const scattered = "Write one more brief abstract today, then stop";
+  await saveHistory(host, "scattered.json", {
+    id: "scattered",
+    title: scattered,
+    turns: 1,
+    messages: [
+      { role: "user", content: scattered },
+      { role: "assistant", content: "noted" },
+    ],
+  });
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   // The open conversation's place leads.
   await page.getByRole("button", { name: /Elsewhere/ }).click();
@@ -223,6 +235,9 @@ test("search is a centered panel that groups, marks and steps back", async ({
   await field.fill("wombat");
   const groups = search.getByRole("group");
   await expect(groups.first()).toContainText("Elsewhere");
+  await expect(
+    search.getByRole("option", { name: /Write one more/ }),
+  ).toHaveCount(0);
   // Every hit shows its mark, however far into its message the words are.
   const hits = search.locator(".spotlight-snippet");
   await expect(hits).toHaveCount(4);

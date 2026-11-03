@@ -192,6 +192,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.parent = item.parent;
     session.model = item.model;
     session.cost = item.cost;
+    session.turns = item.turns;
     session.todo = item.todo;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
@@ -327,6 +328,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"activities", JsonValue(session.state, "activities", json::array())},
       {"cost", JsonValue(JsonValue(session.state, "usage", json::object()),
                          "cost", session.cost)},
+      {"turns", JsonValue(session.state, "turns", session.turns)},
       {"todo", session.state.contains("todo")
                    ? TodoProgress(JsonValue(session.state, "todo", json()))
                    : session.todo},

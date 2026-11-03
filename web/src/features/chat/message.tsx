@@ -5,6 +5,7 @@ import { count } from "../../shared/quantities.ts";
 import {
   queuedGuidance,
   recallable,
+  shownText,
   splitMentionTokens,
   unsent,
 } from "../../shared/message-view.ts";
@@ -63,6 +64,13 @@ function useRowName(who: string, time?: string) {
   const style = prefs.style === "absolute" ? "absolute" : "smart";
   return `${who}, ${formatMoment(date, { ...prefs, style })}`;
 }
+
+// Who wrote a message in your place, for its accessible name.
+const AUTHORS: Record<string, string> = {
+  agent: "Agent report",
+  activity: "Background result",
+  message: "Message",
+};
 
 // Deliveries worth a line: how the model got a file only when it was not
 // the file itself (a reference, a vision-model description).
@@ -127,17 +135,14 @@ function Message({
     retry: resend,
     branch,
     http,
+    open,
   } = useContext(MessageActions);
   // The whole text loads when asked for by Show full message.
   const [wantFull, setWantFull] = useState(false);
   const reply = node.role === "assistant";
-  // Mail from another conversation or the harness has your message's line,
-  // not its bubble.
-  const chrome = reply
-    ? "response"
-    : node.origin === "mail"
-      ? "mail"
-      : "user inverse";
+  // What woke the conversation in your place has your message's line, not
+  // its bubble.
+  const chrome = reply ? "response" : node.origin ? "mail" : "user inverse";
   const load = useNodeReader(session, read);
   const truncated = node.body?.truncated;
   const fullText = useResource(
@@ -154,10 +159,14 @@ function Message({
   useEffect(() => {
     if (fullText.error) report(fullText.error);
   }, [fullText.error]);
-  const text = full ?? node.body?.text ?? "";
+  const text = shownText(node, full ?? node.body?.text ?? "");
   const assets = routes.assets(session.id);
   const nameId = useId();
-  const name = useRowName(reply ? "Assistant" : "You", node.time);
+  const name = useRowName(
+    reply ? "Assistant" : (node.origin && AUTHORS[node.origin]) || "You",
+    node.time,
+  );
+  const agent = node.agent;
   const words =
     text &&
     splitMentionTokens(text).map((part, index) =>
@@ -195,7 +204,30 @@ function Message({
         words
       ) : (
         <div class="message-line">
-          <div class="message-text">{words}</div>
+          <div class="message-text">
+            {node.origin === "activity" && (
+              <div class="message-event">A background command finished</div>
+            )}
+            {agent && (
+              <div class="message-event">
+                <span>
+                  Agent “{agent.title}” finished
+                  {agent.outcome !== "completed" && ` (${agent.outcome})`}
+                </span>
+                {open && (
+                  <Button
+                    variant="quiet"
+                    size="compact"
+                    disabled={!online}
+                    onClick={() => open(agent.session)}
+                  >
+                    Open agent
+                  </Button>
+                )}
+              </div>
+            )}
+            {words}
+          </div>
           <span class="message-meta small">
             {node.status && <span>{node.status}</span>}
             <Time value={node.time} />
@@ -280,7 +312,7 @@ export async function prepareHistoryNodes(nodes: Node[]) {
   const texts = new Set<string>();
   for (const node of nodes) {
     if (isRow(node) || node.streaming || !node.body?.text) continue;
-    for (const part of splitMentionTokens(node.body.text)) {
+    for (const part of splitMentionTokens(shownText(node, node.body.text))) {
       if ("text" in part && part.text) texts.add(part.text);
     }
   }

@@ -26,7 +26,7 @@ import { livePins } from "../features/sidebar/pins.tsx";
 import { ConversationMenu, TerminalMenu } from "./menus.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
-import { isRunning, sessionById } from "../state/attention.ts";
+import { isRunning, sessionById, shownSessions } from "../state/attention.ts";
 import { lockPageZoom, useCompact, useNarrowColumn } from "../shared/layout.ts";
 import { applyDevicePrefs } from "../shared/device-prefs.ts";
 import { useWakeLock } from "../shared/wake-lock.ts";
@@ -211,6 +211,14 @@ function App() {
     listedSession ? undefined : all[selected]?.metadata,
   );
   const session = listedSession || metadata;
+  // The list leaves out empty conversations but the open one, also behind
+  // the Library or a terminal. Which one is open matters only while it is
+  // empty, so choosing among the others does not filter the list again.
+  const keep = listedSession?.turns === 0 ? selected : "";
+  const rows = useMemo(
+    () => shownSessions(listed, keep, online),
+    [listed, keep, online],
+  );
   // Until the catalogue answers, the shell renders with placeholders in the
   // places data will fill; a conversation in the URL keeps its surfaces.
   const booting = authenticated === null;
@@ -389,7 +397,7 @@ function App() {
   );
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed, catalogue.spaces, online, pins);
+    const order = sessionOrder(rows, catalogue.spaces, online, pins);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -552,7 +560,7 @@ function App() {
       scheduledUnread={
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
-      sessions={listed}
+      sessions={rows}
       needsYou={attention}
       spaces={catalogue.spaces || NO_SPACES}
       pins={pins}

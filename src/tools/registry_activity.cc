@@ -129,10 +129,10 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     std::string operation = JsonValue(a, "operation", "");
     return operation == "write" || operation == "resize" || operation == "stop";
   };
-  // A wait, a poll or a list observes commands whose own rows show them.
+  // A list observes commands whose own rows show them; a wait or a poll is
+  // time the turn spent, so it keeps its row.
   activity.routine = [](const json& a) {
-    const std::string operation = JsonValue(a, "operation", "");
-    return operation == "list" || operation == "poll" || operation == "wait";
+    return JsonValue(a, "operation", "") == "list";
   };
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;

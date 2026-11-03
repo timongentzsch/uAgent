@@ -42,6 +42,16 @@ export const recallable = (
   !!node.request_id &&
   ((online && queuedGuidance(node)) || unsent(node) || waitingToSend(node));
 
+// What a message shows of its text: a finished agent's report without the
+// header line its facts (Node.agent) say instead, and nothing of the note
+// that finished background work woke the conversation.
+export const shownText = (node: Pick<Node, "origin">, text: string) =>
+  node.origin === "agent"
+    ? text.slice(text.indexOf("\n") + 1)
+    : node.origin === "activity"
+      ? ""
+      : text;
+
 type TextPart = { text: string } | { mention: { id: string; alt: string } };
 
 const kMentionToken = /!\[([^\]\n]*)\]\(attachment:([A-Za-z0-9_-]+)\)/g;

@@ -4,7 +4,7 @@ import {
   DEV_SERVER_URL,
   openMore,
 } from "./fixtures.js";
-import { agents, conversation } from "./golden-turns.js";
+import { agents, arrivals, conversation } from "./golden-turns.js";
 
 // The transcript tree on the Vite-served app with a mocked host: a saved
 // conversation of calls, a failure, guidance and an answer, at each
@@ -202,4 +202,19 @@ test("an agent's link opens its conversation", async ({ page }) => {
   await page.getByRole("button", { name: "Open agent", exact: true }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
   await expect(page.locator("dialog[open]")).toHaveCount(0);
+});
+
+test("an agent's report and finished background work read as events", async ({
+  page,
+}) => {
+  await open(page, "default", [...conversation, ...arrivals]);
+  const report = page.getByRole("article", { name: /^Agent report/ });
+  await expect(report).toContainText("Agent “Find flights” finished");
+  await expect(report).toContainText("Two flights found.");
+  await expect(report).not.toContainText("[agent");
+  const background = page.getByRole("article", { name: /^Background result/ });
+  await expect(background).toContainText("A background command finished");
+  await expect(background).not.toContainText("not a user message");
+  await report.getByRole("button", { name: "Open agent", exact: true }).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
 });

@@ -104,7 +104,9 @@ void AgentLink::Report(const std::string& reason, const std::string& title,
           (answer.empty() ? "(no answer)" : Utf8Trunc(answer, kReportChars)),
       .id = RandomToken(8),
       .report = true,
-      .state = reason};
+      .state = reason,
+      .agent = {
+          {"session", id_}, {"title", OneLine(title)}, {"outcome", reason}}};
   // The latest report is the one that matters: an earlier one still unsent
   // is replaced.
   unsent_.reset();

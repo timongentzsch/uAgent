@@ -1,7 +1,6 @@
 .git
 .venv
 .uagent
-.playwright-cli
 .pytest_cache
 .ruff_cache
 build

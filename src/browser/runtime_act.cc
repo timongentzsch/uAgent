@@ -295,12 +295,12 @@ json Runtime::Act(const std::string& op, const json& command) {
     download_path_ = into;
   }
   // A number names what any look at this page numbered, which is still that
-  // element; a point is one of the latest look's alone.
+  // element, also after actions since; a point is one of the latest look's
+  // alone, and only until an action changes the page.
   const std::string view = JsonValue(command, "view_id", "");
   const int element = JsonValue(command, "element", 0);
   const auto unseen = [&]() -> std::string {
-    if (observation_.empty()) return "observe the current tab, then " + op;
-    if (view == observation_) return "";
+    if (!observation_.empty() && view == observation_) return "";
     if (const auto used = std::ranges::find(looks_, view);
         element > 0 && used != looks_.end()) {
       // Kept by use, not by age: a batch of actions on one look adds a look
@@ -308,6 +308,7 @@ json Runtime::Act(const std::string& op, const json& command) {
       std::rotate(used, used + 1, looks_.end());
       return "";
     }
+    if (observation_.empty()) return "observe the current tab, then " + op;
     return op + (element > 0 ? " needs view_id from a look at this page"
                              : " needs view_id from the latest observe");
   };

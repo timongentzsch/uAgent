@@ -250,6 +250,9 @@ while chunk := os.read(3, 4096):
                     "fresh": False,
                 }
                 looked |= {"text": "Clips", "elements": '[1] text "Search" (empty)'}
+                # A page the test wrote: this text, and nothing to act on.
+                if (profile / "page-text").exists():
+                    looked |= {"text": (profile / "page-text").read_text(), "elements": ""}
                 result = {"result": {"value": looked}}
             elif "data-uagent-secret" in asked and "activeElement" in asked:
                 # True for a password field, or "frame" for another site's frame.

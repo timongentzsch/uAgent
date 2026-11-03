@@ -168,6 +168,14 @@ def test_an_agent_not_waited_for_reports_to_its_parent_and_its_spend_counts(root
         assert_true(header(agent)["agent"]["budget"] == 1 / 8, header(agent))
         parent = next(p for p in agent.parent.glob("*.json") if p != agent)
         assert_true(header(parent)["cost"] >= 0.05, header(parent))
+        # The report shows as the agent's, naming it beside its text.
+        facts = json.loads(parent.read_text(encoding="utf-8").splitlines()[1])["display"]["facts"]
+        (report,) = [fact for fact in facts.values() if fact.get("origin") == "agent"]
+        assert_true(
+            report["agent"]
+            == {"session": fnv1a64(str(agent)), "title": "BRIEF count", "outcome": "completed"},
+            report,
+        )
     # With too little of its budget left, a conversation starts none.
     with Server([tool_call("agent_start", {"brief": "BRIEF x"}), event({"content": "ok"})]) as s:
         env = base_env(home, s.url)

@@ -114,6 +114,23 @@ test("corrupt browser preferences fall back without breaking the app", () => {
     );
 });
 
+test("the list leaves out empty conversations that are neither open nor busy", async () => {
+  const { shownSessions } = await import("../src/state/attention.ts");
+  const sessions = [
+    { id: "said", turns: 2 },
+    { id: "empty", turns: 0 },
+    { id: "open", turns: 0 },
+    { id: "working", turns: 0, turn_active: true },
+    { id: "asking", turns: 0, pending: true },
+    { id: "agent", turns: 0, parent: "said" },
+    { id: "unknown" },
+  ];
+  assert.deepEqual(
+    shownSessions(sessions, "open").map((item) => item.id),
+    ["said", "open", "working", "asking", "unknown"],
+  );
+});
+
 test("saved-history browsing retains the selected view and four recent views", async () => {
   const { retainedViews } = await import("../src/state/store.ts");
   const views = Object.fromEntries(

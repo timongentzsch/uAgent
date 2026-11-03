@@ -67,11 +67,12 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ActivitySupervisor& processes,
   Reset();
 }
 
-void Agent::Arrive(const std::string& text, const std::string& mail, int hops) {
+void Agent::Arrive(const std::string& text, json origin) {
+  const std::string mail = JsonValue(origin, "mail", "");
   if (!mail.empty()) arriving_mail_.push_back(mail);
   Steering::Message message;
   message.text = text;
-  message.origin = {{"mail", mail}, {"hops", hops}};
+  message.origin = std::move(origin);
   SteeringState().Queue(std::move(message));
 }
 

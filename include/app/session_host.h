@@ -93,8 +93,10 @@ struct HostSession {
   // `parent` names the session that started an agent; `model` is the one
   // the file names.
   std::string parent, model;
-  // Its spend and to-do progress as last saved, until its runtime says.
+  // Its spend, turns and to-do progress as last saved, until its runtime
+  // says.
   double cost = 0;
+  int64_t turns = 0;
   json todo = nullptr;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;

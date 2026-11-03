@@ -5,10 +5,9 @@ can watch, take over and sign in to from any paired device. For the web
 interface itself, see [Web interface](WEB.md).
 
 This browser is the user's own: one persistent, signed-in profile that one
-conversation drives at a time. Where it is not set up (macOS, or a Linux host
-without Chrome and TigerVNC), the bundled `browser-use` skill gives the agent
-a throwaway headless browser through `playwright-cli` instead, one per process
-and with no saved logins; it also suits checking a page you are building.
+conversation drives at a time. Where it is not set up (macOS outside the
+container, or a Linux host without Chrome and TigerVNC), the agent has no
+browser and reads pages with `web_fetch` only.
 
 The optional [Compose stack](../deploy/compose.yaml) builds one image with
 the web host, Chrome Stable and TigerVNC; a Linux host with the same
@@ -64,10 +63,24 @@ measured workload needs more space.
 The agent's `browser` tool and the viewer drive the same visible tab.
 
 - Each agent action waits for the page to settle and returns it as text: the
-  page's text and its numbered controls. A number keeps naming its element
-  while the page stays, so several actions can come from one look. The agent
-  can read more of a long page, search it for lines, or ask for a screenshot
-  where text does not describe the page.
+  page's text and its numbered controls. A field shows the start of what it
+  holds, except a password, one-time code or card field, which shows only
+  `(filled)` or `(empty)`. A number keeps naming its element while the page
+  stays, so several actions can come from one look. The agent can read more
+  of a long page, search it for lines, or ask for a screenshot where text
+  does not describe the page.
+- A result starts with what was done (`click done.`), then the page, then
+  the look's `View ID`. For the page the previous result showed, only its
+  changed lines follow `Changed since the last result (- old, + new):`, with
+  `…` between changes that are apart, or `No change on the page.`, whenever
+  that is shorter than the page.
+- `batch` runs up to 20 clicks, typings, key presses, scrolls and drags in
+  order on one look, waiting for the page to settle after each, and returns
+  the page once: `1 type done.`, `2 click done.` and so on. It stops at the
+  first step that fails (`3 click failed: …`) or opens a dialog. Numbers of
+  that look stay good through the batch; a point (x and y) only in its first
+  step, since any step may move the page. Approving it once for a site covers
+  batches of the same actions there.
 - Besides clicking and typing, the agent can right-click, double-click,
   drag (sliders, sortable lists, drag-and-drop), press key combinations such
   as Control+A, and go back, forward or reload.

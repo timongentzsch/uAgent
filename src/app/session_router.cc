@@ -365,7 +365,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
         directory_ + "/" + kDraftsDir + "/" + session->id + ".json";
     SessionStoreStatus stored;
     if (kind == SessionCommandKind::kDelete) {
-      stored = SessionStore::Remove(session->path, draft_path);
+      result.error = DeleteConversation(session->path, draft_path);
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
     } else {
@@ -377,6 +377,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
     asset_lock.unlock();
     if (result.error.empty() && kind == SessionCommandKind::kDelete) {
       assets_.Invalidate();
+      // Its agents went with it: the list drops them now.
+      scan.unlock();
+      RefreshCatalogue(true);
     }
     lock.lock();
     session->status = prior_status;

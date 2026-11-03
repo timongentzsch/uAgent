@@ -1184,7 +1184,10 @@ TEST_CASE(TestBrowserToolSteps) {
                                 {"replace", true},
                                 {"key", "Enter"}},
                                {});
-  CHECK(filled.output.starts_with("click done.\ntype done.\npress done.\n"));
+  // What was done comes first; then the page, here unchanged, and the look.
+  CHECK(
+      filled.output.starts_with("click done.\ntype done.\npress done.\n"
+                                "No change on the page.\nView ID: "));
   // A field that is gone stops the call before anything is typed.
   CHECK(!tool.run({{"action", "type"},
                    {"element", 2},
@@ -1326,6 +1329,132 @@ TEST_CASE(TestBrowserToolSteps) {
   CHECK(written);
 }
 
+// A batch: steps in order on one look, the page once after them, and no step
+// after one that fails or opens a dialog.
+TEST_CASE(TestBrowserToolBatch) {
+  namespace fs = std::filesystem;
+  FakeBrowser fake("batch");
+  int owner[2];
+  CHECK(pipe(owner) == 0);
+  CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
+  std::thread service([&] { browser::ServiceMain(owner[0]); });
+  CHECK(WaitUntil([] { return fs::exists(browser::SocketPath()); },
+                  BudgetMs(5000)));
+  const Tool tool = BrowserTool("dddddddddddddddddddddddddddddddd",
+                                [](const std::string&, const std::string&,
+                                   bool*) { return std::string(); });
+  const auto view = [](const std::string& output) {
+    const size_t at = output.find("View ID: ") + 9;
+    return output.substr(at, output.find(' ', at) - at);
+  };
+  const auto batch = [](const std::string& look, const json& steps) {
+    return json{{"action", "batch"}, {"view_id", look}, {"steps", steps}};
+  };
+  ToolResult opened =
+      tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
+  const json form =
+      batch(view(opened.output),
+            json::array({{{"action", "type"}, {"element", 1}, {"text", "kes"}},
+                         {{"action", "press"}, {"key", "Enter"}},
+                         {{"action", "click"}, {"element", 1}}}));
+  // It is approved for the actions it takes on the site, each step shown.
+  CHECK(tool.approval_subject(form) ==
+        json({{"action", "batch"},
+              {"actions", {"click", "press", "type"}},
+              {"origin", "https://example.com"}}));
+  CHECK(tool.approval_preview(form) ==
+        "batch on https://example.com/\n"
+        "1. type \"kes\" into [1] text \"Search\" (empty)\n"
+        "2. press Enter\n"
+        "3. click [1] text \"Search\" (empty)\n"
+        "Remembered, it covers any browser batch of click, press, type on "
+        "https://example.com.");
+  CHECK(RequiredApproval(tool, form) == ApprovalClass::kYoloEligibleMutation);
+  // A number of the batch's look still names its element after the steps
+  // before it.
+  ToolResult filled = tool.run(form, {});
+  CHECK(
+      filled.output.starts_with("1 type done.\n2 press done.\n3 click done.\n"
+                                "No change on the page.\nView ID: "));
+  ToolResult stopped =
+      tool.run(batch(view(filled.output),
+                     json::array({{{"action", "click"}, {"element", 1}},
+                                  {{"action", "click"}, {"element", 2}},
+                                  {{"action", "press"}, {"key", "Escape"}}})),
+               {});
+  CHECK(stopped.output.starts_with(
+      "1 click done.\n2 click failed: that element is gone; look again.\n"
+      "The remaining steps did not run.\nNo change on the page.\nView ID: "));
+  // A batch whose first step fails did nothing.
+  ToolResult refused =
+      tool.run(batch(view(stopped.output),
+                     json::array({{{"action", "click"}, {"element", 2}},
+                                  {{"action", "press"}, {"key", "Escape"}}})),
+               {});
+  CHECK(!refused.Ok() &&
+        refused.output.ends_with("1 click failed: that element is gone; "
+                                 "look again. No step ran."));
+  std::ofstream(fake.data / "profile" / "dialog-on-click") << "confirm";
+  ToolResult asked =
+      tool.run(batch(view(stopped.output),
+                     json::array({{{"action", "click"}, {"element", 1}},
+                                  {{"action", "press"}, {"key", "Escape"}}})),
+               {});
+  CHECK(asked.output ==
+        "1 click done.\nThe remaining steps did not run.\nA confirm dialog is "
+        "open: \"Really confirm?\". press Enter accepts it, Escape dismisses "
+        "it.");
+  CHECK(tool.run({{"action", "press"}, {"key", "Enter"}}, {}).Ok());
+  // A short page with text needs no screenshot; one with none does.
+  std::ofstream(fake.data / "profile" / "page-text") << "Order confirmed.";
+  ToolResult confirmed = tool.run({{"action", "press"}, {"key", "Tab"}}, {});
+  CHECK(confirmed.output.find("Order confirmed.") != std::string::npos);
+  CHECK(confirmed.output.find("shows little as text") == std::string::npos);
+  std::ofstream(fake.data / "profile" / "page-text") << " \n ";
+  CHECK(tool.run({{"action", "press"}, {"key", "Tab"}}, {})
+            .output.find("This page shows little as text; observe returns a "
+                         "screenshot.") != std::string::npos);
+  // Each step is checked as its own call would be.
+  const auto issue = [&](const json& steps) {
+    const json call = batch("look", steps);
+    auto found = FindToolArgumentIssue(tool, call);
+    if (!found) found = tool.validate(call);
+    return found ? found->message : "";
+  };
+  CHECK(issue(json::array({{{"action", "press"}}})) ==
+        "step 1 (press) needs key");
+  CHECK(issue(json::array({{{"action", "press"}, {"key", "Tab"}},
+                           {{"action", "open"}}}))
+            .starts_with("`steps[1].action` is not an allowed value"));
+  CHECK(issue(json::array()).starts_with("`steps` has 0 items"));
+  CHECK(issue(json::array({{{"action", "click"}, {"element", 1}}})).empty());
+  json many = json::array();
+  for (int step = 0; step < 21; ++step) {
+    many.push_back({{"action", "press"}, {"key", "Tab"}});
+  }
+  CHECK(issue(many).starts_with("`steps` has 21 items"));
+  CHECK(tool.validate(batch("look", many))->message ==
+        "batch takes 1 to 20 steps");
+  CHECK(tool.validate(batch("look", json::array({{{"action", "batch"}}})))
+            ->message ==
+        "step 1 is \"batch\"; a step is click, type, press, scroll or drag");
+  CHECK(FindToolArgumentIssue(
+            tool,
+            {{"action", "batch"},
+             {"steps", json::array({{{"action", "press"}, {"key", "Tab"}}})}})
+            .has_value());
+  close(owner[1]);
+  service.join();
+  close(owner[0]);
+  // The steps after the one that failed, or opened a dialog, never ran.
+  std::ifstream log(fake.data / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json params = json::parse(line).value("params", json::object());
+    CHECK(params.value("key", "") != "Escape");
+    CHECK(params.value("accept", true));
+  }
+}
+
 TEST_CASE(TestBrowserPageMemory) {
   std::string page = "URL: https://a.test/\nElements:\n";
   for (int row = 1; row <= 40; ++row) {
@@ -1335,19 +1464,17 @@ TEST_CASE(TestBrowserPageMemory) {
   PageMemory memory;
   // The first result of a page is whole.
   CHECK(memory.Show("https://a.test/", page) == page);
-  // A small change on the same page shows only itself, placed.
+  // Small changes on the same page show only themselves, a `…` line between
+  // two that are apart.
   std::string changed = page;
   changed.replace(changed.find("row 7\""), 5, "seven");
-  const std::string diff = memory.Show("https://a.test/", changed);
-  CHECK(
-      diff.starts_with("[same page as the previous browser result; only the "
-                       "changed lines are shown (- old, + new)]\n"
-                       "URL: https://a.test/\n@@ -9,1 +9,1 @@\n"
-                       "-[7] link \"row 7\"\n+[7] link \"seven\"\n"));
-  CHECK(diff.size() < changed.size());
+  changed.replace(changed.find("row 30\""), 6, "thirty");
+  CHECK(memory.Show("https://a.test/", changed) ==
+        "Changed since the last result (- old, + new):\n"
+        "-[7] link \"row 7\"\n+[7] link \"seven\"\n…\n"
+        "-[30] link \"row 30\"\n+[30] link \"thirty\"");
   // It is compared with the page as it was shown, not with the diff.
-  CHECK(
-      memory.Show("https://a.test/", changed).ends_with("(nothing changed)\n"));
+  CHECK(memory.Show("https://a.test/", changed) == "No change on the page.");
   // Another address is another page.
   CHECK(memory.Show("https://b.test/", changed) == changed);
   // A result no shorter than the text is the text.
@@ -1357,7 +1484,7 @@ TEST_CASE(TestBrowserPageMemory) {
         "URL: https://b.test/\nDone\n");
   // A read is whole, and what the next result is compared with.
   CHECK(memory.Show("https://a.test/", page, /*diff=*/false) == page);
-  CHECK(memory.Show("https://a.test/", changed).starts_with("[same page"));
+  CHECK(memory.Show("https://a.test/", changed).starts_with("Changed since"));
   // After a tab switch, an error or a dialog the page is not the one seen.
   memory.Forget();
   CHECK(memory.Show("https://a.test/", changed) == changed);

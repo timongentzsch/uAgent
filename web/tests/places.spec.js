@@ -1,12 +1,14 @@
 // A workspace is µAgent's own place for conversations: listed apart from the
 // folders, under a name that can be changed, and removable with what is in it.
 // A place is a header over its rows, which fold away and are remembered.
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, savedConversation } from "./fixtures.js";
 
 test("a workspace is listed apart from folders, renamed and deleted", async ({
   page,
-  session,
+  host,
+  request,
 }) => {
+  const session = await savedConversation(host, request, "In the folder");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "New", exact: true }).click();
@@ -48,8 +50,9 @@ test("a workspace is listed apart from folders, renamed and deleted", async ({
 test("a place folds to its header with a count, remembered, and + starts a conversation in it", async ({
   page,
   host,
-  session,
+  request,
 }) => {
+  const session = await savedConversation(host, request, "In the folder");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#session=${session.id}`);
   const folders = page.getByRole("group", { name: "Folders" });
@@ -96,11 +99,12 @@ test("New conversation starts in the Scratch workspace, and a second joins it", 
   await page.goto(`/#session=${session.id}`);
   await online(page);
   const workspaces = page.getByRole("group", { name: "Workspaces" });
-  for (const count of [1, 2]) {
+  for (let started = 0; started < 2; started++) {
     const before = page.url();
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "Conversation" }).click();
-    await expect(workspaces.locator(".session")).toHaveCount(count);
+    // The one it left, still empty, is left out of the list.
+    await expect(workspaces.locator(".session")).toHaveCount(1);
     // The page has gone to it: typing before this reaches the one it left.
     await expect(page).not.toHaveURL(before);
     await expect(

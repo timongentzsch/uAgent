@@ -117,6 +117,31 @@ export async function saveHistory(
   return path;
 }
 
+// A saved conversation with one exchange, as the host lists it: the list
+// leaves out an empty one unless it is open.
+export async function savedConversation(host, request, title) {
+  const id = crypto.randomUUID();
+  await saveHistory(host, `saved-${id}.json`, {
+    id,
+    title,
+    turns: 1,
+    messages: [
+      { role: "user", content: title },
+      { role: "assistant", content: "Done" },
+    ],
+  });
+  let found;
+  await expect
+    .poll(async () => {
+      const response = await request.get("/api/sessions?refresh=1");
+      const { sessions } = await response.json();
+      found = sessions.find((item) => item.title === title);
+      return !!found;
+    })
+    .toBe(true);
+  return found;
+}
+
 // Opens the conversation menu's More view, with the menu already open.
 export const openMore = (page) =>
   page.getByRole("menuitem", { name: "More", exact: true }).click();

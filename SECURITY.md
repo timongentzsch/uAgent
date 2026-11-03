@@ -157,18 +157,6 @@ cookies.
 - Whatever a page shows after sign-in can enter model context. Use a profile
   that holds only the accounts the agent should reach.
 
-**Playwright** (`@playwright/cli` through an ordinary approved `run`
-command). Pin its npm version when reproducible or offline execution
-matters.
-
-- Playwright's isolated mode uses a separate profile.
-- CDP attach can inspect and control authenticated tabs after Chrome's
-  remote-debugging approval; close sensitive tabs or use isolated mode when
-  that access is unnecessary.
-- Playwright snapshots report form field values verbatim, including
-  autofilled passwords, card numbers and one-time codes. µAgent's redaction
-  covers its own transcripts, not page content a snapshot pulls into context.
-
 ## Sandboxing
 
 The OS confines the commands the agent runs (`run`, `scratch`) and the stdio

@@ -57,6 +57,7 @@ std::string SendSessionMail(SessionMail mail) {
   }
   json body = {{"text", std::move(mail.text)}};
   if (!mail.state.empty()) body["state"] = std::move(mail.state);
+  if (!mail.agent.is_null()) body["agent"] = std::move(mail.agent);
   Mail sent =
       MailFrom(mail.from_path, MailboxIdFor(mail.to_path), std::move(body));
   sent.id = std::move(mail.id);

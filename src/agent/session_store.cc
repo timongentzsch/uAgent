@@ -766,8 +766,7 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   // a completed deletion. Acquire ownership before changing any files.
   if (!draft_path.empty()) fs::remove(draft_path, ec);
   // What the session owns sits beside it: its siblings (assets, edits,
-  // journal, the lock). Its agents are conversations of
-  // their own and stay.
+  // journal, the lock).
   const fs::path own = CanonicalAccessPath(path);
   const std::string prefix = own.filename().string() + ".";
   std::vector<fs::path> siblings;

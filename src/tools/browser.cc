@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -48,6 +49,7 @@ constexpr Action kActions[] = {
     {"forward", true, "Going forward in", "Went forward in"},
     {"reload", true, "Reloading", "Reloaded"},
     {"drag", true, "Dragging in", "Dragged in"},
+    {"batch", true, "Taking steps in", "Took steps in"},
     {"console", false, "Reading the console of", "Read the console of"},
     {"network", false, "Checking the requests of", "Checked the requests of"},
     {"upload", true, "Uploading in", "Uploaded in"},
@@ -58,6 +60,36 @@ const Action* FindAction(const json& args) {
   const std::string name = JsonValue(args, "action", "");
   const auto* found = std::ranges::find(kActions, name, &Action::name);
   return found == std::end(kActions) ? nullptr : found;
+}
+
+// What a batch's steps may be, and how many it takes.
+constexpr std::string_view kStepActions[] = {"click", "type", "press", "scroll",
+                                             "drag"};
+constexpr size_t kBatchSteps = 20;
+
+// A batch's steps, each as the call of its own action would be: with the
+// batch's view_id and the rest of the call.
+std::vector<json> Steps(const json& args) {
+  std::vector<json> steps;
+  const json* given = JsonArray(args, "steps");
+  for (const json& step : given ? *given : json::array()) {
+    json single = args;
+    single.erase("steps");
+    if (step.is_object()) single.update(step);
+    steps.push_back(std::move(single));
+  }
+  return steps;
+}
+
+// The actions a batch takes, each once, in order of name.
+json StepActions(const json& args) {
+  std::vector<std::string> names;
+  for (const json& step : Steps(args)) {
+    names.push_back(JsonValue(step, "action", ""));
+  }
+  std::ranges::sort(names);
+  names.erase(std::ranges::unique(names).begin(), names.end());
+  return names;
 }
 
 // A page opened from a file travels to the browser inside one request.
@@ -232,9 +264,11 @@ json Subject(const json& args, Seen& seen) {
                ? json{{"call", args}, {"once", RandomToken(12)}}
                : json{{"call", args}, {"look", seen.view_id}};
   }
-  // An upload is approved for its file, never for any file.
+  // An upload is approved for its file, never for any file; a batch for the
+  // actions its steps take.
   json subject = {{"action", action}, {"origin", site}};
   if (action == "upload") subject["path"] = JsonValue(args, "path", "");
+  if (action == "batch") subject["actions"] = StepActions(args);
   return subject;
 }
 
@@ -253,21 +287,10 @@ void SawDialog(Seen& seen, const json& dialog) {
   seen.dialog = said;
 }
 
-// What the person, or the reviewer, approves: the whole action, what it acts
-// on and where.
-std::string Preview(const json& args, Seen& seen) {
+// What an action does and what it acts on, said for an approval; `seen`'s
+// mutex is held.
+std::string Described(const json& args, const Seen& seen) {
   const std::string action = JsonValue(args, "action", "");
-  if (action == "open") {
-    const std::string url = JsonValue(args, "url", "");
-    const std::string site = browser::Origin(url);
-    return url.empty()    ? "open the page file " + JsonValue(args, "path", "")
-           : site.empty() ? "open " + url
-                          : "open " + url +
-                                "\nRemembered, it covers opening any address "
-                                "on " +
-                                site + ", wherever it then leads.";
-  }
-  std::lock_guard lock(seen.mutex);
   // What an element number names: a row of the look the call names, never
   // one of another page; or a point.
   const auto place = [&](const char* number, const char* across,
@@ -313,17 +336,49 @@ std::string Preview(const json& args, Seen& seen) {
     said +=
         (action == "press" ? " " : " then press ") + JsonValue(args, "key", "");
   }
+  return said;
+}
+
+// What the person, or the reviewer, approves: the whole action, what it acts
+// on and where; for a batch, each step in order.
+std::string Preview(const json& args, Seen& seen) {
+  const std::string action = JsonValue(args, "action", "");
+  if (action == "open") {
+    const std::string url = JsonValue(args, "url", "");
+    const std::string site = browser::Origin(url);
+    return url.empty()    ? "open the page file " + JsonValue(args, "path", "")
+           : site.empty() ? "open " + url
+                          : "open " + url +
+                                "\nRemembered, it covers opening any address "
+                                "on " +
+                                site + ", wherever it then leads.";
+  }
+  std::lock_guard lock(seen.mutex);
+  std::string said = Described(args, seen), steps, covers = action;
+  bool presses = action == "press";
+  if (action == "batch") {
+    int number = 0;
+    for (const json& step : Steps(args)) {
+      steps += "\n" + std::to_string(++number) + ". " + Described(step, seen);
+    }
+    const char* separator = " of ";
+    for (const json& name : StepActions(args)) {
+      covers += separator + name.get<std::string>();
+      separator = ", ";
+      presses = presses || name == "press";
+    }
+  }
   if (!seen.dialog.empty()) {
     said += ", while " + seen.dialog +
-            (seen.answer.empty() || action != "press"
+            (seen.answer.empty() || !presses
                  ? ""
                  : " and its answer reads " + JsonDump(seen.answer));
   }
   const std::string site = action == "tabs" ? "" : browser::Origin(seen.url);
-  if (seen.url.empty()) return said + " on the current page";
-  return said + " on " + seen.url +
+  if (seen.url.empty()) return said + " on the current page" + steps;
+  return said + " on " + seen.url + steps +
          (site.empty() ? ""
-                       : "\nRemembered, it covers any browser " + action +
+                       : "\nRemembered, it covers any browser " + covers +
                              " on " + site + ".");
 }
 
@@ -357,13 +412,13 @@ ToolResult Reading(const json& read, const json& args, const std::string& done,
           : "Page text (from character " + std::to_string(offset) + " of " +
                 std::to_string(JsonValue(read, "chars", 0)) + ")";
   const std::string url = JsonValue(read, "url", "");
-  std::string result = done + BlockLine(read) + "URL: " + url +
-                       "\nTitle: " + JsonValue(read, "title", "") + "\n" +
-                       what + ":\n" + text +
-                       (links.empty() ? "" : "\nLinks:\n" + links);
+  const std::string body =
+      "URL: " + url + "\nTitle: " + JsonValue(read, "title", "") + "\n" + what +
+      ":\n" + text + (links.empty() ? "" : "\nLinks:\n" + links);
   // A read is the full page, and what later results are compared with.
   std::lock_guard lock(seen.mutex);
-  return ToolSuccess(seen.page.Show(url, result, /*diff=*/false));
+  return ToolSuccess(done + BlockLine(read) +
+                     seen.page.Show(url, body, /*diff=*/false));
 }
 
 // The current tab as text: what can be acted on, numbered, the page's text
@@ -435,22 +490,24 @@ ToolResult Observation(const BrowserAccess& access, const std::string& lead,
           : "";
   // A canvas, a chart or an image says nothing here: the picture does.
   const std::string sparse =
-      !look && elements.empty() && text.size() < 200
+      !look && elements.empty() &&
+              text.find_first_not_of(" \t\r\n") == std::string::npos
           ? "\nThis page shows little as text; observe returns a screenshot."
           : "";
+  // Only the page itself is compared with the last result: what was done
+  // and the look's name are new each time.
+  const std::string body =
+      "URL: " + JsonValue(*page, "url", "") +
+      "\nTitle: " + JsonValue(*page, "title", "") +
+      (elements.empty() ? "" : "\nElements:\n" + elements) + "\nPage text" +
+      more + ":\n" + text + sparse;
+  std::lock_guard lock(seen.mutex);
   attached.output = done + BlockLine(*page) + attached.output +
-                    (look ? "\n" : "") + "URL: " + JsonValue(*page, "url", "") +
-                    "\nTitle: " + JsonValue(*page, "title", "") +
-                    (elements.empty() ? "" : "\nElements:\n" + elements) +
-                    "\nPage text" + more + ":\n" + text + sparse +
+                    (look ? "\n" : "") + seen.page.Show(seen.url, body) +
                     "\nView ID: " + JsonValue(outcome, "view_id", "") + " (" +
                     std::to_string(JsonValue(outcome, "width", 0)) + "x" +
                     std::to_string(JsonValue(outcome, "height", 0)) +
                     " CSS pixels)";
-  {
-    std::lock_guard lock(seen.mutex);
-    attached.output = seen.page.Show(seen.url, attached.output);
-  }
   return attached;
 }
 
@@ -567,14 +624,21 @@ ToolResult Query(const BrowserAccess& access, const json& args,
                           : ToolSuccess(JsonDump(answer));
 }
 
-// The actions that change the page: do them, wait for the page to settle, and
-// return it.
-ToolResult Act(const BrowserAccess& access, const json& args,
-               const std::string& action, const ToolContext& context,
-               Seen& seen) {
-  // type may click its field first and press a key after: one call, in
-  // that order, stopping at the first that fails or opens a dialog, which
-  // must not take what was meant for the page.
+// What came of an action's ops: a line for each one done and what it left
+// (a file chooser held back), the op that failed and why, and whether one
+// opened a dialog.
+struct Performed {
+  std::string done, notes, op, error;
+  bool dialog = false;
+};
+
+// type may click its field first and press a key after: one action, in that
+// order, stopping at the first op that fails or opens a dialog, which must
+// not take what was meant for the page. Once anything is done (`begun`, or an
+// op of this action), an interruption stops what is left.
+Performed Perform(const BrowserAccess& access, const json& args,
+                  const std::string& action, const ToolContext& context,
+                  bool begun) {
   std::vector<std::string> ops = {action};
   if (action == "type") {
     if (args.contains("element") || args.contains("x")) {
@@ -582,35 +646,81 @@ ToolResult Act(const BrowserAccess& access, const json& args,
     }
     if (args.contains("key")) ops.emplace_back("press");
   }
-  std::string done;
-  bool whole = true;
+  Performed did;
   for (const std::string& op : ops) {
-    const json reply = !done.empty() && (AbortRequested() || context.Expired())
-                           ? json{{"error", "interrupted"}}
-                           : Ask(access, args, op);
-    const std::string error = JsonValue(reply, "error", "");
-    if (!error.empty()) {
-      if (done.empty()) {
-        std::lock_guard lock(seen.mutex);
-        seen.page.Forget();
-        return ToolFailure(ToolErrorCode::kRemoteError, error);
-      }
-      done += op + " not done: " + error + ".\n";
-      whole = false;
+    const json reply =
+        (begun || !did.done.empty()) && (AbortRequested() || context.Expired())
+            ? json{{"error", "interrupted"}}
+            : Ask(access, args, op);
+    did.error = JsonValue(reply, "error", "");
+    if (!did.error.empty()) {
+      did.op = op;
       break;
     }
-    done += op + " done.\n";
+    did.done += op + " done.\n";
     if (reply.contains("chooser")) {
-      done +=
+      did.notes +=
           "It opened a file chooser, held back: upload with this element and "
           "a path gives it a file.\n";
     }
     if (reply.contains("dialog")) {
-      whole = false;
+      did.dialog = true;
       break;
     }
   }
-  done += Settle(access, context) + std::exchange(access.news, "");
+  return did;
+}
+
+// batch: each step done as its own action would be, the page settling after
+// each, stopping at the first that fails or opens a dialog; then the page,
+// once.
+ToolResult Batch(const BrowserAccess& access, const json& args,
+                 const ToolContext& context, Seen& seen) {
+  const std::vector<json> steps = Steps(args);
+  std::string done;
+  for (size_t index = 0; index < steps.size(); ++index) {
+    const std::string action = JsonValue(steps[index], "action", "");
+    const std::string step = std::to_string(index + 1) + " " + action;
+    const Performed did =
+        Perform(access, steps[index], action, context, index > 0);
+    if (index == 0 && !did.error.empty() && did.done.empty()) {
+      std::lock_guard lock(seen.mutex);
+      seen.page.Forget();
+      return ToolFailure(ToolErrorCode::kRemoteError,
+                         step + " failed: " + did.error + ". No step ran.");
+    }
+    done += step +
+            (did.error.empty() ? " done.\n" : " failed: " + did.error + ".\n") +
+            did.notes + Settle(access, context) +
+            std::exchange(access.news, "");
+    if (!did.error.empty() || did.dialog) {
+      if (index + 1 < steps.size()) {
+        done += "The remaining steps did not run.\n";
+      }
+      break;
+    }
+  }
+  done.pop_back();
+  return Observation(access, done, context, /*look=*/false, seen);
+}
+
+// The actions that change the page: do them, wait for the page to settle, and
+// return it.
+ToolResult Act(const BrowserAccess& access, const json& args,
+               const std::string& action, const ToolContext& context,
+               Seen& seen) {
+  if (action == "batch") return Batch(access, args, context, seen);
+  const Performed did = Perform(access, args, action, context, false);
+  if (!did.error.empty() && did.done.empty()) {
+    std::lock_guard lock(seen.mutex);
+    seen.page.Forget();
+    return ToolFailure(ToolErrorCode::kRemoteError, did.error);
+  }
+  const bool whole = did.error.empty() && !did.dialog;
+  std::string done =
+      did.done + did.notes +
+      (did.error.empty() ? "" : did.op + " not done: " + did.error + ".\n") +
+      Settle(access, context) + std::exchange(access.news, "");
   // open may read the page it opened, once that has settled.
   if (action == "open" && whole &&
       (args.contains("find") || args.contains("offset"))) {
@@ -649,7 +759,11 @@ constexpr char kBrowserDescription[] =
     "one call: type with element and view_id clicks it first, replace=true "
     "overwrites what it holds, and key is pressed after. type sets a list "
     "to the option whose label it gives, and a date, time or color field "
-    "to the value the page receives, such as 2027-03-12 or 19:30. A result "
+    "to the value the page receives, such as 2027-03-12 or 19:30. batch "
+    "runs steps (click, type, press, scroll, drag) in order on the page of "
+    "view_id, stops at the first failure and returns the page once: fill a "
+    "form or walk a checkout in one call; its element numbers hold for "
+    "every step, x and y only for the first. A result "
     "for the page you just saw shows only its changed lines (- old, + new); "
     "read returns the full page. read returns "
     "more: page text from offset (in "
@@ -687,7 +801,7 @@ constexpr char kBrowserDescription[] =
 json BrowserParameters() {
   json names = json::array();
   for (const Action& action : kActions) names.push_back(action.name);
-  return {
+  json parameters = {
       {"type", "object"},
       {"properties",
        {{"action", {{"type", "string"}, {"enum", std::move(names)}}},
@@ -720,6 +834,81 @@ json BrowserParameters() {
         {"reason", {{"type", "string"}}}}},
       {"required", {"action"}},
       {"additionalProperties", false}};
+  json& properties = parameters["properties"];
+  // A step takes its action's own arguments, as the call would.
+  json step = {{"action", {{"type", "string"}, {"enum", kStepActions}}}};
+  for (const char* name :
+       {"element", "text", "key", "replace", "button", "count", "x", "y",
+        "delta_y", "to_element", "to_x", "to_y"}) {
+    step[name] = properties[name];
+    step[name].erase("description");
+  }
+  properties["steps"] = {{"type", "array"},
+                         {"minItems", 1},
+                         {"maxItems", kBatchSteps},
+                         {"items",
+                          {{"type", "object"},
+                           {"properties", std::move(step)},
+                           {"required", {"action"}},
+                           {"additionalProperties", false}}}};
+  return parameters;
+}
+
+// What the schema cannot say. open takes one address, a URL or a file, never
+// the profile this browser itself runs on; a batch's steps are the actions
+// that act on a look, each with what `needs` says its own call requires.
+std::optional<ToolArgumentIssue> Validate(const json& args,
+                                          const ActionRequires& needs) {
+  const std::string action = JsonValue(args, "action", "");
+  if (action == "open" && JsonValue(args, "url", "").empty() ==
+                              JsonValue(args, "path", "").empty()) {
+    return ArgumentIssue("browser.open", "open takes either url or path",
+                         "url");
+  }
+  // A page is sent only a file of this conversation's folder.
+  if (action == "upload" &&
+      (JsonValue(args, "element", 0) < 1 ||
+       !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
+                   CanonicalCwd()))) {
+    return ArgumentIssue("browser.upload",
+                         "upload takes an element and the path of a file in "
+                         "this conversation's folder",
+                         "path");
+  }
+  if (action == "batch") {
+    const std::vector<json> steps = Steps(args);
+    if (steps.empty() || steps.size() > kBatchSteps) {
+      return ArgumentIssue(
+          "browser.batch",
+          "batch takes 1 to " + std::to_string(kBatchSteps) + " steps",
+          "steps");
+    }
+    for (size_t index = 0; index < steps.size(); ++index) {
+      const std::string name = JsonValue(steps[index], "action", "");
+      const std::string step = "step " + std::to_string(index + 1);
+      if (std::ranges::find(kStepActions, std::string_view(name)) ==
+          std::end(kStepActions)) {
+        return ArgumentIssue(
+            "browser.batch",
+            step + " is " + JsonDump(name) +
+                "; a step is click, type, press, scroll or drag",
+            "steps");
+      }
+      const auto row = std::ranges::find_if(
+          needs.actions,
+          [&](const auto& entry) { return entry.first == name; });
+      if (row != needs.actions.end()) {
+        for (const std::string& field : row->second) {
+          if (JsonValue(steps[index], field.c_str(), "").empty()) {
+            return ArgumentIssue("browser.batch",
+                                 step + " (" + name + ") needs " + field,
+                                 "steps");
+          }
+        }
+      }
+    }
+  }
+  return RefuseHidden(args);
 }
 }  // namespace
 
@@ -742,22 +931,18 @@ std::vector<std::string_view> SplitLines(std::string_view text) {
 // How many line pairs a diff may compare: past this the full text is shown.
 constexpr size_t kDiffCells = 4'000'000;
 
-// The hunk `@@ -a,b +c,d @@` of a zero-context diff and its lines.
-void AppendHunk(std::string& out, size_t old_start, size_t new_start,
-                const std::vector<std::string_view>& removed,
+// A hunk of a zero-context diff: its lines, after a `…` line that parts it
+// from the one before.
+void AppendHunk(std::string& out, const std::vector<std::string_view>& removed,
                 const std::vector<std::string_view>& added) {
-  const auto range = [](size_t start, size_t length) {
-    return std::to_string(length == 0 ? start : start + 1) + "," +
-           std::to_string(length);
-  };
-  out += "@@ -" + range(old_start, removed.size()) + " +" +
-         range(new_start, added.size()) + " @@\n";
+  if (!out.empty()) out += "…\n";
   for (std::string_view line : removed) out += "-" + std::string(line) + "\n";
   for (std::string_view line : added) out += "+" + std::string(line) + "\n";
 }
 
 // The changed lines between two texts, by a longest common subsequence of
-// their lines; empty when the texts are too large to compare.
+// their lines, each ending in a newline; empty when the texts are too large
+// to compare.
 std::string ChangedLines(std::string_view before, std::string_view after,
                          bool& comparable) {
   const std::vector<std::string_view> a = SplitLines(before);
@@ -784,8 +969,6 @@ std::string ChangedLines(std::string_view before, std::string_view after,
       ++j;
       continue;
     }
-    const size_t old_start = i;
-    const size_t new_start = j;
     std::vector<std::string_view> removed;
     std::vector<std::string_view> added;
     while ((i < a.size() || j < b.size()) &&
@@ -797,7 +980,7 @@ std::string ChangedLines(std::string_view before, std::string_view after,
         added.push_back(b[j++]);
       }
     }
-    AppendHunk(out, old_start, new_start, removed, added);
+    AppendHunk(out, removed, added);
   }
   return out;
 }
@@ -812,10 +995,9 @@ std::string PageMemory::Show(const std::string& url, const std::string& current,
     bool comparable = false;
     const std::string changes = ChangedLines(text_, current, comparable);
     std::string candidate =
-        "[same page as the previous browser result; only the changed lines "
-        "are shown (- old, + new)]\nURL: " +
-        url + "\n" +
-        (comparable && changes.empty() ? "(nothing changed)\n" : changes);
+        changes.empty() ? "No change on the page."
+                        : "Changed since the last result (- old, + new):\n" +
+                              changes.substr(0, changes.size() - 1);
     if (comparable && candidate.size() < current.size()) {
       shown = std::move(candidate);
     }
@@ -837,7 +1019,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
                            {"press", {"key"}},
                            {"scroll", {"view_id"}},
                            {"drag", {"view_id"}},
-                           {"upload", {"element", "view_id", "path"}}}};
+                           {"upload", {"element", "view_id", "path"}},
+                           {"batch", {"view_id", "steps"}}}};
   // Switching tabs changes what the user sees too; an unknown action is
   // taken for one that acts.
   tool.mutates = [](const json& args) {
@@ -853,26 +1036,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   tool.approval_preview = [seen](const json& args) {
     return Preview(args, *seen);
   };
-  // open takes one address, a URL or a file, never the profile this browser
-  // itself runs on.
-  tool.validate = [](const json& args) -> std::optional<ToolArgumentIssue> {
-    const std::string action = JsonValue(args, "action", "");
-    if (action == "open" && JsonValue(args, "url", "").empty() ==
-                                JsonValue(args, "path", "").empty()) {
-      return ArgumentIssue("browser.open", "open takes either url or path",
-                           "url");
-    }
-    // A page is sent only a file of this conversation's folder.
-    if (action == "upload" &&
-        (JsonValue(args, "element", 0) < 1 ||
-         !PathWithin(CanonicalAccessPath(JsonValue(args, "path", "")),
-                     CanonicalCwd()))) {
-      return ArgumentIssue("browser.upload",
-                           "upload takes an element and the path of a file in "
-                           "this conversation's folder",
-                           "path");
-    }
-    return RefuseHidden(args);
+  tool.validate = [needs = tool.action_requires](const json& args) {
+    return Validate(args, needs);
   };
   tool.capabilities = Capability(ToolCapability::kInspect) |
                       Capability(ToolCapability::kMutate) |
@@ -956,16 +1121,21 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     if (!row || !row->acts) return told(Query(access, args, action, *seen));
     // Text typed while a prompt already shows, into no element, is its
     // staged answer; a type whose own click opened it typed nothing.
-    bool answers = false;
+    std::optional<std::string> answer;
     {
       std::lock_guard lock(seen->mutex);
-      answers = action == "type" && !seen->dialog.empty() &&
-                !args.contains("element") && !args.contains("x");
+      for (const json& step :
+           action == "batch" ? Steps(args) : std::vector<json>{args}) {
+        if (JsonValue(step, "action", "") == "type" && !seen->dialog.empty() &&
+            !step.contains("element") && !step.contains("x")) {
+          answer = JsonValue(step, "text", "");
+        }
+      }
     }
     ToolResult result = told(Act(access, args, action, context, *seen));
-    if (answers && result.Ok()) {
+    if (answer && result.Ok()) {
       std::lock_guard lock(seen->mutex);
-      seen->answer = JsonValue(args, "text", "");
+      seen->answer = *answer;
     }
     return result;
   };

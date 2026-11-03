@@ -198,9 +198,9 @@ class Agent {
   // has no kinds, so every message wakes. True when anything was taken.
   bool DeliverMail();
   // The same, taken as a turn: an idle session starts one on it, a working
-  // one reads it at its next step. A turn it starts sends mail with `hops`.
-  void Arrive(const std::string& text, const std::string& mail = "",
-              int hops = 0);
+  // one reads it at its next step. `origin` says who wrote it
+  // (Steering::Message); a turn it starts sends mail with its `hops`.
+  void Arrive(const std::string& text, json origin);
   // The person's message, or with an `origin` another's (Arrive), written
   // into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id,

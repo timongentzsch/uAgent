@@ -4,6 +4,13 @@
 
 ### Changes
 
+- **One browser call can run several steps.** `browser` takes `action: batch` with up to 20 ordered `steps` (click, type, press, scroll, drag) on the page of one `view_id`. It stops at the first step that fails or meets a dialog and returns the page once. A model that took one round per form field now fills a form in one call.
+- **Browser results are leaner and show values.** An action's result compares only the page itself with the last one: the "done" lines and the view id sit outside the comparison, line numbers are gone, and an unchanged page reads "No change on the page." A filled field shows the start of what it holds, except a password, a one-time code or a card field.
+- **The playwright-cli browser skill is gone.** The agent's browser is the web host's. Where the host has no browser service (macOS outside the container, or Linux without Chrome and TigerVNC), the agent reads pages with `web_fetch`.
+- **A turn says what started it.** A turn started by an agent's report, a message or finished background work is recorded as such, not as the person's. In the web, an agent's report reads "Agent "title" finished" with a button that opens it, and finished background work reads as one line instead of raw harness text.
+- **Deleting a conversation deletes its agents.** Its agents and theirs go with it, unless an agent's worktree holds work that would be lost; then nothing is deleted and the agent is named.
+- **Empty conversations stay out of the list** until something is said in them, unless one is open or working.
+- **`run` says a background result starts the next turn.** Models told people they had no way to report back and held turns open on waits; `run` now says to end the turn and how to check back later.
 - **OpenRouter is a provider like any other.** Every model is reached through a provider and named `provider/model`. The `openrouter.apiKey`, `endpoint.baseUrl` and `endpoint.apiKey` settings and the `OPENROUTER_API_KEY`, `UAGENT_BASE_URL` and `UAGENT_API_KEY` variables are gone, as is the endpoint a start fell back to without one. Move a saved OpenRouter key into a provider: `"openrouter": {"base_url": "https://openrouter.ai/api/v1", "api_key": "$OPENROUTER_API_KEY"}`, which `uagent setup` now writes. What a known host such as openrouter.ai supports still comes from its address, whatever the provider is called.
 - **Providers in Settings start from a preset.** Add a provider starts from OpenRouter, OpenAI, Anthropic or Ollama; with none yet, the list offers them. Each row says where its key comes from, and the model picker lists models under their provider and names the providers that sent no list.
 - **The agent can schedule tasks.** A `schedule` tool lists, saves, pauses, resumes, deletes and runs scheduled tasks. A task it saves runs in the conversation's folder on its model, with no wider approval mode than the conversation's. Before, an agent asked to schedule something had no way to, and argued against it.
@@ -18,6 +25,10 @@
 
 ### Fixes
 
+- **`run` takes an empty `host` and a short `yield_ms`.** A model that fills in every optional argument, as GPT-6.1-Sol does, sent `"host": ""` and `"yield_ms": 1`, and `run` refused both, so in a web conversation it could not start a command at all. An empty host now counts as none, and a short yield is raised to the shortest one, as it already was where it is used.
+- **A wait on background work shows as a row.** An `activity` wait or poll was hidden, so a turn spent waiting looked like thinking.
+- **"1 turn", and a separator in the turn footer.** The composer said "1 turns", and a turn's changed files ran into its token count.
+- **The browser no longer asks for a screenshot of a page that has text.** A short page, such as an order confirmation, got the hint meant for pages with no text.
 - **No flag warning across the agent's browser.** Chrome 154 shows "You are using an unsupported command-line flag: --disable-blink-features=AutomationControlled" in a bar over every page, in the live view and the agent's screenshots. The managed policy now turns that warning off (`CommandLineFlagSecurityWarningsEnabled`); reinstall it with `install.sh` or the command in [Browser](docs/BROWSER.md).
 - **Agents started with `items` and without `wait` run in the background.** `items` always waited for every agent, so a parent that asked for background agents sat idle until they finished and then did the rest of the work itself. Without `wait` the call now returns at once, and each agent reports when it is done.
 - **Memory extraction no longer leaves conversations behind.** Each background extraction was saved as a conversation of its own, titled "This is bounded background memory extraction…", in the space of the conversation it read.

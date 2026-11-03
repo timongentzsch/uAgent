@@ -1,6 +1,6 @@
 // On a touch screen a list row draws its ⋯ only while it is the open one;
 // a long press opens any row's menu.
-import { test, expect, online } from "./fixtures.js";
+import { test, expect, online, savedConversation } from "./fixtures.js";
 
 const LONG_PRESS_MS = 450;
 
@@ -14,13 +14,8 @@ test.beforeEach(({ browserName }) =>
 );
 
 // Two conversations in the drawer: the open one and another.
-async function twoRows(page, command, host, session) {
-  const { session: other } = await command("create", { cwd: host.project });
-  await command("rename", {
-    session_id: other.id,
-    generation: other.generation || "",
-    title: "Other row",
-  });
+async function twoRows(page, host, session) {
+  await savedConversation(host, page.request, "Other row");
   await page.clock.install();
   await page.goto(`/#session=${session.id}`);
   await online(page);
@@ -45,11 +40,10 @@ async function twoRows(page, command, host, session) {
 
 test("only the open row draws its ⋯, and every row's stays reachable", async ({
   page,
-  command,
   host,
   session,
 }) => {
-  const { menuOf } = await twoRows(page, command, host, session);
+  const { menuOf } = await twoRows(page, host, session);
   const open = page.locator(".sidebar .session-row:has([aria-current])");
   await expect(open).toHaveCount(1);
   await expect(open.locator(".action-menu")).toHaveCSS("opacity", "1");
@@ -64,11 +58,10 @@ test("only the open row draws its ⋯, and every row's stays reachable", async (
 
 test("a long press opens the row's menu and releasing does not open the conversation", async ({
   page,
-  command,
   host,
   session,
 }) => {
-  const { touch, row } = await twoRows(page, command, host, session);
+  const { touch, row } = await twoRows(page, host, session);
   await touch("touchStart");
   await page.clock.runFor(LONG_PRESS_MS + 50);
   const menu = page.getByRole("menu", { name: "Conversation menu" });
@@ -84,11 +77,10 @@ test("a long press opens the row's menu and releasing does not open the conversa
 
 test("a touch that moves is a scroll, not a long press", async ({
   page,
-  command,
   host,
   session,
 }) => {
-  const { touch, at } = await twoRows(page, command, host, session);
+  const { touch, at } = await twoRows(page, host, session);
   await touch("touchStart");
   await touch("touchMove", { x: at.x, y: at.y + 40 });
   await page.clock.runFor(LONG_PRESS_MS * 2);
@@ -98,11 +90,10 @@ test("a touch that moves is a scroll, not a long press", async ({
 
 test("a short tap opens the conversation and no menu", async ({
   page,
-  command,
   host,
   session,
 }) => {
-  const { row } = await twoRows(page, command, host, session);
+  const { row } = await twoRows(page, host, session);
   await row("Other row").locator(".session").tap();
   await expect(page).not.toHaveURL(new RegExp(`#session=${session.id}`));
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -110,11 +101,10 @@ test("a short tap opens the conversation and no menu", async ({
 
 test("a place's header opens its own menu, and shows no system menu", async ({
   page,
-  command,
   host,
   session,
 }) => {
-  const { drawer, touch } = await twoRows(page, command, host, session);
+  const { drawer, touch } = await twoRows(page, host, session);
   const head = drawer.locator(".place-head").first();
   const name = head.locator("h2 button");
   const box = await name.boundingBox();

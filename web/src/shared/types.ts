@@ -164,6 +164,13 @@ interface MemoryNote {
   key: string;
   automatic: boolean;
 }
+// The agent a report came from: its conversation, its title, and why its
+// turn ended.
+interface AgentFacts {
+  session: string;
+  title: string;
+  outcome: string;
+}
 // One node of the transcript tree as the host sends it (include/agent/
 // node.h): `parent` links it into the tree. A node with a headline is a row
 // that opens to its body and children; the others are messages and a turn's
@@ -179,9 +186,12 @@ export interface Node {
   headline?: { verb: string; target: string };
   result?: ResultFacts;
   body?: { kind: BodyKind; text: string; truncated?: boolean; tail?: string };
-  // A message's author: you (or mail), or the agent.
+  // A message's author: you (or what woke the conversation), or the agent.
   role?: "user" | "assistant";
-  origin?: string;
+  // Files a call read, or what wrote a message in your place: an agent's
+  // report, finished background work, or another conversation's message.
+  origin?: "tool" | "agent" | "activity" | "message";
+  agent?: AgentFacts;
   request_id?: string;
   incoming?: number;
   streaming?: boolean;
@@ -375,8 +385,10 @@ export interface Session {
   activities?: Activity[];
   guidance?: number;
   error?: string;
-  // Its spend, and how far its to-do list is (the item in progress).
+  // Its spend, its turns, and how far its to-do list is (the item in
+  // progress).
   cost?: number;
+  turns?: number;
   todo?: { done: number; total: number; current: string } | null;
 }
 // A folder at a glance, from the host: what its conversations spent today

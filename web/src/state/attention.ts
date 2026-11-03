@@ -29,3 +29,18 @@ export function statusOf(item: Session, online: boolean): SessionState {
   if (item.error) return "failed";
   return isRunning(item, online) ? "working" : "idle";
 }
+
+// What the list shows: a conversation nobody has said anything in is left
+// out, unless it is the open one or something is happening in it; an agent
+// too.
+export const shownSessions = (
+  sessions: Session[],
+  selected: string,
+  online = true,
+) =>
+  sessions.filter(
+    (item) =>
+      item.turns !== 0 ||
+      item.id === selected ||
+      statusOf(item, online) !== "idle",
+  );

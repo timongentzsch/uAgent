@@ -587,6 +587,13 @@ TEST_CASE(TestRootCommands) {
   CHECK(run->validate({{"command", "ls"}, {"root", true}, {"detach", true}})
             .has_value());
   CHECK(!run->validate({{"command", "ls"}, {"root", true}, {"host", "a@b"}}));
+  // Every optional argument filled in, as some models send them: an empty
+  // host is no host, and a short yield is raised to the shortest one.
+  CHECK(!run->validate({{"command", "ls"},
+                        {"root", false},
+                        {"host", ""},
+                        {"detach", true},
+                        {"yield_ms", 1}}));
   std::filesystem::remove_all(bin);
 }
 

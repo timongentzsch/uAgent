@@ -4,7 +4,6 @@
 !.env.example
 .config
 .uagent/
-.playwright-cli/
 .venv/
 .ruff_cache/
 __pycache__/

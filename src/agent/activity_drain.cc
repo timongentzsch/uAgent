@@ -316,7 +316,8 @@ bool Agent::DrainActivities(bool start_turn) {
     changed = true;
   }
   if (delivered && start_turn) {
-    Arrive(HarnessNote("activity finished", "Its result is above."));
+    Arrive(HarnessNote("activity finished", "Its result is above."),
+           {{"kind", "activity"}});
   }
   for (const EndedCommand& ended : processes_.TakeStopped()) {
     changed |= FinishCommandRow(ended);

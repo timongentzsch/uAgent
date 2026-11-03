@@ -96,10 +96,11 @@ test("a conversation's agents sit beneath it, the finished ones folded", async (
   const { session: other } = await command("create", { cwd: host.project });
   const { session: done } = await command("create", { cwd: host.project });
   // Only a model starts agents; these two are drawn as the conversation's,
-  // one at work and one finished.
+  // one at work and one finished. Each has a turn, or the list leaves it out.
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
     const catalogue = await response.json();
+    for (const item of catalogue.sessions) item.turns = 1;
     for (const item of catalogue.sessions)
       if (item.id === other.id || item.id === done.id) {
         item.parent = session.id;

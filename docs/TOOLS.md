@@ -121,7 +121,10 @@ interactive input; a PTY keeps merged output, writable input, interruption
 and resize. `detach=true` keeps the command running after the session ends,
 with a rotating log. A command left in the background keeps its call's row
 running until it ends; that row then takes its exit, time and last output,
-whether the result arrives on its own or through a wait.
+whether the result arrives on its own or through a wait. A result that
+arrives while the conversation is idle starts its next turn, so `run` tells
+the agent to end its turn rather than wait, and to check back later by
+starting `sleep N` the same way.
 
 Every `activity` call names one `operation`:
 
@@ -189,8 +192,9 @@ conversation before a person speaks there.
 `agents` lists this conversation's agents; reads any conversation of the
 folder (`part` `rows`, `report`, `diff`, or `search` with `query`), quoted as
 data; and stops, closes or deletes an agent of its own. Deleting asks a
-person and removes the agent's worktree only when nothing in it would be
-lost.
+person and takes the agent's own agents with it, but only when nothing in
+any of their worktrees would be lost. Deleting a conversation in the web
+app does the same for its agents.
 
 ## Web
 
@@ -234,7 +238,7 @@ Nothing in it names a tool, provider or model; an MCP or unknown tool reads
 
 Each call is one row, and the work line is the only fold. It counts what it
 holds: "Worked 6 steps · edited 1 file · 1 error". A tool declares the calls that only look at earlier work
-`routine` (an `activity` wait, poll or list, an `agents` list): their rows
+`routine` (an `activity` list, an `agents` list): their rows
 show at full detail only.
 
 The terminal and the web draw the same tree. The detail level,

@@ -261,9 +261,6 @@ retry one or switch it.
 - **Old terminal logs pile up.** `~/.uagent/terminals/logs` is not pruned by
   age because live detached terminals write there. A crash between creating a
   log and writing its record leaves a `pending-*` file to delete by hand.
-- **A Playwright attach fails.** It needs a live, user-approved Chrome
-  debugging endpoint; `playwright-cli list` shows the session and `detach`
-  leaves Chrome running.
 
 [Persistence](PERSISTENCE.md) covers local state and removal;
 [Memory, skills and scheduled tasks](MANAGEMENT.md) covers the library.

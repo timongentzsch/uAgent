@@ -1,4 +1,4 @@
-import { test, expect, headerAction } from "./fixtures.js";
+import { test, expect, headerAction, savedConversation } from "./fixtures.js";
 
 // The system back gesture closes the topmost layer, as in a native app, and
 // layers closed from the interface leave no entry for back to reopen.
@@ -237,10 +237,10 @@ test.describe("phone drawer", () => {
 test("a conversation opened as a closed layer's entry leaves stays open", async ({
   page,
   host,
-  session,
-  command,
+  request,
 }) => {
-  const { session: other } = await command("create", { cwd: host.project });
+  const session = await savedConversation(host, request, "First");
+  const other = await savedConversation(host, request, "Other");
   // The step lands when the test lets it, so it can act before it does.
   await page.addInitScript(() => {
     const go = history.go.bind(history);

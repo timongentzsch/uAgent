@@ -22,6 +22,18 @@
 .message.mail {
   color: var(--muted);
 }
+/* What woke the conversation, as one line beside the time: an agent's
+   report, with its answer under it, or finished background work. */
+.message-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+  min-height: var(--row);
+}
+.message-event + * {
+  margin-top: var(--gap);
+}
 /* A message of yours starts with its text, and its time and menu end the
    first line; what else it holds runs under both. */
 .message-line {

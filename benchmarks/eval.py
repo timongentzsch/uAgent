@@ -404,8 +404,6 @@ def run_case(
             "failed_calls": metrics["failed_calls"],
             "failed_call_recoveries": metrics["failed_call_recoveries"],
             "unrecovered_failed_calls": metrics["unrecovered_failed_calls"],
-            "browser_commands": metrics["browser_commands"],
-            "browser_snapshot_chars": metrics["browser_snapshot_chars"],
             "checks": checks,
             "score": sum(1 for value in checks.values() if value),
             "checks_total": len(checks),
@@ -435,7 +433,6 @@ def run_case(
                     (min(1.0, target_rounds / rounds) if outcome else 0.0), 4
                 ),
                 "cumulative_context_bytes": metrics["cumulative_estimated_context_bytes"],
-                "snapshot_chars": metrics["browser_snapshot_chars"],
                 "recovered_failures": metrics["failed_call_recoveries"],
             }
         return result
@@ -501,10 +498,6 @@ def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodie
             checks[name] = sum(metrics["issue_codes"].values()) >= int(value)
         elif name == "argument_issue_codes":
             checks[name] = set(as_list(value)) <= set(metrics["issue_codes"])
-        elif name == "min_browser_commands":
-            checks[name] = metrics["browser_commands"] >= int(value)
-        elif name == "min_browser_snapshot_chars":
-            checks[name] = metrics["browser_snapshot_chars"] >= int(value)
         elif name == "recovery_markers":
             positions = [metrics["tool_result_text"].find(part) for part in as_list(value)]
             checks[name] = all(position >= 0 for position in positions) and positions == sorted(
@@ -662,46 +655,6 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
 
 
 def eval_self_test() -> int:
-    browser = trace_metrics(
-        [
-            {
-                "event": "tool_call",
-                "data": {
-                    "occurrence_id": "response-1:first",
-                    "name": "run",
-                    "arguments": {"command": "playwright-cli first"},
-                },
-            },
-            {
-                "event": "tool_result",
-                "data": {
-                    "occurrence_id": "response-1:first",
-                    "name": "run",
-                    "status": "error",
-                    "result_chars": 7,
-                },
-            },
-            {
-                "event": "tool_call",
-                "data": {
-                    "occurrence_id": "response-2:retry",
-                    "name": "run",
-                    "arguments": {"command": "playwright-cli recover"},
-                },
-            },
-            {
-                "event": "tool_result",
-                "data": {
-                    "occurrence_id": "response-2:retry",
-                    "name": "run",
-                    "status": "success",
-                    "result_chars": 11,
-                },
-            },
-        ]
-    )
-    if browser["browser_commands"] != 2 or browser["browser_snapshot_chars"] != 18:
-        raise AssertionError("browser calls are not correlated by occurrence identity")
     for invalid in (
         {"tool_result": 999},
         {"no_tools": 1},

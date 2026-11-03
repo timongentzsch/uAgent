@@ -50,6 +50,7 @@ export function TurnFooter({
         </Button>
       )}
       <span class="turn-summary">
+        {files.length > 0 && "· "}
         {summary.usage_reported !== false && (
           <span>{count(tokens(summary.usage))} tokens · </span>
         )}

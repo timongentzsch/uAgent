@@ -20,10 +20,11 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask);
 // two texts, when that is shorter than the text itself.
 class PageMemory {
  public:
-  // The text to show for `current`, the result for the page at `url`. The
-  // full text unless the previous result was for the same page and the diff
-  // is shorter; with `diff` false (a read) always the full text. Either way
-  // `current` becomes what the conversation has seen.
+  // The text to show for `current`, the page at `url` as a result shows it
+  // (address, title, elements and text). The full text unless the previous
+  // result was for the same page and the diff is shorter; with `diff` false
+  // (a read) always the full text. Either way `current` becomes what the
+  // conversation has seen.
   std::string Show(const std::string& url, const std::string& current,
                    bool diff = true);
   // The page is no longer the one seen: a navigation by other means, another

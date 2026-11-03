@@ -1,4 +1,11 @@
-import { test, expect, leaveEnd, newFolder, openMore } from "./fixtures.js";
+import {
+  test,
+  expect,
+  leaveEnd,
+  newFolder,
+  openMore,
+  savedConversation,
+} from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
   test.use({
@@ -15,33 +22,20 @@ test.describe("mobile navigation and commands", () => {
     await page.goto("/");
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
-    const call = async (kind, session, extra = {}) => {
-      const response = await page.request.post("/api/command", {
-        headers: { Origin: fixture.origin },
-        data: {
-          v: 2,
-          request_id: crypto.randomUUID().replaceAll("-", ""),
-          kind,
-          ...(session
-            ? { session_id: session.id, generation: session.generation || "" }
-            : {}),
-          ...extra,
-        },
-      });
-      const result = await response.json();
-      expect(response.ok(), JSON.stringify(result)).toBe(true);
-      return result;
-    };
-    const make = async (title) => {
-      const { session } = await call("create", null, { cwd: fixture.project });
-      await call("rename", session, { title });
-      await call("activate", session);
-      return session.id;
-    };
     const firstTitle = `Navigation A ${testInfo.project.name}`;
     const secondTitle = `Navigation B ${testInfo.project.name}`;
-    const first = await make(firstTitle),
-      second = await make(secondTitle);
+    // Both have a turn already: the list leaves out an empty one that is not
+    // open.
+    const { id: first } = await savedConversation(
+        fixture,
+        page.request,
+        firstTitle,
+      ),
+      { id: second } = await savedConversation(
+        fixture,
+        page.request,
+        secondTitle,
+      );
     let documents = 0,
       streams = 0;
     page.on("request", (request) => {

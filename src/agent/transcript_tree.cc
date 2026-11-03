@@ -357,7 +357,8 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     node = MakeNode(key, starts ? "" : turn, starts ? "turn" : "message");
     if (!starts) node["role"] = "user";
     Keep(node, metadata,
-         {"request_id", "files", "origin", "deliveries", "http", "incoming"});
+         {"request_id", "files", "origin", "agent", "deliveries", "http",
+          "incoming"});
   }
   if (JsonValue(metadata, "origin", "") != "tool") {
     SetBody(node, entry.kind == "assistant" ? "markdown" : "text",

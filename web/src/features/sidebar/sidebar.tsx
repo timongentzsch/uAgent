@@ -36,7 +36,7 @@ import { plural } from "../../shared/quantities.ts";
 import { statusOf, type SessionState } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../../shared/escalations.tsx";
-import { collapsed, unfolded, useFolding } from "./folding.ts";
+import { collapsed, useFolding } from "./folding.ts";
 import { PinItem } from "./pins.tsx";
 import "./sidebar.css";
 
@@ -62,10 +62,10 @@ const STATES: Partial<
   working: { label: "Working" },
 };
 
-// A conversation and the agents it started, which are listed beneath it:
-// those at work (or waiting on you) one by one, the finished ones folded
-// into one line until it is opened.
-type Entry = { item: Session; working: Entry[]; finished: Entry[] };
+// A conversation and its agents at work (or waiting on you), listed beneath
+// it. A finished agent leaves the list: its report in the conversation opens
+// it, and search finds it.
+type Entry = { item: Session; agents: Entry[] };
 
 // The list's places in its order, newest first, each with its
 // conversations. An agent whose parent is not listed is an ordinary row. A
@@ -84,17 +84,15 @@ function groupSessions(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
   const listed = new Set(sorted.map((item) => item.id));
-  const entry = (item: Session): Entry => {
-    const agents = sorted
-      .filter((agent) => agent.parent === item.id)
-      .map(entry);
-    const idle = (agent: Entry) => statusOf(agent.item, online) === "idle";
-    return {
-      item,
-      working: agents.filter((agent) => !idle(agent)),
-      finished: agents.filter(idle),
-    };
-  };
+  const entry = (item: Session): Entry => ({
+    item,
+    agents: sorted
+      .filter(
+        (agent) =>
+          agent.parent === item.id && statusOf(agent, online) !== "idle",
+      )
+      .map(entry),
+  });
   for (const item of sorted)
     if (!item.parent || !listed.has(item.parent))
       place(folderOf(item)).push(entry(item));
@@ -102,12 +100,10 @@ function groupSessions(
   return groups;
 }
 
-// The rows a conversation shows, in order: itself, its working agents, and
-// its finished ones once unfolded.
-const rowsOf = ({ item, working, finished }: Entry): Session[] => [
+// The rows a conversation shows, in order: itself, then its agents at work.
+const rowsOf = ({ item, agents }: Entry): Session[] => [
   item,
-  ...working.flatMap(rowsOf),
-  ...(unfolded.has(item.id) ? finished.flatMap(rowsOf) : []),
+  ...agents.flatMap(rowsOf),
 ];
 
 // The pinned conversations, folders and terminals in pin order, then the
@@ -369,37 +365,21 @@ function SidebarView({
       menu={menu}
     />
   );
-  // A conversation's rows: itself, then its agents beneath it.
-  const conversation = (entry: Entry) => {
-    const { item, working, finished } = entry;
-    const open = unfolded.has(item.id);
-    return (
-      <Fragment key={item.id}>
-        {row(item)}
-        {(working.length > 0 || finished.length > 0) && (
-          <div
-            class="place-agents"
-            role="group"
-            aria-label={`Agents of ${item.title || "this conversation"}`}
-          >
-            {working.map(conversation)}
-            {finished.length > 0 && (
-              <Button
-                variant="quiet"
-                class="agents-fold entry small"
-                aria-expanded={open}
-                onClick={() => unfolded.set(item.id, !open)}
-              >
-                {open ? <ChevronDown /> : <ChevronRight />}
-                {plural(finished.length, "agent")}
-              </Button>
-            )}
-            {open && finished.map(conversation)}
-          </div>
-        )}
-      </Fragment>
-    );
-  };
+  // A conversation's rows: itself, then its agents at work beneath it.
+  const conversation = ({ item, agents }: Entry) => (
+    <Fragment key={item.id}>
+      {row(item)}
+      {agents.length > 0 && (
+        <div
+          class="place-agents"
+          role="group"
+          aria-label={`Agents of ${item.title || "this conversation"}`}
+        >
+          {agents.map(conversation)}
+        </div>
+      )}
+    </Fragment>
+  );
   const terminalRow = (terminal: TerminalInfo) => (
     <TerminalRow
       key={terminal.id}
@@ -415,11 +395,7 @@ function SidebarView({
     const name = space?.name || folderName(cwd);
     const folded = collapsed.has(cwd);
     const conversations = entries.flatMap(function all(entry): Session[] {
-      return [
-        entry.item,
-        ...entry.working.flatMap(all),
-        ...entry.finished.flatMap(all),
-      ];
+      return [entry.item, ...entry.agents.flatMap(all)];
     });
     const shells = (terminals || []).filter(
       (item) =>

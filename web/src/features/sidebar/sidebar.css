@@ -76,20 +76,17 @@
 .place-body {
   padding-left: var(--indent);
 }
-/* A conversation's agents, beneath it; the finished ones fold into one
-   line. */
+/* A conversation's agents at work, beneath it on a thin line: little
+   indent, so their titles keep their width, and no agent mark, since the
+   line already says whose they are. */
 .place-agents {
-  padding-left: var(--indent);
-}
-.agents-fold {
-  width: 100%;
-  justify-content: flex-start;
-  gap: var(--space-2);
+  margin-left: var(--space-6);
+  padding-left: var(--space-2);
+  border-left: var(--border);
   color: var(--muted);
 }
-.agents-fold > svg {
-  width: var(--icon-s);
-  height: var(--icon-s);
+.place-agents .thread-mark {
+  display: none;
 }
 /* Every folder's waiting decisions, above the list. */
 .needs-you > button {

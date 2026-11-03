@@ -22,15 +22,9 @@ function remembered(name: string) {
 
 // Places folded to their header.
 export const collapsed = remembered("collapsed");
-// Conversations whose finished agents are unfolded, by id.
-export const unfolded = remembered("agents");
 
-// Redraws the caller when either set changes.
+// Redraws the caller when the set changes.
 export function useFolding() {
   const [, redraw] = useState(0);
-  useEffect(() => {
-    const changed = () => redraw((count) => count + 1);
-    const stops = [collapsed.subscribe(changed), unfolded.subscribe(changed)];
-    return () => stops.forEach((stop) => stop());
-  }, []);
+  useEffect(() => collapsed.subscribe(() => redraw((count) => count + 1)), []);
 }

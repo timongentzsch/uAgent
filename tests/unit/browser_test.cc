@@ -255,6 +255,32 @@ struct FakeBrowser {
   ScopedEnv configured, search, display{"DISPLAY"}, authority{"XAUTHORITY"};
 };
 
+// A fake browser with the browser service running on it, until Stop or the
+// end of the test.
+struct ServedBrowser : FakeBrowser {
+  explicit ServedBrowser(const std::string& name) : FakeBrowser(name) {
+    CHECK(pipe(owner) == 0);
+    // Chrome must not inherit the end whose closing stops the service.
+    CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
+    service = std::thread([this] { browser::ServiceMain(owner[0]); });
+    CHECK(
+        WaitUntil([] { return std::filesystem::exists(browser::SocketPath()); },
+                  BudgetMs(5000)));
+  }
+  ~ServedBrowser() { Stop(); }
+  ServedBrowser(const ServedBrowser&) = delete;
+  ServedBrowser& operator=(const ServedBrowser&) = delete;
+  // Ends the service, as its owner closing its end of the pipe does.
+  void Stop() {
+    if (!service.joinable()) return;
+    close(owner[1]);
+    service.join();
+    close(owner[0]);
+  }
+  int owner[2] = {-1, -1};
+  std::thread service;
+};
+
 // A runtime in front of the fake, and the one conversation that acts on it.
 struct FakeRuntime : FakeBrowser {
   using FakeBrowser::FakeBrowser;
@@ -1042,13 +1068,7 @@ TEST_CASE(TestBrowserRequestSurvivesASignal) {
 // is only read. The service runs here, in front of the stand-in Chrome.
 TEST_CASE(TestBrowserToolQueue) {
   namespace fs = std::filesystem;
-  FakeBrowser fake("bq");
-  int owner[2];
-  CHECK(pipe(owner) == 0);
-  CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
-  std::thread service([&] { browser::ServiceMain(owner[0]); });
-  CHECK(WaitUntil([] { return fs::exists(browser::SocketPath()); },
-                  BudgetMs(5000)));
+  ServedBrowser fake("bq");
   constexpr const char* kSessionA = "aaaaaaaaaaaaaaaa";
   constexpr const char* kSessionB = "bbbbbbbbbbbbbbbb";
   const auto acquire = [&] {
@@ -1108,21 +1128,11 @@ TEST_CASE(TestBrowserToolQueue) {
   }
   CHECK(navigations == 1);
   CHECK(browser::Request({{"op", "status"}})["queue"].empty());
-  close(owner[1]);
-  service.join();
-  close(owner[0]);
 }
 
 TEST_CASE(TestBrowserToolSteps) {
   namespace fs = std::filesystem;
-  FakeBrowser fake("tool");
-  int owner[2];
-  CHECK(pipe(owner) == 0);
-  // Chrome must not inherit the end whose closing stops the service.
-  CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
-  std::thread service([&] { browser::ServiceMain(owner[0]); });
-  CHECK(WaitUntil([] { return fs::exists(browser::SocketPath()); },
-                  BudgetMs(5000)));
+  ServedBrowser fake("tool");
   const Tool tool = BrowserTool("cccccccccccccccccccccccccccccccc",
                                 [](const std::string&, const std::string&,
                                    bool*) { return std::string(); });
@@ -1291,9 +1301,7 @@ TEST_CASE(TestBrowserToolSteps) {
   ToolResult held = tool.run(press, approved);
   CHECK(!held.Ok() &&
         held.output.find("where this was approved") != std::string::npos);
-  close(owner[1]);
-  service.join();
-  close(owner[0]);
+  fake.Stop();
   std::vector<std::string> order;
   bool blank = false, written = false;
   std::ifstream log(fake.data / "profile" / "cdp.jsonl");
@@ -1333,13 +1341,7 @@ TEST_CASE(TestBrowserToolSteps) {
 // after one that fails or opens a dialog.
 TEST_CASE(TestBrowserToolBatch) {
   namespace fs = std::filesystem;
-  FakeBrowser fake("batch");
-  int owner[2];
-  CHECK(pipe(owner) == 0);
-  CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
-  std::thread service([&] { browser::ServiceMain(owner[0]); });
-  CHECK(WaitUntil([] { return fs::exists(browser::SocketPath()); },
-                  BudgetMs(5000)));
+  ServedBrowser fake("batch");
   const Tool tool = BrowserTool("dddddddddddddddddddddddddddddddd",
                                 [](const std::string&, const std::string&,
                                    bool*) { return std::string(); });
@@ -1443,9 +1445,7 @@ TEST_CASE(TestBrowserToolBatch) {
             {{"action", "batch"},
              {"steps", json::array({{{"action", "press"}, {"key", "Tab"}}})}})
             .has_value());
-  close(owner[1]);
-  service.join();
-  close(owner[0]);
+  fake.Stop();
   // The steps after the one that failed, or opened a dialog, never ran.
   std::ifstream log(fake.data / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {

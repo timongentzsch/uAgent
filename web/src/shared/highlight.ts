@@ -18,6 +18,7 @@ import rust from "highlight.js/lib/languages/rust";
 import dockerfile from "highlight.js/lib/languages/dockerfile";
 import cmake from "highlight.js/lib/languages/cmake";
 import {
+  dropOldest,
   maxFileHighlightChars,
   maxHighlightCacheEntries,
   maxHighlightChars,
@@ -56,9 +57,7 @@ function highlightBlock(text: string, language: string) {
   }
   const html = hljs.highlight(text, { language, ignoreIllegals: true }).value;
   highlighted.set(key, html);
-  const oldest = highlighted.keys().next();
-  if (highlighted.size > maxHighlightCacheEntries && !oldest.done)
-    highlighted.delete(oldest.value);
+  dropOldest(highlighted, maxHighlightCacheEntries);
   return html;
 }
 export function install(markdown: InstanceType<typeof MarkdownIt>) {

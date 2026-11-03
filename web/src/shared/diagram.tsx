@@ -3,6 +3,7 @@ import mermaid from "mermaid";
 import { Button, CodeCopy, Modal } from "./ui.tsx";
 import { useResource } from "./use-resource.ts";
 import {
+  dropOldest,
   maxDiagramCacheEntries,
   maxDiagramEdges,
   maxDiagramSourceChars,
@@ -69,8 +70,7 @@ function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
     const rendered = { svg, ...diagramSize(svg) };
     if (svg.length < maxDiagramSvgChars) {
       cache.set(key, rendered);
-      while (cache.size > maxDiagramCacheEntries)
-        cache.delete(cache.keys().next().value!);
+      dropOldest(cache, maxDiagramCacheEntries);
     }
     return rendered;
   });

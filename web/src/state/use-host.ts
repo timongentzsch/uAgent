@@ -34,6 +34,7 @@ import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   catalogueSaveDelayMs,
   draftSaveDelayMs,
+  dropOldest,
   maxLocalRequests,
   reconnectBaseDelayMs,
   reconnectGraceMs,
@@ -761,10 +762,7 @@ export function useHost(
   );
   const correlate = useCallback((requestId: string) => {
     localRequests.current.add(requestId);
-    if (localRequests.current.size > maxLocalRequests)
-      localRequests.current.delete(
-        localRequests.current.values().next().value!,
-      );
+    dropOldest(localRequests.current, maxLocalRequests);
   }, []);
   function reset() {
     lifetime.current.abort();

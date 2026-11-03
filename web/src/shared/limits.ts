@@ -1,5 +1,17 @@
 // Fixed browser memory and rendering policies. Runtime configurable native
 // limits live in the C++ config registry; these bounds protect local UI state.
+
+// Forgets the oldest-inserted entries of a Map or Set beyond `max`.
+export function dropOldest<K>(
+  entries: { size: number; keys(): Iterable<K>; delete(key: K): unknown },
+  max: number,
+) {
+  for (const key of entries.keys()) {
+    if (entries.size <= max) return;
+    entries.delete(key);
+  }
+}
+
 export const maxLocalRequests = 256;
 export const maxAttentionReceipts = 256;
 export const maxHttpExchanges = 64;

@@ -64,7 +64,7 @@ export function safeStorage(get: () => Storage | undefined): Storage {
   };
 }
 
-export const storage = safeStorage(() => globalThis.localStorage);
+const storage = safeStorage(() => globalThis.localStorage);
 export const tabStorage = safeStorage(() => globalThis.sessionStorage);
 
 // A value this browser keeps under `key`: read, written and watched in one

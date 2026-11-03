@@ -501,24 +501,6 @@ def has_message(messages, role, content):
     )
 
 
-class Concurrency:
-    """Counts what runs at once inside `with`; `most` is the peak."""
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.now = 0
-        self.most = 0
-
-    def __enter__(self):
-        with self._lock:
-            self.now += 1
-            self.most = max(self.most, self.now)
-
-    def __exit__(self, *_):
-        with self._lock:
-            self.now -= 1
-
-
 def tool_calls(calls, usage=None):
     # `run` requires a description; a test that is about one passes its own.
     def sent(name, arguments):

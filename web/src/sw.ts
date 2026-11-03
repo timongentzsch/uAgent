@@ -24,7 +24,7 @@ import {
   matchPrecache,
 } from "workbox-precaching";
 import { registerRoute, NavigationRoute } from "workbox-routing";
-import { maxAttentionReceipts } from "./shared/limits.ts";
+import { dropOldest, maxAttentionReceipts } from "./shared/limits.ts";
 // Exact build-manifest URLs only. API, SSE, uploads, credentials and drafts
 // never enter a cache; mutations never enter an offline queue.
 precacheAndRoute(self.__WB_MANIFEST);
@@ -125,8 +125,7 @@ self.addEventListener("message", (event) => {
     event.waitUntil(cacheRenderers(event.data.paths));
   if (event.data?.type === "ATTENTION" && !shown.has(event.data.id)) {
     shown.add(event.data.id);
-    if (shown.size > maxAttentionReceipts)
-      shown.delete(shown.values().next().value!);
+    dropOldest(shown, maxAttentionReceipts);
     event.waitUntil(attention(event.data));
   }
 });

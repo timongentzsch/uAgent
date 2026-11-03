@@ -323,7 +323,7 @@ export interface AskAnswer {
   other: string;
   attachment_id?: string;
 }
-export interface Permissions {
+interface Permissions {
   mode: string;
   default: string;
   effective?: string;
@@ -590,7 +590,7 @@ export interface BodyPage {
   next: number;
   exchange?: Exchange;
 }
-export interface Model {
+interface Model {
   value: string;
   label: string;
   name?: string;

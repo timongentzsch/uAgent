@@ -46,6 +46,7 @@ import { useNarrowColumn } from "../../shared/layout.ts";
 import { SessionSummary } from "../../shared/session-summary.tsx";
 import Decision from "../../shared/decision.tsx";
 import {
+  dropOldest,
   maxRecalledPrompts,
   maxRecalledPromptSessions,
   stopGuardMs,
@@ -219,8 +220,7 @@ function Composer({
             session.id,
             [...past, draft.text].slice(-maxRecalledPrompts),
           );
-          if (sentPrompts.size > maxRecalledPromptSessions)
-            sentPrompts.delete(sentPrompts.keys().next().value!);
+          dropOldest(sentPrompts, maxRecalledPromptSessions);
         }
       }
       recalled.current = -1;

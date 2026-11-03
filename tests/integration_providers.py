@@ -473,6 +473,29 @@ def test_auto_permission_without_decision_endpoint_asks(root, home, *, binary):
         assert_true(not target.exists(), target)
 
 
+def search_env(home, model_server, search_server, **extra):
+    """The environment that routes web_search to `search_server`, the model to `model_server`."""
+    env = base_env(home, model_server.url)
+    env.update(
+        {
+            "UAGENT_WEB_SEARCH_BACKEND": "auto",
+            "UAGENT_PROVIDERS": json.dumps(
+                {
+                    "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
+                    "search": {
+                        "base_url": search_server.url,
+                        "api_key": "search-key",
+                        "supports": OPENROUTER_SUPPORTS,
+                    },
+                }
+            ),
+            "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
+            **extra,
+        }
+    )
+    return env
+
+
 def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
     citation = {
         "type": "url_citation",
@@ -513,23 +536,7 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
                 finish,
             ]
         ) as model_server:
-            env = base_env(home, model_server.url)
-            env.update(
-                {
-                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                    "UAGENT_PROVIDERS": json.dumps(
-                        {
-                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
-                            "search": {
-                                "base_url": search_server.url,
-                                "api_key": "search-key",
-                                "supports": OPENROUTER_SUPPORTS,
-                            },
-                        }
-                    ),
-                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
-                }
-            )
+            env = search_env(home, model_server, search_server)
             result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
             envelope = json.loads(result.stdout)
             assert_true(result.returncode == 0, (result.stderr, envelope))
@@ -564,23 +571,8 @@ def test_web_search_retries_respect_turn_deadline(root, home, *, binary):
         with Server(
             [tool_call("web_search", {"queries": ["deadline probe"]}), finish]
         ) as model_server:
-            env = base_env(home, model_server.url)
-            env.update(
-                {
-                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                    "UAGENT_PROVIDERS": json.dumps(
-                        {
-                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
-                            "search": {
-                                "base_url": search_server.url,
-                                "api_key": "search-key",
-                                "supports": OPENROUTER_SUPPORTS,
-                            },
-                        }
-                    ),
-                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
-                    "UAGENT_MAX_TURN_SECONDS": str(int(budget(2))),
-                }
+            env = search_env(
+                home, model_server, search_server, UAGENT_MAX_TURN_SECONDS=str(int(budget(2)))
             )
             started = time.monotonic()
             result = run(root, env, "--yolo", "-p", "search", timeout=8, binary=binary)
@@ -612,23 +604,8 @@ def test_web_search_slow_response_respects_turn_deadline(root, home, *, binary):
         with Server(
             [tool_call("web_search", {"queries": ["deadline probe"]}), finish]
         ) as model_server:
-            env = base_env(home, model_server.url)
-            env.update(
-                {
-                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                    "UAGENT_PROVIDERS": json.dumps(
-                        {
-                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
-                            "search": {
-                                "base_url": search_server.url,
-                                "api_key": "search-key",
-                                "supports": OPENROUTER_SUPPORTS,
-                            },
-                        }
-                    ),
-                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
-                    "UAGENT_MAX_TURN_SECONDS": str(int(budget(4))),
-                }
+            env = search_env(
+                home, model_server, search_server, UAGENT_MAX_TURN_SECONDS=str(int(budget(4)))
             )
             started = time.monotonic()
             result = run(root, env, "--yolo", "-p", "search", timeout=8, binary=binary)
@@ -1172,23 +1149,7 @@ def test_escape_during_a_web_search_stops_the_turn(root, home, *, binary):
         with Server(
             [tool_call("web_search", {"queries": ["slow"]}), event({"content": "kept going"})]
         ) as model_server:
-            env = base_env(home, model_server.url)
-            env.update(
-                {
-                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                    "UAGENT_PROVIDERS": json.dumps(
-                        {
-                            "test": {"base_url": model_server.url, "supports": OPENROUTER_SUPPORTS},
-                            "search": {
-                                "base_url": search_server.url,
-                                "api_key": "search-key",
-                                "supports": OPENROUTER_SUPPORTS,
-                            },
-                        }
-                    ),
-                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
-                }
-            )
+            env = search_env(home, model_server, search_server)
             try:
                 status, output = run_pty(
                     root,

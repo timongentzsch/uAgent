@@ -1,7 +1,7 @@
 import { stored, tabStorage } from "../shared/storage.ts";
 // Where each transcript was left: following its end, or a message (and the
 // paragraph inside it) with its offset. Kept in browser storage for this tab.
-import { maxTranscriptBookmarks } from "../shared/limits.ts";
+import { dropOldest, maxTranscriptBookmarks } from "../shared/limits.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 
 export type Bookmark = {
@@ -29,7 +29,6 @@ export const bookmarks = kept.read();
 export function storeBookmark(key: string, value: Bookmark) {
   bookmarks.delete(key);
   bookmarks.set(key, value);
-  while (bookmarks.size > maxTranscriptBookmarks)
-    bookmarks.delete(bookmarks.keys().next().value!);
+  dropOldest(bookmarks, maxTranscriptBookmarks);
   kept.write(bookmarks);
 }

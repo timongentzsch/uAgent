@@ -306,6 +306,16 @@ ToolResult StartAgents(const Api& api,
                              "little to start agents with");
     }
   }
+  // Agents not waited on start now or not at all: nothing would start the
+  // rest once this call returns.
+  const bool wait = JsonValue(a, "wait", true);
+  if (!wait && std::cmp_greater(briefs.size(), free)) {
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       std::to_string(free) + " of " +
+                           std::to_string(briefs.size()) +
+                           " agents can start now; start fewer, or wait "
+                           "for all");
+  }
   Batch batch{.own = own, .launch = launch, .briefs = std::move(briefs)};
   std::vector<Child>& rows = batch.rows;
   for (size_t index = 0; items && index < rows.size(); ++index) {
@@ -313,16 +323,26 @@ ToolResult StartAgents(const Api& api,
   }
   while (batch.next < rows.size() && batch.running < free) batch.StartNext();
   ToolResult result;
-  if (!items && !JsonValue(a, "wait", true)) {
+  if (!wait) {
     if (batch.running == 0) return Unavailable(rows[0].answer);
-    result = ToolSuccess(JsonDump(
-        {{"id", rows[0].id},
-         {"state", "working"},
-         // Said where it applies: waiting costs nothing, polling does.
-         {"next",
-          "It reports when its turn ends, and that report starts your next "
-          "turn. Unless other work is waiting, end this turn with one line "
-          "saying what you started."}}));
+    // Said where it applies: waiting costs nothing, polling does.
+    json started = {
+        {"next", std::string(items ? "Each" : "It") +
+                     " reports when its turn ends, and that report starts "
+                     "your next turn. Unless other work is waiting, end this "
+                     "turn with one line saying what you started."}};
+    if (items) {
+      started["agents"] = json::array();
+      for (const Child& row : rows) {
+        json one = {{"id", row.id}, {"item", row.item}, {"state", row.state}};
+        if (!row.answer.empty()) one["answer"] = row.answer;
+        started["agents"].push_back(std::move(one));
+      }
+    } else {
+      started["id"] = rows[0].id;
+      started["state"] = "working";
+    }
+    result = ToolSuccess(JsonDump(started));
   } else {
     Wait(batch, context);
     json waited = json::array();
@@ -565,7 +585,8 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model) {
       "worktree edits a fresh git worktree, folder edits this folder. With "
       "wait (the default) its answer is this call's result; without, its "
       "report starts your next turn. items starts one agent per item, the "
-      "item appended to the brief, and waits for all. One agent per "
+      "item appended to the brief; with wait, the result holds all their "
+      "answers. One agent per "
       "independent part; keep dependent steps in one.",
       json::parse(R"json({"type":"object","properties":{
         "brief":{"type":"string","minLength":1},

@@ -170,9 +170,12 @@ turn ends, and a message starts it again.
   working. Without `wait`, the agent's report (its answer, up to 6,000
   characters) arrives as mail and starts the parent's next turn.
 - `items` (up to 24) starts one agent per item, the item appended to the
-  brief, and adds `item` to each row.
-- A conversation has at most `agents.max` (8) agents at work; items beyond
-  the free slots start as slots free. Agents start agents down to
+  brief, and adds `item` to each row. Without `wait` the call returns
+  `{agents: [{id, item, state}]}` at once and each report arrives as its own
+  mail.
+- A conversation has at most `agents.max` (8) agents at work; with `wait`,
+  items beyond the free slots start as slots free, and without it a call
+  with more items than free slots starts none. Agents start agents down to
   `agents.depth` (2) levels, and start no MCP servers.
 
 A headless run waits while its agents owe it a report, except one waiting on

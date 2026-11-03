@@ -210,6 +210,51 @@ def test_items_start_one_agent_each_within_agents_max(root, home, *, binary):
         assert_true(len(agent_files(home)) == 3, agent_files(home))
 
 
+def test_items_not_waited_for_start_at_once_and_report_later(root, home, *, binary):
+    def route(_, body):
+        if brief := brief_of(body):
+            return event({"content": "did " + brief.rsplit("Item: ", 1)[1]})
+        text = text_of(body)
+        if text.count('" finished (completed)]') == 2:
+            return event({"content": "heard " + " ".join(sorted(re.findall(r"did \w", text)))})
+        if not results_of(body):
+            return tool_call(
+                "agent_start", {"brief": "BRIEF part", "items": ["a", "b"], "wait": False}
+            )
+        return event({"content": "started two"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "-p", "fan out", timeout=30, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        started = json.loads(
+            next(
+                results_of(body)[0]
+                for _, body in server.requests
+                if results_of(body) and not brief_of(body)
+            )
+        )
+        assert_true(
+            [(a["item"], a["state"]) for a in started["agents"]]
+            == [("a", "working"), ("b", "working")],
+            started,
+        )
+        assert_true(result.stdout.strip() == "heard did a did b", result.stdout)
+    # Not waited for, they start now or not at all.
+    with Server(
+        [
+            tool_call("agent_start", {"brief": "BRIEF x", "items": ["a", "b", "c"], "wait": False}),
+            event({"content": "ok"}),
+        ]
+    ) as s:
+        env = base_env(home, s.url)
+        env["UAGENT_AGENTS_MAX"] = "2"
+        result = run(root, env, "-p", "too many", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        refused = results_of(s.requests[-1][1])[0]
+        assert_true("2 of 3 agents can start now" in refused, refused)
+
+
 def ask_then(decision, *, path="out.txt"):
     """A parent whose agent wants to write a file and asks it first; the
     parent answers with `decision` for the agent and interaction it names."""

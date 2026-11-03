@@ -17,6 +17,7 @@
 
 ### Fixes
 
+- **Agents started with `items` and without `wait` run in the background.** `items` always waited for every agent, so a parent that asked for background agents sat idle until they finished and then did the rest of the work itself. Without `wait` the call now returns at once, and each agent reports when it is done.
 - **Memory extraction no longer leaves conversations behind.** Each background extraction was saved as a conversation of its own, titled "This is bounded background memory extraction…", in the space of the conversation it read.
 - **The find box keeps focus while you type.** When a message held more matches than it showed, such as a word in a link's address, Find clicked the message's actions button to open it; the menu then took the focus.
 - **A long title no longer matches every search.** Search matched a name by its letters in order anywhere, so a long conversation title turned up for most words and crowded out the conversations that hold them. Letters spread wider than twice the query no longer match; an abbreviation such as "plt prb" still finds "Palette probe".

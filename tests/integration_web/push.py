@@ -33,10 +33,6 @@ def p256_public_key():
     return base64.urlsafe_b64encode(der[-65:]).rstrip(b"=").decode()
 
 
-# A push record is the 86-byte aes128gcm header, the payload, one padding
-# byte and a 16-byte tag: the capture file shows the payload's size, not its
-# text, which only the device's key opens.
-PUSH_RECORD_OVERHEAD = 86 + 1 + 16
 TITLE = "Fix the parser"
 
 

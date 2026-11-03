@@ -32,7 +32,6 @@ SESSION_UNITS = (
     # The view reducer builds the `node` patches the host publishes.
     "src/agent/view_reducer.cc",
 )
-WEB_STATE = ("web/src/state", "web/src/app")
 # Frame handlers live in the host-data layer; the app shell only issues
 # operations (act/command) that share some spellings on another plane.
 WEB_HANDLERS = ("web/src/state",)
@@ -43,7 +42,7 @@ WEB_ONLY_TYPES = {"RawOptions"}
 BUILT_PREFIXES = ("side_",)
 
 # Frames the browser consumes: every member needs a native producer in the
-# session units and a handler literal under WEB_STATE.
+# session units and a handler literal under web/src/state or web/src/app.
 BROWSER_FRAMES = frozenset(
     {
         "activated",

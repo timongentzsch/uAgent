@@ -178,7 +178,9 @@ std::string DeleteConversation(const std::string& path,
   const auto self = std::ranges::find_if(all, [&](const SessionInfo& info) {
     return SessionIdFor(info.path) == ids.front();
   });
-  doomed.push_back(self != all.end() ? *self : SessionInfo{.path = path});
+  SessionInfo own;
+  own.path = path;
+  doomed.push_back(self != all.end() ? *self : own);
   // Every worktree is looked at before anything goes, so a refusal leaves
   // the whole tree as it was.
   for (const SessionInfo& info : doomed) {

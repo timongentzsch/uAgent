@@ -1,3 +1,4 @@
+import http.client
 import json
 import signal
 import threading
@@ -517,33 +518,37 @@ def test_web_stopped_background_command_ends_its_row(root, home, *, binary):
             assert_true(row["result"]["word"].startswith("stopped"), row)
 
 
-def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
-    import http.client
+def push_log(client, listing, kind, field):
+    """The `field` of each `kind` frame the host pushes from now on, in order."""
+    connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+    connection.request(
+        "GET",
+        f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+        headers={"Cookie": client.cookie},
+    )
+    response = connection.getresponse()
+    assert_true(response.status == 200, response.status)
+    pushed = []
 
+    def read_events():
+        while line := response.readline():
+            if line.startswith(b"data: "):
+                frame = json.loads(line[6:])
+                if frame.get("kind") == kind:
+                    pushed.append(frame[field])
+
+    threading.Thread(target=read_events, daemon=True).start()
+    return pushed
+
+
+def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             listing = client.json("/api/sessions")[1]
             # The level a browser starts at comes from the host.
             assert_true(listing["detail"] == "default", listing["detail"])
-            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
-            connection.request(
-                "GET",
-                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-                headers={"Cookie": client.cookie},
-            )
-            response = connection.getresponse()
-            assert_true(response.status == 200, response.status)
-            pushed = []
-
-            def read_events():
-                while line := response.readline():
-                    if line.startswith(b"data: "):
-                        frame = json.loads(line[6:])
-                        if frame.get("kind") == "settings.changed":
-                            pushed.append(frame["level"])
-
-            threading.Thread(target=read_events, daemon=True).start()
+            pushed = push_log(client, listing, "settings.changed", "level")
             client.command(
                 "config",
                 operation="apply",
@@ -559,32 +564,13 @@ def test_web_detail_is_one_level_pushed_to_every_browser(root, home, *, binary):
 
 
 def test_web_pins_are_one_list_for_every_browser_and_survive_a_restart(root, home, *, binary):
-    import http.client
-
     pins = [{"kind": "folder", "id": str(root)}, {"kind": "session", "id": "a" * 16}]
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, host, _):
             client.pair(code)
             listing = client.json("/api/sessions")[1]
             assert_true(listing["pins"] == [], listing["pins"])
-            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
-            connection.request(
-                "GET",
-                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-                headers={"Cookie": client.cookie},
-            )
-            response = connection.getresponse()
-            assert_true(response.status == 200, response.status)
-            pushed = []
-
-            def read_events():
-                while line := response.readline():
-                    if line.startswith(b"data: "):
-                        frame = json.loads(line[6:])
-                        if frame.get("kind") == "pins.changed":
-                            pushed.append(frame["pins"])
-
-            threading.Thread(target=read_events, daemon=True).start()
+            pushed = push_log(client, listing, "pins.changed", "pins")
             result = client.command("pins", pins=pins)["result"]
             assert_true(result["pins"] == pins, result)
             wait_until(lambda: pushed == [pins], f"pins were not pushed: {pushed}")

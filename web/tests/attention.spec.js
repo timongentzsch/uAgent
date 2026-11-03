@@ -87,7 +87,7 @@ test("a notification's link opens the session at its decision", async ({
     .toBe(`#session=${other.id}`);
 });
 
-test("a conversation's agents sit beneath it, the finished ones folded", async ({
+test("a conversation's agents at work sit beneath it, finished ones leave the list", async ({
   page,
   host,
   session,
@@ -97,9 +97,11 @@ test("a conversation's agents sit beneath it, the finished ones folded", async (
   const { session: done } = await command("create", { cwd: host.project });
   // Only a model starts agents; these two are drawn as the conversation's,
   // one at work and one finished. Each has a turn, or the list leaves it out.
+  let listed = 0;
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
     const catalogue = await response.json();
+    listed = catalogue.sessions.length;
     for (const item of catalogue.sessions) item.turns = 1;
     for (const item of catalogue.sessions)
       if (item.id === other.id || item.id === done.id) {
@@ -112,8 +114,7 @@ test("a conversation's agents sit beneath it, the finished ones folded", async (
   const agents = page.getByRole("group", { name: /^Agents of / });
   await expect(agents.locator(".session")).toHaveCount(1);
   await expect(agents.locator(".session-state .status-led")).toHaveCount(1);
-  const fold = agents.getByRole("button", { name: "1 agent" });
-  await expect(fold).toHaveAttribute("aria-expanded", "false");
-  await fold.click();
-  await expect(agents.locator(".session")).toHaveCount(2);
+  // The finished one has no row, and nothing folds it away.
+  await expect(page.getByRole("button", { name: /agent$/ })).toHaveCount(0);
+  await expect(page.locator(".sidebar .session")).toHaveCount(listed - 1);
 });

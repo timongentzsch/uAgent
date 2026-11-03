@@ -92,29 +92,38 @@ async function control(page) {
   };
 }
 
-test("a look numbers what can be acted on and never shows a field's value", async ({
+test("a look numbers what can be acted on and shows a field's value unless it is secret", async ({
   page,
 }) => {
   await page.goto("about:blank");
   await page.setContent(`<title>Sign in</title>
     <label>Name <input id=name value="Ada Lovelace"></label>
+    <textarea aria-label="Note">Say "hi"
+      twice</textarea>
     <input type=password value="hunter2" placeholder="Password">
+    <input autocomplete="one-time-code" value="914027" aria-label="Code">
+    <input autocomplete="shipping cc-number" value="4111111111111111" aria-label="Card">
+    <input data-uagent-secret value="revealed" aria-label="Shown">
     <label><input type=checkbox checked> Remember me</label>
     <select aria-label="Region"><option>North<option selected>South</select>
     <button>Go</button><button disabled>Off</button>
     <a href="/help">Help</a><a href="/hidden" style="display:none">Hidden</a>`);
   const seen = await (await control(page)).look();
   expect(seen.elements.split("\n")).toEqual([
-    '[1] text "Name" (filled)',
-    '[2] password "Password" (filled)',
-    '[3] checkbox "Remember me" (checked)',
-    '[4] select "Region" (South)',
-    '[5] button "Go"',
-    '[6] button "Off" (disabled)',
-    '[7] link "Help"',
+    '[1] text "Name" = "Ada Lovelace"',
+    '[2] textarea "Note" = "Say \\"hi\\" twice"',
+    '[3] password "Password" (filled)',
+    '[4] text "Code" (filled)',
+    '[5] text "Card" (filled)',
+    '[6] text "Shown" (filled)',
+    '[7] checkbox "Remember me" (checked)',
+    '[8] select "Region" (South)',
+    '[9] button "Go"',
+    '[10] button "Off" (disabled)',
+    '[11] link "Help"',
   ]);
   expect(seen.title).toBe("Sign in");
-  expect(JSON.stringify(seen)).not.toMatch(/hunter2|Ada Lovelace/);
+  expect(JSON.stringify(seen)).not.toMatch(/hunter2|914027|4111|revealed/);
 });
 
 test("an element is clicked where it is now, and not when it is gone or covered", async ({

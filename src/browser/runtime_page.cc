@@ -31,9 +31,10 @@ constexpr const char* kProbeScript =
 // A look also gets what can be acted on, numbered and kept on the page under
 // the look's name, for its last eight looks (`fresh` when it held none), so
 // an action can name one by look and number: in the document, its open
-// shadow roots and the frames of its own site. A field says whether it holds
-// text, never what; a control says when it is disabled, required, expanded or
-// not.
+// shadow roots and the frames of its own site. A field shows the start of
+// what it holds, except a secret one (a password, a one-time code, a card),
+// which says only whether it holds text; a control says when it is disabled,
+// required, expanded or not.
 //
 // Reading gets text from `offset`, or with `find` the lines that contain it
 // (from match `offset` on) and the links that do.
@@ -115,6 +116,10 @@ std::string PageScript() {
           n.alt || n.name ||
           ((n.type === 'submit' || n.type === 'button') && n.value)).slice(0, 80);
       const expanded = n.getAttribute('aria-expanded');
+      const secret = n.hasAttribute('data-uagent-secret') ||
+          n.type === 'password' ||
+          /password|one-time-code|(^|\s)cc-/i.test(
+              n.getAttribute('autocomplete') || '');
       const state =
           (n.type === 'checkbox' || n.type === 'radio'
               ? (n.checked ? ' (checked)' : '')
@@ -122,7 +127,10 @@ std::string PageScript() {
                     ? ' (' + plain(n.selectedOptions[0] &&
                                    n.selectedOptions[0].text).slice(0, 40) + ')'
                     : tag === 'input' || tag === 'textarea'
-                          ? (n.value ? ' (filled)' : ' (empty)') : '') +
+                          ? (!n.value ? ' (empty)'
+                             : secret ? ' (filled)'
+                             : ' = ' + JSON.stringify(plain(n.value).slice(0, 60)))
+                          : '') +
           (n.required || n.getAttribute('aria-required') === 'true'
                ? ' (required)' : '') +
           (expanded === 'true' ? ' (expanded)'

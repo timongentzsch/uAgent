@@ -41,6 +41,9 @@ struct SessionMail {
   // reason, or "needs decision".
   bool report = false;
   std::string state{};
+  // A finished agent's report as facts its parent's transcript shows
+  // beside the text: {session, title, outcome}.
+  json agent = nullptr;
 };
 
 // Sends it if the rule allows; returns why not, or empty. Waking a recipient

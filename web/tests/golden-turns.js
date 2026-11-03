@@ -238,6 +238,32 @@ export const steered = [
   footer("m-79", "m-72", 79, 59000),
 ];
 
+// What woke the conversation in your place: an agent's report, which names
+// the agent beside its text, and finished background work.
+export const arrivals = [
+  {
+    ...turn(
+      "m-82",
+      82,
+      '[agent child "Find flights" finished (completed)]\nTwo flights found.',
+    ),
+    origin: "agent",
+    agent: { session: "child", title: "Find flights", outcome: "completed" },
+  },
+  answer("r-9-1-1", "m-82", 83, "Noted."),
+  footer("m-84", "m-82", 84, 1000),
+  {
+    ...turn(
+      "m-92",
+      92,
+      "[activity finished, not a user message] Its result is above.",
+    ),
+    origin: "activity",
+  },
+  answer("r-10-1-1", "m-92", 93, "The build passed."),
+  footer("m-94", "m-92", 94, 1000),
+];
+
 // Two pages of history: the older one is read in front of the newer.
 export const pages = [plain, chain];
 

@@ -764,7 +764,7 @@ TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
     return std::string("denied");
   };
   Agent agent(api, tools, processes, usage, denied);
-  agent.Arrive("same words", "mail-1");
+  agent.Arrive("same words", {{"kind", "message"}, {"mail", "mail-1"}});
   agent.Say("same words", "");
   const auto next = SteeringState().TakeNextAutoStart();
   CHECK(next && next->text == "same words");
@@ -779,7 +779,7 @@ TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
   }
   CHECK(rows.size() == 2);
   CHECK(!rows[0].contains("origin"));
-  CHECK(JsonValue(rows[1], "origin", "") == "mail");
+  CHECK(JsonValue(rows[1], "origin", "") == "message");
 }
 
 TEST_CASE(TestAgentConfigAllowlist) {

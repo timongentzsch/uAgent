@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/agent/agent.h"
@@ -58,7 +59,13 @@ bool Agent::DeliverMail() {
     }
     // Mail wakes its recipient: an idle one starts a turn on it, and what
     // that turn sends is one hop further along.
-    Arrive(text, mail.id, mail.hops + 1);
+    json origin = {
+        {"kind", "message"}, {"mail", mail.id}, {"hops", mail.hops + 1}};
+    if (mail.body.contains("agent")) {
+      origin["kind"] = "agent";
+      origin["agent"] = mail.body["agent"];
+    }
+    Arrive(text, std::move(origin));
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"from", mail.from},
                                 {"latency_ms", NowMillis() - mail.created_ms}});

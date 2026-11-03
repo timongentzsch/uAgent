@@ -93,11 +93,13 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"files", images}});
   }
-  // Another session's message shows as an event, not as the person's.
+  // Another session's message or finished work shows as an event, not as
+  // the person's.
   if (origin.is_object()) {
     std::erase(arriving_mail_, JsonValue(origin, "mail", ""));
-    conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                {{"origin", "mail"}});
+    json facts = {{"origin", JsonValue(origin, "kind", "message")}};
+    if (origin.contains("agent")) facts["agent"] = origin["agent"];
+    conversation_.RecordDisplay(conversation_.LastDisplayId(), facts);
   }
   PublishMessage(request_id);
 }
@@ -268,8 +270,7 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
 void Agent::CountStreak(const json& origin) {
   if (!session_role_.contains("agent")) return;
   json& role = session_role_["agent"];
-  role["streak"] =
-      origin.contains("mail") ? JsonValue(role, "streak", 0) + 1 : 0;
+  role["streak"] = origin.is_object() ? JsonValue(role, "streak", 0) + 1 : 0;
 }
 
 void Agent::Turn(const std::string& user_input, json user_content,
@@ -300,7 +301,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
   RefreshSystemMessage();
   Emit(Event{EventId::kTurnStarted,
              {{"turn", turn_id_},
-              {"origin", "user"},
+              {"origin", JsonValue(origin, "kind", "user")},
               {"local_time", local_time},
               {"input", user_input},
               {"attachments", user_content.is_array() && !user_content.empty()

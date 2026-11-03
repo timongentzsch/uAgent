@@ -139,6 +139,8 @@ test("an undone turn puts its file back", async ({ page, session, host }) => {
   const receipt = page.getByRole("button", { name: /^Review changes: / });
   await expect(receipt).toHaveText(/1 file · \+1 −0/);
   await expect(page.locator(".turn-footer")).toBeVisible();
+  // The files and what the turn spent read as one line.
+  await expect(page.locator(".turn-summary")).toHaveText(/^· /);
   expect(await exists(`${host.project}/browser-proof.txt`)).toBe(true);
   await receipt.click();
   const sheet = page.getByRole("dialog", { name: "Changed files" });

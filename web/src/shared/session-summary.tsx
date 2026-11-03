@@ -1,5 +1,5 @@
 import type { State } from "./types.ts";
-import { cost, count } from "./quantities.ts";
+import { cost, plural } from "./quantities.ts";
 import { contextLeft } from "../state/context-summary.ts";
 import { Button, DataText, updateChecked } from "./ui.tsx";
 
@@ -19,10 +19,11 @@ function SessionSummaryView({
   open: () => void;
 }) {
   const { context_tokens: used, context_window: limit } = state ?? {};
+  const turns = state?.statistics?.recorded_turns ?? state?.turns;
   const title = `Estimated context: ${used?.toLocaleString() ?? "—"}${limit ? ` / ${limit.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate`;
   const parts = [
     contextLeft(used, limit),
-    `${count(state?.statistics?.recorded_turns ?? state?.turns)} turns`,
+    turns === undefined ? "" : plural(turns, "turn"),
     state?.usage?.cost_reported ? cost(state.usage.cost) : "",
     queued ? `${queued} queued` : "",
   ];

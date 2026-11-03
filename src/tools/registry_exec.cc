@@ -47,7 +47,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
           "Execute a command in cwd; omit cd. tty=true enables "
           "interactive stdin; detach persists a terminal beyond this "
           "session. Bash/zsh pipelines propagate failures (pipefail); nested "
-          "scripts must also return a failing exit status for failed checks.",
+          "scripts must also return a failing exit status for failed checks. "
+          "A command still running when this returns becomes an activity "
+          "whose result starts your next turn when it ends: end the turn "
+          "instead of waiting unless your next step needs it; to check back "
+          "later, start sleep N this way.",
           std::move(run_schema),
           [&supervisor, root_password](const json& a,
                                        const ToolContext& context) {

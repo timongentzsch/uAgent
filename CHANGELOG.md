@@ -25,6 +25,7 @@
 
 ### Fixes
 
+- **`run` takes an empty `host` and a short `yield_ms`.** A model that fills in every optional argument, as GPT-6.1-Sol does, sent `"host": ""` and `"yield_ms": 1`, and `run` refused both, so in a web conversation it could not start a command at all. An empty host now counts as none, and a short yield is raised to the shortest one, as it already was where it is used.
 - **A wait on background work shows as a row.** An `activity` wait or poll was hidden, so a turn spent waiting looked like thinking.
 - **"1 turn", and a separator in the turn footer.** The composer said "1 turns", and a turn's changed files ran into its token count.
 - **The browser no longer asks for a screenshot of a page that has text.** A short page, such as an order confirmation, got the hint meant for pages with no text.

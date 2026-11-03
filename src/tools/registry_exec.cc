@@ -141,22 +141,17 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                      Capability(ToolCapability::kMutate);
   run.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     const bool root = JsonValue(a, "root", false);
+    // An empty host is one not given: models that fill every optional
+    // argument send "".
     const std::string host = JsonValue(a, "host", "");
-    if (a.contains("host") && (!root || host.empty() || host[0] == '-' ||
-                               host.find_first_of(" \t\n") != host.npos)) {
+    if (!host.empty() &&
+        (!root || host[0] == '-' || host.find_first_of(" \t\n") != host.npos)) {
       return ArgumentIssue(
           "run.host", "host needs root and names one user@machine", "host");
     }
     if (root && JsonValue(a, "detach", false)) {
       return ArgumentIssue("run.root", "a root command cannot detach",
                            "detach");
-    }
-    int64_t yield_ms = JsonValue(a, "yield_ms", int64_t{0});
-    if (yield_ms > 0 && yield_ms < kMinYieldMs) {
-      return ArgumentIssue(
-          "run.yield_ms",
-          "yield_ms must be 0 or at least " + std::to_string(kMinYieldMs),
-          "yield_ms");
     }
     return std::nullopt;
   };

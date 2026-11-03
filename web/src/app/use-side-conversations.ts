@@ -7,7 +7,7 @@ import { command, requestId } from "../state/api.ts";
 // The /btw side conversations of the shell: one per conversation, kept in
 // local storage across reloads. Used by the shell and the chat page.
 
-export type Side = { question: string; id?: string; firstRequest: string };
+type Side = { question: string; id?: string; firstRequest: string };
 
 const kept = stored<Record<string, Side>>(
   storageKeys.sideConversations,

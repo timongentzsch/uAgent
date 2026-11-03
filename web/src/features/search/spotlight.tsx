@@ -57,7 +57,7 @@ const PREVIEW_AFTER_MS = 150;
 const PREVIEW_LEAD = 120;
 
 // The keys of one shortcut, as printed on the keyboard.
-export function Keys({ id }: { id: ShortcutId }) {
+function Keys({ id }: { id: ShortcutId }) {
   return (
     <span class="keys">
       {keysOf(id).map((key) => (

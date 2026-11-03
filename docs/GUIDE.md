@@ -287,8 +287,8 @@ switches to one; in the web an agent's link opens it.
 
 ### The to-do list
 
-For work with several parts an agent keeps a to-do list: each item pending,
-in progress or done, at most one in progress. It is kept with the
+For work with several parts an agent keeps a to-do list: each item pending
+or done, the first not done being the current step. It is kept with the
 conversation and shown to the agent on every request, so it survives a long
 conversation, a restart and a fork; the web shows it above the input.
 

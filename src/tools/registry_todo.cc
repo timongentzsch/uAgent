@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,13 +17,13 @@ void RegisterTodoTool(std::vector<Tool>& tools) {
           "todo",
           "Your to-do list for this conversation; you and the user see it "
           "until it is done. Each call replaces the whole list. Keep one for "
-          "work of three or more steps: mark an item in_progress as you start "
-          "it and done as soon as it is, and drop what no longer applies.",
+          "work of three or more steps. Mark items done in the same response "
+          "as your next calls, and drop what no longer applies.",
           json::parse(R"json({"type":"object","properties":{
             "items":{"type":"array","maxItems":24,"items":{"type":"object",
               "properties":{
                 "text":{"type":"string","minLength":1,"maxLength":160},
-                "status":{"type":"string","enum":["pending","in_progress","done"]}},
+                "status":{"type":"string","enum":["pending","done"]}},
               "required":["text","status"]}}},
             "required":["items"]})json"),
           [](const json& a, const ToolContext&) {
@@ -39,18 +38,6 @@ void RegisterTodoTool(std::vector<Tool>& tools) {
   // capability.
   todo.capabilities = 0;
   todo.category = "collaborate";
-  todo.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
-    const json* items = JsonArray(a, "items");
-    if (items && std::ranges::count_if(*items, [](const json& item) {
-                   return JsonValue(item, "status", "") == "in_progress";
-                 }) > 1) {
-      return ArgumentIssue("todo.in_progress",
-                           "at most one item is in_progress; mark the others "
-                           "pending or done",
-                           "items");
-    }
-    return std::nullopt;
-  };
   todo.headline = [](const json& a) {
     const json* items = JsonArray(a, "items");
     if (!items || items->empty()) {

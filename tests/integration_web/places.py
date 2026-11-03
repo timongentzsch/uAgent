@@ -426,7 +426,7 @@ def test_folder_overview_counts_spend_changes_and_git(root, home, *, binary):
             {
                 "items": [
                     {"text": "Write notes", "status": "done"},
-                    {"text": "Read them", "status": "in_progress"},
+                    {"text": "Read them", "status": "pending"},
                 ]
             },
         ),

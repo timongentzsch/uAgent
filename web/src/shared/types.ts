@@ -250,7 +250,7 @@ export interface Activity {
 // One item of a conversation's to-do list (the todo tool).
 export interface TodoItem {
   text: string;
-  status: "pending" | "in_progress" | "done";
+  status: "pending" | "done";
 }
 export interface ActivityDetail extends Activity {
   memory?: MemoryNote;

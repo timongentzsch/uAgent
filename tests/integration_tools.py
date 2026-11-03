@@ -141,18 +141,18 @@ def test_a_malformed_tool_call_is_answered_not_fatal(root, home, *, binary):
 
 
 def test_a_todo_list_is_one_list_kept_with_the_conversation(root, home, *, binary):
-    """Every conversation has a to-do list: each call replaces the whole list, a
-    second item in progress is turned away, and the list rides on the tail of
-    every later request, after a resume too, kept in the session file."""
+    """Every conversation has a to-do list: each call replaces the whole list,
+    an item is pending or done and nothing else, and the list rides on the tail
+    of every later request, after a resume too, kept in the session file."""
     items = [
         {"text": "Read the parser", "status": "done"},
-        {"text": "Fix the lexer", "status": "in_progress"},
+        {"text": "Fix the lexer", "status": "pending"},
         {"text": "Add tests", "status": "pending"},
     ]
-    listed = "- [done] Read the parser\n- [in_progress] Fix the lexer\n- [pending] Add tests\n"
+    listed = "- [done] Read the parser\n- [pending] Fix the lexer\n- [pending] Add tests\n"
     with Server(
         [
-            tool_call("todo", {"items": [dict(item, status="in_progress") for item in items]}),
+            tool_call("todo", {"items": [dict(item, status="started") for item in items]}),
             tool_call("todo", {"items": items}, call_id="call-2"),
             event({"content": "planned"}),
             event({"content": "resumed"}),
@@ -164,7 +164,7 @@ def test_a_todo_list_is_one_list_kept_with_the_conversation(root, home, *, binar
         # Without a list, nothing rides on a request's tail.
         assert_true(server.requests[1][1]["messages"][-1]["role"] == "tool", server.requests[1])
         refused, echoed = tool_results(server.requests[2][1]["messages"])
-        assert_true("at most one item is in_progress" in refused, refused)
+        assert_true("status" in refused and "pending" in refused, refused)
         assert_true(echoed.startswith(listed), echoed)
         again = run(root, env, "-c", "-p", "go on", binary=binary)
         assert_true(again.returncode == 0, again.stderr)

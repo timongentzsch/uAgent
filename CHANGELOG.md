@@ -18,6 +18,7 @@
 
 ### Fixes
 
+- **No flag warning across the agent's browser.** Chrome 154 shows "You are using an unsupported command-line flag: --disable-blink-features=AutomationControlled" in a bar over every page, in the live view and the agent's screenshots. The managed policy now turns that warning off (`CommandLineFlagSecurityWarningsEnabled`); reinstall it with `install.sh` or the command in [Browser](docs/BROWSER.md).
 - **Agents started with `items` and without `wait` run in the background.** `items` always waited for every agent, so a parent that asked for background agents sat idle until they finished and then did the rest of the work itself. Without `wait` the call now returns at once, and each agent reports when it is done.
 - **Memory extraction no longer leaves conversations behind.** Each background extraction was saved as a conversation of its own, titled "This is bounded background memory extraction…", in the space of the conversation it read.
 - **The find box keeps focus while you type.** When a message held more matches than it showed, such as a word in a link's address, Find clicked the message's actions button to open it; the menu then took the focus.

@@ -9,5 +9,6 @@
   ],
   "PasswordManagerEnabled": true,
   "PasswordLeakDetectionEnabled": true,
-  "AlwaysOpenPdfExternally": true
+  "AlwaysOpenPdfExternally": true,
+  "CommandLineFlagSecurityWarningsEnabled": false
 }

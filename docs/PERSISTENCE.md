@@ -38,7 +38,6 @@ Paths are under `~/.uagent` unless shown otherwise.
 | runtime sockets and their leases | `/tmp/uagent-<uid>-<hash>/*.sock`, `*.sock.lock` |
 | workspaces, and the name each goes by | `spaces/<folder>`, `spaces/<folder>/.uagent/name` |
 | scratch scripts | `<folder>/.uagent/scratch/*` |
-| Playwright snapshots and logs | `<folder>/.playwright-cli/*` |
 
 `<folder-hash>` is a hash of the folder's path; each session file's header
 records its `cwd`, title, `cost` and to-do progress (`todo`). Live

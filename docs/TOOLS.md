@@ -121,7 +121,10 @@ interactive input; a PTY keeps merged output, writable input, interruption
 and resize. `detach=true` keeps the command running after the session ends,
 with a rotating log. A command left in the background keeps its call's row
 running until it ends; that row then takes its exit, time and last output,
-whether the result arrives on its own or through a wait.
+whether the result arrives on its own or through a wait. A result that
+arrives while the conversation is idle starts its next turn, so `run` tells
+the agent to end its turn rather than wait, and to check back later by
+starting `sleep N` the same way.
 
 Every `activity` call names one `operation`:
 

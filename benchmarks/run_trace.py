@@ -74,8 +74,6 @@ def trace_metrics(
     request_preparation_ms = 0.0
     tool_result_chars = 0
     tool_result_texts: list[str] = []
-    browser_snapshot_chars = 0
-    browser_calls: set[str] = set()
     pending_failures: collections.Counter[tuple[Any, str]] = collections.Counter()
     failed_call_recoveries = 0
     failed_calls = 0
@@ -121,9 +119,6 @@ def trace_metrics(
                 "arguments": arguments,
             }
             calls.append(call)
-            if call["name"] == "run" and isinstance(arguments, dict):
-                if "playwright-cli" in str(arguments.get("command", "")):
-                    browser_calls.add(call["occurrence_id"])
             if batches:
                 batches[-1] += 1
         elif name == "tool_result":
@@ -132,8 +127,6 @@ def trace_metrics(
             tool_name = str(data.get("name") or "?")
             tool_result_chars += chars
             result_chars_by_tool[tool_name] += chars
-            if str(data.get("occurrence_id") or "") in browser_calls:
-                browser_snapshot_chars += chars
             issue = str(data.get("issue_code") or "")
             if issue:
                 issue_codes[issue] += 1
@@ -186,8 +179,6 @@ def trace_metrics(
         "failed_calls": failed_calls,
         "failed_call_recoveries": failed_call_recoveries,
         "unrecovered_failed_calls": sum(pending_failures.values()),
-        "browser_commands": len(browser_calls),
-        "browser_snapshot_chars": browser_snapshot_chars,
         "provenance": provenance,
         "cohort": cohort_fn(provenance) if cohort_fn else "",
         "route": route,

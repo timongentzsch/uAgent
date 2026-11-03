@@ -21,11 +21,10 @@ the task. The web's Library lists and edits the same skills; see
 | Skill | Purpose |
 | --- | --- |
 | `uagent-config` | Configuration precedence and the complete runtime, install and integration reference, loaded only for configuration work. It answers from the running binary; `references/` holds the hand-written `self-configuration.md`, and installs add `architecture.md` from `docs/ARCHITECTURE.md`. |
-| `browser-use` | Drives `playwright-cli` through the approved `run` tool; one browser daemon is reused across calls while snapshots stay outside model context. |
 | `fusion` | Invoked explicitly with `$fusion`: coordinates one sidekick agent on a scoped implementation while the lead keeps decisions, review and the final answer. |
 | `import` | Invoked explicitly with `$import`: condenses Codex's memory summary into global memories. |
 
-All four are MIT-licensed as part of this repository.
+All three are MIT-licensed as part of this repository.
 
 ## Import from Claude Code and Codex
 

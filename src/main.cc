@@ -75,13 +75,6 @@ void HardenProcess() {
 void InitializeProcess() {
   HardenProcess();
   std::setlocale(LC_CTYPE, "");
-  const char* session = getenv("PLAYWRIGHT_CLI_SESSION");
-  const char* generated = getenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION");
-  if (!session || (generated && session == std::string(generated))) {
-    const std::string owned = "uagent-" + std::to_string(getpid());
-    setenv("PLAYWRIGHT_CLI_SESSION", owned.c_str(), 1);
-    setenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION", owned.c_str(), 1);
-  }
   g_tty = isatty(STDOUT_FILENO);
   g_color = ResolveColorEnabled(g_tty);
   g_attributes = ResolveAttributesEnabled(g_tty);

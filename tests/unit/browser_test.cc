@@ -1340,7 +1340,6 @@ TEST_CASE(TestBrowserToolSteps) {
 // A batch: steps in order on one look, the page once after them, and no step
 // after one that fails or opens a dialog.
 TEST_CASE(TestBrowserToolBatch) {
-  namespace fs = std::filesystem;
   ServedBrowser fake("batch");
   const Tool tool = BrowserTool("dddddddddddddddddddddddddddddddd",
                                 [](const std::string&, const std::string&,

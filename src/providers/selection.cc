@@ -136,6 +136,12 @@ bool ProbeModel(Api& api, bool discover_efforts) {
       api.supported_reasoning_efforts = info->efforts;
       api.capabilities.SetInputModalities(info->input_modalities, api.wire_api);
       api.capabilities.SetModelFeatures(info->features);
+      // No effort chosen: the one the catalogue declares as the model's
+      // default, as a route picked from the catalogue gets. Omitted, some
+      // endpoints think longer than the default they list.
+      if (api.reasoning_effort.empty()) {
+        api.reasoning_effort = info->default_effort;
+      }
       if (!SupportsReasoningEffort(api, api.reasoning_effort)) {
         api.reasoning_effort.clear();
       }

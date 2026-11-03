@@ -146,10 +146,10 @@ class Conversation {
 };
 
 // A to-do list's items ({text, status}) as the model reads them, one per line:
-// "- [in_progress] Fix the lexer".
+// "- [pending] Fix the lexer".
 std::string TodoText(const json& items);
 // How far a to-do list is, for a listing: {done, total, current}, the
-// current being the item in progress; null for an empty list.
+// current being the first item not done; null for an empty list.
 json TodoProgress(const json& items);
 
 json MessageKindsJson(const std::vector<MessageKind>& kinds);

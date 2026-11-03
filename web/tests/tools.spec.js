@@ -137,7 +137,7 @@ test("a to-do list reads as its progress and stays above the composer", async ({
   // The call's row counts what is done; opened, it is the list.
   const call = await openRow(page, "Updated to-dos");
   await expect(call.locator(".node-row")).toContainText("1/3 done");
-  await expect(call).toContainText("[in_progress] Fix the lexer");
+  await expect(call).toContainText("[pending] Fix the lexer");
   await expect(todo.getByText("To-dos · 1/3 done")).toBeVisible();
   await expect(todo.getByRole("listitem")).toHaveCount(3);
   await expect(todo.locator('[aria-current="step"]')).toHaveText(

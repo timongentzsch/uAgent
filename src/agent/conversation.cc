@@ -726,9 +726,11 @@ json TodoProgress(const json& items) {
   int64_t done = 0;
   std::string current;
   for (const json& item : items) {
-    const std::string status = JsonValue(item, "status", "");
-    if (status == "done") ++done;
-    if (status == "in_progress") current = JsonValue(item, "text", "");
+    if (JsonValue(item, "status", "") == "done") {
+      ++done;
+    } else if (current.empty()) {
+      current = JsonValue(item, "text", "");
+    }
   }
   return {{"done", done}, {"total", items.size()}, {"current", current}};
 }

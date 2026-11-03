@@ -227,7 +227,10 @@ several paired devices.
   (`passwords.google.com`), `view-source:` and DevTools. DevTools is
   blocked by its `devtools://` URLs, because `DeveloperToolsAvailability`
   would also refuse the browser service's own control pipe ("Not allowed",
-  Chrome 155).
+  Chrome 155). It also turns off Chrome's bar warning of an "unsupported
+  command-line flag": `--disable-blink-features=AutomationControlled`, which
+  keeps pages from reading the browser as automated, would otherwise cover
+  the top of every page from Chrome 154 on.
 - On Linux before 7.1 (Landlock ABI 9) the sockets stay reachable: the agent
   can drive the browser, which it may do anyway, but with the policy
   installed it reaches neither DevTools nor the password pages.

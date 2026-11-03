@@ -906,6 +906,30 @@ def test_configured_alias_keeps_catalog_efforts(root, home, *, binary):
         assert_true(result.stdout.count("not supported") >= 2, result.stdout)
 
 
+def test_catalog_default_effort_applies_when_none_is_chosen(root, home, *, binary):
+    catalog = {
+        "data": [
+            {
+                "id": "gpt-live",
+                "supported_reasoning_efforts": ["low", "high"],
+                "default_parameters": {"reasoning_effort": "low"},
+            }
+        ]
+    }
+    with Server([event({"content": "ok"})] * 2, get_response=catalog) as server:
+        providers = {"local": {"base_url": server.url}}
+        for model in ("local/gpt-live", "local/gpt-live:high"):
+            env = provider_env(home, server.url, providers, model)
+            # A configured window starts without reading the catalogue.
+            env.pop("UAGENT_CONTEXT")
+            result = run(root, env, "-p", "probe", binary=binary)
+            assert_true(result.returncode == 0, result.stderr)
+        assert_true(
+            [body.get("reasoning_effort") for _, body in server.requests] == ["low", "high"],
+            server.requests,
+        )
+
+
 def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, binary):
     first = Server([event({"content": "configured-model-ok"})] * 3)
 

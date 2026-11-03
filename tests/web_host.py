@@ -107,7 +107,7 @@ def answer(handler, body):
     if "Todo probe" in prompt:
         items = [
             {"text": "Read the parser", "status": "done"},
-            {"text": "Fix the lexer", "status": "in_progress"},
+            {"text": "Fix the lexer", "status": "pending"},
             {"text": "Add tests", "status": "pending"},
         ]
         return tool_call("todo", {"items": items}, call_id="todo-write")

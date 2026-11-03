@@ -42,7 +42,7 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `schedule` | list, save, pause, resume, delete or run scheduled tasks; a task runs in this folder on this conversation's model, with no wider approval mode than this conversation's; see [Management](MANAGEMENT.md#scheduled-tasks) | a session with a client |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |
 | `web_search` | cited web search through a search an endpoint runs | a search can run on the conversation's route (see below) |
-| `todo` | replace the conversation's to-do list (up to 24 items, each pending, in progress or done, at most one in progress); it is kept with the conversation and carried on every request while it has items | always |
+| `todo` | replace the conversation's to-do list (up to 24 items, each pending or done; the first not done is the current step); it is kept with the conversation and carried on every request while it has items | always |
 | `agent_start` | start agents, each a conversation of its own on a brief; see [Agents](#agents) | unless this agent is `agents.depth` levels deep |
 | `agent_send`, `agents`, `decide` | message the parent, an agent or its siblings; list, read, stop, close or delete agents; answer what an agent asks | always |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the folder and a monospace preview; the user may answer in words or with an image | a session someone can answer (never a headless run); an agent's questions go to its parent first |
@@ -170,9 +170,12 @@ turn ends, and a message starts it again.
   working. Without `wait`, the agent's report (its answer, up to 6,000
   characters) arrives as mail and starts the parent's next turn.
 - `items` (up to 24) starts one agent per item, the item appended to the
-  brief, and adds `item` to each row.
-- A conversation has at most `agents.max` (8) agents at work; items beyond
-  the free slots start as slots free. Agents start agents down to
+  brief, and adds `item` to each row. Without `wait` the call returns
+  `{agents: [{id, item, state}]}` at once and each report arrives as its own
+  mail.
+- A conversation has at most `agents.max` (8) agents at work; with `wait`,
+  items beyond the free slots start as slots free, and without it a call
+  with more items than free slots starts none. Agents start agents down to
   `agents.depth` (2) levels, and start no MCP servers.
 
 A headless run waits while its agents owe it a report, except one waiting on

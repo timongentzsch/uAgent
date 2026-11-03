@@ -246,10 +246,10 @@
   height: var(--icon-s);
   color: var(--muted);
 }
-.todo-items [data-status="in_progress"] {
+.todo-items [aria-current="step"] {
   font-weight: var(--weight-strong);
 }
-.todo-items [data-status="in_progress"] .lucide {
+.todo-items [aria-current="step"] .lucide {
   color: var(--text);
 }
 .todo-items [data-status="done"] {

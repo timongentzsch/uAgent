@@ -50,7 +50,9 @@ stays in the model id, so an endpoint's routing suffix (OpenRouter's
 - `/model QUERY` searches the models your key offers and selects one; `/model
   all` lists every catalogue.
 - `/model NAME` chooses for this conversation; `/model NAME --default` also
-  saves it for new ones. `/effort LEVEL` sets the reasoning effort.
+  saves it for new ones. `/effort LEVEL` sets the reasoning effort. Without
+  one, a model uses the default effort its provider's catalogue lists, if it
+  lists one.
 - With no model set, the first start opens the model picker and saves your
   choice as `/model NAME --default` does. `-p` and `--json` never choose for
   you: they exit with an error that names your providers.
@@ -285,8 +287,8 @@ switches to one; in the web an agent's link opens it.
 
 ### The to-do list
 
-For work with several parts an agent keeps a to-do list: each item pending,
-in progress or done, at most one in progress. It is kept with the
+For work with several parts an agent keeps a to-do list: each item pending
+or done, the first not done being the current step. It is kept with the
 conversation and shown to the agent on every request, so it survives a long
 conversation, a restart and a fork; the web shows it above the input.
 

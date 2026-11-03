@@ -1,20 +1,22 @@
 // Finding your way without knowing where things are: search,
 // the shortcuts sheet, conversations by keyboard, the home screen, and pairing
 // by link.
-import { test, expect, online, selectProbeModel } from "./fixtures.js";
+import {
+  test,
+  expect,
+  online,
+  savedConversation,
+  selectProbeModel,
+} from "./fixtures.js";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 test("search opens a conversation and runs a command", async ({
   page,
-  session,
-  command,
+  host,
+  request,
 }) => {
-  await command("rename", {
-    session_id: session.id,
-    generation: session.generation,
-    title: "Palette probe",
-  });
+  await savedConversation(host, request, "Palette probe");
   await page.goto("/");
   await expect(page.locator(".sidebar")).toContainText("Palette probe");
   await page.keyboard.press(`${mod}+k`);
@@ -55,10 +57,10 @@ test("search opens a conversation and runs a command", async ({
 test("? lists the shortcuts, and Alt+arrows step through conversations", async ({
   page,
   host,
-  session,
-  command,
+  request,
 }) => {
-  const { session: second } = await command("create", { cwd: host.project });
+  const session = await savedConversation(host, request, "First");
+  const second = await savedConversation(host, request, "Second");
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".sidebar .session")).toHaveCount(2);
   // In the composer, ? is text.

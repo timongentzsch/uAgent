@@ -385,8 +385,10 @@ export interface Session {
   activities?: Activity[];
   guidance?: number;
   error?: string;
-  // Its spend, and how far its to-do list is (the item in progress).
+  // Its spend, its turns, and how far its to-do list is (the item in
+  // progress).
   cost?: number;
+  turns?: number;
   todo?: { done: number; total: number; current: string } | null;
 }
 // A folder at a glance, from the host: what its conversations spent today

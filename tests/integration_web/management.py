@@ -200,6 +200,8 @@ def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
             saved = next(item for item in sessions if item.get("title") == "lead")
             listed = next(item for item in sessions if item.get("title") == "agent-0a1b2c3d")
             assert_true(listed["parent"] == saved["id"], listed)
+            # The list knows a conversation nothing was said in from its turns.
+            assert_true(saved["turns"] == 1, saved)
             client.command("delete", saved)
             assert_true(not client.json("/api/sessions")[1]["sessions"], "its agents stay listed")
     left = sorted(path.name for path in lead.parent.iterdir())

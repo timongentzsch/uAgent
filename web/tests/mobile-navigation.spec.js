@@ -1,4 +1,11 @@
-import { test, expect, leaveEnd, newFolder, openMore } from "./fixtures.js";
+import {
+  test,
+  expect,
+  leaveEnd,
+  newFolder,
+  openMore,
+  savedConversation,
+} from "./fixtures.js";
 
 test.describe("mobile navigation and commands", () => {
   test.use({
@@ -40,8 +47,15 @@ test.describe("mobile navigation and commands", () => {
     };
     const firstTitle = `Navigation A ${testInfo.project.name}`;
     const secondTitle = `Navigation B ${testInfo.project.name}`;
+    // The second has a turn already: the list leaves out an empty one that
+    // is not open.
     const first = await make(firstTitle),
-      second = await make(secondTitle);
+      { id: second } = await savedConversation(
+        fixture,
+        page.request,
+        secondTitle,
+      );
+    await page.goto(`/#session=${first}`);
     let documents = 0,
       streams = 0;
     page.on("request", (request) => {

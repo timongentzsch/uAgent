@@ -48,7 +48,12 @@ std::string CreateWorktree(const std::string& project, const std::string& cwd) {
 }
 
 bool LaunchWorktree(const std::string& cwd) {
-  return cwd.starts_with(UagentDir(kWorktreesDir) + "/");
+  // A saved cwd is the path the agent's process saw, which may name the
+  // same folder another way (macOS's /var is /private/var).
+  if (cwd.empty()) return false;
+  const auto root = CanonicalAccessPath(UagentDir(kWorktreesDir));
+  const auto path = CanonicalAccessPath(cwd);
+  return path != root && PathWithin(path, root);
 }
 
 namespace {

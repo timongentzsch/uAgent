@@ -221,13 +221,15 @@ def test_web_delete_keeps_everything_while_an_agent_worktree_holds_work(root, ho
     (worktree / "draft.txt").write_text("unsaved")
     said = [{"role": "user", "content": "hi"}]
     lead = write_session(home, "lead", said, cwd=root)
+    # Saved as the agent's process saw it: resolved, which on macOS names
+    # /private/var where HOME says /var.
     agent = write_session(
-        home, "agent-0a1b2c3d", said, cwd=worktree, agent={"parent": fnv1a64(str(lead))}
+        home,
+        "agent-0a1b2c3d",
+        said,
+        cwd=worktree.resolve(),
+        agent={"parent": fnv1a64(str(lead))},
     )
-    # The host knows its worktrees by HOME as spelled, which the temporary
-    # folder's resolved path need not be.
-    first, rest = agent.read_text().split("\n", 1)
-    agent.write_text(json.dumps({**json.loads(first), "cwd": str(worktree)}) + "\n" + rest)
     with Server([event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)

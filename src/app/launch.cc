@@ -2,6 +2,7 @@
 
 #include "include/app/launch.h"
 
+#include <algorithm>
 #include <chrono>
 #include <optional>
 #include <string>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "include/agent/session_role.h"
+#include "include/agent/session_store.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
@@ -49,8 +51,9 @@ bool LaunchWorktree(const std::string& cwd) {
   return cwd.starts_with(UagentDir(kWorktreesDir) + "/");
 }
 
-std::string RemoveWorktree(const std::string& cwd) {
-  if (!PathExists(cwd)) return "";
+namespace {
+// Why removing the launch worktree `cwd` would lose work, or empty.
+std::string WorktreeKeepsWork(const std::string& cwd) {
   auto changes = HostGit(cwd, {"status", "--porcelain"});
   auto loose =
       HostGit(cwd, {"rev-list", "HEAD", "--not", "--branches", "--tags"});
@@ -65,6 +68,15 @@ std::string RemoveWorktree(const std::string& cwd) {
     return "commits in " + cwd +
            " are on no branch; merge or branch them "
            "first";
+  }
+  return "";
+}
+}  // namespace
+
+std::string RemoveWorktree(const std::string& cwd) {
+  if (!PathExists(cwd)) return "";
+  if (std::string kept = WorktreeKeepsWork(cwd); !kept.empty()) {
+    return kept;
   }
   // The repository is found from the worktree, which stays valid when the
   // conversation that started it has moved.
@@ -136,6 +148,58 @@ std::string CloseRuntime(const std::string& path) {
   return session::Connect(path).socket ? "the session did not exit in time"
                                        : "";
 }
+std::string DeleteConversation(const std::string& path,
+                               const std::string& draft_path) {
+  // Its agents breadth first, then reversed: an agent goes before the
+  // conversation that started it, and the conversation itself goes last.
+  const std::vector<SessionInfo> all = SessionsBeside(path);
+  std::vector<std::string> ids = {SessionIdFor(path)};
+  std::vector<SessionInfo> doomed;
+  for (size_t at = 0; at < ids.size(); ++at) {
+    for (const SessionInfo& info : all) {
+      const std::string id = SessionIdFor(info.path);
+      if (info.parent == ids[at] && std::ranges::find(ids, id) == ids.end()) {
+        ids.push_back(id);
+        doomed.push_back(info);
+      }
+    }
+  }
+  std::ranges::reverse(doomed);
+  const auto named = [](const SessionInfo& info, const std::string& error) {
+    return (info.parent.empty() ? "conversation " : "agent ") +
+           SessionIdFor(info.path) + " \"" + OneLine(info.title) +
+           "\": " + error;
+  };
+  for (const SessionInfo& info : doomed) {
+    if (std::string error = CloseRuntime(info.path); !error.empty()) {
+      return named(info, error);
+    }
+  }
+  const auto self = std::ranges::find_if(all, [&](const SessionInfo& info) {
+    return SessionIdFor(info.path) == ids.front();
+  });
+  doomed.push_back(self != all.end() ? *self : SessionInfo{.path = path});
+  // Every worktree is looked at before anything goes, so a refusal leaves
+  // the whole tree as it was.
+  for (const SessionInfo& info : doomed) {
+    if (!LaunchWorktree(info.cwd) || !PathExists(info.cwd)) continue;
+    if (std::string kept = WorktreeKeepsWork(info.cwd); !kept.empty()) {
+      return named(info, kept);
+    }
+  }
+  for (const SessionInfo& info : doomed) {
+    if (LaunchWorktree(info.cwd)) {
+      if (std::string kept = RemoveWorktree(info.cwd); !kept.empty()) {
+        return named(info, kept);
+      }
+    }
+    const SessionStoreStatus removed = SessionStore::Remove(
+        info.path, info.path == path ? draft_path : std::string());
+    if (!removed.Ok()) return named(info, removed.message);
+  }
+  return "";
+}
+
 std::string RuntimeStatus(const std::string& path) {
   session::Connection connection = session::Connect(path);
   if (!connection.socket) return "saved";

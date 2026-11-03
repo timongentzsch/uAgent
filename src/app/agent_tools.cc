@@ -470,20 +470,12 @@ ToolResult Diff(const SessionInfo& info) {
                 kDiffBytes);
 }
 
-// A running agent is closed first. Its worktree goes with it, but only when
-// nothing in it is lost.
+// A running agent is closed first. Its agents and worktrees go with it, but
+// only when nothing in any worktree is lost.
 ToolResult Delete(const SessionInfo& info) {
-  if (const std::string error = CloseRuntime(info.path); !error.empty()) {
-    return Unavailable(error);
-  }
-  if (LaunchWorktree(info.cwd)) {
-    const std::string kept = RemoveWorktree(info.cwd);
-    if (!kept.empty()) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments, kept);
-    }
-  }
-  SessionStoreStatus removed = SessionStore::Remove(info.path);
-  return removed.Ok() ? ToolSuccess("deleted") : Unavailable(removed.message);
+  std::string error = CloseRuntime(info.path);
+  if (error.empty()) error = DeleteConversation(info.path);
+  return error.empty() ? ToolSuccess("deleted") : Unavailable(error);
 }
 
 std::string Row(const SessionInfo& info) {

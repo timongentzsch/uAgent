@@ -1,6 +1,7 @@
 import http.client
 import json
 import signal
+import subprocess
 import threading
 from pathlib import Path
 
@@ -181,12 +182,15 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
 
 
 def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
-    """Deleting a conversation removes what sits beside it. An agent it
-    started is a conversation of its own, listed under it, and stays."""
+    """Deleting a conversation removes what sits beside it, and the agents
+    it started, theirs included, with it."""
     said = [{"role": "user", "content": "hi"}]
     lead = write_session(home, "lead", said, cwd=root)
     agent = write_session(
         home, "agent-0a1b2c3d", said, cwd=root, agent={"parent": fnv1a64(str(lead))}
+    )
+    nested = write_session(
+        home, "agent-4e5f6a7b", said, cwd=root, agent={"parent": fnv1a64(str(agent))}
     )
     (lead.parent / "lead.json.pinned").write_text("{}")
     with Server([event({"content": "unused"})]) as provider:
@@ -197,10 +201,50 @@ def test_web_delete_takes_what_the_conversation_owns(root, home, *, binary):
             listed = next(item for item in sessions if item.get("title") == "agent-0a1b2c3d")
             assert_true(listed["parent"] == saved["id"], listed)
             client.command("delete", saved)
+            assert_true(not client.json("/api/sessions")[1]["sessions"], "its agents stay listed")
     left = sorted(path.name for path in lead.parent.iterdir())
     assert_true(not lead.exists(), left)
     assert_true(not any(name.startswith("lead.json.") for name in left), left)
-    assert_true(agent.exists(), left)
+    assert_true(not agent.exists() and not nested.exists(), left)
+
+
+def test_web_delete_keeps_everything_while_an_agent_worktree_holds_work(root, home, *, binary):
+    """An agent's worktree with uncommitted changes refuses the delete, which
+    then removes nothing."""
+    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "init", "-q"], cwd=root, check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "base"], cwd=root, check=True)
+    worktree = home / ".uagent" / "worktrees" / "0a1b2c3d"
+    subprocess.run([*git, "worktree", "add", "-q", "--detach", str(worktree)], cwd=root, check=True)
+    (worktree / "draft.txt").write_text("unsaved")
+    said = [{"role": "user", "content": "hi"}]
+    lead = write_session(home, "lead", said, cwd=root)
+    agent = write_session(
+        home, "agent-0a1b2c3d", said, cwd=worktree, agent={"parent": fnv1a64(str(lead))}
+    )
+    # The host knows its worktrees by HOME as spelled, which the temporary
+    # folder's resolved path need not be.
+    first, rest = agent.read_text().split("\n", 1)
+    agent.write_text(json.dumps({**json.loads(first), "cwd": str(worktree)}) + "\n" + rest)
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            sessions = client.json("/api/sessions")[1]["sessions"]
+            saved = next(item for item in sessions if item.get("title") == "lead")
+            status, refused, _ = client.json(
+                "/api/command",
+                {
+                    "v": 2,
+                    "request_id": "0" * 32,
+                    "kind": "delete",
+                    "session_id": saved["id"],
+                    "generation": saved.get("generation", ""),
+                },
+            )
+            assert_true(status == 409 and "uncommitted changes" in str(refused), refused)
+            assert_true("agent-0a1b2c3d" in str(refused), refused)
+    assert_true(lead.exists() and agent.exists(), "deleted despite the refusal")
+    assert_true((worktree / "draft.txt").exists(), "the worktree's work was lost")
 
 
 def test_web_immediate_message_model_control_and_receipts(root, home, *, binary):

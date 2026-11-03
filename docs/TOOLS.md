@@ -192,8 +192,9 @@ conversation before a person speaks there.
 `agents` lists this conversation's agents; reads any conversation of the
 folder (`part` `rows`, `report`, `diff`, or `search` with `query`), quoted as
 data; and stops, closes or deletes an agent of its own. Deleting asks a
-person and removes the agent's worktree only when nothing in it would be
-lost.
+person and takes the agent's own agents with it, but only when nothing in
+any of their worktrees would be lost. Deleting a conversation in the web
+app does the same for its agents.
 
 ## Web
 

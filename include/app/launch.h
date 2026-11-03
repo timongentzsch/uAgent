@@ -54,6 +54,14 @@ std::optional<std::string> SendToRunning(const std::string& path, json command);
 // Closes the runtime of `path` and waits until it is gone. Returns why it
 // still runs, or empty once nothing does (also when nothing did).
 std::string CloseRuntime(const std::string& path);
+// Deletes the conversation at `path`, whose runtime the caller has closed,
+// with every agent under it, deepest first: each agent is closed, then each
+// launch worktree removed and each file (`draft_path` too for the
+// conversation itself). When a worktree holds work that would be lost,
+// nothing is deleted. Returns the error, naming the conversation it is
+// about, or empty.
+std::string DeleteConversation(const std::string& path,
+                               const std::string& draft_path = "");
 // "saved" without a runtime; else what its runtime said when it answered:
 // waiting on a person ("needs you"), working a turn, or idle. A decision
 // still with a parent counts as working.

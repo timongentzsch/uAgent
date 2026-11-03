@@ -441,7 +441,7 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             assert_true(len(provider.requests) == count, "inspection invoked model")
 
 
-def test_web_background_command_keeps_its_row_and_waits_are_routine(root, home, *, binary):
+def test_web_background_command_keeps_its_row_and_its_wait_has_one(root, home, *, binary):
     project = root / "background-row"
     project.mkdir()
 
@@ -475,10 +475,10 @@ def test_web_background_command_keeps_its_row_and_waits_are_routine(root, home, 
             calls = [node for node in snapshot["state"]["view"]["nodes"] if node["kind"] == "call"]
             run_row, wait_row = calls
             # The wait took the command's end: its result is on the command's
-            # own row, and the wait shows only at full detail.
+            # own row, and the wait, time the turn spent, shows as a row too.
             assert_true(run_row["state"] == "ok" and "ROW_DONE" in run_row["body"]["text"], run_row)
             assert_true(run_row["result"]["exit"] == {"code": 0}, run_row)
-            assert_true(wait_row.get("routine") is True and not run_row.get("routine"), calls)
+            assert_true(not wait_row.get("routine") and not run_row.get("routine"), calls)
 
 
 def test_web_stopped_background_command_ends_its_row(root, home, *, binary):

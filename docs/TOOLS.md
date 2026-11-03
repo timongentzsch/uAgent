@@ -237,7 +237,7 @@ Nothing in it names a tool, provider or model; an MCP or unknown tool reads
 
 Each call is one row, and the work line is the only fold. It counts what it
 holds: "Worked 6 steps · edited 1 file · 1 error". A tool declares the calls that only look at earlier work
-`routine` (an `activity` wait, poll or list, an `agents` list): their rows
+`routine` (an `activity` list, an `agents` list): their rows
 show at full detail only.
 
 The terminal and the web draw the same tree. The detail level,

@@ -58,9 +58,6 @@ def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
     return run_trace_metrics(records, provenance_fn=safe_provenance, cohort_fn=provenance_cohort)
 
 
-# --- scenarios ---------------------------------------------------------------
-
-
 def validate_predicates(when: Any) -> None:
     if not isinstance(when, dict):
         raise ValueError("scenario predicates must be an object")
@@ -123,9 +120,6 @@ def snapshot(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file() and ".uagent" not in path.parts
     }
-
-
-# --- scripted provider -------------------------------------------------------
 
 
 class Script:
@@ -228,9 +222,6 @@ class Script:
 
 def as_list(value: Any) -> list[str]:
     return [str(value)] if isinstance(value, str) else [str(item) for item in value]
-
-
-# --- running -----------------------------------------------------------------
 
 
 def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) -> dict[str, str]:
@@ -450,9 +441,6 @@ def run_case(
         return result
 
 
-# --- checks ------------------------------------------------------------------
-
-
 def answer_shape(answer: str, labels: list[str]) -> bool:
     """Accept either labelled headings/bold or one bullet per label."""
     lines = answer.splitlines()
@@ -561,9 +549,6 @@ def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodie
     elif "compacted" in scenario.get("variants", []):
         checks["compaction_mode"] = metrics["compactions"] == 0
     return checks
-
-
-# --- baselines ---------------------------------------------------------------
 
 
 def baseline_key(result: dict[str, Any]) -> str:
@@ -730,9 +715,6 @@ def eval_self_test() -> int:
         else:
             raise AssertionError(f"accepted invalid predicate: {invalid}")
     return 0
-
-
-# --- reporting ---------------------------------------------------------------
 
 
 def print_results(results, comparisons):

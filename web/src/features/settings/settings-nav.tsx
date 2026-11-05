@@ -7,14 +7,16 @@ export function SettingsNav({
   current,
   select,
   project,
+  class: className,
 }: {
   current?: Scope;
   select: (id: Scope) => void;
   // The open conversation's folder, by its last name.
   project?: string;
+  class?: string;
 }) {
   return (
-    <nav class="settings-nav" aria-label="Settings scopes">
+    <nav class={`settings-nav ${className ?? ""}`} aria-label="Settings scopes">
       <Group>
         {SCOPES.map(
           ([id, label, Icon]) =>

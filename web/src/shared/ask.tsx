@@ -100,8 +100,11 @@ export default function Ask({
   const [reached, setReached] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   const advance = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // A page pushes in from the end, or from the start going back.
+  const [back, setBack] = useState(false);
   const go = (to: number) => {
     clearTimeout(advance.current);
+    setBack(to < page);
     setPage(to);
     setReached((current) => Math.max(current, to));
   };
@@ -173,6 +176,7 @@ export default function Ask({
       )}
       <div
         class="ask-questions"
+        data-direction={back ? "back" : undefined}
         ref={panel}
         id={`${id}-page`}
         tabIndex={-1}
@@ -252,7 +256,7 @@ function ReviewPage({
   go: (to: number) => void;
 }) {
   return (
-    <div class="ask-page">
+    <div class="ask-page push">
       <Group title="Your answers">
         {questions.map((each, at) => (
           <Row
@@ -307,7 +311,7 @@ function QuestionPage({
     (option) => option.image?.id || option.preview,
   );
   return (
-    <div class="ask-page">
+    <div class="ask-page push">
       <fieldset class="ask-question">
         <legend>
           {/* Its step names it; alone, the chip does. */}

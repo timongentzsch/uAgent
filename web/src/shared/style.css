@@ -145,6 +145,8 @@
   --enter:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-base) var(--ease-out);
+  /* A view pushed into its place travels this share of its width. */
+  --push: 30%;
   /* Theme-independent: what dims the page behind a dialog. */
   --scrim: rgb(0 0 0 / 0.6);
   /* Stacking: a popover over its form, toasts over the app, the skip link
@@ -710,6 +712,41 @@ kbd {
   font-weight: var(--weight-regular);
   text-align: center;
 }
+/* What arrives on its own (a banner, a card, a list) fades in from --from
+   and leaves the same way when it goes (motion.ts useExit). */
+:where(.enters) {
+  --from: 0 var(--rise);
+}
+.enters {
+  transition: var(--enter);
+}
+@starting-style {
+  .enters {
+    opacity: 0;
+    translate: var(--from);
+  }
+}
+.enters[data-leaving] {
+  opacity: 0;
+  translate: var(--from);
+  transition-timing-function: var(--ease-in);
+}
+/* A view pushed into its place, as in a native navigation stack: it comes
+   in from the end, or from the start when going back. */
+.push {
+  transition:
+    opacity var(--motion-slow) var(--ease-out),
+    translate var(--motion-slow) var(--ease-out);
+}
+@starting-style {
+  .push {
+    opacity: 0;
+    translate: var(--push) 0;
+  }
+  [data-direction="back"] > .push {
+    translate: calc(-1 * var(--push)) 0;
+  }
+}
 /* A box set apart on its surface: an option, a tool, a notice, a card. */
 .card {
   padding: var(--space-4);
@@ -822,14 +859,7 @@ kbd {
   gap: var(--pad);
   font-size: var(--font-small);
   pointer-events: auto;
-  transition: var(--enter);
-}
-@starting-style {
-  .error-banner,
-  .update-banner {
-    opacity: 0;
-    translate: 0 calc(-1 * var(--rise));
-  }
+  --from: 0 calc(-1 * var(--rise));
 }
 .error-banner {
   max-height: var(--scroll-s);
@@ -1131,9 +1161,10 @@ dialog.sidebar:not([open]) {
   cursor: pointer;
   padding: 0;
 }
-/* Swapped feedback icons (Copy → Check) cross in rather than blink. */
+/* Swapped feedback icons (Copy → Check) cross in rather than blink; the
+   first icon is simply there. */
 @starting-style {
-  .swap-feedback > svg {
+  .swap-feedback[data-swapped] > svg {
     opacity: 0;
     scale: 0.7;
   }
@@ -1600,10 +1631,10 @@ dialog[data-layout="sheet"] > header {
   animation: none;
 }
 :root[data-slide="forward"]::view-transition-new(screen) {
-  animation: screen-in-from-right var(--motion-base) var(--ease-standard);
+  animation: screen-in-from-right var(--motion-slow) var(--ease-out);
 }
 :root[data-slide="back"]::view-transition-new(screen) {
-  animation: screen-in-from-left var(--motion-base) var(--ease-standard);
+  animation: screen-in-from-left var(--motion-slow) var(--ease-out);
 }
 @keyframes screen-in-from-right {
   from {

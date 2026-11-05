@@ -22,7 +22,13 @@ export default function Settings(props: SettingsProps) {
     () => SCOPES.find(([id]) => id === props.initialSection)?.[0] ?? null,
   );
   const phone = usePhone();
-  useDismiss(phone && picked !== null, () => setPicked(null));
+  // On a phone a scope pushes in, and Back brings the list in from the start.
+  const [back, setBack] = useState(false);
+  const open = (scope: Scope | null) => {
+    setBack(scope === null);
+    setPicked(scope);
+  };
+  useDismiss(phone && picked !== null, () => open(null));
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     body.current?.scrollTo(0, 0);
@@ -74,7 +80,7 @@ export default function Settings(props: SettingsProps) {
         title={drilled ? title : "Settings"}
         leading={
           drilled && (
-            <Button variant="quiet" onClick={() => setPicked(null)}>
+            <Button variant="quiet" onClick={() => open(null)}>
               <ChevronLeft />
               Back
             </Button>
@@ -84,13 +90,18 @@ export default function Settings(props: SettingsProps) {
       <div
         class="dialog-body settings-content"
         data-drilled={picked ? "" : undefined}
+        data-direction={back ? "back" : undefined}
       >
         <SettingsNav
           current={phone ? undefined : current}
-          select={setPicked}
+          select={open}
           project={session && (folder || "project")}
+          class={phone && back ? "push" : undefined}
         />
-        <div ref={body} class="settings-pane">
+        <div
+          ref={body}
+          class={phone && picked ? "settings-pane push" : "settings-pane"}
+        >
           {!phone && <h3 class="settings-pane-title">{title}</h3>}
           <p class="settings-scope">{describe(session?.cwd)}</p>
           {pages[current]}

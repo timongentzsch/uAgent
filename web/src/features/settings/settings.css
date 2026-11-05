@@ -115,15 +115,6 @@
   .settings-nav {
     border-right: 0;
   }
-  /* A section pushes in from the right, as in a native settings app. */
-  .settings-content[data-drilled] > .settings-pane {
-    transition: translate var(--motion-slow) var(--ease-out);
-  }
-  @starting-style {
-    .settings-content[data-drilled] > .settings-pane {
-      translate: 30% 0;
-    }
-  }
 }
 .mcp-name {
   display: inline-flex;

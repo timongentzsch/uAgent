@@ -206,7 +206,7 @@ export default function Inspector({
       }
     >
       {"raw" in target ? (
-        <div class="activity-detail activity-page">
+        <div class="activity-detail activity-page push">
           <Raw {...target.raw} />
         </div>
       ) : detail && current ? (

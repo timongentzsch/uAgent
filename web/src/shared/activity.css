@@ -66,16 +66,9 @@
   flex: 1;
 }
 
-/* A tool's input/output scrolls as a whole and pushes in from the right,
-   like a native navigation stack. */
+/* A tool's input/output scrolls as a whole (it enters as a .push). */
 .activity-page {
   overflow: auto;
-  transition: translate var(--motion-slow) var(--ease-out);
-}
-@starting-style {
-  .activity-page {
-    translate: 30% 0;
-  }
 }
 
 .activity-detail > p,

@@ -36,16 +36,6 @@
 .ask-questions:focus {
   outline: none;
 }
-/* A page enters from the side it leads to. */
-.ask-page {
-  transition: var(--enter);
-}
-@starting-style {
-  .ask-page {
-    opacity: 0;
-    translate: var(--rise) 0;
-  }
-}
 /* Cancel leaves; Back and Next travel. */
 .ask > .dialog-actions > :first-child {
   margin-right: auto;

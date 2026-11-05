@@ -1,3 +1,4 @@
+import { longPressMs } from "../../shared/limits.ts";
 import type { Point } from "../../shared/zoom.ts";
 
 // The touch vocabulary in one place, in CSS pixels of the device: a tap
@@ -5,7 +6,8 @@ import type { Point } from "../../shared/zoom.ts";
 // two-finger tap right-clicks and a pinch zooms this device's view.
 export const BROWSER_GESTURE = Object.freeze({
   movementSlopPx: 8,
-  holdMs: 400,
+  // A hold is the app's one long press.
+  holdMs: longPressMs,
   tapMs: 300,
   // One wheel notch per this much finger travel; one notch scrolls Chrome
   // about 100px, so a notch per 40px feels a little faster than the finger.

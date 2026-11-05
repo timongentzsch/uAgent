@@ -121,7 +121,7 @@ export default function Decision({
   const extra = options.filter((item) => !CARD.has(item.value));
   const more = offers(ALWAYS) || offers(GUIDANCE) || extra.length > 0;
   return (
-    <section class="card decision" aria-label="Pending decision">
+    <section class="card decision enters" aria-label="Pending decision">
       <div class="decision-head">
         {/* Announced at once, with what it is about. */}
         <div role="alert">

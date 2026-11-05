@@ -5,13 +5,6 @@
   border-color: var(--accent);
   background: none;
   max-height: var(--scroll-l);
-  transition: var(--enter);
-}
-@starting-style {
-  .decision {
-    opacity: 0;
-    translate: 0 var(--rise);
-  }
 }
 .decision-preview {
   min-height: 0;

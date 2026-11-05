@@ -111,6 +111,8 @@ async function copyText(text: string) {
 }
 export function CodeCopy({ text }: { text: string }) {
   const [status, setStatus] = useState("");
+  const swapped = useRef(false);
+  if (status) swapped.current = true;
   useEffect(() => {
     if (!status) return;
     const timer = setTimeout(() => setStatus(""), copiedFeedbackMs);
@@ -120,6 +122,7 @@ export function CodeCopy({ text }: { text: string }) {
     <>
       <IconButton
         class="swap-feedback"
+        data-swapped={swapped.current || undefined}
         label={status || "Copy code"}
         onClick={async () => {
           try {

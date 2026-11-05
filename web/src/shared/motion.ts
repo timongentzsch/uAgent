@@ -1,3 +1,5 @@
+import { type RefObject } from "preact";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { compactNow } from "./layout.ts";
 
 // Motion in script uses the same tokens as CSS (style.css :root), so the
@@ -40,6 +42,35 @@ export async function animateOut(element: HTMLElement | null) {
   // Let the style change start its transitions before collecting them.
   await new Promise((resolve) => requestAnimationFrame(resolve));
   await settled(element);
+}
+
+// Keeps `value` on screen until its exit has played: render what this
+// returns, with the ref on the element that leaves. Only whether there is a
+// value matters, so a caller may pass a new object every render; one that
+// comes back while it leaves stays.
+export function useExit<T, E extends HTMLElement = HTMLElement>(
+  value: T,
+): [T, RefObject<E | null>] {
+  const ref = useRef<E>(null);
+  const last = useRef(value);
+  if (value) last.current = value;
+  const [gone, setGone] = useState(!value);
+  const present = !!value;
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (present) {
+      element?.removeAttribute("data-leaving");
+      if (element) element.inert = false;
+      setGone(false);
+      return;
+    }
+    let live = true;
+    void animateOut(element).then(() => live && setGone(true));
+    return () => {
+      live = false;
+    };
+  }, [present]);
+  return [value || (gone ? value : last.current), ref];
 }
 
 let sliding: { run: ViewTransition; to: string } | undefined;

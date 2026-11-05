@@ -106,7 +106,7 @@ export function SearchSelect({
       </Field>
       <ChevronDown class="search-select-chevron" aria-hidden="true" />
       {open && !disabled && (
-        <div class="search-select-options popover-list">
+        <div class="search-select-options popover-list enters">
           <SuggestionList
             id={id}
             label={`${label} options`}

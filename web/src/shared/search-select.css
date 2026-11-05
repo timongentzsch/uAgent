@@ -14,6 +14,7 @@
   pointer-events: none;
 }
 .search-select-options {
+  --from: 0 calc(-1 * var(--rise));
   position: absolute;
   top: 100%;
   inset-inline: 0;

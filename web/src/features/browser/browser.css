@@ -68,14 +68,13 @@ dialog.browser-view[data-layout="sheet"] {
   pointer-events: none;
 }
 .browser-banner {
+  --from: 0 calc(-1 * var(--rise));
   top: var(--gap);
 }
 .browser-toast {
   bottom: var(--gap);
-  inset-inline: auto;
-  left: 50%;
-  translate: -50% 0;
-  max-width: calc(100% - 2 * var(--gap));
+  width: fit-content;
+  margin-inline: auto;
 }
 /* Zoom and scroll without gestures, in the screen's top corner. */
 .browser-view-controls {

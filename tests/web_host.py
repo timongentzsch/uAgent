@@ -262,6 +262,8 @@ with (
     fake_bin.mkdir()
     (fake_bin / "sudo").write_text(
         "#!/bin/sh\n"
+        # Like a real sudo that wants a password: -n refuses.
+        '[ "$1" = -n ] && exit 1\n'
         'while [ "$1" != -- ]; do [ "$1" = -p ] && { shift; prompt=$1; }; shift; done; shift\n'
         'printf %s "$prompt" >&2; IFS= read -r line || exit 1\n'
         '[ "$line" = probe-secret ] && exec "$@"; exit 1\n'

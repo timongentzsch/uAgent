@@ -136,6 +136,13 @@
     --motion-fast: 120ms;
     --motion-base: 200ms;
     --motion-slow: 280ms;
+    /* The conversation, as things arrive while you follow it: how long the
+       view takes to glide to new content, how long a new row takes to fade
+       in, and how long your sent message takes to rise from the input.
+       0ms makes any of them instant. */
+    --motion-glide: var(--motion-base);
+    --motion-arrive: var(--motion-base);
+    --motion-send: var(--motion-slow);
     /* Loops that say something is alive: status lights, skeletons. */
     --motion-pulse: 1.6s;
     /* Spinners; reduced motion slows the spinner. */

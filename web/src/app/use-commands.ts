@@ -9,6 +9,7 @@ import type {
   SlashCommand,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
+import { rememberSend } from "../state/use-transcript-history.ts";
 import { emptyDraft } from "../state/store.ts";
 import { command, requestId } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
@@ -210,6 +211,9 @@ export function useCommands({
     // attached even if the stick was lost while reading history or the
     // send-frame layout churn (composer shrink, optimistic append) moves
     // scroll before the observers re-pin. Idempotent when already sticky.
+    // A message that shows as a row rises from the input into its place.
+    if (!draft.text.startsWith("/") || draft.files.length)
+      rememberSend(document.getElementById("prompt"));
     jumpToLatest();
     const id = selected,
       sent = draft,

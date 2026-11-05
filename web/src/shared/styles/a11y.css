@@ -6,6 +6,9 @@
   --motion-fast: 0ms;
   --motion-base: 0ms;
   --motion-slow: 0ms;
+  --motion-glide: 0ms;
+  --motion-arrive: 0ms;
+  --motion-send: 0ms;
   &,
   & *,
   & *::before,

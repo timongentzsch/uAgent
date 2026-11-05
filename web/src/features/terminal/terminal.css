@@ -1,3 +1,6 @@
+/* xterm's own sheet sits under the app's: the overrides below win by layer. */
+@import "@xterm/xterm/css/xterm.css" layer(vendor);
+
 .terminal-panel {
   display: flex;
   flex-direction: column;

@@ -96,9 +96,6 @@
 /* Options the agent showed, with an image or a preview each: cards wide
    enough to compare, the picture or preview under the label. A tap on the
    picture opens it whole; anywhere else on the card chooses it. */
-.ask-options.visual {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--pane)), 1fr));
-}
 .ask-options.visual .ask-option {
   align-content: start;
 }

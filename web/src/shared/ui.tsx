@@ -1,6 +1,9 @@
 // Base styles load with the primitives every surface is built from, so they
 // always precede feature styles, however the bundle is split.
-import "./style.css";
+import "./styles/tokens.css";
+import "./styles/base.css";
+import "./styles/primitives.css";
+import "./styles/a11y.css";
 import "./focus.ts";
 import { copiedFeedbackMs } from "./limits.ts";
 import {

@@ -3,13 +3,11 @@
 // returns focus to what opened it. With motion off it simply goes.
 import { test, expect, headerAction } from "./fixtures.js";
 
-// What the pane started to animate since the last look.
+// What the pane has started to animate since `forget`: the events come with
+// the next frame, so a check polls for them.
 const moved = (page) =>
-  page.evaluate(() => {
-    const seen = [...new Set(window.paneMoves)].sort();
-    window.paneMoves = [];
-    return seen;
-  });
+  page.evaluate(() => [...new Set(window.paneMoves)].sort());
+const forget = (page) => page.evaluate(() => (window.paneMoves = []));
 
 for (const motion of ["no-preference", "reduce"])
   test(`the Files pane enters, leaves and returns focus (${motion})`, async ({
@@ -30,7 +28,8 @@ for (const motion of ["no-preference", "reduce"])
     const pane = page.getByRole("region", { name: "Files" });
     await headerAction(page, "Files");
     await expect(pane).toBeVisible();
-    expect(await moved(page)).toEqual(expected);
+    await expect.poll(() => moved(page)).toEqual(expected);
+    await forget(page);
     await pane.getByRole("button", { name: "Close files" }).click();
     if (motion !== "reduce") {
       // Leaving: still drawn, but nothing in it can be reached.
@@ -39,7 +38,7 @@ for (const motion of ["no-preference", "reduce"])
       expect(await leaving.evaluate((node) => node.inert)).toBe(true);
     }
     await expect(pane).toHaveCount(0);
-    expect(await moved(page)).toEqual(expected);
+    await expect.poll(() => moved(page)).toEqual(expected);
     await expect(
       page.getByRole("button", { name: /^Files\b/ }).filter({ visible: true }),
     ).toBeFocused();

@@ -27,10 +27,10 @@ def main():
         ):
             continue
         expected_skills.add(relative.as_posix())
-    # Installed from docs/ARCHITECTURE.md and the web stylesheet rather than
+    # Installed from docs/ARCHITECTURE.md and the web's tokens rather than
     # duplicated in the tree.
     expected_skills.add("uagent-config/references/architecture.md")
-    expected_skills.add("uagent-config/references/style.css")
+    expected_skills.add("uagent-config/references/tokens.css")
     with tarfile.open(archive, "r:gz") as package:
         members = package.getmembers()
     if not members:

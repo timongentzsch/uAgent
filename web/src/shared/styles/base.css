@@ -1,0 +1,258 @@
+/* Element defaults: rules that name only elements, so any class rule
+   outranks them. */
+@layer base {
+  :root {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--bg);
+    color: var(--text);
+    /* % of the user's browser font size (never px) so their preference is
+       respected; 87.5% of the 16px default keeps the 14px design base. */
+    font-size: calc(87.5% * var(--zoom, 1));
+    line-height: var(--leading);
+  }
+  * {
+    box-sizing: border-box;
+    border-radius: 0;
+  }
+  html,
+  body {
+    background: var(--bg);
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    position: fixed;
+    inset: 0;
+  }
+  /* An app, not a page: nothing pinch- or double-tap-zooms the interface
+     (text size is the app's own setting). Every element inherits this limit;
+     media and the remote screen zoom themselves. */
+  html {
+    touch-action: pan-x pan-y;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  button,
+  a,
+  input,
+  select,
+  summary,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    border: 1px solid transparent;
+    background: var(--raised);
+  }
+  /* A field's edge is the only thing marking it on its own surface. */
+  input,
+  select,
+  textarea {
+    border-color: var(--field-border);
+  }
+  /* Every button: its content centred in a --control-tall box, padded only
+     at the sides, so a label never sits off-centre in its fill. */
+  button {
+    transition: background var(--motion-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    min-height: var(--control);
+    padding: 0 var(--inset-x);
+    cursor: pointer;
+    line-height: var(--leading-snug);
+  }
+  ::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+  a {
+    color: var(--accent);
+    text-underline-offset: 3px;
+  }
+  input,
+  select,
+  textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--control);
+    padding: var(--space-2) var(--space-4);
+  }
+  label {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  form {
+    display: grid;
+    gap: var(--gap);
+  }
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+  h1 {
+    font-size: var(--font-title);
+    line-height: var(--leading-snug);
+    letter-spacing: var(--tracking-title);
+  }
+  h2,
+  h3 {
+    font-size: var(--font-body);
+  }
+  p {
+    margin: var(--space-4) 0;
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: auto;
+    max-width: 100%;
+    font: inherit;
+    font-size: var(--font-code);
+    line-height: var(--leading-prose);
+    padding: var(--space-6);
+    background: var(--surface);
+    border: var(--border);
+    margin: var(--space-4) 0;
+  }
+  code {
+    font-family: inherit;
+    background: var(--surface);
+  }
+  pre code {
+    background: none;
+    white-space: pre;
+    overflow-wrap: normal;
+    display: block;
+  }
+  small {
+    color: var(--muted);
+  }
+  /* Secondary text (a detail, a time, a count) is the one size below body
+     text; a caption also names a section in small capitals. */
+  small {
+    font-size: var(--font-small);
+  }
+  /* A key, named in a hairline box. */
+  kbd {
+    min-width: 1.6em;
+    padding: 0 var(--space-1);
+    border: var(--border);
+    font: inherit;
+    font-weight: var(--weight-regular);
+    text-align: center;
+  }
+  /* Every disclosure reads like a row that opens: a chevron that turns as it
+     opens. */
+  details > summary::before {
+    content: "";
+    flex-shrink: 0;
+    width: var(--icon);
+    height: var(--icon);
+    background: currentColor;
+    mask:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+
+  /* Modal header and close button stay outside the scrolling body. */
+  dialog {
+    --dialog-width: var(--dialog-m);
+    position: fixed;
+    inset: auto;
+    top: calc(
+      var(--viewport-top) +
+      var(--safe-top) +
+      var(--content-height) /
+      2
+    );
+    left: calc(
+      var(--viewport-left) +
+      var(--safe-left) +
+      var(--content-width) /
+      2
+    );
+    transform: translate(-50%, -50%);
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    border: var(--border);
+    padding: 0;
+    width: min(
+      var(--dialog-width),
+      calc(var(--content-width) - 2 * var(--inset-x))
+    );
+    max-height: max(0px, calc(var(--content-height) - 2 * var(--inset-x)));
+    overflow: hidden;
+  }
+  dialog::backdrop {
+    background: var(--scrim);
+    border-top: var(--safe-top) solid var(--bg);
+  }
+  dialog > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pad);
+    border-bottom: var(--border);
+    padding: var(--inset-x);
+    flex-shrink: 0;
+    /* Reserve the same native scrollbar space as the body on every platform. */
+    overflow: hidden;
+    scrollbar-gutter: stable;
+  }
+  dialog p {
+    color: var(--muted);
+  }
+  dialog section {
+    margin: var(--pad) 0;
+  }
+
+  /* Every dialog shares the same optical and interactive close-button
+     geometry. */
+  dialog > header h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  details > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+  /* Every chevron turns down as what it heads opens. */
+  details > summary::before {
+    transition: rotate var(--motion-fast) var(--ease-standard);
+  }
+  /* Words a find bar found (shared/find.ts), and the one it is on. */
+  ::highlight(find),
+  mark {
+    background-color: var(--find);
+    color: inherit;
+  }
+  ::highlight(find-current) {
+    background-color: var(--find-current);
+    color: var(--on-find-current);
+  }
+}

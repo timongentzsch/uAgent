@@ -1,4 +1,3 @@
-import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";

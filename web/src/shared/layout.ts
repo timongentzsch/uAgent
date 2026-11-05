@@ -286,7 +286,7 @@ function useStyled(selector: string, property: string, ready = true) {
 }
 
 // The conversations list moves into a drawer when it does not fit beside the
-// conversation (style.css has the rule).
+// conversation (styles/primitives.css has the rule).
 export const useCompact = (ready?: boolean) =>
   !useStyled(".shell", "--docked", ready);
 export const compactNow = () => !styled(".shell", "--docked");

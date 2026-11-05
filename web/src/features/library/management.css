@@ -131,8 +131,6 @@
   .editor-actions > small {
     flex-basis: 100%;
   }
-}
-@container column (max-width: 640px) {
   .management-toolbar {
     flex-wrap: wrap;
   }

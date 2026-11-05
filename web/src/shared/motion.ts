@@ -2,7 +2,7 @@ import { type RefObject } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { compactNow } from "./layout.ts";
 
-// Motion in script uses the same tokens as CSS (style.css :root), so the
+// Motion in script uses the same tokens as CSS (styles/tokens.css), so the
 // one reduced-motion switch there covers animations started here too.
 type Motion = "fast" | "base" | "slow";
 
@@ -76,9 +76,9 @@ export function useExit<T, E extends HTMLElement = HTMLElement>(
 let sliding: { run: ViewTransition; to: string } | undefined;
 
 // Runs the change to conversation `to` as a slide of the transcript in from
-// the side it came from (style.css names it for the run), where the list is
-// a drawer and the browser can; elsewhere the change happens at once. A
-// different change that arrives while one slides ends that one.
+// the side it came from (styles/primitives.css names it for the run), where
+// the list is a drawer and the browser can; elsewhere the change happens at
+// once. A different change that arrives while one slides ends that one.
 export function slide(back: boolean, to: string, change: () => void) {
   if (sliding?.to === to) return;
   sliding?.run.skipTransition();

@@ -1,0 +1,60 @@
+/* What a person's settings ask for overrides everything: less motion and a
+   forced palette. Unlayered, like the feature sheets, as it always was. */
+/* Animations off: the device asks for less motion, or Settings does
+   (applyMotion sets the attribute for both). */
+:root[data-motion="off"] {
+  --motion-fast: 0ms;
+  --motion-base: 0ms;
+  --motion-slow: 0ms;
+  &,
+  & *,
+  & *::before,
+  & *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+  /* The one motion that carries meaning: work is still under way. */
+  & .spinner {
+    animation: spin var(--motion-spin-reduced) linear infinite !important;
+  }
+}
+/* Windows High Contrast and other forced palettes: the browser repaints
+   backgrounds, so anything that says something through a fill keeps its
+   own system colours. */
+@media (forced-colors: active) {
+  .switch input[switch]::before {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+  .switch input[switch]:checked::before {
+    background: Highlight;
+  }
+  .primary,
+  button[aria-pressed="true"],
+  [aria-current]:is(button, a) {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+  /* The lights differ by fill and shape, not by colour alone. */
+  .status-led {
+    forced-color-adjust: none;
+    background: transparent;
+    border-color: CanvasText;
+  }
+  .status-led:is(.active, .unread) {
+    background: CanvasText;
+    border-color: CanvasText;
+  }
+  .status-led.running {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .status-led.failed {
+    background: CanvasText;
+    border-color: CanvasText;
+    border-radius: 0;
+  }
+}

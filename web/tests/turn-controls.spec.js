@@ -79,7 +79,7 @@ test("always allowing an action remembers it in Settings", async ({
   );
 });
 
-test("a root command asks for the sudo password in a password field", async ({
+test("a root command asks for sudo's password in a password field, when sudo needs one", async ({
   page,
   session,
 }) => {
@@ -88,11 +88,15 @@ test("a root command asks for the sudo password in a password field", async ({
   const card = page.getByRole("region", { name: "Pending decision" });
   await expect(card).toContainText("runs as root on this machine");
   await card.getByRole("button", { name: "Allow", exact: true }).click();
-  await expect(card).toContainText("sudo password for this machine");
-  const password = card.getByLabel("Response");
-  await expect(password).toHaveAttribute("type", "password");
-  await password.fill("probe-secret");
-  await card.getByRole("button", { name: "Send response" }).click();
+  // A host already running as root (CI's container) needs no sudo, so it
+  // asks nothing more; anywhere else the test's sudo wants a password.
+  if (process.getuid?.() !== 0) {
+    await expect(card).toContainText("sudo password for this machine");
+    const password = card.getByLabel("Response");
+    await expect(password).toHaveAttribute("type", "password");
+    await password.fill("probe-secret");
+    await card.getByRole("button", { name: "Send response" }).click();
+  }
   await expect(card).toHaveCount(0);
   await expect(page.getByText("Echo as root")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("probe-secret");

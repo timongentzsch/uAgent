@@ -1247,6 +1247,8 @@ def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, bina
     sudo = bin_dir / "sudo"
     sudo.write_text(
         "#!/bin/sh\n"
+        # Like a real sudo that wants a password: -n refuses.
+        '[ "$1" = -n ] && exit 1\n'
         'while [ "$1" != -- ]; do [ "$1" = -p ] && { shift; prompt=$1; }; shift; done; shift\n'
         '[ -t 0 ] && stty -echo; printf %s "$prompt" >&2\n'
         "IFS= read -r line || exit 1; [ -t 0 ] && stty echo\n"
@@ -1298,6 +1300,43 @@ def test_root_asks_the_password_once_a_turn_and_keeps_it_out(root, home, *, bina
     for path in home.rglob("*"):
         if path.is_file():
             assert_true(password.encode() not in path.read_bytes(), path)
+
+
+def test_root_asks_nothing_when_sudo_needs_no_password(root, home, *, binary):
+    """A user sudo lets in without a password (NOPASSWD) is never asked for
+    one: the command runs through sudo -n after approval alone."""
+    bin_dir = root / "fake-sudo"
+    bin_dir.mkdir()
+    sudo = bin_dir / "sudo"
+    sudo.write_text(
+        "#!/bin/sh\n"
+        '[ "$1" = -n ] || { echo "asked for a password" >&2; exit 1; }\n'
+        'shift; [ "$1" = -- ] && shift; exec "$@"\n'
+    )
+    sudo.chmod(0o755)
+
+    def route(_, body):
+        if not tool_results(body["messages"]):
+            return tool_call("run", {"command": "echo root-ran", "root": True})
+        return event({"content": "root-done"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["PATH"] = f"{bin_dir}:{env['PATH']}"
+        status, output = run_pty(
+            root,
+            env,
+            [
+                (b"go\n", b"runs as root on this machine"),
+                (b"y\n", b"root-done"),
+                b"/quit\n",
+            ],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(status == 0, output)
+    assert_true(b"root-ran" in output, output)
+    assert_true(b"sudo password" not in output, output)
 
 
 def test_edit_recovery_survives_reads_and_tracks_revision(root, home, *, binary):

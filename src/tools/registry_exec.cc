@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <unistd.h>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -69,16 +71,22 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                 .environment_policy = ChildEnvironmentPolicy::kApprovedShell};
             if (JsonValue(a, "root", false)) {
               const std::string host = JsonValue(a, "host", "");
-              if (root_password) spec.secret = root_password(host);
-              if (!spec.secret) {
-                return ToolFailure(ToolErrorCode::kPermissionDenied,
-                                   "the person declined to enter the sudo "
-                                   "password");
+              // A password only when sudo needs one: already root here
+              // needs no sudo, and a user sudo lets in (NOPASSWD) none.
+              if (!host.empty() || geteuid() != 0) {
+                if (!PasswordlessSudo(host)) {
+                  if (root_password) spec.secret = root_password(host);
+                  if (!spec.secret) {
+                    return ToolFailure(ToolErrorCode::kPermissionDenied,
+                                       "the person declined to enter the "
+                                       "sudo password");
+                  }
+                  spec.nonce = RandomToken(16);
+                }
+                spec.activity_label = spec.command;
+                spec.command =
+                    RootCommand(spec.command, host, spec.tty, spec.nonce);
               }
-              spec.nonce = RandomToken(16);
-              spec.activity_label = spec.command;
-              spec.command =
-                  RootCommand(spec.command, host, spec.tty, spec.nonce);
               // sudo cannot gain privileges inside the sandbox; over ssh
               // only the remote end is root.
               if (host.empty()) spec.sandbox = false;
@@ -97,8 +105,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
     run.parameters["properties"]["root"] = {
         {"type", "boolean"},
         {"description",
-         "run as root through sudo; the person types the password, once per "
-         "turn. Never call sudo yourself"}};
+         "run as root through sudo; when sudo needs a password the person "
+         "types it, once per turn. Never call sudo yourself"}};
     run.parameters["properties"]["host"] = {
         {"type", "string"},
         {"description", "with root: user@machine to run it on over ssh"}};

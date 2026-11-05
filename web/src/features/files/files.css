@@ -50,18 +50,6 @@
   color: var(--muted);
   font-weight: var(--weight-regular);
 }
-.files-download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: var(--control);
-  color: var(--text);
-}
-@media (hover: hover) and (pointer: fine) {
-  .files-download:hover {
-    background: var(--raised);
-  }
-}
 .files-columns {
   flex: 1;
   min-height: 0;

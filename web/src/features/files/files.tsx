@@ -231,7 +231,7 @@ export default function Files({
         )}
         {file && !deleted && (
           <a
-            class="icon-button files-download"
+            class="file-button quiet icon-button"
             href={`${url(file)}&download=1`}
             download={nameOf(file)}
             onClick={shareOrDownload}

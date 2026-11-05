@@ -392,15 +392,16 @@ json ToolSurfaceJson() {
   std::vector<std::pair<Tool, const char*>> conditional;
   conditional.emplace_back(
       UagentTool([](SelfTopic, const std::string&) { return json::object(); }),
-      "always");
+      "uagent-config skill open");
   conditional.emplace_back(
       UagentConfigureTool(
           [](ConfigProposalScope, const std::vector<ConfigChange>&) {
             return ConfigProposal{};
           },
           std::make_shared<ConfigApprovals>()),
-      "interactive approval");
-  conditional.emplace_back(UagentInstructionsTool(), "interactive approval");
+      "uagent-config skill open, interactive approval");
+  conditional.emplace_back(UagentFileTool(),
+                           "uagent-config skill open, interactive approval");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   std::vector<Tool> agent_tools;

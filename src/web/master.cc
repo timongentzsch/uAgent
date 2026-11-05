@@ -36,6 +36,7 @@
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/private_store.h"
+#include "include/core/project.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -551,6 +552,22 @@ void Master::RegisterApiRoutes() {
       return;
     }
     Reply(response, FolderFacts(folder->string()));
+  });
+  // The person's own stylesheet, which the app adds after its own so it
+  // overrides the design tokens. Revalidated on every look: an edit applies
+  // without a new bundle. Empty when there is none. Like the rest of /api/,
+  // only a paired device reads it.
+  server_.Get("/api/user.css", [](const Request& request, Response& response) {
+    const std::string css = ReadUserStyle();
+    const std::string etag = "\"" + HashHex(css) + "\"";
+    response.set_header("Cache-Control", "no-cache");
+    response.set_header("ETag", etag);
+    if (request.get_header_value("If-None-Match").find(etag) !=
+        std::string::npos) {
+      response.status = 304;
+      return;
+    }
+    response.set_content(css, "text/css");
   });
   server_.Get("/api/events",
               [this](const Request& request, Response& response) {

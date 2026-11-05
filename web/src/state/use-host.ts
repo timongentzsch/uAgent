@@ -31,6 +31,7 @@ import {
 import { wentBack } from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
+import { refreshUserStyle } from "../shared/user-style.ts";
 import {
   catalogueSaveDelayMs,
   draftSaveDelayMs,
@@ -487,6 +488,7 @@ export function useHost(
         connectedOnce.current = true;
         setOnline(true);
         setConnecting(false);
+        refreshUserStyle();
       });
       events.addEventListener("resync", () => {
         if (stream.current === events && !signal.aborted) refresh();
@@ -511,6 +513,7 @@ export function useHost(
           return;
         }
         applyEvent(event);
+        if (event.kind === "turn_status") refreshUserStyle();
         resume.current = message.lastEventId || resume.current;
       });
     };

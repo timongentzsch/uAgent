@@ -3,7 +3,8 @@
 #ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 #define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 // The uagent tools: the model inspects this build, proposes (never applies)
-// a change to its settings or instructions, and manages scheduled tasks.
+// a change to its settings, instructions or stylesheet, and manages
+// scheduled tasks.
 
 #include <functional>
 #include <memory>
@@ -34,7 +35,8 @@ Tool UagentTool(SelfDescriptionProvider describe);
 // model can set.
 Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
                          const std::shared_ptr<ConfigApprovals>& store);
-Tool UagentInstructionsTool();
+// Replaces an instructions file or the web UI's stylesheet.
+Tool UagentFileTool();
 
 // Scheduled tasks for this folder, approved like any other change: a task
 // runs on `model` (the conversation's, read at each call) with no more

@@ -334,6 +334,7 @@ html {
   overflow: clip;
 }
 button,
+.file-button,
 input,
 textarea,
 select {
@@ -452,7 +453,7 @@ select:disabled {
   .primary:enabled:hover {
     background: var(--accent-hover);
   }
-  .quiet:enabled:hover {
+  .quiet:not(:disabled):hover {
     background: var(--raised);
   }
 }
@@ -460,7 +461,7 @@ select:disabled {
    transition; a press itself has none). The selectors outrank hover's. */
 button:enabled:active,
 .file-button:active,
-.quiet:enabled:active,
+.quiet:not(:disabled):active,
 button.row:enabled:active {
   background: var(--hover);
   transition: none;

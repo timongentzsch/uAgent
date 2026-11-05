@@ -232,7 +232,7 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
 }
 
 // The person edits instruction files directly here, so no approval stands
-// between them and the file; an agent asks through uagent_instructions.
+// between them and the file; an agent asks through uagent_file.
 void HandleInstructions(const std::string& argument, CommandReply& reply) {
   std::istringstream words(argument);
   std::string action, scope;

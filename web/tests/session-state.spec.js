@@ -77,6 +77,8 @@ test("late snapshots and retired streams cannot replace current session state", 
       });
     if (path === "/api/browser/status")
       return route.fulfill({ status: 404, json: { error: "Not found" } });
+    if (path === "/api/user.css")
+      return route.fulfill({ contentType: "text/css", body: "" });
     const session = sessions.find(
       (item) => path === `/api/sessions/${item.id}`,
     );

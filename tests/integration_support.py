@@ -696,6 +696,25 @@ def function_names(body):
     return {tool["name"] for tool in function_tools(body)}
 
 
+# The tools that inspect and change µAgent itself, which a conversation is
+# offered only once it opens the uagent-config skill.
+CONFIG_TOOLS = {"uagent", "uagent_configure", "uagent_file"}
+
+
+def config_skill_env(env):
+    """The source tree's skills: a build tree has no installed ones beside it."""
+    env["UAGENT_SKILL_PATH"] = str(pathlib.Path(__file__).resolve().parent.parent / "skills")
+    return env
+
+
+def open_config_skill(_, body):
+    """A model's first step towards configuring µAgent: open the skill that
+    unlocks the tools."""
+    names = function_names(body)
+    assert_true(not CONFIG_TOOLS & names, names)
+    return tool_call("skill", {"name": "uagent-config"}, call_id="call-skill")
+
+
 def large_json_command():
     payload = {
         "head": "FULL-START",

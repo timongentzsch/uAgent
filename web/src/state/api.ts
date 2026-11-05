@@ -29,6 +29,8 @@ export const routes = {
   // A folder at a glance: its spend, changes and git.
   folder: (path: string) => `/api/folder?path=${encodeURIComponent(path)}`,
   sessions: "/api/sessions",
+  // The person's own stylesheet, CSS rather than JSON.
+  userStyle: "/api/user.css",
   refreshedSessions: "/api/sessions?refresh=1",
   events: (cursor: string) => `/api/events?cursor=${cursor}`,
   receipt: (requestId: string) => `/api/receipts/${requestId}`,

@@ -439,8 +439,10 @@ class Agent {
   // size and the logged copy are stale.
   void InvalidateToolSchemas(bool force_system);
   void SyncApiSessionUsage();
-  std::vector<std::string> ExplicitSkillContext(
-      const std::string& user_input) const;
+  std::vector<std::string> ExplicitSkillContext(const std::string& user_input);
+  // Offers the tools an opened skill unlocks (Tool::skill) from the next
+  // request on; the choice is kept with the conversation's tool selection.
+  void UnlockSkillTools(const std::string& skill);
 
   Api& api_;
   std::vector<Tool>& tools_;

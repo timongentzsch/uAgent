@@ -1,12 +1,14 @@
 ---
 name: uagent-config
-description: Configure, inspect, troubleshoot, or explain µAgent settings, providers, models, effort, approvals, tools, skills, memory, MCP, web search, limits, retention, and installation. Use for questions about UAGENT_* or OPENROUTER_* variables, /config and saved settings (~/.uagent/config/settings.json), .mcp.json, or changing µAgent behavior.
+description: "µAgent itself: its look (colours, fonts), AGENTS.md, models, settings, version"
 ---
 
 # Configure µAgent
 
 Answer from the running binary, never from memory: it is the installed
-release, and it knows more than any copy of its documentation.
+release, and it knows more than any copy of its documentation. Opening this
+skill adds the tools named below (`uagent`, `uagent_configure`,
+`uagent_file`) to the conversation.
 
 ## Route the question
 
@@ -25,7 +27,8 @@ release, and it knows more than any copy of its documentation.
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
 | What instructions do sessions read? | `uagent` topic `instructions` |
-| Change instructions | `uagent_instructions` with `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
+| Change instructions | `uagent_file` with `file` `instructions`, `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
+| Change the look of the web UI | `uagent` topic `style` for the current sheet, then `uagent_file` with `file` `style` and the whole new `text`; see "Change the look" |
 
 Do not load every reference; pick the one the question needs. Only
 `self-configuration.md` and `architecture.md` are written by hand; every other
@@ -55,6 +58,25 @@ fact comes from the binary.
    changed. Explain that a real prompt is the end-to-end check and may incur
    provider usage.
 
+## Change the look
+
+The web UI draws everything from design tokens, and the person's stylesheet
+(`~/.uagent/config/style.css`, private to µAgent) overrides them. Only the
+tokens are a stable surface; class names change between releases.
+
+1. Read the current sheet with `uagent` topic `style`, and the tokens from
+   `references/style.css` when installed (else `web/src/shared/style.css` in
+   a source checkout): the first `:root` block holds the scales (spacing,
+   type, sizes, motion), the next two blocks the dark and light palettes.
+2. Write only the tokens that change, and keep what the sheet already holds.
+   A scale token takes a plain `:root { ... }`. A colour token goes in the
+   palette it belongs to, under that block's whole selector list copied from
+   the reference, so the inverse surface (the person's own messages) stays
+   consistent. Keep text readable: at least 4.5:1 against its background.
+3. `uagent_file` with `file` `style` and the whole sheet; the person
+   approves the diff. Open web pages apply it when the turn ends. Empty text
+   resets the look.
+
 ## Rules
 
 - Apply precedence correctly: the conversation's own choice (model and
@@ -76,8 +98,9 @@ fact comes from the binary.
   explicit.
 - Do not invent settings. `uagent` enumerates every registered setting; if
   a requested behavior is absent from it, say so rather than guessing.
-- Never write the saved settings with the file tools. `uagent_configure`
-  is offered only in a session where a person can approve (a terminal or
-  the web UI, not a headless run). When
-  it is absent, give the user the `/config user KEY=VALUE` (or `project`)
-  command to run themselves; do not make the change on their behalf.
+- Never write the saved settings with the file tools; µAgent's config folder
+  is closed to them. `uagent_configure` and `uagent_file` are offered only
+  in a session where a person can approve (a terminal or the web UI, not a
+  headless run). When they are absent, give the user the
+  `/config user KEY=VALUE` (or `project`) command to run themselves; do not
+  make the change on their behalf.

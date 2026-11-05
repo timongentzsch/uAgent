@@ -137,6 +137,9 @@ struct ToolResult {
   // The conversation's to-do list as the call leaves it, its items ({text,
   // status}); the conversation keeps it (Agent::Todo). Null leaves it as is.
   json todo = nullptr;
+  // The skill this call opened; the conversation then offers the tools that
+  // skill unlocks (Tool::skill).
+  std::string opened_skill;
   // Opaque identity of a failed exact edit: target, original revision and old
   // text. Reads cannot erase this identity; different revisions do not collide.
   std::string recovery_key;
@@ -286,6 +289,9 @@ struct Tool {
 
   std::string name;
   std::string category;  // workspace, execute, web, collaborate, memory, mcp
+  // The skill that unlocks this tool: a conversation offers it only once
+  // that skill is open, so the many that never need it do not carry it.
+  std::string skill;
   std::string description;
   json parameters;        // JSON-schema for the args
   bool mutating = false;  // gated behind user approval

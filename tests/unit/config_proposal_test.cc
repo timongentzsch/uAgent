@@ -299,7 +299,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
       std::make_shared<ConfigApprovals>());
   CHECK(RequiredApproval(configure, json::object()) ==
         ApprovalClass::kMandatoryHuman);
-  CHECK(RequiredApproval(UagentInstructionsTool(), json::object()) ==
+  CHECK(RequiredApproval(UagentFileTool(), json::object()) ==
         ApprovalClass::kMandatoryHuman);
   auto issue = configure.validate({{"scope", "user"},
                                    {"changes",

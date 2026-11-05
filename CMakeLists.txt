@@ -464,6 +464,11 @@ install(
   FILES docs/ARCHITECTURE.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references
   RENAME architecture.md)
+# The web UI's design tokens open its stylesheet; a person's own sheet
+# overrides them, so the skill carries the sheet to read them from.
+install(
+  FILES web/src/shared/style.css
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references)
 # Every guide ships; tests/package_contents.py checks the same directory.
 file(GLOB UAGENT_GUIDES CONFIGURE_DEPENDS docs/*.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE

@@ -106,7 +106,7 @@ std::vector<Tool> BuildTools(AppContext& context,
           return PrepareConfigProposal(scope, changes, app->config_manager);
         },
         std::make_shared<ConfigApprovals>()));
-    tools.push_back(UagentInstructionsTool());
+    tools.push_back(UagentFileTool());
   }
   if (OffersWebSearch(api, context.provider.providers)) {
     tools.push_back(

@@ -10,8 +10,10 @@ from integration_support import (
     assert_true,
     base_env,
     budget,
+    config_skill_env,
     event,
     function_names,
+    open_config_skill,
     provider_env,
     run,
     run_dialog,
@@ -1674,8 +1676,10 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true("canary-api-key" not in serialized, "secret leaked into transcript")
         return event({"content": "self-info-ok"})
 
-    with Server([ask_config, ask_status, ask_prompt, ask_routes, finish]) as server:
-        env = base_env(home, server.url)
+    with Server(
+        [open_config_skill, ask_config, ask_status, ask_prompt, ask_routes, finish]
+    ) as server:
+        env = config_skill_env(base_env(home, server.url))
         env.update(
             {
                 "UAGENT_PROVIDERS": json.dumps(
@@ -1717,8 +1721,8 @@ def test_uagent_tool_lists_every_setting(root, home, *, binary):
         assert_true("canary-api-key" not in result, "secret leaked into catalogue")
         return event({"content": "catalogue-ok"})
 
-    with Server([ask, finish]) as server:
-        env = base_env(home, server.url)
+    with Server([open_config_skill, ask, finish]) as server:
+        env = config_skill_env(base_env(home, server.url))
         env["UAGENT_PROVIDERS"] = test_providers(server.url, api_key="canary-api-key")
         # Room for the whole catalogue beside the tools, so it is read uncut
         # rather than compacted away.

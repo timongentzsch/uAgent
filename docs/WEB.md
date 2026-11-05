@@ -444,6 +444,17 @@ The terminal has the same through `/config`, `/restart`, `/mcp` and
 own editors; see [Memory, skills and scheduled tasks](MANAGEMENT.md) and
 [Instructions](INSTRUCTIONS.md).
 
+### Your own look
+
+`~/.uagent/config/style.css` restyles the interface on every device you
+pair. The app draws everything from design tokens (colours, spacing, type
+sizes, motion), defined at the top of `web/src/shared/style.css`, and this
+sheet overrides them; class names change between releases, the tokens are
+what to rely on. Ask the agent ("make the accent blue") and it opens the
+`uagent-config` skill, writes the sheet and shows you the diff to approve;
+open pages apply it when the turn ends. A sheet you edit yourself applies
+on the next turn or reconnect. An empty file restores the default look.
+
 ### Zoom and touch
 
 The page stays pinch-zoomable; inside the browser viewer a pinch zooms the

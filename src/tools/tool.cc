@@ -291,6 +291,7 @@ bool ValidProfile(std::string_view profile) {
 }
 
 bool ProfileEnabled(std::string_view profile, const Tool& tool) {
+  if (!tool.skill.empty()) return false;
   if (profile == "default") return true;
   const std::string category = ToolCategory(tool);
   if (profile == "coding") {

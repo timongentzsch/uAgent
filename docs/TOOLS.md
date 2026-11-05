@@ -36,8 +36,8 @@ started with `edits` none, which gets no `write_file`, `edit_file`,
 | `scratch` | write and run a one-off script in `.uagent/scratch`: `.py` under uv (or `python3` when it declares no dependencies), `.sh` under `sh`, `.js`/`.mjs` under `node`; writing the script needs no approval, running it does and shows the script; it runs in the workspace, and the result names what it left in the workspace root | `uv`, `python3`, `node` or `sh` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | always |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
-| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions) | always |
-| `uagent_configure`, `uagent_instructions` | change settings, or replace an instructions file, by an exact diff a person approves | only where a person can approve |
+| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions, the web stylesheet) | once the `uagent-config` skill is open |
+| `uagent_configure`, `uagent_file` | change settings, or replace an instructions file or the web UI's stylesheet, by an exact diff a person approves | once the `uagent-config` skill is open, where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `schedule` | list, save, pause, resume, delete or run scheduled tasks; a task runs in this folder on this conversation's model, with no wider approval mode than this conversation's; see [Management](MANAGEMENT.md#scheduled-tasks) | a session with a client |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline), snapshotted into the session's assets | a session with a client |

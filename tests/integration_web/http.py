@@ -526,6 +526,30 @@ def test_api_json_is_compressed_for_a_client_that_takes_it_and_revalidated_files
                 assert_true(status == 200, asset)
 
 
+def test_the_persons_stylesheet_is_served_to_a_paired_device_and_revalidated(root, home, *, binary):
+    """The app adds ~/.uagent/config/style.css after its own sheets; an edit
+    shows without a new bundle, and an unchanged sheet costs a 304."""
+    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            assert_true(client.request("/api/user.css")[0] == 401, "read before pairing")
+            client.pair(code)
+            status, body, headers = client.request("/api/user.css")
+            assert_true(status == 200 and body == b"", (status, body))
+            assert_true(headers["Content-Type"].startswith("text/css"), headers)
+            assert_true(headers["Cache-Control"] == "no-cache", headers)
+            empty = headers["ETag"]
+            sheet = home / ".uagent" / "config" / "style.css"
+            sheet.write_text(":root { --accent: #3b82f6; }\n")
+            status, body, headers = client.request(
+                "/api/user.css", headers={"If-None-Match": empty}
+            )
+            assert_true(status == 200 and b"--accent: #3b82f6" in body, (status, body))
+            status, body, _ = client.request(
+                "/api/user.css", headers={"If-None-Match": headers["ETag"]}
+            )
+            assert_true(status == 304 and body == b"", status)
+
+
 def test_a_conversation_without_a_model_takes_the_one_chosen_from_the_catalogue(
     root, home, *, binary
 ):

@@ -4,6 +4,9 @@
 
 ### Changes
 
+- **Restyle the web interface from `~/.uagent/config/style.css`.** The sheet overrides the design tokens (colours, spacing, type, motion) and applies on every paired device without a new build. Ask the agent to change the look: it shows the exact sheet for you to approve, and open pages apply it when the turn ends. `uagent_instructions` is now `uagent_file`, which replaces an instructions file or this stylesheet, and `uagent` reads the sheet with topic `style`.
+- **The tools that configure µAgent come with their skill.** `uagent`, `uagent_configure` and `uagent_file` are offered once the `uagent-config` skill is open, by the model or with `$uagent-config`, and stay for the rest of the conversation. A conversation that never configures anything sends up to about 670 fewer tokens with every request.
+
 - **One browser call can run several steps.** `browser` takes `action: batch` with up to 20 ordered `steps` (click, type, press, scroll, drag) on the page of one `view_id`. It stops at the first step that fails or meets a dialog and returns the page once. A model that took one round per form field now fills a form in one call.
 - **Browser results are leaner and show values.** An action's result compares only the page itself with the last one: the "done" lines and the view id sit outside the comparison, line numbers are gone, and an unchanged page reads "No change on the page." A filled field shows the start of what it holds, except a password, a one-time code or a card field.
 - **The playwright-cli browser skill is gone.** The agent's browser is the web host's. Where the host has no browser service (macOS outside the container, or Linux without Chrome and TigerVNC), the agent reads pages with `web_fetch`.

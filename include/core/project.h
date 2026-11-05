@@ -73,6 +73,18 @@ std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
                                  const std::string& text,
                                  const std::optional<std::string>& base = {});
 
+// The stylesheet a person keeps for the web UI, in µAgent's private config
+// folder. It overrides the app's design tokens: the web host serves it at
+// /api/user.css, and the app adds it after its own sheets.
+std::filesystem::path UserStylePath();
+inline constexpr size_t kUserStyleBytes = size_t{64} * 1024;
+// Its text, empty when there is none.
+std::string ReadUserStyle();
+// Replaces it, as WriteInstructionFile does an instruction file; empty text
+// resets the look.
+std::string WriteUserStyle(const std::string& text,
+                           const std::optional<std::string>& base = {});
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_PROJECT_H_

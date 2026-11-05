@@ -357,6 +357,14 @@ json Agent::ConfigureTools(const json& request) {
   return ToolCatalogue();
 }
 
+void Agent::UnlockSkillTools(const std::string& skill) {
+  for (const Tool& tool : tools_) {
+    if (tool.skill != skill || tool_selection_.Enabled(tool)) continue;
+    ConfigureTools(
+        {{"operation", "set"}, {"name", tool.name}, {"active", true}});
+  }
+}
+
 void Agent::RestoreToolSelection(const json& settings) {
   tool_selection_.Restore(settings);
   InvalidateToolSchemas(true);

@@ -39,8 +39,9 @@ reading them does not. Editors never write through a symbolic link.
   editable in place.
 - Terminal: `/instructions` shows it; `/instructions edit user|project`
   opens `$VISUAL` or `$EDITOR`.
-- Agents: `uagent` topic `instructions`, and `uagent_instructions` with
-  `scope` and the whole `text`; the user approves the exact diff.
+- Agents: `uagent` topic `instructions`, and `uagent_file` with `file`
+  `instructions`, `scope` and the whole `text`; the user approves the exact
+  diff. Both come with the `uagent-config` skill.
 - Scripts: `uagent --control` with `kind=instructions`, `action=show|set`,
   optional `cwd`, and for `set` the `scope` and `text`.
 

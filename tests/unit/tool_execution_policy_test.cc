@@ -184,6 +184,21 @@ TEST_CASE(TestToolExecutionPolicy) {
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "bounded");
 
+  // A tool that comes with a skill is off in every profile until a set turns
+  // it on, and the conversation keeps that choice.
+  Tool gated = unbounded;
+  gated.skill = "uagent-config";
+  ToolSelection skill_selection;
+  CHECK(!skill_selection.Enabled(gated));
+  std::vector<Tool> gated_tools{gated};
+  CHECK(skill_selection.Configure(
+      {{"operation", "set"}, {"name", "unbounded"}, {"active", true}},
+      gated_tools, selection_error));
+  CHECK(skill_selection.Enabled(gated));
+  ToolSelection skill_restored;
+  skill_restored.Restore(skill_selection.Save());
+  CHECK(skill_restored.Enabled(gated));
+
   // A side conversation inherits an explicit ceiling, including an empty
   // one. Resetting its presentation profile cannot turn on a parent's tools.
   ToolSelection side_selection;
@@ -408,12 +423,12 @@ TEST_CASE(TestPayloadToolsRequireTheirPayload) {
         return ConfigProposal{};
       },
       std::make_shared<ConfigApprovals>()));
-  tools.push_back(UagentInstructionsTool());
+  tools.push_back(UagentFileTool());
   const std::vector<std::pair<std::string, std::string>> expected = {
       {"agent_start", R"(["brief"])"},
       {"agent_send", R"(["id","text"])"},
       {"uagent_configure", R"(["scope","changes"])"},
-      {"uagent_instructions", R"(["scope","text"])"}};
+      {"uagent_file", R"(["file","text"])"}};
   for (const auto& [name, required] : expected) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parameters["required"] == json::parse(required));

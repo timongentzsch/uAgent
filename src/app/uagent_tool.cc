@@ -2,6 +2,7 @@
 
 #include "include/app/uagent_tool.h"
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -18,6 +19,10 @@
 
 namespace uagent {
 namespace {
+// The skill that unlocks the tools that inspect and change µAgent itself:
+// most conversations never open it, so they never carry these tools.
+constexpr char kConfigSkill[] = "uagent-config";
+
 // What both writing tools share: every call needs a person, whatever the
 // approval mode, and a rejected call does not echo its arguments.
 void RequireHuman(Tool& tool) {
@@ -27,6 +32,7 @@ void RequireHuman(Tool& tool) {
   };
   tool.capabilities = 0;
   tool.category = "system";
+  tool.skill = kConfigSkill;
 }
 
 // How much an approval mode lets a run do alone: a task gets no more than
@@ -200,14 +206,16 @@ Tool UagentTool(SelfDescriptionProvider describe) {
       "uagent",
       "Inspect this running build, not the code in the folder: status, "
       "cli, commands, config, tools, "
-      "prompt, routes, or instructions (the AGENTS.md files sessions read "
-      "at start). Secrets are never returned or accepted literally.",
+      "prompt, routes, instructions (the AGENTS.md files sessions read "
+      "at start), or style (the web UI's stylesheet). Secrets are never "
+      "returned or accepted literally.",
       {{"type", "object"},
        {"properties",
         {{"topic",
           {{"type", "string"},
-           {"enum", json::array({"status", "cli", "commands", "config", "tools",
-                                 "prompt", "routes", "instructions"})}}},
+           {"enum",
+            json::array({"status", "cli", "commands", "config", "tools",
+                         "prompt", "routes", "instructions", "style"})}}},
          {"name",
           {{"type", "string"},
            {"description", "exact setting or tool name"}}}}}},
@@ -215,6 +223,11 @@ Tool UagentTool(SelfDescriptionProvider describe) {
                                        const ToolContext&) -> ToolResult {
         if (JsonValue(arguments, "topic", "") == "instructions") {
           return ToolSuccess(JsonDump(InstructionFiles(CanonicalCwd()), 2));
+        }
+        if (JsonValue(arguments, "topic", "") == "style") {
+          return ToolSuccess(JsonDump(
+              {{"path", UserStylePath().string()}, {"text", ReadUserStyle()}},
+              2));
         }
         SelfTopic topic = SelfTopic::kStatus;
         if (!ParseSelfTopic(JsonValue(arguments, "topic", "status"), topic)) {
@@ -250,6 +263,7 @@ Tool UagentTool(SelfDescriptionProvider describe) {
   tool.capabilities = 0;
   tool.parallel_safe = true;
   tool.category = "system";
+  tool.skill = kConfigSkill;
   tool.headline = [](const json& arguments) {
     return Headline{"Inspecting", "Inspected",
                     JsonValue(arguments, "topic", "status") + " " +
@@ -358,60 +372,103 @@ Tool UagentConfigureTool(const ConfigProposalFactory& prepare,
   return tool;
 }
 
-Tool UagentInstructionsTool() {
+namespace {
+// The file a uagent_file call names: the web UI's stylesheet, or one of the
+// two instruction files.
+bool IsStyle(const json& arguments) {
+  return JsonValue(arguments, "file", "") == "style";
+}
+
+bool InProject(const json& arguments) {
+  bool project = false;
+  ParseInstructionScope(JsonValue(arguments, "scope", ""), project);
+  return project;
+}
+
+std::filesystem::path EditedPath(const json& arguments) {
+  return IsStyle(arguments)
+             ? UserStylePath()
+             : InstructionPath(InProject(arguments), CanonicalCwd());
+}
+
+std::string EditedText(const json& arguments) {
+  return IsStyle(arguments) ? ReadUserStyle()
+                            : ReadInstructionFile(EditedPath(arguments));
+}
+
+// When the change shows, which the preview and the result both say.
+const char* EditedEffect(const json& arguments) {
+  return IsStyle(arguments) ? "Open web pages apply it when this turn ends."
+                            : "New and restarted sessions read it.";
+}
+}  // namespace
+
+Tool UagentFileTool() {
   // The file text the diff was shown against, so the write can refuse when
   // the file changed while the user read the diff.
   auto shown = std::make_shared<std::pair<json, std::string>>();
   Tool tool = MakeTool(
-      "uagent_instructions",
-      "Replace one whole instructions file once the user approves the exact "
-      "text.",
+      "uagent_file",
+      "Replace one whole file once the user approves the exact text: an "
+      "instructions file, or the web UI's stylesheet (overrides of its "
+      "design tokens; empty text resets the look).",
       {{"type", "object"},
        {"properties",
-        {{"scope",
+        {{"file",
+          {{"type", "string"},
+           {"enum", json::array({"instructions", "style"})}}},
+         {"scope",
           {{"type", "string"},
            {"enum", json::array({"user", "project"})},
            {"description",
-            "user for all conversations; project for this folder"}}},
+            "instructions only: user for all conversations; project for this "
+            "folder"}}},
          {"text",
           {{"type", "string"},
-           {"description", "the whole new file, Markdown"}}}}},
-       {"required", json::array({"scope", "text"})}},
+           {"description", "the whole new file: Markdown or CSS"}}}}},
+       {"required", json::array({"file", "text"})}},
       // Reaching here means the user approved this exact text.
       [shown](const json& arguments, const ToolContext&) {
-        bool project = false;
-        ParseInstructionScope(JsonValue(arguments, "scope", ""), project);
         std::optional<std::string> base;
         if (shown->first == arguments) base = shown->second;
-        const std::string error = WriteInstructionFile(
-            project, CanonicalCwd(), JsonValue(arguments, "text", ""), base);
+        const std::string text = JsonValue(arguments, "text", "");
+        const std::string error =
+            IsStyle(arguments)
+                ? WriteUserStyle(text, base)
+                : WriteInstructionFile(InProject(arguments), CanonicalCwd(),
+                                       text, base);
         return error.empty()
-                   ? ToolSuccess("saved; new and restarted sessions read it")
+                   ? ToolSuccess(std::string("saved. ") +
+                                 EditedEffect(arguments))
                    : ToolFailure(ToolErrorCode::kProcessFailed, error);
       });
   RequireHuman(tool);
   tool.validate =
       [](const json& arguments) -> std::optional<ToolArgumentIssue> {
-    if (JsonValue(arguments, "text", "").size() <= ProjectDocBytes()) {
-      return std::nullopt;
+    bool project = false;
+    if (!IsStyle(arguments) &&
+        !ParseInstructionScope(JsonValue(arguments, "scope", ""), project)) {
+      return ArgumentIssue("instructions.scope",
+                           "instructions take scope user or project", "scope");
     }
-    return ArgumentIssue("instructions.text",
-                         "text takes at most " +
-                             std::to_string(ProjectDocBytes() / 1024) + " KiB",
-                         "text");
+    const size_t limit =
+        IsStyle(arguments) ? kUserStyleBytes : ProjectDocBytes();
+    if (JsonValue(arguments, "text", "").size() <= limit) return std::nullopt;
+    return ArgumentIssue(
+        "file.text",
+        "text takes at most " + std::to_string(limit / 1024) + " KiB", "text");
   };
   tool.headline = [](const json& arguments) {
     return Headline{"Configuring", "Configured",
-                    JsonValue(arguments, "scope", "") + " instructions"};
+                    IsStyle(arguments)
+                        ? std::string("style")
+                        : JsonValue(arguments, "scope", "") + " instructions"};
   };
   tool.approval_preview = [shown](const json& arguments) {
-    bool project = false;
-    ParseInstructionScope(JsonValue(arguments, "scope", ""), project);
-    const auto path = InstructionPath(project, CanonicalCwd());
-    *shown = {arguments, ReadInstructionFile(path)};
+    *shown = {arguments, EditedText(arguments)};
     return ConfigUnifiedDiff(shown->second, JsonValue(arguments, "text", ""),
-                             path.string()) +
-           "\nNew and restarted sessions read it.";
+                             EditedPath(arguments).string()) +
+           "\n" + EditedEffect(arguments);
   };
   return tool;
 }

@@ -51,9 +51,12 @@ inline void KeepSupportedSkills(std::vector<Skill>& skills,
 inline ToolResult OpenSkill(const Skill& skill,
                             const std::string& arguments = {}) {
   SkillReadResult result = ReadSkillBody(skill, arguments);
-  return result.ok
-             ? ToolSuccess(std::move(result.output))
-             : ToolFailure(ToolErrorCode::kInternal, std::move(result.output));
+  if (!result.ok) {
+    return ToolFailure(ToolErrorCode::kInternal, std::move(result.output));
+  }
+  ToolResult opened = ToolSuccess(std::move(result.output));
+  opened.opened_skill = skill.name;
+  return opened;
 }
 
 inline std::string SkillCatalogue(const std::vector<Skill>& skills,

@@ -45,7 +45,7 @@ bool GenericSessionTitle(std::string title) {
 
 }  // namespace
 std::vector<std::string> Agent::ExplicitSkillContext(
-    const std::string& user_input) const {
+    const std::string& user_input) {
   std::vector<std::string> selected;
   for (const Skill& skill : skills_) {
     std::string mention = "$" + skill.name;
@@ -71,6 +71,7 @@ std::vector<std::string> Agent::ExplicitSkillContext(
     }
     Emit(
         NoticeEvent(PresentationStatus::kNeutral, "using skill " + skill.name));
+    UnlockSkillTools(skill.name);
     selected.push_back(std::move(result.output));
   }
   return selected;

@@ -183,8 +183,13 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   } else if (!tool_selection_.Enabled(*tool)) {
     ToolArgumentIssue issue =
         ArgumentIssue("tool.inactive", "inactive tool " + call.name);
-    reject(task, ToolErrorCode::kUnavailable,
-           "tool is inactive for this conversation: " + call.name,
+    std::string message =
+        "tool is inactive for this conversation: " + call.name;
+    // A tool that comes with a skill is offered once that skill is open.
+    if (!tool->skill.empty()) {
+      message += "; open skill " + tool->skill + " first";
+    }
+    reject(task, ToolErrorCode::kUnavailable, std::move(message),
            "inactive_tool", issue);
   } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
     std::string message = "invalid tool argument: " + issue->message;
@@ -420,6 +425,9 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     if (!task.result.todo.is_null()) {
       conversation_.RecordDisplay("todo",
                                   {{"items", std::move(task.result.todo)}});
+    }
+    if (!task.result.opened_skill.empty()) {
+      UnlockSkillTools(task.result.opened_skill);
     }
     if (!task.result.recovery_key.empty()) {
       auto& failures = loop.recovery.edit_failures;

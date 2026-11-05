@@ -7,17 +7,20 @@ import subprocess
 import time
 
 from integration_support import (
+    CONFIG_TOOLS,
     SMALL_PNG,
     Server,
     assert_true,
     base_env,
     captured_log_path,
+    config_skill_env,
     detached_pid,
     event,
     function_names,
     has_message,
     json_sentinel_command,
     large_json_command,
+    open_config_skill,
     run,
     run_dialog,
     run_pty,
@@ -952,7 +955,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         assert_true("saved for" in result and "needs a restart" in result, result)
         return event({"content": "composite-config-ok"})
 
-    with Server([request_change, finish]) as server:
+    with Server([open_config_skill, request_change, finish]) as server:
         # The providers are saved, not set in the environment, which would
         # outrank what the tool saves.
         save_settings(
@@ -964,7 +967,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
                 "test": {"base_url": server.url},
             },
         )
-        env = base_env(home, server.url)
+        env = config_skill_env(base_env(home, server.url))
         del env["UAGENT_PROVIDERS"]
         status, output = run_pty(
             root,
@@ -1024,10 +1027,10 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
         assert_true(literal not in result, result)
         return event({"content": "literal-config-rejected"})
 
-    with Server([request_change, finish]) as server:
+    with Server([open_config_skill, request_change, finish]) as server:
         status, output = run_pty(
             root,
-            base_env(home, server.url),
+            config_skill_env(base_env(home, server.url)),
             [
                 (b"configure providers\n", b"literal-config-rejected"),
                 b"/quit\n",
@@ -1056,19 +1059,93 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
     def refuse(_, body):
         names = function_names(body)
         assert_true("uagent" in names, names)
-        assert_true(not {"uagent_configure", "uagent_instructions"} & set(names), names)
+        assert_true(not {"uagent_configure", "uagent_file"} & names, names)
         # The escape hatch is closed too: writing the saved settings directly
         # stays a mandatory-human mutation.
         assert_true("write_file" in names, names)
         return event({"content": "configure-absent"})
 
-    with Server([refuse]) as server:
+    with Server([open_config_skill, refuse]) as server:
         result = run(
-            root, base_env(home, server.url), "--yolo", "-p", "raise the limit", binary=binary
+            root,
+            config_skill_env(base_env(home, server.url)),
+            "--yolo",
+            "-p",
+            "raise the limit",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("configure-absent"), result.stdout)
         assert_true(saved_settings(home) == {"limits.maxToolCalls": 40}, saved_settings(home))
+
+
+def test_config_tools_come_with_their_skill(root, home, *, binary):
+    """A conversation carries the tools that inspect µAgent only once it opens
+    uagent-config; a call before that is refused with the way in."""
+
+    def call_locked(_, body):
+        assert_true(not CONFIG_TOOLS & function_names(body), function_names(body))
+        return tool_call("uagent", {"topic": "style"})
+
+    def open_skill(_, body):
+        refused = tool_results(body["messages"])[-1]
+        assert_true("open skill uagent-config first" in refused, refused)
+        return tool_call("skill", {"name": "uagent-config"}, call_id="call-skill")
+
+    def inspect_style(_, body):
+        assert_true("uagent" in function_names(body), function_names(body))
+        return tool_call("uagent", {"topic": "style"}, call_id="call-style")
+
+    def finish(_, body):
+        described = json.loads(tool_results(body["messages"])[-1])
+        assert_true(described["path"].endswith("/.uagent/config/style.css"), described)
+        assert_true(described["text"] == "", described)
+        return event({"content": "skill-tools-ok"})
+
+    with Server([call_locked, open_skill, inspect_style, finish]) as server:
+        result = run(
+            root,
+            config_skill_env(base_env(home, server.url)),
+            "--yolo",
+            "-p",
+            "which stylesheet is set?",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("skill-tools-ok"), result.stdout)
+
+
+def test_stylesheet_is_saved_after_approval(root, home, *, binary):
+    """The web UI's stylesheet is replaced only with the exact text a person
+    approved, in µAgent's private config folder."""
+    sheet = ":root { --accent: #3b82f6; }\n"
+
+    def write_style(_, __):
+        return tool_call("uagent_file", {"file": "style", "text": sheet})
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("apply it when this turn ends" in result, result)
+        return event({"content": "style-ok"})
+
+    with Server([open_config_skill, write_style, finish]) as server:
+        status, output = run_pty(
+            root,
+            config_skill_env(base_env(home, server.url)),
+            [
+                (b"make the accent blue\n", b"Allow uagent_file?"),
+                (b"y\n", b"style-ok"),
+                b"/quit\n",
+            ],
+            args=("--yolo",),
+            timeout=20,
+            binary=binary,
+        )
+        assert_true(status == 0, output)
+        assert_true(b"--accent: #3b82f6" in output, output)
+        path = home / ".uagent" / "config" / "style.css"
+        assert_true(path.read_text() == sheet, path.read_text())
+        assert_true(path.stat().st_mode & 0o077 == 0, oct(path.stat().st_mode))
 
 
 def test_self_configuration_commits_after_approval(root, home, *, binary):
@@ -1091,8 +1168,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
         assert_true("active at the next user turn" in result, result)
         return event({"content": "configure-ok"})
 
-    with Server([request_change, finish]) as server:
-        env = base_env(home, server.url)
+    with Server([open_config_skill, request_change, finish]) as server:
+        env = config_skill_env(base_env(home, server.url))
         # A real terminal: piped stdin is deliberately not treated as a person.
         # The answer is sent only once the approval prompt is on screen, so it
         # cannot be swallowed as steering while the turn is still working.

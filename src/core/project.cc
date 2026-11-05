@@ -139,15 +139,15 @@ json InstructionFiles(const std::filesystem::path& cwd) {
   return {{"files", std::move(files)}, {"also_loaded", std::move(also)}};
 }
 
-std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
-                                 const std::string& text,
-                                 const std::optional<std::string>& base) {
-  if (text.size() > ProjectDocBytes()) {
-    return "instructions are at most " +
-           std::to_string(ProjectDocBytes() / 1024) + " KiB";
-  }
-  const std::filesystem::path path = InstructionPath(project, cwd);
-  if (base && ReadInstructionFile(path) != *base) {
+namespace {
+// Replaces a file a person edits, given its text as they saw it (`current`).
+// With `base`, a file changed since the editor opened it is kept: two
+// editors never silently overwrite each other.
+std::string WriteEditedFile(const std::filesystem::path& path,
+                            const std::string& current, const std::string& text,
+                            const std::optional<std::string>& base,
+                            bool shared) {
+  if (base && current != *base) {
     return path.string() + " changed since it was opened; reload it first";
   }
   // Written in place, never through a link a repository could plant.
@@ -158,10 +158,41 @@ std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
   // A folder's files belong to its repository and others read them; yours
   // live in your private ~/.uagent.
   std::string error;
-  if (!project) CreatePrivateDirectories(path.parent_path());
+  if (!shared) CreatePrivateDirectories(path.parent_path());
   AtomicWriteFile(path.string(), text,
-                  project ? kSharedFileMode : kPrivateFileMode, true, error);
+                  shared ? kSharedFileMode : kPrivateFileMode, true, error);
   return error;
+}
+
+}  // namespace
+
+std::string WriteInstructionFile(bool project, const std::filesystem::path& cwd,
+                                 const std::string& text,
+                                 const std::optional<std::string>& base) {
+  if (text.size() > ProjectDocBytes()) {
+    return "instructions are at most " +
+           std::to_string(ProjectDocBytes() / 1024) + " KiB";
+  }
+  const std::filesystem::path path = InstructionPath(project, cwd);
+  return WriteEditedFile(path, ReadInstructionFile(path), text, base, project);
+}
+
+std::filesystem::path UserStylePath() {
+  return std::filesystem::path(UagentDir(kConfigDir)) / "style.css";
+}
+
+std::string ReadUserStyle() {
+  return ReadFile(UserStylePath().string(), kUserStyleBytes).value_or("");
+}
+
+std::string WriteUserStyle(const std::string& text,
+                           const std::optional<std::string>& base) {
+  if (text.size() > kUserStyleBytes) {
+    return "the stylesheet is at most " +
+           std::to_string(kUserStyleBytes / 1024) + " KiB";
+  }
+  return WriteEditedFile(UserStylePath(), ReadUserStyle(), text, base,
+                         /*shared=*/false);
 }
 
 }  // namespace uagent

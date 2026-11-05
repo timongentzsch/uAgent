@@ -4,6 +4,8 @@
 
 ### Changes
 
+- **Arrivals glide, as in a messenger.** While you follow a reply, the view eases to new content instead of jumping, a new step, message or paragraph fades in where it lands, and your sent message rises from the input. Jump to latest glides down. Any scroll, key or touch takes over at once; reduced motion keeps everything instant. The three durations are tokens (`--motion-glide`, `--motion-arrive`, `--motion-send`), so your own stylesheet can slow them, speed them up or turn them off with `0ms`.
+
 - **Sending feels settled.** Your message keeps one row from the moment you send it instead of flickering once; "Working" and its clock live only in the status line under the input, while the turn's row counts its steps; on a phone that line opens and closes smoothly instead of snapping the transcript.
 - **What appears also leaves.** Banners, toasts, Jump to latest and the docked Files pane fade out the way they came, cannot be clicked while they go, and hand focus back (to the input, or to what opened the pane). Settings, the Files and Library lists, activity and question pages push in one way and back the other. A leaving dialog can no longer take a second tap.
 - **One touch size, one hover, one selection.** Small controls take a 44px touch; a filled control's press is distinct from its hover; a selected item is the stripe and fill everywhere, a pressed toggle the accent. Approval prompts wrap instead of cutting off why they need you, and the phone Files sheet has one header.

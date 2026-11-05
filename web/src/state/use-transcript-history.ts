@@ -4,6 +4,7 @@ import {
   storeBookmark,
   type Bookmark,
 } from "./transcript-bookmarks.ts";
+import { motionEase, motionMs } from "../shared/motion.ts";
 import { useLatest } from "../shared/use-latest.ts";
 
 // Scrolling for the transcript: following the end, keeping the reader's row
@@ -30,6 +31,13 @@ const MOVE = 1;
 const WHEEL_SETTLE_MS = 250;
 const WHEEL_SETTLE_FRAMES = 15;
 const WHEEL_QUIET_FRAMES = 5;
+
+// Where the message being sent left from (the input), so its row can rise
+// from there: recorded on send, used once when that row appears.
+let sentFrom: DOMRect | null = null;
+export const rememberSend = (input: Element | null) => {
+  sentFrom = input?.getBoundingClientRect() ?? null;
+};
 
 // Runs `then` after `count` painted frames; the result cancels it.
 function afterFrames(count: number, then: () => void) {
@@ -167,6 +175,12 @@ export function useTranscriptHistory(
   const wheelAt = useRef(-Infinity);
   // A compensation waiting for the wheel's scroll to land.
   const deferred = useRef<(() => void) | null>(null);
+  // Following, the view glides to the end as the content grows (a frame
+  // loop, 0 when idle); the sizes it last saw tell growth from a resize, and
+  // a finger on the screen keeps it still.
+  const gliding = useRef(0);
+  const sized = useRef({ height: 0, client: 0 });
+  const touching = useRef(false);
 
   const attachScroller = useCallback((node: HTMLDivElement | null) => {
     scroller.current = node;
@@ -232,10 +246,76 @@ export function useTranscriptHistory(
     selectAnchor();
   }, [selectAnchor, setFollow]);
 
+  const stopGlide = useCallback(() => {
+    cancelAnimationFrame(gliding.current);
+    gliding.current = 0;
+  }, []);
+
   const pin = useCallback(() => {
     const element = scroller.current;
-    if (element) writeTop(element.scrollHeight - element.clientHeight);
+    if (!element) return;
+    stopGlide();
+    writeTop(element.scrollHeight - element.clientHeight);
+    sized.current = {
+      height: element.scrollHeight,
+      client: element.clientHeight,
+    };
+  }, [stopGlide, writeTop]);
+
+  // Eases the view to the end, retargeting as the end moves (a reply that
+  // streams), and settling in about --motion-glide. It stops when following
+  // does.
+  const glide = useCallback(() => {
+    if (gliding.current) return;
+    const tau = motionMs("glide") / 3;
+    let last = performance.now();
+    const step = (now: number) => {
+      const element = scroller.current;
+      if (!element || !following.current) {
+        gliding.current = 0;
+        return;
+      }
+      const end = element.scrollHeight - element.clientHeight;
+      const gap = end - element.scrollTop;
+      // At least a pixel a frame, so every frame moves the view.
+      const move = Math.max(1, gap * (1 - Math.exp(-(now - last) / tau)));
+      last = now;
+      sized.current = {
+        height: element.scrollHeight,
+        client: element.clientHeight,
+      };
+      // The last pixel lands at once.
+      if (gap - move < 1) {
+        writeTop(end);
+        gliding.current = 0;
+        return;
+      }
+      writeTop(element.scrollTop + move);
+      gliding.current = requestAnimationFrame(step);
+    };
+    gliding.current = requestAnimationFrame(step);
   }, [writeTop]);
+
+  // Following: content that grows glides into view, as in a messenger;
+  // anything else (the box resizing, a send's own row, a finger on the
+  // screen, motion off, a slide) pins at once.
+  const follow = useCallback(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const resized = element.clientHeight !== sized.current.client;
+    const grew = !resized && element.scrollHeight > sized.current.height;
+    if (
+      resized ||
+      sentFrom ||
+      touching.current ||
+      !motionMs("glide") ||
+      document.documentElement.dataset.slide
+    )
+      pin();
+    // A change that grew nothing lets a running glide finish.
+    else if (grew || gliding.current) glide();
+    else pin();
+  }, [glide, pin]);
 
   // A reader who moves down into the end follows again: by scrolling there,
   // or by a wheel, swipe or key that finds no more room below. Only the
@@ -267,7 +347,7 @@ export function useTranscriptHistory(
     if (element.dataset.historyKey !== key.current) return;
     if (element.hasAttribute("aria-busy")) return;
     if (following.current) {
-      pin();
+      follow();
       return;
     }
     const current = anchor.current;
@@ -303,7 +383,7 @@ export function useTranscriptHistory(
     current.height = height;
     current.within = within;
     capture();
-  }, [capture, pin, selectAnchor, settleWheel, writeTop]);
+  }, [capture, follow, selectAnchor, settleWheel, writeTop]);
 
   const reconcileRef = useLatest(reconcile);
 
@@ -360,6 +440,8 @@ export function useTranscriptHistory(
     }
     pending.current = null;
     lastTop.current = element.scrollTop;
+    // From here on, rows that arrive are live: they fade in (primitives.css).
+    element.dataset.live = "";
     observe();
     return true;
   }, [observe, pin, setFollow, writeTop]);
@@ -369,6 +451,7 @@ export function useTranscriptHistory(
     capture();
     key.current = sessionKey;
     pending.current = sessionKey;
+    if (scroller.current) delete scroller.current.dataset.live;
     jumped.current = false;
     anchor.current = null;
     lastNode.current = nodes.at(-1)?.id;
@@ -381,6 +464,23 @@ export function useTranscriptHistory(
     if (!restore()) reconcile();
     const last = nodes.at(-1)?.id;
     if (last !== lastNode.current) {
+      // A message just sent rises from the input into its place.
+      const row =
+        sentFrom &&
+        motionMs("send") > 0 &&
+        last?.startsWith("outgoing-") &&
+        column.querySelector(`[data-message-id="${CSS.escape(last)}"]`);
+      if (row) {
+        const rise = sentFrom!.top - row.getBoundingClientRect().top;
+        row.animate(
+          [
+            { translate: `0 ${rise}px`, opacity: 0 },
+            { translate: "0 0", opacity: 1 },
+          ],
+          { duration: motionMs("send"), easing: motionEase("out") },
+        );
+      }
+      sentFrom = null;
       if (!following.current) {
         const seen = nodes.findLastIndex(
           (node) => node.id === lastNode.current,
@@ -430,7 +530,9 @@ export function useTranscriptHistory(
     let touchY = 0;
     // One anchor pick per painted frame, however many scroll events land.
     let frame = 0;
+    // The reader's own input always wins over a glide.
     const wheel = (event: WheelEvent) => {
+      stopGlide();
       jumped.current = false;
       wheelAt.current = performance.now();
       // The ancestor walk reads layout; skip it once already unfollowed.
@@ -439,8 +541,13 @@ export function useTranscriptHistory(
       } else if (event.deltaY > 0) resumeAtEnd();
     };
     const touchStart = (event: TouchEvent) => {
+      stopGlide();
+      touching.current = true;
       jumped.current = false;
       touchY = event.touches[0]?.clientY || 0;
+    };
+    const touchEnd = (event: TouchEvent) => {
+      touching.current = event.touches.length > 0;
     };
     const touchMove = (event: TouchEvent) => {
       const next = event.touches[0]?.clientY || touchY;
@@ -457,6 +564,7 @@ export function useTranscriptHistory(
         return;
       const up = ["ArrowUp", "PageUp", "Home"].includes(event.key);
       if (up || ["ArrowDown", "PageDown", "End", " "].includes(event.key)) {
+        stopGlide();
         jumped.current = false;
         if (up) stopFollowing();
         else resumeAtEnd();
@@ -467,7 +575,7 @@ export function useTranscriptHistory(
     };
     const scroll = () => {
       if (jumped.current && following.current) {
-        pin();
+        if (!gliding.current) pin();
         return;
       }
       // Checked before any waiting compensation: the reader's downward
@@ -508,6 +616,8 @@ export function useTranscriptHistory(
     box.addEventListener("pointerdown", pointerDown, { passive: true });
     box.addEventListener("touchstart", touchStart, { passive: true });
     box.addEventListener("touchmove", touchMove, { passive: true });
+    box.addEventListener("touchend", touchEnd, { passive: true });
+    box.addEventListener("touchcancel", touchEnd, { passive: true });
     box.addEventListener("keydown", keyDown);
     box.addEventListener("scroll", scroll, { passive: true });
     return () => {
@@ -520,6 +630,8 @@ export function useTranscriptHistory(
       box.removeEventListener("pointerdown", pointerDown);
       box.removeEventListener("touchstart", touchStart);
       box.removeEventListener("touchmove", touchMove);
+      box.removeEventListener("touchend", touchEnd);
+      box.removeEventListener("touchcancel", touchEnd);
       box.removeEventListener("keydown", keyDown);
       box.removeEventListener("scroll", scroll);
     };
@@ -534,6 +646,7 @@ export function useTranscriptHistory(
     selectAnchor,
     settleWheel,
     stopFollowing,
+    stopGlide,
   ]);
 
   const jumpToLatest = useCallback(() => {
@@ -551,9 +664,12 @@ export function useTranscriptHistory(
       element.style.overflowY = overflow;
     }
     setFollow(true);
-    pin();
+    // Back to the end: a glide, unless motion is off or this is a send,
+    // whose own row pins (the row rises from the input instead).
+    if (motionMs("glide") && !sentFrom) glide();
+    else pin();
     capture();
-  }, [capture, pin, setFollow]);
+  }, [capture, glide, pin, setFollow]);
 
   // Puts a found row or words in the middle of the view and stops
   // following, so a streamed row does not pull the view away from it.

@@ -652,6 +652,21 @@
     gap: var(--gap);
     min-height: 100%;
   }
+  /* A row that arrives in a live conversation fades in where it lands,
+     never on load or paging. Opacity only: the scroll maths reads true
+     positions. */
+  .transcript[data-live]:not([aria-busy])
+    :is(.transcript-content, .node-kids)
+    > * {
+    transition: opacity var(--motion-arrive) var(--ease-out);
+  }
+  @starting-style {
+    .transcript[data-live]:not([aria-busy])
+      :is(.transcript-content, .node-kids)
+      > * {
+      opacity: 0;
+    }
+  }
   .transcript-content > p,
   .transcript-content > details {
     margin-block: 0;

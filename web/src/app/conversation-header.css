@@ -6,9 +6,6 @@
 }
 .head-subtitle button {
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: block;
   font-size: inherit;
   min-height: 0;

@@ -29,7 +29,7 @@ export default function TodoList({ items }: { items?: TodoItem[] }) {
             >
               <Icon aria-hidden="true" />
               {item.status === "done" && <span class="sr-only">Done: </span>}
-              <span class={index === current ? "shimmer-text" : undefined}>
+              <span class={index === current ? "working" : undefined}>
                 {cleanText(item.text)}
               </span>
             </li>

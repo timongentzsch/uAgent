@@ -86,6 +86,12 @@ export function Transcript({
   );
 }
 
+// A message you sent keeps one row from the moment you send it: the row this
+// device shows at once and the host's that replaces it share a key, so the
+// row is updated in place rather than rebuilt.
+const rowKey = (node: Node) =>
+  !node.parent && node.request_id ? `request:${node.request_id}` : node.id;
+
 function Nodes({
   items: list,
   scope,
@@ -95,7 +101,7 @@ function Nodes({
     <>
       {list.map((item) => (
         <NodeView
-          key={`${scope}${item.branch.node.id}`}
+          key={`${scope}${rowKey(item.branch.node)}`}
           {...props}
           {...item}
           scope={scope}
@@ -273,8 +279,8 @@ function arrows(
 }
 
 // A row's one line: its headline, then its result word. A failed row reads
-// red, a running one shimmers and counts its time, and a closed running row
-// says what it is doing now.
+// red, a running one pulses, a running call counts its time (a turn's time is
+// the status line's), and a closed running row says what it is doing now.
 class NodeRow extends Component<{
   node: Node;
   open: boolean;
@@ -307,7 +313,7 @@ function RowLine({
   since,
 }: NodeRow["props"]) {
   const elapsed = useElapsed(
-    node.state === "running",
+    node.state === "running" && node.kind !== "work",
     since ? Date.parse(since) : undefined,
   );
   const headline = [headlineOf(node), step].filter(Boolean).join(" · ");
@@ -317,9 +323,7 @@ function RowLine({
       <ChevronRight class="row-chevron" aria-hidden="true" />
       <span
         class={
-          node.state === "running"
-            ? "node-headline shimmer-text"
-            : "node-headline"
+          node.state === "running" ? "node-headline working" : "node-headline"
         }
         title={headline}
       >

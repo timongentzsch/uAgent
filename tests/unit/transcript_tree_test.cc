@@ -511,7 +511,7 @@ TEST_CASE(TestGoldenRunningTurn) {
   // An interim reply is a step of the work, which runs until the footer.
   CHECK((page == std::vector<std::string>{
                      "turn m-2 < - \"build\"",
-                     "work w-m-2 < m-2 [running] Working",
+                     "work w-m-2 < m-2 [running] 0 steps",
                      "message r-1-1-1 < w-m-2 \"Building now.\"",
                      "call " + b + " < w-m-2 [running] Running make",
                  }));
@@ -520,9 +520,9 @@ TEST_CASE(TestGoldenRunningTurn) {
   // indented under it; live, nothing has settled but the reply that
   // streamed.
   const std::string open =
-      "> build\n  → Working\n    Building now.\n    → Running make\n";
+      "> build\n  → 0 steps\n    Building now.\n    → Running make\n";
   CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
-         std::vector<std::string>{"> build\n  → Working\n", open, open}));
+         std::vector<std::string>{"> build\n  → 0 steps\n", open, open}));
   CHECK(turn.Watched() == "> build\nuagent\nBuilding now.");
 }
 

@@ -127,7 +127,7 @@ function ActivityButtonView({
             <StatusLed state="running" />
             <span>
               <DataText>
-                {running && <span class="shimmer-text">Working</span>}
+                {running && <span class="working">Working</span>}
                 {running && details && " · "}
                 {details}
               </DataText>

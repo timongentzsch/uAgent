@@ -30,10 +30,12 @@ export async function settled(element: Element | null) {
 }
 
 // Plays an element's leave state (`data-leaving`, styled in CSS) and
-// resolves once it has played.
-export async function animateOut(element: Element | null) {
+// resolves once it has played; the caller then removes the element. A
+// leaving element is inert, so a second tap cannot land on what is going.
+export async function animateOut(element: HTMLElement | null) {
   // Without motion there is nothing to play: close in the same task.
   if (!element || !motionMs("base")) return;
+  element.inert = true;
   element.setAttribute("data-leaving", "");
   // Let the style change start its transitions before collecting them.
   await new Promise((resolve) => requestAnimationFrame(resolve));

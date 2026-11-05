@@ -136,7 +136,8 @@
 .queue-next {
   transition:
     opacity var(--motion-fast) var(--ease-out),
-    visibility var(--motion-fast) allow-discrete;
+    visibility var(--motion-fast) allow-discrete,
+    display var(--motion-fast) allow-discrete;
 }
 @starting-style {
   .queue-next {
@@ -294,8 +295,22 @@
     gap: 0;
     padding-top: 0;
   }
+  /* On a phone the row opens and closes with the turn instead of snapping,
+     so the transcript above it moves smoothly. It clips while it moves, so
+     its focus ring is drawn inside. */
+  .status-line {
+    height: 0;
+    overflow: clip;
+    transition:
+      height var(--motion-base) var(--ease-standard),
+      margin-top var(--motion-base) var(--ease-standard);
+  }
   .status-line:has(button) {
+    height: var(--control-slim);
     margin-top: var(--space-1);
+  }
+  .status-line button {
+    outline-offset: calc(-1 * var(--focus-offset));
   }
   .composer-metrics .activity-button {
     max-width: 100%;

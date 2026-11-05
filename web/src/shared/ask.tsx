@@ -318,7 +318,7 @@ function QuestionPage({
         <div class={`ask-options${visual ? " visual" : ""}`}>
           {item.options.map((option) => (
             <label
-              class="card ask-option"
+              class="card entry ask-option"
               key={option.label}
               // One choice answers the question: a tap moves on once
               // the choice has shown. Arrow keys only move the choice,
@@ -374,7 +374,7 @@ function QuestionPage({
               )}
             </label>
           ))}
-          <label class="card ask-option">
+          <label class="card entry ask-option">
             <Input
               type={type}
               name={name}

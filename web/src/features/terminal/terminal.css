@@ -40,13 +40,6 @@
   flex: none;
   align-items: center;
 }
-/* The selected tab is marked by the accent stripe, not filled. */
-.terminal-tab > button[aria-pressed="true"] {
-  background: transparent;
-  color: var(--text);
-  font-weight: var(--weight-strong);
-  box-shadow: inset 0 calc(-1 * var(--stripe)) var(--accent);
-}
 
 .terminal-tabpanel {
   position: relative;

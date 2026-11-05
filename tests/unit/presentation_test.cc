@@ -210,7 +210,7 @@ TEST_CASE(TestTreeDrawsLiveAsResumed) {
                     CallNode(record, "w-m-1")})}};
   TerminalPresenter presenter;
   std::string drawn = CaptureStdout([&] { presenter.Draw(view); });
-  CHECK(drawn.find("  → Working\n    → Reading a.txt\n") != std::string::npos);
+  CHECK(drawn.find("  → 0 steps\n    → Reading a.txt\n") != std::string::npos);
   // Nothing settled: nothing more.
   CHECK(CaptureStdout([&] { presenter.Update(view, work); }).empty());
   record["state"] = "ok";

@@ -125,7 +125,13 @@ export default function ConversationHeader({
         </IconButton>
       )}
       <div>
-        <h1 title={session?.cwd}>
+        <h1
+          title={
+            session
+              ? [titleOf(session), session.cwd].filter(Boolean).join("\n")
+              : undefined
+          }
+        >
           {page === "library" ? (
             "Library"
           ) : page === "scheduled" ? (
@@ -148,7 +154,7 @@ export default function ConversationHeader({
         {page === "chat" && parent && (
           <p class="head-subtitle small">
             <Button variant="quiet" onClick={() => choose(parent.id)}>
-              ‹ {titleOf(parent)}
+              <span class="truncate">‹ {titleOf(parent)}</span>
             </Button>
           </p>
         )}

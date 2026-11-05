@@ -178,7 +178,7 @@ const streamReply = (page) =>
         parent: "m-118",
         kind: "work",
         state: "running",
-        headline: { verb: "Working", target: "" },
+        headline: { verb: "", target: "0 steps" },
       },
     });
     testSend({

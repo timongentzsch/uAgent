@@ -19,7 +19,12 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { retainedViews, hasContent, patchCatalogue } from "./store.ts";
+import {
+  confirmOutgoing,
+  retainedViews,
+  hasContent,
+  patchCatalogue,
+} from "./store.ts";
 import { applyEvent as applyHostEvent } from "./apply-event.ts";
 import { api, protocol, receiveOutcome, routes } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
@@ -264,15 +269,7 @@ export function useHost(
         .then((value) => {
           if (signal.aborted) throw signal.reason;
           if (loads.current.get(id) !== request) return value;
-          const accepted = new Set(
-            value.state?.view?.nodes?.map((node) => node.request_id),
-          );
-          setOutgoing((items) =>
-            items.filter(
-              (item) =>
-                item.session_id !== id || !accepted.has(item.request_id),
-            ),
-          );
+          setOutgoing((items) => confirmOutgoing(items, { [id]: value }));
           const newer = live.current[id];
           if (newer?.epoch === value.epoch && newer.cursor > value.cursor)
             return newer;
@@ -417,7 +414,6 @@ export function useHost(
       setCatalogue,
       patchSession,
       upsertSession,
-      setOutgoing,
       setUnread,
       settleOutgoing,
       forget,
@@ -667,6 +663,7 @@ export function useHost(
           snapshots.watching(),
         );
         snapshots.set({ ...live.current });
+        setOutgoing((items) => confirmOutgoing(items, live.current));
       });
     };
     return () => {

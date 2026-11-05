@@ -133,10 +133,9 @@
   --motion-slow: 280ms;
   /* Loops that say something is alive: status lights, skeletons. */
   --motion-pulse: 1.6s;
-  /* Spinners and the working shimmer; reduced motion slows the spinner. */
+  /* Spinners; reduced motion slows the spinner. */
   --motion-spin: 0.8s;
   --motion-spin-reduced: 2.4s;
-  --motion-shimmer: 2s;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -196,6 +195,8 @@
   --surface: #0a0a0a;
   --raised: #171717;
   --hover: #232323;
+  /* A filled control while pressed: one step past its hover. */
+  --press: #2e2e2e;
   --placeholder: #414141;
   --text: #f5f5f5;
   --muted: #a3a3a3;
@@ -253,6 +254,7 @@
   --surface: #fafafa;
   --raised: #eee;
   --hover: #e2e2e2;
+  --press: #d4d4d4;
   --placeholder: #ccc;
   --text: #111;
   --muted: #555;
@@ -460,7 +462,10 @@ select:disabled {
 /* A press fills at once and fades out on release (the fade is the base
    transition; a press itself has none). The selectors outrank hover's. */
 button:enabled:active,
-.file-button:active,
+.file-button:active {
+  background: var(--press);
+  transition: none;
+}
 .quiet:not(:disabled):active,
 button.row:enabled:active {
   background: var(--hover);
@@ -735,15 +740,29 @@ kbd {
 .divided > :not(:first-child) {
   border-top: var(--border);
 }
-/* The current entry of a list (the open conversation, section or file) and
-   a list's chosen option: filled, with the accent stripe at its start. */
-.entry:is([aria-current], [aria-selected="true"], :has([aria-current])) {
+/* The current entry of a list (the open conversation, section, file or
+   terminal) and a list's chosen option: filled, with the accent stripe at
+   its start. A pressed toggle is the other selection: the accent fill. */
+.entry:is(
+  [aria-current],
+  [aria-selected="true"],
+  :has([aria-current]),
+  :has(input:checked)
+) {
   background: var(--raised);
   box-shadow: inset var(--stripe) 0 var(--accent);
 }
 .plain {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* One line, cut short with an ellipsis where it runs out of room. */
+.truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .sr-only {
   position: absolute;
@@ -849,21 +868,6 @@ kbd {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-/* Work under way shimmers softly through its text. */
-.shimmer-text {
-  background:
-    linear-gradient(90deg, var(--muted) 30%, var(--text) 50%, var(--muted) 70%)
-    0 0 / 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer var(--motion-shimmer) linear infinite;
-}
-@keyframes shimmer {
-  to {
-    background-position: -150% 0;
   }
 }
 .mark {
@@ -975,6 +979,7 @@ dialog.sidebar:not([open]) {
   border-radius: 0;
 }
 /* Alive: work under way, or content on its way in. */
+.working,
 .status-led.running,
 .skeleton > div,
 .text-skeleton,
@@ -1435,17 +1440,36 @@ dialog section {
     --control: var(--touch);
     --control-slim: var(--control-m);
   }
-  /* Dense rows keep their 32px look but take a 44px touch: an invisible
-     hit area extends above and below, never over a neighbour. */
-  :where(.activity-button, .metrics > button, .message button) {
+  /* A small control (a dense row's button, a link in a line of text, a
+     switch, a fold) keeps its look but takes a 44px touch: an invisible
+     hit area centred on it, at least --touch each way. */
+  :where(
+    .activity-button,
+    .metrics > button,
+    .message button,
+    .head-subtitle button,
+    .node-action,
+    .switch,
+    .place-head .icon-button
+  ) {
     position: relative;
   }
-  .activity-button::after,
-  .metrics > button::after,
-  .message button::after {
+  :is(
+    .activity-button,
+    .metrics > button,
+    .message button,
+    .head-subtitle button,
+    .node-action,
+    .switch,
+    .place-head .icon-button
+  )::after {
     content: "";
     position: absolute;
-    inset: calc((var(--control-slim) - var(--touch)) / 2) 0;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--touch));
+    height: max(100%, var(--touch));
+    translate: -50% -50%;
   }
 }
 /* Full height like the phone sheet: its surface runs under the home
@@ -1514,6 +1538,7 @@ dialog[open][data-leaving] {
 }
 dialog[open][data-leaving]::backdrop {
   opacity: 0;
+  transition-timing-function: var(--ease-in);
 }
 dialog[data-layout="sheet"][open][data-leaving] {
   opacity: 1;
@@ -1628,14 +1653,6 @@ dialog[data-layout="sheet"] > header {
    backgrounds, so anything that says something through a fill keeps its
    own system colours. */
 @media (forced-colors: active) {
-  /* A forced palette cannot draw text through a gradient: plain text. */
-  .shimmer-text {
-    background: none;
-    -webkit-background-clip: border-box;
-    background-clip: border-box;
-    color: CanvasText;
-    animation: none;
-  }
   .switch input[switch]::before {
     forced-color-adjust: none;
     background: ButtonText;

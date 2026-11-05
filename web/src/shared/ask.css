@@ -84,10 +84,6 @@
   align-items: start;
   gap: var(--space-4);
   cursor: pointer;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-.ask-option:has(:checked) {
-  border-color: var(--accent);
 }
 /* The whole row shows focus; the small native control inside does not. */
 .ask-option:has(:focus-visible) {

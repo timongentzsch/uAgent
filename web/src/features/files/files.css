@@ -90,7 +90,7 @@
   font-size: var(--font-small);
 }
 .files-crumbs button {
-  min-height: var(--control-m);
+  min-height: var(--control);
   padding-inline: var(--space-2);
   color: var(--muted);
 }
@@ -115,7 +115,7 @@
 .files-entries button,
 .files-results button {
   width: 100%;
-  min-height: var(--control-m);
+  min-height: var(--row);
   justify-content: flex-start;
   gap: var(--space-3);
   padding: var(--space-1) var(--space-3);

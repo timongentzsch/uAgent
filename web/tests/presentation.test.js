@@ -462,10 +462,10 @@ test("a blank reply is no node, and a call without facts reads its state", () =>
 
 test("a running turn's work line says what it is doing now", () => {
   const { minimal, default: middle, full } = depths(golden.running);
-  assert.deepEqual(minimal, ["you: build", "› Working"]);
+  assert.deepEqual(minimal, ["you: build", "› 1 step"]);
   assert.deepEqual(middle, [
     "you: build",
-    "⌄ Working",
+    "⌄ 1 step",
     "  Building now.",
     "  › Running make",
   ]);

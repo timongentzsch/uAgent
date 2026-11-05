@@ -4,14 +4,12 @@ import type {
   HostEvent,
   JSONValue,
   Outcome,
-  Outgoing,
   Session,
   Snapshot,
 } from "../shared/types.ts";
 import type { SnapshotStore } from "./snapshot-store.ts";
 import {
   applySessionEvent,
-  confirmOutgoing,
   isIncoming,
   keepOlderPages,
   keptSession,
@@ -42,7 +40,6 @@ interface EventHost {
   setCatalogue: Dispatch<StateUpdater<Catalogue>>;
   patchSession: (id: string, change: (item: Session) => Session) => void;
   upsertSession: (session: Session) => void;
-  setOutgoing: Dispatch<StateUpdater<Outgoing[]>>;
   setUnread: Dispatch<StateUpdater<Set<string>>>;
   settleOutgoing: (outcome: Outcome) => boolean;
   forget: (id: string, movedTo?: string) => void;
@@ -68,7 +65,6 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     setCatalogue,
     patchSession,
     upsertSession,
-    setOutgoing,
     setUnread,
     settleOutgoing,
     forget,
@@ -144,7 +140,6 @@ export function applyEvent(event: HostEvent, host: EventHost) {
     case "node":
       if (event.node) {
         const node = event.node;
-        setOutgoing((items) => confirmOutgoing(items, node.request_id));
         const incoming = node.incoming;
         if (incoming) patchSession(id, (item) => raiseIncoming(item, incoming));
       }

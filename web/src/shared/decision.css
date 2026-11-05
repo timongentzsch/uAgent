@@ -33,11 +33,10 @@
 .decision-head > [role="alert"] {
   flex: none;
 }
+/* What is asked and why it needs you: never cut short. */
 .decision-tool {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: var(--font-small);
 }
 .decision-where {

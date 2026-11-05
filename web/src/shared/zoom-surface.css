@@ -33,7 +33,7 @@
 /* − level + Fit, floating over the content like a document viewer's. */
 .zoom-controls {
   right: var(--space-4);
-  bottom: calc(var(--space-4) + var(--safe-bottom));
+  bottom: var(--space-4);
   cursor: default;
 }
 .zoom-controls output {

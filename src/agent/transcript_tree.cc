@@ -212,9 +212,11 @@ json WorkNode(const std::string& message, const json& facts) {
                  : outcome == "complete"    ? "ok"
                  : outcome == "interrupted" ? "cancelled"
                                             : "failed"},
+       // While it runs, the status line under the input says "Working" and
+       // keeps the time; the row counts what is done, from "0 steps".
        {"headline",
-        {{"verb", done ? "Worked" : "Working"},
-         {"target", JoinDot({steps ? Plural(steps, "step") : "",
+        {{"verb", done ? "Worked" : ""},
+         {"target", JoinDot({steps || !done ? Plural(steps, "step") : "",
                              edited ? "edited " + Plural(edited, "file") : "",
                              errors ? Plural(errors, "error") : ""})}}},
        {"result",

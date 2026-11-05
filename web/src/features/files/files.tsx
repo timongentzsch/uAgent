@@ -9,6 +9,7 @@ import {
   Terminal,
   X,
 } from "lucide-preact";
+import { usePushDirection } from "../../shared/motion.ts";
 import type { Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { api, routes } from "../../state/api.ts";
@@ -20,6 +21,7 @@ import {
   LoadError,
   Placeholder,
   Spinner,
+  useDialog,
 } from "../../shared/ui.tsx";
 import { Input } from "../../shared/form-controls.tsx";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
@@ -83,12 +85,16 @@ export default function Files({
   openTerminal,
 }: {
   session: Session;
-  // Docked beside the chat; a sheet has its own Close.
+  // Docked beside the chat; in a sheet, the sheet's own close.
   close?: () => void;
   // Opens a terminal in the folder shown, by its path in this one; none
   // while the host offers no terminal.
   openTerminal?: (path: string) => void;
 }) {
+  // In a sheet, its header is this one: Close plays the sheet's exit, and
+  // the title is where the sheet puts focus.
+  const dialog = useDialog();
+  const closeFiles = close ?? dialog?.close;
   const id = session.id;
   const turn = session.turn_active;
   const view = useContext(ImageViewer);
@@ -101,6 +107,7 @@ export default function Files({
   const [changing, setChanging] = useState(false);
   // In a narrow pane only one side shows: the list, or the open file.
   const [showing, setShowing] = useState<"list" | "file">("list");
+  const moved = usePushDirection(showing === "file");
   const url = (path: string) => routes.files(id, "raw", path);
   const listing = useResource(
     () => api<Listing>(routes.files(id, "list", dir)),
@@ -207,7 +214,12 @@ export default function Files({
             <ChevronLeft />
           </IconButton>
         )}
-        <h2 class="files-title" title={file || undefined}>
+        <h2
+          class="files-title"
+          title={file || undefined}
+          ref={dialog?.heading}
+          tabIndex={dialog ? -1 : undefined}
+        >
           {file ? (
             <>
               <span class="files-dir">{dirOf(file) && `${dirOf(file)}/`}</span>
@@ -249,14 +261,20 @@ export default function Files({
             <Terminal />
           </IconButton>
         )}
-        {close && (
-          <IconButton label="Close files" onClick={close}>
+        {closeFiles && (
+          <IconButton label="Close files" onClick={closeFiles}>
             <X />
           </IconButton>
         )}
       </header>
-      <div class="files-columns">
-        <nav class="files-list" aria-label="Folder">
+      <div
+        class="files-columns"
+        data-direction={moved === "back" ? "back" : undefined}
+      >
+        <nav
+          class={moved ? "files-list push" : "files-list"}
+          aria-label="Folder"
+        >
           <ResizeHandle
             pane="files-list"
             label="Resize the file list"
@@ -431,7 +449,7 @@ export default function Files({
           )}
         </nav>
         <div
-          class="files-view"
+          class={moved ? "files-view push" : "files-view"}
           // Delegated: the rendered markdown's file links and images.
           onClick={(event) => {
             const target = event.target as HTMLElement;

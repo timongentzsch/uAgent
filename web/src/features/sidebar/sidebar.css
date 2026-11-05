@@ -135,7 +135,7 @@
 .session-row:focus-within .action-menu {
   opacity: 1;
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .session-row:hover .session-time {
     display: inline;
   }

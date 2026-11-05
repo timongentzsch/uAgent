@@ -548,6 +548,8 @@ const DialogContext = createContext<{
 
 // The close of the dialog around the caller: plays its exit, as Close does.
 export const useDialogClose = () => useContext(DialogContext)!.close;
+// The dialog around the caller, if any, for content that draws its header.
+export const useDialog = () => useContext(DialogContext);
 
 // The one dialog header: title, optional leading control (Back) and actions,
 // then Close. Modal renders it unless its content renders its own.

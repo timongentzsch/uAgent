@@ -264,7 +264,7 @@ function DetailBody({
       {/* Each section holds its place from the first frame: content
           replaces the skeleton instead of pushing the layout around. */}
       {detail.memory ? (
-        <section aria-label="Memory">
+        <section class="activity-result" aria-label="Memory">
           <p class="detail-label">{detail.memory.key}</p>
           <p class="detail-meta small">
             Saved memory · it may have changed since this event.
@@ -276,7 +276,7 @@ function DetailBody({
           )}
         </section>
       ) : (
-        <section aria-label="Output">
+        <section class="activity-result" aria-label="Output">
           {detail.output ? (
             <pre>{cleanText(detail.output)}</pre>
           ) : loading ? (

@@ -9,13 +9,6 @@
   border-left: var(--border);
   background: var(--bg);
 }
-.files-sheet > .dialog-body {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  overflow: hidden;
-  scrollbar-gutter: auto;
-}
 .files-sheet .files {
   margin: 0;
   border: 0;

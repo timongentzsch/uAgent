@@ -111,7 +111,7 @@
   flex-basis: 100%;
   padding: 0;
 }
-@container column (max-width: 600px) {
+@container column (max-width: 43rem) {
   .turn-calls {
     display: none;
   }
@@ -155,7 +155,7 @@
   min-width: 0;
 }
 
-@container column (max-width: 600px) {
+@container column (max-width: 43rem) {
   .side-answer > form button,
   .side-answer > header button {
     min-height: var(--touch);

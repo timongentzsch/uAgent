@@ -73,6 +73,20 @@ export function useExit<T, E extends HTMLElement = HTMLElement>(
   return [value || (gone ? value : last.current), ref];
 }
 
+// Which way a list-and-detail view last moved, from whether its detail is
+// shown: "forward" into it, "back" to the list, and nothing until it first
+// moves, so no view pushes when it first appears. Give the container
+// data-direction="back" when it is "back", and its two sides the class
+// `push` once it has a value: where both sides stay on screen nothing moves.
+export function usePushDirection(detail: boolean) {
+  const last = useRef<{ detail: boolean; direction?: "forward" | "back" }>({
+    detail,
+  });
+  if (last.current.detail !== detail)
+    last.current = { detail, direction: detail ? "forward" : "back" };
+  return last.current.direction;
+}
+
 let sliding: { run: ViewTransition; to: string } | undefined;
 
 // Runs the change to conversation `to` as a slide of the transcript in from

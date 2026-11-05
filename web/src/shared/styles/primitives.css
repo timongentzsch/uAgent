@@ -1043,7 +1043,7 @@
   }
   /* What the conversation's column is narrow for: the width of a phone,
      wherever the list sits. The header carries --narrow for useNarrowColumn. */
-  @container column (max-width: 600px) {
+  @container column (max-width: 43rem) {
     .conversation-head {
       --narrow: 1;
       min-height: var(--head-narrow);

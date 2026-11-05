@@ -32,7 +32,7 @@ const work = (message, state, counts, word) => ({
   kind: "work",
   state,
   headline: {
-    verb: state === "running" ? "Working" : "Worked",
+    verb: state === "running" ? "" : "Worked",
     target: counts || "",
   },
   result: { word: word || "", unit: "step" },
@@ -205,7 +205,7 @@ export const blankMcp = [
 
 export const running = [
   turn("m-62", 62, "build"),
-  work("m-62", "running"),
+  work("m-62", "running", "1 step"),
   {
     id: "r-7-1-1",
     parent: "w-m-62",

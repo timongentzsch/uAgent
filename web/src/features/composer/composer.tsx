@@ -2,6 +2,7 @@ import { ImageTile } from "../../shared/attachments.tsx";
 import "../../shared/attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
+import { useExit } from "../../shared/motion.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
 import {
@@ -256,6 +257,9 @@ function Composer({
     decided.current = !!pending;
   }, [pending]);
   const running = isRunning(session, online);
+  const [jumpShown, jumpRef] = useExit<boolean, HTMLButtonElement>(
+    !following && !pending,
+  );
   const empty = !draft.text.trim() && !draft.files.length;
   // The one primary control: Stop while a turn runs and there is nothing
   // to send, Send otherwise. Its icons cross-fade in place.
@@ -279,11 +283,11 @@ function Composer({
   const effectiveLabel = permissionLabel(effective);
   return (
     <section class="composer">
-      {!following && !pending && (
-        <JumpToLatest unseen={unseen} onClick={jump} />
+      {jumpShown && (
+        <JumpToLatest buttonRef={jumpRef} unseen={unseen} onClick={jump} />
       )}
       {pending?.kind === "browser" ? (
-        <section class="card decision" aria-label="Browser needs you">
+        <section class="card decision enters" aria-label="Browser needs you">
           <h2>Continue in the browser</h2>
           <p>{pending.prompt || "The agent needs you to finish in Chrome."}</p>
           <Button variant="primary" disabled={!online} onClick={openBrowser}>

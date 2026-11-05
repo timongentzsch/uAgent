@@ -36,16 +36,6 @@
 .ask-questions:focus {
   outline: none;
 }
-/* A page enters from the side it leads to. */
-.ask-page {
-  transition: var(--enter);
-}
-@starting-style {
-  .ask-page {
-    opacity: 0;
-    translate: var(--rise) 0;
-  }
-}
 /* Cancel leaves; Back and Next travel. */
 .ask > .dialog-actions > :first-child {
   margin-right: auto;
@@ -84,10 +74,6 @@
   align-items: start;
   gap: var(--space-4);
   cursor: pointer;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-.ask-option:has(:checked) {
-  border-color: var(--accent);
 }
 /* The whole row shows focus; the small native control inside does not. */
 .ask-option:has(:focus-visible) {
@@ -110,9 +96,6 @@
 /* Options the agent showed, with an image or a preview each: cards wide
    enough to compare, the picture or preview under the label. A tap on the
    picture opens it whole; anywhere else on the card chooses it. */
-.ask-options.visual {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--pane)), 1fr));
-}
 .ask-options.visual .ask-option {
   align-content: start;
 }

@@ -325,12 +325,18 @@ test("a catalogue update that changes nothing keeps the catalogue's identity", (
   );
 });
 
-test("the host's row removes the outgoing one for its request, and only that", () => {
-  const outgoing = [{ request_id: "r1" }, { request_id: "r2" }];
-  assert.deepEqual(confirmOutgoing(outgoing, "r1"), [{ request_id: "r2" }]);
-  assert.equal(confirmOutgoing(outgoing, "r3"), outgoing);
-  // A row with no request (history, another client's message) confirms none.
-  assert.equal(confirmOutgoing(outgoing, undefined), outgoing);
+test("a view that shows the host's row removes the outgoing one, and only that", () => {
+  const outgoing = [
+    { session_id: "s", request_id: "r1" },
+    { session_id: "s", request_id: "r2" },
+    { session_id: "t", request_id: "r1" },
+  ];
+  const views = {
+    s: { state: { view: { nodes: [{ request_id: "r1" }, {}] } } },
+  };
+  assert.deepEqual(confirmOutgoing(outgoing, views), outgoing.slice(1));
+  // A view without them, or none at all, confirms nothing.
+  assert.equal(confirmOutgoing(outgoing, {}), outgoing);
 });
 
 test("closing a view aborts its pending command wait", async () => {
@@ -423,7 +429,6 @@ async function eventHost(snapshot) {
     patchSession: (id, change) =>
       update("catalogue")((prior) => patchCatalogue(prior, id, change)),
     upsertSession: () => {},
-    setOutgoing: update("outgoing"),
     setUnread: update("unread"),
     settleOutgoing: () => false,
     forget: () => {},

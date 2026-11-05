@@ -1,6 +1,8 @@
+import { type RefObject } from "preact";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { compactNow } from "./layout.ts";
 
-// Motion in script uses the same tokens as CSS (style.css :root), so the
+// Motion in script uses the same tokens as CSS (styles/tokens.css), so the
 // one reduced-motion switch there covers animations started here too.
 type Motion = "fast" | "base" | "slow";
 
@@ -30,22 +32,67 @@ export async function settled(element: Element | null) {
 }
 
 // Plays an element's leave state (`data-leaving`, styled in CSS) and
-// resolves once it has played.
-export async function animateOut(element: Element | null) {
+// resolves once it has played; the caller then removes the element. A
+// leaving element is inert, so a second tap cannot land on what is going.
+export async function animateOut(element: HTMLElement | null) {
   // Without motion there is nothing to play: close in the same task.
   if (!element || !motionMs("base")) return;
+  element.inert = true;
   element.setAttribute("data-leaving", "");
   // Let the style change start its transitions before collecting them.
   await new Promise((resolve) => requestAnimationFrame(resolve));
   await settled(element);
 }
 
+// Keeps `value` on screen until its exit has played: render what this
+// returns, with the ref on the element that leaves. Only whether there is a
+// value matters, so a caller may pass a new object every render; one that
+// comes back while it leaves stays.
+export function useExit<T, E extends HTMLElement = HTMLElement>(
+  value: T,
+): [T, RefObject<E | null>] {
+  const ref = useRef<E>(null);
+  const last = useRef(value);
+  if (value) last.current = value;
+  const [gone, setGone] = useState(!value);
+  const present = !!value;
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (present) {
+      element?.removeAttribute("data-leaving");
+      if (element) element.inert = false;
+      setGone(false);
+      return;
+    }
+    let live = true;
+    void animateOut(element).then(() => live && setGone(true));
+    return () => {
+      live = false;
+    };
+  }, [present]);
+  return [value || (gone ? value : last.current), ref];
+}
+
+// Which way a list-and-detail view last moved, from whether its detail is
+// shown: "forward" into it, "back" to the list, and nothing until it first
+// moves, so no view pushes when it first appears. Give the container
+// data-direction="back" when it is "back", and its two sides the class
+// `push` once it has a value: where both sides stay on screen nothing moves.
+export function usePushDirection(detail: boolean) {
+  const last = useRef<{ detail: boolean; direction?: "forward" | "back" }>({
+    detail,
+  });
+  if (last.current.detail !== detail)
+    last.current = { detail, direction: detail ? "forward" : "back" };
+  return last.current.direction;
+}
+
 let sliding: { run: ViewTransition; to: string } | undefined;
 
 // Runs the change to conversation `to` as a slide of the transcript in from
-// the side it came from (style.css names it for the run), where the list is
-// a drawer and the browser can; elsewhere the change happens at once. A
-// different change that arrives while one slides ends that one.
+// the side it came from (styles/primitives.css names it for the run), where
+// the list is a drawer and the browser can; elsewhere the change happens at
+// once. A different change that arrives while one slides ends that one.
 export function slide(back: boolean, to: string, change: () => void) {
   if (sliding?.to === to) return;
   sliding?.run.skipTransition();

@@ -668,6 +668,7 @@ function App() {
                         title="Files"
                         layout="sheet"
                         className="files-sheet"
+                        header={false}
                         close={() => setFilesOpen(false)}
                       >
                         <Files

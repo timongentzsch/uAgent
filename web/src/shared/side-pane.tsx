@@ -2,6 +2,7 @@ import "./side-pane.css";
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { devicePrefs, type Pane } from "./device-prefs.ts";
+import { useExit } from "./motion.ts";
 
 // Docked panes (the sidebar, files) beside the chat and the
 // terminal under it: their resize handle and the layout that sizes each pane.
@@ -107,7 +108,9 @@ export function ResizeHandle({
 // A conversation with a pane docked beside it (the files): the chat keeps
 // the rest of the row. The chat sits in the same
 // place with or without a pane, so opening one only narrows it: a new
-// parent would remount the transcript and load its history again.
+// parent would remount the transcript and load its history again. The pane
+// enters and leaves within its column, and closing it returns focus to what
+// opened it.
 export function SideLayout({
   pane,
   children,
@@ -115,13 +118,30 @@ export function SideLayout({
   pane?: { name: Pane; label: string; content: ComponentChildren };
   children: ComponentChildren;
 }) {
+  const [shown, ref] = useExit<typeof pane, HTMLDivElement>(pane);
+  const opener = useRef<Element | null>(null);
+  const open = !!pane;
+  useLayoutEffect(() => {
+    if (open) {
+      opener.current = document.activeElement;
+      return;
+    }
+    const target = opener.current;
+    const active = document.activeElement;
+    if (
+      target instanceof HTMLElement &&
+      target.isConnected &&
+      (active === document.body || active?.closest(".side-pane"))
+    )
+      target.focus({ preventScroll: true });
+  }, [open]);
   return (
     <div class="side-layout">
       <div class="side-chat">{children}</div>
-      {pane && (
-        <div class="side-pane" data-pane={pane.name}>
-          <ResizeHandle pane={pane.name} label={pane.label} edge="start" />
-          {pane.content}
+      {shown && (
+        <div ref={ref} class="side-pane enters" data-pane={shown.name}>
+          <ResizeHandle pane={shown.name} label={shown.label} edge="start" />
+          {shown.content}
         </div>
       )}
     </div>

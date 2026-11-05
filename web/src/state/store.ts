@@ -194,13 +194,19 @@ export function raiseIncoming(item: Session, incoming: number): Session {
 
 // A row the host sent replaces the outgoing one for its request. Unchanged
 // state keeps its identity, so the shell skips the frame.
+// Drops this device's messages that a view now shows as the host's own. It
+// runs in the frame that draws that view, so the row is never missing.
 export function confirmOutgoing(
   items: Outgoing[],
-  request_id: string | undefined,
+  views: Record<string, Snapshot>,
 ): Outgoing[] {
-  return items.some((item) => item.request_id === request_id)
-    ? items.filter((item) => item.request_id !== request_id)
-    : items;
+  const kept = items.filter(
+    (item) =>
+      !views[item.session_id]?.state?.view?.nodes.some(
+        (node) => node.request_id === item.request_id,
+      ),
+  );
+  return kept.length === items.length ? items : kept;
 }
 
 export function isIncoming(event: HostEvent) {

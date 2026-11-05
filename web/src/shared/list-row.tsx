@@ -4,7 +4,8 @@ import "./list-row.css";
 
 // A list entry that opens something: its title, a muted line under it and,
 // when it has news, an unread dot named for screen readers. The current
-// entry is marked with aria-current, which is also what styles it.
+// entry is marked with aria-current, which is also what styles it. A title
+// cut short shows in full on hover.
 export function ListRow({
   title,
   meta,
@@ -18,7 +19,11 @@ export function ListRow({
   unread?: string | false;
 }) {
   return (
-    <Button {...props} class={`list-row ${className}`}>
+    <Button
+      title={typeof title === "string" ? title : undefined}
+      {...props}
+      class={`list-row ${className}`}
+    >
       <span class="row-text">
         <span class="row-label">
           {title}

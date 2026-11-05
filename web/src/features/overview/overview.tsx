@@ -14,7 +14,7 @@ import { folderOf } from "../../shared/display.ts";
 import { folderName } from "../../shared/folder-label.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { cost, plural } from "../../shared/quantities.ts";
-import { usePhone } from "../../shared/layout.ts";
+import { useNarrowColumn } from "../../shared/layout.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { stored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
@@ -69,9 +69,9 @@ export default function FolderOverview({
   newTerminal?: (folder: string) => void;
 }) {
   const { online, report } = useHostContext();
-  const phone = usePhone();
+  const narrow = useNarrowColumn();
   const [kept, keep] = useState(layoutKept.read);
-  const layout = kept || (phone ? "list" : "grid");
+  const layout = kept || (narrow ? "list" : "grid");
   const [text, setText] = useState("");
   const name = space?.name || folderName(folder);
   const here = sessions.filter((item) => folderOf(item) === folder);

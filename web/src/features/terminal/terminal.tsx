@@ -1,4 +1,3 @@
-import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -516,10 +515,10 @@ export default function TerminalPanel({
       {tabs.length > 1 && (
         <div class="terminal-tabs" role="group" aria-label="Terminals">
           {tabs.map((tab) => (
-            <div class="terminal-tab" key={tab.id}>
+            <div class="terminal-tab entry" key={tab.id}>
               <Button
                 variant="quiet"
-                aria-pressed={tab.id === active}
+                aria-current={tab.id === active ? "true" : undefined}
                 aria-controls={`terminal-${tab.id}`}
                 title={tab.cwd}
                 onClick={() => {

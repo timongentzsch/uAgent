@@ -16,6 +16,7 @@
   flex-direction: column;
 }
 .side-pane {
+  --from: var(--rise) 0;
   position: relative;
   min-height: 0;
   max-width: 100%;

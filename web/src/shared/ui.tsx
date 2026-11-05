@@ -1,6 +1,9 @@
 // Base styles load with the primitives every surface is built from, so they
 // always precede feature styles, however the bundle is split.
-import "./style.css";
+import "./styles/tokens.css";
+import "./styles/base.css";
+import "./styles/primitives.css";
+import "./styles/a11y.css";
 import "./focus.ts";
 import { copiedFeedbackMs } from "./limits.ts";
 import {
@@ -111,6 +114,8 @@ async function copyText(text: string) {
 }
 export function CodeCopy({ text }: { text: string }) {
   const [status, setStatus] = useState("");
+  const swapped = useRef(false);
+  if (status) swapped.current = true;
   useEffect(() => {
     if (!status) return;
     const timer = setTimeout(() => setStatus(""), copiedFeedbackMs);
@@ -120,6 +125,7 @@ export function CodeCopy({ text }: { text: string }) {
     <>
       <IconButton
         class="swap-feedback"
+        data-swapped={swapped.current || undefined}
         label={status || "Copy code"}
         onClick={async () => {
           try {
@@ -542,6 +548,8 @@ const DialogContext = createContext<{
 
 // The close of the dialog around the caller: plays its exit, as Close does.
 export const useDialogClose = () => useContext(DialogContext)!.close;
+// The dialog around the caller, if any, for content that draws its header.
+export const useDialog = () => useContext(DialogContext);
 
 // The one dialog header: title, optional leading control (Back) and actions,
 // then Close. Modal renders it unless its content renders its own.

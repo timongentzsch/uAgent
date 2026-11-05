@@ -4,6 +4,11 @@
 
 ### Changes
 
+- **Sending feels settled.** Your message keeps one row from the moment you send it instead of flickering once; "Working" and its clock live only in the status line under the input, while the turn's row counts its steps; on a phone that line opens and closes smoothly instead of snapping the transcript.
+- **What appears also leaves.** Banners, toasts, Jump to latest and the docked Files pane fade out the way they came, cannot be clicked while they go, and hand focus back (to the input, or to what opened the pane). Settings, the Files and Library lists, activity and question pages push in one way and back the other. A leaving dialog can no longer take a second tap.
+- **One touch size, one hover, one selection.** Small controls take a 44px touch; a filled control's press is distinct from its hover; a selected item is the stripe and fill everywhere, a pressed toggle the accent. Approval prompts wrap instead of cutting off why they need you, and the phone Files sheet has one header.
+- **The web's stylesheets are layered.** Tokens, element defaults and shared pieces sit in cascade layers, so a stylesheet of your own outranks them all, and the narrow-column layout follows the app's text size.
+
 - **Restyle the web interface from `~/.uagent/config/style.css`.** The sheet overrides the design tokens (colours, spacing, type, motion) and applies on every paired device without a new build. Ask the agent to change the look: it shows the exact sheet for you to approve, and open pages apply it when the turn ends. `uagent_instructions` is now `uagent_file`, which replaces an instructions file or this stylesheet, and `uagent` reads the sheet with topic `style`.
 - **The tools that configure µAgent come with their skill.** `uagent`, `uagent_configure` and `uagent_file` are offered once the `uagent-config` skill is open, by the model or with `$uagent-config`, and stay for the rest of the conversation. A conversation that never configures anything sends up to about 670 fewer tokens with every request.
 

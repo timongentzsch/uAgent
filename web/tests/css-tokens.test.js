@@ -1,4 +1,4 @@
-// The look lives in the tokens at the top of style.css: colours, the type,
+// The look lives in the tokens of shared/styles/tokens.css: colours, the type,
 // spacing and size scales, weights, stripes and motion. Every other
 // declaration names a token, so the whole look changes in one place. Values
 // are read whole, however many lines they run over.
@@ -211,25 +211,26 @@ test("breakpoints in the stylesheets match the scripts'", () => {
 // The conversations list sits beside the chat where --sidebar and --chat-min
 // fit: a container query cannot read the tokens, so it states their sum.
 test("the list's container query is the sum of its tokens", () => {
-  const style = readFileSync("src/shared/style.css", "utf8");
+  const tokens = readFileSync("src/shared/styles/tokens.css", "utf8");
+  const shell = readFileSync("src/shared/styles/primitives.css", "utf8");
   const token = (name) =>
-    Number(style.match(new RegExp(`--${name}: calc\\((\\d+)rem / 14\\)`))[1]);
-  const [, rem] = style.match(/@container app \(min-width: ([\d.]+)rem\) and/);
+    Number(tokens.match(new RegExp(`--${name}: calc\\((\\d+)rem / 14\\)`))[1]);
+  const [, rem] = shell.match(/@container app \(min-width: ([\d.]+)rem\) and/);
   assert.ok(
     Math.abs(Number(rem) - (token("sidebar") + token("chat-min")) / 14) < 0.01,
   );
 });
 
 // Control and row heights and the spacing between and inside boxes are set
-// in style.css alone (its .dense list and touch rules included). A sheet
-// that redefines one resizes everything inside it, menus too.
-test("only style.css sets the control, row and spacing tokens", () => {
+// in the shared styles alone (the .dense list and touch rules included). A
+// sheet that redefines one resizes everything inside it, menus too.
+test("only the shared styles set the control, row and spacing tokens", () => {
   assert.deepEqual(
     declarations
       .filter(
         ({ where, property }) =>
           /^--(?:control|row|gap|pad|inset-x)$/.test(property) &&
-          !where.startsWith(`${join("shared", "style.css")}:`),
+          !where.startsWith(`${join("shared", "styles")}/`),
       )
       .map(({ where, property }) => `${where}: ${property}`),
     [],

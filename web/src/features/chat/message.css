@@ -1,7 +1,6 @@
 .message {
   width: 100%;
   min-width: 0;
-  container-type: inline-size;
   text-align: left;
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
@@ -11,7 +10,7 @@
   padding: 0 var(--inset-x);
   margin: 0;
 }
-/* User bubbles inherit the opposite palette from style.css. */
+/* User bubbles inherit the opposite palette from styles/tokens.css. */
 .message.user {
   background: var(--bg);
   color: var(--text);
@@ -112,7 +111,7 @@
   flex-basis: 100%;
   padding: 0;
 }
-@container column (max-width: 600px) {
+@container column (max-width: 43rem) {
   .turn-calls {
     display: none;
   }
@@ -156,7 +155,7 @@
   min-width: 0;
 }
 
-@container column (max-width: 600px) {
+@container column (max-width: 43rem) {
   .side-answer > form button,
   .side-answer > header button {
     min-height: var(--touch);

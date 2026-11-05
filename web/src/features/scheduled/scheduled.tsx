@@ -1,3 +1,4 @@
+import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts, useStored } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
@@ -94,6 +95,7 @@ export default function Scheduled({
   refresh: () => Promise<void>;
 }) {
   const [task, setTask] = useState(drafts.open.read);
+  const moved = usePushDirection(!!task);
   const [prefs] = useStored(devicePrefs.time);
   // A run's moment by the viewer's time preferences, in its task's zone.
   const moment = (seconds?: number, zone?: string) =>
@@ -216,8 +218,11 @@ export default function Scheduled({
         <LoadError error={scheduled.error} retry={refresh} />
       ) : (
         <Placeholder label="Loading scheduled tasks…" when={!scheduled}>
-          <div class={`management-body ${task ? "has-selection" : ""}`}>
-            <div class="management-list">
+          <div
+            class={`management-body ${task ? "has-selection" : ""}`}
+            data-direction={moved === "back" ? "back" : undefined}
+          >
+            <div class={moved ? "management-list push" : "management-list"}>
               <ListRow
                 class="library-row entry"
                 aria-current={!task || undefined}
@@ -251,7 +256,10 @@ export default function Scheduled({
                 </EmptyState>
               )}
             </div>
-            <fieldset disabled={busy} class="management-editor schedule-editor">
+            <fieldset
+              disabled={busy}
+              class={`management-editor schedule-editor${moved ? " push" : ""}`}
+            >
               {task && (
                 <>
                   <div class="editor-head">

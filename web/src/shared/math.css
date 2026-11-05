@@ -1,0 +1,2 @@
+/* KaTeX's own sheet sits under the app's: markdown.css wins by layer. */
+@import "katex/dist/katex.min.css" layer(vendor);

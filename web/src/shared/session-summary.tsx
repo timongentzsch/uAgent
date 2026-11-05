@@ -34,7 +34,9 @@ function SessionSummaryView({
       aria-label="Conversation statistics"
       title={title}
     >
-      <DataText>{parts.filter(Boolean).join(" · ")}</DataText>
+      <span class="truncate">
+        <DataText>{parts.filter(Boolean).join(" · ")}</DataText>
+      </span>
     </Button>
   );
 }

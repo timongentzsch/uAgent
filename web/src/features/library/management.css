@@ -127,12 +127,10 @@
 .run-row > button:first-child {
   flex: 1;
 }
-@container column (max-width: 640px) {
+@container column (max-width: 43rem) {
   .editor-actions > small {
     flex-basis: 100%;
   }
-}
-@container column (max-width: 640px) {
   .management-toolbar {
     flex-wrap: wrap;
   }

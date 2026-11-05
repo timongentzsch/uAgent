@@ -66,16 +66,9 @@
   flex: 1;
 }
 
-/* A tool's input/output scrolls as a whole and pushes in from the right,
-   like a native navigation stack. */
+/* A tool's input/output scrolls as a whole (it enters as a .push). */
 .activity-page {
   overflow: auto;
-  transition: translate var(--motion-slow) var(--ease-out);
-}
-@starting-style {
-  .activity-page {
-    translate: 30% 0;
-  }
 }
 
 .activity-detail > p,
@@ -90,10 +83,10 @@
   gap: var(--space-2);
 }
 
-/* The growing sections take the remaining height as a column: content
-   starts at the top (a grid would stretch its rows and float it mid-sheet). */
-.activity-detail > section[aria-label="Output"],
-.activity-detail > section[aria-label="Memory"] {
+/* What an activity returned (its output or the memory it saved) takes the
+   remaining height as a column: content starts at the top (a grid would
+   stretch its rows and float it mid-sheet). */
+.activity-detail > .activity-result {
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -102,7 +95,7 @@
   gap: var(--space-2);
 }
 
-.activity-detail > section[aria-label="Output"] > pre {
+.activity-result > pre {
   flex: 1;
   min-height: 0;
   max-height: none;

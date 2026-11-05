@@ -65,14 +65,16 @@ The web UI draws everything from design tokens, and the person's stylesheet
 tokens are a stable surface; class names change between releases.
 
 1. Read the current sheet with `uagent` topic `style`, and the tokens from
-   `references/style.css` when installed (else `web/src/shared/style.css` in
-   a source checkout): the first `:root` block holds the scales (spacing,
-   type, sizes, motion), the next two blocks the dark and light palettes.
+   `references/tokens.css` when installed (else
+   `web/src/shared/styles/tokens.css` in a source checkout): the first
+   `:root` block holds the scales (spacing, type, sizes, motion), the next
+   two blocks the dark and light palettes.
 2. Write only the tokens that change, and keep what the sheet already holds.
-   A scale token takes a plain `:root { ... }`. A colour token goes in the
-   palette it belongs to, under that block's whole selector list copied from
-   the reference, so the inverse surface (the person's own messages) stays
-   consistent. Keep text readable: at least 4.5:1 against its background.
+   The sheet outranks every token, so `:root { ... }` changes both palettes.
+   For one palette use `:root[data-theme="dark"]` or `"light"`; to reach the
+   inverse surface too (the person's own messages), copy that palette's whole
+   selector list from the reference. Keep text readable: at least 4.5:1
+   against its background.
 3. `uagent_file` with `file` `style` and the whole sheet; the person
    approves the diff. Open web pages apply it when the turn ends. Empty text
    resets the look.

@@ -5,7 +5,8 @@ import { Button } from "./ui.tsx";
 
 // Options under a field that keeps focus and names the active option
 // (`${prefix}-${position}`) as its active descendant; the active option
-// stays in view. By default they pop up over the composer.
+// stays in view. By default they pop up over the composer. A list that
+// follows typing enters softly and closes at once, in step with the text.
 export function SuggestionList<T>({
   id,
   label,
@@ -15,7 +16,7 @@ export function SuggestionList<T>({
   pick,
   keyOf,
   groupOf,
-  class: className = "command-suggestions popover-list",
+  class: className = "command-suggestions popover-list enters",
   children,
 }: {
   id: string;

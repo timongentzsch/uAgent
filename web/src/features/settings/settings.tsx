@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useDismiss } from "../../shared/dismiss.ts";
 import { usePhone } from "../../shared/layout.ts";
+import { usePushDirection } from "../../shared/motion.ts";
 import { Button, DialogHeader, Group, Row } from "../../shared/ui.tsx";
 import { SettingsContext, type SettingsProps } from "./context.ts";
 import Configuration from "./configuration.tsx";
@@ -22,6 +23,7 @@ export default function Settings(props: SettingsProps) {
     () => SCOPES.find(([id]) => id === props.initialSection)?.[0] ?? null,
   );
   const phone = usePhone();
+  const moved = usePushDirection(picked !== null);
   useDismiss(phone && picked !== null, () => setPicked(null));
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -84,13 +86,15 @@ export default function Settings(props: SettingsProps) {
       <div
         class="dialog-body settings-content"
         data-drilled={picked ? "" : undefined}
+        data-direction={moved === "back" ? "back" : undefined}
       >
         <SettingsNav
           current={phone ? undefined : current}
           select={setPicked}
           project={session && (folder || "project")}
+          class={moved && "push"}
         />
-        <div ref={body} class="settings-pane">
+        <div ref={body} class={moved ? "settings-pane push" : "settings-pane"}>
           {!phone && <h3 class="settings-pane-title">{title}</h3>}
           <p class="settings-scope">{describe(session?.cwd)}</p>
           {pages[current]}

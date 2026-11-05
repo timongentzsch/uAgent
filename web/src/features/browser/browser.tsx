@@ -9,6 +9,7 @@ import {
 } from "../../shared/types.ts";
 import { api, command, routes } from "../../state/api.ts";
 import { sessionById } from "../../state/attention.ts";
+import { useExit } from "../../shared/motion.ts";
 import { coarsePointer } from "../../shared/layout.ts";
 import RFB from "@novnc/novnc";
 import { isTextEntry } from "../../shared/shortcuts.ts";
@@ -746,16 +747,20 @@ export default function BrowserPanel({
           : "Chrome is stopped. Take over to start it and sign in to sites; the agent uses your logins."
         : "";
 
+  const [bannerShown, bannerRef] = useExit<string, HTMLParagraphElement>(
+    banner,
+  );
+  const [toastShown, toastRef] = useExit<string, HTMLParagraphElement>(toast);
   const overlays = (
     <>
-      {banner && (
-        <p class="browser-banner" role="status">
-          {banner}
+      {bannerShown && (
+        <p ref={bannerRef} class="browser-banner enters" role="status">
+          {bannerShown}
         </p>
       )}
-      {toast && (
-        <p class="browser-toast" role="status">
-          {toast}
+      {toastShown && (
+        <p ref={toastRef} class="browser-toast enters" role="status">
+          {toastShown}
         </p>
       )}
       {card && (

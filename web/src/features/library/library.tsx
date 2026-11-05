@@ -1,3 +1,4 @@
+import { usePushDirection } from "../../shared/motion.ts";
 import { tabDrafts } from "../../shared/storage.ts";
 import { storageKeys } from "../../shared/storage-keys.ts";
 import { manage } from "../../state/api.ts";
@@ -96,6 +97,7 @@ export default function Library({
   const [name, setName] = useState("");
   const [newScope, setNewScope] = useState("project");
   const [loading, setLoading] = useState(false);
+  const moved = usePushDirection(!!(item || loading));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [editing, setEditing] = useState(false);
@@ -352,8 +354,9 @@ export default function Library({
       ) : (
         <div
           class={`management-body ${item || loading ? "has-selection" : ""}`}
+          data-direction={moved === "back" ? "back" : undefined}
         >
-          <div class="management-list">
+          <div class={moved ? "management-list push" : "management-list"}>
             <Input
               aria-label="Search library"
               type="search"
@@ -426,7 +429,10 @@ export default function Library({
               rows()
             )}
           </div>
-          <fieldset disabled={busy} class="management-editor">
+          <fieldset
+            disabled={busy}
+            class={moved ? "management-editor push" : "management-editor"}
+          >
             {loading ? (
               <Spinner label="Loading document…" surface />
             ) : item ? (

@@ -55,9 +55,15 @@ struct ShellCommand {
 
 // `command` as root through `sudo -S -p nonce`, on `host` over ssh when one
 // is named. -k makes sudo prompt even with cached credentials, so the prompt
-// always comes and the password line never reaches the command.
+// always comes and the password line never reaches the command. Without a
+// nonce it is `sudo -n`, for a user sudo lets in without a password: it
+// fails rather than prompting if one is needed after all.
 std::string RootCommand(const std::string& command, const std::string& host,
                         bool tty, const std::string& nonce);
+
+// True when sudo, on `host` over ssh when one is named, needs no password
+// from this user (NOPASSWD, or credentials it still holds).
+bool PasswordlessSudo(const std::string& host);
 
 ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
                                    const ToolContext& context,

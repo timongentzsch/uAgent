@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "include/agent/activity.h"
+#include "include/core/capture.h"
 #include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
@@ -268,13 +269,23 @@ std::string RootCommand(const std::string& command, const std::string& host,
                         bool tty, const std::string& nonce) {
   // Without a terminal only sudo reads the password pipe; the command's stdin
   // is /dev/null, as any command's is, also when sudo asks for nothing.
-  std::string sudo = "sudo -k -S -p " + nonce + " -- bash -o pipefail -c " +
-                     ShellQuote(tty ? command : "exec </dev/null; " + command);
+  std::string sudo =
+      (nonce.empty() ? std::string("sudo -n") : "sudo -k -S -p " + nonce) +
+      " -- bash -o pipefail -c " +
+      ShellQuote(tty ? command : "exec </dev/null; " + command);
   if (host.empty()) return sudo;
   // BatchMode: a login that wants a password fails instead of waiting on a
   // prompt nobody answers.
   return std::string("ssh -o BatchMode=yes ") + (tty ? "-t " : "") + "-- " +
          ShellQuote(host) + " " + ShellQuote(sudo);
+}
+
+bool PasswordlessSudo(const std::string& host) {
+  const std::vector<std::string> probe =
+      host.empty() ? std::vector<std::string>{"sudo", "-n", "true"}
+                   : std::vector<std::string>{"ssh", "-o", "BatchMode=yes",
+                                              "--",  host, "sudo -n true"};
+  return CaptureProcess(probe).status == 0;
 }
 
 ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,

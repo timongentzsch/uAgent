@@ -468,6 +468,9 @@ TEST_CASE(TestRootCommands) {
         std::string::npos);
   CHECK(RootCommand("cat", "", false, "N1") ==
         "sudo -k -S -p N1 -- bash -o pipefail -c 'exec </dev/null; cat'");
+  // Without a nonce sudo asks for nothing, and fails rather than prompt.
+  CHECK(RootCommand("cat", "", false, "") ==
+        "sudo -n -- bash -o pipefail -c 'exec </dev/null; cat'");
 
   // The prompt is cut out wherever reads split it, answered once, and a
   // second one wipes the secret.

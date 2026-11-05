@@ -36,6 +36,7 @@
 
 ### Fixes
 
+- **Root commands ask for a password only when sudo needs one.** A user sudo lets in without a password (NOPASSWD), or a session already running as root, is no longer asked: µAgent checks with `sudo -n` first, on the target machine too, and runs the command with no prompt.
 - **Deleting a conversation removes its agents' worktrees on macOS too.** An agent's worktree was recognised only when its saved folder was spelled like the home folder, so `/private/var/…` against `/var/…` left the worktree in place, unchecked for unsaved work. Paths are now compared where they lead.
 - **`run` takes an empty `host` and a short `yield_ms`.** A model that fills in every optional argument, as GPT-6.1-Sol does, sent `"host": ""` and `"yield_ms": 1`, and `run` refused both, so in a web conversation it could not start a command at all. An empty host now counts as none, and a short yield is raised to the shortest one, as it already was where it is used.
 - **A wait on background work shows as a row.** An `activity` wait or poll was hidden, so a turn spent waiting looked like thinking.

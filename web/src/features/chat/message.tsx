@@ -136,6 +136,7 @@ function Message({
     branch,
     http,
     open,
+    openFile,
   } = useContext(MessageActions);
   // The whole text loads when asked for by Show full message.
   const [wantFull, setWantFull] = useState(false);
@@ -178,6 +179,7 @@ function Message({
             key={`t-${index}`}
             text={part.text}
             streaming={node.streaming}
+            refs={!!openFile}
           />
         ) : null
       ) : (
@@ -307,7 +309,8 @@ function Message({
 }
 
 // Prepare only the bounded completed page about to be mounted. The same
-// parser cache is read synchronously by Markdown on its first render.
+// parser cache is read synchronously by Markdown on its first render; a
+// conversation's messages cite files, so they render with references.
 export async function prepareHistoryNodes(nodes: Node[]) {
   const texts = new Set<string>();
   for (const node of nodes) {
@@ -316,5 +319,5 @@ export async function prepareHistoryNodes(nodes: Node[]) {
       if ("text" in part && part.text) texts.add(part.text);
     }
   }
-  await Promise.all([...texts].map((text) => prepareMarkdown(text)));
+  await Promise.all([...texts].map((text) => prepareMarkdown(text, true)));
 }

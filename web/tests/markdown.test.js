@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   endsInFence,
+  fileReference,
   healTail,
   markdownBlocks,
   renderMarkdown,
@@ -188,4 +189,71 @@ test("a code fence still being written is not highlighted until it closes", asyn
   assert.match(markdownBlocks(open)[0].html, /hljs-/);
   assert.doesNotMatch(markdownBlocks(open, 0, {}, true)[0].html, /hljs-/);
   assert.match(markdownBlocks(closed, 0, {}, false)[0].html, /hljs-/);
+});
+
+test("a cited path names a file and its lines, and nothing else does", () => {
+  const cases = {
+    "src/tools/tool.cc:403": { path: "src/tools/tool.cc", lines: "403" },
+    "src/tools/tool.cc:403-406": {
+      path: "src/tools/tool.cc",
+      lines: "403-406",
+    },
+    "tool.cc:403–406": { path: "tool.cc", lines: "403-406" },
+    "src/web/master_files.cc:37:5": {
+      path: "src/web/master_files.cc",
+      lines: "37",
+    },
+    "src/tools/policy.cc#L351": { path: "src/tools/policy.cc", lines: "351" },
+    "policy.cc#L351-L360": { path: "policy.cc", lines: "351-360" },
+    "bootstrap.cc": { path: "bootstrap.cc", lines: undefined },
+    "/home/dev/p/src/a.ts:3": { path: "/home/dev/p/src/a.ts", lines: "3" },
+    "./README.md": { path: "./README.md", lines: undefined },
+    "src/tools/": { path: "src/tools/", lines: undefined },
+    "Makefile:12": { path: "Makefile", lines: "12" },
+  };
+  for (const [text, expected] of Object.entries(cases))
+    assert.deepEqual(fileReference(text), expected, text);
+  for (const text of [
+    "ledger.summary",
+    "csv.DictReader",
+    "1.2.3",
+    "0.0.x",
+    "application/json",
+    "feat/file-browser",
+    "src/app",
+    "https://example.com/a.ts",
+    "a.ts and b.ts",
+    "/",
+  ])
+    assert.equal(fileReference(text), undefined, text);
+});
+
+test("references render only where a surface opens them", () => {
+  const text =
+    "See `src/a.ts:2`, `ledger.summary` and [the app](src/a.ts#L3) or [`b.ts:4`](b.ts).";
+  const plain = markdownBlocks(text)[0].html;
+  assert.doesNotMatch(plain, /file-ref/);
+  // Without references a relative link keeps its words, not raw Markdown.
+  assert.match(plain, /<a>the app<\/a>/);
+  const html = markdownBlocks(text, 0, { refs: true })[0].html;
+  assert.match(
+    html,
+    /<button type="button" class="file-ref" data-file="src\/a.ts" data-lines="2"><code>src\/a.ts:2<\/code><\/button>/,
+  );
+  assert.match(html, /<code>ledger.summary<\/code>/);
+  assert.match(
+    html,
+    /<button type="button" class="file-ref" data-file="src\/a.ts" data-lines="3">the app<\/button>/,
+  );
+  // A code span inside a link to a path is the link's, not a second button.
+  assert.match(
+    html,
+    /<button type="button" class="file-ref" data-file="b.ts"><code>b.ts:4<\/code><\/button>/,
+  );
+  assert.equal(html.match(/<button/g).length, 3);
+  // Web links stay web links.
+  assert.match(
+    markdownBlocks("[x](https://example.com/a.ts)", 0, { refs: true })[0].html,
+    /<a href="https:\/\/example.com\/a.ts" rel="noopener noreferrer" target="_blank">/,
+  );
 });

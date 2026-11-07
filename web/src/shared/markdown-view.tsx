@@ -37,17 +37,28 @@ const retained = (text: string, blocks: MarkdownBlock[]) =>
     text.length,
   );
 
+// A message's cited paths render as references (see markdown.ts), so the
+// same text is cached once with them and once without.
+const preparedKey = (text: string, refs = false) =>
+  refs ? `\u0001${text}` : text;
+
 // Completed pages are parsed before they become visible. Keep the same
 // bounded result for the message component's first render; streaming text
 // never enters this cache.
-export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
-  const cached = prepared.get(text);
+export async function prepareMarkdown(
+  text: string,
+  refs = false,
+): Promise<MarkdownBlock[]> {
+  const key = preparedKey(text, refs);
+  const cached = prepared.get(key);
   if (cached) return cached;
-  const blocks = await (await loadRenderer()).renderMarkdownBlocks(text);
+  const blocks = await (await loadRenderer()).renderMarkdownBlocks(text, 0, {
+    refs,
+  });
   // Concurrent preparation may already have inserted this same source.
-  if (text.length <= maxPreparedMarkdownChars && !prepared.has(text)) {
-    preparedChars += retained(text, blocks);
-    prepared.set(text, blocks);
+  if (text.length <= maxPreparedMarkdownChars && !prepared.has(key)) {
+    preparedChars += retained(key, blocks);
+    prepared.set(key, blocks);
     for (const [oldest, entry] of prepared) {
       if (preparedChars <= maxPreparedMarkdownChars) break;
       preparedChars -= retained(oldest, entry);
@@ -172,7 +183,7 @@ export function MarkdownFile({
   const { value, error, retry } = useResource(
     () =>
       loadRenderer().then((module) =>
-        module.renderMarkdownBlocks(text, 0, { base, url }),
+        module.renderMarkdownBlocks(text, 0, { base, url, refs: true }),
       ),
     [text, base],
   );
@@ -195,6 +206,8 @@ type MarkdownProps = {
   // (e.g. reasoning inside a never-opened disclosure) must not pay
   // renderer work for content the user may never see.
   progressive?: boolean;
+  // Cited paths become references the surface opens in the Files pane.
+  refs?: boolean;
 };
 
 // Inside a Placeholder the text is sample prose: its paragraphs as bars in
@@ -217,11 +230,13 @@ function RenderedMarkdown({
   text,
   streaming,
   progressive = true,
+  refs = false,
 }: MarkdownProps) {
+  const key = preparedKey(text, refs);
   const [rendered, setRendered] = useState<{
     text: string;
     blocks: MarkdownBlock[];
-  }>(() => ({ text, blocks: prepared.get(text) || [] }));
+  }>(() => ({ text, blocks: prepared.get(key) || [] }));
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const [, setReady] = useState(!!loaded);
@@ -262,7 +277,7 @@ function RenderedMarkdown({
         boundary.startsWith(cached.text) &&
         boundary.length > wholeStreamingMarkdownChars;
       // Appended parts share the head's references (an earlier `[ref]:`).
-      const env = append ? cached.env : {};
+      const env = append ? cached.env : { refs };
       head.current = {
         text: boundary,
         env,
@@ -288,6 +303,7 @@ function RenderedMarkdown({
         loaded.healTail(tail),
         head.current.offset,
         {
+          refs,
           // Its own copy: a half-typed `[ref]:` in the tail must not stick.
           references: {
             ...((head.current.env.references as object | undefined) || {}),
@@ -298,7 +314,7 @@ function RenderedMarkdown({
     ];
     last.current = { text, blocks };
     return blocks;
-  }, [text, live, loaded]);
+  }, [text, live, loaded, refs]);
   useEffect(() => {
     // Full render runs when the block completes (and on retry): the
     // streaming frames already loaded the renderer chunks, so completion
@@ -310,7 +326,7 @@ function RenderedMarkdown({
     const paint = async () => {
       try {
         const value = state.text;
-        const output = await prepareMarkdown(value);
+        const output = await prepareMarkdown(value, refs);
         if (!state.active) return;
         setRendered({ text: value, blocks: output });
         setError(null);
@@ -325,7 +341,7 @@ function RenderedMarkdown({
     };
     // No rAF hop: effects already run post-paint, and the awaits yield.
     paint();
-  }, [text, streaming, retry]);
+  }, [text, streaming, retry, refs]);
   useEffect(
     () => () => {
       pending.current.active = false;
@@ -336,7 +352,7 @@ function RenderedMarkdown({
   if (streaming && !progressive) return <div class="plain">{text}</div>;
   const blocks =
     streamed ||
-    prepared.get(text) ||
+    prepared.get(key) ||
     (rendered.text === text && rendered.blocks.length
       ? rendered.blocks
       : null) ||

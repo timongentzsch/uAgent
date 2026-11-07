@@ -198,6 +198,16 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
     (outer / "beside.txt").write_text("beside two\n")
     (inner / "within.txt").write_text("within two\n")
     (project / "huge.txt").write_text("a line of text\n" * 150_000)
+    # Search leaves out what git ignores, and finds what it would add.
+    searched = root / "searched"
+    for folder in ("src", "notes", "node_modules/x"):
+        (searched / folder).mkdir(parents=True)
+    for path in ("src/types.ts", "notes/types.ts", "node_modules/x/types.ts"):
+        (searched / path).write_text("")
+    (searched / ".gitignore").write_text("node_modules/\n")
+    git(searched, "init", "-q")
+    git(searched, "add", "src", ".gitignore")
+    git(searched, "commit", "-q", "-m", "first")
     with Server([lambda _, _body: event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
@@ -249,6 +259,13 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             assert_true(status == 200 and "+within two" in value["text"], value)
             for path in ("../beside.txt", "beside.txt", "inner/within.txt"):
                 assert_true(answer(inner, diff=path)[0] == 404, path)
+
+            status, value = answer(searched, find="types.ts")
+            assert_true(
+                status == 200
+                and value == {"paths": ["notes/types.ts", "src/types.ts"], "more": False},
+                value,
+            )
 
             status, value = answer(plain, changes="")
             assert_true(status == 200 and value["changes"] == [] and not value["repository"], value)

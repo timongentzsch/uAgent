@@ -6,16 +6,19 @@ import { useAction } from "../../shared/use-action.ts";
 import { command } from "../../state/api.ts";
 import { formatStat } from "../../shared/display.ts";
 
-// A turn's changed files, each with its Undo. The host puts a file back
-// only while it still holds what the turn left; otherwise it says why.
+// A turn's changed files, each with its Undo, and each opening its diff
+// in the Files pane where there is one. The host puts a file back only
+// while it still holds what the turn left; otherwise it says why.
 export default function TurnReview({
   files,
   turn,
   session,
+  show,
 }: {
   files: TurnFile[];
   turn: number;
   session: SessionRef;
+  show?: (path: string) => void;
 }) {
   const [restored, setRestored] = useState<string[]>([]);
   const [kept, setKept] = useState<Record<string, string>>({});
@@ -53,9 +56,20 @@ export default function TurnReview({
       <ul class="turn-files">
         {files.map((file) => (
           <li key={file.path}>
-            <span class="turn-file-path" title={file.path}>
-              {file.path}
-            </span>
+            {show ? (
+              <Button
+                variant="quiet"
+                class="turn-file-path"
+                title={file.path}
+                onClick={() => show(file.path)}
+              >
+                {file.path}
+              </Button>
+            ) : (
+              <span class="turn-file-path" title={file.path}>
+                {file.path}
+              </span>
+            )}
             <small>{formatStat([file.added, file.removed])}</small>
             {restored.includes(file.path) ? (
               <small>Restored</small>

@@ -226,6 +226,13 @@ interface Delivery {
   delivery: string;
   path: string;
 }
+// A file a message cites, as the Files pane opens it: its lines ("12" or
+// "12-20"), or its diff among the uncommitted changes.
+export interface FileTarget {
+  path: string;
+  lines?: string;
+  changes?: boolean;
+}
 // What the inspector opens: a row's own work, or the one a link names.
 export interface ActivityTarget {
   id: string;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { highlightLines, languageFor } from "../src/shared/highlight.ts";
+import { highlightLines } from "../src/shared/highlight.ts";
+import { languageFor } from "../src/shared/file-types.ts";
 
 test("a file's language comes from its name, then its extension", () => {
   assert.equal(languageFor("src/app/app.tsx"), "typescript");

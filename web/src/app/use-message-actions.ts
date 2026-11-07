@@ -7,6 +7,7 @@ import type {
   CommandFields,
   Draft,
   Exchange,
+  FileTarget,
   InspectorTarget,
   Node,
   Outgoing,
@@ -25,8 +26,8 @@ import type { SnapshotStore } from "../state/snapshot-store.ts";
 import { transcriptNodes } from "./chat-page.tsx";
 
 // What a message's controls do: retry, continue, branch, recall or insert
-// guidance, and open what a row links to: an agent's conversation, or the
-// work it names in the inspector.
+// guidance, and open what a row links to: an agent's conversation, the
+// work it names in the inspector, or a file a message cites.
 // Every row reads them through one context value, so they stay the same
 // functions and read the latest state through a ref.
 export function useMessageActions({
@@ -46,6 +47,7 @@ export function useMessageActions({
   setInspector,
   setModal,
   choose,
+  openFile,
 }: {
   online: boolean;
   selected: string;
@@ -67,6 +69,7 @@ export function useMessageActions({
   setInspector: (target: InspectorTarget | null) => void;
   setModal: (modal: AppModal | null) => void;
   choose: (id: string) => void;
+  openFile: (target: FileTarget) => void;
 }) {
   const latest = useLatest({
     online,
@@ -201,6 +204,7 @@ export function useMessageActions({
         setModal({ type: "raw", session: selected, exchanges }),
       activity: (node: ActivityTarget) => setInspector({ node }),
       open: choose,
+      openFile,
       statistics: (node: Node) =>
         setModal({
           type: "statistics",
@@ -220,6 +224,7 @@ export function useMessageActions({
       setInspector,
       setModal,
       choose,
+      openFile,
     ],
   );
 }

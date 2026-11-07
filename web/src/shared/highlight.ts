@@ -9,6 +9,7 @@ import json from "highlight.js/lib/languages/json";
 import diff from "highlight.js/lib/languages/diff";
 import xml from "highlight.js/lib/languages/xml";
 import { escapeHTML } from "./format.ts";
+import { languageFor } from "./file-types.ts";
 import css from "highlight.js/lib/languages/css";
 import yaml from "highlight.js/lib/languages/yaml";
 import ini from "highlight.js/lib/languages/ini";
@@ -65,54 +66,6 @@ export function install(markdown: InstanceType<typeof MarkdownIt>) {
     hljs.getLanguage(language) && text.length <= maxHighlightChars
       ? highlightBlock(text, language)
       : "";
-}
-
-// A file's language, by its name or else its extension.
-const NAMED: Record<string, string> = {
-  "CMakeLists.txt": "cmake",
-  Dockerfile: "dockerfile",
-};
-const EXTENSIONS: Record<string, string> = {
-  bash: "bash",
-  c: "cpp",
-  cc: "cpp",
-  cjs: "javascript",
-  cmake: "cmake",
-  cpp: "cpp",
-  css: "css",
-  diff: "diff",
-  go: "go",
-  h: "cpp",
-  hpp: "cpp",
-  html: "xml",
-  ini: "ini",
-  js: "javascript",
-  json: "json",
-  jsonl: "json",
-  jsx: "javascript",
-  md: "markdown",
-  mjs: "javascript",
-  patch: "diff",
-  py: "python",
-  rs: "rust",
-  sh: "bash",
-  svg: "xml",
-  toml: "ini",
-  ts: "typescript",
-  tsx: "typescript",
-  xml: "xml",
-  yaml: "yaml",
-  yml: "yaml",
-  zsh: "bash",
-};
-export function languageFor(path: string) {
-  const name = path.slice(path.lastIndexOf("/") + 1);
-  const dot = name.lastIndexOf(".");
-  return (
-    NAMED[name] ||
-    (dot > 0 && EXTENSIONS[name.slice(dot + 1).toLowerCase()]) ||
-    ""
-  );
 }
 
 // A file as lines of HTML, highlighted by its name. A span a line break

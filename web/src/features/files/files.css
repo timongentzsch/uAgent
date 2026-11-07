@@ -158,7 +158,8 @@
   margin: 0;
   padding: var(--space-4) 0;
   display: grid;
-  grid-template-columns: max-content max-content;
+  /* The code column reaches the edge, so a cited line's fill does too. */
+  grid-template-columns: max-content minmax(max-content, 1fr);
   font-size: var(--font-small);
   line-height: var(--leading);
   border: 0;
@@ -177,6 +178,14 @@
 .code-view .line {
   padding-right: var(--space-12);
   white-space: pre;
+}
+/* The lines a message cited: the list's selection, a stripe and a fill. */
+.code-view [data-target] {
+  background: var(--raised);
+}
+.code-view .line-number[data-target] {
+  color: var(--text);
+  box-shadow: inset var(--stripe) 0 var(--accent);
 }
 
 .files-image {

@@ -1,5 +1,12 @@
 import "./files.css";
-import { useContext, useState } from "preact/hooks";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import {
   ChevronLeft,
   Download,
@@ -10,7 +17,7 @@ import {
   X,
 } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
-import type { Session } from "../../shared/types.ts";
+import type { FileTarget, Session } from "../../shared/types.ts";
 import { failure } from "../../shared/types.ts";
 import { api, routes } from "../../state/api.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -33,6 +40,7 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
+import { IMAGE, MARKDOWN } from "../../shared/file-types.ts";
 
 // The Files pane: a folder's tree, search and previews of text, images and
 // Markdown, read from the host. Docked beside the chat or a sheet on a phone.
@@ -56,8 +64,6 @@ interface FileText {
   more: boolean;
 }
 
-const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
-const MARKDOWN = /\.(md|markdown)$/i;
 // Search results shown at once; typing more narrows them.
 // A folder as it is drawn before its entries arrive (see <Placeholder>).
 const SAMPLE_LISTING: Listing = {
@@ -75,6 +81,12 @@ const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const dirOf = (path: string) =>
   path.slice(0, Math.max(0, path.lastIndexOf("/")));
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
+// "12" or "12-20" as the first and last line.
+function lineRange(lines?: string): [number, number] | undefined {
+  if (!lines) return undefined;
+  const [first, last = first] = lines.split("-").map(Number);
+  return [Math.min(first, last), Math.max(first, last)];
+}
 
 // The conversation's folder, read only: a list with search beside a viewer
 // for text and code, rendered markdown and images. A turn that ends may
@@ -83,6 +95,8 @@ export default function Files({
   session,
   close,
   openTerminal,
+  reveal,
+  addToChat,
 }: {
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
@@ -90,6 +104,10 @@ export default function Files({
   // Opens a terminal in the folder shown, by its path in this one; none
   // while the host offers no terminal.
   openTerminal?: (path: string) => void;
+  // A file a message cited, to show at its lines; `at` makes a repeat new.
+  reveal?: (FileTarget & { at: number }) | null;
+  // Puts text in the conversation's draft; none where there is no draft.
+  addToChat?: (text: string) => void;
 }) {
   // In a sheet, its header is this one: Close plays the sheet's exit, and
   // the title is where the sheet puts focus.
@@ -107,6 +125,14 @@ export default function Files({
   const [changing, setChanging] = useState(false);
   // In a narrow pane only one side shows: the list, or the open file.
   const [showing, setShowing] = useState<"list" | "file">("list");
+  // A cited file and its lines: marked while it is open. Not there as
+  // written, the search looks for it and the lines wait for the pick.
+  const [cited, setCited] = useState<{
+    path: string;
+    lines?: [number, number];
+  }>();
+  // A cited path outside the folder, which the pane cannot show.
+  const [outside, setOutside] = useState("");
   const moved = usePushDirection(showing === "file");
   const url = (path: string) => routes.files(id, "raw", path);
   const listing = useResource(
@@ -146,58 +172,179 @@ export default function Files({
   const diff = useResource(
     () =>
       file && changing
-        ? api<FileText>(routes.files(id, "diff", file)).then((value) => ({
-            ...value,
-            path: file,
-          }))
+        ? api<FileText>(routes.files(id, "diff", file)).then((value) => {
+            // Counted once as it arrives, not on every render.
+            const kinds = value.text.split("\n").map(diffLineClass);
+            const counts: [number, number] = [
+              kinds.filter((kind) => kind === "diff-add").length,
+              kinds.filter((kind) => kind === "diff-del").length,
+            ];
+            return { ...value, path: file, counts };
+          })
         : undefined,
     [id, file, turn, changing],
   );
   const text = content.value?.path === file ? content.value : undefined;
   const diffText = diff.value?.path === file ? diff.value : undefined;
-  const diffLines = diffText?.text.split("\n") ?? [];
-  const counts: [number, number] = [
-    diffLines.filter((line) => diffLineClass(line) === "diff-add").length,
-    diffLines.filter((line) => diffLineClass(line) === "diff-del").length,
-  ];
+  const counts = diffText?.counts ?? [0, 0];
   const markdown = MARKDOWN.test(file) && !source;
-  const lines = useResource(
+  // Highlighted again only when the text changed, not on every read.
+  const highlighted = useResource(
     () =>
       text && !markdown
         ? import("../../shared/highlight.ts").then(({ highlightLines }) => ({
             path: file,
-            html: highlightLines(text.text, file)
-              .map(
-                (line, at) =>
-                  `<span class="line-number">${at + 1}</span><span class="line">${line}\n</span>`,
-              )
-              .join(""),
+            lines: highlightLines(text.text, file),
           }))
         : undefined,
-    [text, markdown],
+    [text?.text, file, markdown],
   );
+  const marked = cited?.path === file ? cited.lines : undefined;
+  const code = useMemo(() => {
+    if (highlighted.value?.path !== file) return undefined;
+    const [first, last] = marked ?? [0, -1];
+    return highlighted.value.lines
+      .map((line, at) => {
+        const target = at + 1 >= first && at + 1 <= last ? " data-target" : "";
+        return `<span class="line-number"${target}>${at + 1}</span><span class="line"${target}>${line}\n</span>`;
+      })
+      .join("");
+  }, [highlighted.value, file, marked?.[0], marked?.[1]]);
+  // The lines selected in the code, which Add to chat cites. Each line is
+  // a number then its code, so a child's place gives its line.
+  const [chosen, setChosen] = useState<[number, number]>();
+  useEffect(() => {
+    const lineOf = (node: globalThis.Node | null) => {
+      const view = codeView.current;
+      const element = node instanceof Element ? node : node?.parentElement;
+      const row = element?.closest(".line, .line-number");
+      if (!view || !row || row.parentElement !== view) return undefined;
+      return Math.floor([...view.children].indexOf(row) / 2) + 1;
+    };
+    const update = () => {
+      const selection = document.getSelection();
+      const ends = selection?.isCollapsed
+        ? []
+        : [
+            lineOf(selection?.anchorNode ?? null),
+            lineOf(selection?.focusNode ?? null),
+          ];
+      setChosen(
+        ends.length && ends.every(Boolean)
+          ? [Math.min(ends[0]!, ends[1]!), Math.max(ends[0]!, ends[1]!)]
+          : undefined,
+      );
+    };
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, []);
+  // The first cited line sits in the middle of the view, once per citation.
+  const codeView = useRef<HTMLPreElement>(null);
+  const scrolled = useRef<object | undefined>(undefined);
+  useLayoutEffect(() => {
+    const first = codeView.current?.querySelector("[data-target]");
+    if (!cited || !first || scrolled.current === cited) return;
+    scrolled.current = cited;
+    first.scrollIntoView({ block: "center" });
+  }, [code, cited]);
 
   const results = found.value
     ? fuzzy(found.value.paths, search, (path) => path).slice(0, SHOWN)
     : [];
-  const open = (path: string) => {
+  const open = (path: string, lines?: [number, number]) => {
     if (path.endsWith("/")) return browse(path.slice(0, -1));
     setFile(path);
     setDir(dirOf(path));
-    setSource(false);
+    // Rendered Markdown has no lines to mark: cited lines open its source.
+    setSource(!!lines && MARKDOWN.test(path));
     setQuery("");
     setShowing("file");
+    setCited(lines && { path, lines });
+    setOutside("");
   };
   const pick = (next: boolean) => {
     setChanging(next);
     setFile("");
     setShowing("list");
+    setCited(undefined);
   };
   const browse = (path: string) => {
     setDir(path);
     setQuery("");
     setShowing("list");
+    setCited(undefined);
+    setOutside("");
   };
+  // A path as a message wrote it: in this folder, absolute inside it, or
+  // outside it; a folder, a change, or a file at its lines.
+  const show = ({ path: written, lines, changes: diffOf }: FileTarget) => {
+    const folder = folderOf(session);
+    const path = written.startsWith("/")
+      ? written.startsWith(`${folder}/`)
+        ? written.slice(folder.length + 1)
+        : undefined
+      : written.startsWith("~")
+        ? undefined
+        : written.replace(/^(\.\/)+/, "");
+    if (path === undefined) {
+      setFile("");
+      setCited(undefined);
+      setOutside(written);
+      setShowing("file");
+      return;
+    }
+    setChanging(!!diffOf);
+    if (path.endsWith("/")) return browse(path.slice(0, -1));
+    open(path, lineRange(lines));
+    // Kept without lines too, so a file not found is still looked for.
+    setCited({ path, lines: lineRange(lines) });
+  };
+  const handled = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each request once
+  useEffect(() => {
+    if (reveal && handled.current !== reveal.at) {
+      handled.current = reveal.at;
+      show(reveal);
+    }
+  }, [reveal]);
+  // A cited change that is no longer one opens as the file.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed diff
+  useEffect(() => {
+    if (
+      cited?.path === file &&
+      diff.error &&
+      failure(diff.error).status === 404
+    )
+      setChanging(false);
+  }, [diff.error]);
+  // A cited file not there as written: the search looks for its path.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a failed read
+  useEffect(() => {
+    if (
+      cited?.path === file &&
+      content.error &&
+      failure(content.error).status === 404
+    ) {
+      setFile("");
+      setQuery(cited.path);
+      setShowing("list");
+    }
+  }, [content.error]);
+  // The files whose path ends with the cited one; a single one opens.
+  const named =
+    cited && cited.path !== file && search === cited.path && found.value
+      ? found.value.paths.filter(
+          (path) => path === cited.path || path.endsWith(`/${cited.path}`),
+        )
+      : [];
+  // Lines a pick from the search opens at, while a citation waits for it.
+  const waiting = cited && cited.path !== file ? cited.lines : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once the search answers
+  useEffect(() => {
+    if (named.length !== 1) return;
+    open(named[0], waiting);
+    setCited({ path: named[0], lines: waiting });
+  }, [found.value]);
   const crumbs = dir ? dir.split("/") : [];
   const folderName = nameOf(folderOf(session)) || "Files";
   const fileError = content.error ? failure(content.error) : undefined;
@@ -205,7 +352,7 @@ export default function Files({
   return (
     <section class="files" aria-label="Files" data-showing={showing}>
       <header class="files-head">
-        {file && showing === "file" && (
+        {(file || outside) && showing === "file" && (
           <IconButton
             class="files-back"
             label="Back to the list"
@@ -239,6 +386,20 @@ export default function Files({
             onClick={() => setSource(!source)}
           >
             Source
+          </Button>
+        )}
+        {addToChat && chosen && file && !changing && (
+          <Button
+            variant="secondary"
+            // Pressing it must not drop the selection it cites.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() =>
+              addToChat(
+                `\`${file}:${chosen[0]}${chosen[1] > chosen[0] ? `-${chosen[1]}` : ""}\``,
+              )
+            }
+          >
+            Add to chat
           </Button>
         )}
         {file && !deleted && (
@@ -314,6 +475,7 @@ export default function Files({
             onInput={(event) => {
               setQuery(event.currentTarget.value);
               setIndex(0);
+              setCited(undefined);
             }}
             onKeyDown={(event) => {
               if (event.isComposing || !plainKey(event)) return;
@@ -324,7 +486,7 @@ export default function Files({
               )
                 setIndex(nextIndex(index, event.key, results.length));
               else if (event.key === "Enter" && results[index])
-                open(results[index]);
+                open(results[index], waiting);
               else return;
               event.preventDefault();
               event.stopPropagation();
@@ -332,6 +494,12 @@ export default function Files({
           />
           {search ? (
             <>
+              {named.length > 1 && (
+                <p class="files-note small">
+                  {`${named.length} files are named ${nameOf(cited!.path)}.`}
+                  {waiting && ` Pick one to open it at line ${waiting[0]}.`}
+                </p>
+              )}
               <SuggestionList
                 id="files-results"
                 class="files-results"
@@ -339,7 +507,7 @@ export default function Files({
                 prefix="files-result"
                 items={results}
                 index={index}
-                pick={open}
+                pick={(path) => open(path, waiting)}
                 keyOf={(path) => path}
               >
                 {(path) => (
@@ -458,6 +626,12 @@ export default function Files({
               event.preventDefault();
               open(link.dataset.file!);
             }
+            const reference = target.closest<HTMLElement>(".file-ref");
+            if (reference)
+              show({
+                path: reference.dataset.file!,
+                lines: reference.dataset.lines,
+              });
             if (
               target instanceof HTMLImageElement &&
               target.closest(".markdown")
@@ -465,7 +639,11 @@ export default function Files({
               view({ src: target.src, name: target.alt || nameOf(file) });
           }}
         >
-          {!file ? (
+          {outside ? (
+            <EmptyState>
+              {`${outside} is outside this conversation's folder, so it can't be shown here.`}
+            </EmptyState>
+          ) : !file ? (
             <EmptyState>Choose a file to read it here.</EmptyState>
           ) : changing ? (
             diff.error ? (
@@ -513,11 +691,12 @@ export default function Files({
             <>
               {markdown ? (
                 <MarkdownFile text={text.text} base={dirOf(file)} url={url} />
-              ) : lines.value?.path === file ? (
+              ) : code ? (
                 <pre
                   class="code-view"
+                  ref={codeView}
                   // The highlighter's own spans, escaped by it.
-                  dangerouslySetInnerHTML={{ __html: lines.value.html }}
+                  dangerouslySetInnerHTML={{ __html: code }}
                 />
               ) : (
                 <Spinner label="Highlighting…" />

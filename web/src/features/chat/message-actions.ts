@@ -2,6 +2,7 @@ import { createContext } from "preact";
 import type {
   ActivityTarget,
   Exchange,
+  FileTarget,
   Node,
   Report,
 } from "../../shared/types.ts";
@@ -21,6 +22,8 @@ export interface MessageActions {
   activity?: (target: ActivityTarget) => void;
   // Opens a conversation: an agent a row links to.
   open?: (id: string) => void;
+  // Opens a cited file in the Files pane; none where there is no folder.
+  openFile?: (target: FileTarget) => void;
   recall?: (node: Node) => Promise<void>;
   insert?: (node: Node) => Promise<void>;
   // Sends a message that failed again.

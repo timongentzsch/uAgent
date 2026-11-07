@@ -23,6 +23,15 @@ export function settled(run: () => void) {
   if (pending) waiting.push(run);
   else run();
 }
+// Runs `run` on the entry under every open layer, stepping back past the
+// layers' entries first: a write that must not take a layer's entry over.
+export function underLayers(run: () => void) {
+  const depth = depthOf(history.state);
+  if (pending || !depth) return settled(run);
+  pending++;
+  waiting.push(run);
+  history.go(-depth);
+}
 
 type Entry = { layer?: number; seq?: number } | null;
 const depthOf = (state: unknown) => (state as Entry)?.layer ?? 0;
@@ -75,12 +84,15 @@ function sync() {
   if (syncing) return;
   syncing = requestAnimationFrame(() => {
     syncing = 0;
-    const current = depthOf(history.state);
-    const wanted = stack[stack.length - 1]?.depth ?? 0;
-    if (current > wanted) {
-      pending++;
-      history.go(wanted - current);
-    }
+    // A step back already under way lands first; where it lands decides.
+    settled(() => {
+      const current = depthOf(history.state);
+      const wanted = stack[stack.length - 1]?.depth ?? 0;
+      if (current > wanted) {
+        pending++;
+        history.go(wanted - current);
+      }
+    });
   });
 }
 

@@ -347,9 +347,19 @@ test("on a phone a cited path opens the sheet at its lines", async ({
   request,
 }) => {
   await folder(host.project);
-  const cited = await citing(host, request, "It is `src/app.ts:2`.");
+  const cited = await citing(
+    host,
+    request,
+    "It is `src/app.ts:2`, pinned by `tests/unit/tool_execution_policy_test.cc:130` and `benchmarks/baselines/hermetic.json`.",
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${cited.id}`);
+  // A long cited path wraps like any code instead of widening the chat.
+  const transcript = page.locator(".transcript");
+  await expect(transcript.locator(".file-ref").last()).toBeVisible();
+  expect(
+    await transcript.evaluate((node) => node.scrollWidth - node.clientWidth),
+  ).toBeLessThanOrEqual(0);
   await page
     .locator(".transcript")
     .getByRole("button", { name: "src/app.ts:2" })

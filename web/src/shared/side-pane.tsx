@@ -2,7 +2,7 @@ import "./side-pane.css";
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { devicePrefs, type Pane } from "./device-prefs.ts";
-import { useExit } from "./motion.ts";
+import { motionEase, motionMs, useExit } from "./motion.ts";
 
 // Docked panes (the sidebar, files) beside the chat and the
 // terminal under it: their resize handle and the layout that sizes each pane.
@@ -108,9 +108,11 @@ export function ResizeHandle({
 // A conversation with a pane docked beside it (the files): the chat keeps
 // the rest of the row. The chat sits in the same
 // place with or without a pane, so opening one only narrows it: a new
-// parent would remount the transcript and load its history again. The pane
-// enters and leaves within its column, and closing it returns focus to what
-// opened it.
+// parent would remount the transcript and load its history again. The
+// pane's column grows to its width as it fades in, so the chat narrows with
+// it rather than before it; the pane's content keeps that width and is
+// uncovered from the edge, so it never lays out narrower on the way.
+// Closing plays the same back, and returns focus to what opened the pane.
 export function SideLayout({
   pane,
   children,
@@ -121,6 +123,32 @@ export function SideLayout({
   const [shown, ref] = useExit<typeof pane, HTMLDivElement>(pane);
   const opener = useRef<Element | null>(null);
   const open = !!pane;
+  // After useExit's own effect, so its wait for the exit sees this one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on opening and closing
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const content = element?.lastElementChild;
+    const duration = motionMs("base");
+    if (!element || !content || !duration) return;
+    const width = `${element.getBoundingClientRect().width}px`;
+    // The column clips while it moves; the content holds its full width.
+    const shut = {
+      width: "0px",
+      minWidth: "0px",
+      opacity: 0,
+      overflow: "clip",
+    };
+    const full = { width, minWidth: "0px", opacity: 1, overflow: "clip" };
+    const options = {
+      duration,
+      easing: motionEase(open ? "out" : "in"),
+      fill: open ? ("none" as const) : ("forwards" as const),
+    };
+    const pane = element.animate(open ? [shut, full] : [full, shut], options);
+    const held = { width };
+    const inside = content.animate([held, held], options);
+    return () => [pane, inside].forEach((run) => run.cancel());
+  }, [open, !!shown]);
   useLayoutEffect(() => {
     if (open) {
       opener.current = document.activeElement;
@@ -139,7 +167,7 @@ export function SideLayout({
     <div class="side-layout">
       <div class="side-chat">{children}</div>
       {shown && (
-        <div ref={ref} class="side-pane enters" data-pane={shown.name}>
+        <div ref={ref} class="side-pane" data-pane={shown.name}>
           <ResizeHandle pane={shown.name} label={shown.label} edge="start" />
           {shown.content}
         </div>

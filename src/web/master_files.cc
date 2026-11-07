@@ -187,13 +187,14 @@ struct Change {
 // may hold more than the folder, as a home folder's dotfiles do, and the pane
 // shows only the folder. `-z` ends each entry with NUL and follows a rename's
 // entry with its old path, and names paths from the repository's top.
+// `pathspec` narrows it, so checking one file does not read the whole tree.
 struct Changes {
   bool repository = false;
   std::vector<Change> list;
   bool more = false;
 };
 
-Changes ReadChanges(const fs::path& folder) {
+Changes ReadChanges(const fs::path& folder, const std::string& pathspec = ".") {
   Changes changes;
   const CapturedProcess prefix =
       HostGit(folder.string(), {"rev-parse", "--show-prefix"});
@@ -201,7 +202,7 @@ Changes ReadChanges(const fs::path& folder) {
   const std::string from_top = Trim(prefix.output);
   const CapturedProcess status = HostGit(
       folder.string(),
-      {"status", "--porcelain", "-z", "--untracked-files=all", "--", "."});
+      {"status", "--porcelain", "-z", "--untracked-files=all", "--", pathspec});
   // Past the capture's limit, what arrived is still a list, cut.
   if (!status.error.empty() ? status.output.empty() : !status.Ok()) {
     return changes;
@@ -287,8 +288,10 @@ void Master::Files(const Request& request, Response& response) {
     return;
   }
   if (request.has_param("changes") || request.has_param("diff")) {
-    const Changes changes = ReadChanges(*root);
-    if (request.has_param("changes")) {
+    const bool listing = request.has_param("changes");
+    const Changes changes = ReadChanges(
+        *root, listing ? "." : ":(literal)" + request.get_param_value("diff"));
+    if (listing) {
       json rows = json::array();
       for (const Change& change : changes.list) {
         rows.push_back(
